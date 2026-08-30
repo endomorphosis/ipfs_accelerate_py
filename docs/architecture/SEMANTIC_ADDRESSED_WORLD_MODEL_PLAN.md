@@ -1390,7 +1390,80 @@ Key presence on any scheduler, migration-inventory, or dependency-seal
 surface selects M24 before M23. Partial or malformed declaration fails closed.
 The materializer publishes its receipt last and never rewrites M23 history.
 
-## 33. Current limitations at seal time
+## 33. M25 protected native-DuckDB preload successor
+
+M24 materialized its exact control/coordination pair and receipt, but its first
+Quack start failed before an owner identity or startup JSON was published. The
+load-only extension projection itself was correct and contained the admitted
+DuckDB 1.5.5 `httpfs` and `quack` bytes. The operator process had not consumed
+the already-sealed configured-board native dependency, however. Under the
+positive validation `PYTHONPATH`, the outer operator process therefore
+resolved DuckDB 1.5.2. Its first `LOAD httpfs` searched the private extension
+root for `v1.5.2/linux_arm64/httpfs.duckdb_extension`; only the admitted 1.5.5
+layout existed. The failure occurred before `LOAD quack`, `quack_serve`, or
+any embedded Quack execution, so it is not evidence of a Quack defect. Network
+installation, automatic installation, unsigned extensions, and path
+substitution all remained denied.
+
+That failed start created no generation-24 state-server row, task claim,
+attempt, provider invocation, effect claim, implementation commit, merge, or
+accepted completion. It emitted no owner status or handoff token. The failed
+read replica remains bounded historical evidence in `run-r2-m24` and is not
+implementation source. The stopped M24 anchors are control SHA-256
+`27c7bf7f923005ec66eec6f4b75b68cbe84fd3c8bf6273ebbb2b6d954ac64f35`
+(43,528,192 bytes), coordination SHA-256
+`0671fbc77fa65bb30bf2c7227ccf963b9833223a9ed178461c278b21413e1957`
+(13,905,920 bytes), and read-replica SHA-256
+`27c7bf7f923005ec66eec6f4b75b68cbe84fd3c8bf6273ebbb2b6d954ac64f35`
+(43,528,192 bytes). Its published receipt remains immutable historical
+authority; M25 does not relabel or rewrite it.
+
+The bounded repair commit
+`135b077c5ad9482bbb167fdfc81d8b7855ff5fab` (tree
+`7edc2ead1b4dc7c3c21040077775619ca3a81743`) reuses the existing protected
+configured-board native-dependency authority. Only `quack-start` seals and
+preloads that exact native DuckDB before any offline validator can import an
+ambient version. It rejects preloaded DuckDB aliases and refuses process birth
+when any ambient `LD_*` loader setting is present. The environment must be
+sanitized by the external caller; the Python operator does not remove or
+rewrite loader variables in process. It verifies the sealed descriptor before
+and after the complete foreground owner lifetime, and closes it on successful
+or failed exit. Five focused bootstrap tests cover ordering, descriptor
+lifetime, owner failure, preload failure, ambient aliases, and
+loader-environment rejection. An exact positive-path smoke loaded DuckDB 1.5.5
+with `httpfs` version `827222f` and `quack` version `c154811` from the private
+sealed projection.
+
+M25 copies only the exact stopped M24 control and coordination bases into a
+fresh namespace. The failed M24 read replica, locks, empty owner directory,
+and receipt remain in `run-r2-m24`. No task or coordination semantics are
+changed; M25 appends only plan revision 26, one operator evidence node, and
+intent events 250--251. Its unchanged strict four-lane target is:
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m25/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m25/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m25
+Quack port    24068
+generation    24
+plan revision 26
+event cursor  251
+coord events  1407
+lanes         0, 1, 2, 3 (strict; no idle stealing)
+provider cap  at least 4
+```
+
+Key presence on any scheduler, migration-inventory, or dependency-seal
+surface selects `native_duckdb_preload_successor_materialization` before M24.
+A partial, null, malformed, source-divergent, or CID-divergent declaration
+fails closed. The repair commit is the exact parent of the subsequent
+nine-control seal commit; validators bind that two-commit chain and the exact
+protected changed-path set without predicting the final commit ID. Only after
+the controls are committed, validated, materialized receipt-last, and checked
+may generation-24 Quack start, preflight, implementation dry-run, and the four
+implementation lanes resume.
+
+## 34. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

@@ -3197,6 +3197,362 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m25_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Select M25 on any declaration surface, including partial state."""
+
+    key = "native_duckdb_preload_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m25_name_status(root: Path, before: str, after: str) -> dict[str, str]:
+    """Return an exact modifications-only source delta for M25."""
+
+    changed: dict[str, str] = {}
+    for line in _git(
+        root, "diff", "--name-status", "--no-renames", before, after, "--"
+    ).splitlines():
+        fields = line.split("\t")
+        if len(fields) != 2 or fields[0] != "M" or fields[1] in changed:
+            raise RuntimeError(
+                f"M25 source delta contains a non-modification entry: {line}"
+            )
+        changed[fields[1]] = fields[0]
+    return changed
+
+
+def _m25_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    """Bind the repair commit followed by one exact nine-control commit."""
+
+    try:
+        prior_head = str(authority["prior_source_head"])
+        repair_head = str(authority["repair_source_commit"])
+        current_head = _git(root, "rev-parse", "HEAD")
+        repair_paths = set(str(path) for path in authority["source_repair_paths"])
+        operator_paths = set(
+            str(path) for path in authority["operator_control_paths"]
+        )
+        expected_repair_blobs = dict(authority["repair_source_blobs"])
+        accepted = authority.get("accepted_control_plane_repair")
+        expected_operator_paths = set(materializer._M18_OPERATOR_CONTROL_PATHS)
+        if (
+            current_head in {prior_head, repair_head}
+            or _git(root, "rev-parse", f"{repair_head}^") != prior_head
+            or _git(root, "rev-parse", f"{current_head}^") != repair_head
+            or _git(root, "rev-parse", f"{prior_head}^{{tree}}")
+            != authority["prior_source_tree"]
+            or _git(root, "rev-parse", f"{repair_head}^{{tree}}")
+            != authority["repair_source_tree"]
+            or repair_paths != set(materializer._M25_NATIVE_PRELOAD_SOURCE_BLOBS)
+            or expected_repair_blobs
+            != dict(materializer._M25_NATIVE_PRELOAD_SOURCE_BLOBS)
+            or operator_paths != expected_operator_paths
+            or not isinstance(accepted, Mapping)
+            or accepted.get("precursor_source_head") != prior_head
+            or accepted.get("repair_source_commit") != repair_head
+            or set(accepted.get("changed_paths", ())) != repair_paths
+            or dict(accepted.get("blob_oids", {})) != expected_repair_blobs
+            or int(accepted.get("ordinary_source_changes", -1)) != 0
+            or int(authority.get("ordinary_source_changes", -1)) != 0
+            or _m25_name_status(root, prior_head, repair_head)
+            != {path: "M" for path in repair_paths}
+            or _m25_name_status(root, repair_head, current_head)
+            != {path: "M" for path in operator_paths}
+        ):
+            return [
+                "M25 source transition is not the exact native preload repair "
+                "followed by one nine-control commit"
+            ]
+        _git(root, "merge-base", "--is-ancestor", prior_head, repair_head)
+        _git(root, "merge-base", "--is-ancestor", repair_head, current_head)
+        for path, blob_oid in expected_repair_blobs.items():
+            if _git(root, "rev-parse", f"{repair_head}:{path}") != blob_oid:
+                return [f"M25 native preload repair blob differs: {path}"]
+        for dependency, gitlink_key, tree_key in (
+            ("ipfs_datasets_py", "prior_datasets_gitlink", "prior_datasets_tree"),
+            ("ipfs_kit_py", "prior_kit_gitlink", "prior_kit_tree"),
+        ):
+            gitlink = str(authority[gitlink_key])
+            if (
+                any(
+                    _git(root, "rev-parse", f"{head}:{dependency}") != gitlink
+                    for head in (prior_head, repair_head, current_head)
+                )
+                or _git(root / dependency, "rev-parse", f"{gitlink}^{{tree}}")
+                != authority[tree_key]
+            ):
+                return [f"M25 {dependency} source authority differs"]
+        return []
+    except Exception as exc:
+        return [
+            "M25 exact two-commit source chain differs: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m25_native_duckdb_preload_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Check M25's failed-start anchor, source repair and fresh successor."""
+
+    key = "native_duckdb_preload_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m25_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M25 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m25_native_duckdb_preload_authority()
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append(
+                "M25 native-DuckDB preload successor authority is only "
+                "partially declared"
+            )
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append(
+                "M25 native-DuckDB preload authority differs across controls"
+            )
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M25 native-DuckDB preload authority CID is not exact")
+
+        target_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m25"
+        )
+        target_store = f"{target_root}/control.duckdb"
+        required = {
+            "schema": (
+                "sawm/native-duckdb-preload-successor-materialization-"
+                "authorization@1"
+            ),
+            "authorized": True,
+            "authority": "operator_control_plane",
+            "migration_revision": "SAWM-R2-M25",
+            "migration_kind": key,
+            "prior_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m24/control.duckdb"
+            ),
+            "prior_coordination_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m24/control.coordination.duckdb"
+            ),
+            "prior_failed_start_control_store_sha256": (
+                "27c7bf7f923005ec66eec6f4b75b68cbe84fd3c8bf6273ebbb2b6d954ac64f35"
+            ),
+            "prior_failed_start_control_store_size": 43_528_192,
+            "prior_coordination_store_sha256": (
+                "0671fbc77fa65bb30bf2c7227ccf963b9833223a9ed178461c278b21413e1957"
+            ),
+            "prior_coordination_store_size": 13_905_920,
+            "prior_read_replica_sha256": (
+                "27c7bf7f923005ec66eec6f4b75b68cbe84fd3c8bf6273ebbb2b6d954ac64f35"
+            ),
+            "prior_owner_status_present": False,
+            "prior_listener_present": False,
+            "prior_owner_marker_present": False,
+            "prior_pid_present": False,
+            "prior_stop_control_present": False,
+            "prior_token_handoff_present": False,
+            "prior_wals_absent": True,
+            "prior_runtime_state_absent": True,
+            "maximum_persisted_generation": 23,
+            "failed_attempted_generation": 24,
+            "failed_attempt_allocated_generation": False,
+            "prior_source_head": "bb02830699388df9b52c01830c9e970a56c56796",
+            "repair_source_commit": "135b077c5ad9482bbb167fdfc81d8b7855ff5fab",
+            "target_store_id": target_store,
+            "target_coordination_store_id": (
+                f"{target_root}/control.coordination.duckdb"
+            ),
+            "target_runtime_root": target_root,
+            "target_generation": 24,
+            "target_quack_port": 24_068,
+            "target_plan_revision": 26,
+            "target_event_watermark": 251,
+            "target_coordination_event_count": 1_407,
+            "event_suffix_length": 2,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "coordination_semantic_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "worker_self_approval": False,
+        }
+        if any(expected.get(name) != value for name, value in required.items()):
+            errors.append(
+                "M25 native-DuckDB preload successor authority is not exact"
+            )
+        failure = expected.get("failed_quack_start")
+        diagnosis = (
+            failure.get("diagnosis") if isinstance(failure, Mapping) else None
+        )
+        native_repair = expected.get("native_preload_repair")
+        if (
+            not isinstance(failure, Mapping)
+            or not isinstance(diagnosis, Mapping)
+            or expected.get("failed_quack_start_cid")
+            != materializer._identity(dict(failure))
+            or failure.get("attempt") != "SAWM-R2-M24-QUACK-START-A1"
+            or failure.get("phase") != "pre_identity_replica_extension_load"
+            or failure.get("failed_operation") != "LOAD httpfs"
+            or failure.get("load_quack_reached") is not False
+            or failure.get("quack_serve_reached") is not False
+            or failure.get("embedded_quack_involved") is not False
+            or failure.get("identity_publication_reached") is not False
+            or failure.get("listener_created") is not False
+            or failure.get("owner_status_created") is not False
+            or failure.get("state_server_row_created") is not False
+            or failure.get("store_generation_row_created") is not False
+            or failure.get("maximum_persisted_generation") != 23
+            or failure.get("task_revision_changes") != 0
+            or failure.get("task_status_changes") != 0
+            or failure.get("coordination_semantic_changes") != 0
+            or failure.get("provider_invocations") != 0
+            or failure.get("worker_self_approval") is not False
+            or diagnosis.get("accepted_native_distribution_version") != "1.5.5"
+            or diagnosis.get("failed_process_native_distribution_version")
+            != "1.5.2"
+            or "v1.5.2/linux_arm64/httpfs.duckdb_extension"
+            not in str(failure.get("normalized_error") or "")
+            or diagnosis.get("compatibility_extension_required") is not False
+            or diagnosis.get("network_or_install_required") is not False
+        ):
+            errors.append("M25 failed M24 start evidence is not exact")
+        if (
+            not isinstance(native_repair, Mapping)
+            or native_repair.get("accepted_native_distribution_version")
+            != "1.5.5"
+            or native_repair.get("preload_before_offline_validation") is not True
+            or native_repair.get("preload_before_owner_start") is not True
+            or native_repair.get("sealed_descriptor_retained_for_owner_lifetime")
+            is not True
+            or native_repair.get("ambient_duckdb_alias_rejected") is not True
+            or native_repair.get("ambient_loader_environment_rejected") is not True
+            or native_repair.get("sanitized_process_birth_required") is not True
+            or native_repair.get("in_process_loader_environment_mutation")
+            is not False
+            or native_repair.get("network_install_allowed") is not False
+            or native_repair.get("compatibility_extension_added") is not False
+            or native_repair.get("native_distribution_changed") is not False
+            or "ambient_loader_paths_removed" in native_repair
+        ):
+            errors.append(
+                "M25 native preload repair does not require external sanitized "
+                "process birth"
+            )
+        errors.extend(_m25_source_chain_errors(root, materializer, expected))
+
+        program = scheduler.get("database_program", {})
+        owner = scheduler.get("quack_owner", {})
+        runtime = scheduler.get("runtime_paths")
+        lanes = scheduler.get("lanes")
+        provider = scheduler.get("provider", {})
+        lane_identity = (
+            [
+                (
+                    lane.get("index"),
+                    lane.get("name"),
+                    lane.get("strict_shard_remainder"),
+                    lane.get("initial_task_ids"),
+                )
+                for lane in lanes
+            ]
+            if type(lanes) is list
+            and all(type(lane) is dict for lane in lanes)
+            else None
+        )
+        provider_cap = (
+            provider.get("max_concurrency")
+            if isinstance(provider, Mapping)
+            else None
+        )
+        if require_active_runtime and (
+            (
+                program.get("store_id"),
+                program.get("store_generation"),
+                program.get("quack_endpoint"),
+                program.get("event_store_path"),
+                program.get("runtime_registry_path"),
+                program.get("worktree_root"),
+                owner.get("database_path"),
+                owner.get("store_id"),
+                owner.get("state_dir"),
+                owner.get("port"),
+            )
+            != (
+                target_store,
+                "24",
+                "quack:127.0.0.1:24068",
+                f"{target_root}/events",
+                f"{target_root}/registry",
+                f"{target_root}/worktrees",
+                target_store,
+                target_store,
+                f"{target_root}/quack-owner",
+                24_068,
+            )
+            or runtime
+            != {
+                "root": target_root,
+                "state": f"{target_root}/state",
+                "worktrees": f"{target_root}/worktrees",
+                "merge_queue": f"{target_root}/merge-queue",
+                "logs": f"{target_root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+        ):
+            errors.append("scheduler M25 target/runtime binding is not exact")
+        if require_active_runtime and (
+            type(scheduler.get("max_lanes")) is not int
+            or scheduler.get("max_lanes") != 4
+            or scheduler.get("strict_task_sharding") is not True
+            or scheduler.get("idle_lane_work_stealing") != ""
+            or lane_identity
+            != [
+                (0, "sawm-lane-0", 0, ["SAWM-008"]),
+                (1, "sawm-lane-1", 1, ["SAWM-006", "SAWM-010"]),
+                (2, "sawm-lane-2", 2, ["SAWM-015"]),
+                (3, "sawm-lane-3", 3, ["SAWM-012"]),
+            ]
+            or any(
+                type(value) is not int
+                for lane in (lanes if type(lanes) is list else ())
+                if type(lane) is dict
+                for value in (
+                    lane.get("index"),
+                    lane.get("strict_shard_remainder"),
+                )
+            )
+            or type(provider_cap) is not int
+            or provider_cap < 4
+        ):
+            errors.append("scheduler M25 strict four-lane contract is not exact")
+        return errors
+    except Exception as exc:
+        return [
+            "M25 native-DuckDB preload successor authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m24_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -7137,6 +7493,54 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m25_key = "native_duckdb_preload_successor_materialization"
+    m25_presence = (
+        m25_key in scheduler,
+        m25_key in migration,
+        f"{m25_key}_cid" in seal,
+    )
+    if any(m25_presence):
+        if not all(m25_presence):
+            return effective, ["active M25 nested-source authority is partial"]
+        scheduled = scheduler.get(m25_key)
+        migrated = migration.get(m25_key)
+        if (
+            type(scheduled) is not dict
+            or type(migrated) is not dict
+            or _canonical_json(scheduled) != _canonical_json(migrated)
+        ):
+            return effective, ["active M25 nested-source authority differs"]
+        claimed_cid = "sha256:" + hashlib.sha256(
+            _canonical_json(scheduled)
+        ).hexdigest()
+        if seal.get(f"{m25_key}_cid") != claimed_cid:
+            return effective, ["active M25 nested-source authority CID differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(scheduled.get("prior_datasets_gitlink") or ""),
+                str(scheduled.get("prior_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(scheduled.get("prior_kit_gitlink") or ""),
+                str(scheduled.get("prior_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M25 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     m24_key = "multi_lane_sidecar_reopen_successor_materialization"
     m24_presence = (
         m24_key in scheduler,
@@ -7309,6 +7713,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m25_key = "native_duckdb_preload_successor_materialization"
+        m25_presence = (
+            m25_key in scheduler_probe,
+            m25_key in migration_probe,
+            f"{m25_key}_cid" in seal,
+        )
         m24_key = "multi_lane_sidecar_reopen_successor_materialization"
         m24_presence = (
             m24_key in scheduler_probe,
@@ -7347,7 +7757,63 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m24_presence):
+        if any(m25_presence):
+            scheduled = scheduler_probe.get(m25_key)
+            migrated = migration_probe.get(m25_key)
+            if (
+                not all(m25_presence)
+                or type(scheduled) is not dict
+                or type(migrated) is not dict
+                or _canonical_json(scheduled) != _canonical_json(migrated)
+                or seal.get(f"{m25_key}_cid")
+                != "sha256:"
+                + hashlib.sha256(_canonical_json(scheduled)).hexdigest()
+            ):
+                unexpected = [
+                    "M25 authority is partial or differs across source controls"
+                ]
+            else:
+                expected_paths = set(
+                    str(path)
+                    for path in scheduled.get("operator_control_paths", ())
+                )
+                expected = {path: "M" for path in expected_paths}
+                observed: dict[str, str] = {}
+                for line in _git(
+                    root,
+                    "diff",
+                    "--name-status",
+                    "--no-renames",
+                    str(scheduled.get("repair_source_commit")),
+                    "HEAD",
+                    "--",
+                ).splitlines():
+                    status, path = line.split("\t", 1)
+                    observed[path] = status
+                working = set(_status_paths(root))
+                parent_is_repair = (
+                    _git(root, "rev-parse", "HEAD^")
+                    == scheduled.get("repair_source_commit")
+                )
+                repair_parent_is_m24 = (
+                    _git(
+                        root,
+                        "rev-parse",
+                        f"{scheduled.get('repair_source_commit')}^",
+                    )
+                    == scheduled.get("prior_source_head")
+                )
+                unexpected = (
+                    []
+                    if (
+                        observed == expected
+                        and working.issubset(expected_paths)
+                        and parent_is_repair
+                        and repair_parent_is_m24
+                    )
+                    else ["M25 status-qualified two-commit source delta differs"]
+                )
+        elif any(m24_presence):
             scheduled = scheduler_probe.get(m24_key)
             migrated = migration_probe.get(m24_key)
             if (
@@ -7918,7 +8384,97 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
-        if _m24_successor_declared(scheduler, seal, migration):
+        if _m25_successor_declared(scheduler, seal, migration):
+            protocol_errors.extend(
+                _m25_native_duckdb_preload_successor_errors(
+                    scheduler, seal, migration, root=root
+                )
+            )
+            protocol_errors.extend(
+                _m24_sidecar_reopen_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m23_multi_lane_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m22_live_preflight_receipt_compatibility_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m21_generation_realization_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m20_test_isolation_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m19_live_catalog_inventory_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m18_portal_completion_persistence_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m17_source_binding_successor_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m16_accepted_source_retry_errors(
+                    scheduler,
+                    seal,
+                    migration,
+                    root=root,
+                    require_active_runtime=False,
+                )
+            )
+            protocol_errors.extend(
+                _m15_historical_authority_errors(scheduler, seal, migration)
+            )
+        elif _m24_successor_declared(scheduler, seal, migration):
             protocol_errors.extend(
                 _m24_sidecar_reopen_successor_errors(
                     scheduler, seal, migration, root=root
@@ -8350,6 +8906,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             protocol_errors.append("closed atomic mutation catalog is absent")
         if "read_only=True" not in operator_source or "canonical writer without loading or serving Quack" not in operator_source:
             protocol_errors.append("read-only Quack replica / sealed writer boundary is absent")
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "native_duckdb_preload_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M25 authority by fail-closed key presence"
+            )
         if not _has_presence_based_key_selection(
             operator_source,
             "multi_lane_sidecar_reopen_successor_materialization",

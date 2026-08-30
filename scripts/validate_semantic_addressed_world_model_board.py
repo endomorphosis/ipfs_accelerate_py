@@ -3,7 +3,7 @@
 
 The Markdown documents are immutable operator inputs, never task-completion
 authority.  This validator checks their closed structure and the scheduler
-binding, including the append-only M24 sealed multi-lane repair successor.
+binding, including the append-only M25 native-DuckDB preload successor.
 Accepted task state remains in the datasets-authoritative DuckDB store
 reached through the current Quack owner.
 """
@@ -373,6 +373,30 @@ def _m16_migration_errors(
         return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m25_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Reuse the exact M25 native-DuckDB preload successor contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m25_native_duckdb_preload_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
+            )
+        )
+    except Exception as exc:
+        return [f"M25 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _m24_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -572,12 +596,100 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M24 before every historical successor.  Consequently
+    Key presence selects M25 before every historical successor.  Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m25_key = "native_duckdb_preload_successor_materialization"
+    m25_seal_key = f"{m25_key}_cid"
+    m25_presence = (
+        m25_key in scheduler,
+        m25_key in migration,
+        m25_seal_key in seal,
+    )
+    if any(m25_presence):
+        errors = _m25_migration_errors(scheduler, seal, migration)
+        if not all(m25_presence):
+            errors.append(
+                "M25 native-DuckDB preload successor authority is only "
+                "partially declared"
+            )
+        errors.extend(
+            _m24_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        errors.extend(
+            _m23_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        errors.extend(
+            _m22_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        errors.extend(
+            _m21_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        errors.extend(
+            _m20_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        errors.extend(
+            _m19_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        errors.extend(
+            _m18_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        errors.extend(
+            _m17_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        errors.extend(
+            _m16_migration_errors(
+                scheduler,
+                seal,
+                migration,
+                require_active_runtime=False,
+            )
+        )
+        return errors
 
     m24_key = "multi_lane_sidecar_reopen_successor_materialization"
     m24_seal_key = f"{m24_key}_cid"
@@ -1152,7 +1264,7 @@ def _active_successor_migration_errors(
             errors.append("M8 source-repair authority is only partially declared")
         return errors
     return [
-        "active M8/M9/M10/M11/M12/M13/M14/M15/M16/M17/M18/M19/M20/M21/M22/M23/M24 "
+        "active M8/M9/M10/M11/M12/M13/M14/M15/M16/M17/M18/M19/M20/M21/M22/M23/M24/M25 "
         "successor authority is absent"
     ]
 
@@ -2581,6 +2693,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m25_key = "native_duckdb_preload_successor_materialization"
+    m25_selected = any(
+        (
+            m25_key in config,
+            m25_key in migration,
+            f"{m25_key}_cid" in seal,
+        )
+    )
     m24_key = "multi_lane_sidecar_reopen_successor_materialization"
     m24_selected = any(
         (
@@ -2590,21 +2710,21 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     m23_key = "multi_lane_successor_materialization"
-    m23_selected = not m24_selected and any(
+    m23_selected = not m25_selected and not m24_selected and any(
         (
             m23_key in config,
             m23_key in migration,
             f"{m23_key}_cid" in seal,
         )
     )
-    multi_lane_selected = m24_selected or m23_selected
+    multi_lane_selected = m25_selected or m24_selected or m23_selected
     expected_lane_count = 4 if multi_lane_selected else 1
     if (
         type(config.get("max_lanes")) is not int
         or config.get("max_lanes") != expected_lane_count
     ):
         config_errors.append(
-            "four lanes are required for M24/M23"
+            "four lanes are required for M25/M24/M23"
             if multi_lane_selected
             else "one lane is required until sidecars are lane-scoped"
         )
@@ -2643,7 +2763,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
             )
         )
     ):
-        config_errors.append("M24/M23 exact four-lane identity mismatch")
+        config_errors.append("M25/M24/M23 exact four-lane identity mismatch")
     provider = config.get("provider") if isinstance(config.get("provider"), Mapping) else {}
     expected_provider = {
         "primary_provider_id": "grok_cli",
@@ -2783,7 +2903,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     active_run = (
-        "run-r2-m24"
+        "run-r2-m25"
+        if m25_selected
+        else "run-r2-m24"
         if m24_selected
         else "run-r2-m23"
         if m23_selected
@@ -2819,6 +2941,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_generation = (
         "24"
+        if m25_selected
+        else "24"
         if m24_selected
         else "23"
         if m23_selected
@@ -2853,7 +2977,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "10"
     )
     active_port = (
-        24067
+        24068
+        if m25_selected
+        else 24067
         if m24_selected
         else 24066
         if m23_selected
@@ -2902,7 +3028,95 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m24_selected:
+    if m25_selected:
+        successor = config.get(m25_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m25"
+        )
+        required_m25 = {
+            "schema": (
+                "sawm/native-duckdb-preload-successor-materialization-"
+                "authorization@1"
+            ),
+            "authorized": True,
+            "authority": "operator_control_plane",
+            "migration_revision": "SAWM-R2-M25",
+            "migration_kind": m25_key,
+            "prior_store_id": (
+                "data/agent_supervisor/semantic_addressed_world_model/"
+                "run-r2-m24/control.duckdb"
+            ),
+            "target_store_id": active_store,
+            "target_coordination_store_id": (
+                f"{runtime_root}/control.coordination.duckdb"
+            ),
+            "target_runtime_root": runtime_root,
+            "target_generation": 24,
+            "target_quack_port": 24_068,
+            "target_plan_revision": 26,
+            "target_event_watermark": 251,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "coordination_semantic_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "implementation_provider_invocations": 0,
+            "worker_self_approval": False,
+        }
+        if (
+            not isinstance(successor, Mapping)
+            or any(
+                successor.get(key) != value
+                for key, value in required_m25.items()
+            )
+        ):
+            config_errors.append(
+                "M25 native-DuckDB preload successor authority is not exact"
+            )
+        try:
+            module = _dependency_validator_module(REPO_ROOT)
+            materializer_spec = importlib.util.spec_from_file_location(
+                "sawm_board_m25_materializer",
+                REPO_ROOT
+                / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if materializer_spec is None or materializer_spec.loader is None:
+                raise RuntimeError("M25 materializer cannot be loaded")
+            materializer = importlib.util.module_from_spec(materializer_spec)
+            materializer_spec.loader.exec_module(materializer)
+            expected = (
+                materializer._expected_m25_native_duckdb_preload_authority()
+            )
+            if (
+                type(successor) is not dict
+                or materializer._identity(successor)
+                != materializer._identity(expected)
+                or type(migration.get(m25_key)) is not dict
+                or materializer._identity(migration.get(m25_key))
+                != materializer._identity(expected)
+                or seal.get(f"{m25_key}_cid")
+                != materializer._identity(expected)
+                or module._m25_native_duckdb_preload_successor_errors(
+                    config, seal, migration, root=REPO_ROOT
+                )
+            ):
+                config_errors.append(
+                    "M25 native-DuckDB preload authority/CID/source differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M25 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M25 active runtime paths are not exactly fresh")
+    elif m24_selected:
         successor = config.get(m24_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m24"
