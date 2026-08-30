@@ -4805,6 +4805,8 @@ def test_expired_callback_rearms_only_exact_post_commit_candidate(
         assert carried["operation"] == (
             "database_portal_post_commit_candidate_recovery"
         )
+        assert carried["backoff_ms"] == 0
+        assert carried["retry_not_before_ms"] == now["ms"]
         assert carried["post_commit_candidate_recovery_seed"]["attempt_id"] == (
             attempt.attempt_id
         )

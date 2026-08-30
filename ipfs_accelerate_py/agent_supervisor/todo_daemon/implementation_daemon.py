@@ -121866,6 +121866,8 @@ class DatabaseImplementationDaemon:
             "execution_finished_at_ms": attempt.finished_at_ms,
             "reason": "exact_post_commit_candidate_retained",
             "queue_reason": queue_reason,
+            "backoff_ms": 0,
+            "retry_not_before_ms": 0,
             "queue_receipt": {},
             "coordination": coordination,
             "control_expected_status": "quarantined",
