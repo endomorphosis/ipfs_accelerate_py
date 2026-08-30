@@ -4691,6 +4691,7 @@ def test_provider_callback_hard_crash_after_expiry_never_redispatches(
 
 def test_expired_callback_rearms_only_exact_post_commit_candidate(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class SimulatedProcessCrash(BaseException):
         pass
@@ -4717,6 +4718,71 @@ def test_expired_callback_rearms_only_exact_post_commit_candidate(
     )
     try:
         first.materialize_population(_population(1))
+        initial_task = first.task_source.get("task:cid:001")
+        assert initial_task is not None
+        route_binding = {
+            "policy_id": "policy:post-commit-recovery-route",
+            "task_revision": int(initial_task.revision),
+            "task_cid": initial_task.task_cid,
+            "task_alias": initial_task.task_alias,
+        }
+
+        def bind_test_route(_source: object, task: object) -> Mapping[str, object]:
+            task_body = getattr(task, "body", None)
+            task_receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+            if int(getattr(task, "revision", 0) or 0) != int(
+                route_binding["task_revision"]
+            ) and (
+                not isinstance(task_receipt, Mapping)
+                or any(
+                    task_receipt.get(field) != value
+                    for field, value in {
+                        "execution_route_binding": route_binding,
+                        "execution_route_policy_id": route_binding["policy_id"],
+                        "execution_route_origin_revision": route_binding[
+                            "task_revision"
+                        ],
+                    }.items()
+                )
+            ):
+                raise ValueError(
+                    "advanced task revision has no carried execution-route binding"
+                )
+            return dict(route_binding)
+
+        def validate_test_route(
+            _source: object,
+            value: Mapping[str, object],
+            *,
+            task: object,
+            allow_claim_revision: bool = False,
+        ) -> Mapping[str, object]:
+            if dict(value) != route_binding:
+                raise ValueError("post-commit recovery route rotated")
+            if int(getattr(task, "revision", 0) or 0) != int(
+                route_binding["task_revision"]
+            ):
+                if not allow_claim_revision:
+                    raise ValueError("advanced route was not admitted")
+                bind_test_route(_source, task)
+            return dict(route_binding)
+
+        monkeypatch.setattr(
+            type(first.task_source),
+            "execution_route_binding_for_task",
+            bind_test_route,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            type(first.task_source),
+            "validate_execution_route_binding",
+            validate_test_route,
+            raising=False,
+        )
         attempt = first.claim_next()
         assert attempt is not None
         with pytest.raises(SimulatedProcessCrash):
@@ -4807,6 +4873,11 @@ def test_expired_callback_rearms_only_exact_post_commit_candidate(
         )
         assert carried["backoff_ms"] == 0
         assert carried["retry_not_before_ms"] == now["ms"]
+        assert carried["execution_route_binding"] == route_binding
+        assert carried["execution_route_policy_id"] == route_binding["policy_id"]
+        assert carried["execution_route_origin_revision"] == route_binding[
+            "task_revision"
+        ]
         assert carried["post_commit_candidate_recovery_seed"]["attempt_id"] == (
             attempt.attempt_id
         )
@@ -4827,6 +4898,13 @@ def test_expired_callback_rearms_only_exact_post_commit_candidate(
         assert claim_receipt["post_commit_candidate_recovery_seed"] == (
             carried["post_commit_candidate_recovery_seed"]
         )
+        assert claim_receipt["execution_route_binding"] == route_binding
+        assert claim_receipt["execution_route_policy_id"] == route_binding[
+            "policy_id"
+        ]
+        assert claim_receipt["execution_route_origin_revision"] == route_binding[
+            "task_revision"
+        ]
     finally:
         restarted.close()
 
