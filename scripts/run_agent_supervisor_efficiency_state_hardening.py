@@ -91668,6 +91668,17 @@ def _await_initial_health(
             )
         if receipt.get("healthy") is True:
             return receipt, last_progress_at
+        if (
+            receipt.get("health_without_lane_admitted") is True
+            and (
+                receipt.get("startup_grace_active") is True
+                or _recent_live_work(receipt)
+            )
+        ):
+            # One recycling shard (supervisor_pid_mismatch) must not burn
+            # the 300s admission window while other lanes already claimed
+            # in_progress work. Post-admission keeps the same bound.
+            return receipt, last_progress_at
         first = second
     _record_control_failure(
         paths, failure, failure_event,

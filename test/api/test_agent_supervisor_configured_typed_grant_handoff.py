@@ -4789,6 +4789,66 @@ def test_aseh_startup_honors_admitted_blocked_recovery_past_thirty_seconds(
     assert samples == []
 
 
+def test_aseh_startup_admits_lane_only_census_during_startup_grace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = SimpleNamespace(
+        payload={"watchdog_startup_grace_seconds": 300.0}
+    )
+    paths = {"status_receipt": tmp_path / "live-status.json"}
+    samples = [
+        {"observed_at": float(index), "authority": {"available": True}}
+        for index in range(2)
+    ]
+    lane_only = {
+        "blocked": False,
+        "stuck": False,
+        "healthy": False,
+        "health_without_lane_admitted": True,
+        "startup_grace_active": True,
+        "lane_heartbeat_fresh": False,
+        "owner_ready": True,
+        "active_count": 1,
+        "receipt_cid": "receipt:lane-only",
+    }
+    receipts = [dict(lane_only), dict(lane_only)]
+
+    def fake_sample(*_args: object, **_kwargs: object) -> dict[str, object]:
+        assert samples
+        return samples.pop(0)
+
+    def fake_health(*_args: object, **_kwargs: object) -> dict[str, object]:
+        assert receipts
+        return receipts.pop(0)
+
+    monkeypatch.setattr(aseh_operator, "_status_sample", fake_sample)
+    monkeypatch.setattr(aseh_operator, "_health_receipt", fake_health)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_authoritative_progress_between",
+        lambda *_args: [],
+    )
+    monkeypatch.setattr(aseh_operator, "STATUS_SAMPLE_INTERVAL_SECONDS", 0)
+
+    admitted, last_progress_at = aseh_operator._await_initial_health(
+        board,
+        paths,
+        server=SimpleNamespace(),
+        scheduler=SimpleNamespace(pid=4242, poll=lambda: None),
+        launched_at=90.0,
+        failure={},
+        failure_event=threading.Event(),
+        shutdown_requested=threading.Event(),
+        received_signal={},
+    )
+
+    assert admitted == lane_only
+    assert last_progress_at == 90.0
+    assert receipts == [lane_only]
+    assert samples == []
+
+
 def test_aseh_startup_fails_when_blocked_recovery_admission_is_lost(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
