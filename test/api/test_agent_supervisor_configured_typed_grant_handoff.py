@@ -4376,6 +4376,18 @@ def test_aseh_post_admission_bounds_parallel_scope_identity_flicker() -> None:
         unhealthy_edges=0,
     )[:2] == ("fail", "authoritative_board_blocked")
 
+    parallel_live = {
+        **halted,
+        "active_count": 1,
+        "lane_active_worker_count": 1,
+    }
+    assert aseh_operator._post_admission_health_action(
+        parallel_live,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("continue", "")
+
 
 def test_aseh_post_admission_grace_is_exclusive_to_typed_lane_loss() -> None:
     lane_only = {
