@@ -14364,6 +14364,191 @@ def test_reconcile_landed_merged_tasks_completes_retrying_without_control_receip
     assert cas[0]["receipt_operation"] == "database_landed_merge_repair"
 
 
+def test_quack_landed_retrying_does_not_cas_completed_without_admitted_claim() -> None:
+    cas: list[dict[str, object]] = []
+
+    class _Source:
+        task = SimpleNamespace(
+            task_cid="task:pcpr-001",
+            task_alias="PCPR-001",
+            status="retrying",
+            revision=7,
+            body={"completion_receipt": {"operation": "database_portal_retry"}},
+        )
+
+        def list_tasks(self, status=None, limit=50):
+            selected = (
+                {str(status).strip().lower()}
+                if isinstance(status, str)
+                else {str(item).strip().lower() for item in (status or ())}
+            )
+            tasks = (self.task,) if self.task.status in selected else ()
+            return SimpleNamespace(tasks=tasks)
+
+        def get(self, _cid: str):
+            return self.task
+
+    source = _Source()
+    daemon = SimpleNamespace(
+        repo_root=Path("/tmp"),
+        merge_target_ref="HEAD",
+        task_source=source,
+        _uses_quack_command_gateway=lambda: True,
+        _task_outputs_landed_on_target=lambda _task: True,
+        _task_declared_output_paths=lambda _task: (
+            "artifacts/proof_carrying_platform_qualification_and_release/receipts/PCPR-001.json",
+        ),
+        _record_event=lambda *_args, **_kwargs: None,
+        _cas_task_status_database=lambda *args, **kwargs: cas.append(kwargs),
+    )
+    daemon._complete_landed_quarantined_task = (
+        lambda task: DatabaseImplementationDaemon._complete_landed_quarantined_task(
+            daemon,
+            task,
+        )
+    )
+    daemon._complete_landed_task_under_typed_owner = (
+        lambda current, receipt: (
+            DatabaseImplementationDaemon._complete_landed_task_under_typed_owner(
+                daemon,
+                current,
+                receipt,
+            )
+        )
+    )
+    daemon._rearm_landed_task_for_authorized_completion = (
+        lambda current: (
+            DatabaseImplementationDaemon._rearm_landed_task_for_authorized_completion(
+                daemon,
+                current,
+            )
+        )
+    )
+
+    outcomes = DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon)
+    assert len(outcomes) == 1
+    assert outcomes[0]["completed"] is False
+    assert outcomes[0]["reason"] == "landed_outputs_require_admitted_completion"
+    assert cas == []
+
+
+def test_quack_landed_in_progress_completes_with_admitted_claim() -> None:
+    cas: list[dict[str, object]] = []
+    admitted = {
+        "operation": "database_attempt_admitted",
+        "attempt_id": "attempt:1",
+        "claim_id": "claim:1",
+        "lease_id": "lease:1",
+        "owner_session_id": "session:1",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "claim_phase_schema": "typed-database-attempt-admission@1",
+    }
+
+    class _Source:
+        task = SimpleNamespace(
+            task_cid="task:pcpr-001",
+            task_alias="PCPR-001",
+            status="in_progress",
+            revision=9,
+            body={"completion_receipt": dict(admitted)},
+        )
+
+        def list_tasks(self, status=None, limit=50):
+            selected = (
+                {str(status).strip().lower()}
+                if isinstance(status, str)
+                else {str(item).strip().lower() for item in (status or ())}
+            )
+            tasks = (self.task,) if self.task.status in selected else ()
+            return SimpleNamespace(tasks=tasks)
+
+        def get(self, _cid: str):
+            return self.task
+
+        def record_validation_result(self, **_kwargs: object) -> None:
+            return None
+
+    source = _Source()
+
+    def cas_status(
+        task_cid,
+        *,
+        expected_revision,
+        new_status,
+        receipt,
+        evidence_digests,
+        expected_control_receipt=None,
+    ):
+        cas.append(
+            {
+                "task_cid": task_cid,
+                "expected_revision": expected_revision,
+                "new_status": new_status,
+                "receipt_operation": dict(receipt).get("operation"),
+                "expected_control_receipt": dict(expected_control_receipt or {}),
+                "evidence_digests": list(evidence_digests),
+            }
+        )
+        source.task.status = new_status
+        source.task.revision = int(expected_revision) + 1
+        return None
+
+    daemon = SimpleNamespace(
+        repo_root=Path("/tmp"),
+        merge_target_ref="HEAD",
+        task_source=source,
+        _uses_quack_command_gateway=lambda: True,
+        _task_outputs_landed_on_target=lambda _task: True,
+        _task_declared_output_paths=lambda _task: (
+            "artifacts/proof_carrying_platform_qualification_and_release/receipts/PCPR-001.json",
+        ),
+        _record_event=lambda *_args, **_kwargs: None,
+        _cas_task_status_database=cas_status,
+    )
+    daemon._landed_merge_repair_proof = (
+        lambda task, attempt_id="": DatabaseImplementationDaemon._landed_merge_repair_proof(
+            daemon,
+            task,
+            attempt_id=attempt_id,
+        )
+    )
+    daemon._complete_landed_quarantined_task = (
+        lambda task: DatabaseImplementationDaemon._complete_landed_quarantined_task(
+            daemon,
+            task,
+        )
+    )
+    daemon._complete_landed_task_under_typed_owner = (
+        lambda current, receipt: (
+            DatabaseImplementationDaemon._complete_landed_task_under_typed_owner(
+                daemon,
+                current,
+                receipt,
+            )
+        )
+    )
+    daemon._complete_landed_admitted_task = (
+        lambda current, receipt: (
+            DatabaseImplementationDaemon._complete_landed_admitted_task(
+                daemon,
+                current,
+                receipt,
+            )
+        )
+    )
+
+    outcomes = DatabaseImplementationDaemon.reconcile_landed_merged_tasks(daemon)
+    assert len(outcomes) == 1
+    assert outcomes[0]["completed"] is True
+    assert cas[0]["new_status"] == "completed"
+    assert cas[0]["receipt_operation"] == "database_complete"
+    assert cas[0]["expected_control_receipt"]["operation"] == (
+        "database_attempt_admitted"
+    )
+    assert cas[0]["expected_control_receipt"]["attempt_id"] == "attempt:1"
+
+
 def test_resume_without_process_crash_completes_landed_missing_receipt() -> None:
     attempt = SimpleNamespace(
         attempt_id="attempt:1",

@@ -106343,9 +106343,6 @@ class DatabaseImplementationDaemon:
         if (
             mismatched
             or attempt.status != "failed"
-            or attempt.committed_phase != ATTEMPT_PHASE_FAILED
-            or self._terminal_portal_failure_reason(attempt)
-            != "portal_provider_failed"
         ):
             raise DatabaseImplementationConflictError(
                 "landed completion recovery does not match the exact failed "
@@ -106362,32 +106359,48 @@ class DatabaseImplementationDaemon:
                 if isinstance(task_body, Mapping)
                 else None
             )
-            if (
-                task_status != "blocked"
-                or getattr(task, "revision", None)
-                != receipt.get("source_control_revision")
-                or not isinstance(control_receipt, Mapping)
-                or control_receipt.get("operation")
-                != "database_portal_terminal_failure"
-                or control_receipt.get("reason") != "portal_provider_failed"
-                or control_receipt.get("retryable") is not False
-                or any(
-                    control_receipt.get(field) != value
-                    for field, value in {
-                        "attempt_id": attempt.attempt_id,
-                        "claim_id": attempt.claim_id,
-                        "lease_id": attempt.lease_id,
-                        "owner_session_id": attempt.owner_session_id,
-                        "attempt_number": int(attempt.attempt_number),
-                        "fencing_token": int(attempt.fencing_token),
-                        "fence_epoch": int(attempt.fence_epoch),
-                        "execution_revision": int(attempt.revision),
-                        "execution_finished_at_ms": attempt.finished_at_ms,
-                    }.items()
+            identity = {
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "attempt_number": int(attempt.attempt_number),
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+            }
+            identity_matches = bool(
+                isinstance(control_receipt, Mapping)
+                and all(
+                    control_receipt.get(field) == value
+                    for field, value in identity.items()
                 )
+            )
+            blocked_terminal = bool(
+                task_status == "blocked"
+                and attempt.committed_phase == ATTEMPT_PHASE_FAILED
+                and self._terminal_portal_failure_reason(attempt)
+                == "portal_provider_failed"
+                and identity_matches
+                and control_receipt.get("operation")
+                == "database_portal_terminal_failure"
+                and control_receipt.get("reason") == "portal_provider_failed"
+                and control_receipt.get("retryable") is False
+                and control_receipt.get("execution_revision")
+                == int(attempt.revision)
+                and control_receipt.get("execution_finished_at_ms")
+                == attempt.finished_at_ms
+            )
+            retrying_landed = bool(
+                task_status in {"retrying", "quarantined"}
+                and identity_matches
+            )
+            if (
+                getattr(task, "revision", None)
+                != receipt.get("source_control_revision")
+                or not (blocked_terminal or retrying_landed)
             ):
                 raise DatabaseImplementationConflictError(
-                    "landed completion recovery does not match blocked control state"
+                    "landed completion recovery does not match control state"
                 )
         return receipt
 
@@ -119339,6 +119352,41 @@ class DatabaseImplementationDaemon:
             control_receipt = None
         if not self._task_outputs_landed_on_target(current):
             return None
+        uses_gateway = getattr(self, "_uses_quack_command_gateway", None)
+        uses_quack = False
+        if callable(uses_gateway):
+            try:
+                uses_quack = bool(uses_gateway())
+            except Exception:
+                uses_quack = False
+        if uses_quack:
+            return DatabaseImplementationDaemon._complete_landed_task_under_typed_owner(
+                self,
+                current,
+                control_receipt,
+            )
+        return DatabaseImplementationDaemon._cas_landed_merge_repair(
+            self,
+            current,
+            status=status,
+            control_receipt=control_receipt,
+        )
+
+    def _cas_landed_merge_repair(
+        self,
+        current: Any,
+        *,
+        status: str,
+        control_receipt: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Complete a landed task through embedded DuckDB CAS.
+
+        The exclusive Quack owner rejects ``retrying → completed`` without an
+        admitted in-progress claim.  Embedded tests and non-Quack daemons keep
+        this compact repair.
+        """
+
+        task_cid = str(getattr(current, "task_cid", "") or "")
         proof, digest = self._landed_merge_repair_proof(current)
         record_validation = getattr(
             self.task_source, "record_validation_result", None
@@ -119403,6 +119451,193 @@ class DatabaseImplementationDaemon:
             "reason": "database_landed_merge_repair",
             "evidence_digest": digest,
             "landed_outputs": list(proof["landed_outputs"]),
+        }
+
+    def _complete_landed_task_under_typed_owner(
+        self,
+        current: Any,
+        control_receipt: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Complete or rearm landed work using Quack-admitted commands.
+
+        The owner only admits ``in_progress`` + ``database_attempt_admitted``
+        → ``database_complete``.  Retrying/blocked rows whose outputs already
+        landed must rearm onto that claim path instead of a forbidden CAS.
+        """
+
+        status = str(getattr(current, "status", "") or "").strip().lower()
+        if status == "in_progress":
+            return DatabaseImplementationDaemon._complete_landed_admitted_task(
+                self,
+                current,
+                control_receipt,
+            )
+        if status in {"retrying", "blocked", "quarantined"}:
+            return DatabaseImplementationDaemon._rearm_landed_task_for_authorized_completion(
+                self,
+                current,
+            )
+        return None
+
+    def _complete_landed_admitted_task(
+        self,
+        current: Any,
+        control_receipt: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if (
+            not isinstance(control_receipt, Mapping)
+            or control_receipt.get("operation") != "database_attempt_admitted"
+        ):
+            return None
+        task_cid = str(getattr(current, "task_cid", "") or "")
+        proof, digest = self._landed_merge_repair_proof(current)
+        record_validation = getattr(
+            self.task_source, "record_validation_result", None
+        )
+        if callable(record_validation):
+            record_validation(
+                task_cid=task_cid,
+                outcome="passed",
+                evidence_digest=digest,
+                argv=["database-landed-merge-repair"],
+                body=proof,
+            )
+        refreshed = self.task_source.get(task_cid)
+        if refreshed is None:
+            raise DatabaseImplementationAuthorityError(
+                "landed merge repair lost the control task"
+            )
+        if str(getattr(refreshed, "status", "") or "").strip().lower() != "in_progress":
+            return None
+        if DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
+            self,
+            refreshed,
+        ):
+            return None
+        receipt = {
+            "operation": "database_complete",
+            "attempt_id": control_receipt.get("attempt_id"),
+            "claim_id": control_receipt.get("claim_id"),
+            "lease_id": control_receipt.get("lease_id"),
+            "owner_session_id": control_receipt.get("owner_session_id"),
+            "fencing_token": control_receipt.get("fencing_token"),
+            "fence_epoch": control_receipt.get("fence_epoch"),
+            "evidence_digest": digest,
+            "reason": "declared_outputs_landed_on_target",
+            "landed_merge_repair": proof,
+        }
+        self._cas_task_status_database(
+            refreshed.task_cid,
+            expected_revision=int(refreshed.revision),
+            new_status="completed",
+            receipt=receipt,
+            evidence_digests=[digest],
+            expected_control_receipt=dict(control_receipt),
+        )
+        self._record_event(
+            "landed_merge_repaired",
+            task_cid=str(refreshed.task_cid),
+            body={
+                "evidence_digest": digest,
+                "landed_outputs": list(proof["landed_outputs"]),
+            },
+        )
+        return {
+            "task_cid": str(refreshed.task_cid),
+            "task_alias": str(refreshed.task_alias),
+            "completed": True,
+            "reason": "database_landed_merge_repair",
+            "evidence_digest": digest,
+            "landed_outputs": list(proof["landed_outputs"]),
+        }
+
+    def _rearm_landed_task_for_authorized_completion(
+        self,
+        current: Any,
+    ) -> dict[str, Any] | None:
+        """Rearm a landed retrying/blocked task onto the admitted-claim path."""
+
+        task_cid = str(getattr(current, "task_cid", "") or "")
+        task_alias = str(getattr(current, "task_alias", "") or "")
+        persist = getattr(self, "_persist_task_retry_state", None)
+        recovery_fn = getattr(self, "_landed_completion_recovery_fn", None)
+        get_attempt = getattr(self, "get_attempt", None)
+        if not callable(persist):
+            return {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "completed": False,
+                "reason": "landed_outputs_require_admitted_completion",
+            }
+        body = getattr(current, "body", None)
+        control_receipt = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        attempt = None
+        attempt_id = (
+            str(control_receipt.get("attempt_id") or "")
+            if isinstance(control_receipt, Mapping)
+            else ""
+        )
+        if attempt_id and callable(get_attempt):
+            attempt = get_attempt(attempt_id)
+        if attempt is None:
+            latest = getattr(self, "_latest_failed_attempts", None)
+            if callable(latest):
+                for candidate in latest():
+                    if str(getattr(candidate, "task_cid", "") or "") == task_cid:
+                        attempt = candidate
+                        break
+        if attempt is None:
+            return {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "completed": False,
+                "reason": "landed_outputs_require_failed_attempt",
+            }
+        raw_recovery = recovery_fn(attempt) if callable(recovery_fn) else None
+        if raw_recovery is None:
+            return {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "completed": False,
+                "reason": "landed_completion_recovery_unavailable",
+            }
+        try:
+            recovery = self._verified_landed_completion_recovery_receipt(
+                attempt,
+                raw_recovery,
+                task=current,
+            )
+            coordination = self._reconcile_failed_attempt_coordination(attempt)
+            outcome = persist(
+                attempt,
+                reason="landed_completion_requires_fresh_validation",
+                backoff_ms=0,
+                evidence_source=(
+                    "landed_completion_revalidation:"
+                    + str(recovery.get("proof_id") or "")
+                ),
+                coordination_evidence=coordination,
+                landed_completion_recovery_evidence=recovery,
+            )
+        except Exception as exc:
+            return {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "completed": False,
+                "reason": str(exc)[:500],
+            }
+        payload = dict(outcome) if isinstance(outcome, Mapping) else {}
+        return {
+            "task_cid": task_cid,
+            "task_alias": task_alias,
+            "completed": False,
+            "rearmed": True,
+            "reason": "landed_completion_requires_fresh_validation",
+            **payload,
         }
 
     def reconcile_landed_merged_tasks(self) -> list[dict[str, Any]]:

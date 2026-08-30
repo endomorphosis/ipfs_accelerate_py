@@ -8227,33 +8227,44 @@ class DatabasePortalExecutionBridge:
         body = dict(getattr(record, "body", {}) or {})
         control_receipt = body.get("completion_receipt")
         record_status = str(getattr(record, "status", "") or "").strip().lower()
+        attempt_status = str(getattr(attempt, "status", "") or "").strip().lower()
+        identity = {
+            "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+            "claim_id": str(getattr(attempt, "claim_id", "") or ""),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "owner_session_id": str(
+                getattr(attempt, "owner_session_id", "") or ""
+            ),
+            "attempt_number": int(getattr(attempt, "attempt_number", 0) or 0),
+            "fencing_token": int(getattr(attempt, "fencing_token", 0) or 0),
+            "fence_epoch": int(getattr(attempt, "fence_epoch", 0) or 0),
+        }
+        identity_matches = bool(
+            isinstance(control_receipt, Mapping)
+            and all(
+                control_receipt.get(field) == value
+                for field, value in identity.items()
+            )
+        )
+        blocked_terminal = bool(
+            record_status == "blocked"
+            and identity_matches
+            and control_receipt.get("operation")
+            == "database_portal_terminal_failure"
+            and control_receipt.get("reason") == "portal_provider_failed"
+            and control_receipt.get("retryable") is False
+            and control_receipt.get("execution_revision")
+            == int(getattr(attempt, "revision", 0) or 0)
+            and control_receipt.get("execution_finished_at_ms")
+            == getattr(attempt, "finished_at_ms", None)
+        )
+        retrying_landed = bool(
+            record_status in {"retrying", "quarantined"}
+            and identity_matches
+        )
         if (
-            str(getattr(attempt, "status", "") or "").strip().lower()
-            != "failed"
-            or record_status != "blocked"
-            or not isinstance(control_receipt, Mapping)
-            or control_receipt.get("operation")
-            != "database_portal_terminal_failure"
-            or control_receipt.get("reason") != "portal_provider_failed"
-            or control_receipt.get("retryable") is not False
-            or control_receipt.get("attempt_id")
-            != str(getattr(attempt, "attempt_id", "") or "")
-            or control_receipt.get("claim_id")
-            != str(getattr(attempt, "claim_id", "") or "")
-            or control_receipt.get("lease_id")
-            != str(getattr(attempt, "lease_id", "") or "")
-            or control_receipt.get("owner_session_id")
-            != str(getattr(attempt, "owner_session_id", "") or "")
-            or control_receipt.get("attempt_number")
-            != int(getattr(attempt, "attempt_number", 0) or 0)
-            or control_receipt.get("fencing_token")
-            != int(getattr(attempt, "fencing_token", 0) or 0)
-            or control_receipt.get("fence_epoch")
-            != int(getattr(attempt, "fence_epoch", 0) or 0)
-            or control_receipt.get("execution_revision")
-            != int(getattr(attempt, "revision", 0) or 0)
-            or control_receipt.get("execution_finished_at_ms")
-            != getattr(attempt, "finished_at_ms", None)
+            attempt_status != "failed"
+            or not (blocked_terminal or retrying_landed)
         ):
             return None
         repository = self._validation_repository_scope(body)
