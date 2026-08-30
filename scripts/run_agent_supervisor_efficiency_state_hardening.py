@@ -91690,9 +91690,12 @@ def _post_admission_health_action(
             "parallel_startup",
             "parallel_work",
         }:
-            # Parallel remaining work already established the scope. A
-            # two-sample identity or broker flicker must not SIGTERM the
-            # live board as if it were a board-wide halt.
+            # Owner identity is often unsealed for the whole startup
+            # window. Keep the board up until that grace ends; after
+            # that, bound leftover identity flicker like a missing
+            # authority sample.
+            if receipt.get("startup_grace_active") is True:
+                return "continue", "", 0
             next_edges = unhealthy_edges + 1
             if next_edges > 2:
                 return (
