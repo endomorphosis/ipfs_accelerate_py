@@ -4108,12 +4108,30 @@ def test_aseh_health_admits_parallel_blocked_recovery_only_during_startup(
     assert startup["blocked_recovery_admitted"] is True
     assert startup["healthy"] is False
 
-    expired = aseh_operator._health_receipt(
+    working = aseh_operator._health_receipt(
         board,
         paths,
         samples=(before, current),
         launched_at=now - 2.0,
         last_progress_at=now - 0.25,
+        failure={},
+    )
+    assert working["startup_grace_active"] is False
+    assert working["blocked_recovery_scope"] == "parallel_work"
+    assert working["blocked_recovery_admitted"] is True
+    assert aseh_operator._post_admission_health_action(
+        working,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("continue", "")
+
+    expired = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 10.0,
+        last_progress_at=now - 3.0,
         failure={},
     )
     assert expired["startup_grace_active"] is False
