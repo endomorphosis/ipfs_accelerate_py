@@ -91737,6 +91737,21 @@ def _post_admission_health_action(
                 # Parallel claims continue on other shards while one lane's
                 # worker census flickers. Do not SIGTERM the owner.
                 return "continue", "", 0
+            if receipt.get("startup_grace_active") is True:
+                # Lane 2 recycled during W1 startup after 020 completed and
+                # 010 claimed. Heartbeat-fresh flicker is not identity loss.
+                return "continue", "", 0
+            last_progress = receipt.get("last_progress_at")
+            observed = receipt.get("observed_at")
+            window = receipt.get("blocked_recovery_window_seconds")
+            if (
+                type(last_progress) in {int, float}
+                and type(observed) in {int, float}
+                and type(window) in {int, float}
+                and window >= 0
+                and observed - last_progress <= window
+            ):
+                return "continue", "", 0
             next_edges = unhealthy_edges + 1
             if next_edges > 2:
                 return (
