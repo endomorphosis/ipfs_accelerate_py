@@ -4392,6 +4392,40 @@ def test_aseh_post_admission_grace_is_exclusive_to_typed_lane_loss() -> None:
         unhealthy_edges=2,
     ) == ("continue", "", 0)
 
+    starting = {**lane_only, "startup_grace_active": True}
+    assert aseh_operator._post_admission_health_action(
+        starting,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
+
+    progressing = {
+        **lane_only,
+        "last_progress_at": 100.0,
+        "observed_at": 250.0,
+        "blocked_recovery_window_seconds": 300.0,
+    }
+    assert aseh_operator._post_admission_health_action(
+        progressing,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
+
+    stale_progress = {
+        **lane_only,
+        "last_progress_at": 100.0,
+        "observed_at": 500.0,
+        "blocked_recovery_window_seconds": 300.0,
+    }
+    assert aseh_operator._post_admission_health_action(
+        stale_progress,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=2,
+    )[:2] == ("fail", "authoritative_health_admission_lost")
+
     for field, value in (
         ("scheduler_alive", False),
         ("owner_ready", False),
