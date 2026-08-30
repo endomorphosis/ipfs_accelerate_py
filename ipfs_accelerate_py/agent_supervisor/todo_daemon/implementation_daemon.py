@@ -72381,6 +72381,7 @@ _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
     }
 )
 _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS = 30
+_MAX_CONSECUTIVE_QUACK_PORTAL_DEFERRALS = 10
 DATABASE_DECLARED_OUTPUT_REARM_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-declared-output-rearm@1"
 )
@@ -73293,6 +73294,7 @@ class DatabaseImplementationDaemon:
         self.merge_target_ref = str(merge_target_ref or "HEAD").strip() or "HEAD"
         self.merge_queue = merge_queue
         self._quack_attach_blocked_until = 0.0
+        self._consecutive_quack_portal_deferrals = 0
         # Renew long-running provider/effect/validation calls well before the
         # task lease expires.  Tests may shorten this private interval without
         # weakening the production lease duration.
@@ -79929,6 +79931,17 @@ class DatabaseImplementationDaemon:
                 "error": f"{type(exc).__name__}: board unstall request failed",
             }
 
+    def _note_quack_portal_deferral(self, *, reason: str) -> None:
+        """Fail-closed after a bounded streak of Quack attach/transport deferrals."""
+
+        count = int(getattr(self, "_consecutive_quack_portal_deferrals", 0) or 0) + 1
+        self._consecutive_quack_portal_deferrals = count
+        if count > _MAX_CONSECUTIVE_QUACK_PORTAL_DEFERRALS:
+            raise DatabaseImplementationAuthorityError(
+                "quack portal remaining unavailable after bounded deferrals; "
+                f"fail-closed so claim cannot stall ({reason})"
+            )
+
     def _quack_attach_contention_deferral(
         self,
         exc: BaseException,
@@ -79939,6 +79952,7 @@ class DatabaseImplementationDaemon:
         here burns supervisor restart budget and drops a rescue-branch retry.
         """
 
+        self._note_quack_portal_deferral(reason="quack_attach_contended")
         expired: list[dict[str, Any]] = []
         try:
             expired = self.reconcile_expired_running_attempts()
@@ -79961,6 +79975,9 @@ class DatabaseImplementationDaemon:
             "task_source_kind": self.task_source_kind,
             "expired_attempt_reconciliations": expired,
             "board_unstall_request": board_unstall,
+            "consecutive_quack_portal_deferrals": int(
+                self._consecutive_quack_portal_deferrals
+            ),
         }
 
     def _quack_transport_unavailable_deferral(
@@ -79975,6 +79992,7 @@ class DatabaseImplementationDaemon:
             reset_quack_transport_cache,
         )
 
+        self._note_quack_portal_deferral(reason="quack_transport_unavailable")
         reset_quack_transport_cache(self._quack_uri)
         self._arm_quack_attach_cooldown()
         result: dict[str, Any] = {
@@ -79989,6 +80007,9 @@ class DatabaseImplementationDaemon:
             "task_source_kind": self.task_source_kind,
             "quack_transport_cache_reset": True,
             "pre_mutation_transport_probe": pre_mutation,
+            "consecutive_quack_portal_deferrals": int(
+                self._consecutive_quack_portal_deferrals
+            ),
         }
         if pre_mutation:
             result.update(
@@ -89690,7 +89711,7 @@ class DatabaseImplementationDaemon:
         """One database-authoritative pass: resume inflight or claim new work."""
 
         try:
-            return self._run_once_impl()
+            result = self._run_once_impl()
         except Exception as exc:
             if self._is_quack_transport_unavailable(exc):
                 return self._quack_transport_unavailable_deferral(
@@ -89700,6 +89721,14 @@ class DatabaseImplementationDaemon:
             if self._is_quack_attach_contention(exc):
                 return self._quack_attach_contention_deferral(exc)
             raise
+        if not (
+            isinstance(result, Mapping)
+            and result.get("deferred") is True
+            and result.get("reason")
+            in {"quack_transport_unavailable", "quack_attach_contended"}
+        ):
+            self._consecutive_quack_portal_deferrals = 0
+        return result
 
     def _run_once_impl(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""

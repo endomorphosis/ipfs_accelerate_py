@@ -35520,6 +35520,7 @@ def test_aseh_r45_authorization_and_materialized_launch_are_wired_first(
         "launch_bundle = r45_prequalification",
         "_recheck_r45_owner_start_authority",
         "r45_projection_recovery_prequalification=r45_prequalification",
+        "_bounded_launch_admission",
     ):
         assert token in launch
     assert launch.count("_recheck_r45_owner_start_authority") >= 3
@@ -35869,3 +35870,55 @@ def test_aseh_r45_exact_launch_requires_failed_r44_and_no_retry_receipts(
                 candidate_head=candidate_head,
                 candidate_tree=candidate_tree,
             )
+
+
+def test_aseh_r45_launch_reuses_stored_live_evidence_without_rerunning() -> None:
+    complete = inspect.getsource(
+        aseh_operator._complete_r45_historical_live_prequalification
+    )
+    assert "_r45_launch_historical_live_evidence" in complete
+    assert "_assert_r45_historical_live_effect_admission" in complete
+    assert "_qualify_r45_pre_duckdb_historical_live_policy" not in complete
+    assert "_run_r19_historical_live_validation" not in complete
+    assert "_qualify_r19_historical_live_policy" not in complete
+
+    policy_cid = "sha256:" + ("c" * 64)
+    receipt_cid = "sha256:" + ("d" * 64)
+    stored = {
+        "active_policy_cid": policy_cid,
+        "authorizing_receipt_cid": None,
+        "payload": "sealed-authorization-evidence",
+        "evidence_cid": "sha256:" + ("e" * 64),
+    }
+    rebound = aseh_operator._r45_launch_historical_live_evidence(
+        stored,
+        stored_policy={"policy_admission_cid": policy_cid},
+        receipt_cid=receipt_cid,
+    )
+    assert rebound["authorizing_receipt_cid"] == receipt_cid
+    assert rebound["active_policy_cid"] == policy_cid
+    assert rebound["payload"] == "sealed-authorization-evidence"
+    unsigned = {
+        key: value for key, value in rebound.items() if key != "evidence_cid"
+    }
+    assert rebound["evidence_cid"] == aseh_operator._identity(unsigned)
+    with pytest.raises(aseh_operator.OperatorError, match="stored live evidence"):
+        aseh_operator._r45_launch_historical_live_evidence(
+            stored,
+            stored_policy={"policy_admission_cid": "sha256:" + ("a" * 64)},
+            receipt_cid=receipt_cid,
+        )
+
+
+def test_aseh_launch_admission_fail_closes_when_deadline_expires() -> None:
+    started = time.monotonic()
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="fail-closed deadline",
+    ):
+        with aseh_operator._bounded_launch_admission(timeout_seconds=0.05):
+            time.sleep(1.0)
+    assert time.monotonic() - started < 0.5
+    with aseh_operator._bounded_launch_admission(timeout_seconds=1.0):
+        assert aseh_operator._ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE is True
+    assert aseh_operator._ASEH_LAUNCH_ADMISSION_BOUND_ACTIVE is False
