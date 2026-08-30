@@ -45,10 +45,19 @@ from ipfs_accelerate_py.agent_supervisor.proof.test_execution_contracts import (
     ReuseAction,
     ReuseReasonCode,
 )
+from ipfs_accelerate_py.agent_supervisor.verification.contracts import (
+    CacheReuseDecision,
+    CacheReuseDisposition,
+    VerificationReceiptKey,
+)
+from ipfs_accelerate_py.agent_supervisor.verification.receipt_cache import (
+    VerificationReceiptCache,
+)
 
 TEST_REUSE_ELIGIBILITY_DECISION_INTERFACE: Final = "TestReuseEligibilityDecision@1"
 TEST_REUSE_ELIGIBILITY_EVALUATOR_INTERFACE: Final = "TestReuseEligibilityEvaluator@1"
 TEST_REUSE_ELIGIBILITY_POLICY_INTERFACE: Final = "TestReuseEligibilityPolicy@1"
+EXACT_RECEIPT_REUSE_INTERFACE: Final = "ExactReceiptReuse@1"
 
 TEST_REUSE_ELIGIBILITY_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/test-reuse-eligibility-decision@1"
@@ -123,6 +132,12 @@ _FORBIDDEN_HEURISTIC_KEYS: Final = frozenset(
 
 class TestReuseEligibilityError(ValueError):
     """Invalid eligibility input or policy material."""
+
+    __test__ = False
+
+
+class ExactReceiptReuseError(TestReuseEligibilityError):
+    """The canonical exact-key receipt cache could not be consulted safely."""
 
     __test__ = False
 
@@ -1265,8 +1280,52 @@ def evaluate_reuse_eligibility(
     )
 
 
+def lookup_exact_receipt_reuse(
+    *,
+    eligibility: TestReuseEligibilityDecision,
+    receipt_cache: VerificationReceiptCache,
+    receipt_key: VerificationReceiptKey,
+    for_production: bool = True,
+) -> CacheReuseDecision:
+    """Consult the existing cache only after conservative eligibility closes.
+
+    This is deliberately a thin bridge, rather than a second receipt store or
+    matching algorithm.  The shared :class:`VerificationReceiptCache` remains
+    responsible for re-deriving the *entire* key identity and validating the
+    successful terminal receipt on every hit.  Eligibility is a necessary
+    condition, never a substitute for that exact-key proof.
+    """
+
+    if not isinstance(eligibility, TestReuseEligibilityDecision):
+        raise ExactReceiptReuseError("eligibility must be a decision")
+    if not isinstance(receipt_cache, VerificationReceiptCache):
+        raise ExactReceiptReuseError(
+            "receipt_cache must be the canonical VerificationReceiptCache"
+        )
+    if not isinstance(receipt_key, VerificationReceiptKey):
+        raise ExactReceiptReuseError("receipt_key must be a VerificationReceiptKey")
+    if type(for_production) is not bool:
+        raise ExactReceiptReuseError("for_production must be a boolean")
+
+    eligibility.verify()
+    if not eligibility.reusable:
+        return CacheReuseDecision(
+            key_cid=receipt_key.key_id,
+            disposition=CacheReuseDisposition.POLICY_REJECTED,
+            reason_codes=("eligibility_denied",),
+        )
+
+    decision = receipt_cache.lookup(receipt_key, for_production=for_production)
+    if not isinstance(decision, CacheReuseDecision):  # pragma: no cover - cache invariant
+        raise ExactReceiptReuseError("canonical receipt cache returned an invalid decision")
+    if decision.key_cid != receipt_key.key_id:  # pragma: no cover - cache invariant
+        raise ExactReceiptReuseError("canonical receipt cache returned a non-exact key")
+    return decision
+
+
 __all__ = [
     "DEFAULT_ROLLOUT_SCOPE",
+    "EXACT_RECEIPT_REUSE_INTERFACE",
     "ROLLOUT_SCOPE_REPOSITORY_FOREST",
     "TEST_REUSE_ELIGIBILITY_DECISION_INTERFACE",
     "TEST_REUSE_ELIGIBILITY_DECISION_SCHEMA",
@@ -1275,9 +1334,11 @@ __all__ = [
     "TEST_REUSE_ELIGIBILITY_POLICY_SCHEMA",
     "DirtyStateEvidence",
     "EligibilityDenyReason",
+    "ExactReceiptReuseError",
     "TestReuseEligibilityDecision",
     "TestReuseEligibilityError",
     "TestReuseEligibilityEvaluator",
     "TestReuseEligibilityPolicy",
     "evaluate_reuse_eligibility",
+    "lookup_exact_receipt_reuse",
 ]

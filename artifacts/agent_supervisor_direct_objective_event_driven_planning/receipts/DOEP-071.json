@@ -1,0 +1,28 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/doep-task-receipt@1",
+  "task_id": "DOEP-071",
+  "task_cid": "sha256:80f10b52904acf7f9d3ada85c9fab68586d6425192ba7449702d455a53ae2bcd",
+  "title": "Add exact receipt reuse",
+  "plan_revision": "DOEP-PLAN-V5",
+  "plan_cid": "sha256:6c197a4b92682b3b813656123e09956846dc4f5abadf417f37fb7cc0133ddba4",
+  "plan_epoch": 1,
+  "board_namespace": "agent-supervisor-direct-objective-and-event-driven-planning-v1",
+  "candidate_status": "implemented",
+  "completion_authoritative": false,
+  "worker_completion_insufficient": true,
+  "no_competing_subsystem_created": true,
+  "base_repositories": {
+    "ipfs_accelerate_py": {"commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f", "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"},
+    "ipfs_datasets_py": {"commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7", "tree": "456e09b51d6a07a3a5873436df24054768195320"},
+    "ipfs_kit_py": {"commit": "b6c65ba732733d7e33852713ba18aa3b12235668", "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"},
+    "lift_coding": {"commit": "bb8869ed72eb7002434345d9969efee729c4f7f6", "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"}
+  },
+  "changed_paths": ["ipfs_accelerate_py/agent_supervisor/analysis/test_reuse_eligibility.py", "test/api/doep/test_doep_071_add_exact_receipt_reuse.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-071.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-071.json"],
+  "expected_outputs": ["ipfs_accelerate_py/agent_supervisor/analysis/test_reuse_eligibility.py", "test/api/doep/test_doep_071_add_exact_receipt_reuse.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-071.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-071.json"],
+  "write_scope": ["ipfs_accelerate_py/agent_supervisor/analysis/test_reuse_eligibility.py", "test/api/doep/test_doep_071_add_exact_receipt_reuse.py", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-071.json", "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-071.json"],
+  "outputs_present": {"ipfs_accelerate_py/agent_supervisor/analysis/test_reuse_eligibility.py": true, "test/api/doep/test_doep_071_add_exact_receipt_reuse.py": true, "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-071.json": true, "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-071.json": true},
+  "path_digests": {"ipfs_accelerate_py/agent_supervisor/analysis/test_reuse_eligibility.py": "sha256:2b2d5a6d6aea4c6f44e05f3896b043a2f08b5bcb3e6182a20715e3558f06fb5b", "test/api/doep/test_doep_071_add_exact_receipt_reuse.py": "sha256:a9c3026ec75b699d843df26a6779d32755c35c28f50588875225b3cd82e0bc1d", "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-071.json": "sha256:849d4f8f31ae1cfa0f0d935020f23c46ea13b46e9c05d5036c021ef12e13c817"},
+  "required_evidence": {"source_commit_tree_gitlinks": {"ipfs_accelerate_py": {"commit": "87715e9295626e7918f7fc8a7b1a1531ab04208f", "tree": "1c9a399cc7a599d5904e5be2ae58c6be3650cff7"}, "ipfs_datasets_py": {"commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7", "tree": "456e09b51d6a07a3a5873436df24054768195320"}, "ipfs_kit_py": {"commit": "b6c65ba732733d7e33852713ba18aa3b12235668", "tree": "14da7d92e130b7ba3523d0d6741a3ef7ef1e1bc2"}, "lift_coding": {"commit": "bb8869ed72eb7002434345d9969efee729c4f7f6", "tree": "99e85bfe584b7688ffbeff86da1e612dd6893a42"}}, "test_proof_results": {"validation_command": ["python3", "-m", "pytest", "test/api/doep/test_doep_071_add_exact_receipt_reuse.py", "-q"], "proof_selection": "verified_empty", "proof_reason": "Exact cache-key identity and terminal receipt checks are exercised by deterministic current-tree tests; this task makes no separate formal proof claim."}, "limitations": ["Candidate receipt only; independent fenced supervisor admission is required for completion.", "Worker or model assertion alone is insufficient.", "Eligibility is necessary but never authorizes a cache hit; the shared cache revalidates the complete execution key and successful terminal receipt."], "verifier_admission": "pending_independent_fenced_supervisor"},
+  "validation": {"commands": [{"argv": ["python3", "-m", "pytest", "test/api/doep/test_doep_071_add_exact_receipt_reuse.py", "-q"], "cwd": "external/ipfs_accelerate", "status": "candidate_local"}]},
+  "supervisor_acceptance": {"completion_authoritative": false, "state": "pending_independent_fenced_supervisor"}
+}
