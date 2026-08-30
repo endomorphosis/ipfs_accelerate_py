@@ -35441,12 +35441,29 @@ class PortalImplementationDaemon:
         target.parent.mkdir(parents=True, exist_ok=True)
         if branch_name:
             submodule_branch = self._submodule_worktree_branch_name(branch_name, source_key)
-            if self._git_ref_exists_in_repo(source, submodule_branch):
-                self._run_git(["worktree", "add", str(target), submodule_branch], cwd=source)
+            if self._reuse_exact_unlinked_submodule_task_branch(
+                source=source,
+                target=target,
+                branch_name=submodule_branch,
+                expected_ref=base_ref,
+            ):
                 return True
             try:
                 self._run_git(["worktree", "add", "-b", submodule_branch, str(target), base_ref], cwd=source)
             except RuntimeError:
+                # ``git worktree add -b`` creates the branch before every
+                # later setup step has succeeded.  A process crash or a
+                # partially failed add can therefore leave an exact branch
+                # with no linked worktree.  Reuse only that exact branch; a
+                # divergent or linked branch is another authority and must
+                # remain untouched.
+                if self._reuse_exact_unlinked_submodule_task_branch(
+                    source=source,
+                    target=target,
+                    branch_name=submodule_branch,
+                    expected_ref=base_ref,
+                ):
+                    return True
                 if offline_local_only:
                     raise
                 fallback_ref = self._fallback_submodule_worktree_ref(
@@ -35455,9 +35472,119 @@ class PortalImplementationDaemon:
                     source_key=source_key,
                     worktree_path=worktree_path,
                 )
-                self._run_git(["worktree", "add", "-b", submodule_branch, str(target), fallback_ref], cwd=source)
+                try:
+                    self._run_git(
+                        [
+                            "worktree",
+                            "add",
+                            "-b",
+                            submodule_branch,
+                            str(target),
+                            fallback_ref,
+                        ],
+                        cwd=source,
+                    )
+                except RuntimeError:
+                    if self._reuse_exact_unlinked_submodule_task_branch(
+                        source=source,
+                        target=target,
+                        branch_name=submodule_branch,
+                        expected_ref=fallback_ref,
+                    ):
+                        return True
+                    raise
             return True
         self._run_git(["worktree", "add", "--detach", str(target), base_ref], cwd=source)
+        return True
+
+    def _reuse_exact_unlinked_submodule_task_branch(
+        self,
+        *,
+        source: Path,
+        target: Path,
+        branch_name: str,
+        expected_ref: str,
+    ) -> bool:
+        """Attach an exact task branch orphaned by an interrupted worktree add.
+
+        The branch is reusable only when its commit is the exact requested
+        base and Git reports no linked worktree for it.  This method never
+        moves or deletes a ref: divergent and linked branches fail closed.
+        """
+
+        expected_commit = self._resolve_git_commit_in_repo(source, expected_ref)
+        if not expected_commit:
+            raise RuntimeError(
+                "submodule task branch expected base commit is unavailable"
+            )
+        branch_ref = f"refs/heads/{branch_name}"
+        branch_commit = self._resolve_git_commit_in_repo(source, branch_ref)
+        if not branch_commit:
+            return False
+        if branch_commit != expected_commit:
+            raise RuntimeError(
+                "submodule task branch exists at a divergent commit: "
+                f"{branch_name}"
+            )
+
+        listed = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if listed.returncode != 0:
+            raise RuntimeError(
+                "cannot verify submodule task branch worktree custody: "
+                + listed.stderr.strip()[:512]
+            )
+        linked_paths = [
+            entry.get("worktree", "")
+            for entry in self._parse_git_worktree_porcelain(listed.stdout)
+            if entry.get("branch") == branch_name
+        ]
+        if linked_paths:
+            raise RuntimeError(
+                "submodule task branch is already linked to a worktree: "
+                f"{branch_name}"
+            )
+
+        # The failed ``worktree add`` may have populated its managed target
+        # before returning non-zero.  No Git worktree owns the path at this
+        # point, and the caller already established it as this attempt's
+        # submodule target, so remove only that incomplete checkout before the
+        # exact branch is attached.
+        if target.exists() or target.is_symlink():
+            if target.is_symlink() or target.is_file():
+                target.unlink()
+            elif target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
+
+        self._run_git(
+            ["worktree", "add", str(target), branch_name],
+            cwd=source,
+        )
+        observed_commit = self._resolve_git_commit_in_repo(target, "HEAD")
+        observed_branch = self._git_current_branch(target)
+        if (
+            observed_commit != expected_commit
+            or observed_branch != branch_name
+        ):
+            raise RuntimeError(
+                "reused submodule task branch changed during worktree attach"
+            )
+        self._record_event(
+            "stale_submodule_task_branch_reused",
+            {
+                "source": str(source),
+                "target": str(target),
+                "branch": branch_name,
+                "commit": expected_commit,
+            },
+        )
         return True
 
     def _discover_local_submodule_source(
@@ -46574,19 +46701,11 @@ class PortalImplementationDaemon:
         safe = "".join(character if character.isalnum() or character in "-._" else "-" for character in ref)
         return safe.strip("-") or "main"
 
-    def _git_worktree_entries_for_repo(self, cwd: Path) -> list[dict[str, str]]:
-        result = subprocess.run(
-            ["git", "worktree", "list", "--porcelain"],
-            cwd=cwd,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            return []
+    @staticmethod
+    def _parse_git_worktree_porcelain(value: str) -> list[dict[str, str]]:
         entries: list[dict[str, str]] = []
         current: dict[str, str] = {}
-        for line in result.stdout.splitlines():
+        for line in value.splitlines():
             if line.startswith("worktree "):
                 if current:
                     entries.append(current)
@@ -46597,6 +46716,18 @@ class PortalImplementationDaemon:
         if current:
             entries.append(current)
         return entries
+
+    def _git_worktree_entries_for_repo(self, cwd: Path) -> list[dict[str, str]]:
+        result = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+        return self._parse_git_worktree_porcelain(result.stdout)
 
     def _git_worktree_entries(self) -> list[dict[str, str]]:
         return self._git_worktree_entries_for_repo(self.repo_root)
@@ -73626,6 +73757,92 @@ class DatabaseImplementationDaemon:
                     "terminal reconciliation receipt index changed authority"
                 )
 
+    def _restore_database_portal_terminal_reconciliation_barrier(
+        self,
+        *,
+        attempt: "DatabaseTaskAttempt",
+        link: Mapping[str, Any],
+        prepared: Mapping[str, Any],
+        barrier: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Restore a missing saga row from exact immutable phase evidence.
+
+        A pre-provider setup failure can durably publish its FAILED phase and
+        exact prepared/commit-barrier receipts before an older execution
+        database has the saga index row.  Reconstruct only the index: every
+        attempt, nested-state, disposition, and receipt binding must already
+        verify.  Ambiguous or incomplete historical records stay blocked.
+        """
+
+        nested_state = prepared.get("nested_state")
+        if not isinstance(nested_state, Mapping):
+            raise DatabaseImplementationConflictError(
+                "terminal reconciliation phase lacks exact nested state"
+            )
+        disposition = str(
+            link.get("intended_database_disposition") or ""
+        )
+        if link.get("nested_reconciled") is not True or disposition not in {
+            "blocked_unknown_outcome",
+            "terminalized_for_retry",
+            "superseded_attempt_revoked",
+        }:
+            raise DatabaseImplementationConflictError(
+                "terminal reconciliation phase cannot restore a saga barrier"
+            )
+        prepared_expected = {
+            "receipt_id": str(
+                link.get("prepared_reconciliation_receipt_id") or ""
+            ),
+            "binding_id": str(link.get("binding_id") or ""),
+            "reason": str(link.get("nested_reason") or ""),
+            "reconciled": link.get("nested_reconciled"),
+            "blocked": False,
+            "trigger": str(link.get("trigger") or ""),
+            "intended_database_disposition": disposition,
+        }
+        if any(
+            prepared.get(name) != expected
+            for name, expected in prepared_expected.items()
+        ) or str(nested_state.get("state_digest") or "") != str(
+            link.get("nested_state_digest") or ""
+        ):
+            raise DatabaseImplementationConflictError(
+                "terminal reconciliation prepared receipt changed phase link"
+            )
+        barrier_expected = {
+            "receipt_id": str(link.get("commit_barrier_receipt_id") or ""),
+            "prepared_reconciliation_receipt_id": prepared_expected[
+                "receipt_id"
+            ],
+            "binding_id": prepared_expected["binding_id"],
+            "reason": prepared_expected["reason"],
+            "reconciled": prepared_expected["reconciled"],
+            "blocked": False,
+            "trigger": prepared_expected["trigger"],
+            "intended_database_disposition": prepared_expected[
+                "intended_database_disposition"
+            ],
+        }
+        if any(
+            barrier.get(name) != expected
+            for name, expected in barrier_expected.items()
+        ):
+            raise DatabaseImplementationConflictError(
+                "terminal reconciliation commit barrier changed phase link"
+            )
+
+        self._record_database_portal_terminal_reconciliation_barrier(
+            attempt,
+            link,
+        )
+        restored = self._database_portal_terminal_reconciliation_saga(attempt)
+        if restored is None or restored.get("stage") != "commit_barrier":
+            raise DatabaseImplementationConflictError(
+                "terminal reconciliation saga barrier restoration failed"
+            )
+        return restored
+
     @staticmethod
     def _database_attempt_identity(attempt: "DatabaseTaskAttempt") -> dict[str, Any]:
         return {
@@ -74212,9 +74429,6 @@ class DatabaseImplementationDaemon:
                 saga = self._database_portal_terminal_reconciliation_saga(
                     attempt
                 )
-                indexed_receipt_id = str(
-                    (saga or {}).get("receipt_id") or ""
-                )
                 if raw_link is None:
                     if saga is not None:
                         raise DatabaseImplementationConflictError(
@@ -74229,10 +74443,6 @@ class DatabaseImplementationDaemon:
                         "terminal phase lacks its exact reconciliation link"
                     )
                 link = dict(raw_link)
-                if saga is None:
-                    raise DatabaseImplementationConflictError(
-                        "terminal phase link lacks its reconciliation saga"
-                    )
                 expected_link_fields = {
                     "schema",
                     "attempt_id",
@@ -74301,6 +74511,16 @@ class DatabaseImplementationDaemon:
                     raise DatabaseImplementationConflictError(
                         "terminal phase changed its actual database disposition"
                     )
+                if saga is None:
+                    saga = (
+                        self._restore_database_portal_terminal_reconciliation_barrier(
+                            attempt=attempt,
+                            link=link,
+                            prepared=prepared,
+                            barrier=barrier,
+                        )
+                    )
+                indexed_receipt_id = str(saga.get("receipt_id") or "")
                 saga_expected = {
                     "intended_database_disposition": disposition,
                     "evidence_id": evidence_id,

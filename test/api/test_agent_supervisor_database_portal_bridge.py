@@ -1109,6 +1109,70 @@ def test_round_robin_audit_detects_post_high_water_saga_corruption(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_exact_pre_provider_terminal_link_restores_missing_saga_barrier(
+    tmp_path: Path,
+) -> None:
+    repo, predecessor, _bridge, attempt, _paths = (
+        _seed_interrupted_database_portal_attempt(tmp_path)
+    )
+    successor: DatabaseImplementationDaemon | None = None
+    try:
+        assert not attempt.phase_committed("provider")
+        reconciled = predecessor.reconcile_quiesced_database_portal_attempts(
+            trigger="pre_provider_setup_failure",
+            force=True,
+        )
+        assert reconciled["reconciled"] is True, reconciled
+        terminal = predecessor.get_attempt(attempt.attempt_id)
+        assert terminal is not None and terminal.status == "failed"
+        initial_saga = (
+            predecessor._database_portal_terminal_reconciliation_saga(terminal)
+        )
+        assert initial_saga is not None and initial_saga["stage"] == "terminal"
+        evidence_id = initial_saga["evidence_id"]
+        receipt_id = initial_saga["receipt_id"]
+        predecessor._require_connection().execute(
+            """
+            DELETE FROM database_portal_terminal_reconciliations
+            WHERE attempt_id = ?
+            """,
+            [terminal.attempt_id],
+        )
+        assert (
+            predecessor._database_portal_terminal_reconciliation_saga(terminal)
+            is None
+        )
+        predecessor.close()
+
+        successor = _database_portal_successor(repo)
+        current = successor.get_attempt(terminal.attempt_id)
+        assert current is not None and current.status == "failed"
+        repairs = successor._repair_database_portal_terminal_receipts(
+            bridge=successor._database_portal_bridge,
+            trigger="restart_missing_saga_barrier",
+            exact_attempt=current,
+        )
+
+        assert len(repairs) == 1, repairs
+        assert repairs[0]["reconciled"] is True
+        assert repairs[0]["reason"] == (
+            "terminal_reconciliation_receipt_repaired"
+        )
+        restored = successor._database_portal_terminal_reconciliation_saga(
+            current
+        )
+        assert restored is not None and restored["stage"] == "terminal"
+        assert restored["evidence_id"] == evidence_id
+        assert restored["receipt_id"] == receipt_id
+        assert successor.get_attempt(current.attempt_id) == current
+    finally:
+        if successor is not None:
+            successor.close()
+        else:
+            predecessor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_round_robin_audit_nominates_terminal_row_inserted_behind_high_water(
     tmp_path: Path,
 ) -> None:

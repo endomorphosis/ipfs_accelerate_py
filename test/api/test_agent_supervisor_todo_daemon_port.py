@@ -6219,6 +6219,103 @@ def test_implementation_daemon_recreates_missing_registered_submodule_worktree(
     assert worktree_listing.count(f"worktree {target}") == 1
 
 
+def test_implementation_daemon_reuses_exact_unlinked_submodule_task_branch(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/reuse-stale-submodule-branch"
+    worktree = repo / "worktrees" / "reuse-stale-submodule-branch"
+    _git(repo, "worktree", "add", "-b", branch_name, str(worktree), "main")
+    expected_commit = _git(worktree, "rev-parse", "HEAD:libs/child")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    submodule_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(submodule, "branch", submodule_branch, expected_commit)
+
+    assert daemon._create_local_submodule_worktree(
+        worktree,
+        "libs/child",
+        branch_name=branch_name,
+    )
+
+    target = worktree / "libs" / "child"
+    assert _git(target, "rev-parse", "HEAD") == expected_commit
+    assert _git(target, "branch", "--show-current") == submodule_branch
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        event["type"] == "stale_submodule_task_branch_reused"
+        and event["branch"] == submodule_branch
+        for event in events
+    )
+
+
+@pytest.mark.parametrize("collision", ("divergent", "linked"))
+def test_implementation_daemon_rejects_nonstale_submodule_task_branch(
+    tmp_path: Path,
+    collision: str,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = f"implementation/reject-{collision}-submodule-branch"
+    worktree = repo / "worktrees" / f"reject-{collision}-submodule-branch"
+    _git(repo, "worktree", "add", "-b", branch_name, str(worktree), "main")
+    expected_commit = _git(worktree, "rev-parse", "HEAD:libs/child")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    submodule_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    if collision == "divergent":
+        (submodule / "divergent.txt").write_text(
+            "divergent task branch\n",
+            encoding="utf-8",
+        )
+        _git(submodule, "add", "divergent.txt")
+        _git(submodule, "commit", "-m", "divergent task branch")
+        divergent_commit = _git(submodule, "rev-parse", "HEAD")
+        assert divergent_commit != expected_commit
+        _git(submodule, "branch", submodule_branch, divergent_commit)
+        expected_error = "divergent commit"
+    else:
+        _git(submodule, "branch", submodule_branch, expected_commit)
+        linked = repo / "worktrees" / "already-linked-child"
+        _git(submodule, "worktree", "add", str(linked), submodule_branch)
+        expected_error = "already linked"
+
+    with pytest.raises(RuntimeError, match=expected_error):
+        daemon._create_local_submodule_worktree(
+            worktree,
+            "libs/child",
+            branch_name=branch_name,
+        )
+
+    assert _git(submodule, "rev-parse", submodule_branch) == (
+        divergent_commit if collision == "divergent" else expected_commit
+    )
+    assert not daemon._is_git_worktree(worktree / "libs" / "child")
+
+
 @pytest.mark.parametrize("incomplete_local_source", [False, True])
 def test_implementation_daemon_reuses_primary_submodule_from_linked_worktree(
     tmp_path: Path,
