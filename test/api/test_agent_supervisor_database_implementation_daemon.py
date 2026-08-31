@@ -6157,6 +6157,63 @@ def test_quack_attach_contention_defers_instead_of_crashing(
         daemon.close()
 
 
+def test_duckdb_write_lock_timeout_defers_instead_of_crashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:write-lock-defer",
+        max_task_attempts=3,
+    )
+    try:
+        def boom(*_args: object, **_kwargs: object) -> dict[str, object]:
+            raise TimeoutError(
+                "timed out acquiring DuckDB process lock: "
+                "/tmp/aseh/q/write-transaction.lock"
+            )
+
+        monkeypatch.setattr(daemon, "_run_once_impl", boom)
+        result = daemon.run_once()
+        assert result.get("deferred") is True
+        assert result.get("reason") == "quack_attach_contended"
+        assert result.get("attempt_consumed") is False
+        assert result.get("portal_retryable_failure") is True
+        for _ in range(12):
+            again = daemon.run_once()
+            assert again.get("deferred") is True
+            assert again.get("reason") == "quack_attach_contended"
+    finally:
+        daemon.close()
+
+
+def test_quack_preflight_defers_on_write_lock_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:preflight-lock-defer",
+    )
+    try:
+        daemon.authority_mode = "quack"
+        daemon._quack_uri = "quack:127.0.0.1:41487"
+
+        def boom_snapshot() -> dict[str, object]:
+            raise TimeoutError(
+                "timed out acquiring DuckDB process lock: "
+                "/tmp/aseh/q/write-transaction.lock"
+            )
+
+        monkeypatch.setattr(daemon.task_source, "snapshot", boom_snapshot)
+        result = daemon.run_once()
+        assert result.get("deferred") is True
+        assert result.get("reason") == "quack_attach_contended"
+        assert result.get("attempt_consumed") is False
+    finally:
+        daemon.close()
+
+
 def test_quack_attach_contention_requests_owner_board_unstall(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

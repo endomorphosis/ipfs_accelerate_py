@@ -466,6 +466,20 @@ def exclusive_file_lock(
         thread_lock.release()
 
 
+def duckdb_process_lock_timeout_is_contention(exc: BaseException) -> bool:
+    """True when a lane lost the store lock and should defer, not crash.
+
+    Replica refresh and sibling lanes hold ``write-transaction.lock`` for the
+    whole open/query/close window.  Timing out there is attach contention,
+    not a poisoned daemon.
+    """
+
+    if not isinstance(exc, TimeoutError):
+        return False
+    text = str(exc).casefold()
+    return "timed out acquiring duckdb" in text and "lock" in text
+
+
 def is_sqlite_database(path: Path | str) -> bool:
     candidate = Path(path)
     if not candidate.is_file():
