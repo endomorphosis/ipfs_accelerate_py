@@ -1354,12 +1354,38 @@ _M31_OPERATOR_CONTROL_PATHS = frozenset(
 # Filled after the first M31 nine-path control commit.  A final nine-path
 # reseal commit binds these values without attempting a cryptographic
 # self-reference to its own commit identity.
-_M31_INITIAL_CONTROL_COMMIT = "M31_INITIAL_CONTROL_COMMIT_PENDING"
-_M31_INITIAL_CONTROL_TREE = "M31_INITIAL_CONTROL_TREE_PENDING"
+_M31_INITIAL_CONTROL_COMMIT = "07aed87e3ebc4ef5667541435fd04f2d62a39b25"
+_M31_INITIAL_CONTROL_TREE = "c9fe9a657d2d0e1e05172688dbc44dea6f699265"
 _M31_INITIAL_CONTROL_BLOBS = MappingProxyType(
     {
-        path: f"M31_INITIAL_CONTROL_BLOB_PENDING:{path}"
-        for path in _M31_OPERATOR_CONTROL_PATHS
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "0dfd97ff196d7cd373e5e474726b6534de68170a"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "db8919c3706700479249a497eb7bead14678ebff"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "5b5af02caf0ea409a65b1e9132168a7ea88a0207"
+        ),
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ): "ef33d1c5495cc4ffafe85ec12494611352ecc243",
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "10548a4429883eb883627d0f92de0eb05f36fcdf"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "e1d5adce03f942f900c434b1da7190b89d4b978d"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "6bc74a96c354735a6494ad544a3c5d124c577f66"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "db6ce25f0a1993fe2fab16d27037c47df0231df1"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "85851faab156018518163add30b337b9d52438f6"
+        ),
     }
 )
 _M31_STORE_ID = (
@@ -51436,13 +51462,17 @@ def _check_m31_prestart_admission(
         or identity.get("store_id") != stopped["store_id"]
         or identity.get("listen_uri") != stopped["listen_uri"]
         or identity.get("started_at") != stopped["started_at"]
-        or identity.get("stopped_at") != stopped["stopped_at"]
         or int(identity.get("generation") or 0) != _M31_PRIOR_GENERATION
         or os.path.lexists(marker_path)
         or os.path.lexists(stop_path)
         or os.path.lexists(token_handoff_path)
     ):
         raise MigrationRequired("M31 stopped owner status differs")
+    # The stopped projection deliberately retains the start-time identity and
+    # records lifecycle="stopped"; it does not duplicate the authoritative
+    # state_servers.stopped_at column inside the immutable identity object.
+    # The exact status-file hash above and exact generation-28 row comparison
+    # below bind the declared stop time without inventing a projection field.
     pid_path = root / _M31_STALE_PID_RELATIVE_PATH
     if (
         not pid_path.is_absolute()

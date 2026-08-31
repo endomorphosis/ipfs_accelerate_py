@@ -4659,6 +4659,17 @@ def test_m31_authority_pins_dead_pid_event_281_and_generation_29() -> None:
     assert authority["accepted_source_repair"]["changed_paths"] == sorted(
         authority["accepted_source_repair"]["blob_oids"]
     )
+    chain = authority["source_chain"]
+    assert chain["initial_control_commit"] == (
+        "07aed87e3ebc4ef5667541435fd04f2d62a39b25"
+    )
+    assert chain["initial_control_tree"] == (
+        "c9fe9a657d2d0e1e05172688dbc44dea6f699265"
+    )
+    assert chain["final_reseal_parent"] == chain["initial_control_commit"]
+    assert set(chain["initial_control_blobs"]) == set(
+        authority["operator_control_paths"]
+    )
     body = materializer._m31_migration_body(
         materializer.build_population(REPO_ROOT),
         scheduler,
@@ -4735,6 +4746,10 @@ def test_m31_pid_and_receipt_controls_are_stable_and_serializable() -> None:
     assert "_read_stable_regular_bytes" in prestart_source
     assert "with serialized_lock_update(pid_path):" in prestart_source
     assert "pid_path.resolve().read_bytes" not in prestart_source
+    assert 'identity.get("stopped_at")' not in prestart_source
+    assert "generation,started_at,stopped_at,status,revision FROM state_servers" in (
+        prestart_source
+    )
     assert "return dict(observed)" in ensure_source
     assert "return dict(expected)" in ensure_source
     assert live_source.index("before_token_handoff_retirement()") < live_source.index(

@@ -3262,6 +3262,7 @@ def _m31_detached_coordinator_pid_recovery_successor_errors(
         quarantine = expected.get("pid_quarantine_authorization", {})
         changes = expected.get("exact_changes", {})
         preservation = expected.get("preservation", {})
+        source_chain = expected.get("source_chain", {})
         if (
             expected.get("schema")
             != (
@@ -3296,6 +3297,12 @@ def _m31_detached_coordinator_pid_recovery_successor_errors(
             or changes.get("coordination_semantic_changes") != 0
             or preservation.get("event_281_and_m30_receipt_preserved") is not True
             or preservation.get("failed_detached_launch_preserved") is not True
+            or source_chain.get("initial_control_commit")
+            != "07aed87e3ebc4ef5667541435fd04f2d62a39b25"
+            or source_chain.get("initial_control_tree")
+            != "c9fe9a657d2d0e1e05172688dbc44dea6f699265"
+            or source_chain.get("final_reseal_parent")
+            != "07aed87e3ebc4ef5667541435fd04f2d62a39b25"
         ):
             errors.append("M31 detached-coordinator recovery delta is not exact")
         if require_active_runtime:

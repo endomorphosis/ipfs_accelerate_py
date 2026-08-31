@@ -3522,6 +3522,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 materializer
                 ._expected_m31_detached_coordinator_pid_recovery_authority()
             )
+            source_chain = expected.get("source_chain", {})
             if (
                 type(successor) is not dict
                 or materializer._identity(successor) != materializer._identity(expected)
@@ -3529,6 +3530,12 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 or materializer._identity(migration.get(m31_key))
                 != materializer._identity(expected)
                 or seal.get(f"{m31_key}_cid") != materializer._identity(expected)
+                or source_chain.get("initial_control_commit")
+                != "07aed87e3ebc4ef5667541435fd04f2d62a39b25"
+                or source_chain.get("initial_control_tree")
+                != "c9fe9a657d2d0e1e05172688dbc44dea6f699265"
+                or source_chain.get("final_reseal_parent")
+                != "07aed87e3ebc4ef5667541435fd04f2d62a39b25"
                 or module._m31_detached_coordinator_pid_recovery_successor_errors(
                     config, seal, migration, root=root
                 )

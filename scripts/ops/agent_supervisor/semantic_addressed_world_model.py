@@ -49,6 +49,8 @@ _M31_TARGET_PROJECTION_CID = (
     "baguqeerakjradc5sa5dmflygtfh2birrd5onygnt6q2pkvoomsxrspi22jaa"
 )
 _M31_TARGET_QUACK_PORT = 24_070
+_M31_INITIAL_CONTROL_COMMIT = "07aed87e3ebc4ef5667541435fd04f2d62a39b25"
+_M31_INITIAL_CONTROL_TREE = "c9fe9a657d2d0e1e05172688dbc44dea6f699265"
 _M30_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
     "run-r2-m27/control.duckdb"
@@ -4542,7 +4544,14 @@ def _require_m31_source_successor_marker(
     expected_authority = (
         materializer._expected_m31_detached_coordinator_pid_recovery_authority()
     )
-    if dict(authority) != expected_authority or config.get(key) != expected_authority:
+    source_chain = expected_authority.get("source_chain", {})
+    if (
+        dict(authority) != expected_authority
+        or config.get(key) != expected_authority
+        or source_chain.get("initial_control_commit")
+        != _M31_INITIAL_CONTROL_COMMIT
+        or source_chain.get("initial_control_tree") != _M31_INITIAL_CONTROL_TREE
+    ):
         raise OperatorError("M31 detached-coordinator authority differs")
     if checked is None:
         raise OperatorError("M31 marker requires exact live materializer verification")

@@ -1795,9 +1795,12 @@ The event-282 body seals the exact runtime repair, its bounded changed-path
 map, the nine protected controls, zero task/status/completion changes, and all
 preservation claims. Launch admission composes the immutable M27 final-pair
 receipt with the preserved M29, M30, and M31 source-successor receipts; none
-can authorize its own output. Runtime repair and initial-control commit/tree/
-blob placeholders must be replaced by exact landed OIDs and followed by one
-final protected-control reseal before materialization can pass.
+can authorize its own output. The runtime repair is
+`f19f2c905a44a400e8924106c8f29f84ab97ccc4` (tree
+`cfe852a982d09ec7f349f69f3b195841363ed0b3`). The initial nine-control seal is
+`07aed87e3ebc4ef5667541435fd04f2d62a39b25` (tree
+`c9fe9a657d2d0e1e05172688dbc44dea6f699265`); this final protected-control
+reseal binds its exact blobs without attempting a self-referential commit ID.
 
 ## 40. Current limitations at seal time
 

@@ -1,5 +1,5 @@
 {
-  "detached_coordinator_pid_recovery_successor_materialization_cid": "sha256:ae16696fe6369b16ea58effa6ce68cb1d1fe21577d0820c38ce985fbb34e54af",
+  "detached_coordinator_pid_recovery_successor_materialization_cid": "sha256:e49534abcd4a4820057029a3781de5c469dd7f3a63723b66c50ff2a28d643afe",
   "stopped_owner_restart_source_seal_successor_materialization_cid": "sha256:7e504699e5bc073182917e49147fe5bdc7b67b7f0a2a2bcb344379312b530f48",
   "committed_evidence_verification_successor_materialization_cid": "sha256:618d5f7e1745bf4fdb1c6c0d45551818b2af032407c69415ec330329c2853110",
   "live_claim_admission_recovery_successor_materialization_cid": "sha256:f766e6f16a88ad50b5810312bacf8fb804474fb5a4e69de8973e728e98c93079",
