@@ -20250,7 +20250,8 @@ class DatabasePortalExecutionBridge:
             or not self.implementation_protected_paths
             or len(normalized_active_paths) != len(active_paths)
             or len(set(normalized_active_paths)) != len(normalized_active_paths)
-            or normalized_active_paths != self.implementation_protected_paths
+            or normalized_active_paths
+            != tuple(sorted(self.implementation_protected_paths))
             or active_paths != snapshot.get("protected_paths")
             or not isinstance(workspace_snapshot, Mapping)
             or workspace_snapshot.get("root") != workspace_text
