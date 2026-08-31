@@ -265,11 +265,18 @@ LANDED_CANDIDATE_FRESH_VALIDATION_HERMETIC_SUITES: Final[tuple[str, ...]] = (
 # Rebinding a landed PCPR-001 outer receipt onto the integrating merge after
 # the nested candidate is already in the current tree.  Hermetic candidate
 # coverage only; rewriting current-tree identities is not a live campaign.
-# A later integrating merge must record its first parent; binding the
-# previous merge as current-head is not a valid rebind.
+# A later integrating merge must record its first parent as the immediately
+# superseded merge; binding that previous merge or its nested gitlink as
+# current-head is not a valid rebind.
 INTEGRATING_MERGE_CURRENT_HEAD_REBIND_HERMETIC_SUITES: Final[tuple[str, ...]] = (
     "test/api/test_agent_supervisor_landed_completion_recovery.py",
     "test/api/test_agent_supervisor_database_implementation_daemon.py",
+)
+SUPERSEDED_INTEGRATING_MERGE: Final = (
+    "0ff88eb0d3c065f6d6744623abc4ae23ae189930"
+)
+SUPERSEDED_LANDED_NESTED_COMMIT: Final = (
+    "cdf251bc742681825181f6363c4e403a02efbd22"
 )
 CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS: Final[tuple[str, ...]] = (
     "outer_commit",
@@ -973,8 +980,9 @@ def pcpr_phase0_current_tree_binding(
     Rewriting these identities onto an integrating merge is hermetic
     candidate coverage.  It is not a live campaign and cannot mint a
     closed PCPR release outcome.  The first parent of that merge is the
-    previously bound outer commit; treating the parent or the landed
-    candidate as current-head fails closed.
+    previously bound outer commit and must equal the immediately
+    superseded integrating merge; treating that parent, its nested
+    gitlink, or the landed candidate as current-head fails closed.
     """
 
     _reject_closed_release_value(outer_subject, "outer_subject")
@@ -1063,6 +1071,18 @@ def pcpr_phase0_current_tree_binding(
     if binding["prior_receipt_outer_commit"] != binding["landed_candidate_commit"]:
         raise DirectObjectiveEventDrivenQualificationError(
             "prior_receipt_outer_commit must equal landed_candidate_commit"
+        )
+    if binding["outer_commit"] == SUPERSEDED_INTEGRATING_MERGE:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "stale integrating merge cannot pass as current-head"
+        )
+    if binding["integrating_first_parent"] != SUPERSEDED_INTEGRATING_MERGE:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "integrating_first_parent must be the immediately superseded integrating merge"
+        )
+    if binding["landed_pcpr_001_nested_commit"] == SUPERSEDED_LANDED_NESTED_COMMIT:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "stale nested Accelerate gitlink cannot pass as current"
         )
     return binding
 
