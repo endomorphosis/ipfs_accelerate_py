@@ -29,12 +29,17 @@ from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight
     PROJECT_DEPENDENCY_PROBE_SCHEMA,
     _evaluate_dependency_payload,
     _run_bounded_probe_process,
+    _run_dependency_probe,
     canonical_project_dependency_preflight_receipt_bytes,
     compact_project_dependency_preflight_receipt,
     preflight_validation_project_dependencies,
     project_dependency_preflight_backoff_seconds,
     project_dependency_preflight_error_receipt,
     project_dependency_preflight_for_event,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+    VALIDATION_PYTHON_ENV,
+    validation_python_executable,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     ValidationDependencyScope,
@@ -331,6 +336,36 @@ dependencies = ["hypercorn>=0.16.0"]
     assert receipt["probe"]["reason"] == "dependency_probe_infrastructure_error"
     assert receipt["remediation"]["kind"] == ("repair_approved_validation_dependency_probe")
     assert receipt["automatic_install_attempted"] is False
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux") or not hasattr(os, "memfd_create"),
+    reason="sealed launcher paths are Linux memfd addresses",
+)
+def test_preflight_repairs_inherited_procfs_validation_python(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fd = os.memfd_create(
+        "validation Python launcher",
+        os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING,
+    )
+    try:
+        os.write(fd, b"#!/bin/sh\nexit 1\n")
+        os.fchmod(fd, 0o500)
+        monkeypatch.setenv(VALIDATION_PYTHON_ENV, f"/proc/self/fd/{fd}")
+        admitted = validation_python_executable()
+        assert admitted == str(Path(sys.executable).resolve())
+        assert not admitted.startswith("/proc/")
+        probe = _run_dependency_probe(
+            {
+                "schema": PROJECT_DEPENDENCY_PROBE_SCHEMA,
+                "projects": [],
+            }
+        )
+        assert probe.get("passed") is True
+        assert probe.get("reason") != "dependency_probe_infrastructure_error"
+    finally:
+        os.close(fd)
 
 
 def test_preflight_unexpected_collection_error_returns_typed_receipt(
