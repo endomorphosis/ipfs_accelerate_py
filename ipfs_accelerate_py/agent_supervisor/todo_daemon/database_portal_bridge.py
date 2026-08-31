@@ -2103,12 +2103,9 @@ class DatabasePortalExecutionBridge:
                         unexpected_preportal_children.append(child)
                         invalid_reconciliation_store = True
                         continue
-                    if len(receipt_paths) > 256:
-                        unexpected_preportal_children.append(child)
-                        invalid_reconciliation_store = True
-                        continue
                     try:
                         recovery_targets: set[Path] = set()
+                        temporary_recovery_count = 0
                         for receipt_path in receipt_paths:
                             if re.fullmatch(
                                 r"[0-9a-f]{64}\.json",
@@ -2122,6 +2119,12 @@ class DatabasePortalExecutionBridge:
                                 receipt_path.name,
                             )
                             if temporary_match is not None:
+                                temporary_recovery_count += 1
+                                if temporary_recovery_count > 256:
+                                    raise DatabasePortalBridgeError(
+                                        "database Portal immutable evidence has "
+                                        "too many temporary publications"
+                                    )
                                 # A SIGKILL may leave either a non-authoritative
                                 # stage or a fully fsynced ready temp without a
                                 # final pathname.  Derive only the closed
@@ -2135,10 +2138,6 @@ class DatabasePortalExecutionBridge:
                             _recover_immutable_link_publication(receipt_path)
                         receipt_paths = sorted(child.iterdir())
                     except (OSError, DatabasePortalBridgeError):
-                        unexpected_preportal_children.append(child)
-                        invalid_reconciliation_store = True
-                        continue
-                    if len(receipt_paths) > 128:
                         unexpected_preportal_children.append(child)
                         invalid_reconciliation_store = True
                         continue

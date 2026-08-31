@@ -5,7 +5,11 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    supervisor as portal_supervisor,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -646,3 +650,219 @@ def test_bridge_coalesces_duplicate_recovery_receipts_without_count_cap(
     assert evidence["reconciliation_receipt"]["receipt_id"] == min(
         matching
     )
+
+
+def test_bridge_reconciles_more_than_128_exact_immutable_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempt = SimpleNamespace(
+        attempt_id="attempt-1",
+        claim_id="claim-1",
+        task_cid="task-cid-1",
+        task_alias="PCTDD-031",
+        attempt_number=1,
+        owner_session_id="owner-1",
+        fencing_token=7,
+        fence_epoch=3,
+        lease_id="lease-1",
+        body={},
+    )
+    received_evidence: list[dict[str, Any]] = []
+
+    class ExactPortal:
+        def reconcile_quiesced_active_attempt(self) -> dict[str, Any]:
+            raise AssertionError("exact interrupted-validation evidence was ignored")
+
+        def reconcile_interrupted_database_validation_attempt(
+            self,
+            evidence: dict[str, Any],
+        ) -> dict[str, Any]:
+            received_evidence.append(evidence)
+            return {"reconciled": True, "blocked": False}
+
+        def close(self) -> None:
+            return None
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: ExactPortal(),
+    )
+    bridge.attempt_root.mkdir()
+    paths = bridge._paths(attempt)
+    paths.reconciliation.mkdir(parents=True)
+    paths.binding.write_text("{}\n", encoding="utf-8")
+    paths.task_projection.write_text("projection\n", encoding="utf-8")
+    paths.state.write_text("{}\n", encoding="utf-8")
+    state_digest = "sha256:" + "7" * 64
+    workspace = str(tmp_path / "isolated-worktree")
+    binding = {
+        "attempt_id": attempt.attempt_id,
+        "task_alias": attempt.task_alias,
+        "binding_id": "sha256:" + "8" * 64,
+        "projection_immutable_digest": "sha256:" + "9" * 64,
+    }
+    nested_state = {
+        "present": True,
+        "state_path": str(paths.state),
+        "state_digest": state_digest,
+        "active": True,
+        "active_task_id": attempt.task_alias,
+        "active_attempt": 1,
+        "active_phase": "validating",
+        "active_phase_detail": "python -m pytest -q focused.py",
+        "active_worktree_path": workspace,
+        "active_branch": "implementation/pctdd-031-attempt-1",
+    }
+
+    def receipt_payload(index: int, *, digest: str = state_digest) -> dict[str, Any]:
+        return {
+            "stage": "blocked",
+            "trigger": f"duplicate-{index}",
+            "reconciled_at": f"2026-08-31T00:00:{index:03d}Z",
+            "reconciled": False,
+            "blocked": True,
+            "reason": "nested_portal_attempt_reconciliation_blocked",
+            "binding_id": binding["binding_id"],
+            "nested_state": {
+                "active": True,
+                "active_phase": "validating",
+                "active_task_id": attempt.task_alias,
+                "active_attempt": 1,
+                "active_worktree_path": workspace,
+                "active_branch": "implementation/pctdd-031-attempt-1",
+                "state_path": str(paths.state),
+                "state_digest": digest,
+            },
+            "provider_runner_fence": {
+                "applicable": True,
+                "fenced": True,
+                "safe_to_restart": True,
+                "reason": "ordinary_provider_runner_exact_birth_fenced",
+            },
+            "provider_runner_reconciliation_authority": (
+                "ordinary_provider_runner_fence"
+            ),
+            "portal_reconciliation": {
+                "blocked": True,
+                "reconciled": False,
+                "reason": "task_claim_reconciliation_blocked",
+                "protected_path_reconciliation": {
+                    "blocked": False,
+                    "reason": "crash_reconciliation_unchanged",
+                    "task_id": attempt.task_alias,
+                    "workspace_path": workspace,
+                },
+                "worktree_lifecycle_reconciliation": {
+                    "blocked": False,
+                    "reconciled": True,
+                    "state": "terminal",
+                    "task_id": attempt.task_alias,
+                    "workspace_path": workspace,
+                    "attempt": 1,
+                    "record_id": "record-1",
+                    "fence": 5,
+                },
+                "task_claim_reconciliation": {
+                    "blocked": True,
+                    "reconciled": False,
+                    "reason": "canonical_task_not_terminal",
+                    "task_id": attempt.task_alias,
+                    "canonical_task_cid": "baguqeera-task",
+                },
+                "attempt_recovery": {
+                    "consumed": False,
+                    "attempt": 1,
+                    "task_id": attempt.task_alias,
+                },
+            },
+            "terminal_provider_evidence": False,
+        }
+
+    for index in range(132):
+        bridge.persist_reconciliation_receipt(
+            attempt,
+            receipt_payload(index),
+        )
+
+    monkeypatch.setattr(
+        bridge,
+        "_record_for_attempt",
+        lambda _source, _attempt: object(),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_render_projection",
+        lambda _attempt, _record: "projection\n",
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_binding",
+        lambda _attempt, _record, _seed: dict(binding),
+    )
+    monkeypatch.setattr(bridge, "_read_binding", lambda _path: dict(binding))
+    monkeypatch.setattr(bridge, "_verify_binding_identity", lambda _binding: None)
+    monkeypatch.setattr(
+        bridge,
+        "_verify_projection",
+        lambda _paths, _binding: "projection\n",
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_projection_task_identity",
+        lambda _paths, _binding, _projection: {
+            "task_id": attempt.task_alias,
+            "canonical_task_key": "task/v1/exact",
+            "canonical_task_cid": "baguqeera-task",
+            "board_namespace": "exact-board",
+        },
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_strict_state_record",
+        lambda _path: ({"active_phase": "validating"}, state_digest),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_verify_nested_state_identity",
+        lambda _paths, _binding, _identity, **_kwargs: dict(nested_state),
+    )
+    bridge._binding_lookup = lambda _attempt: {**binding, "stage": "portal_entered"}
+    monkeypatch.setattr(bridge, "recover_provider_result", lambda _attempt: None)
+    monkeypatch.setattr(
+        portal_supervisor,
+        "fence_ordinary_provider_runner",
+        lambda _state, *, grace_seconds: {
+            "applicable": True,
+            "safe_to_restart": True,
+            "fenced": True,
+            "reason": "ordinary_provider_runner_exact_birth_fenced",
+        },
+    )
+
+    result = bridge.reconcile_quiesced_attempt(attempt)
+
+    assert result["reconciled"] is True
+    assert result["blocked"] is False
+    assert len(received_evidence) == 1
+    assert len(received_evidence[0]["equivalent_receipt_ids"]) == 132
+
+    malformed = paths.reconciliation / "not-content-addressed.json"
+    malformed.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="reconciliation evidence store is not exact",
+    ):
+        bridge.reconcile_quiesced_attempt(attempt)
+    malformed.unlink()
+
+    bridge.persist_reconciliation_receipt(
+        attempt,
+        receipt_payload(999, digest="sha256:" + "a" * 64),
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="interrupted validation evidence is ambiguous",
+    ):
+        bridge.reconcile_quiesced_attempt(attempt)
