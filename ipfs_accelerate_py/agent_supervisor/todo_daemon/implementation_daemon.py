@@ -79888,9 +79888,12 @@ class DatabaseImplementationDaemon:
     def _is_quack_attach_contention(exc: BaseException) -> bool:
         from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
             QuackTransportContentionError,
+            duckdb_process_lock_timeout_is_contention,
         )
 
-        return isinstance(exc, QuackTransportContentionError)
+        return isinstance(exc, QuackTransportContentionError) or (
+            duckdb_process_lock_timeout_is_contention(exc)
+        )
 
     def _is_quack_transport_unavailable(self, exc: BaseException) -> bool:
         from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
@@ -80416,9 +80419,16 @@ class DatabaseImplementationDaemon:
                 "error": f"{type(exc).__name__}: board unstall request failed",
             }
 
-    def _note_quack_portal_deferral(self, *, reason: str) -> None:
+    def _note_quack_portal_deferral(
+        self,
+        *,
+        reason: str,
+        fail_closed: bool = True,
+    ) -> None:
         """Fail-closed after a bounded streak of Quack attach/transport deferrals."""
 
+        if not fail_closed:
+            return
         count = int(getattr(self, "_consecutive_quack_portal_deferrals", 0) or 0) + 1
         self._consecutive_quack_portal_deferrals = count
         if count > _MAX_CONSECUTIVE_QUACK_PORTAL_DEFERRALS:
@@ -80437,7 +80447,14 @@ class DatabaseImplementationDaemon:
         here burns supervisor restart budget and drops a rescue-branch retry.
         """
 
-        self._note_quack_portal_deferral(reason="quack_attach_contended")
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            duckdb_process_lock_timeout_is_contention,
+        )
+
+        self._note_quack_portal_deferral(
+            reason="quack_attach_contended",
+            fail_closed=not duckdb_process_lock_timeout_is_contention(exc),
+        )
         expired: list[dict[str, Any]] = []
         try:
             expired = self.reconcile_expired_running_attempts()
@@ -80539,6 +80556,8 @@ class DatabaseImplementationDaemon:
                     exc,
                     pre_mutation=True,
                 )
+            if self._is_quack_attach_contention(exc):
+                return self._quack_attach_contention_deferral(exc)
             raise
         return None
 
