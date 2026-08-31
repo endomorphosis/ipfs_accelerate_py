@@ -13286,6 +13286,1258 @@ class PortalImplementationDaemon:
         )
         return result
 
+    def _reconcile_provider_forbidden_already_landed_candidate(
+        self,
+        task: PortalTask,
+        *,
+        expected_task_identity: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Persist one exact already-landed candidate without merge effects."""
+
+        preparation = self._prepare_provider_forbidden_landed_candidate(
+            task,
+            expected_task_identity=expected_task_identity,
+        )
+        if preparation.get("completion_prepared") is not True:
+            return preparation
+
+        protected_recovery = self._recover_protected_checkout_mutation()
+        if protected_recovery.get("required") is True and (
+            protected_recovery.get("checkout_mutation_lease_recovered")
+            is not True
+        ):
+            return {
+                "resolved": False,
+                "reason": (
+                    "provider_forbidden_landed_recovery_lease_unavailable"
+                ),
+                "protected_recovery": protected_recovery,
+            }
+
+        current_lease = self._current_checkout_mutation_lease()
+        if current_lease is not None:
+            if not bool(
+                getattr(
+                    self._checkout_mutation_context,
+                    "release_pending",
+                    False,
+                )
+            ):
+                return {
+                    "resolved": False,
+                    "reason": (
+                        "provider_forbidden_landed_recovery_lease_unavailable"
+                    ),
+                    "lease_reason": "current_checkout_transaction_active",
+                }
+            try:
+                released_current = self._release_checkout_mutation_lease(
+                    current_lease
+                )
+            except Exception:
+                released_current = False
+            if not released_current:
+                return {
+                    "resolved": False,
+                    "reason": (
+                        "provider_forbidden_landed_recovery_lease_release_lost"
+                    ),
+                }
+            self._clear_checkout_mutation_context()
+
+        task_identity = self._identity_for_task(task)
+        lease, lease_reason, existing_lease, waited = (
+            self._acquire_checkout_mutation_lease(
+                task_id=task.task_id,
+                operation="provider_forbidden_already_landed_finalization",
+                timeout_seconds=0.0,
+                extra={
+                    "canonical_task_cid": task_identity.canonical_task_cid,
+                },
+                preserve_existing=False,
+            )
+        )
+        if lease is None:
+            return {
+                "resolved": False,
+                "reason": (
+                    "provider_forbidden_landed_recovery_lease_unavailable"
+                ),
+                "lease_reason": lease_reason,
+                "waited_seconds": waited,
+                "existing_lease": dict(existing_lease or {}),
+            }
+
+        result: dict[str, Any] = {}
+        body_error: Exception | None = None
+        release_error: Exception | None = None
+        release_ok = False
+        try:
+            result = (
+                self._reconcile_provider_forbidden_landed_candidate_under_lease(
+                    task,
+                    expected_task_identity=expected_task_identity,
+                )
+            )
+        except Exception as exc:
+            body_error = exc
+        finally:
+            try:
+                release_ok = self._release_checkout_mutation_lease(lease)
+            except Exception as exc:
+                release_error = exc
+
+        if not release_ok:
+            return {
+                "resolved": False,
+                "reason": (
+                    "provider_forbidden_landed_recovery_lease_release_lost"
+                ),
+                "release_error_type": (
+                    type(release_error).__name__ if release_error else ""
+                ),
+                "body_error_type": (
+                    type(body_error).__name__ if body_error else ""
+                ),
+            }
+        if body_error is not None:
+            raise body_error.with_traceback(body_error.__traceback__)
+        if result.get("resolved") is True:
+            result["preparation_completion_persistence"] = preparation.get(
+                "completion_persistence",
+                {},
+            )
+            self._record_event("merge_reconciled", result)
+        return result
+
+    def _prepare_provider_forbidden_landed_candidate(
+        self,
+        task: PortalTask,
+        *,
+        expected_task_identity: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Journal and persist an exact landed completion before finalizing."""
+
+        return self._provider_forbidden_landed_candidate_phase(
+            task,
+            expected_task_identity=expected_task_identity,
+            finalize=False,
+        )
+
+    def _reconcile_provider_forbidden_landed_candidate_under_lease(
+        self,
+        task: PortalTask,
+        *,
+        expected_task_identity: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Revalidate one prepared landed result under checkout custody."""
+
+        return self._provider_forbidden_landed_candidate_phase(
+            task,
+            expected_task_identity=expected_task_identity,
+            finalize=True,
+        )
+
+    def _provider_forbidden_landed_candidate_phase(
+        self,
+        task: PortalTask,
+        *,
+        expected_task_identity: Mapping[str, str],
+        finalize: bool,
+    ) -> dict[str, Any]:
+        """Prepare or finalize one exact provider-free landed completion."""
+
+        def rejected(reason: str, **extra: Any) -> dict[str, Any]:
+            return {"resolved": False, "reason": reason, **extra}
+
+        if state_file_repair_reason(self.state_path):
+            return rejected(
+                "provider_forbidden_landed_recovery_state_changed"
+            )
+        state = PortalTaskState.load(self.state_path)
+        if state.implementation_in_progress or state.active_provider_runner:
+            return rejected(
+                "provider_forbidden_landed_recovery_lane_active"
+            )
+        current_tasks = self._load_tasks()
+        if len(current_tasks) != 1:
+            return rejected(
+                "provider_forbidden_landed_recovery_task_ambiguous"
+            )
+        current_task = current_tasks[0]
+        current_identity = self._identity_for_task(current_task)
+        observed_identity = {
+            "task_id": current_task.task_id,
+            "canonical_task_key": current_identity.canonical_task_key,
+            "canonical_task_cid": current_identity.canonical_task_cid,
+            "board_namespace": current_identity.board_namespace,
+        }
+        current_status = normalize_status(current_task.status)
+        if (
+            observed_identity != dict(expected_task_identity)
+            or current_status not in {"todo", "completed"}
+        ):
+            return rejected(
+                "provider_forbidden_landed_recovery_task_changed"
+            )
+
+        lifecycle_events = self._iter_merge_lifecycle_events()
+        preparation_events = [
+            event
+            for event in lifecycle_events
+            if event.get("type")
+            == "provider_forbidden_landed_completion_prepared"
+            and event.get("task_id") == current_task.task_id
+        ]
+        if any(
+            any(
+                str(event.get(field) or "") != value
+                for field, value in expected_task_identity.items()
+            )
+            for event in preparation_events
+        ):
+            return rejected(
+                "provider_forbidden_landed_recovery_preparation_binding_mismatch"
+            )
+        if len(preparation_events) > 1:
+            return rejected(
+                "provider_forbidden_landed_recovery_preparation_ambiguous",
+                preparation_count=len(preparation_events),
+            )
+        preparation = preparation_events[0] if preparation_events else None
+
+        candidate: dict[str, Any]
+        if preparation is None:
+            if current_status == "completed":
+                return rejected(
+                    "provider_forbidden_landed_recovery_preparation_missing"
+                )
+            candidates = self._failed_merge_candidates()
+            fresh, stale = self._partition_stale_failed_merge_candidates(
+                candidates
+            )
+            if len(fresh) != 1 or stale or fresh != candidates:
+                return rejected(
+                    (
+                        "provider_forbidden_landed_recovery_candidate_ambiguous"
+                        if len(candidates) != 1
+                        else "provider_forbidden_landed_recovery_candidate_stale"
+                    ),
+                    candidate_count=len(candidates),
+                )
+            candidate = fresh[0]
+        else:
+            implementation_event_id = str(
+                preparation.get("implementation_event_id") or ""
+            )
+            original_events = [
+                event
+                for event in lifecycle_events
+                if event.get("type") == "implementation_finished"
+                and event.get("event_id") == implementation_event_id
+            ]
+            if len(original_events) != 1:
+                return rejected(
+                    "provider_forbidden_landed_recovery_source_event_invalid"
+                )
+            candidate = dict(original_events[0])
+            merge_result = candidate.get("merge_result")
+            target_branch = self._main_branch_name()
+            quarantine = (
+                self._integrated_authority_quarantine_reconciliation_receipt(
+                    candidate,
+                    merge_result=merge_result,
+                    target_branch=target_branch,
+                )
+                if isinstance(merge_result, Mapping)
+                else {}
+            )
+            if quarantine:
+                candidate[
+                    "integrated_authority_quarantine_reconciliation"
+                ] = quarantine
+
+        quarantine = candidate.get(
+            "integrated_authority_quarantine_reconciliation"
+        )
+        validation = candidate.get("validation_result")
+        cleanup = candidate.get("cleanup_result")
+        implementation_commit = str(
+            candidate.get("implementation_commit") or ""
+        ).strip()
+        implementation_event_id = str(
+            candidate.get("event_id") or ""
+        ).strip()
+        merge_result = candidate.get("merge_result")
+        request_id = (
+            str(merge_result.get("request_id") or "").strip()
+            if isinstance(merge_result, Mapping)
+            else ""
+        )
+        target_branch = self._main_branch_name()
+        completion_task_cids = (
+            quarantine.get("completion_task_cids")
+            if isinstance(quarantine, Mapping)
+            else None
+        )
+        changed_submodule_paths = (
+            quarantine.get("changed_submodule_paths")
+            if isinstance(quarantine, Mapping)
+            else None
+        )
+        candidate_exact = bool(
+            candidate.get("task_id") == current_task.task_id
+            and self._event_primary_task_cid(candidate)
+            == current_identity.canonical_task_cid
+            and str(candidate.get("canonical_task_key") or "")
+            == current_identity.canonical_task_key
+            and implementation_event_id
+            and request_id
+            and isinstance(validation, Mapping)
+            and validation.get("attempted") is True
+            and validation.get("passed") is True
+            and isinstance(cleanup, Mapping)
+            and cleanup.get("cleaned") is True
+            and isinstance(quarantine, Mapping)
+            and quarantine.get("passed") is True
+            and quarantine.get("request_id") == request_id
+            and quarantine.get("task_id") == current_task.task_id
+            and quarantine.get("canonical_task_cid")
+            == current_identity.canonical_task_cid
+            and quarantine.get("canonical_task_key")
+            == current_identity.canonical_task_key
+            and quarantine.get("implementation_commit")
+            == implementation_commit
+            and quarantine.get("target_repository_id")
+            == self.merge_target_repository_id
+            and quarantine.get("target_branch") == target_branch
+            and isinstance(changed_submodule_paths, list)
+            and isinstance(completion_task_cids, Mapping)
+            and dict(completion_task_cids)
+            == {
+                current_task.task_id: current_identity.canonical_task_cid,
+            }
+            and implementation_commit
+            and self._git_ref_is_ancestor(
+                implementation_commit,
+                target_branch,
+            )
+        )
+        if not candidate_exact:
+            return rejected(
+                "provider_forbidden_landed_recovery_candidate_inexact"
+            )
+
+        (
+            completion_tasks,
+            authoritative_completion_cids,
+            completion_error,
+        ) = self._historical_completion_tasks_and_binding(
+            candidate,
+            current_task,
+        )
+        if (
+            completion_error
+            or [item.task_id for item in completion_tasks]
+            != [current_task.task_id]
+            or authoritative_completion_cids
+            != dict(completion_task_cids)
+        ):
+            return rejected(
+                "provider_forbidden_landed_recovery_binding_invalid"
+            )
+
+        target_commit = self._resolved_commit_ref(
+            self.repo_root,
+            target_branch,
+        )
+        integration_commit_proof = self._immutable_integration_commit(
+            {"merge_commit": target_commit},
+            implementation_commit=implementation_commit,
+            target_branch=target_branch,
+        )
+        changed_submodule_handoff_proof = (
+            self._integrated_changed_submodule_proof(
+                candidate_commit=implementation_commit,
+                target_commit=target_commit,
+                changed_submodule_paths=changed_submodule_paths,
+            )
+            if integration_commit_proof.get("passed") is True
+            else {
+                "passed": False,
+                "reason": "already_landed_integration_unproven",
+            }
+        )
+        declared_output_invariant = (
+            self._declared_output_tracking_invariant(
+                completion_tasks,
+                repository_ref=target_commit,
+            )
+            if changed_submodule_handoff_proof.get("passed") is True
+            else {
+                "passed": False,
+                "reason": "already_landed_submodule_handoff_unproven",
+            }
+        )
+        if (
+            integration_commit_proof.get("passed") is not True
+            or changed_submodule_handoff_proof.get("passed") is not True
+            or declared_output_invariant.get("passed") is not True
+        ):
+            return rejected(
+                "provider_forbidden_landed_recovery_outputs_invalid",
+                integration_commit_proof=integration_commit_proof,
+                changed_submodule_handoff_proof=(
+                    changed_submodule_handoff_proof
+                ),
+                post_merge_declared_output_invariant=(
+                    declared_output_invariant
+                ),
+            )
+
+        validation_evidence_id = content_identity(dict(validation))
+        cleanup_evidence_id = content_identity(dict(cleanup))
+        preparation_schema = (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "provider-forbidden-landed-completion-preparation@1"
+        )
+        preparation_fields = (
+            "schema",
+            "task_id",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+            "implementation_event_id",
+            "request_id",
+            "attempt",
+            "branch",
+            "implementation_commit",
+            "target_repository_id",
+            "target_branch",
+            "target_commit",
+            "completion_task_cids",
+            "validation_evidence_id",
+            "cleanup_evidence_id",
+            "changed_submodule_paths",
+            "integration_commit_proof",
+            "changed_submodule_handoff_proof",
+            "post_merge_declared_output_invariant",
+            "provider_policy",
+            "provider_dispatched",
+            "implementation_dispatched",
+            "acceptance_inferred",
+        )
+
+        if preparation is not None:
+            if any(field not in preparation for field in preparation_fields):
+                return rejected(
+                    "provider_forbidden_landed_recovery_preparation_invalid"
+                )
+            preparation_basis = {
+                field: preparation[field] for field in preparation_fields
+            }
+            preparation_target = str(
+                preparation_basis.get("target_commit") or ""
+            )
+            stored_integration = preparation_basis.get(
+                "integration_commit_proof"
+            )
+            stored_submodules = preparation_basis.get(
+                "changed_submodule_handoff_proof"
+            )
+            stored_outputs = preparation_basis.get(
+                "post_merge_declared_output_invariant"
+            )
+            preparation_valid = bool(
+                preparation_basis.get("schema") == preparation_schema
+                and all(
+                    str(preparation_basis.get(field) or "") == value
+                    for field, value in expected_task_identity.items()
+                )
+                and preparation_basis.get("implementation_event_id")
+                == implementation_event_id
+                and preparation_basis.get("request_id") == request_id
+                and preparation_basis.get("attempt")
+                == int(candidate.get("attempt") or 0)
+                and preparation_basis.get("branch")
+                == str(candidate.get("branch") or "")
+                and preparation_basis.get("implementation_commit")
+                == implementation_commit
+                and preparation_basis.get("target_repository_id")
+                == self.merge_target_repository_id
+                and preparation_basis.get("target_branch") == target_branch
+                and preparation_basis.get("completion_task_cids")
+                == authoritative_completion_cids
+                and preparation_basis.get("validation_evidence_id")
+                == validation_evidence_id
+                and preparation_basis.get("cleanup_evidence_id")
+                == cleanup_evidence_id
+                and preparation_basis.get("changed_submodule_paths")
+                == changed_submodule_paths
+                and preparation_basis.get("provider_policy") == "forbidden"
+                and preparation_basis.get("provider_dispatched") is False
+                and preparation_basis.get("implementation_dispatched") is False
+                and preparation_basis.get("acceptance_inferred") is False
+                and isinstance(stored_integration, Mapping)
+                and stored_integration.get("passed") is True
+                and stored_integration.get("implementation_commit")
+                == implementation_commit
+                and stored_integration.get("integration_commit")
+                == preparation_target
+                and isinstance(stored_submodules, Mapping)
+                and stored_submodules.get("passed") is True
+                and stored_submodules.get("candidate_commit")
+                == implementation_commit
+                and stored_submodules.get("target_commit")
+                == preparation_target
+                and isinstance(stored_outputs, Mapping)
+                and stored_outputs.get("passed") is True
+                and preparation_target
+                and self._git_ref_is_ancestor(
+                    preparation_target,
+                    target_commit,
+                )
+                and preparation.get("recovery_key")
+                == content_identity(preparation_basis)
+            )
+            if not preparation_valid:
+                return rejected(
+                    "provider_forbidden_landed_recovery_preparation_invalid"
+                )
+            recovery_key = str(preparation.get("recovery_key") or "")
+            preparation_event_id = str(
+                preparation.get("event_id") or ""
+            )
+        else:
+            preparation_basis = {
+                "schema": preparation_schema,
+                **dict(expected_task_identity),
+                "implementation_event_id": implementation_event_id,
+                "request_id": request_id,
+                "attempt": int(candidate.get("attempt") or 0),
+                "branch": str(candidate.get("branch") or ""),
+                "implementation_commit": implementation_commit,
+                "target_repository_id": self.merge_target_repository_id,
+                "target_branch": target_branch,
+                "target_commit": target_commit,
+                "completion_task_cids": authoritative_completion_cids,
+                "validation_evidence_id": validation_evidence_id,
+                "cleanup_evidence_id": cleanup_evidence_id,
+                "changed_submodule_paths": changed_submodule_paths,
+                "integration_commit_proof": integration_commit_proof,
+                "changed_submodule_handoff_proof": (
+                    changed_submodule_handoff_proof
+                ),
+                "post_merge_declared_output_invariant": (
+                    declared_output_invariant
+                ),
+                "provider_policy": "forbidden",
+                "provider_dispatched": False,
+                "implementation_dispatched": False,
+                "acceptance_inferred": False,
+            }
+            recovery_key = content_identity(preparation_basis)
+            self._record_event(
+                "provider_forbidden_landed_completion_prepared",
+                {**preparation_basis, "recovery_key": recovery_key},
+            )
+            refreshed_events = self._iter_merge_lifecycle_events()
+            persisted_preparations = [
+                event
+                for event in refreshed_events
+                if event.get("type")
+                == "provider_forbidden_landed_completion_prepared"
+                and event.get("recovery_key") == recovery_key
+            ]
+            if len(persisted_preparations) != 1:
+                return rejected(
+                    "provider_forbidden_landed_recovery_preparation_not_durable"
+                )
+            preparation_event_id = str(
+                persisted_preparations[0].get("event_id") or ""
+            )
+            if not preparation_event_id:
+                return rejected(
+                    "provider_forbidden_landed_recovery_preparation_not_durable"
+                )
+
+        if not finalize:
+            todo_update_result: dict[str, Any] = {}
+            if current_status == "todo":
+                todo_update_result = self._mark_reconciled_completion_in_todo(
+                    current_task,
+                    completion_tasks,
+                    authoritative_completion_cids,
+                    validation_evidence=dict(validation),
+                    expected_task_statuses={
+                        completion_task.task_id: "todo"
+                        for completion_task in completion_tasks
+                    },
+                    expected_target_commit=target_commit,
+                )
+                completion_persistence = (
+                    self._provider_forbidden_completion_persisted(
+                        todo_update_result,
+                        authoritative_completion_cids,
+                    )
+                )
+                if completion_persistence.get("passed") is not True:
+                    return rejected(
+                        "provider_forbidden_landed_recovery_persistence_failed",
+                        completion_persistence=completion_persistence,
+                        recovery_key=recovery_key,
+                    )
+            else:
+                completion_persistence = {
+                    "passed": True,
+                    "reason": "prepared_completion_status_revalidated",
+                    "completion_task_cids": authoritative_completion_cids,
+                    "recovery_key": recovery_key,
+                }
+            prepared_result = {
+                "resolved": False,
+                "completion_prepared": True,
+                "reason": "provider_forbidden_landed_completion_prepared",
+                "task_id": current_task.task_id,
+                "completion_task_cids": authoritative_completion_cids,
+                "completion_persistence": completion_persistence,
+                "provider_forbidden_preparation_event_id": (
+                    preparation_event_id
+                ),
+                "provider_forbidden_recovery_key": recovery_key,
+            }
+            if todo_update_result:
+                prepared_result["todo_update_result"] = todo_update_result
+            return prepared_result
+
+        if current_status != "completed" or preparation is None:
+            return rejected(
+                "provider_forbidden_landed_recovery_completion_unproven"
+            )
+        target_after_validation = self._resolved_commit_ref(
+            self.repo_root,
+            target_branch,
+        )
+        if target_after_validation != target_commit:
+            return rejected(
+                "provider_forbidden_landed_recovery_target_changed",
+                recovery_key=recovery_key,
+            )
+        completion_persistence = {
+            "passed": True,
+            "reason": "prepared_completion_status_revalidated",
+            "completion_task_cids": authoritative_completion_cids,
+            "recovery_key": recovery_key,
+        }
+
+        result = {
+            "task_id": current_task.task_id,
+            "attempt": int(candidate.get("attempt") or 0),
+            "branch": str(candidate.get("branch") or ""),
+            "implementation_commit": implementation_commit,
+            "landed_commit": implementation_commit,
+            "merge_commit": target_commit,
+            "completion_task_cids": authoritative_completion_cids,
+            "landed_ref_source": "implementation_commit",
+            "resolved": True,
+            "reason": "provider_forbidden_commit_already_landed",
+            "merge_result": {
+                "attempted": False,
+                "merged": True,
+                "reason": "implementation_commit_already_merged",
+            },
+            "cleanup_result": dict(cleanup),
+            "post_merge_declared_output_invariant": (
+                declared_output_invariant
+            ),
+            "integration_commit_proof": integration_commit_proof,
+            "changed_submodule_handoff_proof": (
+                changed_submodule_handoff_proof
+            ),
+            "completion_persistence": completion_persistence,
+            "provider_forbidden_preparation_event_id": (
+                preparation_event_id
+            ),
+            "provider_forbidden_recovery_key": recovery_key,
+            "provider_dispatched": False,
+            "implementation_dispatched": False,
+        }
+        return result
+
+    def reconcile_provider_forbidden_terminal_result(
+        self,
+        *,
+        expected_task_identity: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Serialize exact terminal recovery against ordinary dispatch."""
+
+        try:
+            with serialized_lock_update(
+                self._implementation_lock_path(),
+                timeout_seconds=(
+                    PROTECTED_PATH_MAINTENANCE_COORDINATION_TIMEOUT_SECONDS
+                ),
+            ):
+                return self._reconcile_provider_forbidden_terminal_result_locked(
+                    expected_task_identity=expected_task_identity,
+                )
+        except TimeoutError:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "applicable": True,
+                "reason": "provider_forbidden_terminal_recovery_lock_timeout",
+                "provider_dispatched": False,
+                "implementation_dispatched": False,
+            }
+
+    def _publish_provider_forbidden_terminal_receipt(
+        self,
+        *,
+        expected_task_identity: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Publish one receipt under the shared Markdown checkout authority."""
+
+        if self.task_source is not None:
+            return {
+                "published": False,
+                "already_present": False,
+                "reason": (
+                    "provider_forbidden_terminal_receipt_task_source_"
+                    "atomicity_unavailable"
+                ),
+            }
+        try:
+            result = self._run_checkout_mutation_transaction(
+                task_id=str(expected_task_identity.get("task_id") or ""),
+                operation="provider_forbidden_terminal_receipt_publication",
+                callback=lambda: (
+                    self._publish_provider_forbidden_terminal_receipt_under_lease(
+                        expected_task_identity=expected_task_identity,
+                    )
+                ),
+                failure_fields={
+                    "published": False,
+                    "already_present": False,
+                },
+                extra={
+                    "canonical_task_cid": str(
+                        expected_task_identity.get("canonical_task_cid")
+                        or ""
+                    ),
+                },
+            )
+        except Exception as exc:
+            return {
+                "published": False,
+                "already_present": False,
+                "reason": "provider_forbidden_terminal_receipt_append_failed",
+                "error_type": type(exc).__name__,
+            }
+        if result.get("checkout_mutation_release_failed") is True:
+            return {
+                "published": False,
+                "already_present": False,
+                "reason": (
+                    "provider_forbidden_terminal_receipt_lease_release_lost"
+                ),
+                "publication": result,
+            }
+        if str(result.get("reason") or "").startswith(
+            "checkout_mutation_"
+        ):
+            return {
+                "published": False,
+                "already_present": False,
+                "reason": (
+                    "provider_forbidden_terminal_receipt_lease_unavailable"
+                ),
+                "publication": result,
+            }
+        return result
+
+    def _publish_provider_forbidden_terminal_receipt_under_lease(
+        self,
+        *,
+        expected_task_identity: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Revalidate exact terminal authority immediately before append."""
+
+        def rejected(reason: str, **extra: Any) -> dict[str, Any]:
+            return {
+                "published": False,
+                "already_present": False,
+                "reason": reason,
+                **extra,
+            }
+
+        state_reason = state_file_repair_reason(self.state_path)
+        if state_reason:
+            return rejected(
+                "provider_forbidden_terminal_recovery_state_invalid",
+                state_reason=state_reason,
+            )
+        state = PortalTaskState.load(self.state_path)
+        if (
+            state.implementation_in_progress
+            or state.active_provider_runner
+            or self._find_live_inflight_implementation() is not None
+        ):
+            return rejected(
+                "provider_forbidden_terminal_recovery_lane_active"
+            )
+
+        def exact_current_task() -> tuple[
+            PortalTask | None,
+            TaskIdentity | None,
+            str,
+        ]:
+            tasks = self._load_tasks()
+            if len(tasks) != 1:
+                return None, None, (
+                    "provider_forbidden_terminal_recovery_task_ambiguous"
+                )
+            task = tasks[0]
+            identity = self._identity_for_task(task)
+            observed = {
+                "task_id": task.task_id,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "board_namespace": identity.board_namespace,
+            }
+            if (
+                observed != dict(expected_task_identity)
+                or normalize_status(task.status) != "completed"
+            ):
+                return None, None, (
+                    "provider_forbidden_terminal_recovery_final_binding_changed"
+                )
+            return task, identity, ""
+
+        try:
+            task, identity, task_error = exact_current_task()
+            lifecycle = self._iter_merge_lifecycle_events()
+        except Exception as exc:
+            return rejected(
+                "provider_forbidden_terminal_recovery_final_binding_unavailable",
+                error_type=type(exc).__name__,
+            )
+        if task is None or identity is None:
+            return rejected(task_error)
+
+        def exact_receipts(
+            events: Sequence[Mapping[str, Any]],
+        ) -> tuple[list[Mapping[str, Any]], bool]:
+            receipts = [
+                event
+                for event in events
+                if str(event.get("type") or "") == "task_completed"
+                and str(event.get("task_id") or "") == task.task_id
+            ]
+            mismatch = any(
+                any(
+                    str(event.get(field) or "") != value
+                    for field, value in expected_task_identity.items()
+                )
+                for event in receipts
+            )
+            return receipts, mismatch
+
+        completion_receipts, receipt_mismatch = exact_receipts(lifecycle)
+        if receipt_mismatch:
+            return rejected(
+                "provider_forbidden_terminal_recovery_receipt_binding_mismatch"
+            )
+        if completion_receipts:
+            return {
+                "published": False,
+                "already_present": True,
+                "reason": "provider_forbidden_terminal_receipt_already_present",
+                "task_id": task.task_id,
+                "canonical_task_cid": identity.canonical_task_cid,
+            }
+        try:
+            successfully_merged = self._successfully_merged_task_ids()
+            final_task, final_identity, final_task_error = exact_current_task()
+            final_lifecycle = self._iter_merge_lifecycle_events()
+        except Exception as exc:
+            return rejected(
+                "provider_forbidden_terminal_recovery_final_binding_unavailable",
+                error_type=type(exc).__name__,
+            )
+        if final_task is None or final_identity is None:
+            return rejected(final_task_error)
+        if final_task.task_id not in successfully_merged:
+            return rejected(
+                "provider_forbidden_terminal_recovery_completion_unproven"
+            )
+        final_receipts, final_receipt_mismatch = exact_receipts(
+            final_lifecycle
+        )
+        if final_receipt_mismatch:
+            return rejected(
+                "provider_forbidden_terminal_recovery_receipt_binding_mismatch"
+            )
+        if final_receipts:
+            return {
+                "published": False,
+                "already_present": True,
+                "reason": "provider_forbidden_terminal_receipt_already_present",
+                "task_id": final_task.task_id,
+                "canonical_task_cid": final_identity.canonical_task_cid,
+            }
+
+        receipt = self._task_completion_receipt(
+            final_task,
+            receipt_repair=True,
+        )
+        self._record_event("task_completed", receipt)
+        try:
+            persisted = self._iter_merge_lifecycle_events()
+        except Exception as exc:
+            return rejected(
+                "provider_forbidden_terminal_receipt_not_durable",
+                error_type=type(exc).__name__,
+            )
+        persisted_receipts, persisted_mismatch = exact_receipts(persisted)
+        if persisted_mismatch or len(persisted_receipts) != 1:
+            return rejected(
+                "provider_forbidden_terminal_receipt_not_durable",
+                receipt_count=len(persisted_receipts),
+            )
+        return {
+            "published": True,
+            "already_present": False,
+            "reason": "provider_forbidden_terminal_receipt_recovered",
+            "task_id": final_task.task_id,
+            "canonical_task_cid": final_identity.canonical_task_cid,
+        }
+
+    def _reconcile_provider_forbidden_terminal_result_locked(
+        self,
+        *,
+        expected_task_identity: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Publish exact landed completion evidence without provider work.
+
+        Database-Portal restart recovery reaches this adapter only after the
+        outer database attempt and the nested implementation lane have both
+        been fenced. It is intentionally narrower than :meth:`run_once`: it
+        may repair a missing completion receipt for an already-completed,
+        independently admitted merge, or persist one exact validated candidate
+        that is already on the target history. It never selects a task,
+        dispatches an implementation provider, performs a merge, consumes a
+        new merge candidate, or treats status alone as completion authority.
+        """
+
+        identity_fields = (
+            "task_id",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+        )
+
+        def outcome(
+            *,
+            reconciled: bool,
+            blocked: bool,
+            applicable: bool,
+            reason: str,
+            **extra: Any,
+        ) -> dict[str, Any]:
+            return {
+                "reconciled": reconciled,
+                "blocked": blocked,
+                "applicable": applicable,
+                "reason": reason,
+                "provider_dispatched": False,
+                "implementation_dispatched": False,
+                **extra,
+            }
+
+        def blocked(reason: str, **extra: Any) -> dict[str, Any]:
+            return outcome(
+                reconciled=False,
+                blocked=True,
+                applicable=True,
+                reason=reason,
+                **extra,
+            )
+
+        def accepted(reason: str, **extra: Any) -> dict[str, Any]:
+            return outcome(
+                reconciled=True,
+                blocked=False,
+                applicable=True,
+                reason=reason,
+                **extra,
+            )
+
+        if (
+            not isinstance(expected_task_identity, Mapping)
+            or set(expected_task_identity) != set(identity_fields)
+            or any(
+                not isinstance(expected_task_identity.get(field), str)
+                or not str(expected_task_identity.get(field) or "").strip()
+                for field in identity_fields
+            )
+        ):
+            return blocked(
+                "provider_forbidden_expected_task_identity_invalid",
+            )
+        expected_identity = {
+            field: str(expected_task_identity[field])
+            for field in identity_fields
+        }
+
+        state_reason = state_file_repair_reason(self.state_path)
+        if state_reason:
+            return blocked(
+                "provider_forbidden_terminal_recovery_state_invalid",
+                state_reason=state_reason,
+            )
+        live_implementation = self._find_live_inflight_implementation()
+        state = PortalTaskState.load(self.state_path)
+        active_state = bool(
+            state.implementation_in_progress
+            or state.active_provider_runner
+            or any(
+                (
+                    state.active_task_id,
+                    state.active_task_key,
+                    state.active_task_cid,
+                    state.active_attempt,
+                    state.active_phase,
+                    state.active_worktree_path,
+                    state.active_branch,
+                )
+            )
+        )
+        lock_path = self._implementation_lock_path()
+        lock = load_json_dict(lock_path)
+        if live_implementation is not None or active_state:
+            return blocked(
+                "provider_forbidden_terminal_recovery_lane_active",
+            )
+        if lock_path.exists() and lock is None:
+            return blocked(
+                "provider_forbidden_terminal_recovery_lock_malformed",
+            )
+        if lock is not None and self._implementation_lock_owner_is_active(lock):
+            return blocked(
+                "provider_forbidden_terminal_recovery_lock_active",
+            )
+
+        try:
+            tasks = self._load_tasks()
+        except Exception as exc:
+            return blocked(
+                "provider_forbidden_terminal_recovery_task_unavailable",
+                error_type=type(exc).__name__,
+            )
+        if len(tasks) != 1:
+            return blocked(
+                "provider_forbidden_terminal_recovery_task_ambiguous",
+                task_count=len(tasks),
+            )
+        task = tasks[0]
+        task_identity = self._identity_for_task(task)
+        observed_identity = {
+            "task_id": task.task_id,
+            "canonical_task_key": task_identity.canonical_task_key,
+            "canonical_task_cid": task_identity.canonical_task_cid,
+            "board_namespace": task_identity.board_namespace,
+        }
+        if observed_identity != expected_identity:
+            return blocked(
+                "provider_forbidden_terminal_recovery_task_changed",
+            )
+
+        try:
+            lifecycle_events = self._iter_merge_lifecycle_events()
+        except Exception as exc:
+            return blocked(
+                "provider_forbidden_terminal_recovery_event_chain_invalid",
+                error_type=type(exc).__name__,
+            )
+
+        completion_receipts = [
+            event
+            for event in lifecycle_events
+            if str(event.get("type") or "") == "task_completed"
+            and str(event.get("task_id") or "") == task.task_id
+        ]
+        if any(
+            any(
+                str(event.get(field) or "") != value
+                for field, value in expected_identity.items()
+            )
+            for event in completion_receipts
+        ):
+            return blocked(
+                "provider_forbidden_terminal_recovery_receipt_binding_mismatch",
+            )
+        exact_receipt_present = bool(completion_receipts)
+        task_status = normalize_status(task.status)
+        if exact_receipt_present:
+            if task_status != "completed":
+                return blocked(
+                    "provider_forbidden_terminal_recovery_receipt_status_mismatch",
+                    task_status=task_status,
+                )
+            return accepted(
+                "provider_forbidden_terminal_receipt_already_present",
+                task_id=task.task_id,
+                canonical_task_cid=task_identity.canonical_task_cid,
+                completion_receipt_recorded=False,
+            )
+
+        if (
+            self.manual_completion_authority_revalidation_only
+            or task.task_id in self.manual_completion_authority_task_ids
+        ):
+            return blocked(
+                "provider_forbidden_terminal_recovery_manual_authority_required",
+            )
+
+        if task_status == "completed":
+            try:
+                successfully_merged = self._successfully_merged_task_ids()
+            except Exception as exc:
+                return blocked(
+                    "provider_forbidden_terminal_recovery_merge_evidence_invalid",
+                    error_type=type(exc).__name__,
+                )
+            if task.task_id not in successfully_merged:
+                has_prepared_recovery = any(
+                    event.get("type")
+                    == "provider_forbidden_landed_completion_prepared"
+                    and event.get("task_id") == task.task_id
+                    for event in lifecycle_events
+                )
+                if not has_prepared_recovery:
+                    return blocked(
+                        "provider_forbidden_terminal_recovery_merge_not_admitted",
+                    )
+                try:
+                    landed_reconciliation = (
+                        self._reconcile_provider_forbidden_already_landed_candidate(
+                            task,
+                            expected_task_identity=expected_identity,
+                        )
+                    )
+                except Exception as exc:
+                    return blocked(
+                        "provider_forbidden_terminal_recovery_candidates_invalid",
+                        error_type=type(exc).__name__,
+                    )
+                if landed_reconciliation.get("resolved") is not True:
+                    return blocked(
+                        str(landed_reconciliation.get("reason") or "")
+                        or (
+                            "provider_forbidden_terminal_recovery_"
+                            "reconciliation_failed"
+                        )
+                    )
+        elif task_status == "todo":
+            try:
+                landed_reconciliation = (
+                    self._reconcile_provider_forbidden_already_landed_candidate(
+                        task,
+                        expected_task_identity=expected_identity,
+                    )
+                )
+            except Exception as exc:
+                return blocked(
+                    "provider_forbidden_terminal_recovery_candidates_invalid",
+                    error_type=type(exc).__name__,
+                )
+            if landed_reconciliation.get("resolved") is not True:
+                reason = str(landed_reconciliation.get("reason") or "")
+                if reason in {
+                    "provider_forbidden_landed_recovery_candidate_ambiguous",
+                    "provider_forbidden_landed_recovery_candidate_stale",
+                } and int(landed_reconciliation.get("candidate_count") or 0) == 0:
+                    return outcome(
+                        reconciled=False,
+                        blocked=False,
+                        applicable=False,
+                        reason=(
+                            "provider_forbidden_terminal_recovery_not_applicable"
+                        ),
+                    )
+                return blocked(
+                    reason
+                    or "provider_forbidden_terminal_recovery_reconciliation_failed",
+                )
+            try:
+                current_tasks = self._load_tasks()
+            except Exception as exc:
+                return blocked(
+                    "provider_forbidden_terminal_recovery_task_unavailable",
+                    error_type=type(exc).__name__,
+                )
+            if len(current_tasks) != 1:
+                return blocked(
+                    "provider_forbidden_terminal_recovery_task_ambiguous",
+                    task_count=len(current_tasks),
+                )
+            task = current_tasks[0]
+            task_identity = self._identity_for_task(task)
+            try:
+                successfully_merged = self._successfully_merged_task_ids()
+            except Exception as exc:
+                return blocked(
+                    "provider_forbidden_terminal_recovery_merge_evidence_invalid",
+                    error_type=type(exc).__name__,
+                )
+            if (
+                normalize_status(task.status) != "completed"
+                or {
+                    "task_id": task.task_id,
+                    "canonical_task_key": task_identity.canonical_task_key,
+                    "canonical_task_cid": task_identity.canonical_task_cid,
+                    "board_namespace": task_identity.board_namespace,
+                }
+                != expected_identity
+                or task.task_id not in successfully_merged
+            ):
+                return blocked(
+                    "provider_forbidden_terminal_recovery_completion_unproven",
+                )
+        else:
+            return blocked(
+                "provider_forbidden_terminal_recovery_status_invalid",
+                task_status=task_status,
+            )
+
+        publication = self._publish_provider_forbidden_terminal_receipt(
+            expected_task_identity=expected_identity,
+        )
+        if publication.get("published") is True:
+            return accepted(
+                "provider_forbidden_terminal_receipt_recovered",
+                task_id=str(publication.get("task_id") or ""),
+                canonical_task_cid=str(
+                    publication.get("canonical_task_cid") or ""
+                ),
+                completion_receipt_recorded=True,
+            )
+        if publication.get("already_present") is True:
+            return accepted(
+                "provider_forbidden_terminal_receipt_already_present",
+                task_id=str(publication.get("task_id") or ""),
+                canonical_task_cid=str(
+                    publication.get("canonical_task_cid") or ""
+                ),
+                completion_receipt_recorded=False,
+            )
+        return blocked(
+            str(publication.get("reason") or "")
+            or "provider_forbidden_terminal_receipt_publication_failed",
+            terminal_receipt_publication=publication,
+        )
+
     def reconcile_interrupted_database_validation_attempt(
         self,
         evidence: Mapping[str, Any],
@@ -17992,6 +19244,28 @@ class PortalImplementationDaemon:
                 bindings.add((task_id, canonical_task_cid))
         return bindings
 
+    def _task_completion_receipt(
+        self,
+        task: PortalTask,
+        *,
+        receipt_repair: bool,
+    ) -> dict[str, Any]:
+        """Build the exact canonical completion receipt for one task."""
+
+        identity = self._identity_for_task(task)
+        return {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "completion_receipt_repair": receipt_repair,
+            "reason": (
+                "missing_exact_completion_receipt"
+                if receipt_repair
+                else "task_became_completed"
+            ),
+        }
+
     def ensure_state_file(self) -> dict[str, Any]:
         """Repair malformed durable state before this pass reads it."""
 
@@ -21339,18 +22613,10 @@ class PortalImplementationDaemon:
             if receipt_binding in completion_receipt_bindings:
                 continue
             receipt_repair = task.task_id not in newly_completed_task_ids
-            receipt = {
-                "task_id": task.task_id,
-                "canonical_task_key": identity.canonical_task_key,
-                "canonical_task_cid": identity.canonical_task_cid,
-                "board_namespace": identity.board_namespace,
-                "completion_receipt_repair": receipt_repair,
-                "reason": (
-                    "missing_exact_completion_receipt"
-                    if receipt_repair
-                    else "task_became_completed"
-                ),
-            }
+            receipt = self._task_completion_receipt(
+                task,
+                receipt_repair=receipt_repair,
+            )
             # The append is fsynced and precedes the mutable state projection.
             # If the process exits on either side of this boundary, strict
             # lifecycle replay makes the next pass idempotently converge.
@@ -27036,6 +28302,8 @@ class PortalImplementationDaemon:
         completion_task_cids: Mapping[str, str],
         *,
         validation_evidence: Mapping[str, Any] | None = None,
+        expected_task_statuses: Mapping[str, str] | None = None,
+        expected_target_commit: str = "",
     ) -> dict[str, Any]:
         """Persist reconciliation completion under exact task-revision CIDs."""
 
@@ -27054,6 +28322,8 @@ class PortalImplementationDaemon:
                 else None
             ),
             expected_task_cids=completion_task_cids,
+            expected_task_statuses=expected_task_statuses,
+            expected_target_commit=expected_target_commit,
             manual_completion_authority_context_id=str(
                 (validation_evidence or {}).get(
                     "manual_completion_authority_context_id"
@@ -27579,6 +28849,106 @@ class PortalImplementationDaemon:
         if runtime_binding:
             result["runtime_taskboard_binding"] = runtime_binding
         return result
+
+    def _provider_forbidden_completion_persisted(
+        self,
+        todo_update_result: Mapping[str, Any],
+        completion_task_cids: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Require one exact durable completion receipt per bound member."""
+
+        persistence = self._reconciled_completion_persisted(
+            todo_update_result,
+            completion_task_cids,
+        )
+        expected_ids = {
+            task_id
+            for task_id, task_cid in completion_task_cids.items()
+            if isinstance(task_id, str)
+            and task_id
+            and isinstance(task_cid, str)
+            and task_cid
+        }
+        raw_updated_ids = todo_update_result.get("updated_task_ids")
+        raw_already_ids = todo_update_result.get(
+            "already_completed_task_ids"
+        )
+        updated_ids = [
+            item
+            for item in (
+                raw_updated_ids if isinstance(raw_updated_ids, list) else []
+            )
+            if isinstance(item, str) and item
+        ]
+        already_ids = [
+            item
+            for item in (
+                raw_already_ids if isinstance(raw_already_ids, list) else []
+            )
+            if isinstance(item, str) and item
+        ]
+        raw_receipts = todo_update_result.get("completion_receipts")
+        receipts = (
+            list(raw_receipts)
+            if isinstance(raw_receipts, list)
+            else []
+        )
+        receipt_ids = [
+            str(receipt.get("task_id") or "")
+            for receipt in receipts
+            if isinstance(receipt, Mapping)
+            and receipt.get("status") == "succeeded"
+            and isinstance(receipt.get("task_id"), str)
+            and isinstance(receipt.get("canonical_task_cid"), str)
+            and receipt.get("canonical_task_cid")
+        ]
+        receipt_cids = {
+            str(receipt["task_id"]): str(receipt["canonical_task_cid"])
+            for receipt in receipts
+            if isinstance(receipt, Mapping)
+            and receipt.get("status") == "succeeded"
+            and isinstance(receipt.get("task_id"), str)
+            and isinstance(receipt.get("canonical_task_cid"), str)
+            and receipt.get("task_id")
+            and receipt.get("canonical_task_cid")
+        }
+        exact_population = bool(
+            expected_ids
+            and len(expected_ids) == len(completion_task_cids)
+            and isinstance(raw_updated_ids, list)
+            and len(updated_ids) == len(raw_updated_ids)
+            and isinstance(raw_already_ids, list)
+            and len(already_ids) == len(raw_already_ids)
+            and len(updated_ids) == len(set(updated_ids))
+            and len(already_ids) == len(set(already_ids))
+            and not (set(updated_ids) & set(already_ids))
+            and set(updated_ids) | set(already_ids) == expected_ids
+            and len(receipts) == len(expected_ids)
+            and len(receipt_ids) == len(expected_ids)
+            and len(receipt_ids) == len(set(receipt_ids))
+            and set(receipt_ids) == expected_ids
+            and receipt_cids == dict(completion_task_cids)
+            and todo_update_result.get("checkout_mutation_release_failed")
+            is not True
+            and todo_update_result.get("checkout_mutation_lease_retained")
+            is not True
+            and todo_update_result.get("checkout_mutation_recovery_required")
+            is not True
+        )
+        if persistence.get("passed") is not True or not exact_population:
+            return {
+                **persistence,
+                "passed": False,
+                "reason": "completion_persistence_population_inexact",
+                "exact_population": False,
+                "observed_updated_task_ids": updated_ids,
+                "observed_already_completed_task_ids": already_ids,
+                "observed_receipt_task_ids": receipt_ids,
+            }
+        return {
+            **persistence,
+            "exact_population": True,
+        }
 
     def _mark_tasks_completed_in_todo(
         self,
@@ -58733,23 +60103,52 @@ class PortalImplementationDaemon:
         )
         event_completion_cids = merge_result.get("completion_task_cids")
         request_completion_cids = metadata.get("completion_task_cids")
-        normalized_event_completion_cids = (
-            {
-                str(member_id): str(member_cid)
-                for member_id, member_cid in event_completion_cids.items()
-                if str(member_id) and str(member_cid)
-            }
-            if isinstance(event_completion_cids, Mapping)
-            else {}
+
+        def exact_completion_cids(
+            raw: object,
+        ) -> dict[str, str] | None:
+            if not isinstance(raw, Mapping) or not raw:
+                return None
+            if any(
+                not isinstance(member_id, str)
+                or not isinstance(member_cid, str)
+                or not member_id
+                or not member_cid
+                or member_id != member_id.strip()
+                or member_cid != member_cid.strip()
+                for member_id, member_cid in raw.items()
+            ):
+                return None
+            exact = dict(raw)
+            if len(exact) != len(raw):
+                return None
+            return exact
+
+        normalized_event_completion_cids = exact_completion_cids(
+            event_completion_cids
         )
-        normalized_request_completion_cids = (
-            {
-                str(member_id): str(member_cid)
-                for member_id, member_cid in request_completion_cids.items()
-                if str(member_id) and str(member_cid)
-            }
-            if isinstance(request_completion_cids, Mapping)
-            else {}
+        normalized_request_completion_cids = exact_completion_cids(
+            request_completion_cids
+        )
+        raw_changed_submodule_paths = metadata.get(
+            "changed_submodule_paths"
+        )
+        normalized_changed_submodule_paths = (
+            list(raw_changed_submodule_paths)
+            if isinstance(raw_changed_submodule_paths, list)
+            and all(
+                isinstance(path, str)
+                and bool(path)
+                and path == path.strip("/")
+                and not Path(path).is_absolute()
+                and all(
+                    component not in {"", ".", ".."}
+                    for component in path.split("/")
+                )
+                and not any(ord(character) < 32 for character in path)
+                for path in raw_changed_submodule_paths
+            )
+            else None
         )
         try:
             request_todo_path = Path(
@@ -58783,9 +60182,18 @@ class PortalImplementationDaemon:
             == self.merge_target_repository_id
             and getattr(request, "target_branch", "") == target_branch
             and request_todo_path == current_todo_path
+            and normalized_event_completion_cids is not None
+            and normalized_request_completion_cids is not None
             and normalized_event_completion_cids
             == normalized_request_completion_cids
             and normalized_request_completion_cids.get(task_id) == task_cid
+            and normalized_changed_submodule_paths is not None
+            and len(normalized_changed_submodule_paths)
+            == len(raw_changed_submodule_paths)
+            and len(set(normalized_changed_submodule_paths))
+            == len(normalized_changed_submodule_paths)
+            and normalized_changed_submodule_paths
+            == sorted(normalized_changed_submodule_paths)
         )
         if (
             not bindings_match
@@ -58814,6 +60222,7 @@ class PortalImplementationDaemon:
             "target_repository_id": self.merge_target_repository_id,
             "target_branch": target_branch,
             "completion_task_cids": normalized_request_completion_cids,
+            "changed_submodule_paths": normalized_changed_submodule_paths,
         }
 
     def _current_todo_tasks_by_id_for_reconciliation(

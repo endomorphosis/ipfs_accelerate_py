@@ -6620,6 +6620,139 @@ def test_shutdown_preserves_exact_terminal_portal_success_for_phase_resume(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_bridge_invokes_provider_forbidden_terminal_recovery_before_read_only_receipt(
+    tmp_path: Path,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_interrupted_database_portal_attempt(tmp_path)
+    )
+    calls: list[str] = []
+
+    class RecoveryOnlyPortal:
+        def reconcile_quiesced_active_attempt(self) -> dict[str, object]:
+            calls.append("quiesce")
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "already_quiesced",
+            }
+
+        def reconcile_provider_forbidden_terminal_result(
+            self,
+            *,
+            expected_task_identity: Mapping[str, str],
+        ) -> dict[str, object]:
+            calls.append("terminal_recovery")
+            text = paths.task_projection.read_text(encoding="utf-8")
+            paths.task_projection.write_text(
+                text.replace("- Status: ready", "- Status: completed"),
+                encoding="utf-8",
+            )
+            task = parse_task_file(
+                paths.task_projection,
+                task_header_prefix="## PCTDD-001",
+            )[0]
+            assert dict(expected_task_identity) == {
+                "task_id": task.task_id,
+                "canonical_task_key": task.canonical_task_key,
+                "canonical_task_cid": task.canonical_task_cid,
+                "board_namespace": task.board_namespace,
+            }
+            append_jsonl_event(
+                paths.events,
+                "task_completed",
+                dict(expected_task_identity),
+            )
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "applicable": True,
+                "reason": "provider_forbidden_terminal_receipt_recovered",
+                "provider_dispatched": False,
+                "implementation_dispatched": False,
+            }
+
+        def run_once(self) -> dict[str, object]:
+            raise AssertionError("provider-forbidden recovery entered run_once")
+
+        def close_event_runtime(self) -> None:
+            calls.append("close")
+
+    bridge.portal_factory = lambda _paths, _alias: RecoveryOnlyPortal()
+    try:
+        result = bridge.reconcile_quiesced_attempt(attempt)
+
+        assert result["reconciled"] is True
+        assert result["blocked"] is False
+        assert result["terminal_provider_evidence"] is True
+        assert result["terminal_provider_receipt_id"].startswith("sha256:")
+        assert result["portal_reconciliation"][
+            "provider_forbidden_terminal_recovery"
+        ]["provider_dispatched"] is False
+        assert calls == ["quiesce", "terminal_recovery", "close"]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_bridge_preserves_provider_forbidden_terminal_recovery_block(
+    tmp_path: Path,
+) -> None:
+    _repo, daemon, bridge, attempt, _paths = (
+        _seed_interrupted_database_portal_attempt(tmp_path)
+    )
+    calls: list[str] = []
+
+    class BlockedRecoveryPortal:
+        def reconcile_quiesced_active_attempt(self) -> dict[str, object]:
+            calls.append("quiesce")
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "already_quiesced",
+            }
+
+        def reconcile_provider_forbidden_terminal_result(
+            self,
+            *,
+            expected_task_identity: Mapping[str, str],
+        ) -> dict[str, object]:
+            assert expected_task_identity["task_id"] == "PCTDD-001"
+            calls.append("terminal_recovery")
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "applicable": True,
+                "reason": "provider_forbidden_terminal_recovery_task_changed",
+                "provider_dispatched": False,
+                "implementation_dispatched": False,
+            }
+
+        def run_once(self) -> dict[str, object]:
+            raise AssertionError("blocked recovery entered run_once")
+
+        def close_event_runtime(self) -> None:
+            calls.append("close")
+
+    bridge.portal_factory = lambda _paths, _alias: BlockedRecoveryPortal()
+    try:
+        result = bridge.reconcile_quiesced_attempt(attempt)
+
+        assert result["reconciled"] is False
+        assert result["blocked"] is True
+        assert result["reason"] == (
+            "nested_portal_attempt_reconciliation_blocked"
+        )
+        assert result["terminal_provider_evidence"] is False
+        assert result["portal_reconciliation"]["reason"] == (
+            "provider_forbidden_terminal_recovery_blocked"
+        )
+        assert calls == ["quiesce", "terminal_recovery", "close"]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_database_shutdown_fences_exact_live_nested_ordinary_runner(
     tmp_path: Path,
 ) -> None:

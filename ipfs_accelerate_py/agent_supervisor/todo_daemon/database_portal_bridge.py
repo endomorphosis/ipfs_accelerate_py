@@ -4730,6 +4730,39 @@ class DatabasePortalExecutionBridge:
                     "Portal nested reconciliation returned a non-object"
                 )
             reconciliation = dict(raw_reconciliation)
+            recover_terminal = getattr(
+                daemon,
+                "reconcile_provider_forbidden_terminal_result",
+                None,
+            )
+            if (
+                not historical_binding
+                and reconciliation.get("reconciled") is True
+                and reconciliation.get("blocked") is not True
+                and callable(recover_terminal)
+            ):
+                raw_terminal_recovery = recover_terminal(
+                    expected_task_identity=identity,
+                )
+                if not isinstance(raw_terminal_recovery, Mapping):
+                    raise DatabasePortalBridgeError(
+                        "Portal provider-forbidden terminal recovery returned "
+                        "a non-object"
+                    )
+                terminal_recovery = dict(raw_terminal_recovery)
+                reconciliation[
+                    "provider_forbidden_terminal_recovery"
+                ] = terminal_recovery
+                if terminal_recovery.get("blocked") is True:
+                    reconciliation.update(
+                        {
+                            "reconciled": False,
+                            "blocked": True,
+                            "reason": (
+                                "provider_forbidden_terminal_recovery_blocked"
+                            ),
+                        }
+                    )
         finally:
             close = getattr(daemon, "close_event_runtime", None) or getattr(
                 daemon, "close", None
