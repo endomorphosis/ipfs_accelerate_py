@@ -98025,6 +98025,42 @@ class DatabaseImplementationDaemon:
             },
         )
 
+    def _apply_owner_command_validation_result(
+        self,
+        *,
+        task_cid: str,
+        outcome: str,
+        evidence_digest: str,
+        argv: Sequence[str] | None,
+        body: Mapping[str, Any] | None,
+    ) -> Any | None:
+        """Record idle repair validation on the exclusive owner.
+
+        Typed ``task.validation.record.passed`` is idempotent on the digest.
+        After an interrupted merge the same SPAR-017 digest is replayed until
+        it ages out of the 1h evidence window, so landed-merge CAS keeps
+        failing. Owner-command validation mints a new run/created_at.
+        """
+
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+            quack_owner_command_dir,
+            submit_quack_owner_command,
+        )
+
+        if quack_owner_command_dir() is None:
+            return None
+        return submit_quack_owner_command(
+            QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+            {
+                "task_cid": str(task_cid),
+                "outcome": str(outcome),
+                "evidence_digest": str(evidence_digest),
+                "argv": list(argv) if argv is not None else None,
+                "body": dict(body) if body is not None else None,
+            },
+        )
+
     def _cas_task_status_database(
         self,
         task_cid: str,
@@ -120841,13 +120877,21 @@ class DatabaseImplementationDaemon:
         if not self._task_outputs_landed_on_target(task):
             return None
         proof, digest = self._landed_merge_repair_proof(task)
-        self.task_source.record_validation_result(
+        owner_recorded = self._apply_owner_command_validation_result(
             task_cid=str(task.task_cid),
             outcome="passed",
             evidence_digest=digest,
             argv=["database-landed-merge-repair"],
             body=proof,
         )
+        if owner_recorded is None:
+            self.task_source.record_validation_result(
+                task_cid=str(task.task_cid),
+                outcome="passed",
+                evidence_digest=digest,
+                argv=["database-landed-merge-repair"],
+                body=proof,
+            )
         refreshed = self.task_source.get(task.task_cid)
         if refreshed is None:
             raise DatabaseImplementationAuthorityError(

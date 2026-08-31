@@ -57,6 +57,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     TASK_PROJECTION_SPEC_SCHEMA,
     IntentCompletionError,
     IntentEventType,
+    LANDED_MERGE_REPAIR_OPERATION,
     IntentRepository,
     IntentRepositoryBoundsError,
     IntentRepositoryConflictError,
@@ -1450,6 +1451,49 @@ def test_database_task_source_public_api_and_completion_gate(tmp_path: Path) -> 
             source.list_tasks(limit=MAX_QUERY_LIMIT + 1)
     finally:
         source.close()
+
+
+def test_landed_merge_repair_completes_after_stale_validation_evidence(
+    tmp_path: Path,
+) -> None:
+    repo = open_intent_repository(tmp_path / "control.duckdb")
+    try:
+        ids = _seed_graph(repo)
+        digest = ids["evidence_digest"]
+        repo.record_validation_result(
+            task_cid=ids["task_a"],
+            outcome="passed",
+            evidence_digest=digest,
+            argv=["database-landed-merge-repair"],
+        )
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            connection.execute(
+                "UPDATE evidence_nodes SET created_at = ?",
+                ["2020-01-01T00:00:00+00:00"],
+            )
+        with pytest.raises(IntentCompletionError, match="current required evidence"):
+            repo.cas_task_status(
+                task_cid=ids["task_a"],
+                expected_revision=1,
+                new_status="completed",
+                receipt={"operation": "database_complete"},
+                evidence_digests=[digest],
+            )
+        result = repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=1,
+            new_status="completed",
+            receipt={
+                "operation": LANDED_MERGE_REPAIR_OPERATION,
+                "evidence_digest": digest,
+                "landed_outputs": ["intent_repository.py"],
+            },
+            evidence_digests=[digest],
+        )
+        assert result.changed is True
+        assert result.details["status"] == "completed"
+    finally:
+        repo.close()
 
 
 def test_reopened_source_infers_one_task_bound_root_without_cross_goal_guess(

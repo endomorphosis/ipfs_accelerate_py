@@ -166,6 +166,7 @@ MAX_PLAN_PROJECTION_BYTES: Final[int] = 16_777_216
 MAX_COMPLETION_PROJECTION_BYTES: Final[int] = 16_777_216
 MAX_GOAL_AUTHORITY_PROJECTION_BYTES: Final[int] = 4_194_304
 DEFAULT_EVIDENCE_FRESHNESS_SECONDS: Final[int] = 3_600
+LANDED_MERGE_REPAIR_OPERATION: Final[str] = "database_landed_merge_repair"
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}$")
 _SAFE_PATH_PART = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._:@+-]{0,255}$")
@@ -7724,6 +7725,21 @@ class IntentRepository:
 
             completing = status_text in _COMPLETED_STATUSES
             if completing and not allow_completion_without_evidence:
+                # Idle landed-merge repair records validation through an
+                # idempotent typed command. After an interrupted merge the
+                # same digest is replayed for hours, so the freshness window
+                # drops it and SPAR-017-class quarantines never complete.
+                # Admit the repair digest in this CAS transaction.
+                if (
+                    receipt_map.get("operation") == LANDED_MERGE_REPAIR_OPERATION
+                    and evidence_digests
+                ):
+                    self._admit_landed_merge_repair_evidence_on(
+                        connection,
+                        resolved_cid,
+                        evidence_digests=evidence_digests,
+                        now=now,
+                    )
                 # Gate completion on current required evidence inside the same
                 # transaction that mutates status.
                 missing = self._missing_evidence_on(
@@ -7872,6 +7888,54 @@ class IntentRepository:
                 subject_id=resolved_cid,
                 task_cid=resolved_cid,
                 body=event_body,
+            )
+
+    def _admit_landed_merge_repair_evidence_on(
+        self,
+        connection: Any,
+        task_cid: str,
+        *,
+        evidence_digests: Sequence[str],
+        now: str,
+    ) -> None:
+        """Refresh repair validation evidence inside the completion CAS."""
+
+        for raw in evidence_digests:
+            digest = _identifier(raw, noun="evidence_digest")
+            evidence_id = content_identity(
+                {
+                    "task_cid": task_cid,
+                    "evidence_kind": "validation",
+                    "digest": digest,
+                    "operation": LANDED_MERGE_REPAIR_OPERATION,
+                }
+            )
+            connection.execute(
+                "DELETE FROM evidence_nodes WHERE task_cid = ? AND digest = ?",
+                [task_cid, digest],
+            )
+            connection.execute(
+                """
+                INSERT INTO evidence_nodes (
+                    evidence_id, parent_evidence_id, task_cid, evidence_kind,
+                    digest, created_at, body_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    evidence_id,
+                    "",
+                    task_cid,
+                    "validation",
+                    digest,
+                    now,
+                    _canonical(
+                        {
+                            "operation": LANDED_MERGE_REPAIR_OPERATION,
+                            "digest": digest,
+                        },
+                        noun="landed merge repair evidence",
+                    ),
+                ],
             )
 
     def _missing_evidence_on(
@@ -10404,6 +10468,7 @@ __all__ = (
     "GOAL_TERMINAL_REPORT_EVIDENCE_SCHEMA",
     "TASK_PROJECTION_SPEC_SCHEMA",
     "TASK_AUTHORITY_SPEC_SCHEMA",
+    "LANDED_MERGE_REPAIR_OPERATION",
     "TASK_REVISION_HISTORY_PROJECTION_SCHEMA",
     "MAX_PROJECTION_RECORDS",
     "MAX_TASK_PROJECTION_BYTES",
