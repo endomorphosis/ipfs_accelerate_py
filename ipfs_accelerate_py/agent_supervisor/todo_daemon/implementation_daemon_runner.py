@@ -1200,6 +1200,10 @@ def bind_database_portal_execution_from_args(
     if not bool(getattr(parsed, "implement", False)):
         return None
     from .database_portal_bridge import DatabasePortalExecutionBridge
+    from .implementation_daemon import (
+        DEFAULT_WORKTREE_SUBMODULE_PATHS,
+        normalize_relative_path_list,
+    )
 
     binder = getattr(daemon, "bind_execution_callbacks", None)
     task_source = getattr(daemon, "task_source", None)
@@ -1215,6 +1219,11 @@ def bind_database_portal_execution_from_args(
         getattr(parsed, "worktree_submodule_path", None)
         or default_worktree_submodule_paths
         or None
+    )
+    configured_worktree_submodule_paths = (
+        DEFAULT_WORKTREE_SUBMODULE_PATHS
+        if worktree_submodule_paths is None
+        else normalize_relative_path_list(worktree_submodule_paths)
     )
     implementation_protected_paths = (
         getattr(parsed, "implementation_protected_path", None)
@@ -1243,7 +1252,7 @@ def bind_database_portal_execution_from_args(
             worktree_root=parsed.worktree_root,
             merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
             merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
-            worktree_submodule_paths=worktree_submodule_paths,
+            worktree_submodule_paths=configured_worktree_submodule_paths,
             implementation_protected_paths=implementation_protected_paths,
             manual_completion_authority_task_ids=getattr(
                 parsed, "manual_completion_authority_task_id", ()
@@ -1291,6 +1300,7 @@ def bind_database_portal_execution_from_args(
         attempt_root=attempt_root,
         portal_factory=portal_factory,
         task_header_prefix=parsed.task_prefix,
+        worktree_submodule_paths=configured_worktree_submodule_paths,
     )
     binder(
         provider_fn=bridge.run_provider,

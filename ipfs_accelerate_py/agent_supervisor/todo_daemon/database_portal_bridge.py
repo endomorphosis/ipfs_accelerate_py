@@ -1294,6 +1294,7 @@ class DatabasePortalExecutionBridge:
         portal_factory: PortalDaemonFactory,
         task_header_prefix: str = "## ",
         max_passes: int = 4,
+        worktree_submodule_paths: Sequence[str] = (),
     ) -> None:
         if not callable(portal_factory):
             raise TypeError("portal_factory must be callable")
@@ -1304,6 +1305,27 @@ class DatabasePortalExecutionBridge:
         self.portal_factory = portal_factory
         self.task_header_prefix = str(task_header_prefix or "## ")
         self.max_passes = max_passes
+        if isinstance(worktree_submodule_paths, (str, bytes, bytearray)):
+            raise TypeError("worktree_submodule_paths must be a sequence of paths")
+        declared_submodules = tuple(worktree_submodule_paths)
+        if (
+            len(set(declared_submodules)) != len(declared_submodules)
+            or any(
+                not isinstance(path, str)
+                or not path
+                or path != PurePosixPath(path).as_posix()
+                or PurePosixPath(path).is_absolute()
+                or any(
+                    part in {"", ".", ".."}
+                    for part in PurePosixPath(path).parts
+                )
+                or "\\" in path
+                or "\x00" in path
+                for path in declared_submodules
+            )
+        ):
+            raise ValueError("worktree_submodule_paths must be canonical and unique")
+        self.worktree_submodule_paths = declared_submodules
         self._binding_recorder: (
             Callable[[Any, Mapping[str, Any], str], Any] | None
         ) = None
@@ -2863,7 +2885,7 @@ class DatabasePortalExecutionBridge:
         return manifest, records
 
     @staticmethod
-    def _successful_submodule_cleanup(value: Any) -> bool:
+    def _successful_submodule_cleanup_shape(value: Any) -> bool:
         """Validate the producer's closed, recursively successful schema.
 
         This validator is intentionally suitable only for negative provider
@@ -2878,7 +2900,6 @@ class DatabasePortalExecutionBridge:
         pending: list[tuple[list[Any], int, str]] = [(value, 0, "")]
         population = 0
         paths: set[str] = set()
-        branches: set[str] = set()
         while pending:
             records, depth, parent_path = pending.pop()
             if depth > 32:
@@ -2910,7 +2931,6 @@ class DatabasePortalExecutionBridge:
                     or path in paths
                     or not isinstance(record.get("branch"), str)
                     or not branch
-                    or branch in branches
                     or any(
                         not isinstance(record.get(field), bool)
                         for field in (
@@ -2928,7 +2948,6 @@ class DatabasePortalExecutionBridge:
                 ):
                     return False
                 paths.add(path)
-                branches.add(branch)
                 pending.append(
                     (
                         record["nested_submodule_cleanup"],
@@ -2936,6 +2955,44 @@ class DatabasePortalExecutionBridge:
                         path,
                     )
                 )
+        return True
+
+    def _successful_submodule_cleanup(
+        self,
+        value: Any,
+        *,
+        outer_branch: str,
+    ) -> bool:
+        """Bind successful cleanup records to the exact Portal producer.
+
+        A closed record with an arbitrary path or branch is not proof that the
+        configured Portal cleanup route produced it.  Root entries therefore
+        match the launch-time submodule authority exactly, while every nested
+        branch is derived from the outer implementation branch and full path
+        by the producer's current deterministic helper.  Branch collisions
+        remain valid because distinct paths can sanitize to the same ref.
+        """
+
+        if not self._successful_submodule_cleanup_shape(value):
+            return False
+        if not value:
+            return True
+        if not self.worktree_submodule_paths:
+            return False
+        if tuple(record["path"] for record in value) != self.worktree_submodule_paths:
+            return False
+        from .implementation_daemon import PortalImplementationDaemon
+
+        pending = list(value)
+        while pending:
+            record = pending.pop()
+            path = str(record["path"])
+            if record["branch"] != PortalImplementationDaemon._submodule_worktree_branch_name(
+                outer_branch,
+                path,
+            ):
+                return False
+            pending.extend(record["nested_submodule_cleanup"])
         return True
 
     @staticmethod
@@ -3076,7 +3133,7 @@ class DatabasePortalExecutionBridge:
                     not isinstance(event.get(name), bool)
                     for name in ("removed_worktree", "deleted_branch", "cleaned")
                 )
-                or not DatabasePortalExecutionBridge._successful_submodule_cleanup(
+                or not DatabasePortalExecutionBridge._successful_submodule_cleanup_shape(
                     event.get("submodule_cleanup")
                 )
                 or not isinstance(event.get("lifecycle_finalize"), Mapping)
@@ -3715,7 +3772,8 @@ class DatabasePortalExecutionBridge:
             and cleanup_result.get("worktree_path") == worktree_path
             and cleanup_result.get("branch") == branch
             and self._successful_submodule_cleanup(
-                cleanup_result.get("submodule_cleanup")
+                cleanup_result.get("submodule_cleanup"),
+                outer_branch=branch,
             )
             and all(
                 adjacent_cleanup_event.get(field) == value

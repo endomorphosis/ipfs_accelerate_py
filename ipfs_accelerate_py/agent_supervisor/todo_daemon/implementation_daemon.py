@@ -78799,17 +78799,14 @@ class DatabaseImplementationDaemon:
             )
         ):
             return None
-        if "terminal_reconciliation" in failed_phase_body:
-            try:
-                if (
-                    self._database_portal_terminal_reconciliation_saga(
-                        attempt
-                    )
-                    is not None
-                ):
-                    return None
-            except Exception:
+        try:
+            if (
+                self._database_portal_terminal_reconciliation_saga(attempt)
+                is not None
+            ):
                 return None
+        except Exception:
+            return None
         try:
             if (
                 self.provider_invocation_recorded(
