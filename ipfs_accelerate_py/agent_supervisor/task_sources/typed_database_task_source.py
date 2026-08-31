@@ -891,10 +891,10 @@ class TypedDatabaseTaskSource:
                     == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
                 ):
                     return True
-                self._raise_unrepaired_retrying_integrity_error(
-                    record,
-                    cooldowns,
-                )
+                # A leftover board-unstall retrying row without an admitted
+                # cooldown must not fail closed the whole ready projection.
+                # Orphaned-requeue converts it to todo on a later pass.
+                continue
             if not result.accepted:
                 return True
         return True
@@ -959,16 +959,18 @@ class TypedDatabaseTaskSource:
                 ):
                     continue
                 for record, _identity in records:
-                    if record.status == "retrying":
-                        cooldown = cooldowns.get(record.task_cid)
-                        if cooldown is None:
-                            raise TaskSourceIntegrityError(
-                                "retrying task has no typed cooldown receipt"
-                            )
+                    if record.status != "retrying":
+                        continue
+                    cooldown = cooldowns.get(record.task_cid)
+                    if cooldown is None:
+                        continue
+                    try:
                         self._validate_retrying_cooldown_binding(
                             record,
                             cooldown,
                         )
+                    except TaskSourceIntegrityError:
+                        continue
                 return snapshot_row, records, revision, MappingProxyType(cooldowns)
         raise TaskSourceConflictError(
             "typed task/cooldown projection changed during bounded snapshot"
@@ -1751,6 +1753,14 @@ class TypedDatabaseTaskSource:
                 > now_ms
             ):
                 continue
+            if record.status == "retrying":
+                cooldown = cooldowns.get(record.task_cid)
+                try:
+                    if cooldown is None:
+                        continue
+                    self._validate_retrying_cooldown_binding(record, cooldown)
+                except TaskSourceIntegrityError:
+                    continue
             if all(
                 dependency in completed
                 or (
