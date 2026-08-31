@@ -2063,8 +2063,14 @@ def test_delayed_schema_v3_callback_records_exact_reconciliation_once(
         )
 
 
+@pytest.mark.parametrize(
+    "preexisting_failure_envelope",
+    [False, True],
+    ids=["direct", "same-request-failure-envelope"],
+)
 def test_synchronous_schema_v3_callback_projects_source_before_completion(
     tmp_path: Path,
+    preexisting_failure_envelope: bool,
 ) -> None:
     repo = _repo(tmp_path)
     attempt = _database_projection_attempt(
@@ -2108,6 +2114,35 @@ def test_synchronous_schema_v3_callback_projects_source_before_completion(
             "selection": {"scope": "pre_merge"},
         },
     )
+    if preexisting_failure_envelope:
+        daemon._record_event(
+            "worktree_reconciliation_candidate_queued",
+            {
+                "task_id": task.task_id,
+                "canonical_task_cid": task_cid,
+                "attempt": 1,
+                "returncode": 1,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "branch": request.branch_name,
+                "baseline_ref": baseline,
+                "implementation_commit": candidate,
+                "validation_result": {
+                    "attempted": True,
+                    "passed": True,
+                    "returncode": 0,
+                    "protected_path_violation": {},
+                },
+                "merge_result": {
+                    **dict(queued),
+                    "reason": "reconciled_candidate_queued_pending_merge",
+                    "train_result": {
+                        "status": "retrying",
+                        "reason": "merge_callback_exception",
+                    },
+                },
+            },
+        )
     result = daemon._merge_train_callback(request)
 
     assert result["merged"] is True
@@ -2122,7 +2157,16 @@ def test_synchronous_schema_v3_callback_projects_source_before_completion(
         for event in events
         if event.get("type")
         == "worktree_reconciliation_candidate_queued"
+        and "merge_queue_synchronous_source" in event
     ]
+    failure_envelopes = [
+        event
+        for event in events
+        if event.get("type")
+        == "worktree_reconciliation_candidate_queued"
+        and "merge_queue_synchronous_source" not in event
+    ]
+    assert len(failure_envelopes) == int(preexisting_failure_envelope)
     [reconciled] = [
         event for event in events if event.get("type") == "merge_reconciled"
     ]
