@@ -142,8 +142,9 @@ CASE_UNAVAILABLE_REASONS: Final[Mapping[str, str]] = MappingProxyType(
             "No live stale-task recovery campaign ran. Gitlink landed-merge, "
             "admitted-claim landed completion, landed recovery seed binding, "
             "leftover-retrying landed recovery, pending-merge dummy-consumer, "
-            "stale index.lock recovery, and landed-candidate fresh validation "
-            "tests are hermetic candidates only."
+            "stale index.lock recovery, landed-candidate fresh validation, and "
+            "integrating-merge current-head receipt rebind tests are hermetic "
+            "candidates only."
         ),
         "provider_outcome_unknown_reconciliation": (
             "No live provider-outcome-unknown reconciliation campaign ran."
@@ -156,8 +157,9 @@ CASE_UNAVAILABLE_REASONS: Final[Mapping[str, str]] = MappingProxyType(
             "No live automatic task-frontier refill campaign ran. Post-merge auto-start, "
             "portal-idle, gitlink landed-merge, admitted-claim landed completion, "
             "landed recovery seed binding, leftover-retrying landed recovery, "
-            "pending-merge recovery, and landed-candidate fresh validation tests "
-            "are hermetic candidates only."
+            "pending-merge recovery, landed-candidate fresh validation, and "
+            "integrating-merge current-head receipt rebind tests are hermetic "
+            "candidates only."
         ),
         "incremental_plan_reassessment": (
             "No live incremental plan-reassessment campaign ran."
@@ -260,6 +262,14 @@ LANDED_CANDIDATE_FRESH_VALIDATION_HERMETIC_SUITES: Final[tuple[str, ...]] = (
     "test/api/test_agent_supervisor_database_implementation_daemon.py",
 )
 
+# Rebinding a landed PCPR-001 outer receipt onto the integrating merge after
+# the nested candidate is already in the current tree.  Hermetic candidate
+# coverage only; rewriting current-tree identities is not a live campaign.
+INTEGRATING_MERGE_CURRENT_HEAD_REBIND_HERMETIC_SUITES: Final[tuple[str, ...]] = (
+    "test/api/test_agent_supervisor_landed_completion_recovery.py",
+    "test/api/test_agent_supervisor_database_implementation_daemon.py",
+)
+
 # Pending-merge dummy-consumer reconstruction and stale index.lock retry
 # after a Portal attempt exits.  Hermetic candidate coverage only.
 PENDING_MERGE_RECOVERY_HERMETIC_SUITES: Final[tuple[str, ...]] = (
@@ -269,7 +279,8 @@ PENDING_MERGE_RECOVERY_HERMETIC_SUITES: Final[tuple[str, ...]] = (
 # Combined post-landing hermetic coverage.  Presence is not live
 # qualification.  The daemon suite already listed under gitlink landed-merge
 # also contains admitted-claim, landed recovery-seed, leftover-retrying,
-# stale-index.lock, and landed-candidate fresh-validation cases.
+# stale-index.lock, landed-candidate fresh-validation, and integrating-merge
+# current-head receipt-rebind cases.
 POST_LANDING_HERMETIC_SUITES: Final[tuple[str, ...]] = (
     *GITLINK_LANDED_MERGE_HERMETIC_SUITES,
     *ADMITTED_CLAIM_LANDED_COMPLETION_HERMETIC_SUITES,
@@ -457,6 +468,23 @@ def _text(value: Any, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise DirectObjectiveEventDrivenQualificationError(f"{name} must be a non-empty string")
     return value.strip()
+
+
+def _git_object_id(value: Any, name: str) -> str:
+    text = _text(value, name).lower()
+    if len(text) != 40 or any(char not in "0123456789abcdef" for char in text):
+        raise DirectObjectiveEventDrivenQualificationError(
+            f"{name} must be a lowercase 40-character git object id"
+        )
+    return text
+
+
+def _require_ancestor(flag: Any, name: str) -> bool:
+    if flag is not True:
+        raise DirectObjectiveEventDrivenQualificationError(
+            f"{name} must be true; a non-ancestor origin/main cannot bind current-head evidence"
+        )
+    return True
 
 
 def _kind(value: Any, name: str) -> str:
@@ -846,7 +874,7 @@ def qualify_current_head_without_live_campaign() -> QualificationVerdict:
 # means the default unavailable payload changed and the outer receipt must be
 # regenerated from this evaluator rather than transcribed.
 CURRENT_HEAD_UNAVAILABLE_VERDICT_CID: Final = (
-    "baguqeeraiqbusxid7c3itp46lkjvcjghjhj4zdjvlwxf2q4ifdzycdfkjrva"
+    "baguqeeratg4ouyc4b76zhwmrtxqrbv57m43edz3gwwtfgcyvlv2ztzlow67a"
 )
 
 PCPR_PHASE0_TASK_ID: Final = "PCPR-001"
@@ -897,6 +925,126 @@ def current_head_pcpr_phase0_receipt_promotion() -> dict[str, Any]:
     """Fail-closed promotion section for the ordinary missing-live case."""
 
     return pcpr_phase0_receipt_promotion(qualify_current_head_without_live_campaign())
+
+
+def pcpr_phase0_current_tree_binding(
+    *,
+    outer_commit: str,
+    outer_tree: str,
+    outer_subject: str,
+    origin_main: str,
+    origin_main_is_ancestor: bool,
+    accelerator_pre_change_commit: str,
+    accelerator_pre_change_tree: str,
+    accelerator_gitlink: str,
+    accelerator_origin_main: str,
+    accelerator_origin_main_is_ancestor: bool,
+    prior_receipt_outer_commit: str,
+    prior_receipt_bound_outer_commit: str,
+    landed_pcpr_001_nested_commit: str,
+    first_landed_pcpr_001_nested_commit: str,
+    integrating_merge: str,
+    landed_candidate_commit: str,
+) -> dict[str, Any]:
+    """Measured current-tree identities for a Phase-0 outer receipt.
+
+    Rewriting these identities onto an integrating merge is hermetic
+    candidate coverage.  It is not a live campaign and cannot mint a
+    closed PCPR release outcome.
+    """
+
+    _reject_closed_release_value(outer_subject, "outer_subject")
+    binding = {
+        "outer_repository": "endomorphosis/lift_coding",
+        "owning_repository_for_receipts": "ipfs_accelerate_py",
+        "outer_commit": _git_object_id(outer_commit, "outer_commit"),
+        "outer_tree": _git_object_id(outer_tree, "outer_tree"),
+        "outer_subject": _text(outer_subject, "outer_subject"),
+        "origin_main": _git_object_id(origin_main, "origin_main"),
+        "origin_main_is_ancestor": _require_ancestor(
+            origin_main_is_ancestor, "origin_main_is_ancestor"
+        ),
+        "accelerator_pre_change_commit": _git_object_id(
+            accelerator_pre_change_commit, "accelerator_pre_change_commit"
+        ),
+        "accelerator_pre_change_tree": _git_object_id(
+            accelerator_pre_change_tree, "accelerator_pre_change_tree"
+        ),
+        "accelerator_gitlink": _git_object_id(accelerator_gitlink, "accelerator_gitlink"),
+        "accelerator_origin_main": _git_object_id(
+            accelerator_origin_main, "accelerator_origin_main"
+        ),
+        "accelerator_origin_main_is_ancestor": _require_ancestor(
+            accelerator_origin_main_is_ancestor,
+            "accelerator_origin_main_is_ancestor",
+        ),
+        "accelerator_post_change_commit": "pending nested commit after admission",
+        "accelerator_post_change_tree": (
+            "dirty-worktree; exact CID after accepted nested commit"
+        ),
+        "prior_receipt_outer_commit": _git_object_id(
+            prior_receipt_outer_commit, "prior_receipt_outer_commit"
+        ),
+        "prior_receipt_bound_outer_commit": _git_object_id(
+            prior_receipt_bound_outer_commit, "prior_receipt_bound_outer_commit"
+        ),
+        "landed_pcpr_001_nested_commit": _git_object_id(
+            landed_pcpr_001_nested_commit, "landed_pcpr_001_nested_commit"
+        ),
+        "first_landed_pcpr_001_nested_commit": _git_object_id(
+            first_landed_pcpr_001_nested_commit,
+            "first_landed_pcpr_001_nested_commit",
+        ),
+        "integrating_merge": _git_object_id(integrating_merge, "integrating_merge"),
+        "landed_candidate_commit": _git_object_id(
+            landed_candidate_commit, "landed_candidate_commit"
+        ),
+        "evidence_kind": "measured",
+    }
+    if binding["integrating_merge"] != binding["outer_commit"]:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "integrating_merge must equal the current outer_commit for a post-landing rebind"
+        )
+    if binding["landed_pcpr_001_nested_commit"] != binding["accelerator_gitlink"]:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "landed nested Accelerate commit must equal the current gitlink"
+        )
+    return binding
+
+
+def _validate_current_tree_binding(payload: Mapping[str, Any]) -> None:
+    binding = payload.get("current_tree_binding")
+    if binding is None:
+        return
+    if not isinstance(binding, Mapping):
+        raise DirectObjectiveEventDrivenQualificationError(
+            "current_tree_binding must be a mapping"
+        )
+    _reject_closed_release_value(
+        binding.get("outer_subject"), "current_tree_binding.outer_subject"
+    )
+    if binding.get("evidence_kind") != "measured":
+        raise DirectObjectiveEventDrivenQualificationError(
+            "current_tree_binding.evidence_kind must be measured"
+        )
+    if binding.get("origin_main_is_ancestor") is not True:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "current_tree_binding.origin_main_is_ancestor must be true"
+        )
+    if binding.get("accelerator_origin_main_is_ancestor") is not True:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "current_tree_binding.accelerator_origin_main_is_ancestor must be true"
+        )
+    for name in (
+        "outer_commit",
+        "outer_tree",
+        "origin_main",
+        "accelerator_pre_change_commit",
+        "accelerator_pre_change_tree",
+        "accelerator_gitlink",
+        "accelerator_origin_main",
+    ):
+        _git_object_id(binding.get(name), f"current_tree_binding.{name}")
 
 
 LIVE_COUNT_CASES: Final[frozenset[str]] = frozenset(
@@ -1131,6 +1279,8 @@ def validate_pcpr_phase0_outer_receipt(payload: Mapping[str, Any]) -> dict[str, 
             raise DirectObjectiveEventDrivenQualificationError(
                 "acceptance.promotion_status must match qualification_verdict"
             )
+
+    _validate_current_tree_binding(payload)
 
     expected = current_head_pcpr_phase0_receipt_promotion()
     live_campaign = False

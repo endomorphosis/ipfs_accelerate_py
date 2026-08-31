@@ -15,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.direct_objective_event_drive
     GITLINK_LANDED_MERGE_HERMETIC_SUITES,
     HARD_ZERO_INVARIANTS,
     HERMETIC_CANDIDATE_SUITES,
+    INTEGRATING_MERGE_CURRENT_HEAD_REBIND_HERMETIC_SUITES,
     LANDED_CANDIDATE_FRESH_VALIDATION_HERMETIC_SUITES,
     LANDED_RECOVERY_SEED_HERMETIC_SUITES,
     LIVE_OBJECTIVE_MINIMUM,
@@ -41,6 +42,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.direct_objective_event_drive
     current_head_pcpr_phase0_receipt_promotion,
     current_head_pcpr_phase0_receipt_sections,
     current_head_unavailable_inputs,
+    pcpr_phase0_current_tree_binding,
     pcpr_phase0_receipt_efficiency_targets,
     pcpr_phase0_receipt_live_cohort,
     pcpr_phase0_receipt_promotion,
@@ -94,6 +96,10 @@ def test_closed_vocabularies_match_phase_zero_requirements() -> None:
         "test/api/test_agent_supervisor_landed_completion_recovery.py",
         "test/api/test_agent_supervisor_database_implementation_daemon.py",
     )
+    assert INTEGRATING_MERGE_CURRENT_HEAD_REBIND_HERMETIC_SUITES == (
+        "test/api/test_agent_supervisor_landed_completion_recovery.py",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+    )
     assert PENDING_MERGE_RECOVERY_HERMETIC_SUITES == (
         "test/api/test_agent_supervisor_merge_train.py",
     )
@@ -106,6 +112,10 @@ def test_closed_vocabularies_match_phase_zero_requirements() -> None:
     assert all(
         path in POST_LANDING_HERMETIC_SUITES
         for path in LANDED_CANDIDATE_FRESH_VALIDATION_HERMETIC_SUITES
+    )
+    assert all(
+        path in POST_LANDING_HERMETIC_SUITES
+        for path in INTEGRATING_MERGE_CURRENT_HEAD_REBIND_HERMETIC_SUITES
     )
     assert all(
         path in HERMETIC_CANDIDATE_SUITES["automatic_task_frontier_refill"]
@@ -596,6 +606,7 @@ def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
     assert "leftover-retrying landed recovery" in refill_section["reason"]
     assert "pending-merge recovery" in refill_section["reason"]
     assert "landed-candidate fresh validation" in refill_section["reason"]
+    assert "integrating-merge current-head receipt rebind" in refill_section["reason"]
     stale_section = next(
         item for item in section["cases"] if item["case_id"] == "stale_task_recovery"
     )
@@ -606,6 +617,7 @@ def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
     assert "pending-merge dummy-consumer" in stale_section["reason"]
     assert "stale index.lock" in stale_section["reason"]
     assert "landed-candidate fresh validation" in stale_section["reason"]
+    assert "integrating-merge current-head receipt rebind" in stale_section["reason"]
     assert all(path in refill.hermetic_suite_paths for path in LANDED_RECOVERY_SEED_HERMETIC_SUITES)
     assert all(path in stale.hermetic_suite_paths for path in LANDED_RECOVERY_SEED_HERMETIC_SUITES)
     assert all(
@@ -616,3 +628,103 @@ def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
         path in stale.hermetic_suite_paths
         for path in LANDED_CANDIDATE_FRESH_VALIDATION_HERMETIC_SUITES
     )
+    assert all(
+        path in refill.hermetic_suite_paths
+        for path in INTEGRATING_MERGE_CURRENT_HEAD_REBIND_HERMETIC_SUITES
+    )
+    assert all(
+        path in stale.hermetic_suite_paths
+        for path in INTEGRATING_MERGE_CURRENT_HEAD_REBIND_HERMETIC_SUITES
+    )
+
+
+def _example_current_tree_binding_kwargs() -> dict[str, str | bool]:
+    return {
+        "outer_commit": "112fcbefff41e3005b94f31ef618906e8ce48ea9",
+        "outer_tree": "099c2002de95e37a7f7181ca34f64af5de727937",
+        "outer_subject": (
+            "Merge commit '0ebe3663122d61bd399aebaf21dc4ef3088a5e27' into "
+            "agent/proof-carrying-platform-qualification-and-release-v1"
+        ),
+        "origin_main": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+        "origin_main_is_ancestor": True,
+        "accelerator_pre_change_commit": "9905447d2fa7d5b9f8005e54a401afe3f960eef4",
+        "accelerator_pre_change_tree": "3728c957a477e1c18e1d12f10a8120a688005ba3",
+        "accelerator_gitlink": "9905447d2fa7d5b9f8005e54a401afe3f960eef4",
+        "accelerator_origin_main": "f8c2f633fa6a781b822176fd63e1a229f96b581c",
+        "accelerator_origin_main_is_ancestor": True,
+        "prior_receipt_outer_commit": "0ebe3663122d61bd399aebaf21dc4ef3088a5e27",
+        "prior_receipt_bound_outer_commit": "cf05ef0004a76684a8f0e2e0e30b2e35a7d9b0a9",
+        "landed_pcpr_001_nested_commit": "9905447d2fa7d5b9f8005e54a401afe3f960eef4",
+        "first_landed_pcpr_001_nested_commit": "38deb2ea57b171da90e5f2d4194ef6f100f9795b",
+        "integrating_merge": "112fcbefff41e3005b94f31ef618906e8ce48ea9",
+        "landed_candidate_commit": "0ebe3663122d61bd399aebaf21dc4ef3088a5e27",
+    }
+
+
+def test_current_tree_binding_rebind_is_measured_and_not_a_release() -> None:
+    binding = pcpr_phase0_current_tree_binding(**_example_current_tree_binding_kwargs())
+    assert binding["evidence_kind"] == "measured"
+    assert binding["origin_main_is_ancestor"] is True
+    assert binding["accelerator_origin_main_is_ancestor"] is True
+    assert binding["integrating_merge"] == binding["outer_commit"]
+    assert binding["landed_pcpr_001_nested_commit"] == binding["accelerator_gitlink"]
+    assert binding["accelerator_post_change_commit"] == "pending nested commit after admission"
+    assert all(outcome not in binding["outer_subject"] for outcome in CLOSED_RELEASE_OUTCOMES)
+    assert "closed_release_outcome" not in binding
+    sections = current_head_pcpr_phase0_receipt_sections()
+    payload = {
+        "task_id": PCPR_PHASE0_TASK_ID,
+        "status": "implemented",
+        "completion_authoritative": False,
+        "release_claim": False,
+        "current_tree_binding": binding,
+        "qualification_verdict": sections["qualification_verdict"],
+        "required_live_cohort": sections["required_live_cohort"],
+        "efficiency_targets": sections["efficiency_targets"],
+        "acceptance": {
+            "named_receipt_exists": True,
+            "promotion_status": "rnd_non_promoted",
+            "closed_release_outcome": None,
+            "release_claim": False,
+        },
+    }
+    checked = validate_pcpr_phase0_outer_receipt(payload)
+    assert checked["valid"] is True
+    assert checked["promotion_status"] == "rnd_non_promoted"
+    assert checked["closed_release_outcome"] is None
+
+
+def test_current_tree_binding_rejects_non_ancestor_and_mismatched_merge() -> None:
+    kwargs = _example_current_tree_binding_kwargs()
+    kwargs["origin_main_is_ancestor"] = False
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="origin_main_is_ancestor"):
+        pcpr_phase0_current_tree_binding(**kwargs)
+    kwargs = _example_current_tree_binding_kwargs()
+    kwargs["integrating_merge"] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="integrating_merge"):
+        pcpr_phase0_current_tree_binding(**kwargs)
+    kwargs = _example_current_tree_binding_kwargs()
+    kwargs["landed_pcpr_001_nested_commit"] = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="gitlink"):
+        pcpr_phase0_current_tree_binding(**kwargs)
+    sections = current_head_pcpr_phase0_receipt_sections()
+    forged = {
+        "task_id": PCPR_PHASE0_TASK_ID,
+        "status": "implemented",
+        "qualification_verdict": sections["qualification_verdict"],
+        "current_tree_binding": {
+            "outer_commit": "112fcbefff41e3005b94f31ef618906e8ce48ea9",
+            "outer_tree": "099c2002de95e37a7f7181ca34f64af5de727937",
+            "origin_main": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "origin_main_is_ancestor": True,
+            "accelerator_pre_change_commit": "9905447d2fa7d5b9f8005e54a401afe3f960eef4",
+            "accelerator_pre_change_tree": "3728c957a477e1c18e1d12f10a8120a688005ba3",
+            "accelerator_gitlink": "9905447d2fa7d5b9f8005e54a401afe3f960eef4",
+            "accelerator_origin_main": "f8c2f633fa6a781b822176fd63e1a229f96b581c",
+            "accelerator_origin_main_is_ancestor": True,
+            "evidence_kind": "simulated",
+        },
+    }
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="measured"):
+        validate_pcpr_phase0_outer_receipt(forged)
