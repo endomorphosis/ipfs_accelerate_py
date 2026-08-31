@@ -53,7 +53,7 @@ from .intent_repository import (
 from .launch_source_amendment import (
     LaunchSourceAmendment,
     LaunchSourceAmendmentError,
-    task_contract_set_cid,
+    task_contract_set_cid_from_route_entries,
 )
 from .quack_state_client import (
     ClientSession,
@@ -1274,15 +1274,24 @@ class TypedDatabaseTaskSource:
             )
         for task in tasks:
             entry = entries[task.task_cid]
-            if (
-                task.task_alias != entry.task_alias
-                or task_execution_contract_cid(task) != entry.task_contract_cid
+            if task.task_alias != entry.task_alias:
+                raise TaskSourceIntegrityError(
+                    "launch task contract differs from its execution route"
+                )
+            if int(task.revision) < int(entry.task_revision):
+                raise TaskSourceIntegrityError(
+                    "launch task revision receded from its execution route"
+                )
+            if int(task.revision) == int(entry.task_revision) and (
+                task_execution_contract_cid(task) != entry.task_contract_cid
             ):
                 raise TaskSourceIntegrityError(
                     "launch task contract differs from its execution route"
                 )
         try:
-            current_contract_set_cid = task_contract_set_cid(tasks)
+            current_contract_set_cid = task_contract_set_cid_from_route_entries(
+                entries.values()
+            )
         except LaunchSourceAmendmentError as exc:
             raise TaskSourceIntegrityError(
                 "launch task contract set is invalid"
@@ -1488,10 +1497,13 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "task execution route binding is not in the launch policy lineage"
             )
+        if task.task_cid != binding.task_cid or task.task_alias != binding.task_alias:
+            raise TaskSourceIntegrityError(
+                "attempt execution route differs from its authoritative task"
+            )
         if (
-            task.task_cid != binding.task_cid
-            or task.task_alias != binding.task_alias
-            or task_execution_contract_cid(task) != binding.task_contract_cid
+            task.revision == binding.task_revision
+            and task_execution_contract_cid(task) != binding.task_contract_cid
         ):
             raise TaskSourceIntegrityError(
                 "attempt execution route differs from its authoritative task"

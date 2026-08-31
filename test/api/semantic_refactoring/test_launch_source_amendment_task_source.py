@@ -256,6 +256,51 @@ def test_launch_source_amendment_reads_exact_active_revision_and_contract_set() 
     assert client.plan_parameters == [{"plan_cid": policy.plan_root_cid}]
 
 
+def test_launch_source_amendment_allows_operational_body_after_launch() -> None:
+    task, policy, expected, task_row, plan_row = _fixture()
+    advanced_body = {
+        **dict(task.body),
+        "unknown_callback_reopen_count": 1,
+    }
+    task_row["revision"] = int(task.revision) + 1
+    task_row["status"] = "todo"
+    task_row["body_json"] = _canonical(advanced_body)
+
+    observed = _source(
+        _Client(task_row=task_row, plan_row=plan_row),
+        policy,
+    ).launch_source_amendment
+
+    assert observed == expected
+
+
+def test_execution_route_binding_allows_operational_body_after_launch() -> None:
+    task, policy, _expected, _task_row, _plan_row = _fixture()
+    binding = policy.binding_for_task(task).to_dict()
+    advanced = replace(
+        task,
+        revision=int(task.revision) + 1,
+        status="todo",
+        body={
+            **dict(task.body),
+            "unknown_callback_reopen_count": 1,
+            "completion_receipt": {
+                "operation": "orphaned_in_progress_requeues",
+                "execution_route_binding": binding,
+                "execution_route_policy_id": policy.policy_id,
+                "execution_route_origin_revision": task.revision,
+            },
+        },
+    )
+    source = object.__new__(TypedDatabaseTaskSource)
+    source._execution_route_policy = policy  # type: ignore[attr-defined]
+    source._require_execution_route_plan_root = (  # type: ignore[method-assign]
+        lambda: policy
+    )
+
+    assert dict(source.execution_route_binding_for_task(advanced)) == binding
+
+
 def test_launch_source_amendment_rejects_plan_head_revision_body_mismatch() -> None:
     _task, policy, _expected, task_row, plan_row = _fixture()
     plan_row["plan_revision_body_json"] = _canonical({"different": True})

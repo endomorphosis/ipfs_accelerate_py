@@ -787,6 +787,61 @@ def test_restart_allows_operational_body_after_carried_route() -> None:
     assert resumed == original_policy
 
 
+def test_launch_route_population_allows_operational_body_after_route() -> None:
+    materializer = _materializer()
+    (
+        _bootstrap,
+        _current_snapshot,
+        operator_task,
+        _implementation_task,
+        retrying_task,
+        original_policy,
+    ) = _route_restart_fixture()
+    body = dict(retrying_task.body)
+    body["unknown_callback_reopen_count"] = 1
+    advanced = replace(
+        retrying_task,
+        revision=int(retrying_task.revision) + 1,
+        body=body,
+    )
+
+    entries = materializer._assert_launch_route_population(
+        tasks=(operator_task, advanced),
+        execution_route_policy=original_policy,
+        plan_cid=original_policy.plan_root_cid,
+        repository_tree_id=original_policy.repository_tree_id,
+    )
+
+    assert set(entries) == {operator_task.task_cid, advanced.task_cid}
+
+
+def test_launch_route_population_rejects_contract_drift_at_sealed_revision() -> None:
+    materializer = _materializer()
+    (
+        _bootstrap,
+        _current_snapshot,
+        operator_task,
+        implementation_task,
+        _retrying_task,
+        original_policy,
+    ) = _route_restart_fixture()
+    drifted = replace(
+        implementation_task,
+        body={**dict(implementation_task.body), "description": "drifted"},
+    )
+
+    with pytest.raises(
+        materializer.OperatorError,
+        match="launch task population differs from its immutable execution route",
+    ):
+        materializer._assert_launch_route_population(
+            tasks=(operator_task, drifted),
+            execution_route_policy=original_policy,
+            plan_cid=original_policy.plan_root_cid,
+            repository_tree_id=original_policy.repository_tree_id,
+        )
+
+
 def test_restart_recovers_only_exact_post_merge_predecessor_route() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
         canonical_json_bytes,

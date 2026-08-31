@@ -125,6 +125,37 @@ def task_contract_set_cid(tasks: Iterable[Any]) -> str:
     return content_identity({"schema": TASK_CONTRACT_SET_SCHEMA, "tasks": records})
 
 
+def task_contract_set_cid_from_route_entries(entries: Iterable[Any]) -> str:
+    """Identify the sealed launch contract, ignoring later operational bodies."""
+
+    records: list[dict[str, str]] = []
+    for entry in entries:
+        task_cid = str(getattr(entry, "task_cid", "") or "")
+        task_alias = str(getattr(entry, "task_alias", "") or "")
+        contract_cid = str(getattr(entry, "task_contract_cid", "") or "")
+        if not task_cid or not task_alias or not contract_cid:
+            raise LaunchSourceAmendmentError(
+                "task contract set contains a noncanonical route entry"
+            )
+        records.append(
+            {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "task_execution_contract_cid": contract_cid,
+            }
+        )
+    records.sort(key=lambda item: (item["task_cid"], item["task_alias"]))
+    if (
+        not records
+        or len({item["task_cid"] for item in records}) != len(records)
+        or len({item["task_alias"] for item in records}) != len(records)
+    ):
+        raise LaunchSourceAmendmentError(
+            "task contract set is empty or contains duplicate identities"
+        )
+    return content_identity({"schema": TASK_CONTRACT_SET_SCHEMA, "tasks": records})
+
+
 @dataclass(frozen=True)
 class LaunchSourceAmendment:
     """Closed content-addressed current-source amendment for one plan lineage."""
@@ -528,4 +559,5 @@ __all__ = [
     "LaunchSourceAmendment",
     "LaunchSourceAmendmentError",
     "task_contract_set_cid",
+    "task_contract_set_cid_from_route_entries",
 ]

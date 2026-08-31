@@ -1060,6 +1060,56 @@ def _launch_source_amendment(
     return amendment
 
 
+def _assert_launch_route_population(
+    *,
+    tasks: Sequence[Any],
+    execution_route_policy: Any,
+    plan_cid: str,
+    repository_tree_id: str,
+) -> Mapping[str, Any]:
+    """Require live tasks to match the sealed launch route identity.
+
+    Idle repair CAS advances revision and operational body after the route is
+    sealed. Contract CID is required only at the sealed revision so SPAR-018
+    requeue and SPAR-017 validation do not mint a new launch population.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        TaskExecutionRoutePolicy,
+        task_execution_contract_cid,
+    )
+
+    if not isinstance(execution_route_policy, TaskExecutionRoutePolicy):
+        raise OperatorError(
+            "launch task population differs from its immutable execution route"
+        )
+    route_entries = execution_route_policy.entries_by_cid
+    if (
+        not route_entries
+        or execution_route_policy.plan_root_cid != plan_cid
+        or execution_route_policy.repository_tree_id != repository_tree_id
+        or set(route_entries) != {task.task_cid for task in tasks}
+    ):
+        raise OperatorError(
+            "launch task population differs from its immutable execution route"
+        )
+    for task in tasks:
+        entry = route_entries[task.task_cid]
+        if task.task_alias != entry.task_alias or int(task.revision) < int(
+            entry.task_revision
+        ):
+            raise OperatorError(
+                "launch task population differs from its immutable execution route"
+            )
+        if int(task.revision) == int(entry.task_revision) and (
+            task_execution_contract_cid(task) != entry.task_contract_cid
+        ):
+            raise OperatorError(
+                "launch task population differs from its immutable execution route"
+            )
+    return route_entries
+
+
 def _launch_source_amendment_context(
     *,
     source: Any,
@@ -1074,11 +1124,7 @@ def _launch_source_amendment_context(
     from ipfs_accelerate_py.agent_supervisor.task_sources.launch_source_amendment import (
         LaunchSourceAmendment,
         LaunchSourceAmendmentError,
-        task_contract_set_cid,
-    )
-    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
-        TaskExecutionRoutePolicy,
-        task_execution_contract_cid,
+        task_contract_set_cid_from_route_entries,
     )
 
     bootstrap = _json_object(paths["bootstrap_receipt"])
@@ -1163,28 +1209,20 @@ def _launch_source_amendment_context(
                 )
 
     tasks = _database_tasks(source)
-    contract_set_id = task_contract_set_cid(tasks)
-    route_entries = (
-        execution_route_policy.entries_by_cid
-        if isinstance(execution_route_policy, TaskExecutionRoutePolicy)
-        else {}
+    route_entries = _assert_launch_route_population(
+        tasks=tasks,
+        execution_route_policy=execution_route_policy,
+        plan_cid=plan_cid,
+        repository_tree_id=str(bootstrap.get("repository_tree_id") or ""),
     )
-    if (
-        not route_entries
-        or execution_route_policy.plan_root_cid != plan_cid
-        or execution_route_policy.repository_tree_id
-        != str(bootstrap.get("repository_tree_id") or "")
-        or set(route_entries) != {task.task_cid for task in tasks}
-        or any(
-            task.task_alias != route_entries[task.task_cid].task_alias
-            or task_execution_contract_cid(task)
-            != route_entries[task.task_cid].task_contract_cid
-            for task in tasks
+    try:
+        contract_set_id = task_contract_set_cid_from_route_entries(
+            route_entries.values()
         )
-    ):
+    except LaunchSourceAmendmentError as exc:
         raise OperatorError(
             "launch task population differs from its immutable execution route"
-        )
+        ) from exc
     if current is not None:
         predecessor_ancestry = subprocess.run(
             [
