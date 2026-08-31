@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -1310,3 +1311,60 @@ def test_process_mutations_applies_board_unstall_op(
     )
     assert done["ok"] is True
     assert done["rowcount"] == 1
+
+
+def test_owner_command_inbox_is_runtime_registry_mutations() -> None:
+    materializer = _materializer()
+    program = SimpleNamespace(
+        runtime_registry_path=(
+            "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1/"
+            "registry"
+        )
+    )
+    inbox = materializer._owner_command_inbox(program)
+    assert inbox == (
+        ROOT
+        / "data/agent_supervisor/semantic_preserving_autonomous_remodularization_v1"
+        / "registry"
+        / "mutations"
+    )
+    assert inbox.is_dir()
+
+
+def test_owner_projection_monitor_drains_signed_owner_commands(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    drained = {"n": 0}
+
+    def process_inbox() -> None:
+        drained["n"] += 1
+
+    server = SimpleNamespace(process_mutation_inbox=process_inbox)
+    monkeypatch.setattr(
+        materializer,
+        "_publish_live_projection",
+        lambda *_args, **_kwargs: {"ok": True},
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_process_mutations",
+        lambda *_args, **_kwargs: None,
+    )
+    inbox = tmp_path / "registry" / "mutations"
+    inbox.mkdir(parents=True)
+    monitor = materializer._OwnerProjectionMonitor(
+        server,
+        {"owner": tmp_path / "owner"},
+        mutation_dir=inbox,
+        on_failure=lambda _exc: None,
+    )
+    monitor.start()
+    try:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and drained["n"] < 1:
+            time.sleep(0.02)
+        assert drained["n"] >= 1
+    finally:
+        monitor.stop()

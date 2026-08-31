@@ -1753,6 +1753,29 @@ def _verify_control_plane(path: Path) -> Any:
     )
 
 
+def _owner_command_inbox(program: Any) -> Path:
+    """Return the mutation inbox lanes already write, not quack-owner/mutations.
+
+    SPAR workers bind ``IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR`` to
+    ``runtime_registry_path/mutations``.  The exclusive owner used to drain
+    ``quack-owner/mutations``, so idle compare_and_set_status timed out.
+    """
+
+    registry = Path(str(program.runtime_registry_path or "")).expanduser()
+    if not str(registry):
+        raise OperatorError("SPAR owner command inbox requires runtime_registry_path")
+    if not registry.is_absolute():
+        registry = ROOT / registry
+    inbox = registry.resolve() / "mutations"
+    inbox.mkdir(parents=True, exist_ok=True)
+    os.chmod(inbox, 0o700)
+    return inbox
+
+
+def _bind_owner_command_inbox(server: Any, inbox: Path) -> None:
+    server._mutation_inbox_override = inbox
+
+
 def _owner_connection(path: Path) -> Any:
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         open_quack_state_owner_connection,
@@ -1904,6 +1927,7 @@ def _build_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any]:
         migrate=_verify_control_plane,
         connection_factory=_owner_connection,
     )
+    _bind_owner_command_inbox(server, _owner_command_inbox(program))
     return server, paths, program
 
 
@@ -2072,7 +2096,7 @@ def _serve_state_owner(
 
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
-    mutation_dir = paths["owner"] / "mutations"
+    mutation_dir = server.mutation_inbox_path()
     control_path = server.stop_control_path()
     next_projection = 0.0
     child_returncode: int | None = None
@@ -2134,7 +2158,7 @@ def state_owner(config_path: Path) -> int:
                 "ready": True,
                 "identity": identity.to_dict(),
                 "live": ready,
-                "mutation_dir": str((paths["owner"] / "mutations").relative_to(ROOT)),
+                "mutation_dir": str(server.mutation_inbox_path().relative_to(ROOT)),
             },
             sort_keys=True,
         ),
@@ -2939,10 +2963,12 @@ class _OwnerProjectionMonitor:
         server: Any,
         paths: Mapping[str, Path],
         *,
+        mutation_dir: Path,
         on_failure: Callable[[BaseException], None],
     ) -> None:
         self.server = server
         self.paths = paths
+        self.mutation_dir = mutation_dir
         self.on_failure = on_failure
         self.stopping = threading.Event()
         self.ready = threading.Event()
@@ -2966,11 +2992,25 @@ class _OwnerProjectionMonitor:
         if self._thread.is_alive():
             raise OperatorError("SPAR owner projection monitor did not stop")
 
+    def _drain_owner_commands(self) -> None:
+        process_inbox = getattr(self.server, "process_mutation_inbox", None)
+        if callable(process_inbox):
+            try:
+                process_inbox()
+            except Exception:
+                pass
+        _process_mutations(self.server, self.mutation_dir)
+
     def _run(self) -> None:
         initial = True
+        next_projection = 0.0
         while not self.stopping.is_set():
             try:
-                _publish_live_projection(self.server, self.paths)
+                self._drain_owner_commands()
+                now = time.monotonic()
+                if now >= next_projection:
+                    _publish_live_projection(self.server, self.paths)
+                    next_projection = now + 1.0
             except BaseException as exc:
                 recovered = False
                 recover_error_type = ""
@@ -3026,7 +3066,7 @@ class _OwnerProjectionMonitor:
             if initial:
                 initial = False
                 self.ready.set()
-            self.stopping.wait(1.0)
+            self.stopping.wait(0.05)
 
 
 def _new_bootstrap_listener(*, lane_count: int) -> socket.socket:
@@ -3211,6 +3251,7 @@ def supervise(
         monitor = _OwnerProjectionMonitor(
             server,
             paths,
+            mutation_dir=server.mutation_inbox_path(),
             on_failure=broker._terminal_failure,
         )
         monitor.start()

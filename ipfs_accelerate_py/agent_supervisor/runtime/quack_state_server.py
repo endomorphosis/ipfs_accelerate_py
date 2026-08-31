@@ -3616,6 +3616,9 @@ class QuackStateServer:
     def mutation_inbox_path(self) -> Path:
         """Return the owner-only inbox used for unsupported remote DML."""
 
+        override = getattr(self, "_mutation_inbox_override", None)
+        if override is not None:
+            return Path(override)
         return quack_owner_mutation_inbox_path(self.runtime_registry_path)
 
     @property
