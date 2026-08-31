@@ -10430,6 +10430,14 @@ class PortalImplementationDaemon:
         if scope == "workspace" and change == "deleted":
             return "workspace_protected_deletion"
 
+        # Operator merge of protected supervisor files while a task was live.
+        # The after-image is already HEAD, so this is a latch, not a rogue edit.
+        if change == "content_changed" and scope == "shared_checkout":
+            digest = str((after or {}).get("sha256") or "")
+            expected = self._merge_target_path_sha256(path)
+            if digest and expected and digest == expected:
+                return "shared_checkout_matches_merge_target_head"
+
         # Executable todo board is supervisor-owned. Content edits of plan /
         # objectives on the shared checkout still require operator review.
         if change == "content_changed" and path.endswith(".todo.md"):
@@ -72474,6 +72482,8 @@ _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
         "[Errno 28] No space left on device",
         "bwrap: setting up uid map: Permission denied",
         "bwrap: setting up gid map: Permission denied",
+        "quack_transport_unavailable",
+        "implementation_protected_path_mutated",
     }
 )
 _SANDBOX_HOST_FAILURE_REOPEN_SCHEMA = (
@@ -79867,6 +79877,11 @@ class DatabaseImplementationDaemon:
             return "bwrap: setting up uid map: Permission denied"
         if "bwrap: setting up gid map" in reason.lower():
             return "bwrap: setting up gid map: Permission denied"
+        if (
+            "could not connect to server" in lowered
+            and "41487" in reason
+        ) or "quack_transport_unavailable" in lowered:
+            return "quack_transport_unavailable"
         return (reason or "portal_execution_deferred")[:1024]
 
     @staticmethod
@@ -80270,6 +80285,48 @@ class DatabaseImplementationDaemon:
                 )
         return outcomes
 
+    def _merge_target_path_sha256(self, relative: str) -> str:
+        """Return the SHA-256 of ``relative`` at the merge-target HEAD."""
+
+        repo = getattr(self, "repo_root", None)
+        if repo is None or not str(relative or "").strip():
+            return ""
+        completed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "show",
+                f"HEAD:{relative}",
+            ],
+            check=False,
+            capture_output=True,
+        )
+        if completed.returncode != 0:
+            return ""
+        return hashlib.sha256(completed.stdout).hexdigest()
+
+    def _shared_checkout_matches_merge_target_head(self) -> bool:
+        """True when the shared checkout has no dirty files (operator merge landed)."""
+
+        repo = getattr(self, "repo_root", None)
+        if repo is None:
+            return False
+        completed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "status",
+                "--porcelain",
+                "--untracked-files=no",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        return completed.returncode == 0 and not str(completed.stdout or "").strip()
+
     def reconcile_false_terminal_portal_blocks(self) -> list[dict[str, Any]]:
         """Reopen leftover terminal blocks from killed claims and missing events.
 
@@ -80305,6 +80362,11 @@ class DatabaseImplementationDaemon:
                 continue
             reason = self._database_portal_reason(receipt.get("reason"))
             if reason not in _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS:
+                continue
+            if (
+                reason == "implementation_protected_path_mutated"
+                and not self._shared_checkout_matches_merge_target_head()
+            ):
                 continue
             alias = str(getattr(task, "task_alias", "") or "")
             task_cid = str(getattr(task, "task_cid", "") or "")
