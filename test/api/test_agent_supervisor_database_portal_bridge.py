@@ -130,6 +130,7 @@ def _seed_interrupted_database_portal_attempt(
     *,
     owner_session_id: str = "",
     seed_nested_state: bool = True,
+    task_track: str = "implementation",
 ) -> tuple[
     Path,
     DatabaseImplementationDaemon,
@@ -201,6 +202,7 @@ def _seed_interrupted_database_portal_attempt(
                     "task_id": "PCTDD-001",
                     "goal_cid": "goal:pctdd",
                     "status": "ready",
+                    "track": task_track,
                     "validation_commands": ["python -m pytest focused.py"],
                 }
             ],
@@ -377,6 +379,7 @@ def _seed_blocked_pre_provider_setup_failure(
     monkeypatch: pytest.MonkeyPatch,
     *,
     setup_event_types: tuple[str, ...] = (),
+    task_track: str = "implementation",
 ) -> tuple[
     Path,
     DatabaseImplementationDaemon,
@@ -388,6 +391,7 @@ def _seed_blocked_pre_provider_setup_failure(
         _seed_interrupted_database_portal_attempt(
             tmp_path,
             seed_nested_state=False,
+            task_track=task_track,
         )
     )
 
@@ -553,6 +557,81 @@ def _rewrite_active_event_chain(
     )
 
 
+def _set_terminal_submodule_cleanup(
+    events: list[dict[str, object]],
+    cleanup: list[dict[str, object]],
+) -> None:
+    """Repeat one test cleanup population across every terminal witness."""
+
+    cleanup_finished = next(
+        event for event in events if event.get("type") == "cleanup_finished"
+    )
+    failed_cleanup = next(
+        event
+        for event in events
+        if event.get("type") == "failed_setup_worktree_cleanup"
+    )
+    exception = next(
+        event
+        for event in events
+        if event.get("type") == "implementation_exception"
+    )
+    finished = next(
+        event
+        for event in events
+        if event.get("type") == "implementation_finished"
+    )
+    cleanup_result = json.loads(
+        json.dumps(failed_cleanup["cleanup_result"])
+    )
+    cleanup_result["submodule_cleanup"] = cleanup
+    cleanup_finished["submodule_cleanup"] = json.loads(json.dumps(cleanup))
+    failed_cleanup["cleanup_result"] = json.loads(json.dumps(cleanup_result))
+    exception["cleanup_result"] = json.loads(json.dumps(cleanup_result))
+    finished["cleanup_result"] = json.loads(json.dumps(cleanup_result))
+    finished_exception = dict(finished["exception_result"])
+    finished_exception["cleanup_result"] = json.loads(
+        json.dumps(cleanup_result)
+    )
+    finished["exception_result"] = finished_exception
+
+
+def _successful_submodule_cleanup(
+    *,
+    nested: bool = False,
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for name in ("ipfs_accelerate", "ipfs_datasets", "ipfs_kit"):
+        record: dict[str, object] = {
+            "path": f"external/{name}",
+            "branch": f"implementation/pctdd-034-submodule-external-{name}",
+            "removed_worktree": True,
+            "deleted_branch": True,
+            "cleaned": True,
+            "errors": [],
+            "nested_submodule_cleanup": [],
+            "independent_checkout": False,
+        }
+        if nested and name == "ipfs_kit":
+            record["nested_submodule_cleanup"] = [
+                {
+                    "path": "external/ipfs_kit/external/ipfs_faiss_py",
+                    "branch": (
+                        "implementation/pctdd-034-submodule-external-"
+                        "ipfs-kit-external-ipfs-faiss-py"
+                    ),
+                    "removed_worktree": False,
+                    "deleted_branch": False,
+                    "cleaned": True,
+                    "errors": [],
+                    "nested_submodule_cleanup": [],
+                    "independent_checkout": True,
+                }
+            ]
+        records.append(record)
+    return records
+
+
 def test_exact_nested_setup_failure_rearms_without_same_turn_dispatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -621,6 +700,263 @@ def test_exact_nested_setup_failure_rearms_without_same_turn_dispatch(
         daemon.close()
 
 
+@pytest.mark.parametrize("task_track", ("analysis", "proof", "ops"))
+def test_nested_setup_failure_rearm_binds_sealed_projection_track(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    task_track: str,
+) -> None:
+    _repo, daemon, bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(
+            tmp_path,
+            monkeypatch,
+            task_track=task_track,
+        )
+    )
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+
+        evidence = bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        )
+
+        assert evidence is not None
+        assert evidence["provider_dispatched"] is False
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_rearm_rejects_track_not_matching_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(
+            tmp_path,
+            monkeypatch,
+            task_track="analysis",
+        )
+    )
+    _rewrite_active_event_chain(
+        paths,
+        lambda events: next(
+            event
+            for event in events
+            if event.get("type") == "task_selected"
+        ).__setitem__("track", "implementation"),
+    )
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "nested_cleanup",
+    (False, True),
+    ids=("pctdd-034-preserved-population", "recursive-population"),
+)
+def test_nested_setup_failure_rearm_accepts_exact_successful_submodule_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    nested_cleanup: bool,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    cleanup = _successful_submodule_cleanup(nested=nested_cleanup)
+    _rewrite_active_event_chain(
+        paths,
+        lambda events: _set_terminal_submodule_cleanup(events, cleanup),
+    )
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+
+        evidence = bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        )
+
+        assert evidence is not None
+        assert evidence["provider_dispatched"] is False
+        assert evidence["validation_attempted"] is False
+        assert evidence["commit_created"] is False
+        assert evidence["merge_attempted"] is False
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "unknown_field",
+        "unclean",
+        "errors",
+        "integer_boolean",
+        "malformed_path",
+        "nested_unclean",
+        "nested_unknown_field",
+        "path_traversal",
+        "absolute_path",
+        "noncanonical_path",
+        "backslash_path",
+        "duplicate_path",
+        "duplicate_branch",
+        "nested_path_escape",
+    ),
+)
+def test_nested_setup_failure_rearm_rejects_nonexact_submodule_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    cleanup = _successful_submodule_cleanup(nested=True)
+    outer = cleanup[-1]
+    nested = outer["nested_submodule_cleanup"][0]
+    if mutation == "unknown_field":
+        outer["provider_dispatched"] = False
+    elif mutation == "unclean":
+        outer["cleaned"] = False
+    elif mutation == "errors":
+        outer["errors"] = ["cleanup failed"]
+    elif mutation == "integer_boolean":
+        outer["removed_worktree"] = 1
+    elif mutation == "malformed_path":
+        outer["path"] = ""
+    elif mutation == "nested_unclean":
+        nested["cleaned"] = False
+    elif mutation == "nested_unknown_field":
+        nested["unexpected"] = "field"
+    elif mutation == "path_traversal":
+        outer["path"] = "../external/ipfs_accelerate"
+    elif mutation == "absolute_path":
+        outer["path"] = "/external/ipfs_accelerate"
+    elif mutation == "noncanonical_path":
+        outer["path"] = "external//ipfs_accelerate"
+    elif mutation == "backslash_path":
+        outer["path"] = "external\\ipfs_accelerate"
+    elif mutation == "duplicate_path":
+        cleanup[1]["path"] = outer["path"]
+    elif mutation == "duplicate_branch":
+        cleanup[1]["branch"] = outer["branch"]
+    else:
+        nested["path"] = "external/ipfs_faiss_py"
+    _rewrite_active_event_chain(
+        paths,
+        lambda events: _set_terminal_submodule_cleanup(events, cleanup),
+    )
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_rearm_rejects_cleanup_population_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+
+    def mismatch(events: list[dict[str, object]]) -> None:
+        cleanup = _successful_submodule_cleanup()
+        _set_terminal_submodule_cleanup(events, cleanup)
+        exception = next(
+            event
+            for event in events
+            if event.get("type") == "implementation_exception"
+        )
+        exception_cleanup = dict(exception["cleanup_result"])
+        exception_cleanup["submodule_cleanup"] = []
+        exception["cleanup_result"] = exception_cleanup
+
+    _rewrite_active_event_chain(paths, mismatch)
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is None
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("effect", ("provider", "validation", "commit", "merge"))
+def test_nested_setup_failure_rearm_rejects_effect_with_submodule_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    effect: str,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+
+    def add_effect(events: list[dict[str, object]]) -> None:
+        _set_terminal_submodule_cleanup(
+            events,
+            _successful_submodule_cleanup(),
+        )
+        finished = next(
+            event
+            for event in events
+            if event.get("type") == "implementation_finished"
+        )
+        if effect == "provider":
+            finished["provider_dispatched"] = True
+        elif effect == "validation":
+            finished["validation_result"] = {
+                "attempted": True,
+                "passed": True,
+            }
+        elif effect == "commit":
+            finished["commit_result"] = {
+                "committed": True,
+                "commit": "a" * 40,
+            }
+        else:
+            finished["merge_result"] = {
+                "attempted": True,
+                "merged": True,
+            }
+
+    _rewrite_active_event_chain(paths, add_effect)
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is None
+    finally:
+        daemon.close()
+
+
 def test_nested_setup_failure_rearm_accepts_exact_legacy_empty_reconciliation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -653,6 +989,63 @@ def test_nested_setup_failure_rearm_accepts_exact_legacy_empty_reconciliation(
         assert len(result["unknown_outcome_rearms"]) == 1
         task = daemon.task_source.get(attempt.task_cid)
         assert task is not None and task.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_legacy_empty_reconciliation_rejects_real_saga(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    try:
+        phases = daemon.phase_history(attempt.attempt_id)
+        failed_body = dict(phases[-1]["body"])
+        failed_body["terminal_reconciliation"] = {}
+        daemon._require_connection().execute(
+            """
+            UPDATE attempt_phases
+            SET body_json = ?
+            WHERE attempt_id = ? AND phase = 'failed'
+            """,
+            [
+                json.dumps(failed_body, separators=(",", ":"), sort_keys=True),
+                attempt.attempt_id,
+            ],
+        )
+        daemon._record_database_portal_terminal_reconciliation_barrier(
+            attempt,
+            {
+                "intended_database_disposition": "blocked_unknown_outcome",
+                "evidence_id": content_identity({"kind": "nested"}),
+                "prepared_reconciliation_receipt_id": content_identity(
+                    {"kind": "prepared"}
+                ),
+                "commit_barrier_receipt_id": content_identity(
+                    {"kind": "barrier"}
+                ),
+            },
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        saga_before = dict(
+            daemon._database_portal_terminal_reconciliation_saga(attempt)
+            or {}
+        )
+        assert saga_before["stage"] == "commit_barrier"
+
+        for _ in range(2):
+            assert daemon._database_portal_no_provider_rearm_evidence(
+                task,
+                task.body["completion_receipt"],
+            ) is None
+            assert dict(
+                daemon._database_portal_terminal_reconciliation_saga(attempt)
+                or {}
+            ) == saga_before
+            assert daemon.task_source.get(attempt.task_cid).status == "blocked"
     finally:
         daemon.close()
 

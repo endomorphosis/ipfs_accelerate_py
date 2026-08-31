@@ -78784,6 +78784,9 @@ class DatabaseImplementationDaemon:
         if not exact_task:
             return None
         phases = self.phase_history(attempt.attempt_id)
+        failed_phase_body = (
+            phases[-1].get("body") if phases else None
+        )
         if (
             [str(item.get("phase") or "") for item in phases]
             != [
@@ -78792,10 +78795,21 @@ class DatabaseImplementationDaemon:
                 ATTEMPT_PHASE_FAILED,
             ]
             or not self._database_no_provider_failed_phase_body_is_admissible(
-                phases[-1].get("body")
+                failed_phase_body
             )
         ):
             return None
+        if "terminal_reconciliation" in failed_phase_body:
+            try:
+                if (
+                    self._database_portal_terminal_reconciliation_saga(
+                        attempt
+                    )
+                    is not None
+                ):
+                    return None
+            except Exception:
+                return None
         try:
             if (
                 self.provider_invocation_recorded(

@@ -27,7 +27,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, fields
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 from ..runtime.event_log import EVENT_LOG_MANIFEST_SCHEMA
@@ -138,6 +138,18 @@ _EVENT_ENVELOPE_FIELDS: Final[frozenset[str]] = frozenset(
         "sequence",
         "previous_event_id",
         "event_id",
+    }
+)
+_SUBMODULE_CLEANUP_RECORD_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "path",
+        "branch",
+        "removed_worktree",
+        "deleted_branch",
+        "cleaned",
+        "errors",
+        "nested_submodule_cleanup",
+        "independent_checkout",
     }
 )
 _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
@@ -1959,13 +1971,13 @@ class DatabasePortalExecutionBridge:
             )
         return text
 
-    def _projection_task_identity(
+    def _projection_task(
         self,
         paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any],
         projection_text: str | None = None,
-    ) -> dict[str, str]:
-        """Return the current Portal authority's identity for the sealed task.
+    ) -> Any:
+        """Parse the sealed task through the current Portal task authority.
 
         Importing the parser locally avoids a module-import cycle: the Portal
         daemon imports this bridge only while constructing a database-backed
@@ -2000,7 +2012,17 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "Portal task projection identity does not match the claimed task"
             )
-        task = tasks[0]
+        return tasks[0]
+
+    def _projection_task_identity(
+        self,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        projection_text: str | None = None,
+    ) -> dict[str, str]:
+        """Return the current Portal authority's identity for the sealed task."""
+
+        task = self._projection_task(paths, binding, projection_text)
         identity = {
             "task_id": task.task_id,
             "canonical_task_key": str(task.canonical_task_key or ""),
@@ -2841,6 +2863,82 @@ class DatabasePortalExecutionBridge:
         return manifest, records
 
     @staticmethod
+    def _successful_submodule_cleanup(value: Any) -> bool:
+        """Validate the producer's closed, recursively successful schema.
+
+        This validator is intentionally suitable only for negative provider
+        evidence.  It accepts no cleanup claim with an error, an incomplete
+        child, an unknown field, or a malformed scalar.  The modest depth and
+        population bounds keep replay of an owner-private but corrupt journal
+        deterministic; the cleanup producer normally caps nesting at ten.
+        """
+
+        if not isinstance(value, list):
+            return False
+        pending: list[tuple[list[Any], int, str]] = [(value, 0, "")]
+        population = 0
+        paths: set[str] = set()
+        branches: set[str] = set()
+        while pending:
+            records, depth, parent_path = pending.pop()
+            if depth > 32:
+                return False
+            population += len(records)
+            if population > 4096:
+                return False
+            for record in records:
+                if (
+                    not isinstance(record, Mapping)
+                    or set(record) != _SUBMODULE_CLEANUP_RECORD_FIELDS
+                ):
+                    return False
+                path = str(record.get("path") or "")
+                branch = str(record.get("branch") or "")
+                canonical_path = PurePosixPath(path).as_posix()
+                if (
+                    not isinstance(record.get("path"), str)
+                    or not path
+                    or path != canonical_path
+                    or PurePosixPath(path).is_absolute()
+                    or any(
+                        part in {"", ".", ".."}
+                        for part in PurePosixPath(path).parts
+                    )
+                    or "\\" in path
+                    or "\x00" in path
+                    or (parent_path and not path.startswith(parent_path + "/"))
+                    or path in paths
+                    or not isinstance(record.get("branch"), str)
+                    or not branch
+                    or branch in branches
+                    or any(
+                        not isinstance(record.get(field), bool)
+                        for field in (
+                            "removed_worktree",
+                            "deleted_branch",
+                            "cleaned",
+                            "independent_checkout",
+                        )
+                    )
+                    or record.get("cleaned") is not True
+                    or record.get("errors") != []
+                    or not isinstance(
+                        record.get("nested_submodule_cleanup"), list
+                    )
+                ):
+                    return False
+                paths.add(path)
+                branches.add(branch)
+                pending.append(
+                    (
+                        record["nested_submodule_cleanup"],
+                        depth + 1,
+                        path,
+                    )
+                )
+        return True
+
+    @staticmethod
     def _validate_no_provider_event_shape(event: Mapping[str, Any]) -> None:
         event_type = str(event.get("type") or "")
         expected = _NO_PROVIDER_EVENT_FIELDS.get(event_type)
@@ -2978,8 +3076,9 @@ class DatabasePortalExecutionBridge:
                     not isinstance(event.get(name), bool)
                     for name in ("removed_worktree", "deleted_branch", "cleaned")
                 )
-                or not isinstance(event.get("submodule_cleanup"), list)
-                or event.get("submodule_cleanup") != []
+                or not DatabasePortalExecutionBridge._successful_submodule_cleanup(
+                    event.get("submodule_cleanup")
+                )
                 or not isinstance(event.get("lifecycle_finalize"), Mapping)
             ):
                 raise DatabasePortalBridgeError(
@@ -3395,11 +3494,28 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "database Portal task projection identity changed"
                 )
-            identity = self._projection_task_identity(
-                paths,
-                binding,
-                projection,
-            )
+            projection_task = self._projection_task(paths, binding, projection)
+            identity = {
+                "task_id": projection_task.task_id,
+                "canonical_task_key": str(
+                    projection_task.canonical_task_key or ""
+                ),
+                "canonical_task_cid": str(
+                    projection_task.canonical_task_cid or ""
+                ),
+                "board_namespace": str(
+                    projection_task.board_namespace or ""
+                ),
+            }
+            if any(not value for value in identity.values()):
+                raise DatabasePortalBridgeError(
+                    "Portal task projection lacks a complete canonical identity"
+                )
+            projection_track = str(projection_task.track or "")
+            if not projection_track:
+                raise DatabasePortalBridgeError(
+                    "Portal task projection lacks its task track"
+                )
             state = dict(sealed["state"])
             state_digest = str(sealed["state_digest"])
             events = list(sealed["events"])
@@ -3598,7 +3714,9 @@ class DatabasePortalExecutionBridge:
             and cleanup_result == exception_cleanup == finished_cleanup
             and cleanup_result.get("worktree_path") == worktree_path
             and cleanup_result.get("branch") == branch
-            and cleanup_result.get("submodule_cleanup") == []
+            and self._successful_submodule_cleanup(
+                cleanup_result.get("submodule_cleanup")
+            )
             and all(
                 adjacent_cleanup_event.get(field) == value
                 for field, value in cleanup_result.items()
@@ -3651,7 +3769,7 @@ class DatabasePortalExecutionBridge:
                     finished_event,
                 )
             )
-            and selected_event.get("track") == "implementation"
+            and selected_event.get("track") == projection_track
             and finished_event.get("task_cid") == nested_task_cid
             and finished_event.get("provider_dispatched") is False
             and finished_event.get("attempt_consumed") is True
