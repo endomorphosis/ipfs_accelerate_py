@@ -107477,18 +107477,31 @@ class DatabaseImplementationDaemon:
             if callable(get_queue_entry)
             else None
         )
+        queue_reason_matches = (
+            queue_entry is not None
+            and str(getattr(queue_entry, "reason", "") or "") == queue_reason
+            and int(getattr(queue_entry, "retry_not_before_ms", -1))
+            == retry_not_before_ms
+        )
         if (
             isinstance(retry_not_before_ms, bool)
             or not isinstance(retry_not_before_ms, int)
             or retry_not_before_ms < 0
-            or queue_entry is None
-            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
-            or int(getattr(queue_entry, "retry_not_before_ms", -1))
-            != retry_not_before_ms
         ):
             raise DatabaseImplementationConflictError(
                 "landed completion recovery queue state changed"
             )
+        if not queue_reason_matches:
+            # Owner may deny same-attempt cooldown rebind after a leftover
+            # retrying CAS.  The control receipt stays the claim authority.
+            if (
+                queue_entry is None
+                or str(getattr(task, "status", "") or "").strip().lower()
+                != "retrying"
+            ):
+                raise DatabaseImplementationConflictError(
+                    "landed completion recovery queue state changed"
+                )
         return {
             "receipt": dict(receipt),
             "landed_completion_recovery_evidence": recovery,
