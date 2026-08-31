@@ -107449,7 +107449,8 @@ class DatabaseImplementationDaemon:
             or coordination.get("attempt_id") != attempt.attempt_id
             or coordination.get("claim_id") != attempt.claim_id
             or coordination.get("attempt_number") != int(attempt.attempt_number)
-            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_status")
+            not in {"blocked", "retrying"}
             or type(task_revision) is not int
             or receipt.get("control_expected_revision") != task_revision - 1
             or receipt.get("control_expected_revision")
