@@ -20394,6 +20394,7 @@ class DatabasePortalExecutionBridge:
         validation_dag = validation.get("validation_dag_receipt")
         results = validation.get("results")
         stages = validation.get("stages")
+        validation_violation = validation.get("protected_path_violation")
         nodes = validation_dag.get("nodes") if isinstance(validation_dag, Mapping) else None
         changed_paths = (
             proposal_gate.get("changed_paths")
@@ -20410,7 +20411,11 @@ class DatabasePortalExecutionBridge:
             or validation.get("target_commit") != baseline_commit
             or validation.get("reason") != "implementation_protected_path_mutated"
             or validation.get("returncode") != 1
-            or validation.get("protected_path_violation") != incident
+            or not isinstance(validation_violation, Mapping)
+            or set(map(str, validation_violation))
+            != set(incident_semantic_fields)
+            or dict(validation_violation) != expected_finished_violation
+            or dict(validation_violation) != dict(finished_violation)
             or not isinstance(results, list)
             or not results
             or any(
