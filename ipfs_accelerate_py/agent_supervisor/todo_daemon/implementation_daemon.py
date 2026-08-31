@@ -111,6 +111,7 @@ from ..merge.checkout_lock import (
     acquire_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_repository_matches,
+    checkout_mutation_lease_state,
     checkout_mutation_lock_path,
     checkout_repository_id,
     crash_fence_reconciliation_lock_path,
@@ -9359,7 +9360,7 @@ class PortalImplementationDaemon:
                 separators=(",", ":"),
                 sort_keys=True,
             ).encode("utf-8")
-        except (TypeError, ValueError):
+        except (RecursionError, TypeError, ValueError):
             return ""
         return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
@@ -9706,11 +9707,2363 @@ class PortalImplementationDaemon:
             "lifecycle_fence": record.fence,
         }
 
+    def _interrupted_database_validation_checkout_lease_authority(
+        self,
+        lease: CheckoutMutationLease,
+        authority: Mapping[str, Any],
+        *,
+        operation: str,
+    ) -> dict[str, Any]:
+        """Prove one already-held checkout lease still owns this recovery.
+
+        The repository checkout lock is deliberately non-reentrant.  Recovery
+        code that already owns it may reuse that custody only while the exact
+        inode, metadata, task, attempt, branch, database evidence, and
+        operation remain current.  Any malformed or replaced record is an
+        inconclusive fence, never permission to reacquire or continue.
+        """
+
+        def invalid(reason: str) -> dict[str, Any]:
+            return {
+                "current": False,
+                "reason": reason,
+                "operation": operation,
+            }
+
+        task = authority.get("task")
+        workspace = authority.get("workspace_path")
+        attempt = authority.get("attempt")
+        original_branch = str(authority.get("original_branch") or "")
+        evidence_id = str(authority.get("database_evidence_id") or "")
+        if (
+            not isinstance(lease, CheckoutMutationLease)
+            or not isinstance(task, PortalTask)
+            or not isinstance(workspace, Path)
+            or not isinstance(attempt, int)
+            or isinstance(attempt, bool)
+            or attempt <= 0
+            or not original_branch
+            or not evidence_id
+            or operation
+            not in {
+                "interrupted_database_validation_recovery",
+                "interrupted_database_validation_self_deadlock_clearance",
+            }
+        ):
+            return invalid("lease_recovery_authority_invalid")
+        try:
+            expected_lock_path = self._repo_merge_lock_path().resolve()
+            observed_lock_path = lease.lock_path.resolve()
+            expected_state_dir = str(self.state_path.parent.resolve())
+            expected_state_path = str(self.state_path.resolve())
+            expected_worktree_root = str(self.repo_root.resolve())
+        except (OSError, RuntimeError):
+            return invalid("lease_path_authority_unavailable")
+        if observed_lock_path != expected_lock_path:
+            return invalid("lease_path_mismatch")
+
+        before_state = checkout_mutation_lease_state(lease)
+        observed = read_checkout_mutation_lease(lease.lock_path)
+        after_state = checkout_mutation_lease_state(lease)
+        if before_state != "current" or after_state != "current":
+            return invalid("lease_replaced_or_inconclusive")
+        if (
+            observed is None
+            or observed.device != lease.device
+            or observed.inode != lease.inode
+            or observed.lease_id != lease.lease_id
+            or dict(observed.metadata) != dict(lease.metadata)
+        ):
+            return invalid("lease_identity_or_metadata_changed")
+        metadata = dict(lease.metadata)
+        repository_match = checkout_lock_repository_matches(
+            metadata,
+            self.repo_root,
+        )
+        try:
+            metadata_attempt = int(metadata.get("attempt") or 0)
+            metadata_pid = int(metadata.get("pid") or 0)
+        except (TypeError, ValueError):
+            return invalid("lease_owner_metadata_malformed")
+        if (
+            metadata.get("kind") != "merge"
+            or repository_match is not True
+            or str(metadata.get("worktree_root") or "")
+            != expected_worktree_root
+            or str(metadata.get("state_dir") or "") != expected_state_dir
+            or str(metadata.get("state_path") or "") != expected_state_path
+            or str(metadata.get("task_id") or "") != task.task_id
+            or metadata_attempt != attempt
+            or metadata_pid != os.getpid()
+            or str(metadata.get("branch") or "") != original_branch
+            or str(metadata.get("operation") or "") != operation
+            or str(metadata.get("database_evidence_id") or "")
+            != evidence_id
+        ):
+            return invalid("lease_owner_metadata_mismatch")
+        return {
+            "current": True,
+            "reason": "exact_recovery_checkout_lease_current",
+            "operation": operation,
+            "lease_id": lease.lease_id,
+            "task_id": task.task_id,
+            "attempt": attempt,
+            "workspace_path": str(workspace),
+        }
+
+    def _interrupted_validation_self_deadlock_clearance_path(
+        self,
+        *,
+        database_evidence_id: str,
+        task_id: str,
+        attempt: int,
+    ) -> Path | None:
+        """Return the DB-evidence-nominated immutable clearance path."""
+
+        if (
+            not re.fullmatch(r"sha256:[0-9a-f]{64}", database_evidence_id)
+            or not task_id
+            or not isinstance(attempt, int)
+            or isinstance(attempt, bool)
+            or attempt <= 0
+        ):
+            return None
+        token = hashlib.sha256(
+            f"{database_evidence_id}\0{task_id}\0{attempt}".encode()
+        ).hexdigest()
+        return self._implementation_protected_incident_path().parent / (
+            "interrupted-validation-self-deadlock-clearance-"
+            f"{token}.json"
+        )
+
+    @staticmethod
+    def _load_interrupted_validation_clearance_authority_file(
+        path: Path,
+    ) -> tuple[dict[str, Any] | None, str]:
+        """Read one owned bounded JSON object through pinned no-follow FDs."""
+
+        parent_descriptor = -1
+        descriptor = -1
+        try:
+            parent_descriptor, filename = _open_no_follow_parent(path)
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+            )
+            descriptor = os.open(
+                filename,
+                flags,
+                dir_fd=parent_descriptor,
+            )
+        except FileNotFoundError:
+            if descriptor >= 0:
+                os.close(descriptor)
+            if parent_descriptor >= 0:
+                os.close(parent_descriptor)
+            return None, "absent"
+        except OSError:
+            if descriptor >= 0:
+                os.close(descriptor)
+            if parent_descriptor >= 0:
+                os.close(parent_descriptor)
+            return None, "invalid"
+
+        try:
+            before = os.fstat(descriptor)
+            named_before = os.stat(
+                filename,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+            if (
+                not stat_module.S_ISREG(before.st_mode)
+                or before.st_uid != os.geteuid()
+                or before.st_nlink != 1
+                or before.st_size < 2
+                or before.st_size > 262_144
+                or _private_file_identity(before)
+                != _private_file_identity(named_before)
+            ):
+                return None, "invalid"
+            payload = bytearray()
+            while len(payload) <= 262_144:
+                chunk = os.read(
+                    descriptor,
+                    min(65_536, 262_145 - len(payload)),
+                )
+                if not chunk:
+                    break
+                payload.extend(chunk)
+            after = os.fstat(descriptor)
+            named_after = os.stat(
+                filename,
+                dir_fd=parent_descriptor,
+                follow_symlinks=False,
+            )
+            if (
+                len(payload) != before.st_size
+                or len(payload) > 262_144
+                or _private_file_identity(before)
+                != _private_file_identity(after)
+                or _private_file_identity(before)
+                != _private_file_identity(named_after)
+            ):
+                return None, "invalid"
+        except OSError:
+            return None, "invalid"
+        finally:
+            os.close(descriptor)
+            os.close(parent_descriptor)
+
+        def closed_object(
+            pairs: list[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate clearance authority key")
+                result[key] = value
+            return result
+
+        try:
+            record = json.loads(
+                bytes(payload).decode(),
+                object_pairs_hook=closed_object,
+                parse_constant=lambda _value: (_ for _ in ()).throw(
+                    ValueError("nonfinite clearance authority value")
+                ),
+            )
+        except (
+            RecursionError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ):
+            return None, "invalid"
+        return (record, "exact") if isinstance(record, dict) else (None, "invalid")
+
+    def _interrupted_validation_control_source_authority(
+        self,
+    ) -> dict[str, Any]:
+        """Bind clean, stable implementation and shared-control sources.
+
+        Historical recovery can remove a durable fail-closed incident.  It
+        therefore must not execute from an uncommitted implementation draft,
+        or while the shared checkout still has an uncommitted nested gitlink.
+        Only exact clean Git repositories with stable HEAD/tree identities are
+        admitted; dirty-path details are deliberately not copied into public
+        recovery evidence.
+        """
+
+        try:
+            implementation_root = Path(__file__).resolve(strict=True).parents[3]
+            shared_root = self.repo_root.resolve(strict=True)
+        except (IndexError, OSError, RuntimeError):
+            return {}
+        roots = (
+            ("implementation_source", implementation_root),
+            ("shared_control", shared_root),
+        )
+        authority: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "interrupted-validation-control-source-authority@1"
+            ),
+            "repositories": {},
+        }
+        seen: dict[Path, dict[str, Any]] = {}
+        for label, root in roots:
+            if root in seen:
+                authority["repositories"][label] = dict(seen[root])
+                continue
+            first_root = self._run_git(
+                ["rev-parse", "--show-toplevel"],
+                cwd=root,
+            )
+            first_head = self._run_git(
+                ["rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=root,
+            )
+            first_tree = self._run_git(
+                ["rev-parse", "--verify", "HEAD^{tree}"],
+                cwd=root,
+            )
+            first_status = self._run_git(
+                ["status", "--porcelain", "--untracked-files=all"],
+                cwd=root,
+            )
+            second_head = self._run_git(
+                ["rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=root,
+            )
+            second_tree = self._run_git(
+                ["rev-parse", "--verify", "HEAD^{tree}"],
+                cwd=root,
+            )
+            second_status = self._run_git(
+                ["status", "--porcelain", "--untracked-files=all"],
+                cwd=root,
+            )
+            head = first_head.stdout.strip()
+            tree = first_tree.stdout.strip()
+            try:
+                observed_root = Path(first_root.stdout.strip()).resolve(strict=True)
+            except (OSError, RuntimeError):
+                return {}
+            if (
+                first_root.returncode != 0
+                or observed_root != root
+                or any(
+                    result.returncode != 0
+                    for result in (
+                        first_head,
+                        first_tree,
+                        first_status,
+                        second_head,
+                        second_tree,
+                        second_status,
+                    )
+                )
+                or first_status.stdout
+                or second_status.stdout
+                or not re.fullmatch(r"[0-9a-f]{40,64}", head)
+                or not re.fullmatch(r"[0-9a-f]{40,64}", tree)
+                or second_head.stdout.strip() != head
+                or second_tree.stdout.strip() != tree
+            ):
+                return {}
+            record = {
+                "root": str(root),
+                "head": head,
+                "tree": tree,
+                "clean": True,
+            }
+            seen[root] = record
+            authority["repositories"][label] = dict(record)
+        return authority
+
+    def _interrupted_validation_historical_protected_git_authority(
+        self,
+        *,
+        workspace: Path,
+        before_head: str,
+        after_head: str,
+        protected_paths: Sequence[str],
+    ) -> dict[str, Any]:
+        """Prove tracked protected blobs/modes did not change across recovery.
+
+        This is only a supplement for the released historical shape whose
+        in-memory workspace snapshot was never persisted.  Every protected
+        path must be an exact tracked blob at both commits; absent, directory,
+        or ambiguous entries fail closed.  The caller separately verifies the
+        signed event-chain assertion that the old before/after snapshots had
+        no path mutation and compares the event-derived shared identities.
+        """
+
+        exact_paths = tuple(sorted(set(map(str, protected_paths))))
+        if (
+            not exact_paths
+            or not re.fullmatch(r"[0-9a-f]{40}", before_head)
+            or not re.fullmatch(r"[0-9a-f]{40}", after_head)
+        ):
+            return {}
+
+        def tree_entries(ref: str) -> dict[str, dict[str, str]] | None:
+            result = self._run_git(
+                ["ls-tree", "-z", "--full-tree", ref, "--", *exact_paths],
+                cwd=workspace,
+            )
+            if result.returncode != 0:
+                return None
+            entries: dict[str, dict[str, str]] = {}
+            for encoded in result.stdout.split("\0"):
+                if not encoded:
+                    continue
+                try:
+                    metadata, name = encoded.split("\t", 1)
+                    mode, object_type, object_id = metadata.split(" ", 2)
+                except ValueError:
+                    return None
+                if (
+                    name in entries
+                    or name not in exact_paths
+                    or object_type != "blob"
+                    or mode not in {"100644", "100755", "120000"}
+                    or not re.fullmatch(r"[0-9a-f]{40,64}", object_id)
+                ):
+                    return None
+                entries[name] = {
+                    "mode": mode,
+                    "type": object_type,
+                    "object_id": object_id,
+                }
+            return entries if set(entries) == set(exact_paths) else None
+
+        before_entries = tree_entries(before_head)
+        after_entries = tree_entries(after_head)
+        diff = self._run_git(
+            [
+                "diff",
+                "--quiet",
+                "--no-ext-diff",
+                before_head,
+                after_head,
+                "--",
+                *exact_paths,
+            ],
+            cwd=workspace,
+        )
+        status = self._run_git(
+            [
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+                "--",
+                *exact_paths,
+            ],
+            cwd=workspace,
+        )
+        if (
+            before_entries is None
+            or after_entries is None
+            or before_entries != after_entries
+            or diff.returncode != 0
+            or status.returncode != 0
+            or status.stdout
+        ):
+            return {}
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "interrupted-validation-protected-git-authority@1"
+            ),
+            "before_commit": before_head,
+            "after_commit": after_head,
+            "protected_entries": before_entries,
+            "working_tree_clean_for_protected_paths": True,
+        }
+
+    @staticmethod
+    def _interrupted_validation_protected_identity_projection(
+        identity: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Return the exact Git-observable protected identity projection."""
+
+        if not isinstance(identity, Mapping):
+            return None
+        if identity.get("state") == "missing":
+            return {"state": "missing"} if set(identity) == {"state"} else None
+        base_fields = {
+            "state",
+            "kind",
+            "device",
+            "inode",
+            "mode",
+            "links",
+            "uid",
+            "gid",
+            "size",
+            "mtime_ns",
+            "ctime_ns",
+        }
+        if identity.get("state") != "present":
+            return None
+        kind = str(identity.get("kind") or "")
+        expected_fields = set(base_fields)
+        if kind == "regular_file":
+            expected_fields.add("sha256")
+            digest = str(identity.get("sha256") or "")
+            if not re.fullmatch(r"[0-9a-f]{64}", digest):
+                return None
+            content = {"sha256": digest}
+        elif kind == "symlink":
+            expected_fields.add("symlink_target")
+            target = identity.get("symlink_target")
+            if not isinstance(target, str):
+                return None
+            content = {"symlink_target": target}
+        else:
+            return None
+        if set(identity) != expected_fields:
+            return None
+        numeric_fields = (
+            "device",
+            "inode",
+            "mode",
+            "links",
+            "uid",
+            "gid",
+            "size",
+            "mtime_ns",
+            "ctime_ns",
+        )
+        if any(
+            not isinstance(identity.get(field), int)
+            or isinstance(identity.get(field), bool)
+            or int(identity[field]) < 0
+            for field in numeric_fields
+        ):
+            return None
+        try:
+            raw_mode = int(identity.get("mode"))
+            size = int(identity.get("size"))
+        except (TypeError, ValueError):
+            return None
+        if size < 0:
+            return None
+        mode = (
+            "120000"
+            if kind == "symlink"
+            else "100755"
+            if raw_mode & 0o111
+            else "100644"
+        )
+        return {
+            "state": "present",
+            "kind": kind,
+            "mode": mode,
+            "size": size,
+            **content,
+        }
+
+    def _interrupted_validation_shared_protected_transition_authority(
+        self,
+        *,
+        event_paths: Mapping[str, Mapping[str, Any]],
+        current_snapshot: Mapping[str, Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Bind an old event state to current shared bytes via trusted commits."""
+
+        configured_paths = tuple(
+            sorted(set(map(str, self.implementation_protected_paths)))
+        )
+        current_shared = current_snapshot.get("shared_checkout")
+        current_paths = (
+            current_shared.get("paths")
+            if isinstance(current_shared, Mapping)
+            else None
+        )
+        current_head = str(
+            current_shared.get("git_head")
+            if isinstance(current_shared, Mapping)
+            else ""
+        )
+        if (
+            not configured_paths
+            or sorted(map(str, event_paths)) != list(configured_paths)
+            or not isinstance(current_paths, Mapping)
+            or sorted(map(str, current_paths)) != list(configured_paths)
+            or not re.fullmatch(r"[0-9a-f]{40}", current_head)
+        ):
+            return {}
+        projected_event: dict[str, dict[str, Any]] = {}
+        projected_current: dict[str, dict[str, Any]] = {}
+        for relative in configured_paths:
+            event_projection = (
+                self._interrupted_validation_protected_identity_projection(
+                    event_paths.get(relative)
+                )
+            )
+            current_projection = (
+                self._interrupted_validation_protected_identity_projection(
+                    current_paths.get(relative)
+                )
+            )
+            if event_projection is None or current_projection is None:
+                return {}
+            projected_event[relative] = event_projection
+            projected_current[relative] = current_projection
+
+        history = self._run_git(
+            [
+                "log",
+                "--format=%H",
+                "--max-count=129",
+                current_head,
+                "--",
+                *configured_paths,
+            ],
+            cwd=self.repo_root,
+        )
+        if history.returncode != 0:
+            return {}
+        candidates = [
+            line.strip()
+            for line in history.stdout.splitlines()
+            if line.strip()
+        ]
+        if (
+            not candidates
+            or len(candidates) > 128
+            or any(not re.fullmatch(r"[0-9a-f]{40}", item) for item in candidates)
+        ):
+            return {}
+
+        blob_cache: dict[str, bytes] = {}
+
+        def projected_tree(commit: str) -> dict[str, dict[str, Any]] | None:
+            tree = self._run_git(
+                [
+                    "ls-tree",
+                    "-z",
+                    "--full-tree",
+                    commit,
+                    "--",
+                    *configured_paths,
+                ],
+                cwd=self.repo_root,
+            )
+            if tree.returncode != 0:
+                return None
+            entries: dict[str, tuple[str, str]] = {}
+            for encoded in tree.stdout.split("\0"):
+                if not encoded:
+                    continue
+                try:
+                    metadata, name = encoded.split("\t", 1)
+                    mode, object_type, object_id = metadata.split(" ", 2)
+                except ValueError:
+                    return None
+                if (
+                    name in entries
+                    or name not in configured_paths
+                    or object_type != "blob"
+                    or mode not in {"100644", "100755", "120000"}
+                    or not re.fullmatch(r"[0-9a-f]{40,64}", object_id)
+                ):
+                    return None
+                entries[name] = (mode, object_id)
+            projected: dict[str, dict[str, Any]] = {}
+            for relative in configured_paths:
+                entry = entries.get(relative)
+                if entry is None:
+                    projected[relative] = {"state": "missing"}
+                    continue
+                mode, object_id = entry
+                content = blob_cache.get(object_id)
+                if content is None:
+                    try:
+                        size_result = subprocess.run(
+                            ["git", "cat-file", "-s", object_id],
+                            cwd=self.repo_root,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                        size = int(size_result.stdout.strip())
+                    except (OSError, TypeError, ValueError):
+                        return None
+                    if (
+                        size_result.returncode != 0
+                        or size < 0
+                        or size > 16 * 1024 * 1024
+                    ):
+                        return None
+                    try:
+                        blob = subprocess.run(
+                            ["git", "cat-file", "blob", object_id],
+                            cwd=self.repo_root,
+                            capture_output=True,
+                            check=False,
+                        )
+                    except OSError:
+                        return None
+                    if blob.returncode != 0 or len(blob.stdout) != size:
+                        return None
+                    content = bytes(blob.stdout)
+                    blob_cache[object_id] = content
+                size = len(content)
+                if mode == "120000":
+                    projected[relative] = {
+                        "state": "present",
+                        "kind": "symlink",
+                        "mode": mode,
+                        "size": size,
+                        "symlink_target": content.decode(
+                            "utf-8",
+                            errors="surrogateescape",
+                        ),
+                    }
+                else:
+                    projected[relative] = {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "mode": mode,
+                        "size": size,
+                        "sha256": hashlib.sha256(content).hexdigest(),
+                    }
+            return projected
+
+        matched_commits = [
+            commit
+            for commit in candidates
+            if projected_tree(commit) == projected_event
+        ]
+        if len(matched_commits) != 1:
+            return {}
+        matched_commit = matched_commits[0]
+        if not self._git_ref_is_ancestor_in_repo(
+            self.repo_root,
+            matched_commit,
+            current_head,
+        ):
+            return {}
+        before = {
+            "shared_checkout": {
+                "root": str(self.repo_root.resolve()),
+                "git_head": matched_commit,
+                "paths": dict(event_paths),
+            }
+        }
+        after = {
+            "shared_checkout": {
+                "root": str(self.repo_root.resolve()),
+                "git_head": current_head,
+                "paths": dict(current_paths),
+            }
+        }
+        mutations = self._implementation_protected_path_mutations(before, after)
+        if mutations:
+            transition = self._authorized_concurrent_protected_path_update(
+                workspace_path=Path(str(current_snapshot["workspace"]["root"])),
+                before=before,
+                after=after,
+                mutations=mutations,
+            )
+            if not transition:
+                return {}
+        else:
+            transition = {
+                "before_head": matched_commit,
+                "after_head": current_head,
+                "protected_paths": [],
+                "history_protected_paths": [],
+                "history_kind": "unchanged",
+                "merge_base": "",
+                "commits": [],
+            }
+        if projected_tree(current_head) != projected_current:
+            return {}
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "interrupted-validation-shared-protected-transition@1"
+            ),
+            "event_state_commit": matched_commit,
+            "current_commit": current_head,
+            "event_protected_paths": projected_event,
+            "current_protected_paths": projected_current,
+            "trusted_transition": transition,
+        }
+
+    def _interrupted_validation_candidate_git_authority(
+        self,
+        *,
+        workspace: Path,
+        current_branch: str,
+        baseline_ref: str,
+        before_head: str,
+        after_head: str,
+    ) -> dict[str, Any]:
+        """Return a stable clean candidate binding, or no authority."""
+
+        first_branch = self._git_current_branch(workspace)
+        first_head = self._resolved_commit_ref(workspace, "HEAD")
+        first_status = self._run_git(
+            ["status", "--porcelain", "--untracked-files=all"],
+            cwd=workspace,
+        )
+        second_branch = self._git_current_branch(workspace)
+        second_head = self._resolved_commit_ref(workspace, "HEAD")
+        second_status = self._run_git(
+            ["status", "--porcelain", "--untracked-files=all"],
+            cwd=workspace,
+        )
+        if (
+            workspace.is_symlink()
+            or not self._is_git_worktree(workspace)
+            or first_branch != current_branch
+            or second_branch != current_branch
+            or first_head != after_head
+            or second_head != after_head
+            or first_status.returncode != 0
+            or second_status.returncode != 0
+            or first_status.stdout
+            or second_status.stdout
+            or not self._git_ref_is_ancestor_in_repo(
+                workspace,
+                baseline_ref,
+                before_head,
+            )
+            or not self._git_ref_is_ancestor_in_repo(
+                workspace,
+                before_head,
+                after_head,
+            )
+        ):
+            return {}
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "interrupted-validation-candidate-git-authority@1"
+            ),
+            "branch": current_branch,
+            "baseline_commit": baseline_ref,
+            "incident_before_commit": before_head,
+            "candidate_commit": after_head,
+            "clean": True,
+        }
+
+    @staticmethod
+    def _validated_interrupted_validation_active_snapshot(
+        record: Mapping[str, Any] | None,
+        *,
+        task_id: str,
+        attempt: int,
+        workspace_path: str,
+        shared_root: str,
+        before_head: str,
+        protected_paths: Sequence[str],
+    ) -> dict[str, Any] | None:
+        """Validate the closed historical active-snapshot schema."""
+
+        if not isinstance(record, Mapping) or set(record) != {
+            "schema",
+            "recorded_at",
+            "task_id",
+            "attempt",
+            "workspace_path",
+            "ephemeral_worktree",
+            "protected_paths",
+            "snapshot",
+        }:
+            return None
+        recorded_at = record.get("recorded_at")
+        snapshot = record.get("snapshot")
+        expected_paths = sorted(set(map(str, protected_paths)))
+        if (
+            record.get("schema") != "implementation-protected-path-active-v1"
+            or not isinstance(recorded_at, str)
+            or not recorded_at
+            or len(recorded_at) > 128
+            or record.get("task_id") != task_id
+            or record.get("attempt") != attempt
+            or record.get("workspace_path") != workspace_path
+            or record.get("ephemeral_worktree") is not True
+            or sorted(map(str, record.get("protected_paths") or ()))
+            != expected_paths
+            or not isinstance(snapshot, Mapping)
+            or set(snapshot) != {"workspace", "shared_checkout"}
+        ):
+            return None
+
+        def exact_scope(
+            value: Any,
+            *,
+            root: str,
+            head: str | None,
+        ) -> dict[str, Any] | None:
+            if not isinstance(value, Mapping) or set(value) != {
+                "root",
+                "paths",
+                "git_head",
+            }:
+                return None
+            paths = value.get("paths")
+            if (
+                value.get("root") != root
+                or (head is not None and value.get("git_head") != head)
+                or not isinstance(value.get("git_head"), str)
+                or not re.fullmatch(
+                    r"[0-9a-f]{40,64}",
+                    str(value.get("git_head") or ""),
+                )
+                or not isinstance(paths, Mapping)
+                or sorted(map(str, paths)) != expected_paths
+            ):
+                return None
+            exact_paths: dict[str, dict[str, Any]] = {}
+            for relative in expected_paths:
+                identity = paths.get(relative)
+                if (
+                    not isinstance(identity, Mapping)
+                    or PortalImplementationDaemon._interrupted_validation_protected_identity_projection(
+                        identity
+                    )
+                    is None
+                ):
+                    return None
+                exact_paths[relative] = dict(identity)
+            return {
+                "root": root,
+                "git_head": str(value["git_head"]),
+                "paths": exact_paths,
+            }
+
+        workspace_scope = exact_scope(
+            snapshot.get("workspace"),
+            root=workspace_path,
+            head=before_head,
+        )
+        shared_scope = exact_scope(
+            snapshot.get("shared_checkout"),
+            root=shared_root,
+            head=None,
+        )
+        if workspace_scope is None or shared_scope is None:
+            return None
+        return {
+            **dict(record),
+            "snapshot": {
+                "workspace": workspace_scope,
+                "shared_checkout": shared_scope,
+            },
+        }
+
+    @staticmethod
+    def _remove_interrupted_validation_clearance_authority_file(
+        path: Path,
+        expected: Mapping[str, Any] | None,
+    ) -> bool:
+        """Atomically retire only the exact pinned owned authority record.
+
+        POSIX has no portable unlink-by-descriptor operation.  A pathname
+        unlink after an identity check therefore has an unavoidable swap
+        window.  Move the selected name into a newly-created, private,
+        same-directory quarantine and verify that the moved inode is the
+        still-open pinned record.  The quarantined record is deliberately
+        retained as crash evidence; only removal from its authoritative name
+        constitutes success.
+        """
+
+        if expected is None:
+            observed, status = (
+                PortalImplementationDaemon._load_interrupted_validation_clearance_authority_file(
+                    path
+                )
+            )
+            return status == "absent" and observed is None
+        try:
+            expected_bytes = json.dumps(
+                dict(expected),
+                allow_nan=False,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        except (RecursionError, TypeError, ValueError):
+            return False
+        parent_descriptor = -1
+        descriptor = -1
+        quarantine_descriptor = -1
+        record_descriptors: list[int] = []
+        try:
+            parent_descriptor, filename = _open_no_follow_parent(path)
+
+            def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+                decoded: dict[str, Any] = {}
+                for key, value in pairs:
+                    if key in decoded:
+                        raise ValueError("duplicate clearance removal key")
+                    decoded[key] = value
+                return decoded
+
+            def stable_object(item: os.stat_result) -> tuple[int, ...]:
+                # Link/rename operations legitimately update ctime and nlink.
+                # Device+inode bind the object; the remaining fields prevent
+                # its type, owner, mode, size, or content mtime from drifting.
+                return (
+                    item.st_dev,
+                    item.st_ino,
+                    stat_module.S_IFMT(item.st_mode),
+                    stat_module.S_IMODE(item.st_mode),
+                    item.st_uid,
+                    item.st_gid,
+                    item.st_size,
+                    item.st_mtime_ns,
+                )
+
+            def exact_record(
+                record_descriptor: int,
+                *,
+                allowed_links: set[int],
+            ) -> os.stat_result | None:
+                before_read = os.fstat(record_descriptor)
+                if (
+                    not stat_module.S_ISREG(before_read.st_mode)
+                    or before_read.st_uid != os.geteuid()
+                    or before_read.st_nlink not in allowed_links
+                    or before_read.st_size < 2
+                    or before_read.st_size > 262_144
+                ):
+                    return None
+                os.lseek(record_descriptor, 0, os.SEEK_SET)
+                payload = bytearray()
+                while len(payload) <= 262_144:
+                    chunk = os.read(
+                        record_descriptor,
+                        min(65_536, 262_145 - len(payload)),
+                    )
+                    if not chunk:
+                        break
+                    payload.extend(chunk)
+                after_read = os.fstat(record_descriptor)
+                if (
+                    len(payload) != before_read.st_size
+                    or _private_file_identity(before_read)
+                    != _private_file_identity(after_read)
+                ):
+                    return None
+                decoded = json.loads(
+                    bytes(payload).decode("utf-8"),
+                    object_pairs_hook=unique,
+                    parse_constant=lambda _value: (_ for _ in ()).throw(
+                        ValueError("nonfinite clearance removal value")
+                    ),
+                )
+                if (
+                    not isinstance(decoded, dict)
+                    or decoded != dict(expected)
+                    or json.dumps(
+                        decoded,
+                        allow_nan=False,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ).encode("utf-8")
+                    != expected_bytes
+                ):
+                    return None
+                return after_read
+
+            try:
+                descriptor = os.open(
+                    filename,
+                    os.O_RDONLY
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_NONBLOCK", 0),
+                    dir_fd=parent_descriptor,
+                )
+            except FileNotFoundError:
+                descriptor = -1
+            source_stat = (
+                exact_record(descriptor, allowed_links={1, 2})
+                if descriptor >= 0
+                else None
+            )
+            if descriptor >= 0:
+                named = os.stat(
+                    filename,
+                    dir_fd=parent_descriptor,
+                    follow_symlinks=False,
+                )
+                if (
+                    source_stat is None
+                    or _private_file_identity(source_stat)
+                    != _private_file_identity(named)
+                ):
+                    return False
+
+            digest = hashlib.sha256(expected_bytes).hexdigest()
+            quarantine_name = (
+                f".{filename}.clearance-quarantine-{digest}"
+            )
+            try:
+                quarantine_before_open = os.stat(
+                    quarantine_name,
+                    dir_fd=parent_descriptor,
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                if source_stat is None or source_stat.st_nlink != 1:
+                    return False
+                os.mkdir(
+                    quarantine_name,
+                    mode=0o700,
+                    dir_fd=parent_descriptor,
+                )
+                quarantine_before_open = os.stat(
+                    quarantine_name,
+                    dir_fd=parent_descriptor,
+                    follow_symlinks=False,
+                )
+                os.fsync(parent_descriptor)
+            quarantine_descriptor = os.open(
+                quarantine_name,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_DIRECTORY", 0),
+                dir_fd=parent_descriptor,
+            )
+            quarantine_after_open = os.fstat(quarantine_descriptor)
+            if (
+                _private_file_identity(quarantine_before_open)
+                != _private_file_identity(quarantine_after_open)
+                or not stat_module.S_ISDIR(quarantine_after_open.st_mode)
+                or quarantine_after_open.st_dev != os.fstat(parent_descriptor).st_dev
+                or quarantine_after_open.st_uid != os.geteuid()
+                or stat_module.S_IMODE(quarantine_after_open.st_mode) != 0o700
+            ):
+                return False
+
+            pinned_name = "pinned-authority-record"
+            retired_name = "retired-authority-record"
+            entries = set(os.listdir(quarantine_descriptor))
+            if not entries.issubset({pinned_name, retired_name}):
+                return False
+
+            def open_quarantined(name: str) -> tuple[int, os.stat_result] | None:
+                try:
+                    selected = os.open(
+                        name,
+                        os.O_RDONLY
+                        | getattr(os, "O_CLOEXEC", 0)
+                        | getattr(os, "O_NOFOLLOW", 0)
+                        | getattr(os, "O_NONBLOCK", 0),
+                        dir_fd=quarantine_descriptor,
+                    )
+                except FileNotFoundError:
+                    return None
+                record_descriptors.append(selected)
+                selected_stat = exact_record(selected, allowed_links={2, 3})
+                named_stat = os.stat(
+                    name,
+                    dir_fd=quarantine_descriptor,
+                    follow_symlinks=False,
+                )
+                if (
+                    selected_stat is None
+                    or _private_file_identity(selected_stat)
+                    != _private_file_identity(named_stat)
+                ):
+                    return None
+                return selected, selected_stat
+
+            pinned = (
+                open_quarantined(pinned_name)
+                if pinned_name in entries
+                else None
+            )
+            retired = (
+                open_quarantined(retired_name)
+                if retired_name in entries
+                else None
+            )
+            if pinned_name in entries and pinned is None:
+                return False
+            if retired_name in entries and retired is None:
+                return False
+
+            if source_stat is None:
+                if (
+                    entries != {pinned_name, retired_name}
+                    or pinned is None
+                    or retired is None
+                    or stable_object(pinned[1]) != stable_object(retired[1])
+                ):
+                    return False
+                os.fsync(quarantine_descriptor)
+                os.fsync(parent_descriptor)
+                return True
+
+            if retired is not None:
+                # A mismatched prior retirement is evidence, never something
+                # this automatic recovery may overwrite or discard.
+                return False
+            if pinned is None:
+                if source_stat.st_nlink != 1:
+                    return False
+                os.link(
+                    filename,
+                    pinned_name,
+                    src_dir_fd=parent_descriptor,
+                    dst_dir_fd=quarantine_descriptor,
+                    follow_symlinks=False,
+                )
+                pinned = open_quarantined(pinned_name)
+                source_after_link = os.fstat(descriptor)
+                if (
+                    pinned is None
+                    or source_after_link.st_nlink != 2
+                    or stable_object(source_stat)
+                    != stable_object(source_after_link)
+                    or stable_object(source_after_link)
+                    != stable_object(pinned[1])
+                ):
+                    return False
+                os.fsync(quarantine_descriptor)
+                os.fsync(parent_descriptor)
+            elif (
+                source_stat.st_nlink != 2
+                or stable_object(source_stat) != stable_object(pinned[1])
+            ):
+                return False
+
+            os.rename(
+                filename,
+                retired_name,
+                src_dir_fd=parent_descriptor,
+                dst_dir_fd=quarantine_descriptor,
+            )
+            retired = open_quarantined(retired_name)
+            if retired is None or stable_object(pinned[1]) != stable_object(retired[1]):
+                # The atomic rename moved a swapped pathname.  Restore the
+                # pinned exact record at the authoritative name without
+                # overwriting anything that raced into that name.
+                try:
+                    os.link(
+                        pinned_name,
+                        filename,
+                        src_dir_fd=quarantine_descriptor,
+                        dst_dir_fd=parent_descriptor,
+                        follow_symlinks=False,
+                    )
+                except FileExistsError:
+                    restored_descriptor = os.open(
+                        filename,
+                        os.O_RDONLY
+                        | getattr(os, "O_CLOEXEC", 0)
+                        | getattr(os, "O_NOFOLLOW", 0)
+                        | getattr(os, "O_NONBLOCK", 0),
+                        dir_fd=parent_descriptor,
+                    )
+                    record_descriptors.append(restored_descriptor)
+                    restored = exact_record(
+                        restored_descriptor,
+                        allowed_links={2, 3},
+                    )
+                    if (
+                        restored is None
+                        or stable_object(restored) != stable_object(pinned[1])
+                    ):
+                        return False
+                os.fsync(quarantine_descriptor)
+                os.fsync(parent_descriptor)
+                return False
+            os.fsync(quarantine_descriptor)
+            os.fsync(parent_descriptor)
+            try:
+                os.stat(
+                    filename,
+                    dir_fd=parent_descriptor,
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                return True
+            return False
+        except (
+            RecursionError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            OSError,
+            TypeError,
+            ValueError,
+        ):
+            return False
+        finally:
+            for record_descriptor in record_descriptors:
+                os.close(record_descriptor)
+            if quarantine_descriptor >= 0:
+                os.close(quarantine_descriptor)
+            if descriptor >= 0:
+                os.close(descriptor)
+            if parent_descriptor >= 0:
+                os.close(parent_descriptor)
+
+    @staticmethod
+    def _validated_interrupted_validation_self_deadlock_clearance(
+        record: Mapping[str, Any] | None,
+        *,
+        database_evidence_id: str,
+        task_id: str,
+        attempt: int,
+        workspace_path: str,
+        incident_path: str,
+        active_path: str,
+    ) -> dict[str, Any] | None:
+        """Validate one closed, content-addressed clearance phase record."""
+
+        if not isinstance(record, Mapping):
+            return None
+        normalized = dict(record)
+        recovery_id = str(normalized.pop("recovery_id", "") or "")
+        try:
+            expected_recovery_id = content_identity(normalized)
+        except (RecursionError, TypeError, ValueError):
+            return None
+        expected_fields = {
+            "schema",
+            "phase",
+            "task_id",
+            "attempt",
+            "workspace_path",
+            "database_evidence_id",
+            "incident",
+            "active_snapshot_state",
+            "active_snapshot",
+            "historical_protected_authority",
+            "incident_event_id",
+            "blocked_event_id",
+            "baseline_ref",
+            "candidate_commit",
+            "protected_snapshot",
+            "shared_protected_transition_authority",
+            "control_source_authority",
+            "intended_removals",
+        }
+        active_state = normalized.get("active_snapshot_state")
+        active_snapshot = normalized.get("active_snapshot")
+        historical_authority = normalized.get("historical_protected_authority")
+        if (
+            set(normalized) != expected_fields
+            or recovery_id != expected_recovery_id
+            or normalized.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "interrupted-validation-self-deadlock-clearance@1"
+            )
+            or normalized.get("phase") != "clearance_authorized"
+            or normalized.get("task_id") != task_id
+            or normalized.get("attempt") != attempt
+            or normalized.get("workspace_path") != workspace_path
+            or normalized.get("database_evidence_id")
+            != database_evidence_id
+            or normalized.get("intended_removals")
+            != [incident_path, active_path]
+            or not isinstance(normalized.get("incident"), Mapping)
+            or not isinstance(normalized.get("protected_snapshot"), Mapping)
+            or not isinstance(
+                normalized.get("shared_protected_transition_authority"),
+                Mapping,
+            )
+            or not isinstance(
+                normalized.get("control_source_authority"), Mapping
+            )
+            or active_state not in {"exact", "absent"}
+            or (
+                active_state == "exact"
+                and (
+                    not isinstance(active_snapshot, Mapping)
+                    or historical_authority is not None
+                )
+            )
+            or (
+                active_state == "absent"
+                and (
+                    active_snapshot is not None
+                    or not isinstance(historical_authority, Mapping)
+                )
+            )
+        ):
+            return None
+        normalized["recovery_id"] = recovery_id
+        return normalized
+
+    @staticmethod
+    def _publish_interrupted_validation_self_deadlock_clearance(
+        path: Path,
+        receipt: Mapping[str, Any],
+    ) -> bool:
+        """Put one immutable clearance phase record, or verify exact replay."""
+
+        try:
+            payload = (
+                json.dumps(
+                    dict(receipt),
+                    allow_nan=False,
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                ).encode()
+                + b"\n"
+            )
+        except (RecursionError, TypeError, ValueError):
+            return False
+        if len(payload) > 262_144:
+            return False
+        try:
+            # This existing helper publishes with no-replace hard links,
+            # fsyncs every visibility boundary, repairs exact crash prefixes,
+            # and rejects a final or temporary with different bytes.
+            from .database_portal_bridge import _atomic_write_if_absent
+
+            _atomic_write_if_absent(path, payload)
+        except Exception:
+            return False
+        observed, status = (
+            PortalImplementationDaemon._load_interrupted_validation_clearance_authority_file(
+                path
+            )
+        )
+        return status == "exact" and observed == dict(receipt)
+
+    def _recover_interrupted_database_validation_self_deadlock_incident(
+        self,
+        *,
+        evidence: Mapping[str, Any],
+        authority: Mapping[str, Any],
+        incident: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Clear only the historical recovery-owned verification deadlock.
+
+        The released predecessor could commit the retained candidate while it
+        held ``interrupted_database_validation_recovery``, then wait on that
+        same non-reentrant lock during protected verification.  It latched a
+        pathless workspace ``git_head`` transition even though every protected
+        path stayed byte-identical.  This recovery accepts only that exact
+        incident plus an adjacent, content-addressed timeout/blocked event
+        pair.  It independently proves current Git ancestry, cleanliness, and
+        stable protected identities while holding a new exact checkout lease.
+        """
+
+        def rejected(reason: str, **detail: Any) -> dict[str, Any]:
+            return {
+                "cleared": False,
+                "blocked": True,
+                "reason": reason,
+                **detail,
+            }
+
+        task = authority.get("task")
+        workspace = authority.get("workspace_path")
+        attempt = authority.get("attempt")
+        task_id = str(authority.get("task_id") or "")
+        original_branch = str(authority.get("original_branch") or "")
+        current_branch = str(authority.get("current_branch") or "")
+        baseline_ref = str(authority.get("baseline_ref") or "")
+        evidence_id = str(evidence.get("evidence_id") or "")
+        if (
+            authority.get("ok") is not True
+            or not isinstance(task, PortalTask)
+            or not isinstance(workspace, Path)
+            or not isinstance(attempt, int)
+            or isinstance(attempt, bool)
+            or attempt <= 0
+            or task.task_id != task_id
+            or not original_branch
+            or not current_branch
+            or not baseline_ref
+            or not evidence_id
+        ):
+            return rejected("self_deadlock_recovery_authority_invalid")
+
+        try:
+            resolved_workspace = workspace.resolve(strict=True)
+            resolved_worktree_root = self.worktree_root.resolve(strict=True)
+            resolved_workspace.relative_to(resolved_worktree_root)
+        except (OSError, RuntimeError, ValueError):
+            return rejected("self_deadlock_workspace_custody_invalid")
+
+        active_path = self._implementation_protected_active_snapshot_path()
+        incident_path = self._implementation_protected_incident_path()
+        clearance_path = (
+            self._interrupted_validation_self_deadlock_clearance_path(
+                database_evidence_id=evidence_id,
+                task_id=task_id,
+                attempt=attempt,
+            )
+        )
+        if clearance_path is None:
+            return rejected("self_deadlock_clearance_path_invalid")
+        raw_clearance, clearance_status = (
+            self._load_interrupted_validation_clearance_authority_file(
+                clearance_path
+            )
+        )
+        if clearance_status == "invalid":
+            return rejected("self_deadlock_clearance_receipt_invalid")
+        clearance = (
+            self._validated_interrupted_validation_self_deadlock_clearance(
+                raw_clearance,
+                database_evidence_id=evidence_id,
+                task_id=task_id,
+                attempt=attempt,
+                workspace_path=str(workspace),
+                incident_path=str(incident_path),
+                active_path=str(active_path),
+            )
+        )
+        if clearance_status == "exact" and clearance is None:
+            return rejected("self_deadlock_clearance_receipt_invalid")
+        incident_record, incident_status = (
+            self._load_interrupted_validation_clearance_authority_file(
+                incident_path
+            )
+        )
+        if incident_status == "invalid":
+            return rejected("self_deadlock_incident_record_invalid")
+        if not incident and incident_record is not None:
+            incident = dict(incident_record)
+        if not incident and clearance is not None:
+            incident = dict(clearance["incident"])
+        if incident_status == "absent" and clearance is None:
+            return rejected("self_deadlock_incident_record_missing")
+        if incident_record is not None and dict(incident_record) != dict(incident):
+            return rejected("self_deadlock_incident_record_changed")
+
+        incident_fields = {
+            "schema",
+            "reason",
+            "task_id",
+            "attempt",
+            "workspace_path",
+            "protected_paths",
+            "mutations",
+            "shared_checkout_restored",
+            "requires_operator_clearance",
+            "latched_at",
+        }
+        configured_paths = sorted(set(self.implementation_protected_paths))
+        mutations = incident.get("mutations")
+        mutation = (
+            mutations[0]
+            if isinstance(mutations, list) and len(mutations) == 1
+            else None
+        )
+        before_scope = (
+            mutation.get("before") if isinstance(mutation, Mapping) else None
+        )
+        after_scope = (
+            mutation.get("after") if isinstance(mutation, Mapping) else None
+        )
+        if (
+            set(incident) != incident_fields
+            or incident.get("schema")
+            != "implementation-protected-path-incident-v1"
+            or incident.get("reason") != "implementation_protected_path_mutated"
+            or incident.get("requires_operator_clearance") is not True
+            or incident.get("shared_checkout_restored") is not False
+            or incident.get("task_id") != task_id
+            or incident.get("attempt") != attempt
+            or incident.get("workspace_path") != str(workspace)
+            or sorted(map(str, incident.get("protected_paths") or ()))
+            != configured_paths
+            or not isinstance(mutation, Mapping)
+            or set(mutation) != {"scope", "path", "change", "before", "after"}
+            or mutation.get("scope") != "workspace"
+            or mutation.get("path") != ""
+            or mutation.get("change") != "scope_snapshot_changed"
+            or not isinstance(before_scope, Mapping)
+            or not isinstance(after_scope, Mapping)
+            or set(before_scope) != {"root", "git_head"}
+            or set(after_scope) != {"root", "git_head"}
+            or before_scope.get("root") != str(resolved_workspace)
+            or after_scope.get("root") != str(resolved_workspace)
+        ):
+            return rejected("self_deadlock_incident_shape_invalid")
+        before_head = str(before_scope.get("git_head") or "")
+        after_head = str(after_scope.get("git_head") or "")
+        if (
+            not re.fullmatch(r"[0-9a-f]{40}", before_head)
+            or not re.fullmatch(r"[0-9a-f]{40}", after_head)
+            or before_head == after_head
+        ):
+            return rejected("self_deadlock_incident_head_transition_invalid")
+
+        active_record, active_status = (
+            self._load_interrupted_validation_clearance_authority_file(
+                active_path
+            )
+        )
+        if active_status == "invalid":
+            return rejected("self_deadlock_active_record_invalid")
+        clearance_active_state = (
+            str(clearance.get("active_snapshot_state") or "")
+            if clearance is not None
+            else ""
+        )
+        if (
+            active_record is not None
+            and clearance is not None
+            and clearance_active_state != "exact"
+        ):
+            return rejected("self_deadlock_active_record_changed")
+        active_source: Mapping[str, Any] | None = active_record
+        if active_source is None and clearance_active_state == "exact":
+            stored_active = clearance.get("active_snapshot")
+            active_source = (
+                stored_active if isinstance(stored_active, Mapping) else None
+            )
+        active = self._validated_interrupted_validation_active_snapshot(
+            active_source,
+            task_id=task_id,
+            attempt=attempt,
+            workspace_path=str(resolved_workspace),
+            shared_root=str(self.repo_root.resolve()),
+            before_head=before_head,
+            protected_paths=configured_paths,
+        )
+        active_snapshot_state = "exact" if active is not None else "absent"
+        if (
+            active_source is not None
+            and active is None
+            or clearance is not None
+            and clearance_active_state != active_snapshot_state
+        ):
+            return rejected("self_deadlock_active_snapshot_invalid")
+        snapshot = active.get("snapshot") if active is not None else None
+        before_workspace = (
+            snapshot.get("workspace") if isinstance(snapshot, Mapping) else None
+        )
+        before_shared = (
+            snapshot.get("shared_checkout") if isinstance(snapshot, Mapping) else None
+        )
+        before_workspace_paths = (
+            before_workspace.get("paths")
+            if isinstance(before_workspace, Mapping)
+            else None
+        )
+        before_shared_paths = (
+            before_shared.get("paths")
+            if isinstance(before_shared, Mapping)
+            else None
+        )
+
+        try:
+            events = self._iter_merge_lifecycle_events()
+        except CursorReplayError:
+            return rejected("self_deadlock_event_chain_invalid")
+        recovery_event_id = str(authority.get("recovery_event_id") or "")
+        recovery_events = [
+            event
+            for event in events
+            if event.get("event_id") == recovery_event_id
+            and event.get("type")
+            == "implementation_shutdown_reconciliation_blocked"
+            and event.get("task_id") == task_id
+            and event.get("attempt") == attempt
+            and event.get("reason") == "task_claim_reconciliation_blocked"
+        ]
+        if len(recovery_events) != 1:
+            return rejected("self_deadlock_recovery_event_invalid")
+        recovery_event = recovery_events[0]
+        incident_payload = {
+            key: incident.get(key)
+            for key in (
+                "reason",
+                "task_id",
+                "attempt",
+                "workspace_path",
+                "protected_paths",
+                "mutations",
+                "shared_checkout_restored",
+            )
+        }
+        incident_pairs: list[
+            tuple[Mapping[str, Any], Mapping[str, Any]]
+        ] = []
+        for index in range(1, len(events)):
+            incident_event = events[index - 1]
+            blocked_event = events[index]
+            event_payload = {
+                key: incident_event.get(key) for key in incident_payload
+            }
+            candidate = blocked_event.get("candidate")
+            if (
+                incident_event.get("type")
+                != "implementation_protected_path_mutated"
+                or event_payload != incident_payload
+                or int(incident_event.get("sequence") or 0)
+                <= int(recovery_event.get("sequence") or 0)
+                or blocked_event.get("type")
+                != "interrupted_database_validation_recovery_blocked"
+                or blocked_event.get("reason")
+                != "recovery_protected_path_mutated"
+                or blocked_event.get("reconciled") is not False
+                or blocked_event.get("blocked") is not True
+                or blocked_event.get("provider_dispatched") is not False
+                or blocked_event.get("attempt_consumed") is not False
+                or blocked_event.get("previous_event_id")
+                != incident_event.get("event_id")
+                or blocked_event.get("sequence")
+                != int(incident_event.get("sequence") or 0) + 1
+                or blocked_event.get("stream_id")
+                != incident_event.get("stream_id")
+                or blocked_event.get("snapshot_id")
+                != incident_event.get("snapshot_id")
+                or not isinstance(candidate, Mapping)
+                or candidate.get("prepared") is not False
+                or candidate.get("reason")
+                != "recovery_protected_path_mutated"
+                or candidate.get("protected_path_violation")
+                != incident_payload
+            ):
+                continue
+            incident_pairs.append((incident_event, blocked_event))
+        if clearance is not None:
+            incident_pairs = [
+                pair
+                for pair in incident_pairs
+                if pair[0].get("event_id")
+                == clearance.get("incident_event_id")
+                and pair[1].get("event_id")
+                == clearance.get("blocked_event_id")
+            ]
+        if len(incident_pairs) != 1:
+            return rejected("self_deadlock_incident_event_pair_invalid")
+        incident_event, incident_blocked_event = incident_pairs[0]
+
+        timeout_reason = (
+            "implementation_protected_path_verification_lock_timeout"
+        )
+
+        def timeout_shared_before(
+            event: Mapping[str, Any],
+        ) -> dict[str, dict[str, Any]] | None:
+            lock = event.get("lock")
+            protected_mutations = event.get("mutations")
+            if not isinstance(lock, Mapping) or not isinstance(
+                protected_mutations,
+                list,
+            ):
+                return None
+            shared_paths: dict[str, dict[str, Any]] = {}
+            for item in protected_mutations:
+                if not isinstance(item, Mapping):
+                    return None
+                relative = str(item.get("path") or "")
+                before_identity = item.get("before")
+                projected_identity = (
+                    self._interrupted_validation_protected_identity_projection(
+                        before_identity
+                        if isinstance(before_identity, Mapping)
+                        else None
+                    )
+                )
+                if (
+                    set(item) != {"scope", "path", "change", "before", "after"}
+                    or item.get("scope") != "shared_checkout"
+                    or item.get("change") != "verification_inconclusive"
+                    or item.get("after")
+                    != {"state": "error", "error": timeout_reason}
+                    or relative not in configured_paths
+                    or relative in shared_paths
+                    or projected_identity is None
+                ):
+                    return None
+                # Retain the exact event identity for the transition verifier.
+                # Its Git projection intentionally rejects already-projected
+                # values so an observational filesystem record cannot be
+                # silently reinterpreted as an authoritative tree entry.
+                shared_paths[relative] = dict(before_identity)
+            try:
+                owner_pid = int(lock.get("lock_owner_pid") or 0)
+                waited_seconds = float(lock.get("waited_seconds") or 0.0)
+            except (TypeError, ValueError):
+                return None
+            if not (
+                event.get("type") == timeout_reason
+                and event.get("reason") == timeout_reason
+                and event.get("verification_deferred") is True
+                and event.get("shared_checkout_restored") is False
+                and event.get("task_id") == task_id
+                and event.get("attempt") == attempt
+                and event.get("workspace_path") == str(workspace)
+                and sorted(map(str, event.get("protected_paths") or ()))
+                == configured_paths
+                and len(protected_mutations) == len(configured_paths)
+                and sorted(shared_paths) == configured_paths
+                and lock.get("acquired") is False
+                and lock.get("reason") == "lock_exists"
+                and lock.get("lock_owner_operation")
+                == "interrupted_database_validation_recovery"
+                and lock.get("lock_owner_task_id") == task_id
+                and lock.get("lock_owner_branch") == original_branch
+                and lock.get("lock_path") == str(self._repo_merge_lock_path())
+                and owner_pid > 0
+                and waited_seconds
+                >= (
+                    IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_TIMEOUT_SECONDS
+                    - 1.0
+                )
+            ):
+                return None
+            return shared_paths
+
+        timeout_pairs: list[
+            tuple[
+                Mapping[str, Any],
+                Mapping[str, Any],
+                dict[str, dict[str, Any]],
+            ]
+        ] = []
+        for index in range(1, len(events)):
+            timeout_event = events[index - 1]
+            blocked_event = events[index]
+            shared_paths = timeout_shared_before(timeout_event)
+            if shared_paths is None:
+                continue
+            violation_fields = {
+                "reason",
+                "task_id",
+                "attempt",
+                "workspace_path",
+                "protected_paths",
+                "mutations",
+                "shared_checkout_restored",
+                "verification_deferred",
+                "lock",
+            }
+            expected_violation = {
+                field: timeout_event.get(field) for field in violation_fields
+            }
+            candidate = blocked_event.get("candidate")
+            if (
+                blocked_event.get("type")
+                != "interrupted_database_validation_recovery_blocked"
+                or blocked_event.get("reason")
+                != "recovery_protected_path_mutated"
+                or blocked_event.get("reconciled") is not False
+                or blocked_event.get("blocked") is not True
+                or blocked_event.get("provider_dispatched") is not False
+                or blocked_event.get("attempt_consumed") is not False
+                or blocked_event.get("previous_event_id")
+                != timeout_event.get("event_id")
+                or blocked_event.get("sequence")
+                != int(timeout_event.get("sequence") or 0) + 1
+                or blocked_event.get("stream_id") != timeout_event.get("stream_id")
+                or blocked_event.get("snapshot_id")
+                != timeout_event.get("snapshot_id")
+                or not isinstance(candidate, Mapping)
+                or candidate.get("prepared") is not False
+                or candidate.get("reason")
+                != "recovery_protected_path_mutated"
+                or candidate.get("protected_path_violation")
+                != expected_violation
+                or int(timeout_event.get("sequence") or 0)
+                <= int(incident_blocked_event.get("sequence") or 0)
+            ):
+                continue
+            timeout_pairs.append((timeout_event, blocked_event, shared_paths))
+        if not timeout_pairs:
+            return rejected("self_deadlock_event_pair_missing")
+        # These later pairs only corroborate the released self-lock defect.
+        # Generated protected-board commits may legitimately advance shared
+        # identities after the incident, so use the earliest exact adjacent
+        # pair and never let repeated later diagnostics nominate clearance.
+        timeout_event, timeout_blocked_event, event_shared_paths = min(
+            timeout_pairs,
+            key=lambda pair: int(pair[0].get("sequence") or 0),
+        )
+        projected_event_shared_paths = {
+            relative: self._interrupted_validation_protected_identity_projection(
+                event_shared_paths.get(relative)
+            )
+            for relative in configured_paths
+        }
+        if any(
+            projection is None
+            for projection in projected_event_shared_paths.values()
+        ):
+            return rejected("self_deadlock_timeout_shared_authority_invalid")
+        if (
+            active is not None
+            and {
+                relative: self._interrupted_validation_protected_identity_projection(
+                    before_shared_paths.get(relative)
+                    if isinstance(before_shared_paths, Mapping)
+                    else None
+                )
+                for relative in configured_paths
+            }
+            != projected_event_shared_paths
+        ):
+            return rejected("self_deadlock_timeout_active_authority_mismatch")
+
+        candidate_git_authority = (
+            self._interrupted_validation_candidate_git_authority(
+                workspace=workspace,
+                current_branch=current_branch,
+                baseline_ref=baseline_ref,
+                before_head=before_head,
+                after_head=after_head,
+            )
+        )
+        if (
+            not candidate_git_authority
+            or str(authority.get("preparation_head") or "") != after_head
+        ):
+            return rejected("self_deadlock_candidate_history_or_cleanliness_invalid")
+
+        historical_git_authority: dict[str, Any] = {}
+        if active is None:
+            historical_git_authority = (
+                self._interrupted_validation_historical_protected_git_authority(
+                    workspace=workspace,
+                    before_head=before_head,
+                    after_head=after_head,
+                    protected_paths=configured_paths,
+                )
+            )
+            if not historical_git_authority:
+                return rejected("self_deadlock_historical_git_authority_invalid")
+
+        generations = {
+            "incident": durable_input_generation(incident_path),
+            "active_snapshot": durable_input_generation(active_path),
+        }
+        if self._active_protected_path_maintenance_claim() is not None:
+            return rejected("self_deadlock_external_maintenance_active")
+        lease, lease_reason, existing, waited = (
+            self._acquire_checkout_mutation_lease(
+                task_id=task_id,
+                attempt=attempt,
+                branch=original_branch,
+                operation=(
+                    "interrupted_database_validation_self_deadlock_clearance"
+                ),
+                extra={"database_evidence_id": evidence_id},
+            )
+        )
+        if lease is None:
+            return rejected(
+                "self_deadlock_clearance_lease_unavailable",
+                lease_reason=lease_reason,
+                waited_seconds=waited,
+                existing_lease=(dict(existing or {})),
+            )
+
+        cleared = False
+        receipt_path = clearance_path
+        recovery_id = ""
+        clearance_failure = ""
+        try:
+            lease_authority = (
+                self._interrupted_database_validation_checkout_lease_authority(
+                    lease,
+                    authority,
+                    operation=(
+                        "interrupted_database_validation_self_deadlock_clearance"
+                    ),
+                )
+            )
+            observed_generations = {
+                "incident": durable_input_generation(incident_path),
+                "active_snapshot": durable_input_generation(active_path),
+            }
+            if (
+                lease_authority.get("current") is not True
+                or self._active_protected_path_maintenance_claim() is not None
+                or not generations_match(
+                    generations["incident"],
+                    observed_generations["incident"],
+                )
+                or not generations_match(
+                    generations["active_snapshot"],
+                    observed_generations["active_snapshot"],
+                )
+                or self._load_interrupted_validation_clearance_authority_file(
+                    incident_path
+                )
+                != (
+                    (dict(incident_record), "exact")
+                    if incident_record is not None
+                    else (None, "absent")
+                )
+                or self._load_interrupted_validation_clearance_authority_file(
+                    active_path
+                )
+                != (
+                    (dict(active_record), "exact")
+                    if active_record is not None
+                    else (None, "absent")
+                )
+            ):
+                clearance_failure = "self_deadlock_clearance_inputs_changed"
+            else:
+                current_candidate_authority = (
+                    self._interrupted_validation_candidate_git_authority(
+                        workspace=workspace,
+                        current_branch=current_branch,
+                        baseline_ref=baseline_ref,
+                        before_head=before_head,
+                        after_head=after_head,
+                    )
+                )
+                control_source_authority = (
+                    self._interrupted_validation_control_source_authority()
+                )
+                first_after = self._implementation_protected_path_snapshot(
+                    workspace
+                )
+                first_lease = (
+                    self._interrupted_database_validation_checkout_lease_authority(
+                        lease,
+                        authority,
+                        operation=(
+                            "interrupted_database_validation_self_deadlock_clearance"
+                        ),
+                    )
+                )
+                confirmed_after = self._implementation_protected_path_snapshot(
+                    workspace
+                )
+                confirmed_lease = (
+                    self._interrupted_database_validation_checkout_lease_authority(
+                        lease,
+                        authority,
+                        operation=(
+                            "interrupted_database_validation_self_deadlock_clearance"
+                        ),
+                    )
+                )
+                current_workspace = confirmed_after.get("workspace")
+                current_shared = confirmed_after.get("shared_checkout")
+                shared_transition_authority = (
+                    self._interrupted_validation_shared_protected_transition_authority(
+                        event_paths=event_shared_paths,
+                        current_snapshot=confirmed_after,
+                    )
+                )
+                common_protected_equal = bool(
+                    current_candidate_authority == candidate_git_authority
+                    and control_source_authority
+                    and shared_transition_authority
+                    and first_after == confirmed_after
+                    and not self._implementation_protected_snapshot_errors(
+                        confirmed_after
+                    )
+                    and isinstance(current_workspace, Mapping)
+                    and isinstance(current_shared, Mapping)
+                    and current_workspace.get("root") == str(resolved_workspace)
+                    and current_workspace.get("git_head") == after_head
+                    and current_shared.get("root")
+                    == str(self.repo_root.resolve())
+                    and first_lease.get("current") is True
+                    and confirmed_lease.get("current") is True
+                )
+                protected_equal = bool(
+                    common_protected_equal
+                    and (
+                        (
+                            current_workspace.get("paths")
+                            == before_workspace_paths
+                        )
+                        if active is not None
+                        else self._interrupted_validation_historical_protected_git_authority(
+                            workspace=workspace,
+                            before_head=before_head,
+                            after_head=after_head,
+                            protected_paths=configured_paths,
+                        )
+                        == historical_git_authority
+                    )
+                )
+                if not protected_equal:
+                    clearance_failure = (
+                        "self_deadlock_protected_snapshot_changed_or_unstable"
+                    )
+                else:
+                    receipt_basis = {
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "interrupted-validation-self-deadlock-clearance@1"
+                        ),
+                        "phase": "clearance_authorized",
+                        "task_id": task_id,
+                        "attempt": attempt,
+                        "workspace_path": str(workspace),
+                        "database_evidence_id": evidence_id,
+                        "incident": dict(incident),
+                        "active_snapshot_state": active_snapshot_state,
+                        "active_snapshot": (
+                            dict(active) if active is not None else None
+                        ),
+                        "historical_protected_authority": (
+                            None
+                            if active is not None
+                            else {
+                                "schema": (
+                                    "ipfs_accelerate_py/agent-supervisor/"
+                                    "interrupted-validation-historical-"
+                                    "protected-authority@1"
+                                ),
+                                "active_snapshot_state": "absent",
+                                "timeout_event_id": str(
+                                    timeout_event.get("event_id") or ""
+                                ),
+                                "timeout_blocked_event_id": str(
+                                    timeout_blocked_event.get("event_id") or ""
+                                ),
+                                "shared_before_paths": (
+                                    projected_event_shared_paths
+                                ),
+                                "protected_git_authority": (
+                                    historical_git_authority
+                                ),
+                            }
+                        ),
+                        "incident_event_id": str(
+                            incident_event.get("event_id") or ""
+                        ),
+                        "blocked_event_id": str(
+                            incident_blocked_event.get("event_id") or ""
+                        ),
+                        "baseline_ref": baseline_ref,
+                        "candidate_commit": after_head,
+                        "protected_snapshot": confirmed_after,
+                        "shared_protected_transition_authority": (
+                            shared_transition_authority
+                        ),
+                        "control_source_authority": (
+                            control_source_authority
+                        ),
+                        "intended_removals": [
+                            str(incident_path),
+                            str(active_path),
+                        ],
+                    }
+                    recovery_id = content_identity(receipt_basis)
+                    receipt = {
+                        **receipt_basis,
+                        "recovery_id": recovery_id,
+                    }
+                    if clearance is not None and clearance != receipt:
+                        clearance_failure = (
+                            "self_deadlock_clearance_receipt_changed"
+                        )
+                    elif not (
+                        self._publish_interrupted_validation_self_deadlock_clearance(
+                            receipt_path,
+                            receipt,
+                        )
+                    ):
+                        clearance_failure = (
+                            "self_deadlock_clearance_receipt_publication_failed"
+                        )
+                    else:
+                        # The immutable receipt is the restart authority for
+                        # every following removal boundary.  Revalidate the
+                        # held lease, exact input generation, receipt bytes,
+                        # and stable protected identities before each unlink.
+                        targets = (
+                            (
+                                incident_path,
+                                incident_record,
+                                "incident",
+                            ),
+                            (
+                                active_path,
+                                active_record,
+                                "active_snapshot",
+                            ),
+                        )
+                        phase_records = {
+                            "incident": incident_record,
+                            "active_snapshot": active_record,
+                        }
+                        receipt_generation = durable_input_generation(
+                            receipt_path
+                        )
+                        for target, target_record, generation_name in targets:
+                            target_lease = (
+                                self._interrupted_database_validation_checkout_lease_authority(
+                                    lease,
+                                    authority,
+                                    operation=(
+                                        "interrupted_database_validation_"
+                                        "self_deadlock_clearance"
+                                    ),
+                                )
+                            )
+                            target_generation = durable_input_generation(target)
+                            target_current = (
+                                self._load_interrupted_validation_clearance_authority_file(
+                                    target
+                                )
+                            )
+                            all_authority_inputs_exact = all(
+                                generations_match(
+                                    generations[name],
+                                    durable_input_generation(selected),
+                                )
+                                and (
+                                    self._load_interrupted_validation_clearance_authority_file(
+                                        selected
+                                    )
+                                    == (dict(phase_records[name]), "exact")
+                                    if phase_records[name] is not None
+                                    else self._load_interrupted_validation_clearance_authority_file(
+                                        selected
+                                    )
+                                    == (None, "absent")
+                                )
+                                for selected, _record, name in targets
+                            )
+                            target_exact = bool(
+                                target_lease.get("current") is True
+                                and self._active_protected_path_maintenance_claim()
+                                is None
+                                and all_authority_inputs_exact
+                                and generations_match(
+                                    generations[generation_name],
+                                    target_generation,
+                                )
+                                and (
+                                    target_current
+                                    == (dict(target_record), "exact")
+                                    if target_record is not None
+                                    else target_current == (None, "absent")
+                                )
+                                and generations_match(
+                                    receipt_generation,
+                                    durable_input_generation(receipt_path),
+                                )
+                                and self._load_interrupted_validation_clearance_authority_file(
+                                    receipt_path
+                                )
+                                == (receipt, "exact")
+                            )
+                            phase_candidate_authority = (
+                                self._interrupted_validation_candidate_git_authority(
+                                    workspace=workspace,
+                                    current_branch=current_branch,
+                                    baseline_ref=baseline_ref,
+                                    before_head=before_head,
+                                    after_head=after_head,
+                                )
+                                if target_exact
+                                else {}
+                            )
+                            phase_source_authority = (
+                                self._interrupted_validation_control_source_authority()
+                                if target_exact
+                                else {}
+                            )
+                            phase_snapshot = (
+                                self._implementation_protected_path_snapshot(
+                                    workspace
+                                )
+                                if target_exact
+                                else {}
+                            )
+                            phase_snapshot_confirmed = (
+                                self._implementation_protected_path_snapshot(
+                                    workspace
+                                )
+                                if target_exact
+                                else {}
+                            )
+                            phase_lease = (
+                                self._interrupted_database_validation_checkout_lease_authority(
+                                    lease,
+                                    authority,
+                                    operation=(
+                                        "interrupted_database_validation_"
+                                        "self_deadlock_clearance"
+                                    ),
+                                )
+                            )
+                            phase_shared_transition = (
+                                self._interrupted_validation_shared_protected_transition_authority(
+                                    event_paths=event_shared_paths,
+                                    current_snapshot=phase_snapshot_confirmed,
+                                )
+                                if target_exact
+                                else {}
+                            )
+                            if not (
+                                target_exact
+                                and phase_candidate_authority
+                                == candidate_git_authority
+                                and phase_source_authority
+                                == control_source_authority
+                                and phase_shared_transition
+                                == shared_transition_authority
+                                and phase_snapshot == confirmed_after
+                                and phase_snapshot_confirmed == confirmed_after
+                                and phase_lease.get("current") is True
+                            ):
+                                clearance_failure = (
+                                    "self_deadlock_clearance_phase_changed"
+                                )
+                                break
+                            if not self._remove_interrupted_validation_clearance_authority_file(
+                                target,
+                                target_record,
+                            ):
+                                clearance_failure = (
+                                    "self_deadlock_clearance_removal_failed"
+                                )
+                                break
+                            post_remove_lease = (
+                                self._interrupted_database_validation_checkout_lease_authority(
+                                    lease,
+                                    authority,
+                                    operation=(
+                                        "interrupted_database_validation_"
+                                        "self_deadlock_clearance"
+                                    ),
+                                )
+                            )
+                            if (
+                                post_remove_lease.get("current") is not True
+                                or self._load_interrupted_validation_clearance_authority_file(
+                                    target
+                                )
+                                != (None, "absent")
+                            ):
+                                clearance_failure = (
+                                    "self_deadlock_clearance_removal_unstable"
+                                )
+                                break
+                            generations[generation_name] = (
+                                durable_input_generation(target)
+                            )
+                            phase_records[generation_name] = None
+                        else:
+                            if (
+                                generations_match(
+                                    receipt_generation,
+                                    durable_input_generation(receipt_path),
+                                )
+                                and self._load_interrupted_validation_clearance_authority_file(
+                                    receipt_path
+                                )
+                                == (receipt, "exact")
+                            ):
+                                cleared = True
+                            else:
+                                clearance_failure = (
+                                    "self_deadlock_clearance_receipt_unstable"
+                                )
+        finally:
+            released = self._release_checkout_mutation_lease(lease)
+        if not released:
+            return rejected("self_deadlock_clearance_lease_release_lost")
+        if not cleared:
+            return rejected(
+                clearance_failure or "self_deadlock_clearance_not_applied"
+            )
+        result = {
+            "cleared": True,
+            "blocked": False,
+            "reason": "interrupted_validation_self_deadlock_recovered",
+            "task_id": task_id,
+            "attempt": attempt,
+            "workspace_path": str(workspace),
+            "candidate_commit": after_head,
+            "recovery_id": recovery_id,
+            "receipt_path": str(receipt_path or ""),
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+        }
+        self._record_event(
+            "interrupted_database_validation_self_deadlock_recovered",
+            result,
+        )
+        return result
+
     def _prepare_interrupted_database_validation_candidate(
         self,
         authority: Mapping[str, Any],
         *,
         state: PortalTaskState,
+        checkout_lease: CheckoutMutationLease,
     ) -> dict[str, Any]:
         """Recursively stage retained work as a non-accepting Git candidate."""
 
@@ -9721,6 +12074,19 @@ class PortalImplementationDaemon:
         attempt = int(authority.get("attempt") or 0)
         branch = str(authority.get("current_branch") or "")
         baseline_ref = str(authority.get("baseline_ref") or "")
+        lease_authority = (
+            self._interrupted_database_validation_checkout_lease_authority(
+                checkout_lease,
+                authority,
+                operation="interrupted_database_validation_recovery",
+            )
+        )
+        if lease_authority.get("current") is not True:
+            return {
+                "prepared": False,
+                "reason": "recovery_checkout_lease_not_exact",
+                "lease_authority": lease_authority,
+            }
         started_at = utc_now()
         state.active_task_id = task.task_id
         identity = self._identity_for_task(task)
@@ -9745,10 +12111,23 @@ class PortalImplementationDaemon:
         protected_before = self._implementation_protected_path_snapshot(
             workspace
         )
+        lease_authority = (
+            self._interrupted_database_validation_checkout_lease_authority(
+                checkout_lease,
+                authority,
+                operation="interrupted_database_validation_recovery",
+            )
+        )
         snapshot_errors = self._implementation_protected_snapshot_errors(
             protected_before
         )
-        if snapshot_errors:
+        if lease_authority.get("current") is not True:
+            result = {
+                "prepared": False,
+                "reason": "recovery_checkout_lease_changed_during_snapshot",
+                "lease_authority": lease_authority,
+            }
+        elif snapshot_errors:
             result = {
                 "prepared": False,
                 "reason": "recovery_protected_snapshot_invalid",
@@ -9770,14 +12149,75 @@ class PortalImplementationDaemon:
                     "error": str(exc)[-1000:],
                 }
             else:
-                protected_violation = (
-                    self._implementation_protected_path_violation(
-                        task=task,
-                        attempt=attempt,
-                        workspace_path=workspace,
-                        before=protected_before,
+                lease_after_commit = (
+                    self._interrupted_database_validation_checkout_lease_authority(
+                        checkout_lease,
+                        authority,
+                        operation="interrupted_database_validation_recovery",
                     )
                 )
+                protected_after = (
+                    self._implementation_protected_path_snapshot(workspace)
+                    if lease_after_commit.get("current") is True
+                    else {}
+                )
+                lease_after_first_snapshot = (
+                    self._interrupted_database_validation_checkout_lease_authority(
+                        checkout_lease,
+                        authority,
+                        operation="interrupted_database_validation_recovery",
+                    )
+                )
+                protected_after_confirmed = (
+                    self._implementation_protected_path_snapshot(workspace)
+                    if lease_after_first_snapshot.get("current") is True
+                    else {}
+                )
+                lease_after_confirmation = (
+                    self._interrupted_database_validation_checkout_lease_authority(
+                        checkout_lease,
+                        authority,
+                        operation="interrupted_database_validation_recovery",
+                    )
+                )
+                protected_violation: dict[str, Any] = {}
+                protected_verification_failure = ""
+                if lease_after_commit.get("current") is not True:
+                    protected_verification_failure = (
+                        "recovery_checkout_lease_changed_after_commit"
+                    )
+                elif lease_after_first_snapshot.get("current") is not True:
+                    protected_verification_failure = (
+                        "recovery_checkout_lease_changed_during_verification"
+                    )
+                elif lease_after_confirmation.get("current") is not True:
+                    protected_verification_failure = (
+                        "recovery_checkout_lease_changed_after_verification"
+                    )
+                elif protected_after != protected_after_confirmed:
+                    protected_verification_failure = (
+                        "recovery_protected_snapshot_unstable"
+                    )
+                elif self._implementation_protected_snapshot_errors(
+                    protected_after_confirmed
+                ):
+                    protected_verification_failure = (
+                        "recovery_protected_snapshot_invalid_after_commit"
+                    )
+                else:
+                    # The outer candidate commit legitimately advances HEAD.
+                    # Passing the stable protected snapshot explicitly keeps
+                    # comparison on protected path identities and avoids a
+                    # second acquisition of the non-reentrant checkout lease.
+                    protected_violation = (
+                        self._implementation_protected_path_violation(
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=workspace,
+                            before=protected_before,
+                            after=protected_after_confirmed,
+                        )
+                    )
                 candidate_commit = str(
                     commit_result.get("commit")
                     or commit_result.get("candidate_commit")
@@ -9793,7 +12233,13 @@ class PortalImplementationDaemon:
                     workspace,
                     baseline_ref,
                 )
-                if protected_violation:
+                if protected_verification_failure:
+                    result = {
+                        "prepared": False,
+                        "reason": protected_verification_failure,
+                        "lease_authority": lease_after_confirmation,
+                    }
+                elif protected_violation:
                     result = {
                         "prepared": False,
                         "reason": "recovery_protected_path_mutated",
@@ -10992,6 +13438,73 @@ class PortalImplementationDaemon:
                 ),
             }
 
+        # The released predecessor could latch the candidate's legitimate HEAD
+        # transition after attempting to reacquire this recovery's own checkout
+        # lease.  Repair only that exact durable incident while the original DB
+        # evidence, task/lifecycle authority, event chain, candidate history,
+        # and protected bytes are all still current.
+        incident_path = self._implementation_protected_incident_path()
+        incident, incident_status = (
+            self._load_interrupted_validation_clearance_authority_file(
+                incident_path
+            )
+        )
+        incident_mutations = (
+            incident.get("mutations") if isinstance(incident, Mapping) else None
+        )
+        pathless_workspace_incident = bool(
+            incident_status == "exact"
+            and isinstance(incident, Mapping)
+            and incident.get("reason") == "implementation_protected_path_mutated"
+            and incident.get("task_id") == task_id
+            and incident.get("attempt") == raw_attempt
+            and isinstance(incident_mutations, list)
+            and len(incident_mutations) == 1
+            and isinstance(incident_mutations[0], Mapping)
+            and incident_mutations[0].get("scope") == "workspace"
+            and incident_mutations[0].get("path") == ""
+            and incident_mutations[0].get("change")
+            == "scope_snapshot_changed"
+        )
+        clearance_phase_path = (
+            self._interrupted_validation_self_deadlock_clearance_path(
+                database_evidence_id=str(evidence.get("evidence_id") or ""),
+                task_id=task_id,
+                attempt=raw_attempt,
+            )
+        )
+        clearance_phase_status = (
+            self._load_interrupted_validation_clearance_authority_file(
+                clearance_phase_path
+            )[1]
+            if clearance_phase_path is not None
+            else "invalid"
+        )
+        if (
+            pathless_workspace_incident
+            or incident_status == "invalid"
+            or clearance_phase_status != "absent"
+        ):
+            recovery_state = PortalTaskState.load(self.state_path)
+            incident_authority = (
+                self._interrupted_database_validation_authority(
+                    evidence,
+                    state=recovery_state,
+                )
+            )
+            incident_recovery = (
+                self._recover_interrupted_database_validation_self_deadlock_incident(
+                    evidence=evidence,
+                    authority=incident_authority,
+                    incident=(incident if pathless_workspace_incident else {}),
+                )
+            )
+            if incident_recovery.get("cleared") is not True:
+                return blocked(
+                    "database_recovery_self_deadlock_incident_not_clearable",
+                    incident_recovery=incident_recovery,
+                )
+
         # Older recovery code may still have the immutable active state.  Let
         # its ordinary exact lifecycle/protected-path pass quiesce that state;
         # the expected non-terminal task claim remains deliberately held.
@@ -11073,6 +13586,7 @@ class PortalImplementationDaemon:
             candidate = self._prepare_interrupted_database_validation_candidate(
                 authority,
                 state=state,
+                checkout_lease=lease,
             )
             if candidate.get("prepared") is True:
                 claim_reconciliation = (
