@@ -8260,7 +8260,12 @@ class DatabasePortalExecutionBridge:
         )
         retrying_landed = bool(
             record_status in {"retrying", "quarantined"}
-            and identity_matches
+            and (
+                identity_matches
+                or not isinstance(control_receipt, Mapping)
+                or control_receipt.get("attempt_id")
+                in {"", None, identity["attempt_id"]}
+            )
         )
         if (
             attempt_status != "failed"
