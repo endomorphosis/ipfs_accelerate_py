@@ -863,6 +863,7 @@ class TypedDatabaseTaskSource:
             or selected_now < 0
         ):
             raise TaskSourceIntegrityError("typed task-source clock is invalid")
+        owner_poisoned = False
         for record, receipt in candidates:
             try:
                 result = self._client.recover_legacy_unstalled_claim(
@@ -873,7 +874,11 @@ class TypedDatabaseTaskSource:
                     now_ms=selected_now,
                 )
             except (QuackClientError, TransactionError):
-                current = self.get_task(record.task_cid)
+                try:
+                    current = self.get_task(record.task_cid)
+                except (QuackClientError, TransactionError):
+                    owner_poisoned = True
+                    continue
                 current_receipt = (
                     current.body.get("completion_receipt")
                     if current is not None
@@ -891,12 +896,14 @@ class TypedDatabaseTaskSource:
                     == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
                 ):
                     return True
-                # A leftover board-unstall retrying row without an admitted
-                # cooldown must not fail closed the whole ready projection.
-                # Orphaned-requeue converts it to todo on a later pass.
-                continue
+                self._raise_unrepaired_retrying_integrity_error(
+                    record,
+                    cooldowns,
+                )
             if not result.accepted:
                 return True
+        if owner_poisoned:
+            return False
         return True
 
     def _stable_ready_material(

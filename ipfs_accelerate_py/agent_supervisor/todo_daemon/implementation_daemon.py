@@ -94471,12 +94471,20 @@ class DatabaseImplementationDaemon:
             # rejects populations above the protocol bound instead of
             # returning a partial page.
             for _attempt in range(_DATABASE_PROJECTION_READ_ATTEMPTS):
-                population = self.task_source.list_tasks(
-                    limit=TASK_SOURCE_QUERY_LIMIT
-                )
-                ready = self.task_source.ready_tasks(
-                    limit=TASK_SOURCE_QUERY_LIMIT
-                )
+                try:
+                    population = self.task_source.list_tasks(
+                        limit=TASK_SOURCE_QUERY_LIMIT
+                    )
+                    ready = self.task_source.ready_tasks(
+                        limit=TASK_SOURCE_QUERY_LIMIT
+                    )
+                except (
+                    TaskSourceConflictError,
+                    TaskSourceIntegrityError,
+                ):
+                    # Owner recover can change generation mid-snapshot.
+                    # Retry the bounded read instead of killing the lane.
+                    continue
                 if str(getattr(population, "next_cursor", "") or "") or str(
                     getattr(ready, "next_cursor", "") or ""
                 ):
@@ -94527,7 +94535,13 @@ class DatabaseImplementationDaemon:
                     )
                 seen_population_cursors.add(next_cursor)
                 population_cursor = next_cursor
-            ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            try:
+                ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            except (
+                TaskSourceConflictError,
+                TaskSourceIntegrityError,
+            ):
+                continue
             after = self.task_source.snapshot()
             if str(before.projection_cid) != str(after.projection_cid):
                 continue
