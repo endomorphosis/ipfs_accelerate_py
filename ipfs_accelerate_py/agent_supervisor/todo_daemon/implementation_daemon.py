@@ -21,6 +21,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
@@ -71672,6 +71673,13 @@ DATABASE_PORTAL_TERMINAL_AUDIT_CURSOR_METADATA_KEY_PREFIX = (
     "database_portal_terminal_audit_cursor:"
 )
 DATABASE_EXECUTION_STORE_IDENTITY_METADATA_KEY = "execution_store_identity"
+DATABASE_EXECUTION_STORAGE_PROJECTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-execution-storage-projection@1"
+)
+DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-execution-storage-repair@1"
+)
+DATABASE_EXECUTION_STORAGE_REPAIR_BATCH_ROWS = 4_096
 
 # Ordered execution phases. Crash/restart resumes after the last committed phase.
 ATTEMPT_PHASE_CLAIMED = "claimed"
@@ -71821,6 +71829,113 @@ CREATE TABLE IF NOT EXISTS daemon_execution_events (
 );
 """
 
+_DAEMON_EXECUTION_REQUIRED_COLUMNS: Mapping[
+    str, tuple[tuple[str, str, bool], ...]
+] = {
+    "attempt_dispatch_journal": (
+        ("dispatch_id", "VARCHAR", False),
+        ("attempt_id", "VARCHAR", False),
+        ("task_cid", "VARCHAR", False),
+        ("dispatch_kind", "VARCHAR", False),
+        ("idempotency_key", "VARCHAR", False),
+        ("owner_session_id", "VARCHAR", False),
+        ("fencing_token", "BIGINT", False),
+        ("fence_epoch", "BIGINT", False),
+        ("started_at_ms", "BIGINT", False),
+        ("updated_at_ms", "BIGINT", False),
+        ("outcome", "VARCHAR", False),
+        ("body_json", "VARCHAR", False),
+    ),
+    "attempt_phases": (
+        ("attempt_id", "VARCHAR", False),
+        ("phase", "VARCHAR", False),
+        ("committed_at_ms", "BIGINT", False),
+        ("fencing_token", "BIGINT", False),
+        ("fence_epoch", "BIGINT", False),
+        ("revision", "BIGINT", False),
+        ("body_json", "VARCHAR", False),
+    ),
+    "daemon_execution_events": (
+        ("event_id", "VARCHAR", False),
+        ("attempt_id", "VARCHAR", False),
+        ("task_cid", "VARCHAR", False),
+        ("event_type", "VARCHAR", False),
+        ("recorded_at_ms", "BIGINT", False),
+        ("body_json", "VARCHAR", False),
+    ),
+    "daemon_execution_metadata": (
+        ("key", "VARCHAR", False),
+        ("value", "VARCHAR", False),
+    ),
+    "database_portal_attempt_bindings": (
+        ("attempt_id", "VARCHAR", False),
+        ("task_cid", "VARCHAR", False),
+        ("claim_id", "VARCHAR", False),
+        ("attempt_number", "BIGINT", False),
+        ("owner_session_id", "VARCHAR", False),
+        ("lease_id", "VARCHAR", False),
+        ("fencing_token", "BIGINT", False),
+        ("fence_epoch", "BIGINT", False),
+        ("binding_id", "VARCHAR", False),
+        ("projection_immutable_digest", "VARCHAR", False),
+        ("stage", "VARCHAR", False),
+        ("record_json", "VARCHAR", False),
+    ),
+    "database_portal_terminal_reconciliations": (
+        ("attempt_id", "VARCHAR", False),
+        ("task_cid", "VARCHAR", False),
+        ("claim_id", "VARCHAR", False),
+        ("attempt_number", "BIGINT", False),
+        ("owner_session_id", "VARCHAR", False),
+        ("lease_id", "VARCHAR", False),
+        ("fencing_token", "BIGINT", False),
+        ("fence_epoch", "BIGINT", False),
+        ("intended_database_disposition", "VARCHAR", False),
+        ("evidence_id", "VARCHAR", False),
+        ("prepared_reconciliation_receipt_id", "VARCHAR", False),
+        ("commit_barrier_receipt_id", "VARCHAR", False),
+        ("stage", "VARCHAR", False),
+        ("receipt_id", "VARCHAR", False),
+        ("record_json", "VARCHAR", False),
+    ),
+    "database_task_attempts": (
+        ("attempt_id", "VARCHAR", False),
+        ("claim_id", "VARCHAR", False),
+        ("task_cid", "VARCHAR", False),
+        ("task_alias", "VARCHAR", False),
+        ("attempt_number", "BIGINT", False),
+        ("owner_session_id", "VARCHAR", False),
+        ("fencing_token", "BIGINT", False),
+        ("fence_epoch", "BIGINT", False),
+        ("lease_id", "VARCHAR", False),
+        ("committed_phase", "VARCHAR", False),
+        ("status", "VARCHAR", False),
+        ("started_at_ms", "BIGINT", False),
+        ("finished_at_ms", "BIGINT", True),
+        ("revision", "BIGINT", False),
+        ("body_json", "VARCHAR", False),
+    ),
+    "effect_claims": (
+        ("effect_id", "VARCHAR", False),
+        ("attempt_id", "VARCHAR", False),
+        ("task_cid", "VARCHAR", False),
+        ("effect_key", "VARCHAR", False),
+        ("idempotency_key", "VARCHAR", False),
+        ("owner_session_id", "VARCHAR", False),
+        ("recorded_at_ms", "BIGINT", False),
+        ("result_json", "VARCHAR", False),
+    ),
+    "provider_invocations": (
+        ("invocation_id", "VARCHAR", False),
+        ("attempt_id", "VARCHAR", False),
+        ("task_cid", "VARCHAR", False),
+        ("idempotency_key", "VARCHAR", False),
+        ("owner_session_id", "VARCHAR", False),
+        ("recorded_at_ms", "BIGINT", False),
+        ("result_json", "VARCHAR", False),
+    ),
+}
+
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -71832,6 +71947,100 @@ class DatabaseImplementationAuthorityError(DatabaseImplementationDaemonError):
 
 class DatabaseImplementationConflictError(DatabaseImplementationDaemonError):
     """Raised when a claim or phase transition conflicts with durable state."""
+
+
+class DatabaseImplementationExecutionStorageRepairedError(
+    DatabaseImplementationDaemonError
+):
+    """The physical execution store was rebuilt; exact replay is required."""
+
+    code = "DQP_EXECUTION_STORAGE_REPAIRED_RECONCILIATION_REQUIRED"
+
+    def __init__(self, message: str, *, receipt: Mapping[str, Any]) -> None:
+        super().__init__(message)
+        self.receipt = MappingProxyType(dict(receipt))
+
+
+class DatabaseImplementationExecutionStorageRepairError(
+    DatabaseImplementationDaemonError
+):
+    """Exact execution-store physical repair was unavailable or unsafe."""
+
+    code = "DQP_EXECUTION_STORAGE_REPAIR_UNAVAILABLE"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status = MappingProxyType(dict(status or {}))
+
+
+class _DatabaseImplementationExecutionStorageArtFatal(
+    DatabaseImplementationDaemonError
+):
+    """Path-bound ART fatal emitted only by the execution connection adapter."""
+
+    def __init__(
+        self,
+        *,
+        database_path: Path,
+        connection: Any,
+        cause: BaseException,
+    ) -> None:
+        self.database_path = Path(database_path)
+        self.connection = connection
+        self.cause = cause
+        super().__init__(
+            f"execution store {self.database_path} raised DuckDB ART fatal"
+        )
+
+
+class _DatabaseExecutionStoreConnection:
+    """Transparent adapter that adds exact execution-path fatal provenance."""
+
+    def __init__(self, connection: Any, *, database_path: Path) -> None:
+        self._connection = connection
+        self.database_path = Path(database_path)
+
+    def execute(self, sql: str, parameters: Any = None) -> Any:
+        try:
+            if parameters is None:
+                return self._connection.execute(sql)
+            return self._connection.execute(sql, parameters)
+        except Exception as exc:
+            from ..merge.database_coordination import (
+                _is_duckdb_art_delete_failure,
+            )
+
+            if not _is_duckdb_art_delete_failure(exc):
+                raise
+            raise _DatabaseImplementationExecutionStorageArtFatal(
+                database_path=self.database_path,
+                connection=self,
+                cause=exc,
+            ) from exc
+
+    def executemany(self, sql: str, parameters: Any) -> Any:
+        try:
+            return self._connection.executemany(sql, parameters)
+        except Exception as exc:
+            from ..merge.database_coordination import (
+                _is_duckdb_art_delete_failure,
+            )
+
+            if not _is_duckdb_art_delete_failure(exc):
+                raise
+            raise _DatabaseImplementationExecutionStorageArtFatal(
+                database_path=self.database_path,
+                connection=self,
+                cause=exc,
+            ) from exc
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._connection, name)
 
 
 class DatabaseImplementationDispatchOutcomeUnknownError(
@@ -71934,6 +72143,1112 @@ def _database_daemon_now_ms() -> int:
 
 def _database_daemon_new_id(prefix: str) -> str:
     return f"{prefix}:{secrets.token_hex(12)}"
+
+
+def _set_database_execution_metadata(
+    connection: Any,
+    *,
+    key: str,
+    value: str,
+) -> bool:
+    """Set one metadata value without deleting/reinserting its ART key."""
+
+    key_text = str(key)
+    value_text = str(value)
+    rows = connection.execute(
+        "SELECT value FROM daemon_execution_metadata WHERE key = ?",
+        [key_text],
+    ).fetchall()
+    if len(rows) > 1:
+        raise DatabaseImplementationConflictError(
+            f"execution metadata key {key_text!r} is not unique"
+        )
+    if not rows:
+        inserted = connection.execute(
+            """
+            INSERT INTO daemon_execution_metadata(key, value)
+            VALUES (?, ?)
+            RETURNING key, value
+            """,
+            [key_text, value_text],
+        ).fetchall()
+        if (
+            len(inserted) != 1
+            or str(inserted[0][0]) != key_text
+            or str(inserted[0][1]) != value_text
+        ):
+            raise DatabaseImplementationConflictError(
+                f"execution metadata insert was not exact for {key_text!r}"
+            )
+        return True
+    prior = str(rows[0][0])
+    if prior == value_text:
+        return False
+    updated = connection.execute(
+        """
+        UPDATE daemon_execution_metadata
+        SET value = ?
+        WHERE key = ? AND value = ?
+        RETURNING key, value
+        """,
+        [value_text, key_text, prior],
+    ).fetchall()
+    if (
+        len(updated) != 1
+        or str(updated[0][0]) != key_text
+        or str(updated[0][1]) != value_text
+    ):
+        raise DatabaseImplementationConflictError(
+            f"execution metadata revision changed for {key_text!r}"
+        )
+    observed = connection.execute(
+        "SELECT value FROM daemon_execution_metadata WHERE key = ?",
+        [key_text],
+    ).fetchall()
+    if len(observed) != 1 or str(observed[0][0]) != value_text:
+        raise DatabaseImplementationConflictError(
+            f"execution metadata update did not persist for {key_text!r}"
+        )
+    return True
+
+
+def _database_execution_storage_payload_root(value: Any) -> str:
+    encoded = canonical_json(value).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _database_execution_storage_file_identity(
+    path: Path,
+) -> tuple[str, int, tuple[int, int, int, int]]:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+        os, "O_NOFOLLOW", 0
+    )
+    descriptor = os.open(path, flags)
+    try:
+        before = os.fstat(descriptor)
+        if not stat_module.S_ISREG(before.st_mode):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage repair requires regular source files"
+            )
+        digest = hashlib.sha256()
+        size = 0
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+            size += len(chunk)
+        after = os.fstat(descriptor)
+        before_identity = (
+            int(before.st_dev),
+            int(before.st_ino),
+            int(before.st_size),
+            int(before.st_mtime_ns),
+        )
+        after_identity = (
+            int(after.st_dev),
+            int(after.st_ino),
+            int(after.st_size),
+            int(after.st_mtime_ns),
+        )
+        if before_identity != after_identity or size != int(before.st_size):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage source changed while it was hashed"
+            )
+        return "sha256:" + digest.hexdigest(), size, before_identity
+    finally:
+        os.close(descriptor)
+
+
+def _copy_database_execution_storage_file(source: Path, target: Path) -> None:
+    source_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+        os, "O_NOFOLLOW", 0
+    )
+    target_flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    source_descriptor = os.open(source, source_flags)
+    try:
+        source_before = os.fstat(source_descriptor)
+        if not stat_module.S_ISREG(source_before.st_mode):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage probe source is not regular data"
+            )
+        target_descriptor = os.open(target, target_flags, 0o600)
+        try:
+            while True:
+                chunk = os.read(source_descriptor, 1024 * 1024)
+                if not chunk:
+                    break
+                offset = 0
+                while offset < len(chunk):
+                    offset += os.write(target_descriptor, chunk[offset:])
+            os.fsync(target_descriptor)
+        finally:
+            os.close(target_descriptor)
+        source_after = os.fstat(source_descriptor)
+        if (
+            int(source_before.st_dev),
+            int(source_before.st_ino),
+            int(source_before.st_size),
+            int(source_before.st_mtime_ns),
+        ) != (
+            int(source_after.st_dev),
+            int(source_after.st_ino),
+            int(source_after.st_size),
+            int(source_after.st_mtime_ns),
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage probe source changed during copy"
+            )
+    finally:
+        os.close(source_descriptor)
+
+
+def _write_database_execution_repair_phase_receipt(
+    path: Path,
+    payload: Mapping[str, Any],
+) -> str:
+    body = canonical_json(dict(payload)).encode("utf-8") + b"\n"
+    descriptor = os.open(
+        path,
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        offset = 0
+        while offset < len(body):
+            offset += os.write(descriptor, body[offset:])
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    return "sha256:" + hashlib.sha256(body[:-1]).hexdigest()
+
+
+def _fsync_database_execution_storage_path(path: Path) -> None:
+    descriptor = os.open(
+        path,
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _fsync_database_execution_storage_directory(path: Path) -> None:
+    descriptor = os.open(
+        path,
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+    )
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _database_execution_storage_catalog(connection: Any) -> dict[str, Any]:
+    tables = [
+        [str(row[0]), str(row[1])]
+        for row in connection.execute(
+            "SELECT table_name, sql FROM duckdb_tables() "
+            "WHERE database_name=current_database() AND schema_name='main' "
+            "ORDER BY table_name"
+        ).fetchall()
+    ]
+    indexes = [
+        [str(row[0]), str(row[1]), str(row[2]), bool(row[3])]
+        for row in connection.execute(
+            "SELECT index_name, table_name, sql, is_unique "
+            "FROM duckdb_indexes() "
+            "WHERE database_name=current_database() AND schema_name='main' "
+            "ORDER BY index_name"
+        ).fetchall()
+    ]
+    views = connection.execute(
+        "SELECT view_name FROM duckdb_views() "
+        "WHERE database_name=current_database() AND schema_name='main' "
+        "AND NOT internal ORDER BY view_name"
+    ).fetchall()
+    sequences = connection.execute(
+        "SELECT sequence_name FROM duckdb_sequences() "
+        "WHERE database_name=current_database() AND schema_name='main' "
+        "ORDER BY sequence_name"
+    ).fetchall()
+    if views or sequences:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution storage repair rejects non-canonical views or sequences"
+        )
+    table_names = [item[0] for item in tables]
+    if table_names != sorted(_DAEMON_EXECUTION_REQUIRED_COLUMNS):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution storage catalog has an unknown or missing table"
+        )
+    return {"tables": tables, "indexes": indexes, "views": [], "sequences": []}
+
+
+def _database_execution_storage_projection_from_connection(
+    connection: Any,
+) -> dict[str, Any]:
+    table_projections: list[dict[str, Any]] = []
+    for table in sorted(_DAEMON_EXECUTION_REQUIRED_COLUMNS):
+        expected = _DAEMON_EXECUTION_REQUIRED_COLUMNS[table]
+        actual_info = connection.execute(
+            f"PRAGMA table_info('{table}')"
+        ).fetchall()
+        actual = tuple(
+            (
+                str(row[1]),
+                str(row[2]).upper(),
+                not bool(row[3]),
+            )
+            for row in actual_info
+        )
+        if actual != expected:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                f"execution storage table schema differs for {table}"
+            )
+        columns = tuple(name for name, _kind, _nullable in expected)
+        quoted_columns = ", ".join(f'"{name}"' for name in columns)
+        rows_digest = hashlib.sha256()
+        row_count = 0
+        cursor = connection.execute(
+            f'SELECT {quoted_columns} FROM "{table}" ORDER BY ALL'
+        )
+        fetchmany = getattr(cursor, "fetchmany", None)
+        buffered_rows = None if callable(fetchmany) else iter(cursor.fetchall())
+        while True:
+            if callable(fetchmany):
+                rows = fetchmany(DATABASE_EXECUTION_STORAGE_REPAIR_BATCH_ROWS)
+            else:
+                assert buffered_rows is not None
+                rows = []
+                for _offset in range(
+                    DATABASE_EXECUTION_STORAGE_REPAIR_BATCH_ROWS
+                ):
+                    try:
+                        rows.append(next(buffered_rows))
+                    except StopIteration:
+                        break
+            if not rows:
+                break
+            for row in rows:
+                values: list[Any] = []
+                for offset, (_name, kind, nullable) in enumerate(expected):
+                    value = row[offset]
+                    if value is None:
+                        if not nullable:
+                            raise DatabaseImplementationExecutionStorageRepairError(
+                                "execution storage projection encountered an "
+                                f"unexpected NULL for {table}.{columns[offset]}"
+                            )
+                    elif kind == "VARCHAR":
+                        if type(value) is not str:
+                            raise DatabaseImplementationExecutionStorageRepairError(
+                                "execution storage projection encountered an "
+                                f"invalid text value for {table}.{columns[offset]}"
+                            )
+                    elif kind == "BIGINT":
+                        if (
+                            type(value) is not int
+                            or value < -(2**63)
+                            or value >= 2**63
+                        ):
+                            raise DatabaseImplementationExecutionStorageRepairError(
+                                "execution storage projection encountered an "
+                                f"invalid integer for {table}.{columns[offset]}"
+                            )
+                    else:  # closed schema, defensive even after catalog checks
+                        raise DatabaseImplementationExecutionStorageRepairError(
+                            f"unsupported execution storage type {kind!r}"
+                        )
+                    values.append(value)
+                encoded = canonical_json(values).encode("utf-8")
+                rows_digest.update(len(encoded).to_bytes(8, "big"))
+                rows_digest.update(encoded)
+                row_count += 1
+        table_projections.append(
+            {
+                "table": table,
+                "columns": [
+                    {"name": name, "type": kind, "nullable": nullable}
+                    for name, kind, nullable in expected
+                ],
+                "row_count": row_count,
+                "rows_root": "sha256:" + rows_digest.hexdigest(),
+            }
+        )
+    projection: dict[str, Any] = {
+        "schema": DATABASE_EXECUTION_STORAGE_PROJECTION_SCHEMA,
+        "authority_schema": DATABASE_IMPLEMENTATION_DAEMON_SCHEMA,
+        "tables": table_projections,
+    }
+    projection["projection_root"] = _database_execution_storage_payload_root(
+        projection
+    )
+    return projection
+
+
+def _database_execution_nonempty_wal_redundancy_probe(
+    *,
+    path: Path,
+    wal_path: Path,
+    source_digest: str,
+    source_size: int,
+    wal_digest: str,
+    wal_size: int,
+) -> tuple[Path, Path, dict[str, Any]]:
+    """Prove one observed WAL adds no logical execution-store state.
+
+    Two private same-filesystem copies are compared: main-only and the exact
+    main+WAL pair after DuckDB recovery. The live authority is never opened or
+    changed by this probe. This is deliberately not a general two-file repair.
+    """
+
+    import duckdb  # type: ignore
+
+    from ..task_sources.duckdb_state import connect_duckdb_with_policy
+
+    probe_root = Path(
+        tempfile.mkdtemp(
+            prefix=f".{path.name}.wal-redundancy-probe-",
+            dir=path.parent,
+        )
+    )
+    os.chmod(probe_root, 0o700)
+    main_only_dir = probe_root / "main-only"
+    recovered_dir = probe_root / "main-plus-wal"
+    main_only_dir.mkdir(mode=0o700)
+    recovered_dir.mkdir(mode=0o700)
+    main_only_path = main_only_dir / path.name
+    recovered_path = recovered_dir / path.name
+    recovered_wal_path = recovered_dir / wal_path.name
+    try:
+        _copy_database_execution_storage_file(path, main_only_path)
+        _copy_database_execution_storage_file(path, recovered_path)
+        _copy_database_execution_storage_file(wal_path, recovered_wal_path)
+        copied_main_digest, copied_main_size, _ = (
+            _database_execution_storage_file_identity(main_only_path)
+        )
+        copied_recovery_main_digest, copied_recovery_main_size, _ = (
+            _database_execution_storage_file_identity(recovered_path)
+        )
+        copied_wal_digest, copied_wal_size, _ = (
+            _database_execution_storage_file_identity(recovered_wal_path)
+        )
+        if (
+            copied_main_digest != source_digest
+            or copied_main_size != source_size
+            or copied_recovery_main_digest != source_digest
+            or copied_recovery_main_size != source_size
+            or copied_wal_digest != wal_digest
+            or copied_wal_size != wal_size
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage WAL probe copy differs from source"
+            )
+
+        main_only = connect_duckdb_with_policy(
+            duckdb,
+            main_only_path,
+            read_only=True,
+            configuration={"threads": 1, "memory_limit": "256MB"},
+        )
+        try:
+            main_projection = (
+                _database_execution_storage_projection_from_connection(main_only)
+            )
+            main_catalog = _database_execution_storage_catalog(main_only)
+        finally:
+            main_only.close()
+
+        recovered = connect_duckdb_with_policy(
+            duckdb,
+            recovered_path,
+            configuration={"threads": 1, "memory_limit": "256MB"},
+        )
+        try:
+            recovered_projection = (
+                _database_execution_storage_projection_from_connection(recovered)
+            )
+            recovered_catalog = _database_execution_storage_catalog(recovered)
+            recovered.execute("CHECKPOINT")
+        finally:
+            recovered.close()
+        stable = connect_duckdb_with_policy(
+            duckdb,
+            recovered_path,
+            read_only=True,
+            configuration={"threads": 1, "memory_limit": "256MB"},
+        )
+        try:
+            stable_projection = (
+                _database_execution_storage_projection_from_connection(stable)
+            )
+            stable_catalog = _database_execution_storage_catalog(stable)
+        finally:
+            stable.close()
+        if (
+            recovered_projection["projection_root"]
+            != stable_projection["projection_root"]
+            or recovered_catalog != stable_catalog
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage WAL recovery did not produce a stable projection",
+                status={
+                    "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                    "reason": "nonempty_wal_recovery_unstable",
+                    "database_path": str(path),
+                    "wal_path": str(wal_path),
+                    "source_preserved": True,
+                    "wal_preserved": True,
+                    "repair_performed": False,
+                    "reconciliation_required": True,
+                    "retry_permitted": False,
+                },
+            )
+        if (
+            main_projection["projection_root"]
+            != stable_projection["projection_root"]
+            or main_catalog != stable_catalog
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage WAL contains distinct logical authority",
+                status={
+                    "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                    "reason": "nonempty_wal_changes_logical_projection",
+                    "database_path": str(path),
+                    "wal_path": str(wal_path),
+                    "main_projection_root": main_projection["projection_root"],
+                    "recovered_projection_root": stable_projection[
+                        "projection_root"
+                    ],
+                    "source_preserved": True,
+                    "wal_preserved": True,
+                    "repair_performed": False,
+                    "reconciliation_required": True,
+                    "retry_permitted": False,
+                },
+            )
+        proof = {
+            "profile": "exact-main-plus-wal-redundancy@1",
+            "main_sha256": source_digest,
+            "main_size_bytes": source_size,
+            "wal_sha256": wal_digest,
+            "wal_size_bytes": wal_size,
+            "main_projection_root": main_projection["projection_root"],
+            "recovered_projection_root": stable_projection["projection_root"],
+            "catalog_root": _database_execution_storage_payload_root(
+                main_catalog
+            ),
+            "logical_projection_equal": True,
+            "live_authority_opened": False,
+        }
+        proof["proof_id"] = _database_execution_storage_payload_root(proof)
+        return main_only_path, probe_root, proof
+    except DatabaseImplementationExecutionStorageRepairError:
+        shutil.rmtree(probe_root, ignore_errors=True)
+        raise
+    except Exception as exc:
+        shutil.rmtree(probe_root, ignore_errors=True)
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution storage non-empty WAL could not be replayed exactly",
+            status={
+                "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                "reason": "nonempty_wal_exact_replay_unavailable",
+                "database_path": str(path),
+                "wal_path": str(wal_path),
+                "wal_sha256": wal_digest,
+                "wal_size_bytes": wal_size,
+                "source_preserved": True,
+                "wal_preserved": True,
+                "repair_performed": False,
+                "reconciliation_required": True,
+                "retry_permitted": False,
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:512],
+            },
+        ) from exc
+
+
+def _repair_database_execution_art_index_storage_under_writer_lock(
+    database_path: Path,
+) -> dict[str, Any]:
+    """Rebuild one execution store while its daemon writer fence is held."""
+
+    from ..merge.database_coordination import (
+        DUCKDB_ART_DELETE_FAILURE_SIGNATURE,
+    )
+    from ..task_sources.duckdb_state import (
+        connect_duckdb_with_policy,
+        exclusive_file_lock,
+    )
+
+    path = Path(os.path.abspath(os.fspath(database_path)))
+    wal_path = path.with_name(path.name + ".wal")
+    database_lock_path = path.with_name(f".{path.name}.lock")
+    candidate: Path | None = None
+    rollback_link: Path | None = None
+    with exclusive_file_lock(database_lock_path):
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError as exc:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                f"execution storage does not exist: {path}",
+                status={
+                    "reason": "execution_storage_missing",
+                    "database_path": str(path),
+                    "repair_performed": False,
+                },
+            ) from exc
+        if stat_module.S_ISLNK(metadata.st_mode) or not stat_module.S_ISREG(
+            metadata.st_mode
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage repair requires a regular non-symlink file",
+                status={
+                    "reason": "execution_storage_not_regular",
+                    "database_path": str(path),
+                    "repair_performed": False,
+                },
+            )
+
+        source_digest, source_size, source_identity = (
+            _database_execution_storage_file_identity(path)
+        )
+
+        wal_present = wal_path.exists() or wal_path.is_symlink()
+        wal_digest = ""
+        wal_size = 0
+        wal_identity: tuple[int, int, int, int] | None = None
+        if wal_present:
+            wal_metadata = wal_path.lstat()
+            if stat_module.S_ISLNK(wal_metadata.st_mode) or not stat_module.S_ISREG(
+                wal_metadata.st_mode
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution storage WAL is not a regular non-symlink file",
+                    status={
+                        "reason": "execution_storage_wal_not_regular",
+                        "database_path": str(path),
+                        "wal_path": str(wal_path),
+                        "repair_performed": False,
+                    },
+                )
+            wal_digest, wal_size, wal_identity = (
+                _database_execution_storage_file_identity(wal_path)
+            )
+        import duckdb  # type: ignore
+
+        logical_source_path = path
+        wal_probe_root: Path | None = None
+        wal_redundancy_proof: dict[str, Any] = {}
+        if wal_size > 0:
+            (
+                logical_source_path,
+                wal_probe_root,
+                wal_redundancy_proof,
+            ) = _database_execution_nonempty_wal_redundancy_probe(
+                path=path,
+                wal_path=wal_path,
+                source_digest=source_digest,
+                source_size=source_size,
+                wal_digest=wal_digest,
+                wal_size=wal_size,
+            )
+        try:
+            source = connect_duckdb_with_policy(
+                duckdb,
+                logical_source_path,
+                read_only=True,
+                configuration={"threads": 1, "memory_limit": "256MB"},
+            )
+        except Exception:
+            if wal_probe_root is not None:
+                shutil.rmtree(wal_probe_root, ignore_errors=True)
+            raise
+        try:
+            before_projection = (
+                _database_execution_storage_projection_from_connection(source)
+            )
+            source_catalog = _database_execution_storage_catalog(source)
+            descriptor, candidate_name = tempfile.mkstemp(
+                prefix=f".{path.name}.art-repair-",
+                suffix=".duckdb",
+                dir=path.parent,
+            )
+            os.close(descriptor)
+            candidate = Path(candidate_name)
+            candidate.unlink()
+            target = connect_duckdb_with_policy(
+                duckdb,
+                candidate,
+                configuration={"threads": 1, "memory_limit": "256MB"},
+            )
+            row_counts: dict[str, int] = {}
+            try:
+                statements = _split_sql_statements(_DAEMON_EXECUTION_SQL)
+                table_statements = [
+                    statement
+                    for statement in statements
+                    if statement.lstrip().upper().startswith("CREATE TABLE")
+                ]
+                index_statements = [
+                    statement
+                    for statement in statements
+                    if statement.lstrip().upper().startswith("CREATE INDEX")
+                    or statement.lstrip().upper().startswith(
+                        "CREATE UNIQUE INDEX"
+                    )
+                ]
+                if len(table_statements) != len(
+                    _DAEMON_EXECUTION_REQUIRED_COLUMNS
+                ):
+                    raise DatabaseImplementationExecutionStorageRepairError(
+                        "execution repair DDL table set is incomplete"
+                    )
+                for statement in table_statements:
+                    target.execute(statement)
+                target.execute("BEGIN TRANSACTION")
+                try:
+                    for table in sorted(_DAEMON_EXECUTION_REQUIRED_COLUMNS):
+                        columns = tuple(
+                            name
+                            for name, _kind, _nullable in (
+                                _DAEMON_EXECUTION_REQUIRED_COLUMNS[table]
+                            )
+                        )
+                        quoted_columns = ", ".join(
+                            f'"{name}"' for name in columns
+                        )
+                        placeholders = ", ".join("?" for _ in columns)
+                        insert_sql = (
+                            f'INSERT INTO "{table}" ({quoted_columns}) '
+                            f"VALUES ({placeholders})"
+                        )
+                        cursor = source.execute(
+                            f'SELECT {quoted_columns} FROM "{table}" ORDER BY ALL'
+                        )
+                        count = 0
+                        while True:
+                            rows = cursor.fetchmany(
+                                DATABASE_EXECUTION_STORAGE_REPAIR_BATCH_ROWS
+                            )
+                            if not rows:
+                                break
+                            target.executemany(insert_sql, rows)
+                            count += len(rows)
+                        row_counts[table] = count
+                    target.execute("COMMIT")
+                except BaseException:
+                    try:
+                        target.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    raise
+                for statement in index_statements:
+                    target.execute(statement)
+                target.execute("CHECKPOINT")
+                target_projection = (
+                    _database_execution_storage_projection_from_connection(
+                        target
+                    )
+                )
+                target_catalog = _database_execution_storage_catalog(target)
+                if target_catalog != source_catalog:
+                    raise DatabaseImplementationExecutionStorageRepairError(
+                        "rebuilt execution schema/index catalog differs"
+                    )
+                if (
+                    target_projection["projection_root"]
+                    != before_projection["projection_root"]
+                ):
+                    raise DatabaseImplementationExecutionStorageRepairError(
+                        "rebuilt execution logical projection differs"
+                    )
+            finally:
+                target.close()
+        finally:
+            source.close()
+            if wal_probe_root is not None:
+                shutil.rmtree(wal_probe_root, ignore_errors=True)
+
+        current_digest, current_size, current_identity = (
+            _database_execution_storage_file_identity(path)
+        )
+        if (
+            current_digest != source_digest
+            or current_size != source_size
+            or current_identity != source_identity
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage source changed during candidate preparation"
+            )
+        if wal_present:
+            current_wal_digest, current_wal_size, current_wal_identity = (
+                _database_execution_storage_file_identity(wal_path)
+            )
+            if (
+                current_wal_digest != wal_digest
+                or current_wal_size != wal_size
+                or current_wal_identity != wal_identity
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution storage WAL changed during candidate preparation"
+                )
+        if candidate is None or not candidate.is_file():
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage repair did not produce a candidate"
+            )
+        candidate_wal = candidate.with_name(candidate.name + ".wal")
+        if candidate_wal.exists() or candidate_wal.is_symlink():
+            candidate_wal_metadata = candidate_wal.lstat()
+            if (
+                stat_module.S_ISLNK(candidate_wal_metadata.st_mode)
+                or not stat_module.S_ISREG(candidate_wal_metadata.st_mode)
+                or candidate_wal_metadata.st_size != 0
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution storage repair candidate is not checkpointed"
+                )
+        os.chmod(candidate, 0o600)
+        _fsync_database_execution_storage_path(candidate)
+        candidate_digest, candidate_size, _candidate_identity = (
+            _database_execution_storage_file_identity(candidate)
+        )
+
+        quarantine = path.parent / ".execution-art-repair-quarantine"
+        if quarantine.exists() or quarantine.is_symlink():
+            quarantine_metadata = quarantine.lstat()
+            if stat_module.S_ISLNK(
+                quarantine_metadata.st_mode
+            ) or not stat_module.S_ISDIR(quarantine_metadata.st_mode):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair quarantine is not a real directory"
+                )
+        else:
+            quarantine.mkdir(mode=0o700)
+        if quarantine.stat().st_dev != path.parent.stat().st_dev:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair quarantine must share the authority filesystem"
+            )
+
+        repair_id = uuid.uuid4().hex
+        backup = quarantine / (
+            f"{path.name}.{source_digest.removeprefix('sha256:')}."
+            f"{repair_id}.duckdb"
+        )
+        rollback_link = path.parent / (
+            f".{path.name}.art-repair-rollback-{repair_id}.duckdb"
+        )
+        quarantined_wal: Path | None = None
+        retired_live_wal: Path | None = None
+        prepared_phase_path = quarantine / f"{backup.name}.prepared.json"
+        prepared_phase_id = ""
+        try:
+            os.link(path, backup, follow_symlinks=False)
+            os.link(path, rollback_link, follow_symlinks=False)
+            if wal_present:
+                quarantined_wal = backup.with_name(backup.name + ".wal")
+                os.link(wal_path, quarantined_wal, follow_symlinks=False)
+            _fsync_database_execution_storage_directory(quarantine)
+            _fsync_database_execution_storage_directory(path.parent)
+        except BaseException as exc:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair could not preserve the original authority"
+            ) from exc
+
+        prepared_phase = {
+            "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+            "phase": "prepared",
+            "reason": "duckdb_art_index_physical_rebuild",
+            "repair_id": repair_id,
+            "database_path": str(path),
+            "source_sha256": source_digest,
+            "source_size_bytes": source_size,
+            "wal_sha256": wal_digest,
+            "wal_size_bytes": wal_size,
+            "candidate_sha256": candidate_digest,
+            "candidate_size_bytes": candidate_size,
+            "logical_projection_root": before_projection["projection_root"],
+            "catalog_root": _database_execution_storage_payload_root(
+                source_catalog
+            ),
+            "quarantined_source_path": str(backup),
+            "quarantined_wal_path": (
+                str(quarantined_wal) if quarantined_wal is not None else ""
+            ),
+            "wal_redundancy_proof_id": str(
+                wal_redundancy_proof.get("proof_id") or ""
+            ),
+            "source_preserved": True,
+            "wal_preserved": not wal_present or quarantined_wal is not None,
+            "authority_mutation_started": False,
+            "interrupted_transaction_outcome": (
+                "not_inferred_reconcile_exact_operation"
+            ),
+        }
+        try:
+            prepared_phase_id = _write_database_execution_repair_phase_receipt(
+                prepared_phase_path,
+                prepared_phase,
+            )
+            _fsync_database_execution_storage_directory(quarantine)
+        except BaseException as exc:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair could not persist its prepared phase"
+            ) from exc
+
+        if wal_size > 0:
+            assert wal_identity is not None
+            current_wal_digest, current_wal_size, current_wal_identity = (
+                _database_execution_storage_file_identity(wal_path)
+            )
+            if (
+                current_wal_digest != wal_digest
+                or current_wal_size != wal_size
+                or current_wal_identity != wal_identity
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution storage WAL changed before safe retirement"
+                )
+            retired_live_wal = quarantine / (
+                f"{backup.name}.retired-live-wal"
+            )
+            try:
+                os.replace(wal_path, retired_live_wal)
+                _fsync_database_execution_storage_directory(quarantine)
+                _fsync_database_execution_storage_directory(path.parent)
+                retired_digest, retired_size, _retired_identity = (
+                    _database_execution_storage_file_identity(retired_live_wal)
+                )
+                if retired_digest != wal_digest or retired_size != wal_size:
+                    raise DatabaseImplementationExecutionStorageRepairError(
+                        "retired execution storage WAL differs from source"
+                    )
+            except BaseException as exc:
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution storage redundant WAL retirement failed"
+                ) from exc
+
+        installed = False
+        verified_projection: dict[str, Any] | None = None
+        failed_replacement: Path | None = None
+        try:
+            os.replace(candidate, path)
+            candidate = None
+            installed = True
+            _fsync_database_execution_storage_directory(path.parent)
+
+            verifier = connect_duckdb_with_policy(
+                duckdb,
+                path,
+                read_only=True,
+                configuration={"threads": 1, "memory_limit": "256MB"},
+            )
+            try:
+                verified_projection = (
+                    _database_execution_storage_projection_from_connection(
+                        verifier
+                    )
+                )
+                verified_catalog = _database_execution_storage_catalog(verifier)
+            finally:
+                verifier.close()
+            installed_digest, installed_size, _installed_identity = (
+                _database_execution_storage_file_identity(path)
+            )
+            if (
+                installed_digest != candidate_digest
+                or installed_size != candidate_size
+                or verified_projection["projection_root"]
+                != before_projection["projection_root"]
+                or verified_catalog != source_catalog
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "installed execution repair failed independent verification"
+                )
+        except BaseException as install_exc:
+            if installed:
+                failed_replacement = quarantine / (
+                    f"{path.name}.{candidate_digest.removeprefix('sha256:')}."
+                    f"{repair_id}.failed-replacement.duckdb"
+                )
+                try:
+                    os.link(path, failed_replacement, follow_symlinks=False)
+                except OSError:
+                    failed_replacement = None
+                try:
+                    assert rollback_link is not None
+                    os.replace(rollback_link, path)
+                    rollback_link = None
+                    _fsync_database_execution_storage_directory(quarantine)
+                    _fsync_database_execution_storage_directory(path.parent)
+                    restored_digest, restored_size, _restored_identity = (
+                        _database_execution_storage_file_identity(path)
+                    )
+                    if (
+                        restored_digest != source_digest
+                        or restored_size != source_size
+                    ):
+                        raise DatabaseImplementationExecutionStorageRepairError(
+                            "execution repair rollback digest differs"
+                        )
+                except BaseException as rollback_exc:
+                    raise DatabaseImplementationExecutionStorageRepairError(
+                        "execution repair install failed and exact rollback "
+                        f"failed; preserved source remains at {backup}"
+                    ) from rollback_exc
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair candidate was not installed"
+            ) from install_exc
+
+        if rollback_link is not None:
+            try:
+                rollback_link.unlink()
+            except FileNotFoundError:
+                pass
+            rollback_link = None
+        assert verified_projection is not None
+        backup_digest, backup_size, _backup_identity = (
+            _database_execution_storage_file_identity(backup)
+        )
+        source_preserved = (
+            backup_digest == source_digest and backup_size == source_size
+        )
+        if not source_preserved:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair quarantine does not preserve source bytes"
+            )
+        committed_phase_path = quarantine / f"{backup.name}.committed.json"
+        committed_phase = {
+            "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+            "phase": "committed",
+            "reason": "duckdb_art_index_physical_rebuild",
+            "repair_id": repair_id,
+            "database_path": str(path),
+            "prepared_phase_id": prepared_phase_id,
+            "source_sha256": source_digest,
+            "replacement_sha256": candidate_digest,
+            "logical_projection_root": verified_projection["projection_root"],
+            "quarantined_source_path": str(backup),
+            "quarantined_wal_path": (
+                str(quarantined_wal) if quarantined_wal is not None else ""
+            ),
+            "retired_live_wal_path": (
+                str(retired_live_wal) if retired_live_wal is not None else ""
+            ),
+            "wal_redundancy_proof_id": str(
+                wal_redundancy_proof.get("proof_id") or ""
+            ),
+            "logical_projection_equal": True,
+            "interrupted_transaction_outcome": (
+                "not_inferred_reconcile_exact_operation"
+            ),
+            "reconciliation_required": True,
+            "same_process_retry_permitted": False,
+        }
+        try:
+            committed_phase_id = _write_database_execution_repair_phase_receipt(
+                committed_phase_path,
+                committed_phase,
+            )
+            _fsync_database_execution_storage_directory(quarantine)
+        except BaseException as exc:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair installed but commit evidence is unavailable",
+                status={
+                    "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                    "reason": "repair_commit_evidence_unavailable",
+                    "database_path": str(path),
+                    "quarantined_source_path": str(backup),
+                    "replacement_sha256": candidate_digest,
+                    "repair_performed": True,
+                    "reconciliation_required": True,
+                    "retry_permitted": False,
+                },
+            ) from exc
+        receipt: dict[str, Any] = {
+            "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+            "reason": "duckdb_art_index_physical_rebuild",
+            "trigger_signature": DUCKDB_ART_DELETE_FAILURE_SIGNATURE,
+            "database_path": str(path),
+            "quarantined_source_path": str(backup),
+            "quarantined_empty_wal_path": (
+                str(quarantined_wal)
+                if quarantined_wal is not None and wal_size == 0
+                else ""
+            ),
+            "quarantined_wal_path": (
+                str(quarantined_wal) if quarantined_wal is not None else ""
+            ),
+            "retired_live_wal_path": (
+                str(retired_live_wal) if retired_live_wal is not None else ""
+            ),
+            "source_sha256": source_digest,
+            "source_size_bytes": source_size,
+            "replacement_sha256": candidate_digest,
+            "replacement_size_bytes": candidate_size,
+            "pre_projection_root": before_projection["projection_root"],
+            "post_projection_root": verified_projection["projection_root"],
+            "catalog_root": _database_execution_storage_payload_root(
+                source_catalog
+            ),
+            "table_count": len(source_catalog["tables"]),
+            "index_count": len(source_catalog["indexes"]),
+            "row_counts": dict(sorted(row_counts.items())),
+            "source_preserved": source_preserved,
+            "empty_wal_preserved": bool(
+                not wal_present
+                or (wal_size == 0 and quarantined_wal is not None)
+            ),
+            "wal_preserved": not wal_present or quarantined_wal is not None,
+            "wal_redundancy_proof": dict(wal_redundancy_proof),
+            "prepared_phase_path": str(prepared_phase_path),
+            "prepared_phase_id": prepared_phase_id,
+            "committed_phase_path": str(committed_phase_path),
+            "committed_phase_id": committed_phase_id,
+            "logical_projection_equal": True,
+            "interrupted_transaction_outcome": (
+                "not_inferred_reconcile_exact_operation"
+            ),
+            "repair_accepted_interrupted_transaction": False,
+            "reconciliation_required": True,
+            "retry_required": True,
+            "same_process_retry_permitted": False,
+        }
+        receipt["receipt_cid"] = _database_execution_storage_payload_root(receipt)
+        return receipt
+    # The writer lock is owned by the caller; this helper owns only the
+    # per-database lock and all temporary names created beneath it.
+
+
+def repair_database_execution_art_index_storage(
+    database_path: Path | str,
+) -> dict[str, Any]:
+    """Physically rebuild an execution store without deciding task outcomes."""
+
+    from ..task_sources.duckdb_state import exclusive_file_lock
+
+    path = Path(os.path.abspath(os.fspath(database_path)))
+    writer_lock_path = path.with_name(f".{path.name}.writer.lock")
+    with exclusive_file_lock(writer_lock_path):
+        return _repair_database_execution_art_index_storage_under_writer_lock(
+            path
+        )
 
 
 def _database_daemon_logical_owner_id(
@@ -72311,6 +73626,90 @@ class DatabaseImplementationDaemon:
         finally:
             handle.close()
 
+    def _raise_after_execution_storage_art_failure(
+        self,
+        failure: _DatabaseImplementationExecutionStorageArtFatal,
+    ) -> None:
+        """Repair one exact ART fatal, then require a separate replay pass."""
+
+        if Path(failure.database_path) != self.execution_path:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution ART failure path differs from daemon authority",
+                status={
+                    "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                    "reason": "execution_storage_failure_path_mismatch",
+                    "expected_database_path": str(self.execution_path),
+                    "observed_database_path": str(failure.database_path),
+                    "repair_performed": False,
+                    "retry_permitted": False,
+                },
+            ) from failure
+        if failure.connection is not None and failure.connection is not self._connection:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution ART failure connection is not the current authority",
+                status={
+                    "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                    "reason": "execution_storage_failure_connection_mismatch",
+                    "database_path": str(self.execution_path),
+                    "repair_performed": False,
+                    "retry_permitted": False,
+                },
+            ) from failure
+        if self._embedded_writer_lock_handle is None:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution ART repair lacks the daemon writer fence",
+                status={
+                    "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                    "reason": "execution_writer_fence_missing",
+                    "database_path": str(self.execution_path),
+                    "repair_performed": False,
+                    "reconciliation_required": True,
+                    "retry_permitted": False,
+                },
+            ) from failure
+
+        # DuckDB invalidates a connection after FatalException. Close only
+        # that connection so its per-file lock is released while retaining
+        # the daemon-level writer fence across the complete physical rebuild.
+        failed_connection = self._connection
+        self._connection = None
+        if failed_connection is not None:
+            try:
+                failed_connection.close()
+            except Exception:
+                pass
+        try:
+            receipt = (
+                _repair_database_execution_art_index_storage_under_writer_lock(
+                    self.execution_path
+                )
+            )
+        except DatabaseImplementationExecutionStorageRepairError:
+            self.close()
+            raise
+        except Exception as repair_exc:
+            self.close()
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "DuckDB ART failure was detected but exact execution "
+                "storage repair is unavailable",
+                status={
+                    "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                    "reason": "execution_storage_rebuild_failed",
+                    "database_path": str(self.execution_path),
+                    "repair_performed": False,
+                    "reconciliation_required": True,
+                    "retry_permitted": False,
+                    "error_type": type(repair_exc).__name__,
+                    "error": str(repair_exc)[:512],
+                },
+            ) from repair_exc
+        self.close()
+        raise DatabaseImplementationExecutionStorageRepairedError(
+            "DuckDB execution storage was rebuilt with an equal logical "
+            "projection; reconcile the exact interrupted operation before retry",
+            receipt=receipt,
+        ) from failure
+
     def open(self) -> "DatabaseImplementationDaemon":
         """Open execution store and bind task-source / coordinator adapters."""
 
@@ -72325,7 +73724,26 @@ class DatabaseImplementationDaemon:
             self._acquire_embedded_writer_lock()
             try:
                 self.execution_path.parent.mkdir(parents=True, exist_ok=True)
-                self._connection = open_duckdb_connection(self.execution_path)
+                try:
+                    raw_execution_connection = open_duckdb_connection(
+                        self.execution_path
+                    )
+                except Exception as exc:
+                    from ..merge.database_coordination import (
+                        _is_duckdb_art_delete_failure,
+                    )
+
+                    if not _is_duckdb_art_delete_failure(exc):
+                        raise
+                    raise _DatabaseImplementationExecutionStorageArtFatal(
+                        database_path=self.execution_path,
+                        connection=None,
+                        cause=exc,
+                    ) from exc
+                self._connection = _DatabaseExecutionStoreConnection(
+                    raw_execution_connection,
+                    database_path=self.execution_path,
+                )
                 for statement in _split_sql_statements(_DAEMON_EXECUTION_SQL):
                     self._connection.execute(statement)
                 for key, value in (
@@ -72352,36 +73770,31 @@ class DatabaseImplementationDaemon:
                         ),
                     ),
                 ):
-                    self._connection.execute(
-                        """
-                        INSERT OR REPLACE INTO daemon_execution_metadata(key, value)
-                        VALUES (?, ?)
-                        """,
-                        [key, value],
+                    _set_database_execution_metadata(
+                        self._connection,
+                        key=key,
+                        value=str(value),
                     )
-                existing_execution_identity = self._connection.execute(
+                execution_identity_rows = self._connection.execute(
                     "SELECT value FROM daemon_execution_metadata WHERE key = ?",
                     [DATABASE_EXECUTION_STORE_IDENTITY_METADATA_KEY],
-                ).fetchone()
-                if existing_execution_identity is None:
+                ).fetchall()
+                if len(execution_identity_rows) > 1:
+                    raise DatabaseImplementationConflictError(
+                        "execution store identity metadata is not unique"
+                    )
+                if not execution_identity_rows:
                     candidate_execution_identity = _database_daemon_new_id(
                         "execution-store"
                     )
-                    self._connection.execute(
-                        """
-                        INSERT INTO daemon_execution_metadata(key, value)
-                        VALUES (?, ?)
-                        """,
-                        [
-                            DATABASE_EXECUTION_STORE_IDENTITY_METADATA_KEY,
-                            candidate_execution_identity,
-                        ],
+                    _set_database_execution_metadata(
+                        self._connection,
+                        key=DATABASE_EXECUTION_STORE_IDENTITY_METADATA_KEY,
+                        value=candidate_execution_identity,
                     )
-                    existing_execution_identity = (
-                        candidate_execution_identity,
-                    )
+                    execution_identity_rows = [(candidate_execution_identity,)]
                 self.execution_store_identity = str(
-                    existing_execution_identity[0] or ""
+                    execution_identity_rows[0][0] or ""
                 ).strip()
                 if not self.execution_store_identity:
                     raise DatabaseImplementationAuthorityError(
@@ -72420,7 +73833,18 @@ class DatabaseImplementationDaemon:
                     )
                 self._closed = False
                 return self
-            except Exception:
+            except Exception as exc:
+                if isinstance(
+                    exc,
+                    _DatabaseImplementationExecutionStorageArtFatal,
+                ):
+                    # A DuckDB fatal invalidates the connection. Keep the
+                    # daemon-level writer fence, release the per-file
+                    # connection lock, rebuild only the exact visible logical
+                    # projection, and force a new process/pass to reconcile
+                    # every interrupted operation. Never retry this open or
+                    # infer an attempt result in the same call.
+                    self._raise_after_execution_storage_art_failure(exc)
                 self.close()
                 raise
 
@@ -79957,6 +81381,22 @@ class DatabaseImplementationDaemon:
         return outcomes
 
     def run_once(self) -> dict[str, Any]:
+        """Run one pass, repairing only the exact execution-store ART fatal."""
+
+        try:
+            return self._run_once_database_authoritative()
+        except _DatabaseImplementationExecutionStorageArtFatal as exc:
+            # This is the sole post-open recovery boundary. It covers the
+            # observed list_running_attempts() fatal without scattering
+            # storage mutation across ordinary queries. The helper always
+            # raises a typed terminal for this pass, so no claim, callback,
+            # completion, or retry follows physical repair in the same turn.
+            self._raise_after_execution_storage_art_failure(exc)
+            raise AssertionError(
+                "execution ART recovery unexpectedly returned"
+            ) from exc
+
+    def _run_once_database_authoritative(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
         portal_startup_reconciliation: Mapping[str, Any] = {}
