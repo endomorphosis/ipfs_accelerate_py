@@ -621,6 +621,91 @@ def test_exact_nested_setup_failure_rearms_without_same_turn_dispatch(
         daemon.close()
 
 
+def test_nested_setup_failure_rearm_accepts_exact_legacy_empty_reconciliation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    try:
+        phases = daemon.phase_history(attempt.attempt_id)
+        failed_body = dict(phases[-1]["body"])
+        failed_body["terminal_reconciliation"] = {}
+        daemon._require_connection().execute(
+            """
+            UPDATE attempt_phases
+            SET body_json = ?
+            WHERE attempt_id = ? AND phase = 'failed'
+            """,
+            [
+                json.dumps(failed_body, separators=(",", ":"), sort_keys=True),
+                attempt.attempt_id,
+            ],
+        )
+
+        result = daemon.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_unknown_outcomes_rearmed"
+        )
+        assert result["implementation_result"] is None
+        assert len(result["unknown_outcome_rearms"]) == 1
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("terminal_reconciliation", "extra_fields"),
+    (
+        ({"evidence_id": "sha256:" + "0" * 64}, {}),
+        ([], {}),
+        (None, {}),
+        ("", {}),
+        ({}, {"unexpected": False}),
+    ),
+)
+def test_nested_setup_failure_rearm_rejects_nonexact_legacy_reconciliation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_reconciliation: object,
+    extra_fields: dict[str, object],
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    try:
+        phases = daemon.phase_history(attempt.attempt_id)
+        failed_body = {
+            **dict(phases[-1]["body"]),
+            "terminal_reconciliation": terminal_reconciliation,
+            **extra_fields,
+        }
+        daemon._require_connection().execute(
+            """
+            UPDATE attempt_phases
+            SET body_json = ?
+            WHERE attempt_id = ? AND phase = 'failed'
+            """,
+            [
+                json.dumps(failed_body, separators=(",", ":"), sort_keys=True),
+                attempt.attempt_id,
+            ],
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+
+        assert daemon._database_portal_no_provider_rearm_evidence(
+            task,
+            task.body["completion_receipt"],
+        ) is None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
 def test_nested_setup_failure_rearm_accepts_closed_setup_diagnostics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

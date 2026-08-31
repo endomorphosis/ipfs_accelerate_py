@@ -78620,6 +78620,45 @@ class DatabaseImplementationDaemon:
                 break
         return exhausted
 
+    @staticmethod
+    def _database_no_provider_failed_phase_body_is_admissible(
+        body: Any,
+    ) -> bool:
+        """Accept the current failed body or its one exact legacy shape.
+
+        A predecessor wrote an empty ``terminal_reconciliation`` object before
+        that observational field was removed from pre-provider failures.  The
+        empty object carries no claim, but any populated, malformed, or
+        otherwise extended legacy body remains inadmissible.
+        """
+
+        if type(body) is not dict:
+            return False
+        expected = {
+            "database_disposition": "blocked_unknown_outcome",
+            "reason": "callback_authority_incomplete_blocked",
+            "retry_exhausted": True,
+            "unknown_authority": True,
+        }
+        expected_fields = set(expected)
+        actual_fields = set(body)
+        if actual_fields == expected_fields:
+            return all(
+                type(body[name]) is type(value) and body[name] == value
+                for name, value in expected.items()
+            )
+        if actual_fields != expected_fields | {"terminal_reconciliation"}:
+            return False
+        legacy_reconciliation = body["terminal_reconciliation"]
+        return bool(
+            type(legacy_reconciliation) is dict
+            and not legacy_reconciliation
+            and all(
+                type(body[name]) is type(value) and body[name] == value
+                for name, value in expected.items()
+            )
+        )
+
     def _database_portal_no_provider_rearm_evidence(
         self,
         task: Any,
@@ -78752,13 +78791,9 @@ class DatabaseImplementationDaemon:
                 ATTEMPT_PHASE_CONTEXT,
                 ATTEMPT_PHASE_FAILED,
             ]
-            or dict(phases[-1].get("body") or {})
-            != {
-                "database_disposition": "blocked_unknown_outcome",
-                "reason": "callback_authority_incomplete_blocked",
-                "retry_exhausted": True,
-                "unknown_authority": True,
-            }
+            or not self._database_no_provider_failed_phase_body_is_admissible(
+                phases[-1].get("body")
+            )
         ):
             return None
         try:
