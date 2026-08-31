@@ -1264,7 +1264,20 @@ def _trusted_setup_replay_fixture(
             ],
             "receipt_id": "sha256:" + "a" * 64,
         },
-        "protected_path_violation": incident,
+        "protected_path_violation": {
+            key: incident[key]
+            for key in (
+                "reason",
+                "task_id",
+                "attempt",
+                "canonical_task_key",
+                "canonical_task_cid",
+                "workspace_path",
+                "protected_paths",
+                "mutations",
+                "shared_checkout_restored",
+            )
+        },
     }
     append_jsonl_event(
         paths.events,
