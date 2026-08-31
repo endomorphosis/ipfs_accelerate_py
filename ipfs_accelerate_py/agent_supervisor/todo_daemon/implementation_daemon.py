@@ -118702,6 +118702,7 @@ class DatabaseImplementationDaemon:
                 TypedStateOwnerAuthorizationError,
                 TypedStateOwnerRemoteError,
                 DatabaseImplementationAuthorityError,
+                TransactionError,
             ):
                 landed = None
             if landed and landed.get("completed") is True:
@@ -119769,14 +119770,21 @@ class DatabaseImplementationDaemon:
             "reason": "declared_outputs_landed_on_target",
             "landed_merge_repair": proof,
         }
-        self._cas_task_status_database(
-            refreshed.task_cid,
-            expected_revision=int(refreshed.revision),
-            new_status="completed",
-            receipt=receipt,
-            evidence_digests=[digest],
-            expected_control_receipt=dict(control_receipt),
-        )
+        try:
+            self._cas_task_status_database(
+                refreshed.task_cid,
+                expected_revision=int(refreshed.revision),
+                new_status="completed",
+                receipt=receipt,
+                evidence_digests=[digest],
+                expected_control_receipt=dict(control_receipt),
+            )
+        except (
+            TypedStateOwnerAuthorizationError,
+            TypedStateOwnerRemoteError,
+            TransactionError,
+        ):
+            return None
         self._record_event(
             "landed_merge_repaired",
             task_cid=str(refreshed.task_cid),
