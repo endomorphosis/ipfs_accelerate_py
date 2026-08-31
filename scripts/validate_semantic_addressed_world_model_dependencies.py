@@ -3294,6 +3294,19 @@ def _m34_json_emission_normalization_successor_errors(
         preservation = expected.get("preservation", {})
         source_chain = expected.get("source_chain", {})
         initial_blobs = source_chain.get("initial_control_blobs", {})
+        sealed_initial_commit = "e342b63f3f143bb85ed4744e5391c4f8e7c961cd"
+        sealed_initial_tree = "30f0f07fa41947647461ccbd44d6dc4008848259"
+        sealed_initial_blobs = {
+            "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": "71de45675fe8f1d134aa42af3f7fc782fbe9388c",
+            "config/semantic_addressed_world_model_dependencies.seal.json": "68dc298dccd48352273bd3d7bf96368a56e4b561",
+            "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": "b3f998a018f2928df7b80b584e8ea88072f5046a",
+            "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json": "73831143dd7d320dfe6a8a63c3331eedd387ad72",
+            "scripts/materialize_semantic_addressed_world_model_program.py": "fa41e431afb1b8e26220c9715f8242c06096cc3a",
+            "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": "1a9bc64217aa43fec874dd18754773931d7b8c9d",
+            "scripts/validate_semantic_addressed_world_model_board.py": "91f7630233c696c180e7ab237aa5716274a884b2",
+            "scripts/validate_semantic_addressed_world_model_dependencies.py": "0b38fd8d3a996139e0eb728e8437f5cbc820b871",
+            "test/api/semantic_world/test_semantic_addressed_world_model_board.py": "d7c58109e86878017dcb629dc1104c1d5d6af428",
+        }
         if (
             expected.get("schema")
             != "sawm/json-emission-normalization-successor-authorization@1"
@@ -3346,13 +3359,17 @@ def _m34_json_emission_normalization_successor_errors(
             != "8fe38992e84c291a0cab6d2afc6cda5bb4f08ab8"
             or source_chain.get("initial_control_commit")
             != materializer._M34_INITIAL_CONTROL_COMMIT
+            or source_chain.get("initial_control_commit") != sealed_initial_commit
             or source_chain.get("initial_control_tree")
             != materializer._M34_INITIAL_CONTROL_TREE
+            or source_chain.get("initial_control_tree") != sealed_initial_tree
             or source_chain.get("final_reseal_parent")
             != materializer._M34_INITIAL_CONTROL_COMMIT
+            or source_chain.get("final_reseal_parent") != sealed_initial_commit
             or not isinstance(initial_blobs, Mapping)
             or len(initial_blobs) != 9
             or dict(initial_blobs) != dict(materializer._M34_INITIAL_CONTROL_BLOBS)
+            or dict(initial_blobs) != sealed_initial_blobs
         ):
             errors.append("M34 JSON-emission normalization delta is not exact")
         if require_active_runtime:

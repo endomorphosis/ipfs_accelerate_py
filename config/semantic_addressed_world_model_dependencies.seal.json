@@ -1,5 +1,5 @@
 {
-  "json_emission_normalization_successor_materialization_cid": "sha256:b611d4cc106435968efc2079d19a5ce9bb3dca2264ead8d7ffd573411e57c91d",
+  "json_emission_normalization_successor_materialization_cid": "sha256:b9a7f6cefa5ceb6cb90cdf3621e00a31bfa2c0687695173640eabc838bdc0dd7",
   "live_preflight_contract_successor_materialization_cid": "sha256:c5c86ba2e2c4e8af9f6ed9115a26208a3492053147c58dcc03884ccd694a66b9",
   "live_preflight_plan_anchor_successor_materialization_cid": "sha256:7ed2ac5bc4b9ca94af6166ce7d5f7dba4a4bf73012290ba36f71e1fac822fb48",
   "detached_coordinator_pid_recovery_successor_materialization_cid": "sha256:e49534abcd4a4820057029a3781de5c469dd7f3a63723b66c50ff2a28d643afe",

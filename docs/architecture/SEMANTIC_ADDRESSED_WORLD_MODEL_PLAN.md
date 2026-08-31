@@ -1879,9 +1879,12 @@ M34 is selected by key presence before M33 and every older successor. Historical
 M33 source-chain validation is pinned to M34's accepted base commit/tree
 `a5aa77fe58cd706ed8a1a2ae9d3f1e652f28b7f9` and
 `8fe38992e84c291a0cab6d2afc6cda5bb4f08ab8`. Its nine protected control paths
-are unchanged. The initial control commit, tree, and blob identities remain
-zero placeholders until the bounded repair commit is sealed; they confer no
-runtime or completion authority.
+are unchanged. The sealed initial control commit/tree are
+`e342b63f3f143bb85ed4744e5391c4f8e7c961cd` and
+`30f0f07fa41947647461ccbd44d6dc4008848259`; every one of the nine initial
+blob identities is independently pinned by the materializer and validators.
+The one permitted child commit only reseals these identities and the resulting
+authority CID; neither commit confers runtime or completion authority.
 
 ## 43. Current limitations at seal time
 
