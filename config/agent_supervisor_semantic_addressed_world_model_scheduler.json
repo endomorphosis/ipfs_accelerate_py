@@ -1,4 +1,5 @@
 {
+  "operator_task_binding_correction_successor_materialization": {"authority_cid":"sha256:6f2f46f08af71af33e58a94960ec5794b89f619df09a571b19da3bd51cc986a7","migration_revision":"SAWM-R2-M36","schema":"sawm/operator-control-authority-reference@1"},
   "immutable_authority_identity_normalization_successor_materialization": {"authority_cid":"sha256:be555c52e0ddf0737b1f3796ab21618e11226c7fae14d176c50d0cb4edfaf5d6","migration_revision":"SAWM-R2-M35","schema":"sawm/operator-control-authority-reference@1"},
   "json_emission_normalization_successor_materialization": {"authority_cid":"sha256:b9a7f6cefa5ceb6cb90cdf3621e00a31bfa2c0687695173640eabc838bdc0dd7","migration_revision":"SAWM-R2-M34","schema":"sawm/operator-control-authority-reference@1"},
   "live_preflight_contract_successor_materialization": {"authority_cid":"sha256:c5c86ba2e2c4e8af9f6ed9115a26208a3492053147c58dcc03884ccd694a66b9","migration_revision":"SAWM-R2-M33","schema":"sawm/operator-control-authority-reference@1"},

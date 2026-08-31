@@ -3197,6 +3197,260 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m36_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = "operator_task_binding_correction_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m36_source_chain_identity_state(
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> str:
+    """Return ``placeholder`` or ``sealed`` for one complete M36 chain."""
+
+    chain = authority.get("source_chain", {})
+    blobs = chain.get("initial_control_blobs", {})
+    if (
+        not isinstance(chain, Mapping)
+        or not isinstance(blobs, Mapping)
+        or chain.get("initial_control_commit")
+        != materializer._M36_INITIAL_CONTROL_COMMIT
+        or chain.get("initial_control_tree") != materializer._M36_INITIAL_CONTROL_TREE
+        or chain.get("final_reseal_parent")
+        != materializer._M36_INITIAL_CONTROL_COMMIT
+        or dict(blobs) != dict(materializer._M36_INITIAL_CONTROL_BLOBS)
+        or set(blobs) != set(authority.get("operator_control_paths", ()))
+        or len(blobs) != 9
+    ):
+        raise RuntimeError("M36 source-chain identity fields differ")
+    zero = "0" * 40
+    identities = (
+        chain.get("initial_control_commit"),
+        chain.get("initial_control_tree"),
+        chain.get("final_reseal_parent"),
+        *blobs.values(),
+    )
+    if all(value == zero for value in identities):
+        return "placeholder"
+    if all(
+        isinstance(value, str)
+        and value != zero
+        and re.fullmatch(r"[0-9a-f]{40}", value) is not None
+        for value in identities
+    ):
+        return "sealed"
+    raise RuntimeError("M36 source identities mix placeholder and sealed values")
+
+
+def _m36_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    """Validate M36's exact M35 base and complete repair/reseal chain."""
+
+    try:
+        chain = authority.get("source_chain", {})
+        if (
+            not isinstance(chain, Mapping)
+            or chain.get("base_control_commit")
+            != "5bbf2dec97458585ee95034c986057a1552b805d"
+            or chain.get("base_control_tree")
+            != "954736c103dd644d7896e032c9676ed38d989831"
+            or set(authority.get("operator_control_paths", ()))
+            != set(materializer._M36_OPERATOR_CONTROL_PATHS)
+            or set(materializer._M36_OPERATOR_CONTROL_PATHS)
+            != set(materializer._M35_OPERATOR_CONTROL_PATHS)
+            or _git(
+                root,
+                "rev-parse",
+                "5bbf2dec97458585ee95034c986057a1552b805d^{tree}",
+            )
+            != "954736c103dd644d7896e032c9676ed38d989831"
+        ):
+            raise RuntimeError("M36 accepted base/control path identity differs")
+        state = _m36_source_chain_identity_state(materializer, authority)
+        if state == "placeholder":
+            return []
+        if not hasattr(materializer, "_assert_m36_source_delta"):
+            raise RuntimeError("M36 final source-delta verifier is unavailable")
+        population = materializer.build_population(root)
+        materializer._assert_m36_source_delta(root, population, authority)
+        return []
+    except Exception as exc:
+        return [
+            "M36 exact operator-task binding repair/reseal chain differs: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m36_operator_task_binding_correction_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    key = "operator_task_binding_correction_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m36_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M36 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer._expected_m36_operator_task_binding_correction_authority()
+        )
+        reference = materializer._m36_authority_reference()
+        contract = materializer._validated_m36_live_preflight_contract(expected)
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append(
+                "M36 operator-task binding authority is only partially declared"
+            )
+        if scheduler.get(key) != reference or migration.get(key) != reference:
+            errors.append("M36 operator-task binding reference differs")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M36 operator-task binding CID differs")
+        binding = expected.get("runtime_binding", {})
+        prior = expected.get("prior_authority", {})
+        superseded = expected.get("superseded_source_authority", {})
+        failed = expected.get("failed_m35_append", {})
+        target = expected.get("target_authority", {})
+        repair = expected.get("accepted_control_plane_repair", {})
+        changes = expected.get("exact_changes", {})
+        preservation = expected.get("preservation", {})
+        source_chain = expected.get("source_chain", {})
+        identity_state = _m36_source_chain_identity_state(materializer, expected)
+        if (
+            expected.get("schema")
+            != "sawm/operator-task-binding-correction-successor-authorization@1"
+            or expected.get("migration_revision") != "SAWM-R2-M36"
+            or expected.get("migration_kind") != key
+            or expected.get("supersession_mode")
+            != "append_only_operator_task_binding_correction"
+            or expected.get("control_recorded_at") != "2026-08-31T20:50:00Z"
+            or expected.get("target_generation") != 29
+            or expected.get("target_event_watermark") != 286
+            or expected.get("target_projection_cid")
+            != "baguqeeravzrhagxizn7o45ukuevzkhreb7dzpabd4g4kmyci2if5rxr32dda"
+            or binding.get("run_id") != "run-r2-m27"
+            or binding.get("prior_event_watermark") != 285
+            or binding.get("store_generation") != 29
+            or binding.get("quack_port") != 24_070
+            or prior.get("migration_revision") != "SAWM-R2-M34"
+            or prior.get("event_prefix_sha256")
+            != "79797c1e1593fa880a4ac088796e1ca713dc276df8ad118c12aa0c1ab49f1c7f"
+            or prior.get("projection_cid")
+            != "baguqeeragsizyo6v4izu7qfvjbj5l5bjkuycw2xyaf3vhlzx2nai7xyrvd4q"
+            or prior.get("m34_receipt_cid")
+            != "sha256:759b71e0d0fa73a1ac81bb98fb1b96c93f3150b09667cd19fc05330b34b50b01"
+            or superseded.get("migration_revision") != "SAWM-R2-M35"
+            or superseded.get("authority_cid")
+            != "sha256:be555c52e0ddf0737b1f3796ab21618e11226c7fae14d176c50d0cb4edfaf5d6"
+            or superseded.get("final_control_commit")
+            != "5bbf2dec97458585ee95034c986057a1552b805d"
+            or superseded.get("final_control_tree")
+            != "954736c103dd644d7896e032c9676ed38d989831"
+            or superseded.get("materialized") is not False
+            or superseded.get("receipt_created") is not False
+            or failed.get("failure_kind") != "operator_task_cid_not_found"
+            or failed.get("sealed_target_task_cid")
+            != "sha256:308a38585461080c06bf51f36a5b9cff75c4bf5a6e88ddcbccbca73198a51d1d"
+            or failed.get("sealed_target_task_present") is not False
+            or failed.get("authoritative_operator_task_alias") != "SAWM-000"
+            or failed.get("authoritative_operator_task_cid")
+            != "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6"
+            or failed.get("authoritative_operator_task_present") is not True
+            or failed.get("event_watermark_before") != 285
+            or failed.get("event_watermark_after") != 285
+            or failed.get("m35_event_appended") is not False
+            or failed.get("m35_receipt_created") is not False
+            or target.get("operator_task_alias") != "SAWM-000"
+            or target.get("operator_task_cid")
+            != "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6"
+            or target.get("operator_task_status") != "completed"
+            or target.get("operator_task_revision") != 2
+            or contract.get("migration_revision") != "SAWM-R2-M36"
+            or contract.get("expected_task_heads")
+            != materializer._m30_expected_task_heads()
+            or repair.get("defect")
+            != "sealed_operator_evidence_target_task_cid_was_absent"
+            or repair.get("resolution")
+            != "bind_operator_evidence_to_exact_authoritative_sawm_000_task"
+            or repair.get("authority_weakened") is not False
+            or repair.get("receipts_rewritten") is not False
+            or repair.get("worker_self_approval") is not False
+            or changes.get("event_suffix_length") != 1
+            or changes.get("operator_task_binding_correction_changes") != 1
+            or any(
+                changes.get(field) != 0
+                for field in (
+                    "task_revision_changes",
+                    "task_status_changes",
+                    "plan_revision_changes",
+                    "goal_revision_changes",
+                    "owner_generation_changes",
+                    "coordination_semantic_changes",
+                    "accepted_completion_changes",
+                )
+            )
+            or preservation.get("same_live_owner") is not True
+            or preservation.get("generation_restart") is not False
+            or preservation.get("m34_receipt_preserved") is not True
+            or preservation.get("m35_source_controls_preserved") is not True
+            or preservation.get("failed_m35_append_preserved") is not True
+            or preservation.get("m35_receipt_absent") is not True
+            or source_chain.get("base_control_commit")
+            != "5bbf2dec97458585ee95034c986057a1552b805d"
+            or source_chain.get("base_control_tree")
+            != "954736c103dd644d7896e032c9676ed38d989831"
+            or identity_state not in {"placeholder", "sealed"}
+        ):
+            errors.append("M36 operator-task binding correction delta is not exact")
+        if require_active_runtime:
+            target_root = str(expected["target_runtime_root"])
+            program = scheduler.get("database_program")
+            owner = scheduler.get("quack_owner")
+            runtime = scheduler.get("runtime_paths")
+            if (
+                not isinstance(program, Mapping)
+                or program.get("store_id") != expected["target_store_id"]
+                or program.get("store_generation") != "29"
+                or program.get("quack_endpoint") != "quack:127.0.0.1:24070"
+                or not isinstance(owner, Mapping)
+                or owner.get("database_path") != expected["target_store_id"]
+                or owner.get("store_id") != expected["target_store_id"]
+                or owner.get("port") != 24_070
+                or runtime
+                != {
+                    "root": target_root,
+                    "state": f"{target_root}/state",
+                    "worktrees": f"{target_root}/worktrees",
+                    "merge_queue": f"{target_root}/merge-queue",
+                    "logs": f"{target_root}/logs",
+                    "generated_runtime_artifacts_are_completion_authority": False,
+                }
+            ):
+                errors.append("scheduler M36 target/runtime binding is not exact")
+        errors.extend(_m36_source_chain_errors(root, materializer, expected))
+        return errors
+    except Exception as exc:
+        return [
+            "M36 operator-task binding authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m35_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -3250,6 +3504,8 @@ def _m35_source_chain_errors(
     root: Path,
     materializer: Any,
     authority: Mapping[str, Any],
+    *,
+    current_head: str | None = None,
 ) -> list[str]:
     """Validate the accepted base plus a complete placeholder or final chain."""
 
@@ -3279,6 +3535,21 @@ def _m35_source_chain_errors(
         if not hasattr(materializer, "_assert_m35_source_delta"):
             raise RuntimeError("M35 final source-delta verifier is unavailable")
         population = materializer.build_population(root)
+        if current_head:
+            binding = dict(population["source_binding"])
+            binding.update(
+                {
+                    "head": current_head,
+                    "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                    "datasets_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                    ),
+                    "kit_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                    ),
+                }
+            )
+            population = {**population, "source_binding": binding}
         materializer._assert_m35_source_delta(root, population, authority)
         return []
     except Exception as exc:
@@ -3428,7 +3699,28 @@ def _m35_immutable_authority_identity_normalization_successor_errors(
                 }
             ):
                 errors.append("scheduler M35 target/runtime binding is not exact")
-        errors.extend(_m35_source_chain_errors(root, materializer, expected))
+        historical_control_head = None
+        if not require_active_runtime and _m36_successor_declared(
+            scheduler, seal, migration
+        ):
+            m36 = (
+                materializer._expected_m36_operator_task_binding_correction_authority()
+            )
+            m36_source_chain = m36.get("source_chain", {})
+            if isinstance(m36_source_chain, Mapping):
+                historical_control_head = str(
+                    m36_source_chain.get("base_control_commit") or ""
+                ) or None
+            if historical_control_head is None:
+                errors.append("M36 prior M35 control source head is absent")
+        errors.extend(
+            _m35_source_chain_errors(
+                root,
+                materializer,
+                expected,
+                current_head=historical_control_head,
+            )
+        )
         return errors
     except Exception as exc:
         return [
@@ -9919,6 +10211,61 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m36_key = "operator_task_binding_correction_successor_materialization"
+    m36_presence = (
+        m36_key in scheduler,
+        m36_key in migration,
+        f"{m36_key}_cid" in seal,
+    )
+    if any(m36_presence):
+        if not all(m36_presence):
+            return effective, ["active M36 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m36_nested_source_materializer",
+                REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M36 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            reference = materializer._m36_authority_reference()
+            authority = (
+                materializer._expected_m36_operator_task_binding_correction_authority()
+            )
+            materializer._validated_m36_live_preflight_contract(authority)
+        except Exception as exc:
+            return effective, [f"active M36 nested-source authority unavailable: {exc}"]
+        if scheduler.get(m36_key) != reference or migration.get(m36_key) != reference:
+            return effective, ["active M36 nested-source authority differs"]
+        if seal.get(f"{m36_key}_cid") != materializer._identity(authority):
+            return effective, ["active M36 nested-source authority CID differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(authority.get("current_datasets_gitlink") or ""),
+                str(authority.get("current_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(authority.get("current_kit_gitlink") or ""),
+                str(authority.get("current_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M36 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     m35_key = "immutable_authority_identity_normalization_successor_materialization"
     m35_presence = (
         m35_key in scheduler,
@@ -10644,6 +10991,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m36_key = "operator_task_binding_correction_successor_materialization"
+        m36_presence = (
+            m36_key in scheduler_probe,
+            m36_key in migration_probe,
+            f"{m36_key}_cid" in seal,
+        )
         m35_key = "immutable_authority_identity_normalization_successor_materialization"
         m35_presence = (
             m35_key in scheduler_probe,
@@ -10748,7 +11101,35 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m35_presence):
+        if any(m36_presence):
+            scheduled = scheduler_probe.get(m36_key)
+            migrated = migration_probe.get(m36_key)
+            if not all(m36_presence) or scheduled != migrated:
+                unexpected = ["M36 authority is partial or differs across source controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m36_source_status_materializer",
+                    root / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M36 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer._expected_m36_operator_task_binding_correction_authority()
+                    )
+                    if (
+                        scheduled != materializer._m36_authority_reference()
+                        or seal.get(f"{m36_key}_cid")
+                        != materializer._identity(expected)
+                    ):
+                        unexpected = ["M36 authority/CID differs across source controls"]
+                    else:
+                        unexpected = _m36_source_chain_errors(
+                            root, materializer, expected
+                        )
+        elif any(m35_presence):
             scheduled = scheduler_probe.get(m35_key)
             migrated = migration_probe.get(m35_key)
             if not all(m35_presence) or scheduled != migrated:
@@ -11725,6 +12106,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m36_declared = _m36_successor_declared(scheduler, seal, migration)
         m35_declared = _m35_successor_declared(scheduler, seal, migration)
         m34_declared = _m34_successor_declared(scheduler, seal, migration)
         m33_declared = _m33_successor_declared(scheduler, seal, migration)
@@ -11736,7 +12118,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m35_declared
+            m36_declared
+            or m35_declared
             or m34_declared
             or m33_declared
             or m32_declared
@@ -11748,10 +12131,20 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
+            if m36_declared:
+                protocol_errors.extend(
+                    _m36_operator_task_binding_correction_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
             if m35_declared:
                 protocol_errors.extend(
                     _m35_immutable_authority_identity_normalization_successor_errors(
-                        scheduler, seal, migration, root=root
+                        scheduler,
+                        seal,
+                        migration,
+                        root=root,
+                        require_active_runtime=not m36_declared,
                     )
                 )
             if m34_declared:
@@ -11761,7 +12154,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not m35_declared,
+                        require_active_runtime=not (m36_declared or m35_declared),
                     )
                 )
             if m33_declared:
@@ -11771,7 +12164,9 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not (m35_declared or m34_declared),
+                        require_active_runtime=not (
+                            m36_declared or m35_declared or m34_declared
+                        ),
                     )
                 )
             if m32_declared:
@@ -11782,7 +12177,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         migration,
                         root=root,
                         require_active_runtime=not (
-                            m35_declared or m34_declared or m33_declared
+                            m36_declared
+                            or m35_declared or m34_declared or m33_declared
                         ),
                     )
                 )
@@ -11794,7 +12190,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         migration,
                         root=root,
                         require_active_runtime=not (
-                            m35_declared
+                            m36_declared
+                            or m35_declared
                             or m34_declared or m33_declared or m32_declared
                         ),
                     )
@@ -11807,7 +12204,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         migration,
                         root=root,
                         require_active_runtime=not (
-                            m35_declared
+                            m36_declared
+                            or m35_declared
                             or m34_declared
                             or m33_declared or m32_declared or m31_declared
                         ),

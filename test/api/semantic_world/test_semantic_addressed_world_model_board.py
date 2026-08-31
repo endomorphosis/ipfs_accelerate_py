@@ -25,6 +25,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "operator_task_binding_correction_successor_materialization",
     "immutable_authority_identity_normalization_successor_materialization",
     "json_emission_normalization_successor_materialization",
     "live_preflight_contract_successor_materialization",
@@ -1337,7 +1338,7 @@ def test_m8_controls_and_live_comparator_fail_closed() -> None:
         'successor_key = "source_repair_successor_materialization"' in source
     )
     assert (
-        'expected_event_cursor = int(active_source_repair["target_event_watermark"])'
+        'expected_event_cursor = int(preflight_contract["target_event_watermark"])'
         in source
     )
     assert 'str(expected.get("objective_id") or "")' in source
@@ -4606,6 +4607,217 @@ def test_m29_presence_masks_m28_and_keeps_every_predecessor_historical(
     assert any("only partially declared" in error for error in errors)
 
 
+def test_m36_authority_corrects_operator_task_binding_and_preserves_m35_failure() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m36_authority_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m36_authority_test",
+    )
+    key = "operator_task_binding_correction_successor_materialization"
+    authority = (
+        materializer._expected_m36_operator_task_binding_correction_authority()
+    )
+    reference = materializer._m36_authority_reference()
+    scheduler = json.loads(
+        (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json").read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (REPO_ROOT / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json").read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json").read_text(encoding="utf-8")
+    )
+    assert scheduler[key] == reference == migration[key]
+    assert seal[f"{key}_cid"] == reference["authority_cid"]
+    assert reference == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M36",
+        "authority_cid": materializer._identity(authority),
+    }
+    assert authority["supersession_mode"] == (
+        "append_only_operator_task_binding_correction"
+    )
+    assert authority["control_recorded_at"] == "2026-08-31T20:50:00Z"
+    assert authority["target_generation"] == 29
+    assert authority["runtime_binding"]["prior_event_watermark"] == 285
+    assert authority["target_event_watermark"] == 286
+    assert authority["target_projection_cid"] == (
+        "baguqeeravzrhagxizn7o45ukuevzkhreb7dzpabd4g4kmyci2if5rxr32dda"
+    )
+    assert authority["prior_authority"]["migration_revision"] == "SAWM-R2-M34"
+    assert authority["prior_authority"]["m34_receipt_cid"] == (
+        "sha256:759b71e0d0fa73a1ac81bb98fb1b96c93f3150b09667cd19fc05330b34b50b01"
+    )
+    superseded = authority["superseded_source_authority"]
+    assert superseded == {
+        "migration_revision": "SAWM-R2-M35",
+        "authority_cid": "sha256:be555c52e0ddf0737b1f3796ab21618e11226c7fae14d176c50d0cb4edfaf5d6",
+        "base_control_commit": "4dfe1c4c81ffd65f6a2d5c5cdc38b1cd33f1f443",
+        "initial_control_commit": "27c5e1e5925228757fc02378eb9d3b2a8addc60e",
+        "initial_control_tree": "75f9c888b22911d47e941fb03b771c8d8f92dd99",
+        "final_control_commit": "5bbf2dec97458585ee95034c986057a1552b805d",
+        "final_control_tree": "954736c103dd644d7896e032c9676ed38d989831",
+        "materialized": False,
+        "receipt_created": False,
+    }
+    failed = authority["failed_m35_append"]
+    assert failed["failure_kind"] == "operator_task_cid_not_found"
+    assert failed["sealed_target_task_cid"] == (
+        "sha256:308a38585461080c06bf51f36a5b9cff75c4bf5a6e88ddcbccbca73198a51d1d"
+    )
+    assert failed["sealed_target_task_present"] is False
+    assert failed["m35_event_appended"] is False
+    assert failed["m35_receipt_created"] is False
+    assert failed["event_watermark_before"] == failed["event_watermark_after"] == 285
+    target = authority["target_authority"]
+    assert target["operator_task_alias"] == "SAWM-000"
+    assert target["operator_task_cid"] == (
+        "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6"
+    )
+    assert (target["operator_task_status"], target["operator_task_revision"]) == (
+        "completed", 2,
+    )
+    chain = authority["source_chain"]
+    assert chain["base_control_commit"] == (
+        "5bbf2dec97458585ee95034c986057a1552b805d"
+    )
+    assert chain["base_control_tree"] == "954736c103dd644d7896e032c9676ed38d989831"
+    assert len(authority["operator_control_paths"]) == 9
+    assert dependencies._m36_source_chain_identity_state(
+        materializer, authority
+    ) in {"placeholder", "sealed"}
+    assert dict(materializer._validated_m36_live_preflight_contract(authority)) == (
+        authority["live_preflight_contract"]
+    )
+
+    final = copy.deepcopy(authority)
+    final_chain = final["source_chain"]
+    final_chain["initial_control_commit"] = "1" * 40
+    final_chain["initial_control_tree"] = "2" * 40
+    final_chain["final_reseal_parent"] = "1" * 40
+    final_chain["initial_control_blobs"] = {
+        path: f"{index + 3:x}" * 40
+        for index, path in enumerate(authority["operator_control_paths"])
+    }
+    fake_materializer = SimpleNamespace(
+        _M36_INITIAL_CONTROL_COMMIT="1" * 40,
+        _M36_INITIAL_CONTROL_TREE="2" * 40,
+        _M36_INITIAL_CONTROL_BLOBS=final_chain["initial_control_blobs"],
+    )
+    assert dependencies._m36_source_chain_identity_state(
+        fake_materializer, final
+    ) == "sealed"
+    mixed = copy.deepcopy(final)
+    first_path = next(iter(mixed["source_chain"]["initial_control_blobs"]))
+    mixed["source_chain"]["initial_control_blobs"][first_path] = "0" * 40
+    mixed_materializer = SimpleNamespace(
+        _M36_INITIAL_CONTROL_COMMIT="1" * 40,
+        _M36_INITIAL_CONTROL_TREE="2" * 40,
+        _M36_INITIAL_CONTROL_BLOBS=mixed["source_chain"]["initial_control_blobs"],
+    )
+    with pytest.raises(RuntimeError, match="mix placeholder and sealed"):
+        dependencies._m36_source_chain_identity_state(mixed_materializer, mixed)
+
+
+def test_m36_precedence_history_preappend_resolution_and_no_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m36_presence_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m36_presence_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m36_history_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m36_presence_test",
+    )
+    scheduler = json.loads(
+        (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json").read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (REPO_ROOT / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json").read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json").read_text(encoding="utf-8")
+    )
+    selected = operator._active_source_repair_materialization(scheduler)
+    assert selected["migration_revision"] == "SAWM-R2-M36"
+    selection_source = inspect.getsource(operator._active_source_repair_materialization)
+    assert selection_source.index("if m36_key in config:") < selection_source.index("if m35_key in config:")
+    key = "operator_task_binding_correction_successor_materialization"
+    assert dependencies._m36_successor_declared({key: None}, {}, {}) is True
+
+    monkeypatch.setattr(board, "_m36_migration_errors", lambda *_a, **_k: ["M36 active"])
+    historical_calls: list[bool] = []
+
+    def historical(*_args: object, **kwargs: object) -> list[str]:
+        historical_calls.append(kwargs.get("require_active_runtime") is False)
+        return []
+
+    for name in (
+        "_m35_migration_errors", "_m34_migration_errors", "_m33_migration_errors",
+        "_m32_migration_errors", "_m31_migration_errors", "_m30_migration_errors",
+        "_m29_migration_errors", "_m28_migration_errors", "_m27_migration_errors",
+        "_m26_migration_errors", "_m25_migration_errors", "_m24_migration_errors",
+        "_m23_migration_errors", "_m22_migration_errors", "_m21_migration_errors",
+        "_m20_migration_errors", "_m19_migration_errors", "_m18_migration_errors",
+        "_m17_migration_errors", "_m16_migration_errors",
+    ):
+        monkeypatch.setattr(board, name, historical)
+    assert board._active_successor_migration_errors({key: None}, {}, {}) == [
+        "M36 active",
+        "M36 operator-task binding authority is only partially declared",
+    ]
+    assert historical_calls == [True] * 20
+
+    observed: list[str | None] = []
+
+    def source_chain(
+        _root: Path,
+        _materializer: object,
+        _authority: Mapping[str, object],
+        *,
+        current_head: str | None = None,
+    ) -> list[str]:
+        observed.append(current_head)
+        return []
+
+    monkeypatch.setattr(dependencies, "_m35_source_chain_errors", source_chain)
+    assert dependencies._m35_immutable_authority_identity_normalization_successor_errors(
+        scheduler, seal, migration, root=REPO_ROOT, require_active_runtime=False
+    ) == []
+    assert observed == ["5bbf2dec97458585ee95034c986057a1552b805d"]
+
+    authority = materializer._expected_m36_operator_task_binding_correction_authority()
+    assert authority["live_owner"]["generation_restart_authorized"] is False
+    assert authority["preservation"]["generation_restart"] is False
+    assert authority["preservation"]["failed_m35_append_preserved"] is True
+    materialize_source = inspect.getsource(materializer._materialize_m36)
+    assert materialize_source.index("if os.path.lexists(receipt_path):") < materialize_source.index("_require_m36_operator_task_binding(source)")
+    assert materialize_source.index("_require_m36_operator_task_binding(source)") < materialize_source.index("source.record_evidence(")
+    assert "record_completion" not in materialize_source
+    assert "record_generation_start" not in materialize_source
+    marker_source = inspect.getsource(operator._require_m36_source_successor_marker)
+    assert "m34-source-successor-receipt.json" in marker_source
+    assert "m35-source-successor-receipt.json" in marker_source
+    assert "os.path.lexists" in marker_source
+    assert "m36-source-successor-receipt.json" in marker_source
+    assert "checked is None" in marker_source
+    assert "write_text" not in marker_source
+    no_restart = inspect.getsource(operator._validate_offline_quack_start)
+    assert "M36 requires the exact live generation-29 owner" in no_restart
+
+
 def test_m35_authority_and_placeholder_or_sealed_chain_are_exact() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -4773,11 +4985,15 @@ def test_m35_presence_history_and_no_restart_marker(
     scheduler = json.loads((REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json").read_text(encoding="utf-8"))
     migration = json.loads((REPO_ROOT / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json").read_text(encoding="utf-8"))
     seal = json.loads((REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json").read_text(encoding="utf-8"))
+    key = "immutable_authority_identity_normalization_successor_materialization"
+    scheduler, migration, seal = _historical_successor_controls_at(
+        key, scheduler, migration, seal
+    )
+    assert migration is not None and seal is not None
     selected = operator._active_source_repair_materialization(scheduler)
     assert selected["migration_revision"] == "SAWM-R2-M35"
     selection_source = inspect.getsource(operator._active_source_repair_materialization)
     assert selection_source.index("if m35_key in config:") < selection_source.index("if m34_key in config:")
-    key = "immutable_authority_identity_normalization_successor_materialization"
     assert dependencies._m35_successor_declared({key: None}, {}, {}) is True
 
     monkeypatch.setattr(board, "_m35_migration_errors", lambda *_a, **_k: ["M35 active"])
@@ -5611,7 +5827,8 @@ def test_m30_authority_pins_stopped_event_280_and_generation_28() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    assert scheduler["database_program"]["store_generation"] == "28"
+    # M30 remains immutable history while the current M31+ owner is generation 29.
+    assert scheduler["database_program"]["store_generation"] == "29"
     assert authority["schema"].endswith("authorization@2")
     assert authority["authorization_revision"] == 2
     assert authority["control_recorded_at"] == "2026-08-31T15:59:48Z"
@@ -5796,6 +6013,11 @@ def test_m30_quack_start_uses_prestart_admission_not_post_receipt(
         (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         .read_text(encoding="utf-8")
     )
+    key = "stopped_owner_restart_source_seal_successor_materialization"
+    config, _historical_migration, _historical_seal = (
+        _historical_successor_controls_at(key, config)
+    )
+    config["database_program"]["store_generation"] = "28"
     authority = (
         materializer._expected_m30_stopped_owner_restart_source_seal_authority()
     )
@@ -6496,6 +6718,11 @@ def test_m28_live_claim_admission_recovery_authority_is_exact(
     expected = (
         materializer._expected_m28_live_claim_admission_recovery_authority()
     )
+    config, inventory, seal = _historical_successor_controls_at(
+        key, config, inventory, seal
+    )
+    assert inventory is not None and seal is not None
+    config["database_program"]["store_generation"] = "27"
     # Exercise the three sealed declaration surfaces without requiring this
     # unit test to run only after the operator has published the M28 control
     # commit.  The static gates validate the real files once any M28 surface
@@ -6792,12 +7019,8 @@ def test_m27_dead_owner_resume_authority_runtime_and_source_chain_are_exact(
     )
     key = "dead_owner_parallel_resume_successor_materialization"
     expected = materializer._expected_m27_dead_owner_parallel_resume_authority()
-    m27_config = copy.deepcopy(config)
-    m27_config.pop(
-        "committed_evidence_verification_successor_materialization", None
-    )
-    m27_config.pop(
-        "live_claim_admission_recovery_successor_materialization", None
+    m27_config, _historical_inventory, _historical_seal = (
+        _historical_successor_controls_at(key, config, inventory, seal)
     )
     # M28 advances only the live owner/store generation.  Reconstruct the
     # historical M27 runtime binding before exercising its closed authority.
@@ -6840,7 +7063,7 @@ def test_m27_dead_owner_resume_authority_runtime_and_source_chain_are_exact(
     assert config["database_program"]["store_id"].endswith(
         "run-r2-m27/control.duckdb"
     )
-    assert config["database_program"]["store_generation"] == "27"
+    assert config["database_program"]["store_generation"] == "29"
     assert m27_config["database_program"]["store_generation"] == "26"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
@@ -9090,9 +9313,9 @@ def test_m22_scheduler_authority_is_preserved_under_m27_runtime() -> None:
     assert config["database_program"]["store_id"] == (
         f"{current_runtime}/control.duckdb"
     )
-    # M28 restarted the owner at generation 27 without changing the M27
-    # runtime namespace; M29 preserves that live generation.
-    assert config["database_program"]["store_generation"] == "27"
+    # M31 restarted the owner at generation 29 without changing the M27
+    # runtime namespace; M32-M36 preserve that live generation.
+    assert config["database_program"]["store_generation"] == "29"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
     )
@@ -12152,9 +12375,9 @@ def test_m17_namespace_is_preserved_as_historical_under_m27() -> None:
     assert authority["target_generation"] == 18
     assert authority["target_quack_port"] == 24_060
     assert config["runtime_paths"]["root"].endswith("run-r2-m27")
-    # The M17 authority remains historical while M29 preserves the current
-    # generation-27 owner in the M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "27"
+    # The M17 authority remains historical while M31-M36 preserve the current
+    # generation-29 owner in the M27 runtime namespace.
+    assert config["database_program"]["store_generation"] == "29"
     assert config["quack_owner"]["port"] == 24_070
 
 
@@ -13274,9 +13497,9 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m27() -> None:
         "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
     )
     assert config["runtime_paths"] != historical_runtime
-    # The M15 authority remains historical while M29 preserves the current
-    # generation-27 owner in the M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "27"
+    # The M15 authority remains historical while M31-M36 preserve the current
+    # generation-29 owner in the M27 runtime namespace.
+    assert config["database_program"]["store_generation"] == "29"
     assert config["quack_owner"]["port"] == 24_070
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 

@@ -1917,7 +1917,42 @@ provider invocation, implementation commit, merge attempt, owner identity, or
 generation. It does not authorize a restart, create a synthetic owner marker,
 or rewrite the preserved M34 receipt.
 
-## 44. Current limitations at seal time
+## 44. M36 operator-task binding correction successor
+
+`SAWM-R2-M36` preserves M35 as sealed but unmaterialized source history. The
+M35 live append failed closed before an event or receipt was created because
+its evidence target
+`sha256:308a38585461080c06bf51f36a5b9cff75c4bf5a6e88ddcbccbca73198a51d1d`
+does not resolve in the authoritative task population. The live cursor remains
+M34 event 285 and M34 receipt
+`sha256:759b71e0d0fa73a1ac81bb98fb1b96c93f3150b09667cd19fc05330b34b50b01`.
+No failed M35 event or receipt is invented.
+
+M36 binds the evidence-only operator transition to the exact completed
+`SAWM-000` task CID
+`sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6`,
+revision 2. Before appending, the materializer resolves that exact CID and
+verifies its alias, status, and revision through the current Quack authority.
+It then appends only event 286 with projection
+`baguqeeravzrhagxizn7o45ukuevzkhreb7dzpabd4g4kmyci2if5rxr32dda`.
+
+M36 is selected by key presence before M35 and every older successor. Its base
+commit/tree are `5bbf2dec97458585ee95034c986057a1552b805d` and
+`954736c103dd644d7896e032c9676ed38d989831`; historical M35 validation is
+pinned to that exact final M35 source head while explicitly requiring no live
+M35 receipt or event. The same nine protected operator-control paths apply.
+The initial repair identities are placeholders until the first control commit;
+one child commit reseals the exact commit, tree, blobs, and authority CID.
+Partial or mixed identity states fail closed.
+
+M36 keeps the same live `run-r2-m27` generation-29 owner on port 24070. It
+changes no task definition, task status, accepted completion, goal, plan,
+coordination state, provider invocation, implementation commit, merge attempt,
+owner identity, or generation. It does not authorize a restart, worker
+self-approval, a direct authoritative DuckDB open, or a rewrite of M34 or M35
+history.
+
+## 45. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

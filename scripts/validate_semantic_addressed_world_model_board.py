@@ -388,6 +388,30 @@ def _m16_migration_errors(
         return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m36_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Reuse the exact M36 operator-task binding correction contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m36_operator_task_binding_correction_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
+            )
+        )
+    except Exception as exc:
+        return [f"M36 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _m35_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -851,12 +875,57 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M35 before every historical successor.  Consequently
+    Key presence selects M36 before every historical successor.  Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m36_key = "operator_task_binding_correction_successor_materialization"
+    m36_seal_key = f"{m36_key}_cid"
+    m36_presence = (
+        m36_key in scheduler,
+        m36_key in migration,
+        m36_seal_key in seal,
+    )
+    if any(m36_presence):
+        errors = _m36_migration_errors(scheduler, seal, migration)
+        if not all(m36_presence):
+            errors.append(
+                "M36 operator-task binding authority is only partially declared"
+            )
+        for validator in (
+            _m35_migration_errors,
+            _m34_migration_errors,
+            _m33_migration_errors,
+            _m32_migration_errors,
+            _m31_migration_errors,
+            _m30_migration_errors,
+            _m29_migration_errors,
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(
+                    scheduler,
+                    seal,
+                    migration,
+                    require_active_runtime=False,
+                )
+            )
+        return errors
 
     m35_key = "immutable_authority_identity_normalization_successor_materialization"
     m35_seal_key = f"{m35_key}_cid"
@@ -3340,6 +3409,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m36_key = "operator_task_binding_correction_successor_materialization"
+    m36_selected = any(
+        (
+            m36_key in config,
+            m36_key in migration,
+            f"{m36_key}_cid" in seal,
+        )
+    )
     m35_key = "immutable_authority_identity_normalization_successor_materialization"
     m35_selected = any(
         (
@@ -3445,7 +3522,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     multi_lane_selected = (
-        m35_selected
+        m36_selected
+        or m35_selected
         or m34_selected
         or m33_selected
         or m32_selected
@@ -3464,7 +3542,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or config.get("max_lanes") != expected_lane_count
     ):
         config_errors.append(
-            "four lanes are required for M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
+            "four lanes are required for M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
             if multi_lane_selected
             else "one lane is required until sidecars are lane-scoped"
         )
@@ -3646,6 +3724,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m36_selected
+        else "run-r2-m27"
         if m35_selected
         else "run-r2-m27"
         if m34_selected
@@ -3704,6 +3784,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_generation = (
         "29"
+        if m36_selected
+        else "29"
         if m35_selected
         else "29"
         if m34_selected
@@ -3762,6 +3844,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m36_selected
+        else 24070
         if m35_selected
         else 24070
         if m34_selected
@@ -3833,7 +3917,58 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m35_selected:
+    if m36_selected:
+        successor = config.get(m36_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer._expected_m36_operator_task_binding_correction_authority()
+            )
+            reference = materializer._m36_authority_reference()
+            source_chain = expected.get("source_chain", {})
+            failed = expected.get("failed_m35_append", {})
+            target = expected.get("target_authority", {})
+            if (
+                successor != reference
+                or migration.get(m36_key) != reference
+                or seal.get(f"{m36_key}_cid") != materializer._identity(expected)
+                or source_chain.get("base_control_commit")
+                != "5bbf2dec97458585ee95034c986057a1552b805d"
+                or source_chain.get("base_control_tree")
+                != "954736c103dd644d7896e032c9676ed38d989831"
+                or target.get("operator_task_alias") != "SAWM-000"
+                or target.get("operator_task_cid")
+                != "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6"
+                or target.get("operator_task_status") != "completed"
+                or target.get("operator_task_revision") != 2
+                or failed.get("sealed_target_task_cid")
+                != "sha256:308a38585461080c06bf51f36a5b9cff75c4bf5a6e88ddcbccbca73198a51d1d"
+                or failed.get("m35_event_appended") is not False
+                or failed.get("m35_receipt_created") is not False
+                or module._m36_operator_task_binding_correction_successor_errors(
+                    config, seal, migration, root=root
+                )
+            ):
+                config_errors.append(
+                    "M36 operator-task binding authority/CID/source differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M36 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M36 active runtime paths are not exactly preserved")
+    elif m35_selected:
         successor = config.get(m35_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
