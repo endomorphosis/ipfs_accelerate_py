@@ -55,6 +55,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_e
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     database_portal_bridge as database_portal_bridge_module,
 )
@@ -70,6 +73,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA,
     DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA,
+    DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA,
     DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
     DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
     DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA,
@@ -443,6 +447,253 @@ def test_bridge_reuses_exact_post_commit_candidate_without_provider(
     assert len(reconciliations) == 1
     assert reconciliations[0]["seed"] == seed
     assert factory_calls == []
+
+
+def test_protected_candidate_projection_read_recovers_one_stale_loader(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    attempt = _attempt()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "coherent projection read dispatched Portal"
+        ),
+    )
+    paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    projected = parse_task_text(
+        paths.task_projection.read_text(encoding="utf-8"),
+        path=paths.task_projection,
+        task_header_prefix="## LGSWF-004",
+    )
+    reads = {"count": 0}
+
+    def load_tasks() -> list[object]:
+        reads["count"] += 1
+        return [] if reads["count"] == 1 else list(projected)
+
+    task, projection, task_key, task_cid = (
+        bridge._coherent_protected_preservation_task(
+            paths=paths,
+            binding=binding,
+            alias=attempt.task_alias,
+            database_task_cid=attempt.task_cid,
+            load_tasks=load_tasks,
+        )
+    )
+
+    assert reads["count"] == 2
+    assert task == projected[0]
+    assert projection == paths.task_projection.read_text(encoding="utf-8")
+    assert task_key
+    assert task_cid
+
+
+def test_protected_candidate_projection_read_stays_bounded(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    attempt = _attempt()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "bounded projection read dispatched Portal"
+        ),
+    )
+    paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    reads = {"count": 0}
+
+    def load_tasks() -> list[object]:
+        reads["count"] += 1
+        return []
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="protected-preservation projection does not contain",
+    ):
+        bridge._coherent_protected_preservation_task(
+            paths=paths,
+            binding=binding,
+            alias=attempt.task_alias,
+            database_task_cid=attempt.task_cid,
+            load_tasks=load_tasks,
+        )
+
+    assert reads["count"] == 4
+
+
+def test_bridge_reconciles_exact_pre_dispatch_projection_rejection(
+    tmp_path: Path,
+) -> None:
+    source_bridge, source, record, source_paths, seed, _factory_calls = (
+        _post_commit_candidate_fixture(tmp_path)
+    )
+    target = replace(
+        source,
+        attempt_id="attempt:pre-dispatch-target",
+        claim_id="claim:pre-dispatch-target",
+        lease_id="lease:pre-dispatch-target",
+        owner_session_id="session:pre-dispatch-target",
+        attempt_number=41,
+        fencing_token=43,
+        fence_epoch=5,
+    )
+    semantic = dict(record.body)
+    semantic.pop("completion_receipt", None)
+    recovery_receipt = {
+        "operation": "database_portal_post_commit_candidate_recovery",
+        "post_commit_candidate_recovery_seed": dict(seed),
+    }
+    claim_receipt = {
+        "operation": "database_claim",
+        "attempt_id": target.attempt_id,
+        "claim_id": target.claim_id,
+        "lease_id": target.lease_id,
+        "owner_session_id": target.owner_session_id,
+        "attempt_number": target.attempt_number,
+        "fencing_token": target.fencing_token,
+        "fence_epoch": target.fence_epoch,
+        "post_commit_candidate_recovery_seed": dict(seed),
+    }
+    admission_receipt = {
+        "operation": "database_attempt_admitted",
+        "attempt_id": target.attempt_id,
+        "claim_id": target.claim_id,
+        "lease_id": target.lease_id,
+        "owner_session_id": target.owner_session_id,
+        "attempt_number": target.attempt_number,
+        "fencing_token": target.fencing_token,
+        "fence_epoch": target.fence_epoch,
+        "post_commit_candidate_recovery_seed": dict(seed),
+    }
+    terminal_receipt = {
+        "operation": "database_portal_terminal_failure",
+        "attempt_id": target.attempt_id,
+        "claim_id": target.claim_id,
+        "lease_id": target.lease_id,
+        "owner_session_id": target.owner_session_id,
+        "attempt_number": target.attempt_number,
+        "fencing_token": target.fencing_token,
+        "fence_epoch": target.fence_epoch,
+        "reason": (
+            "Portal protected-preservation projection does not contain the "
+            "exact pending database task"
+        ),
+        "retryable": False,
+        "control_expected_status": "in_progress",
+        "control_expected_revision": 14,
+    }
+    history_rows = [
+        {
+            "revision": revision,
+            "status": status,
+            "body": {**semantic, "completion_receipt": receipt},
+        }
+        for revision, status, receipt in (
+            (12, "retrying", recovery_receipt),
+            (13, "in_progress", claim_receipt),
+            (14, "in_progress", admission_receipt),
+            (15, "blocked", terminal_receipt),
+        )
+    ]
+    history_body = {
+        "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+        "task_cid": target.task_cid,
+        "revisions": history_rows,
+    }
+    history = {
+        **history_body,
+        "projection_cid": content_identity(history_body),
+    }
+
+    class HistoricalTaskSource(_TaskSource):
+        def task_revision_history_projection(self, _task_cid: str) -> object:
+            return history
+
+    class ProjectionPortal:
+        def __init__(self, paths: object) -> None:
+            self.paths = paths
+            self.closed = False
+
+        def _load_tasks(self) -> list[object]:
+            return parse_task_text(
+                self.paths.task_projection.read_text(encoding="utf-8"),
+                path=self.paths.task_projection,
+                task_header_prefix="## LGSWF-004",
+            )
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    record.status = "in_progress"
+    record.revision = 14
+    record.body = {**semantic, "completion_receipt": admission_receipt}
+    task_source = HistoricalTaskSource(record)
+    portals: list[ProjectionPortal] = []
+
+    def factory(paths: object, _alias: str) -> ProjectionPortal:
+        portal = ProjectionPortal(paths)
+        portals.append(portal)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=source_paths.root.parent,
+        repository_root=source_bridge.repository_root,
+        worktree_root=source_bridge.worktree_root,
+        portal_factory=factory,
+        max_task_attempts=2,
+    )
+    bridge._ensure_attempt_projection(target, record)
+    record.status = "blocked"
+    record.revision = 15
+    record.body = {**semantic, "completion_receipt": terminal_receipt}
+
+    receipt = dict(bridge.recover_post_commit_candidate(target))
+    replay = dict(bridge.recover_post_commit_candidate(target))
+
+    assert receipt == replay
+    assert receipt["schema"] == (
+        DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA
+    )
+    assert receipt["source_candidate_receipt_id"] == seed["receipt_id"]
+    assert receipt["source_portal_attempt"] == 1
+    assert receipt["portal_provider_dispatched"] is False
+    assert receipt["portal_attempt_consumed"] is False
+    assert receipt["effect_state"] == "proven_absent_before_portal_dispatch"
+    assert portals and all(portal.closed for portal in portals)
+    target_paths = bridge._paths(target)
+    assert {path.name for path in target_paths.root.iterdir()} == {
+        "database-attempt-binding.json",
+        "task-projection.md",
+        "database-portal-pre-dispatch-projection-recovery.json",
+    }
+    receipt_path = (
+        target_paths.root
+        / "database-portal-pre-dispatch-projection-recovery.json"
+    )
+    tampered = dict(receipt)
+    tampered["attempt_artifacts"] = {
+        **dict(tampered["attempt_artifacts"]),
+        "task-projection.md": "sha256:" + "f" * 64,
+    }
+    tampered_body = dict(tampered)
+    tampered_body.pop("receipt_id")
+    tampered["receipt_id"] = database_portal_bridge_module._sha256_bytes(
+        database_portal_bridge_module._canonical_json(tampered_body)
+    )
+    receipt_path.write_text(
+        json.dumps(tampered, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="pre-dispatch projection recovery receipt evidence changed",
+    ):
+        bridge.recover_post_commit_candidate(target)
 
 
 def test_bridge_zero_provider_reconciles_post_commit_candidate_seed(

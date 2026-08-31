@@ -248,6 +248,9 @@ _CALLBACK_NO_EFFECT_RECOVERY_FILENAME: Final[str] = (
 _CALLBACK_NO_EFFECT_RECOVERY_INTENT_FILENAME: Final[str] = (
     "database-portal-callback-no-effect-recovery-intent.json"
 )
+_PRE_DISPATCH_PROJECTION_RECOVERY_FILENAME: Final[str] = (
+    "database-portal-pre-dispatch-projection-recovery.json"
+)
 _CALLBACK_NO_EFFECT_RECOVERY_INTENT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-callback-no-effect-recovery-intent@1"
@@ -313,6 +316,14 @@ DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA: Final[str] = (
 DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-post-commit-candidate-recovery@1"
+)
+DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-pre-dispatch-projection-recovery@1"
+)
+DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON: Final[str] = (
+    "Portal protected-preservation projection does not contain the exact "
+    "pending database task"
 )
 DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -18545,6 +18556,355 @@ class DatabasePortalExecutionBridge:
             receipt=receipt,
         )
 
+    @staticmethod
+    def _pre_dispatch_projection_artifacts(
+        paths: DatabasePortalAttemptPaths,
+        *,
+        receipt_allowed: bool,
+    ) -> dict[str, str]:
+        """Return the closed attempt-root population before Portal dispatch."""
+
+        expected = {
+            paths.binding.name,
+            paths.task_projection.name,
+            *(
+                {_PRE_DISPATCH_PROJECTION_RECOVERY_FILENAME}
+                if receipt_allowed
+                else set()
+            ),
+        }
+        try:
+            entries = tuple(paths.root.iterdir())
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "pre-dispatch projection recovery artifacts are unreadable"
+            ) from exc
+        names = {entry.name for entry in entries}
+        if names != expected or any(
+            not entry.is_file() or entry.is_symlink() for entry in entries
+        ):
+            raise DatabasePortalBridgeError(
+                "pre-dispatch projection recovery found Portal execution artifacts"
+            )
+        return {
+            name: _sha256_file(paths.root / name)
+            for name in sorted(names)
+        }
+
+    def _pre_dispatch_candidate_history(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+        binding: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Prove the adjacent recovery/claim/admission/terminal lineage."""
+
+        history_projection = getattr(
+            self.task_source,
+            "task_revision_history_projection",
+            None,
+        )
+        if not callable(history_projection):
+            raise DatabasePortalBridgeError(
+                "pre-dispatch projection recovery has no revision history"
+            )
+        history = history_projection(str(attempt.task_cid))
+        revisions = history.get("revisions") if isinstance(history, Mapping) else None
+        current_revision = int(getattr(record, "revision", 0) or 0)
+        from ..proof.formal_verification_contracts import content_identity
+        from ..task_sources.intent_repository import (
+            TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+        )
+
+        history_body = dict(history) if isinstance(history, Mapping) else {}
+        history_cid = history_body.pop("projection_cid", None)
+        if (
+            not isinstance(history, Mapping)
+            or set(history)
+            != {"schema", "task_cid", "revisions", "projection_cid"}
+            or not isinstance(revisions, list)
+            or len(revisions) < 4
+            or history.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+            or history_cid != content_identity(history_body)
+            or history.get("task_cid") != str(attempt.task_cid)
+            or str(getattr(record, "status", "") or "").strip().lower()
+            != "blocked"
+        ):
+            raise DatabasePortalBridgeError(
+                "pre-dispatch projection recovery history is incomplete"
+            )
+        entries = revisions[-4:]
+        if (
+            any(not isinstance(entry, Mapping) for entry in entries)
+            or [entry.get("revision") for entry in entries]
+            != list(range(current_revision - 3, current_revision + 1))
+            or [str(entry.get("status") or "").strip().lower() for entry in entries]
+            != ["retrying", "in_progress", "in_progress", "blocked"]
+            or entries[-1].get("body") != getattr(record, "body", None)
+        ):
+            raise DatabasePortalBridgeError(
+                "pre-dispatch projection recovery history is not adjacent"
+            )
+        bodies = [entry.get("body") for entry in entries]
+        if any(not isinstance(body, Mapping) for body in bodies):
+            raise DatabasePortalBridgeError(
+                "pre-dispatch projection recovery history body is malformed"
+            )
+        receipts = [body.get("completion_receipt") for body in bodies]
+        if any(not isinstance(receipt, Mapping) for receipt in receipts):
+            raise DatabasePortalBridgeError(
+                "pre-dispatch projection recovery history has no control receipt"
+            )
+        recovery_receipt, claim_receipt, admission_receipt, terminal_receipt = receipts
+        operations = [str(receipt.get("operation") or "") for receipt in receipts]
+        candidate_seed = recovery_receipt.get("post_commit_candidate_recovery_seed")
+        claim_seed = claim_receipt.get("post_commit_candidate_recovery_seed")
+        semantic_bodies: list[dict[str, Any]] = []
+        for body in bodies:
+            semantic = dict(body)
+            semantic.pop("completion_receipt", None)
+            semantic_bodies.append(semantic)
+        target_identity = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "owner_session_id": str(
+                getattr(attempt, "owner_session_id", "") or ""
+            ),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if (
+            operations
+            != [
+                "database_portal_post_commit_candidate_recovery",
+                "database_claim",
+                "database_attempt_admitted",
+                "database_portal_terminal_failure",
+            ]
+            or not isinstance(candidate_seed, Mapping)
+            or recovery_receipt.get(
+                "pre_dispatch_projection_recovery_receipt"
+            )
+            is not None
+            or dict(claim_seed or {}) != dict(candidate_seed)
+            or admission_receipt.get("post_commit_candidate_recovery_seed")
+            != candidate_seed
+            or any(body != semantic_bodies[0] for body in semantic_bodies[1:])
+            or any(
+                claim_receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or any(
+                admission_receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or any(
+                terminal_receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or terminal_receipt.get("reason")
+            != DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON
+            or terminal_receipt.get("retryable") is not False
+            or terminal_receipt.get("control_expected_status") != "in_progress"
+            or terminal_receipt.get("control_expected_revision")
+            != current_revision - 1
+            or binding.get("task_revision") != current_revision - 1
+        ):
+            raise DatabasePortalBridgeError(
+                "pre-dispatch projection recovery lineage changed"
+            )
+
+        source_attempt = SimpleNamespace(
+            task_cid=str(candidate_seed.get("task_cid") or ""),
+            task_alias=str(candidate_seed.get("task_alias") or ""),
+            attempt_id=str(candidate_seed.get("attempt_id") or ""),
+            claim_id=str(candidate_seed.get("claim_id") or ""),
+            lease_id=str(candidate_seed.get("lease_id") or ""),
+            attempt_number=candidate_seed.get("attempt_number"),
+            fencing_token=candidate_seed.get("fencing_token"),
+            fence_epoch=candidate_seed.get("fence_epoch"),
+        )
+        source_paths = self._paths(source_attempt)
+        source_binding = self._read_binding(source_paths.binding)
+        reproduced = self._post_commit_candidate_recovery_receipt(
+            attempt=source_attempt,
+            paths=source_paths,
+            binding=source_binding,
+        )
+        if (
+            dict(candidate_seed) != reproduced
+            or candidate_seed.get("task_cid") != str(attempt.task_cid)
+            or candidate_seed.get("task_alias")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or candidate_seed.get("attempt_id") == str(attempt.attempt_id)
+        ):
+            raise DatabasePortalBridgeError(
+                "pre-dispatch projection recovery candidate changed"
+            )
+        context = {
+            "history_projection_cid": str(history_cid),
+            "recovery_task_revision": current_revision - 3,
+            "claim_task_revision": current_revision - 2,
+            "admission_task_revision": current_revision - 1,
+            "terminal_task_revision": current_revision,
+            "source_candidate_receipt_id": str(candidate_seed.get("receipt_id") or ""),
+            "source_portal_attempt": int(candidate_seed.get("portal_attempt") or 0),
+        }
+        return dict(candidate_seed), context
+
+    def _pre_dispatch_projection_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Seal that a callback stopped before Portal dispatch or mutation."""
+
+        record = self._record_for_attempt(self.task_source, attempt)
+        candidate_seed, history = self._pre_dispatch_candidate_history(
+            attempt=attempt,
+            record=record,
+            binding=binding,
+        )
+        final_path = paths.root / _PRE_DISPATCH_PROJECTION_RECOVERY_FILENAME
+        if final_path.is_file():
+            receipt = self._read_json_object(
+                final_path,
+                noun="pre-dispatch projection recovery receipt",
+            )
+            body = dict(receipt)
+            receipt_id = str(body.pop("receipt_id", "") or "")
+            observed_artifacts = self._pre_dispatch_projection_artifacts(
+                paths,
+                receipt_allowed=True,
+            )
+            observed_artifacts.pop(final_path.name, None)
+            projection = self._verify_projection(paths, binding)
+            portal_task_key, portal_task_cid = (
+                self._portal_completion_event_identity(
+                    paths=paths,
+                    projection_text=projection,
+                    binding=binding,
+                )
+            )
+            if (
+                receipt_id != _sha256_bytes(_canonical_json(body))
+                or receipt.get("schema")
+                != DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA
+                or receipt.get("disposition")
+                != "retry_exact_post_commit_candidate"
+                or receipt.get("reason")
+                != "protected_preservation_projection_revalidated"
+                or receipt.get("attempt_artifacts") != observed_artifacts
+                or receipt.get("target_binding_id")
+                != str(binding.get("binding_id") or "")
+                or receipt.get("projection_immutable_digest")
+                != str(binding.get("projection_immutable_digest") or "")
+                or receipt.get("projection_file_digest")
+                != _sha256_bytes(projection.encode("utf-8"))
+                or receipt.get("portal_canonical_task_key") != portal_task_key
+                or receipt.get("portal_canonical_task_cid") != portal_task_cid
+                or receipt.get("source_candidate_receipt_id")
+                != str(candidate_seed.get("receipt_id") or "")
+                or receipt.get("source_portal_attempt")
+                != int(candidate_seed.get("portal_attempt") or 0)
+                or receipt.get("source_implementation_commit")
+                != str(candidate_seed.get("implementation_commit") or "")
+                or receipt.get("source_rescue_branch")
+                != str(candidate_seed.get("rescue_branch") or "")
+                or any(receipt.get(field) != value for field, value in history.items())
+            ):
+                raise DatabasePortalBridgeError(
+                    "pre-dispatch projection recovery receipt evidence changed"
+                )
+            return receipt
+
+        before = self._pre_dispatch_projection_artifacts(
+            paths,
+            receipt_allowed=False,
+        )
+        daemon = self.portal_factory(
+            paths,
+            str(getattr(attempt, "task_alias", "") or ""),
+        )
+        if daemon is None:
+            raise DatabasePortalBridgeError(
+                "pre-dispatch projection recovery Portal factory returned no executor"
+            )
+        try:
+            load_tasks = getattr(daemon, "_load_tasks", None)
+            if not callable(load_tasks):
+                raise DatabasePortalBridgeError(
+                    "pre-dispatch projection recovery has no Portal loader"
+                )
+            _task, projection, portal_task_key, portal_task_cid = (
+                self._coherent_protected_preservation_task(
+                    paths=paths,
+                    binding=binding,
+                    alias=str(getattr(attempt, "task_alias", "") or ""),
+                    database_task_cid=str(attempt.task_cid),
+                    load_tasks=load_tasks,
+                )
+            )
+        finally:
+            close = getattr(daemon, "close_event_runtime", None) or getattr(
+                daemon,
+                "close",
+                None,
+            )
+            if callable(close):
+                close()
+        after = self._pre_dispatch_projection_artifacts(
+            paths,
+            receipt_allowed=False,
+        )
+        if before != after:
+            raise DatabasePortalBridgeError(
+                "pre-dispatch projection recovery artifacts changed during revalidation"
+            )
+        receipt = {
+            "schema": DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA,
+            "disposition": "retry_exact_post_commit_candidate",
+            "reason": "protected_preservation_projection_revalidated",
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            **history,
+            "target_binding_id": str(binding.get("binding_id") or ""),
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "projection_file_digest": _sha256_bytes(projection.encode("utf-8")),
+            "portal_canonical_task_key": portal_task_key,
+            "portal_canonical_task_cid": portal_task_cid,
+            "source_implementation_commit": str(
+                candidate_seed.get("implementation_commit") or ""
+            ),
+            "source_rescue_branch": str(candidate_seed.get("rescue_branch") or ""),
+            "requires_database_callback_started_evidence": True,
+            "portal_provider_dispatched": False,
+            "portal_attempt_consumed": False,
+            "effect_state": "proven_absent_before_portal_dispatch",
+            "merge_attempted": False,
+            "attempt_artifacts": dict(before),
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        _atomic_write(
+            final_path,
+            json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8") + b"\n",
+        )
+        self._pre_dispatch_projection_artifacts(paths, receipt_allowed=True)
+        return receipt
+
     def recover_post_commit_candidate(self, attempt: Any) -> Mapping[str, Any]:
         """Recover one exact callback-unknown Portal suffix without redispatch.
 
@@ -18560,10 +18920,19 @@ class DatabasePortalExecutionBridge:
         itself never invokes the provider again.
         """
 
-        paths, binding = self._recovery_attempt_binding(
-            attempt,
-            recovery_name="post-commit candidate recovery",
+        record = self._record_for_attempt(self.task_source, attempt)
+        paths = self._paths(attempt)
+        binding = self._verified_recovery_binding(
+            attempt=attempt,
+            record=record,
+            paths=paths,
         )
+        if not paths.events.exists():
+            return self._pre_dispatch_projection_recovery_receipt(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+            )
         try:
             return self._post_commit_candidate_recovery_receipt(
                 attempt=attempt,
@@ -19089,6 +19458,91 @@ class DatabasePortalExecutionBridge:
             )
         return dict(verified)
 
+    def _coherent_protected_preservation_task(
+        self,
+        *,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        alias: str,
+        database_task_cid: str,
+        load_tasks: Callable[[], Sequence[Any]],
+    ) -> tuple[Any, str, str, str]:
+        """Read one immutable Portal projection coherently and boundedly.
+
+        Portal's loader and the database bridge are intentionally independent
+        readers.  A process recycle or projection refresh can make one loader
+        observe a stale in-memory parse even though the immutable projection
+        is already current.  Retry the *read* only, never provider work, and
+        require the same immutable bytes before and after every Portal read.
+        A persistent disagreement remains a typed, fail-closed mismatch.
+        """
+
+        from .implementation_daemon import parse_task_text
+
+        last_load_error: Exception | None = None
+        for _read in range(4):
+            projection_before = self._verify_projection(paths, binding)
+            projected_tasks = parse_task_text(
+                projection_before,
+                path=paths.task_projection,
+                task_header_prefix=f"## {alias}",
+            )
+            try:
+                tasks = list(load_tasks())
+            except Exception as exc:  # bounded retry; no provider is reachable
+                last_load_error = exc
+                continue
+            projection_after = self._verify_projection(paths, binding)
+            if projection_before != projection_after:
+                continue
+            portal_task_key, portal_task_cid = (
+                self._portal_completion_event_identity(
+                    paths=paths,
+                    projection_text=projection_after,
+                    binding=binding,
+                )
+            )
+            projection_already_terminal = bool(
+                _projection_status(projection_after) in _TERMINAL_STATUSES
+            )
+            task_status = (
+                str(getattr(tasks[0], "status", "") or "").strip().lower()
+                if len(tasks) == 1
+                else ""
+            )
+            if (
+                len(tasks) == 1
+                and tasks == projected_tasks
+                and str(getattr(tasks[0], "task_id", "") or "") == alias
+                and isinstance(getattr(tasks[0], "metadata", None), Mapping)
+                and tasks[0].metadata.get("database task cid")
+                == database_task_cid
+                and tasks[0].metadata.get("canonical task cid")
+                == database_task_cid
+                and tasks[0].metadata.get("canonical task key")
+                == str(binding.get("canonical_task_key") or "")
+                and (
+                    task_status == "todo"
+                    or (
+                        projection_already_terminal
+                        and task_status in _TERMINAL_STATUSES
+                    )
+                )
+            ):
+                return (
+                    tasks[0],
+                    projection_after,
+                    portal_task_key,
+                    portal_task_cid,
+                )
+        if last_load_error is not None:
+            raise DatabasePortalBridgeError(
+                "Portal protected-preservation task projection is unreadable"
+            ) from last_load_error
+        raise DatabasePortalBridgeError(
+            DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON
+        )
+
     def _reconcile_protected_preservation_seed(
         self,
         *,
@@ -19161,7 +19615,7 @@ class DatabasePortalExecutionBridge:
         claim_metadata: Mapping[str, Any] | None = None
         try:
             from ..merge.checkout_lock import checkout_repository_id
-            from .implementation_daemon import parse_task_text, utc_now
+            from .implementation_daemon import utc_now
 
             daemon_queue = getattr(daemon, "merge_queue", None)
             daemon_repo_root = getattr(daemon, "repo_root", None)
@@ -19258,57 +19712,18 @@ class DatabasePortalExecutionBridge:
                 f"protected-preservation-{safe_alias}-{recovery_digest[:20]}"
             )
 
-            try:
-                tasks = list(load_tasks())
-            except Exception as exc:
-                raise DatabasePortalBridgeError(
-                    "Portal protected-preservation task projection is unreadable"
-                ) from exc
-            projection_text = self._verify_projection(paths, binding)
-            projected_tasks = parse_task_text(
-                projection_text,
-                path=paths.task_projection,
-                task_header_prefix=f"## {alias}",
-            )
-            portal_task_key, portal_task_cid = (
-                self._portal_completion_event_identity(
+            task, projection_text, portal_task_key, portal_task_cid = (
+                self._coherent_protected_preservation_task(
                     paths=paths,
-                    projection_text=projection_text,
                     binding=binding,
+                    alias=alias,
+                    database_task_cid=database_task_cid,
+                    load_tasks=load_tasks,
                 )
             )
             projection_already_terminal = bool(
                 _projection_status(projection_text) in _TERMINAL_STATUSES
             )
-            task_status = (
-                str(getattr(tasks[0], "status", "") or "").strip().lower()
-                if len(tasks) == 1
-                else ""
-            )
-            if (
-                len(tasks) != 1
-                or tasks != projected_tasks
-                or str(getattr(tasks[0], "task_id", "") or "") != alias
-                or not isinstance(getattr(tasks[0], "metadata", None), Mapping)
-                or tasks[0].metadata.get("database task cid")
-                != database_task_cid
-                or tasks[0].metadata.get("canonical task cid")
-                != database_task_cid
-                or tasks[0].metadata.get("canonical task key")
-                != str(binding.get("canonical_task_key") or "")
-                or (
-                    task_status != "todo"
-                    and not (
-                        projection_already_terminal
-                        and task_status in _TERMINAL_STATUSES
-                    )
-                )
-            ):
-                raise DatabasePortalBridgeError(
-                    "Portal protected-preservation projection does not contain "
-                    "the exact pending database task"
-                )
-            task = tasks[0]
             claim_path = claim_path_for(
                 alias,
                 canonical_task_cid=portal_task_cid,
@@ -24150,6 +24565,8 @@ __all__ = (
     "DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON",
     "DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA",
+    "DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA",
+    "DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA",

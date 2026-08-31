@@ -110,7 +110,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA,
     DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
     DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
+    DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA,
     DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
+    DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON,
     DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA,
@@ -4705,7 +4707,11 @@ def test_expired_callback_rearms_only_exact_post_commit_candidate(
         attempt: DatabaseTaskAttempt,
     ) -> dict[str, object]:
         provider_calls.append(attempt.attempt_id)
-        raise SimulatedProcessCrash("injected post-commit crash")
+        if len(provider_calls) == 1:
+            raise SimulatedProcessCrash("injected post-commit crash")
+        raise DatabasePortalBridgeError(
+            DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON
+        )
 
     first = _open_daemon(
         lane_path,
@@ -4905,8 +4911,245 @@ def test_expired_callback_rearms_only_exact_post_commit_candidate(
         assert claim_receipt["execution_route_origin_revision"] == route_binding[
             "task_revision"
         ]
+        terminal = restarted._resume_attempt_without_process_crash(successor)
+        assert terminal["portal_terminal_failure"] is True
+        assert terminal["reason"] == (
+            DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON
+        )
+        assert provider_calls == [attempt.attempt_id, successor.attempt_id]
+        blocked = restarted.task_source.get(attempt.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+        observed_history = restarted.task_source.task_revision_history_projection(
+            attempt.task_cid
+        )
+        actual_revisions = list(observed_history["revisions"])
+        recovery_entry, claim_entry, terminal_entry = actual_revisions[-3:]
+        admission_body = dict(claim_entry["body"])
+        admission_receipt = dict(admission_body["completion_receipt"])
+        admission_receipt["operation"] = "database_attempt_admitted"
+        admission_body["completion_receipt"] = admission_receipt
+        exact_revisions = [
+            *actual_revisions[:-4],
+            {
+                **dict(recovery_entry),
+                "revision": 3,
+            },
+            {
+                **dict(claim_entry),
+                "revision": 4,
+            },
+            {
+                **dict(claim_entry),
+                "revision": 5,
+                "body": admission_body,
+            },
+            {
+                **dict(terminal_entry),
+                "revision": 6,
+            },
+        ]
+        exact_history_body = {
+            "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+            "task_cid": attempt.task_cid,
+            "revisions": exact_revisions,
+        }
+        original_history_projection = (
+            type(restarted.task_source).task_revision_history_projection
+        )
+
+        def exact_live_shape_history(
+            source: object,
+            task_cid: str,
+        ) -> Mapping[str, object]:
+            if task_cid == attempt.task_cid:
+                current_history = original_history_projection(source, task_cid)
+                trailing = [
+                    dict(item)
+                    for item in current_history["revisions"]
+                    if int(item["revision"]) > 6
+                ]
+                body = {
+                    **exact_history_body,
+                    "revisions": [*exact_revisions, *trailing],
+                }
+                return {**body, "projection_cid": content_identity(body)}
+            return original_history_projection(source, task_cid)
+
+        monkeypatch.setattr(
+            type(restarted.task_source),
+            "task_revision_history_projection",
+            exact_live_shape_history,
+        )
+        verified_projection_source = (
+            restarted._pre_dispatch_projection_recovery_source(
+                blocked,
+                successor,
+            )
+        )
+        assert verified_projection_source["seed"] == (
+            carried["post_commit_candidate_recovery_seed"]
+        )
+
+        def exact_pre_dispatch_receipt(
+            source_attempt: DatabaseTaskAttempt,
+        ) -> Mapping[str, object]:
+            assert source_attempt.attempt_id == successor.attempt_id
+            current_task = restarted.task_source.get(source_attempt.task_cid)
+            assert current_task is not None
+            source = restarted._pre_dispatch_projection_recovery_source(
+                current_task, source_attempt
+            )
+            candidate = source["seed"]
+            body: dict[str, object] = {
+                "schema": DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA,
+                "disposition": "retry_exact_post_commit_candidate",
+                "reason": "protected_preservation_projection_revalidated",
+                "task_cid": source_attempt.task_cid,
+                "task_alias": source_attempt.task_alias,
+                "attempt_id": source_attempt.attempt_id,
+                "claim_id": source_attempt.claim_id,
+                "lease_id": source_attempt.lease_id,
+                "attempt_number": int(source_attempt.attempt_number),
+                "fencing_token": int(source_attempt.fencing_token),
+                "fence_epoch": int(source_attempt.fence_epoch),
+                "history_projection_cid": source["history_projection_cid"],
+                "recovery_task_revision": source["recovery_task_revision"],
+                "claim_task_revision": source["claim_task_revision"],
+                "admission_task_revision": source["admission_task_revision"],
+                "terminal_task_revision": source["terminal_task_revision"],
+                "source_candidate_receipt_id": candidate["receipt_id"],
+                "source_portal_attempt": candidate["portal_attempt"],
+                "target_binding_id": "sha256:" + "7" * 64,
+                "projection_immutable_digest": "sha256:" + "8" * 64,
+                "projection_file_digest": "sha256:" + "9" * 64,
+                "portal_canonical_task_key": "portal:test-task",
+                "portal_canonical_task_cid": "portal:cid:test-task",
+                "source_implementation_commit": candidate[
+                    "implementation_commit"
+                ],
+                "source_rescue_branch": candidate["rescue_branch"],
+                "requires_database_callback_started_evidence": True,
+                "portal_provider_dispatched": False,
+                "portal_attempt_consumed": False,
+                "effect_state": "proven_absent_before_portal_dispatch",
+                "merge_attempted": False,
+                "attempt_artifacts": {
+                    "database-attempt-binding.json": "sha256:" + "a" * 64,
+                    "task-projection.md": "sha256:" + "b" * 64,
+                },
+            }
+            body["receipt_id"] = (
+                implementation_daemon_module._database_daemon_evidence_digest(
+                    body
+                )
+            )
+            return body
+
+        restarted._post_commit_candidate_recovery_fn = (
+            exact_pre_dispatch_receipt
+        )
+        recovered = (
+            restarted.reconcile_unimplemented_unknown_callback_quarantines()
+        )
+        assert len(recovered) == 1
+        assert recovered[0]["reason"] == (
+            "exact_pre_dispatch_projection_rearmed"
+        )
+        assert recovered[0]["provider_dispatched"] is False
+        assert recovered[0]["database_callback_started"] is True
+        assert recovered[0]["portal_provider_dispatched"] is False
+        assert recovered[0]["attempt_consumed"] is False
+        rearmed = restarted.task_source.get(attempt.task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        recovery_receipt = rearmed.body["completion_receipt"]
+        assert recovery_receipt["post_commit_candidate_recovery_seed"] == (
+            carried["post_commit_candidate_recovery_seed"]
+        )
+        assert recovery_receipt[
+            "pre_dispatch_projection_recovery_receipt"
+        ]["attempt_id"] == successor.attempt_id
+        assert (
+            restarted.reconcile_unimplemented_unknown_callback_quarantines()
+            == []
+        )
+
+        assert attempt.task_cid in restarted.sync_ready_tasks_into_coordination()
+        assert attempt.task_cid not in restarted._automatic_claim_exclusions()
+        assert attempt.task_cid not in restarted._current_control_claim_rejections()
+        final_successor = restarted.claim_next()
+        assert final_successor is not None
+        assert final_successor.attempt_id not in {
+            attempt.attempt_id,
+            successor.attempt_id,
+        }
+        assert provider_calls == [attempt.attempt_id, successor.attempt_id]
+        final_claimed = restarted.task_source.get(attempt.task_cid)
+        assert final_claimed is not None and final_claimed.status == "in_progress"
+        assert final_claimed.body["completion_receipt"][
+            "post_commit_candidate_recovery_seed"
+        ] == carried["post_commit_candidate_recovery_seed"]
     finally:
         restarted.close()
+
+
+def test_unknown_callback_reconciliation_paginates_and_counts_only_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        repo_root=tmp_path,
+        session="session:unknown-callback-pagination",
+    )
+    first = SimpleNamespace(task_cid="task:observation", status="blocked")
+    rejected = SimpleNamespace(task_cid="task:rejected", status="blocked")
+    changed = SimpleNamespace(task_cid="task:changed", status="blocked")
+    list_calls: list[dict[str, object]] = []
+
+    def list_tasks(**kwargs: object) -> SimpleNamespace:
+        list_calls.append(dict(kwargs))
+        if kwargs.get("cursor") == "page:2":
+            return SimpleNamespace(tasks=(rejected, changed), next_cursor="")
+        return SimpleNamespace(tasks=(first,), next_cursor="page:2")
+
+    def reopen(task: object) -> dict[str, object]:
+        task_cid = str(getattr(task, "task_cid", ""))
+        if task_cid == rejected.task_cid:
+            raise DatabaseImplementationConflictError("typed evidence rejected")
+        return {
+            "task_cid": task_cid,
+            "reopened": task_cid == changed.task_cid,
+            "changed": task_cid == changed.task_cid,
+        }
+
+    monkeypatch.setattr(daemon.task_source, "list_tasks", list_tasks)
+    monkeypatch.setattr(daemon.task_source, "get", lambda task_cid: None)
+    monkeypatch.setattr(
+        daemon,
+        "_reopen_unimplemented_unknown_callback_task",
+        reopen,
+    )
+
+    outcomes = daemon.reconcile_unimplemented_unknown_callback_quarantines()
+
+    assert [item["task_cid"] for item in outcomes] == [
+        first.task_cid,
+        rejected.task_cid,
+        changed.task_cid,
+    ]
+    assert outcomes[1]["changed"] is False
+    assert daemon._reconciliation_outcome_count(outcomes) == 1
+    assert list_calls == [
+        {
+            "status": ("quarantined", "blocked"),
+            "limit": implementation_daemon_module.TASK_SOURCE_QUERY_LIMIT,
+        },
+        {
+            "status": ("quarantined", "blocked"),
+            "limit": implementation_daemon_module.TASK_SOURCE_QUERY_LIMIT,
+            "cursor": "page:2",
+        },
+    ]
 
 
 def _exact_callback_no_effect_receipt(

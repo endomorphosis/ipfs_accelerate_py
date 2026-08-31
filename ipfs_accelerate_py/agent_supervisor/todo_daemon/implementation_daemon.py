@@ -98129,6 +98129,10 @@ class DatabaseImplementationDaemon:
                     or target_attempt_number < 1
                     or target_attempt_number
                     <= int(source_attempt.attempt_number)
+                    or any(
+                        target_attempt_number <= int(item.attempt_number)
+                        for item in forbidden_attempts
+                    )
                     or (
                         require_bounded_successor
                         and (
@@ -98481,6 +98485,10 @@ class DatabaseImplementationDaemon:
                     }
                 )
             elif post_commit_candidate_seed is not None:
+                pre_dispatch_projection_receipt = prior_status_receipt.get(
+                    "pre_dispatch_projection_recovery_receipt"
+                )
+                failed_target: DatabaseTaskAttempt | None = None
                 if (
                     str(getattr(task, "status", "") or "").lower()
                     != "retrying"
@@ -98511,8 +98519,41 @@ class DatabaseImplementationDaemon:
                         post_commit_candidate_seed,
                     )
                 )
+                if pre_dispatch_projection_receipt is not None:
+                    if not isinstance(pre_dispatch_projection_receipt, Mapping):
+                        raise DatabaseImplementationAuthorityError(
+                            "database claim pre-dispatch projection proof is malformed"
+                        )
+                    failed_target_id = str(
+                        pre_dispatch_projection_receipt.get("attempt_id") or ""
+                    )
+                    failed_target = self.get_attempt(failed_target_id)
+                    if (
+                        failed_target is None
+                        or failed_target.status not in {"blocked", "failed"}
+                        or failed_target.task_cid != task_cid
+                    ):
+                        raise DatabaseImplementationAuthorityError(
+                            "database claim pre-dispatch projection source is unavailable"
+                        )
+                    verified_projection = (
+                        self._verified_pre_dispatch_projection_recovery_receipt(
+                            failed_target,
+                            task,
+                            pre_dispatch_projection_receipt,
+                        )
+                    )
+                    if (
+                        verified_projection.get("source_candidate_receipt_id")
+                        != verified_post_commit_seed.get("receipt_id")
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "database claim pre-dispatch proof changed its candidate"
+                        )
+                forbidden = (failed_target,) if failed_target is not None else ()
                 target_identity, target_claim_identity = feature_retry_target(
-                    source_attempt
+                    source_attempt,
+                    forbidden_attempts=forbidden,
                 )
                 carry_feature_retry_target(
                     target_identity,
@@ -121939,6 +121980,387 @@ class DatabaseImplementationDaemon:
             "reason": "unaccepted_unknown_callback_requeued",
         }
 
+    def _pre_dispatch_projection_recovery_source(
+        self,
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        """Reproduce the exact retained-candidate callback rejection suffix."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON,
+            database_portal_authoritative_repository_tree_id,
+            database_portal_task_contract_digest,
+        )
+
+        history_projection = getattr(
+            self.task_source,
+            "task_revision_history_projection",
+            None,
+        )
+        if not callable(history_projection):
+            raise DatabaseImplementationAuthorityError(
+                "pre-dispatch projection recovery has no revision history"
+            )
+        task_cid = str(attempt.task_cid)
+        history = history_projection(task_cid)
+        revisions = history.get("revisions") if isinstance(history, Mapping) else None
+        projection_body = dict(history) if isinstance(history, Mapping) else {}
+        projection_cid = projection_body.pop("projection_cid", None)
+        if (
+            not isinstance(history, Mapping)
+            or set(history)
+            != {"schema", "task_cid", "revisions", "projection_cid"}
+            or history.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+            or history.get("task_cid") != task_cid
+            or not isinstance(revisions, list)
+            or projection_cid != content_identity(projection_body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "pre-dispatch projection recovery history failed identity verification"
+            )
+        matches: list[tuple[int, list[Mapping[str, Any]]]] = []
+        for index in range(3, len(revisions)):
+            window = revisions[index - 3 : index + 1]
+            if any(not isinstance(entry, Mapping) for entry in window):
+                continue
+            bodies = [entry.get("body") for entry in window]
+            if any(not isinstance(body, Mapping) for body in bodies):
+                continue
+            receipts = [body.get("completion_receipt") for body in bodies]
+            if any(not isinstance(receipt, Mapping) for receipt in receipts):
+                continue
+            if (
+                [str(entry.get("status") or "").strip().lower() for entry in window]
+                != ["retrying", "in_progress", "in_progress", "blocked"]
+                or [str(receipt.get("operation") or "") for receipt in receipts]
+                != [
+                    "database_portal_post_commit_candidate_recovery",
+                    "database_claim",
+                    "database_attempt_admitted",
+                    "database_portal_terminal_failure",
+                ]
+                or receipts[-1].get("attempt_id") != attempt.attempt_id
+            ):
+                continue
+            matches.append((index, list(window)))
+        if len(matches) != 1:
+            raise DatabaseImplementationConflictError(
+                "pre-dispatch projection recovery history is absent or ambiguous"
+            )
+        terminal_index, entries = matches[0]
+        revision_values = [entry.get("revision") for entry in entries]
+        if (
+            any(type(value) is not int for value in revision_values)
+            or revision_values
+            != list(range(int(revision_values[0]), int(revision_values[0]) + 4))
+        ):
+            raise DatabaseImplementationConflictError(
+                "pre-dispatch projection recovery revisions are not adjacent"
+            )
+        bodies = [entry["body"] for entry in entries]
+        receipts = [body["completion_receipt"] for body in bodies]
+        recovery_receipt, claim_receipt, admission_receipt, terminal_receipt = receipts
+        semantic_bodies: list[dict[str, Any]] = []
+        for body in bodies:
+            semantic = dict(body)
+            semantic.pop("completion_receipt", None)
+            semantic_bodies.append(semantic)
+        seed = recovery_receipt.get("post_commit_candidate_recovery_seed")
+        target_identity = self._control_attempt_identity(attempt)
+        if (
+            any(semantic != semantic_bodies[0] for semantic in semantic_bodies[1:])
+            or not isinstance(seed, Mapping)
+            or recovery_receipt.get(
+                "pre_dispatch_projection_recovery_receipt"
+            )
+            is not None
+            or claim_receipt.get("post_commit_candidate_recovery_seed") != seed
+            or admission_receipt.get("post_commit_candidate_recovery_seed")
+            != seed
+            or claim_receipt.get("attempt_number")
+            != int(attempt.attempt_number)
+            or admission_receipt.get("attempt_number")
+            != int(attempt.attempt_number)
+            or terminal_receipt.get("attempt_number")
+            != int(attempt.attempt_number)
+            or any(
+                claim_receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or any(
+                admission_receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or any(
+                terminal_receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or terminal_receipt.get("reason")
+            != DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON
+            or terminal_receipt.get("retryable") is not False
+            or terminal_receipt.get("control_expected_status") != "in_progress"
+            or terminal_receipt.get("control_expected_revision")
+            != int(revision_values[-1]) - 1
+        ):
+            raise DatabaseImplementationConflictError(
+                "pre-dispatch projection recovery control lineage changed"
+            )
+        source = DatabaseTaskAttempt(
+            attempt_id=str(seed.get("attempt_id") or ""),
+            claim_id=str(seed.get("claim_id") or ""),
+            task_cid=task_cid,
+            task_alias=str(attempt.task_alias),
+            attempt_number=int(seed.get("attempt_number") or 0),
+            owner_session_id="historical-post-commit-candidate-source",
+            fencing_token=int(seed.get("fencing_token") or 0),
+            fence_epoch=int(seed.get("fence_epoch") or 0),
+            lease_id=str(seed.get("lease_id") or ""),
+            committed_phase=ATTEMPT_PHASE_FAILED,
+            status="failed",
+            started_at_ms=0,
+        )
+        verified_seed = self._verified_post_commit_candidate_recovery_receipt(
+            source,
+            seed,
+        )
+
+        failed = [
+            phase
+            for phase in self.phase_history(attempt.attempt_id)
+            if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        failed_body = failed[-1].get("body") if failed else None
+        forbidden_phases = {
+            ATTEMPT_PHASE_PROVIDER,
+            ATTEMPT_PHASE_EFFECT,
+            ATTEMPT_PHASE_VALIDATION,
+            ATTEMPT_PHASE_COMPLETE,
+        }
+        expected_failed_body = {
+            "reason": DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON,
+            "portal_retryable_failure": False,
+            "portal_terminal_failure": True,
+            "deferred": False,
+            "attempt_consumed": "unknown",
+            "provider_dispatched": "unknown",
+            "typed_deferral_slot_consumed": "unknown",
+            "backoff_seconds": 0,
+        }
+        phases = self.phase_history(attempt.attempt_id)
+        connection = self._require_connection()
+        provider_rows = connection.execute(
+            """
+            SELECT idempotency_key, result_json FROM provider_invocations
+            WHERE attempt_id = ? ORDER BY invocation_id
+            """,
+            [attempt.attempt_id],
+        ).fetchall()
+        effect_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM effect_claims WHERE attempt_id = ?",
+                [attempt.attempt_id],
+            ).fetchone()[0]
+        )
+        callback_events = connection.execute(
+            """
+            SELECT event_type, body_json FROM daemon_execution_events
+            WHERE attempt_id = ? ORDER BY recorded_at_ms, event_id
+            """,
+            [attempt.attempt_id],
+        ).fetchall()
+        provider_key = f"provider:{attempt.attempt_id}"
+        provider_intent = (
+            _database_daemon_load_json(provider_rows[0][1])
+            if len(provider_rows) == 1
+            else {}
+        )
+        try:
+            sealed_intent = _sealed_database_provider_callback_unknown_evidence(
+                provider_intent
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                "pre-dispatch projection recovery has no exact callback intent"
+            ) from exc
+        started = [
+            _database_daemon_load_json(row[1])
+            for row in callback_events
+            if row[0] == "provider_callback_started"
+        ]
+        forbidden_events = {
+            "provider_callback_outcome_bound",
+            "provider_invocation_committed",
+            "effect_invocation_committed",
+        }
+        repository_tree_id = database_portal_authoritative_repository_tree_id(
+            self.task_source,
+            task_cid,
+        )
+        task_contract_digest = database_portal_task_contract_digest(task)
+        if (
+            len(failed) != 1
+            or dict(failed_body or {}) != expected_failed_body
+            or any(phase.get("phase") in forbidden_phases for phase in phases)
+            or len(provider_rows) != 1
+            or provider_rows[0][0] != provider_key
+            or effect_count != 0
+            or len(started) != 1
+            or any(row[0] in forbidden_events for row in callback_events)
+            or started[0].get("idempotency_key") != provider_key
+            or started[0].get("failure_fingerprint")
+            != sealed_intent.get("failure_fingerprint")
+            or started[0].get("provider_effect_state")
+            != "unknown_may_have_started"
+            or sealed_intent.get("database_binding_id") != ""
+            or sealed_intent.get("portal_failure_fingerprint") != ""
+            or sealed_intent.get("task_contract_digest") != task_contract_digest
+            or sealed_intent.get("repository_tree_id") != repository_tree_id
+            or any(
+                sealed_intent.get(field) != expected
+                for field, expected in {
+                    **target_identity,
+                    "task_cid": task_cid,
+                    "idempotency_key": provider_key,
+                }.items()
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "pre-dispatch projection recovery cannot prove callback no-effect"
+            )
+        prefix_body = {
+            "schema": history["schema"],
+            "task_cid": task_cid,
+            "revisions": [dict(item) for item in revisions[: terminal_index + 1]],
+        }
+        return {
+            "seed": verified_seed,
+            "provider_intent": sealed_intent,
+            "terminal_receipt": dict(terminal_receipt),
+            "history_projection_cid": content_identity(prefix_body),
+            "recovery_task_revision": int(revision_values[0]),
+            "claim_task_revision": int(revision_values[1]),
+            "admission_task_revision": int(revision_values[2]),
+            "terminal_task_revision": int(revision_values[3]),
+        }
+
+    def _verified_pre_dispatch_projection_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Independently admit Portal's pre-dispatch projection proof."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "pre-dispatch projection recovery receipt is malformed"
+            )
+        source = self._pre_dispatch_projection_recovery_source(task, attempt)
+        seed = source["seed"]
+        receipt = dict(raw)
+        receipt_id = str(receipt.pop("receipt_id", "") or "")
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "history_projection_cid",
+            "recovery_task_revision",
+            "claim_task_revision",
+            "admission_task_revision",
+            "terminal_task_revision",
+            "source_candidate_receipt_id",
+            "source_portal_attempt",
+            "target_binding_id",
+            "projection_immutable_digest",
+            "projection_file_digest",
+            "portal_canonical_task_key",
+            "portal_canonical_task_cid",
+            "source_implementation_commit",
+            "source_rescue_branch",
+            "requires_database_callback_started_evidence",
+            "portal_provider_dispatched",
+            "portal_attempt_consumed",
+            "effect_state",
+            "merge_attempted",
+            "attempt_artifacts",
+        }
+        exact_identity = {
+            "task_cid": attempt.task_cid,
+            "task_alias": attempt.task_alias,
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        artifacts = receipt.get("attempt_artifacts")
+        if (
+            set(receipt) != expected_fields
+            or receipt.get("schema")
+            != DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA
+            or receipt.get("disposition")
+            != "retry_exact_post_commit_candidate"
+            or receipt.get("reason")
+            != "protected_preservation_projection_revalidated"
+            or any(receipt.get(field) != expected for field, expected in exact_identity.items())
+            or any(
+                receipt.get(field) != source.get(field)
+                for field in (
+                    "history_projection_cid",
+                    "recovery_task_revision",
+                    "claim_task_revision",
+                    "admission_task_revision",
+                    "terminal_task_revision",
+                )
+            )
+            or receipt.get("source_candidate_receipt_id")
+            != seed.get("receipt_id")
+            or receipt.get("source_portal_attempt") != seed.get("portal_attempt")
+            or receipt.get("source_implementation_commit")
+            != seed.get("implementation_commit")
+            or receipt.get("source_rescue_branch") != seed.get("rescue_branch")
+            or receipt.get("requires_database_callback_started_evidence") is not True
+            or receipt.get("portal_provider_dispatched") is not False
+            or receipt.get("portal_attempt_consumed") is not False
+            or receipt.get("effect_state")
+            != "proven_absent_before_portal_dispatch"
+            or receipt.get("merge_attempted") is not False
+            or not isinstance(artifacts, Mapping)
+            or set(artifacts)
+            != {"database-attempt-binding.json", "task-projection.md"}
+            or any(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(value or "")) is None
+                for value in (
+                    *artifacts.values(),
+                    receipt.get("target_binding_id"),
+                    receipt.get("projection_immutable_digest"),
+                    receipt.get("projection_file_digest"),
+                )
+            )
+            or not str(receipt.get("portal_canonical_task_key") or "")
+            or not str(receipt.get("portal_canonical_task_cid") or "")
+            or receipt_id != _database_daemon_evidence_digest(receipt)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "pre-dispatch projection recovery receipt failed verification"
+            )
+        receipt["receipt_id"] = receipt_id
+        return receipt
+
     def _reopen_unimplemented_unknown_callback_task(
         self,
         task: Any,
@@ -121951,17 +122373,31 @@ class DatabaseImplementationDaemon:
         becomes an explicit budget stop.
         """
 
-        if str(getattr(task, "status", "") or "").strip().lower() != "quarantined":
-            return None
+        task_status = str(getattr(task, "status", "") or "").strip().lower()
         body = getattr(task, "body", None)
         receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
         if not isinstance(receipt, Mapping):
             return None
-        if receipt.get("operation") != "database_portal_neutral_failure_quarantine":
-            return None
-        if str(receipt.get("failure_kind") or "") != "provider_callback_outcome_unknown":
-            return None
-        if receipt.get("retry_suppressed") is not True:
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON,
+        )
+
+        neutral_source = bool(
+            task_status == "quarantined"
+            and receipt.get("operation")
+            == "database_portal_neutral_failure_quarantine"
+            and str(receipt.get("failure_kind") or "")
+            == "provider_callback_outcome_unknown"
+            and receipt.get("retry_suppressed") is True
+        )
+        projection_source = bool(
+            task_status == "blocked"
+            and receipt.get("operation") == "database_portal_terminal_failure"
+            and receipt.get("reason")
+            == DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON
+            and receipt.get("retryable") is False
+        )
+        if not (neutral_source or projection_source):
             return None
         recover = self._post_commit_candidate_recovery_fn
         if not callable(recover):
@@ -121970,15 +122406,37 @@ class DatabaseImplementationDaemon:
             return None
         attempt_id = str(receipt.get("attempt_id") or "")
         attempt = self.get_attempt(attempt_id)
+        pre_dispatch_source: dict[str, Any] | None = None
+        source_matches = bool(
+            attempt is not None
+            and attempt.task_cid == str(getattr(task, "task_cid", "") or "")
+            and attempt.status in {"blocked", "failed"}
+        )
+        if source_matches and projection_source:
+            try:
+                assert attempt is not None
+                pre_dispatch_source = (
+                    self._pre_dispatch_projection_recovery_source(task, attempt)
+                )
+            except (
+                DatabaseImplementationAuthorityError,
+                DatabaseImplementationConflictError,
+            ):
+                source_matches = False
+        elif source_matches:
+            assert attempt is not None
+            source_matches = self._strict_resume_rejection_receipt_matches(
+                task,
+                attempt,
+            )
         if (
             attempt is None
-            or attempt.task_cid != str(getattr(task, "task_cid", "") or "")
-            or attempt.status not in {"blocked", "failed"}
-            or not self._strict_resume_rejection_receipt_matches(task, attempt)
+            or not source_matches
         ):
             return {
                 "task_cid": str(getattr(task, "task_cid", "") or ""),
                 "reopened": False,
+                "changed": False,
                 "provider_dispatched": False,
                 "attempt_consumed": False,
                 "reason": "post_commit_recovery_source_not_exact",
@@ -121993,6 +122451,7 @@ class DatabaseImplementationDaemon:
             )
             from .database_portal_bridge import (
                 DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA,
+                DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA,
             )
             if (
                 recovered_schema
@@ -122061,6 +122520,7 @@ class DatabaseImplementationDaemon:
                 }
             no_effect: dict[str, Any] | None = None
             seed: dict[str, Any] | None = None
+            pre_dispatch: dict[str, Any] | None = None
             if (
                 recovered_schema
                 == DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA
@@ -122069,6 +122529,22 @@ class DatabaseImplementationDaemon:
                     attempt,
                     recovered,
                 )
+            elif (
+                recovered_schema
+                == DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA
+            ):
+                if pre_dispatch_source is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "pre-dispatch projection evidence has no exact source"
+                    )
+                pre_dispatch = (
+                    self._verified_pre_dispatch_projection_recovery_receipt(
+                        attempt,
+                        task,
+                        recovered,
+                    )
+                )
+                seed = dict(pre_dispatch_source["seed"])
             else:
                 seed = self._verified_post_commit_candidate_recovery_receipt(
                     attempt,
@@ -122078,6 +122554,7 @@ class DatabaseImplementationDaemon:
             return {
                 "task_cid": str(task.task_cid),
                 "reopened": False,
+                "changed": False,
                 "provider_dispatched": False,
                 "attempt_consumed": False,
                 "reason": "post_commit_recovery_evidence_rejected",
@@ -122095,18 +122572,40 @@ class DatabaseImplementationDaemon:
                 "post-commit recovery task source has no atomic retry authority"
             )
         current = self.task_source.get(str(task.task_cid))
+        current_receipt = (
+            current.body.get("completion_receipt")
+            if current is not None and isinstance(current.body, Mapping)
+            else None
+        )
+        current_source_exact = bool(
+            current is not None
+            and int(current.revision) == int(task.revision)
+            and isinstance(current_receipt, Mapping)
+            and dict(current_receipt) == dict(receipt)
+            and (
+                self._strict_resume_rejection_receipt_matches(
+                    current,
+                    attempt,
+                )
+                if neutral_source
+                else (
+                    self._pre_dispatch_projection_recovery_source(
+                        current,
+                        attempt,
+                    )["seed"]
+                    == (pre_dispatch_source or {}).get("seed")
+                )
+            )
+        )
         if (
             current is None
-            or str(current.status).strip().lower() != "quarantined"
-            or int(current.revision) != int(task.revision)
-            or not self._strict_resume_rejection_receipt_matches(
-                current,
-                attempt,
-            )
+            or str(current.status).strip().lower() != task_status
+            or not current_source_exact
         ):
             return {
                 "task_cid": str(task.task_cid),
                 "reopened": False,
+                "changed": False,
                 "provider_dispatched": False,
                 "attempt_consumed": False,
                 "reason": "post_commit_recovery_control_superseded",
@@ -122228,13 +122727,27 @@ class DatabaseImplementationDaemon:
             }
         claim = self.coordinator.get_task_claim(attempt.claim_id)
         coordination = claim.to_dict() if claim is not None else {}
-        source_evidence = no_effect if no_effect is not None else seed
+        source_evidence = (
+            pre_dispatch
+            if pre_dispatch is not None
+            else no_effect
+            if no_effect is not None
+            else seed
+        )
         assert source_evidence is not None
         callback_no_effect = no_effect is not None
+        pre_dispatch_projection = pre_dispatch is not None
+        retained_implementation_commit = (
+            str((seed or {}).get("implementation_commit") or "")
+            if not callback_no_effect
+            else ""
+        )
         queue_reason = (
             (
                 "database_portal_callback_no_effect_recovery:"
                 if callback_no_effect
+                else "database_portal_pre_dispatch_projection_recovery:"
+                if pre_dispatch_projection
                 else "database_portal_post_commit_candidate_recovery:"
             )
             + str(source_evidence["receipt_id"])
@@ -122275,6 +122788,8 @@ class DatabaseImplementationDaemon:
             "reason": (
                 "exact_no_effect_callback_reconciled"
                 if callback_no_effect
+                else "exact_pre_dispatch_projection_reconciled"
+                if pre_dispatch_projection
                 else "exact_post_commit_candidate_retained"
             ),
             "queue_reason": queue_reason,
@@ -122282,15 +122797,36 @@ class DatabaseImplementationDaemon:
             "retry_not_before_ms": 0,
             "queue_receipt": {},
             "coordination": coordination,
-            "control_expected_status": "quarantined",
+            "control_expected_status": task_status,
             "control_expected_revision": int(current.revision),
             **(
                 {"callback_no_effect_recovery_seed": dict(no_effect)}
                 if callback_no_effect
                 else {"post_commit_candidate_recovery_seed": dict(seed or {})}
             ),
+            **(
+                {
+                    "pre_dispatch_projection_recovery_receipt": dict(
+                        pre_dispatch
+                    )
+                }
+                if pre_dispatch_projection
+                else {}
+            ),
             **route_lineage,
         }
+        if pre_dispatch_projection:
+            # The terminal Portal mismatch deliberately left the exact claim
+            # accepted because ordinary blocked tasks never reopen.  This
+            # proof establishes that Portal/provider work never began, so
+            # release that fence before the shared retry CAS.  A crash in the
+            # small gap leaves a blocked task with no live claimant and is
+            # therefore safely replayable; doing this after the CAS could
+            # strand a retrying task behind its own accepted lease.
+            self._release_exact_attempt_lease(
+                attempt,
+                reason="pre_dispatch_projection_recovery",
+            )
         result = guarded(
             task_cid=str(current.task_cid),
             expected_revision=int(current.revision),
@@ -122313,7 +122849,14 @@ class DatabaseImplementationDaemon:
                     else "post_commit_candidate_recovery_seed"
                 )
             )
-            != dict(source_evidence)
+            != dict(no_effect if callback_no_effect else seed or {})
+            or (
+                pre_dispatch_projection
+                and updated.body["completion_receipt"].get(
+                    "pre_dispatch_projection_recovery_receipt"
+                )
+                != dict(pre_dispatch or {})
+            )
         ):
             raise DatabaseImplementationAuthorityError(
                 "post-commit recovery retry projection did not persist"
@@ -122327,6 +122870,8 @@ class DatabaseImplementationDaemon:
             (
                 "callback_no_effect_recovery_rearmed"
                 if callback_no_effect
+                else "pre_dispatch_projection_recovery_rearmed"
+                if pre_dispatch_projection
                 else "post_commit_candidate_recovery_rearmed"
             ),
             attempt_id=retired.attempt_id,
@@ -122337,13 +122882,13 @@ class DatabaseImplementationDaemon:
                     {}
                     if callback_no_effect
                     else {
-                        "implementation_commit": str(
-                            source_evidence["implementation_commit"]
-                        )
+                        "implementation_commit": retained_implementation_commit
                     }
                 ),
                 "provider_dispatched": False,
                 "source_provider_dispatched": True,
+                "database_callback_started": bool(pre_dispatch_projection),
+                "portal_provider_dispatched": False,
                 "attempt_consumed": bool(callback_no_effect),
             },
         )
@@ -122355,19 +122900,21 @@ class DatabaseImplementationDaemon:
             "reason": (
                 "exact_no_effect_callback_rearmed"
                 if callback_no_effect
+                else "exact_pre_dispatch_projection_rearmed"
+                if pre_dispatch_projection
                 else "exact_post_commit_candidate_rearmed"
             ),
             "provider_dispatched": False,
             "source_provider_dispatched": True,
+            "database_callback_started": bool(pre_dispatch_projection),
+            "portal_provider_dispatched": False,
             "attempt_consumed": bool(callback_no_effect),
             "source_receipt_id": str(source_evidence["receipt_id"]),
             **(
                 {}
                 if callback_no_effect
                 else {
-                    "implementation_commit": str(
-                        source_evidence["implementation_commit"]
-                    )
+                    "implementation_commit": retained_implementation_commit
                 }
             ),
         }
@@ -122684,15 +123231,38 @@ class DatabaseImplementationDaemon:
     def reconcile_unimplemented_unknown_callback_quarantines(
         self,
     ) -> list[dict[str, Any]]:
-        """Reconcile exact retained or clean-baseline callback quarantines."""
+        """Reconcile exact callback quarantines or pre-dispatch blocks."""
 
         if self.repo_root is None:
             return []
         list_tasks = getattr(self.task_source, "list_tasks", None)
         if not callable(list_tasks):
             return []
-        page = list_tasks(status="quarantined", limit=TASK_SOURCE_QUERY_LIMIT)
-        tasks = tuple(getattr(page, "tasks", ()) or ())
+        cursor = ""
+        seen_cursors: set[str] = set()
+        tasks: list[Any] = []
+        for _page_number in range(TASK_SOURCE_QUERY_LIMIT):
+            query = {
+                "status": ("quarantined", "blocked"),
+                "limit": TASK_SOURCE_QUERY_LIMIT,
+            }
+            if cursor:
+                query["cursor"] = cursor
+            page = list_tasks(**query)
+            tasks.extend(tuple(getattr(page, "tasks", ()) or ()))
+            next_cursor = str(getattr(page, "next_cursor", "") or "")
+            if not next_cursor:
+                break
+            if next_cursor == cursor or next_cursor in seen_cursors:
+                raise DatabaseImplementationConflictError(
+                    "unknown-callback recovery task pagination did not advance"
+                )
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+        else:
+            raise DatabaseImplementationConflictError(
+                "unknown-callback recovery task pagination exceeded its bound"
+            )
         outcomes: list[dict[str, Any]] = []
         for task in tasks:
             loaded = self.task_source.get(str(getattr(task, "task_cid", "") or ""))
@@ -122705,6 +123275,7 @@ class DatabaseImplementationDaemon:
                     {
                         "task_cid": str(getattr(task, "task_cid", "") or ""),
                         "reopened": False,
+                        "changed": False,
                         "reason": str(exc),
                     }
                 )
@@ -122931,7 +123502,7 @@ class DatabaseImplementationDaemon:
                 expired_attempt_reconciliations
             )
             + len(landed_merge_reconciliations)
-            + len(unknown_callback_reopens)
+            + self._reconciliation_outcome_count(unknown_callback_reopens)
             + self._reconciliation_outcome_count(
                 terminal_portal_reconciliations
             )
