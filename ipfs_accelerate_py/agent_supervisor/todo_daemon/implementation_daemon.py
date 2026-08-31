@@ -72333,39 +72333,134 @@ def _database_execution_storage_file_identity(
     )
     descriptor = os.open(path, flags)
     try:
-        before = os.fstat(descriptor)
-        if not stat_module.S_ISREG(before.st_mode):
-            raise DatabaseImplementationExecutionStorageRepairError(
-                "execution storage repair requires regular source files"
-            )
-        digest = hashlib.sha256()
-        size = 0
-        while True:
-            chunk = os.read(descriptor, 1024 * 1024)
-            if not chunk:
-                break
-            digest.update(chunk)
-            size += len(chunk)
-        after = os.fstat(descriptor)
-        before_identity = (
-            int(before.st_dev),
-            int(before.st_ino),
-            int(before.st_size),
-            int(before.st_mtime_ns),
-        )
-        after_identity = (
-            int(after.st_dev),
-            int(after.st_ino),
-            int(after.st_size),
-            int(after.st_mtime_ns),
-        )
-        if before_identity != after_identity or size != int(before.st_size):
-            raise DatabaseImplementationExecutionStorageRepairError(
-                "execution storage source changed while it was hashed"
-            )
-        return "sha256:" + digest.hexdigest(), size, before_identity
+        return _database_execution_storage_descriptor_identity(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _database_execution_storage_descriptor_identity(
+    descriptor: int,
+) -> tuple[str, int, tuple[int, int, int, int]]:
+    """Hash one pinned regular inode without changing its shared offset."""
+
+    before = os.fstat(descriptor)
+    if not stat_module.S_ISREG(before.st_mode):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution storage repair requires regular source files"
+        )
+    digest = hashlib.sha256()
+    size = 0
+    while size < int(before.st_size):
+        chunk = os.pread(
+            descriptor,
+            min(1024 * 1024, int(before.st_size) - size),
+            size,
+        )
+        if not chunk:
+            break
+        digest.update(chunk)
+        size += len(chunk)
+    after = os.fstat(descriptor)
+    before_identity = (
+        int(before.st_dev),
+        int(before.st_ino),
+        int(before.st_size),
+        int(before.st_mtime_ns),
+    )
+    after_identity = (
+        int(after.st_dev),
+        int(after.st_ino),
+        int(after.st_size),
+        int(after.st_mtime_ns),
+    )
+    if before_identity != after_identity or size != int(before.st_size):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution storage source changed while it was hashed"
+        )
+    return "sha256:" + digest.hexdigest(), size, before_identity
+
+
+def _database_execution_storage_named_identity_at(
+    name: str,
+    *,
+    directory_fd: int,
+) -> tuple[str, int, tuple[int, int, int, int]]:
+    """Hash a pinned-directory name and prove it still names the opened inode."""
+
+    descriptor = os.open(
+        name,
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+        dir_fd=directory_fd,
+    )
+    try:
+        digest, size, identity = (
+            _database_execution_storage_descriptor_identity(descriptor)
+        )
+        named = os.stat(
+            name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if (int(named.st_dev), int(named.st_ino)) != identity[:2]:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage name changed while its inode was verified"
+            )
+        return digest, size, identity
+    finally:
+        os.close(descriptor)
+
+
+def _database_execution_storage_identity_payload(
+    identity: tuple[int, int, int, int],
+) -> dict[str, int]:
+    return {
+        "device": int(identity[0]),
+        "inode": int(identity[1]),
+        "size_bytes": int(identity[2]),
+        "mtime_ns": int(identity[3]),
+    }
+
+
+def _exchange_database_execution_storage_names(
+    source_name: str,
+    target_name: str,
+    *,
+    source_directory_fd: int,
+    target_directory_fd: int,
+) -> None:
+    """Atomically exchange two existing names without discarding either inode."""
+
+    import ctypes
+
+    renameat2 = getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None)
+    if renameat2 is None:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair requires atomic rename exchange support"
+        )
+    renameat2.argtypes = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    if (
+        renameat2(
+            int(source_directory_fd),
+            os.fsencode(source_name),
+            int(target_directory_fd),
+            os.fsencode(target_name),
+            2,  # RENAME_EXCHANGE
+        )
+        != 0
+    ):
+        error_number = ctypes.get_errno()
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair atomic name exchange failed"
+        ) from OSError(error_number, os.strerror(error_number))
 
 
 def _copy_database_execution_storage_file(source: Path, target: Path) -> None:
@@ -72427,19 +72522,8 @@ def _copy_database_execution_storage_file_at(
 ) -> None:
     """Copy exact bytes into one pinned directory as private evidence."""
 
-    if Path(target_name).name != target_name or target_name in {"", ".", ".."}:
-        raise DatabaseImplementationExecutionStorageRepairError(
-            "execution repair evidence name is not a single path component"
-        )
     source_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
         os, "O_NOFOLLOW", 0
-    )
-    target_flags = (
-        os.O_WRONLY
-        | os.O_CREAT
-        | os.O_EXCL
-        | getattr(os, "O_CLOEXEC", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
     )
     source_descriptor = os.open(
         source.name,
@@ -72447,73 +72531,108 @@ def _copy_database_execution_storage_file_at(
         dir_fd=source_directory_fd,
     )
     try:
-        source_before = os.fstat(source_descriptor)
-        if not stat_module.S_ISREG(source_before.st_mode):
-            raise DatabaseImplementationExecutionStorageRepairError(
-                "execution repair evidence source is not regular data"
-            )
-        target_descriptor = os.open(
-            target_name,
-            target_flags,
-            0o600,
-            dir_fd=directory_fd,
+        _copy_database_execution_storage_descriptor_at(
+            source_descriptor,
+            directory_fd=directory_fd,
+            target_name=target_name,
         )
-        target_metadata = os.fstat(target_descriptor)
+    finally:
+        os.close(source_descriptor)
+
+
+def _copy_database_execution_storage_descriptor_at(
+    source_descriptor: int,
+    *,
+    directory_fd: int,
+    target_name: str,
+) -> None:
+    """Copy one already pinned inode into private evidence exactly once."""
+
+    if Path(target_name).name != target_name or target_name in {"", ".", ".."}:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair evidence name is not a single path component"
+        )
+    source_before = os.fstat(source_descriptor)
+    if not stat_module.S_ISREG(source_before.st_mode):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair evidence source is not regular data"
+        )
+    target_flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    target_descriptor = os.open(
+        target_name,
+        target_flags,
+        0o600,
+        dir_fd=directory_fd,
+    )
+    target_metadata = os.fstat(target_descriptor)
+    try:
         try:
+            os.fchmod(target_descriptor, 0o600)
+            copied = 0
+            while copied < int(source_before.st_size):
+                chunk = os.pread(
+                    source_descriptor,
+                    min(1024 * 1024, int(source_before.st_size) - copied),
+                    copied,
+                )
+                if not chunk:
+                    break
+                offset = 0
+                while offset < len(chunk):
+                    offset += os.write(target_descriptor, chunk[offset:])
+                copied += len(chunk)
+            os.fsync(target_descriptor)
+            target_metadata = os.fstat(target_descriptor)
+            source_after = os.fstat(source_descriptor)
+            source_before_identity = (
+                int(source_before.st_dev),
+                int(source_before.st_ino),
+                int(source_before.st_size),
+                int(source_before.st_mtime_ns),
+            )
+            if (
+                not stat_module.S_ISREG(target_metadata.st_mode)
+                or stat_module.S_IMODE(target_metadata.st_mode) != 0o600
+                or int(target_metadata.st_size) != int(source_before.st_size)
+                or copied != int(source_before.st_size)
+                or source_before_identity
+                != (
+                    int(source_after.st_dev),
+                    int(source_after.st_ino),
+                    int(source_after.st_size),
+                    int(source_after.st_mtime_ns),
+                )
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair evidence copy is not exact private data"
+                )
+        except BaseException:
             try:
-                os.fchmod(target_descriptor, 0o600)
-                while True:
-                    chunk = os.read(source_descriptor, 1024 * 1024)
-                    if not chunk:
-                        break
-                    offset = 0
-                    while offset < len(chunk):
-                        offset += os.write(target_descriptor, chunk[offset:])
-                os.fsync(target_descriptor)
-                target_metadata = os.fstat(target_descriptor)
-                if (
-                    not stat_module.S_ISREG(target_metadata.st_mode)
-                    or stat_module.S_IMODE(target_metadata.st_mode) != 0o600
-                    or int(target_metadata.st_size) != int(source_before.st_size)
-                ):
-                    raise DatabaseImplementationExecutionStorageRepairError(
-                        "execution repair evidence copy is not exact private data"
-                    )
-            except BaseException:
                 current = os.stat(
                     target_name,
                     dir_fd=directory_fd,
                     follow_symlinks=False,
                 )
-                if (
-                    int(current.st_dev),
-                    int(current.st_ino),
-                ) == (
-                    int(target_metadata.st_dev),
-                    int(target_metadata.st_ino),
-                ):
-                    os.unlink(target_name, dir_fd=directory_fd)
-                    os.fsync(directory_fd)
-                raise
-        finally:
-            os.close(target_descriptor)
-        source_after = os.fstat(source_descriptor)
-        if (
-            int(source_before.st_dev),
-            int(source_before.st_ino),
-            int(source_before.st_size),
-            int(source_before.st_mtime_ns),
-        ) != (
-            int(source_after.st_dev),
-            int(source_after.st_ino),
-            int(source_after.st_size),
-            int(source_after.st_mtime_ns),
-        ):
-            raise DatabaseImplementationExecutionStorageRepairError(
-                "execution repair evidence source changed during copy"
-            )
+            except FileNotFoundError:
+                current = None
+            if current is not None and (
+                int(current.st_dev),
+                int(current.st_ino),
+            ) == (
+                int(target_metadata.st_dev),
+                int(target_metadata.st_ino),
+            ):
+                os.unlink(target_name, dir_fd=directory_fd)
+                os.fsync(directory_fd)
+            raise
     finally:
-        os.close(source_descriptor)
+        os.close(target_descriptor)
 
 
 def _write_database_execution_repair_phase_receipt(
@@ -72628,6 +72747,7 @@ class _DatabaseExecutionRepairCleanup:
         self._quarantine_fd: int | None = None
         self._quarantine_identity: tuple[int, int] | None = None
         self._temporaries: dict[str, tuple[str, int, int]] = {}
+        self._authority_descriptors: list[int] = []
         try:
             self.verify_parent_path()
         except BaseException:
@@ -72661,6 +72781,48 @@ class _DatabaseExecutionRepairCleanup:
             raise DatabaseImplementationExecutionStorageRepairError(
                 "execution repair parent path changed after it was pinned"
             )
+
+    def pin_parent_regular(self, name: str, *, authority: str) -> int:
+        """Open and retain the exact inode named inside the pinned parent."""
+
+        if Path(name).name != name or name in {"", ".", ".."}:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                f"execution repair {authority} name is invalid"
+            )
+        self.verify_parent_path()
+        try:
+            descriptor = os.open(
+                name,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=self._parent_fd,
+            )
+        except OSError as exc:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                f"execution repair {authority} cannot be pinned"
+            ) from exc
+        try:
+            opened = os.fstat(descriptor)
+            named = os.stat(
+                name,
+                dir_fd=self._parent_fd,
+                follow_symlinks=False,
+            )
+            if (
+                not stat_module.S_ISREG(opened.st_mode)
+                or not stat_module.S_ISREG(named.st_mode)
+                or (int(opened.st_dev), int(opened.st_ino))
+                != (int(named.st_dev), int(named.st_ino))
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    f"execution repair {authority} changed while it was pinned"
+                )
+            self._authority_descriptors.append(descriptor)
+            return descriptor
+        except BaseException:
+            os.close(descriptor)
+            raise
 
     def open_quarantine(
         self,
@@ -72860,21 +73022,39 @@ class _DatabaseExecutionRepairCleanup:
             if self._quarantine_fd is not None:
                 os.close(self._quarantine_fd)
                 self._quarantine_fd = None
+            while self._authority_descriptors:
+                os.close(self._authority_descriptors.pop())
             os.close(self._parent_fd)
 
 
 def _revalidate_database_execution_storage_source(
     path: Path,
     *,
+    cleanup: _DatabaseExecutionRepairCleanup,
+    source_descriptor: int,
     expected_digest: str,
     expected_size: int,
     expected_identity: tuple[int, int, int, int],
 ) -> None:
-    digest, size, identity = _database_execution_storage_file_identity(path)
+    cleanup.verify_parent_path()
+    digest, size, identity = _database_execution_storage_descriptor_identity(
+        source_descriptor
+    )
+    try:
+        named = os.stat(
+            path.name,
+            dir_fd=cleanup.parent_fd,
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution storage source disappeared during physical repair"
+        ) from None
     if (
         digest != expected_digest
         or size != expected_size
         or identity != expected_identity
+        or (int(named.st_dev), int(named.st_ino)) != expected_identity[:2]
     ):
         raise DatabaseImplementationExecutionStorageRepairError(
             "execution storage source changed during physical repair"
@@ -72886,6 +73066,7 @@ def _revalidate_database_execution_storage_wal(
     *,
     cleanup: _DatabaseExecutionRepairCleanup,
     expected_present: bool,
+    wal_descriptor: int | None = None,
     expected_digest: str = "",
     expected_size: int = 0,
     expected_identity: tuple[int, int, int, int] | None = None,
@@ -72917,11 +73098,18 @@ def _revalidate_database_execution_storage_wal(
         raise DatabaseImplementationExecutionStorageRepairError(
             "execution storage WAL changed type during physical repair"
         )
-    digest, size, identity = _database_execution_storage_file_identity(wal_path)
+    if wal_descriptor is None:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution storage WAL descriptor is unavailable"
+        )
+    digest, size, identity = _database_execution_storage_descriptor_identity(
+        wal_descriptor
+    )
     if (
         digest != expected_digest
         or size != expected_size
         or identity != expected_identity
+        or (int(metadata.st_dev), int(metadata.st_ino)) != expected_identity[:2]
     ):
         raise DatabaseImplementationExecutionStorageRepairError(
             "execution storage WAL changed during physical repair"
@@ -73355,16 +73543,29 @@ def _repair_database_execution_art_index_storage_impl(
                 },
             )
 
+        source_descriptor = cleanup.pin_parent_regular(
+            path.name,
+            authority="source",
+        )
         source_digest, source_size, source_identity = (
-            _database_execution_storage_file_identity(path)
+            _database_execution_storage_descriptor_identity(source_descriptor)
         )
 
-        wal_present = wal_path.exists() or wal_path.is_symlink()
+        try:
+            wal_metadata = os.stat(
+                wal_path.name,
+                dir_fd=cleanup.parent_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            wal_metadata = None
+        wal_present = wal_metadata is not None
         wal_digest = ""
         wal_size = 0
         wal_identity: tuple[int, int, int, int] | None = None
+        wal_descriptor: int | None = None
         if wal_present:
-            wal_metadata = wal_path.lstat()
+            assert wal_metadata is not None
             if stat_module.S_ISLNK(wal_metadata.st_mode) or not stat_module.S_ISREG(
                 wal_metadata.st_mode
             ):
@@ -73377,22 +73578,134 @@ def _repair_database_execution_art_index_storage_impl(
                         "repair_performed": False,
                     },
                 )
+            wal_descriptor = cleanup.pin_parent_regular(
+                wal_path.name,
+                authority="WAL",
+            )
             wal_digest, wal_size, wal_identity = (
-                _database_execution_storage_file_identity(wal_path)
+                _database_execution_storage_descriptor_identity(wal_descriptor)
             )
         import duckdb  # type: ignore
 
-        logical_source_path = path
+        quarantine = cleanup.open_quarantine(
+            source_device=source_identity[0],
+        )
+        quarantine_fd = cleanup.quarantine_fd
+        repair_id = uuid.uuid4().hex
+        backup = quarantine / (
+            f"{path.name}.{source_digest.removeprefix('sha256:')}."
+            f"{repair_id}.duckdb"
+        )
+        rollback_link = path.parent / (
+            f".{path.name}.art-repair-rollback-{repair_id}.duckdb"
+        )
+        quarantined_wal: Path | None = None
+        retired_live_wal: Path | None = None
+        prepared_phase_path = quarantine / f"{backup.name}.prepared.json"
+        prepared_phase_id = ""
+        try:
+            _copy_database_execution_storage_descriptor_at(
+                source_descriptor,
+                directory_fd=quarantine_fd,
+                target_name=backup.name,
+            )
+            backup_digest, backup_size, backup_identity = (
+                _database_execution_storage_named_identity_at(
+                    backup.name,
+                    directory_fd=quarantine_fd,
+                )
+            )
+            if backup_digest != source_digest or backup_size != source_size:
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair backup differs from captured source"
+                )
+            if wal_present:
+                assert wal_descriptor is not None
+                quarantined_wal = backup.with_name(backup.name + ".wal")
+                _copy_database_execution_storage_descriptor_at(
+                    wal_descriptor,
+                    directory_fd=quarantine_fd,
+                    target_name=quarantined_wal.name,
+                )
+                backup_wal_digest, backup_wal_size, backup_wal_identity = (
+                    _database_execution_storage_named_identity_at(
+                        quarantined_wal.name,
+                        directory_fd=quarantine_fd,
+                    )
+                )
+                if (
+                    backup_wal_digest != wal_digest
+                    or backup_wal_size != wal_size
+                ):
+                    raise DatabaseImplementationExecutionStorageRepairError(
+                        "execution repair WAL backup differs from captured WAL"
+                    )
+            else:
+                backup_wal_digest = ""
+                backup_wal_size = 0
+                backup_wal_identity = None
+            _revalidate_database_execution_storage_source(
+                path,
+                cleanup=cleanup,
+                source_descriptor=source_descriptor,
+                expected_digest=source_digest,
+                expected_size=source_size,
+                expected_identity=source_identity,
+            )
+            _revalidate_database_execution_storage_wal(
+                wal_path,
+                cleanup=cleanup,
+                expected_present=wal_present,
+                wal_descriptor=wal_descriptor,
+                expected_digest=wal_digest,
+                expected_size=wal_size,
+                expected_identity=wal_identity,
+            )
+            os.link(
+                path.name,
+                rollback_link.name,
+                src_dir_fd=cleanup.parent_fd,
+                dst_dir_fd=cleanup.parent_fd,
+                follow_symlinks=False,
+            )
+            cleanup.track_parent_temporary(
+                rollback_link,
+                kind="rollback",
+            )
+            rollback_digest, rollback_size, rollback_identity = (
+                _database_execution_storage_named_identity_at(
+                    rollback_link.name,
+                    directory_fd=cleanup.parent_fd,
+                )
+            )
+            if (
+                rollback_digest != source_digest
+                or rollback_size != source_size
+                or rollback_identity[:2] != source_identity[:2]
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair rollback does not bind captured source"
+                )
+            cleanup.verify_quarantine_path()
+            os.fsync(quarantine_fd)
+            os.fsync(cleanup.parent_fd)
+        except BaseException as exc:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair could not preserve the captured authority"
+            ) from exc
+
+        logical_source_path = backup
         wal_probe_root: Path | None = None
         wal_redundancy_proof: dict[str, Any] = {}
         if wal_size > 0:
+            assert quarantined_wal is not None
             (
                 logical_source_path,
                 wal_probe_root,
                 wal_redundancy_proof,
             ) = _database_execution_nonempty_wal_redundancy_probe(
-                path=path,
-                wal_path=wal_path,
+                path=backup,
+                wal_path=quarantined_wal,
                 source_digest=source_digest,
                 source_size=source_size,
                 wal_digest=wal_digest,
@@ -73542,6 +73855,8 @@ def _repair_database_execution_art_index_storage_impl(
         cleanup.verify_parent_path()
         _revalidate_database_execution_storage_source(
             path,
+            cleanup=cleanup,
+            source_descriptor=source_descriptor,
             expected_digest=source_digest,
             expected_size=source_size,
             expected_identity=source_identity,
@@ -73550,6 +73865,7 @@ def _repair_database_execution_art_index_storage_impl(
             wal_path,
             cleanup=cleanup,
             expected_present=wal_present,
+            wal_descriptor=wal_descriptor,
             expected_digest=wal_digest,
             expected_size=wal_size,
             expected_identity=wal_identity,
@@ -73571,74 +73887,68 @@ def _repair_database_execution_art_index_storage_impl(
                 )
         os.chmod(candidate, 0o600)
         _fsync_database_execution_storage_path(candidate)
-        candidate_digest, candidate_size, _candidate_identity = (
-            _database_execution_storage_file_identity(candidate)
+        candidate_descriptor = cleanup.pin_parent_regular(
+            candidate.name,
+            authority="candidate",
         )
-
-        quarantine = cleanup.open_quarantine(
-            source_device=source_identity[0],
+        candidate_digest, candidate_size, candidate_identity = (
+            _database_execution_storage_descriptor_identity(candidate_descriptor)
         )
-        quarantine_fd = cleanup.quarantine_fd
-
-        repair_id = uuid.uuid4().hex
-        backup = quarantine / (
-            f"{path.name}.{source_digest.removeprefix('sha256:')}."
-            f"{repair_id}.duckdb"
+        (
+            named_candidate_digest,
+            named_candidate_size,
+            named_candidate_identity,
+        ) = _database_execution_storage_named_identity_at(
+            candidate.name,
+            directory_fd=cleanup.parent_fd,
         )
-        rollback_link = path.parent / (
-            f".{path.name}.art-repair-rollback-{repair_id}.duckdb"
-        )
-        quarantined_wal: Path | None = None
-        retired_live_wal: Path | None = None
-        prepared_phase_path = quarantine / f"{backup.name}.prepared.json"
-        prepared_phase_id = ""
-        _revalidate_database_execution_storage_source(
-            path,
-            expected_digest=source_digest,
-            expected_size=source_size,
-            expected_identity=source_identity,
-        )
-        _revalidate_database_execution_storage_wal(
-            wal_path,
-            cleanup=cleanup,
-            expected_present=wal_present,
-            expected_digest=wal_digest,
-            expected_size=wal_size,
-            expected_identity=wal_identity,
-        )
-        try:
-            _copy_database_execution_storage_file_at(
-                path,
-                source_directory_fd=cleanup.parent_fd,
-                directory_fd=quarantine_fd,
-                target_name=backup.name,
-            )
-            os.link(
-                path.name,
-                rollback_link.name,
-                src_dir_fd=cleanup.parent_fd,
-                dst_dir_fd=cleanup.parent_fd,
-                follow_symlinks=False,
-            )
-            cleanup.track_parent_temporary(
-                rollback_link,
-                kind="rollback",
-            )
-            if wal_present:
-                quarantined_wal = backup.with_name(backup.name + ".wal")
-                _copy_database_execution_storage_file_at(
-                    wal_path,
-                    source_directory_fd=cleanup.parent_fd,
-                    directory_fd=quarantine_fd,
-                    target_name=quarantined_wal.name,
-                )
-            cleanup.verify_quarantine_path()
-            os.fsync(quarantine_fd)
-            os.fsync(cleanup.parent_fd)
-        except BaseException as exc:
+        if (
+            named_candidate_digest != candidate_digest
+            or named_candidate_size != candidate_size
+            or named_candidate_identity != candidate_identity
+        ):
             raise DatabaseImplementationExecutionStorageRepairError(
-                "execution repair could not preserve the original authority"
-            ) from exc
+                "execution repair candidate changed while it was pinned"
+            )
+
+        backup_digest, backup_size, backup_identity = (
+            _database_execution_storage_named_identity_at(
+                backup.name,
+                directory_fd=quarantine_fd,
+            )
+        )
+        assert rollback_link is not None
+        rollback_digest, rollback_size, rollback_identity = (
+            _database_execution_storage_named_identity_at(
+                rollback_link.name,
+                directory_fd=cleanup.parent_fd,
+            )
+        )
+        if (
+            backup_digest != source_digest
+            or backup_size != source_size
+            or rollback_digest != source_digest
+            or rollback_size != source_size
+            or rollback_identity[:2] != source_identity[:2]
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair captured-source evidence changed before prepare"
+            )
+        if wal_present:
+            assert quarantined_wal is not None
+            backup_wal_digest, backup_wal_size, backup_wal_identity = (
+                _database_execution_storage_named_identity_at(
+                    quarantined_wal.name,
+                    directory_fd=quarantine_fd,
+                )
+            )
+            if (
+                backup_wal_digest != wal_digest
+                or backup_wal_size != wal_size
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair captured-WAL evidence changed before prepare"
+                )
 
         prepared_phase = {
             "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
@@ -73648,8 +73958,34 @@ def _repair_database_execution_art_index_storage_impl(
             "database_path": str(path),
             "source_sha256": source_digest,
             "source_size_bytes": source_size,
+            "source_identity": _database_execution_storage_identity_payload(
+                source_identity
+            ),
+            "backup_sha256": backup_digest,
+            "backup_size_bytes": backup_size,
+            "backup_identity": _database_execution_storage_identity_payload(
+                backup_identity
+            ),
+            "rollback_sha256": rollback_digest,
+            "rollback_size_bytes": rollback_size,
+            "rollback_identity": _database_execution_storage_identity_payload(
+                rollback_identity
+            ),
+            "rollback_path": str(rollback_link),
             "wal_sha256": wal_digest,
             "wal_size_bytes": wal_size,
+            "wal_identity": (
+                _database_execution_storage_identity_payload(wal_identity)
+                if wal_identity is not None
+                else {}
+            ),
+            "wal_backup_sha256": backup_wal_digest,
+            "wal_backup_size_bytes": backup_wal_size,
+            "wal_backup_identity": (
+                _database_execution_storage_identity_payload(backup_wal_identity)
+                if backup_wal_identity is not None
+                else {}
+            ),
             "candidate_sha256": candidate_digest,
             "candidate_size_bytes": candidate_size,
             "logical_projection_root": before_projection["projection_root"],
@@ -73684,19 +74020,18 @@ def _repair_database_execution_art_index_storage_impl(
                 "execution repair could not persist its prepared phase"
             ) from exc
 
-        if wal_size > 0:
+        if wal_present:
             assert wal_identity is not None
-            current_wal_digest, current_wal_size, current_wal_identity = (
-                _database_execution_storage_file_identity(wal_path)
+            assert wal_descriptor is not None
+            _revalidate_database_execution_storage_wal(
+                wal_path,
+                cleanup=cleanup,
+                expected_present=True,
+                wal_descriptor=wal_descriptor,
+                expected_digest=wal_digest,
+                expected_size=wal_size,
+                expected_identity=wal_identity,
             )
-            if (
-                current_wal_digest != wal_digest
-                or current_wal_size != wal_size
-                or current_wal_identity != wal_identity
-            ):
-                raise DatabaseImplementationExecutionStorageRepairError(
-                    "execution storage WAL changed before safe retirement"
-                )
             retired_live_wal = quarantine / (
                 f"{backup.name}.retired-live-wal"
             )
@@ -73715,12 +74050,19 @@ def _repair_database_execution_art_index_storage_impl(
                 )
                 os.fsync(quarantine_fd)
                 os.fsync(cleanup.parent_fd)
-                retired_digest, retired_size, _retired_identity = (
-                    _database_execution_storage_file_identity(retired_live_wal)
+                retired_digest, retired_size, retired_identity = (
+                    _database_execution_storage_named_identity_at(
+                        retired_live_wal.name,
+                        directory_fd=quarantine_fd,
+                    )
                 )
-                if retired_digest != wal_digest or retired_size != wal_size:
+                if (
+                    retired_digest != wal_digest
+                    or retired_size != wal_size
+                    or retired_identity[:2] != wal_identity[:2]
+                ):
                     raise DatabaseImplementationExecutionStorageRepairError(
-                        "retired execution storage WAL differs from source"
+                        "retired execution storage WAL differs from captured WAL"
                     )
             except BaseException as exc:
                 raise DatabaseImplementationExecutionStorageRepairError(
@@ -73729,6 +74071,8 @@ def _repair_database_execution_art_index_storage_impl(
 
         _revalidate_database_execution_storage_source(
             path,
+            cleanup=cleanup,
+            source_descriptor=source_descriptor,
             expected_digest=source_digest,
             expected_size=source_size,
             expected_identity=source_identity,
@@ -73736,25 +74080,102 @@ def _repair_database_execution_art_index_storage_impl(
         _revalidate_database_execution_storage_wal(
             wal_path,
             cleanup=cleanup,
-            expected_present=bool(wal_present and wal_size == 0),
-            expected_digest=wal_digest if wal_size == 0 else "",
-            expected_size=wal_size if wal_size == 0 else 0,
-            expected_identity=wal_identity if wal_size == 0 else None,
+            expected_present=False,
         )
-        installed = False
+        backup_digest, backup_size, backup_identity = (
+            _database_execution_storage_named_identity_at(
+                backup.name,
+                directory_fd=quarantine_fd,
+            )
+        )
+        assert rollback_link is not None
+        rollback_digest, rollback_size, rollback_identity = (
+            _database_execution_storage_named_identity_at(
+                rollback_link.name,
+                directory_fd=cleanup.parent_fd,
+            )
+        )
+        if (
+            backup_digest != source_digest
+            or backup_size != source_size
+            or rollback_digest != source_digest
+            or rollback_size != source_size
+            or rollback_identity[:2] != source_identity[:2]
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair captured-source evidence changed before install"
+            )
+        exchange_performed = False
+        displaced_digest = ""
+        displaced_size = 0
+        displaced_identity: tuple[int, int, int, int] | None = None
         verified_projection: dict[str, Any] | None = None
         failed_replacement: Path | None = None
         try:
             cleanup.verify_parent_path()
-            os.replace(
+            _revalidate_database_execution_storage_source(
+                path,
+                cleanup=cleanup,
+                source_descriptor=source_descriptor,
+                expected_digest=source_digest,
+                expected_size=source_size,
+                expected_identity=source_identity,
+            )
+            (
+                named_candidate_digest,
+                named_candidate_size,
+                named_candidate_identity,
+            ) = _database_execution_storage_named_identity_at(
+                candidate.name,
+                directory_fd=cleanup.parent_fd,
+            )
+            if (
+                named_candidate_digest != candidate_digest
+                or named_candidate_size != candidate_size
+                or named_candidate_identity != candidate_identity
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair candidate changed before atomic install"
+                )
+            _exchange_database_execution_storage_names(
                 candidate.name,
                 path.name,
-                src_dir_fd=cleanup.parent_fd,
-                dst_dir_fd=cleanup.parent_fd,
+                source_directory_fd=cleanup.parent_fd,
+                target_directory_fd=cleanup.parent_fd,
             )
-            candidate = None
-            installed = True
+            exchange_performed = True
             os.fsync(cleanup.parent_fd)
+            cleanup.track_parent_temporary(candidate, kind="candidate")
+            displaced_digest, displaced_size, displaced_identity = (
+                _database_execution_storage_named_identity_at(
+                    candidate.name,
+                    directory_fd=cleanup.parent_fd,
+                )
+            )
+            (
+                installed_digest,
+                installed_size,
+                installed_identity,
+            ) = _database_execution_storage_named_identity_at(
+                path.name,
+                directory_fd=cleanup.parent_fd,
+            )
+            if (
+                installed_digest != candidate_digest
+                or installed_size != candidate_size
+                or installed_identity != candidate_identity
+                or displaced_digest != source_digest
+                or displaced_size != source_size
+                or displaced_identity != source_identity
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair target changed at the atomic install boundary"
+                )
+            _revalidate_database_execution_storage_wal(
+                wal_path,
+                cleanup=cleanup,
+                expected_present=False,
+            )
 
             verifier = connect_duckdb_with_policy(
                 duckdb,
@@ -73771,12 +74192,16 @@ def _repair_database_execution_art_index_storage_impl(
                 verified_catalog = _database_execution_storage_catalog(verifier)
             finally:
                 verifier.close()
-            installed_digest, installed_size, _installed_identity = (
-                _database_execution_storage_file_identity(path)
+            installed_digest, installed_size, installed_identity = (
+                _database_execution_storage_named_identity_at(
+                    path.name,
+                    directory_fd=cleanup.parent_fd,
+                )
             )
             if (
                 installed_digest != candidate_digest
                 or installed_size != candidate_size
+                or installed_identity != candidate_identity
                 or verified_projection["projection_root"]
                 != before_projection["projection_root"]
                 or verified_catalog != source_catalog
@@ -73785,7 +74210,7 @@ def _repair_database_execution_art_index_storage_impl(
                     "installed execution repair failed independent verification"
                 )
         except BaseException as install_exc:
-            if installed:
+            if exchange_performed:
                 failed_replacement = quarantine / (
                     f"{path.name}.{candidate_digest.removeprefix('sha256:')}."
                     f"{repair_id}.failed-replacement.duckdb"
@@ -73804,24 +74229,93 @@ def _repair_database_execution_art_index_storage_impl(
                     failed_replacement = None
                 try:
                     assert rollback_link is not None
-                    os.replace(
-                        rollback_link.name,
+                    if displaced_identity is None:
+                        raise DatabaseImplementationExecutionStorageRepairError(
+                            "execution repair displaced target identity is unavailable"
+                        )
+                    (
+                        current_replacement_digest,
+                        current_replacement_size,
+                        current_replacement_identity,
+                    ) = _database_execution_storage_named_identity_at(
                         path.name,
-                        src_dir_fd=cleanup.parent_fd,
-                        dst_dir_fd=cleanup.parent_fd,
+                        directory_fd=cleanup.parent_fd,
                     )
-                    rollback_link = None
-                    os.fsync(quarantine_fd)
-                    os.fsync(cleanup.parent_fd)
-                    restored_digest, restored_size, _restored_identity = (
-                        _database_execution_storage_file_identity(path)
+                    (
+                        current_displaced_digest,
+                        current_displaced_size,
+                        current_displaced_identity,
+                    ) = _database_execution_storage_named_identity_at(
+                        candidate.name,
+                        directory_fd=cleanup.parent_fd,
+                    )
+                    rollback_digest, rollback_size, rollback_identity = (
+                        _database_execution_storage_named_identity_at(
+                            rollback_link.name,
+                            directory_fd=cleanup.parent_fd,
+                        )
+                    )
+                    backup_digest, backup_size, _backup_identity = (
+                        _database_execution_storage_named_identity_at(
+                            backup.name,
+                            directory_fd=quarantine_fd,
+                        )
                     )
                     if (
-                        restored_digest != source_digest
-                        or restored_size != source_size
+                        current_replacement_digest != candidate_digest
+                        or current_replacement_size != candidate_size
+                        or current_replacement_identity != candidate_identity
+                        or current_displaced_digest != displaced_digest
+                        or current_displaced_size != displaced_size
+                        or current_displaced_identity != displaced_identity
+                        or rollback_digest != source_digest
+                        or rollback_size != source_size
+                        or rollback_identity[:2] != source_identity[:2]
+                        or backup_digest != source_digest
+                        or backup_size != source_size
                     ):
                         raise DatabaseImplementationExecutionStorageRepairError(
-                            "execution repair rollback digest differs"
+                            "execution repair exact rollback evidence changed"
+                        )
+                    _exchange_database_execution_storage_names(
+                        candidate.name,
+                        path.name,
+                        source_directory_fd=cleanup.parent_fd,
+                        target_directory_fd=cleanup.parent_fd,
+                    )
+                    exchange_performed = False
+                    os.fsync(quarantine_fd)
+                    os.fsync(cleanup.parent_fd)
+                    cleanup.track_parent_temporary(candidate, kind="candidate")
+                    restored_digest, restored_size, restored_identity = (
+                        _database_execution_storage_named_identity_at(
+                            path.name,
+                            directory_fd=cleanup.parent_fd,
+                        )
+                    )
+                    if (
+                        restored_digest != displaced_digest
+                        or restored_size != displaced_size
+                        or restored_identity != displaced_identity
+                    ):
+                        raise DatabaseImplementationExecutionStorageRepairError(
+                            "execution repair rollback changed the displaced authority"
+                        )
+                    (
+                        restored_candidate_digest,
+                        restored_candidate_size,
+                        restored_candidate_identity,
+                    ) = _database_execution_storage_named_identity_at(
+                        candidate.name,
+                        directory_fd=cleanup.parent_fd,
+                    )
+                    if (
+                        restored_candidate_digest != candidate_digest
+                        or restored_candidate_size != candidate_size
+                        or restored_candidate_identity != candidate_identity
+                    ):
+                        raise DatabaseImplementationExecutionStorageRepairError(
+                            "execution repair rollback lost the rebuilt candidate"
                         )
                 except BaseException as rollback_exc:
                     raise DatabaseImplementationExecutionStorageRepairError(
@@ -73832,23 +74326,58 @@ def _repair_database_execution_art_index_storage_impl(
                 "execution repair candidate was not installed"
             ) from install_exc
 
+        assert verified_projection is not None
+        installed_digest, installed_size, installed_identity = (
+            _database_execution_storage_named_identity_at(
+                path.name,
+                directory_fd=cleanup.parent_fd,
+            )
+        )
+        displaced_digest, displaced_size, displaced_identity = (
+            _database_execution_storage_named_identity_at(
+                candidate.name,
+                directory_fd=cleanup.parent_fd,
+            )
+        )
+        backup_digest, backup_size, backup_identity = (
+            _database_execution_storage_named_identity_at(
+                backup.name,
+                directory_fd=quarantine_fd,
+            )
+        )
+        assert rollback_link is not None
+        rollback_digest, rollback_size, rollback_identity = (
+            _database_execution_storage_named_identity_at(
+                rollback_link.name,
+                directory_fd=cleanup.parent_fd,
+            )
+        )
+        source_preserved = (
+            installed_digest == candidate_digest
+            and installed_size == candidate_size
+            and installed_identity == candidate_identity
+            and displaced_digest == source_digest
+            and displaced_size == source_size
+            and displaced_identity == source_identity
+            and backup_digest == source_digest
+            and backup_size == source_size
+            and rollback_digest == source_digest
+            and rollback_size == source_size
+            and rollback_identity[:2] == source_identity[:2]
+        )
+        if not source_preserved:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair captured-source evidence changed after install"
+            )
+        os.unlink(candidate.name, dir_fd=cleanup.parent_fd)
+        candidate = None
+        os.fsync(cleanup.parent_fd)
         if rollback_link is not None:
             try:
                 os.unlink(rollback_link.name, dir_fd=cleanup.parent_fd)
             except FileNotFoundError:
                 pass
             rollback_link = None
-        assert verified_projection is not None
-        backup_digest, backup_size, _backup_identity = (
-            _database_execution_storage_file_identity(backup)
-        )
-        source_preserved = (
-            backup_digest == source_digest and backup_size == source_size
-        )
-        if not source_preserved:
-            raise DatabaseImplementationExecutionStorageRepairError(
-                "execution repair quarantine does not preserve source bytes"
-            )
         committed_phase_path = quarantine / f"{backup.name}.committed.json"
         committed_phase = {
             "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
@@ -73858,6 +74387,26 @@ def _repair_database_execution_art_index_storage_impl(
             "database_path": str(path),
             "prepared_phase_id": prepared_phase_id,
             "source_sha256": source_digest,
+            "source_identity": _database_execution_storage_identity_payload(
+                source_identity
+            ),
+            "backup_sha256": backup_digest,
+            "backup_size_bytes": backup_size,
+            "backup_identity": _database_execution_storage_identity_payload(
+                backup_identity
+            ),
+            "rollback_sha256": rollback_digest,
+            "rollback_size_bytes": rollback_size,
+            "rollback_identity": _database_execution_storage_identity_payload(
+                rollback_identity
+            ),
+            "wal_backup_sha256": backup_wal_digest,
+            "wal_backup_size_bytes": backup_wal_size,
+            "wal_backup_identity": (
+                _database_execution_storage_identity_payload(backup_wal_identity)
+                if backup_wal_identity is not None
+                else {}
+            ),
             "replacement_sha256": candidate_digest,
             "logical_projection_root": verified_projection["projection_root"],
             "quarantined_source_path": str(backup),
@@ -73919,6 +74468,26 @@ def _repair_database_execution_art_index_storage_impl(
             ),
             "source_sha256": source_digest,
             "source_size_bytes": source_size,
+            "source_identity": _database_execution_storage_identity_payload(
+                source_identity
+            ),
+            "backup_sha256": backup_digest,
+            "backup_size_bytes": backup_size,
+            "backup_identity": _database_execution_storage_identity_payload(
+                backup_identity
+            ),
+            "rollback_sha256": rollback_digest,
+            "rollback_size_bytes": rollback_size,
+            "rollback_identity": _database_execution_storage_identity_payload(
+                rollback_identity
+            ),
+            "wal_backup_sha256": backup_wal_digest,
+            "wal_backup_size_bytes": backup_wal_size,
+            "wal_backup_identity": (
+                _database_execution_storage_identity_payload(backup_wal_identity)
+                if backup_wal_identity is not None
+                else {}
+            ),
             "replacement_sha256": candidate_digest,
             "replacement_size_bytes": candidate_size,
             "pre_projection_root": before_projection["projection_root"],
@@ -75237,6 +75806,10 @@ class DatabaseImplementationDaemon:
         finally:
             stop.set()
             thread.join()
+        if callback_error is not None:
+            _reraise_database_execution_storage_art_fatal(callback_error)
+        for renewal_failure in renewal_failures:
+            _reraise_database_execution_storage_art_fatal(renewal_failure)
         if renewal_failures:
             raise DatabaseImplementationAuthorityError(
                 f"attempt {attempt.attempt_id} lost lease authority during execution"
