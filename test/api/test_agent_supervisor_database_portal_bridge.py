@@ -2206,10 +2206,15 @@ def test_bridge_callback_no_effect_replay_rejects_post_intent_effect_event(
         original_atomic_write,
     )
     with pytest.raises(
-        DatabasePortalBridgeError,
-        match="post-commit candidate is not the exact terminal event suffix",
-    ):
+        DatabasePortalPostCommitRecoveryRejected,
+        match="post_commit_recovery_evidence_rejected",
+    ) as raised:
         bridge.recover_post_commit_candidate(source)
+    assert raised.value.diagnostic["stage"] == "callback_transport_rejected"
+    assert raised.value.diagnostic["reason_code"] == "source_count_rejected"
+    assert raised.value.diagnostic["disposition"] == (
+        "rejected_no_observed_effect"
+    )
     assert not (
         paths.root / "database-portal-callback-no-effect-recovery.json"
     ).exists()
@@ -15502,6 +15507,8 @@ def _run_vrif_callback_hygiene_requalification(
     gitlinked_validation: bool = False,
     submodule_calls: list[tuple[str, str]] | None = None,
     rejection_sink: list[dict[str, object]] | None = None,
+    loaded_task_for_read: object | None = None,
+    load_task_calls: list[int] | None = None,
 ) -> tuple[dict[str, object] | None, Path, list[bytes], list[dict[str, str]]]:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -15626,22 +15633,69 @@ def _run_vrif_callback_hygiene_requalification(
     task_cid = f"task:{task_alias.lower()}"
     database_task_cid = f"task:database:{task_alias.lower()}"
     task_key = f"task/v1/{task_alias.lower()}"
-    task = SimpleNamespace(
-        task_id=task_alias,
-        canonical_task_cid=task_cid,
-        metadata={"database task cid": database_task_cid},
-        validation=(validation_command,),
+    projection_text = "\n".join(
+        (
+            "# Callback task projection",
+            "",
+            f"## {task_alias} Requalify callback integration",
+            "- Status: completed",
+            "- Completion: manual",
+            "- Priority: P1",
+            "- Track: ops",
+            "- Depends on:",
+            "- Outputs:",
+            f"- Validation: {validation_command}",
+            "- Acceptance: exact callback validation passes",
+            f"- Database task CID: {database_task_cid}",
+            f"- Canonical task CID: {database_task_cid}",
+            f"- Canonical task key: {task_key}",
+            "- Projection authority: false",
+            "",
+        )
+    )
+    projection_path = state_root / "task-projection.md"
+    [task] = parse_task_text(
+        projection_text,
+        path=projection_path,
+        task_header_prefix=f"## {task_alias}",
+    )
+    loaded_task_values = {
+        field: getattr(task, field)
+        for field in (
+            "task_id",
+            "title",
+            "status",
+            "completion",
+            "priority",
+            "track",
+            "depends_on",
+            "outputs",
+            "validation",
+            "acceptance",
+            "source_line",
+            "metadata",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+        )
+    }
+    loaded_task_values.update(
+        depends_on=list(task.depends_on),
+        outputs=list(task.outputs),
+        validation=list(task.validation),
+        metadata=dict(task.metadata),
     )
     loaded_task = (
-        task
+        SimpleNamespace(**loaded_task_values)
         if loaded_validation is None
         else SimpleNamespace(
             **{
-                **vars(task),
-                "validation": loaded_validation,
+                **loaded_task_values,
+                "validation": list(loaded_validation),
             }
         )
     )
+    load_task_count = 0
 
     class Portal:
         merge_queue = queue
@@ -15649,8 +15703,19 @@ def _run_vrif_callback_hygiene_requalification(
         resolved_merge_target_branch = "main"
 
         @staticmethod
-        def _load_tasks() -> list[SimpleNamespace]:
-            return [loaded_task]
+        def _load_tasks() -> list[object]:
+            nonlocal load_task_count
+            load_task_count += 1
+            if load_task_calls is not None:
+                load_task_calls.append(load_task_count)
+            selected = (
+                loaded_task_for_read(load_task_count, loaded_task)
+                if callable(loaded_task_for_read)
+                else loaded_task
+            )
+            if isinstance(selected, BaseException):
+                raise selected
+            return [selected]
 
         @staticmethod
         def _run_validation_commands(
@@ -15830,7 +15895,7 @@ def _run_vrif_callback_hygiene_requalification(
     bridge._load_post_merge_callback_integration_receipt = (
         lambda path, *, source: json.loads(path.read_text(encoding="utf-8"))
     )
-    bridge._verify_projection = lambda _paths, _binding: "fixture projection"
+    bridge._verify_projection = lambda _paths, _binding: projection_text
     bridge._portal_completion_event_identity = (
         lambda **_kwargs: (task_key, task_cid)
     )
@@ -15845,8 +15910,18 @@ def _run_vrif_callback_hygiene_requalification(
         "settled_integration_source": {"source_shape": "test-settled-source"},
     }
     projection = SimpleNamespace(
-        paths=SimpleNamespace(root=state_root, implementation_logs=logs),
-        binding={"task_cid": database_task_cid},
+        paths=SimpleNamespace(
+            root=state_root,
+            task_projection=projection_path,
+            implementation_logs=logs,
+        ),
+        binding={
+            "authoritative_task_store": "duckdb",
+            "projection_authority": False,
+            "task_alias": task_alias,
+            "task_cid": database_task_cid,
+            "canonical_task_key": task_key,
+        },
         projected_task=task,
     )
     authority_call_count = 0
@@ -16306,6 +16381,113 @@ def test_callback_requalification_rejects_loaded_task_body_substitution(
 
     assert receipt is None
     assert cleanup_statuses == []
+
+
+def test_callback_requalification_admits_exact_task_across_class_identity(
+    tmp_path: Path,
+) -> None:
+    load_calls: list[int] = []
+    validation_calls: list[Path] = []
+    transaction_calls: list[dict[str, object]] = []
+
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda worktree: validation_calls.append(worktree),
+            load_task_calls=load_calls,
+            transaction_calls=transaction_calls,
+        )
+    )
+
+    # The fixture's loader returns SimpleNamespace while the exact projection
+    # parser returns PortalTask.  Nominal equality is false by construction.
+    assert receipt is not None
+    assert load_calls == [1]
+    assert len(validation_calls) == 1
+    assert len(transaction_calls) == 1
+    assert cleanup_statuses == [b""]
+
+
+def test_callback_requalification_self_heals_one_stale_loader_read(
+    tmp_path: Path,
+) -> None:
+    load_calls: list[int] = []
+    validation_calls: list[Path] = []
+    transaction_calls: list[dict[str, object]] = []
+
+    def stale_once(read_number: int, current: object) -> object:
+        if read_number != 1:
+            return current
+        return SimpleNamespace(
+            **{
+                **vars(current),
+                "priority": "P2",
+            }
+        )
+
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda worktree: validation_calls.append(worktree),
+            loaded_task_for_read=stale_once,
+            load_task_calls=load_calls,
+            transaction_calls=transaction_calls,
+        )
+    )
+
+    assert receipt is not None
+    assert load_calls == [1, 2]
+    assert len(validation_calls) == 1
+    assert len(transaction_calls) == 1
+    assert cleanup_statuses == [b""]
+
+
+@pytest.mark.parametrize(
+    "mismatch",
+    ("title", "metadata", "validation"),
+)
+def test_callback_requalification_persistent_task_mismatch_has_no_effect(
+    tmp_path: Path,
+    mismatch: str,
+) -> None:
+    load_calls: list[int] = []
+    transaction_calls: list[dict[str, object]] = []
+    rejection_sink: list[dict[str, object]] = []
+
+    def persistently_mismatched(
+        _read_number: int,
+        current: object,
+    ) -> object:
+        values = dict(vars(current))
+        if mismatch == "title":
+            values["title"] = "Substituted callback task"
+        elif mismatch == "metadata":
+            values["metadata"] = {
+                **dict(values["metadata"]),
+                "projection authority": "true",
+            }
+        else:
+            values["validation"] = []
+        return SimpleNamespace(**values)
+
+    receipt, _repo, cleanup_statuses, _entries = (
+        _run_vrif_callback_hygiene_requalification(
+            tmp_path,
+            lambda _worktree: pytest.fail(
+                "persistent loader mismatch reached callback validation"
+            ),
+            loaded_task_for_read=persistently_mismatched,
+            load_task_calls=load_calls,
+            transaction_calls=transaction_calls,
+            rejection_sink=rejection_sink,
+        )
+    )
+
+    assert receipt is None
+    assert load_calls == [1, 2, 3, 4]
+    assert transaction_calls == []
+    assert cleanup_statuses == []
+    assert rejection_sink[-1]["stage"] == "callback_loaded_task_rejected"
 
 
 def test_generic_settled_clean_callback_retains_v2_without_hygiene_checks(

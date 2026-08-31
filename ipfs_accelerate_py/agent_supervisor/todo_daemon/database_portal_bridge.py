@@ -3725,6 +3725,63 @@ def _projection_status(text: str) -> str:
     return str(match.group(1) if match else "").strip().lower().replace("-", "_")
 
 
+def _portal_task_projection_snapshot(task: Any) -> dict[str, Any] | None:
+    """Return the complete primitive Portal projection contract.
+
+    A sealed Portal executor and a later admitted bridge generation can load
+    equivalent ``PortalTask`` dataclasses from distinct module objects.  Their
+    nominal dataclass equality is false even when every projected field is
+    byte-for-byte equivalent.  This snapshot deliberately ignores only the
+    Python class object: all scalar, sequence, metadata, identity, and source
+    fields remain exact and closed.
+    """
+
+    scalar_fields = (
+        "task_id",
+        "title",
+        "status",
+        "completion",
+        "priority",
+        "track",
+        "acceptance",
+        "canonical_task_key",
+        "canonical_task_cid",
+        "board_namespace",
+    )
+    sequence_fields = ("depends_on", "outputs", "validation")
+    scalar_values = {
+        field: getattr(task, field, None) for field in scalar_fields
+    }
+    sequences = {
+        field: getattr(task, field, None) for field in sequence_fields
+    }
+    metadata = getattr(task, "metadata", None)
+    source_line = getattr(task, "source_line", None)
+    if (
+        any(not isinstance(value, str) for value in scalar_values.values())
+        or any(not isinstance(value, list) for value in sequences.values())
+        or any(
+            any(not isinstance(item, str) for item in value)
+            for value in sequences.values()
+        )
+        or not isinstance(metadata, Mapping)
+        or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in metadata.items()
+        )
+        or isinstance(source_line, bool)
+        or not isinstance(source_line, int)
+        or source_line < 1
+    ):
+        return None
+    return {
+        **scalar_values,
+        **{field: tuple(value) for field, value in sequences.items()},
+        "metadata": dict(metadata),
+        "source_line": source_line,
+    }
+
+
 def _single_projection_field(text: str, label: str) -> str:
     matches = re.findall(
         rf"(?mi)^-\s*{re.escape(label)}\s*:\s*([^\r\n]*)$",
@@ -9524,6 +9581,97 @@ class DatabasePortalExecutionBridge:
             source=source,
         )
 
+    def _coherent_callback_requalification_task(
+        self,
+        *,
+        projection: _DatabasePortalRecoveryProjection,
+        load_tasks: Callable[[], Sequence[Any]],
+        alias: str,
+        database_task_cid: str,
+        portal_task_key: str,
+        portal_task_cid: str,
+    ) -> Any:
+        """Load one exact callback task across Portal code generations.
+
+        Retry only the bounded read when Portal observes a stale in-memory
+        projection.  Every attempt is bracketed by immutable projection
+        verification and reconstructs the expected task from those exact
+        bytes.  Provider, validation, checkout, and state mutation paths are
+        unreachable until this method returns one fully admitted task.
+        """
+
+        from .implementation_daemon import parse_task_text
+
+        binding = projection.binding
+        binding_task_key = str(binding.get("canonical_task_key") or "")
+        last_load_error: Exception | None = None
+        for _read in range(4):
+            projection_before = self._verify_projection(
+                projection.paths,
+                binding,
+            )
+            projected_tasks = parse_task_text(
+                projection_before,
+                path=projection.paths.task_projection,
+                task_header_prefix=f"## {alias}",
+            )
+            try:
+                tasks = list(load_tasks())
+            except Exception as exc:  # bounded read retry; no effects reachable
+                last_load_error = exc
+                continue
+            last_load_error = None
+            projection_after = self._verify_projection(
+                projection.paths,
+                binding,
+            )
+            if projection_before != projection_after:
+                continue
+            observed_portal_key, observed_portal_cid = (
+                self._portal_completion_event_identity(
+                    paths=projection.paths,
+                    projection_text=projection_after,
+                    binding=binding,
+                    allowed_root=projection.paths.root.parent,
+                )
+            )
+            loaded_task = tasks[0] if len(tasks) == 1 else None
+            projected_task = (
+                projected_tasks[0] if len(projected_tasks) == 1 else None
+            )
+            loaded_snapshot = _portal_task_projection_snapshot(loaded_task)
+            projected_snapshot = _portal_task_projection_snapshot(
+                projected_task
+            )
+            metadata = getattr(loaded_task, "metadata", None)
+            if (
+                len(tasks) == 1
+                and loaded_snapshot is not None
+                and loaded_snapshot == projected_snapshot
+                and str(getattr(loaded_task, "task_id", "") or "") == alias
+                and isinstance(metadata, Mapping)
+                and metadata.get("projection authority") == "false"
+                and metadata.get("database task cid") == database_task_cid
+                and metadata.get("canonical task cid") == database_task_cid
+                and metadata.get("canonical task key") == binding_task_key
+                and binding.get("projection_authority") is False
+                and binding.get("authoritative_task_store") == "duckdb"
+                and binding.get("task_alias") == alias
+                and binding.get("task_cid") == database_task_cid
+                and binding_task_key
+                and tuple(getattr(loaded_task, "validation", ()) or ())
+                and observed_portal_key == portal_task_key
+                and observed_portal_cid == portal_task_cid
+            ):
+                return loaded_task
+        if last_load_error is not None:
+            raise DatabasePortalBridgeError(
+                "Portal callback requalification task projection is unreadable"
+            ) from last_load_error
+        raise DatabasePortalBridgeError(
+            "Portal callback requalification task projection mismatches"
+        )
+
     def _requalify_callback_integration(
         self,
         source: Mapping[str, Any],
@@ -9636,22 +9784,20 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "Portal recovery daemon lacks callback requalification authority"
                 )
-            tasks = list(load_tasks())
-            loaded_task_metadata = (
-                getattr(tasks[0], "metadata", None) if len(tasks) == 1 else None
-            )
-            if (
-                len(tasks) != 1
-                or tasks != [projection.projected_task]
-                or str(getattr(tasks[0], "task_id", "") or "") != task_alias
-                or not isinstance(loaded_task_metadata, Mapping)
-                or str(loaded_task_metadata.get("database task cid") or "")
-                != database_task_cid
-                or not tuple(getattr(tasks[0], "validation", ()) or ())
-            ):
+            try:
+                loaded_task = self._coherent_callback_requalification_task(
+                    projection=projection,
+                    load_tasks=load_tasks,
+                    alias=task_alias,
+                    database_task_cid=database_task_cid,
+                    portal_task_key=portal_task_key,
+                    portal_task_cid=portal_task_cid,
+                )
+            except (DatabasePortalBridgeError, OSError, TypeError, ValueError) as exc:
                 self._record_post_merge_recovery_stage(
                     "callback_loaded_task_rejected",
                     request=request,
+                    reason=type(exc).__name__,
                     rejection_sink=rejection_sink,
                 )
                 return None
@@ -9887,7 +10033,7 @@ class DatabasePortalExecutionBridge:
                                 temporary,
                                 branch_name="",
                                 offline_local_only=True,
-                                task=tasks[0],
+                                task=loaded_task,
                                 submodule_paths=callback_submodule_paths,
                             )
                         except (OSError, RuntimeError, ValueError) as exc:
@@ -10013,7 +10159,7 @@ class DatabasePortalExecutionBridge:
                     log_path = log_root / f"{task_alias}-{current_head[:16]}.log"
                     validation = run_validation(
                         temporary,
-                        tasks[0],
+                        loaded_task,
                         log_path,
                         force_uncached=True,
                     )
@@ -24246,62 +24392,6 @@ class DatabasePortalExecutionBridge:
 
         from .implementation_daemon import parse_task_text
 
-        def task_snapshot(task: Any) -> dict[str, Any] | None:
-            """Return the closed projection contract across code generations.
-
-            The Portal executor can be imported from the sealed control-plane
-            generation while this bridge runs from a later, admitted recovery
-            generation.  Equal dataclass values from those two module objects
-            are not necessarily equal by Python class identity.  Compare the
-            complete primitive projection contract instead; this neither
-            relaxes any task field nor admits a second task population.
-            """
-
-            scalar_fields = (
-                "task_id",
-                "title",
-                "status",
-                "completion",
-                "priority",
-                "track",
-                "acceptance",
-                "canonical_task_key",
-                "canonical_task_cid",
-                "board_namespace",
-            )
-            sequence_fields = ("depends_on", "outputs", "validation")
-            scalar_values = {
-                field: getattr(task, field, None) for field in scalar_fields
-            }
-            sequences = {
-                field: getattr(task, field, None) for field in sequence_fields
-            }
-            metadata = getattr(task, "metadata", None)
-            source_line = getattr(task, "source_line", None)
-            if (
-                any(not isinstance(value, str) for value in scalar_values.values())
-                or any(not isinstance(value, list) for value in sequences.values())
-                or any(
-                    any(not isinstance(item, str) for item in value)
-                    for value in sequences.values()
-                )
-                or not isinstance(metadata, Mapping)
-                or any(
-                    not isinstance(key, str) or not isinstance(value, str)
-                    for key, value in metadata.items()
-                )
-                or isinstance(source_line, bool)
-                or not isinstance(source_line, int)
-                or source_line < 1
-            ):
-                return None
-            return {
-                **scalar_values,
-                **{field: tuple(value) for field, value in sequences.items()},
-                "metadata": dict(metadata),
-                "source_line": source_line,
-            }
-
         last_load_error: Exception | None = None
         for _read in range(4):
             projection_before = self._verify_projection(paths, binding)
@@ -24333,9 +24423,13 @@ class DatabasePortalExecutionBridge:
                 if len(tasks) == 1
                 else ""
             )
-            loaded_snapshot = task_snapshot(tasks[0]) if len(tasks) == 1 else None
+            loaded_snapshot = (
+                _portal_task_projection_snapshot(tasks[0])
+                if len(tasks) == 1
+                else None
+            )
             projected_snapshot = (
-                task_snapshot(projected_tasks[0])
+                _portal_task_projection_snapshot(projected_tasks[0])
                 if len(projected_tasks) == 1
                 else None
             )
