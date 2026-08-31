@@ -2276,7 +2276,20 @@ class TypedDatabaseTaskSource:
                     )
                 )
                 continue
-            receipt = self.record_task_retry_cooldown(**payload)
+            try:
+                receipt = self.record_task_retry_cooldown(**payload)
+            except Exception as exc:
+                outcomes.append(
+                    MappingProxyType(
+                        {
+                            "task_cid": str(task.task_cid),
+                            "task_alias": str(task.task_alias),
+                            "changed": False,
+                            "reason": str(exc)[:300],
+                        }
+                    )
+                )
+                continue
             outcomes.append(
                 MappingProxyType(
                     {
