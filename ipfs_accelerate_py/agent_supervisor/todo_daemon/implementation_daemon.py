@@ -89054,6 +89054,29 @@ _DATABASE_PORTAL_TERMINAL_FAILURE_RECEIPT_FIELDS = frozenset(
         "control_expected_revision",
     }
 )
+_DATABASE_PORTAL_NEUTRAL_QUARANTINE_RECEIPT_FIELDS = frozenset(
+    {
+        "schema",
+        "operation",
+        "claim_id",
+        "attempt_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "failure_fingerprint",
+        "failure_kind",
+        "provider_effect_state",
+        "provider_invocation_receipt_present",
+        "provider_callback_intent_fingerprint",
+        "unknown_callback_reopen_count",
+        "retry_suppressed",
+        "root_cause_required",
+        "circuit_breaker_key",
+        "failure_evidence",
+        "failure_evidence_digest",
+    }
+)
 _DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS = frozenset(
     {
         "execution_route_binding",
@@ -92234,6 +92257,18 @@ class DatabaseImplementationDaemon:
     ) -> dict[str, Any]:
         """Verify the exact retry projection superseding one repaired failure."""
 
+        task_cid = str(getattr(task, "task_cid", "") or "").strip()
+        task_alias = str(getattr(task, "task_alias", "") or "").strip()
+        if (
+            not task_cid
+            or not task_alias
+            or task_cid != attempt.task_cid
+            or task_alias != attempt.task_alias
+        ):
+            raise DatabaseImplementationConflictError(
+                "post-merge declared-output recovery task identity differs "
+                "from its source attempt"
+            )
         if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
             raise DatabaseImplementationConflictError(
                 "post-merge declared-output recovery projection is not retrying"
@@ -92348,6 +92383,16 @@ class DatabaseImplementationDaemon:
             expected_fields = expected_fields | {
                 "post_merge_completion_recovery_seed"
             }
+        callback_unknown_completion = bool(
+            isinstance(completion_seed, Mapping)
+            and completion_seed.get("terminal_reason")
+            == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+        )
+        if callback_unknown_completion:
+            expected_fields = expected_fields | {
+                "backoff_ms",
+                "retry_not_before_ms",
+            }
         task_revision = getattr(task, "revision", None)
         if (
             not isinstance(receipt, Mapping)
@@ -92381,10 +92426,10 @@ class DatabaseImplementationDaemon:
             if completion_seed is not None
             else None
         )
-        callback_unknown_completion = bool(
-            isinstance(completion_seed, Mapping)
-            and completion_seed.get("terminal_reason")
-            == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+        expected_execution_phase = (
+            ATTEMPT_PHASE_BLOCKED
+            if callback_unknown_completion
+            else ATTEMPT_PHASE_FAILED
         )
         historical_terminal_reason = (
             historical_terminal_receipt.get("failure_kind")
@@ -92403,7 +92448,7 @@ class DatabaseImplementationDaemon:
             or receipt.get("owner_session_id") != attempt.owner_session_id
             or receipt.get("fencing_token") != int(attempt.fencing_token)
             or receipt.get("fence_epoch") != int(attempt.fence_epoch)
-            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_phase") != expected_execution_phase
             or receipt.get("execution_revision") != int(attempt.revision)
             or receipt.get("execution_finished_at_ms")
             != attempt.finished_at_ms
@@ -92460,6 +92505,10 @@ class DatabaseImplementationDaemon:
             is None
             or receipt.get("queue_reason") != queue_reason
             or not isinstance(queue_receipt, Mapping)
+            or (
+                callback_unknown_completion
+                and receipt.get("backoff_ms") != 0
+            )
             or not isinstance(coordination, Mapping)
             or coordination.get("attempt_id") != attempt.attempt_id
             or coordination.get("claim_id") != attempt.claim_id
@@ -92637,9 +92686,20 @@ class DatabaseImplementationDaemon:
                 "task source cannot verify post-merge recovery queue state"
             )
         queue_entry = get_queue_entry(attempt.task_cid)
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
         if (
             queue_entry is None
             or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or (
+                callback_unknown_completion
+                and (
+                    isinstance(retry_not_before_ms, bool)
+                    or not isinstance(retry_not_before_ms, int)
+                    or retry_not_before_ms < 0
+                    or int(getattr(queue_entry, "retry_not_before_ms", -1))
+                    != retry_not_before_ms
+                )
+            )
         ):
             raise DatabaseImplementationConflictError(
                 "post-merge declared-output recovery queue state does not match"
@@ -95302,10 +95362,6 @@ class DatabaseImplementationDaemon:
     def _typed_authoritative_attempt_floor(self, task: Any) -> int:
         """Return an owner-validated shared floor without rebuilding sidecars."""
 
-        if not callable(
-            getattr(self.task_source, "claim_process_attestation", None)
-        ):
-            return 0
         status = str(getattr(task, "status", "") or "").strip().lower()
         body = getattr(task, "body", None)
         receipt = (
@@ -95313,6 +95369,40 @@ class DatabaseImplementationDaemon:
             if isinstance(body, Mapping)
             else None
         )
+        if not callable(
+            getattr(self.task_source, "claim_process_attestation", None)
+        ):
+            # Legacy shared-control sources have no process-attestation floor
+            # API.  Preserve their historical behavior except for the one
+            # portable callback-unknown rearm whose CID-checked task history
+            # already seals the exact source attempt.  A fresh lane must
+            # allocate the adjacent attempt rather than silently restarting
+            # its private sequence at one.
+            completion_seed = (
+                receipt.get("post_merge_completion_recovery_seed")
+                if isinstance(receipt, Mapping)
+                and receipt.get("operation")
+                == (
+                    "database_post_merge_declared_outputs_"
+                    "callback_integration_recovery"
+                )
+                else None
+            )
+            if (
+                status == "retrying"
+                and isinstance(completion_seed, Mapping)
+                and completion_seed.get("terminal_reason")
+                == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+            ):
+                source = self._post_merge_completion_source_attempt_from_seed(
+                    completion_seed
+                )
+                self._verified_post_merge_declared_output_recovery_state(
+                    source,
+                    task,
+                )
+                return int(source.attempt_number)
+            return 0
         if not isinstance(receipt, Mapping):
             return 0
         strict_requeue = bool(
@@ -96195,14 +96285,15 @@ class DatabaseImplementationDaemon:
                 return False
         return True
 
-    def _neutral_portal_rejection_receipt_matches(
+    def _neutral_portal_rejection_material_matches(
         self,
         task: Any,
         attempt: DatabaseTaskAttempt,
         *,
+        sealed_provider_intent: Mapping[str, Any],
         expected_failure_evidence: Mapping[str, Any] | None = None,
     ) -> bool:
-        """Bind one quarantine receipt to its exact neutral failure evidence."""
+        """Bind one sealed callback intent to its exact quarantine receipt."""
 
         task_status = str(getattr(task, "status", "") or "").strip().lower()
         body = getattr(task, "body", None)
@@ -96211,6 +96302,13 @@ class DatabaseImplementationDaemon:
         receipt = body.get("completion_receipt")
         if (
             not isinstance(receipt, Mapping)
+            or not self._receipt_has_exact_optional_execution_route_lineage(
+                receipt,
+                base_fields=(
+                    _DATABASE_PORTAL_NEUTRAL_QUARANTINE_RECEIPT_FIELDS
+                ),
+                task=task,
+            )
             or receipt.get("schema")
             != (
                 "ipfs_accelerate_py/agent-supervisor/"
@@ -96250,14 +96348,10 @@ class DatabaseImplementationDaemon:
             return False
         evidence_digest = _database_daemon_evidence_digest(sealed)
         fingerprint = str(sealed.get("failure_fingerprint") or "")
-        provider_intent = self.provider_invocation_recorded(
-            attempt.attempt_id,
-            idempotency_key=f"provider:{attempt.attempt_id}",
-        )
         try:
             sealed_provider_intent = (
                 _sealed_database_provider_callback_unknown_evidence(
-                    provider_intent or {}
+                    sealed_provider_intent
                 )
             )
         except (TypeError, ValueError):
@@ -96333,8 +96427,70 @@ class DatabaseImplementationDaemon:
             and receipt.get("retry_suppressed") is True
             and receipt.get("root_cause_required") is True
             and receipt.get("provider_invocation_receipt_present") is True
+            and type(receipt.get("unknown_callback_reopen_count")) is int
+            and receipt["unknown_callback_reopen_count"] >= 0
             and receipt.get("provider_callback_intent_fingerprint")
             == sealed_provider_intent.get("failure_fingerprint")
+        )
+
+    def _neutral_portal_rejection_receipt_matches(
+        self,
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+        *,
+        expected_failure_evidence: Mapping[str, Any] | None = None,
+    ) -> bool:
+        """Bind live quarantine truth to this lane's provider invocation."""
+
+        provider_intent = self.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        if not isinstance(provider_intent, Mapping):
+            return False
+        return self._neutral_portal_rejection_material_matches(
+            task,
+            attempt,
+            sealed_provider_intent=provider_intent,
+            expected_failure_evidence=expected_failure_evidence,
+        )
+
+    def _historical_callback_unknown_quarantine_receipt_matches(
+        self,
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        """Verify one admitted callback-unknown quarantine from task history.
+
+        This deliberately does not replace the live rejection predicate.  It
+        is used only after a carried recovery seed has reproduced the exact
+        content-addressed task revision and its immediately adjacent rearm
+        revision.  The source lane may be gone, so the sealed callback intent
+        embedded in that admitted quarantine is the portable evidence.
+        """
+
+        body = getattr(task, "body", None)
+        receipt = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        failure_evidence = (
+            receipt.get("failure_evidence")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        if (
+            not isinstance(failure_evidence, Mapping)
+            or failure_evidence.get("schema")
+            != DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+        ):
+            return False
+        return self._neutral_portal_rejection_material_matches(
+            task,
+            attempt,
+            sealed_provider_intent=failure_evidence,
+            expected_failure_evidence=failure_evidence,
         )
 
     def _strict_resume_rejection_receipt_matches(
@@ -99190,12 +99346,30 @@ class DatabaseImplementationDaemon:
                     raise DatabaseImplementationAuthorityError(
                         "database claim found malformed post-merge completion seed"
                     )
-                source_attempt = self._retry_source_attempt_from_shared_seed(
-                    task_cid=task_cid,
-                    task_alias=str(getattr(task, "task_alias", "") or ""),
-                    seed=post_merge_completion_seed,
-                    control_receipt=prior_status_receipt,
-                )
+                if (
+                    post_merge_completion_seed.get("terminal_reason")
+                    == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+                ):
+                    # The physical callback-unknown cursor is deliberately
+                    # retired after the shared recovery CAS.  Its execution-
+                    # row revision therefore no longer equals the immutable
+                    # revision carried by the retry receipt.  Reconstruct the
+                    # exact source from CID-checked task history instead of
+                    # treating retirement bookkeeping as execution evidence.
+                    source_attempt = (
+                        self._post_merge_completion_source_attempt_from_seed(
+                            post_merge_completion_seed
+                        )
+                    )
+                else:
+                    source_attempt = self._retry_source_attempt_from_shared_seed(
+                        task_cid=task_cid,
+                        task_alias=str(
+                            getattr(task, "task_alias", "") or ""
+                        ),
+                        seed=post_merge_completion_seed,
+                        control_receipt=prior_status_receipt,
+                    )
                 recovery_state = (
                     self._verified_post_merge_declared_output_recovery_state(
                         source_attempt,
@@ -99987,6 +100161,791 @@ class DatabaseImplementationDaemon:
             and self._post_merge_source_matches_latest(raw, latest)
             and self._strict_resume_rejection_receipt_matches(task, latest)
         )
+
+    def _local_attempt_is_exact_latest(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        """Return whether no same-task execution cursor can supersede ``attempt``."""
+
+        if self._uses_quack_command_gateway():
+            # ``execution.get_attempt`` is not a raw primary-key lookup in the
+            # Quack owner transaction.  It joins the requested cursor to the
+            # one current task lease and then protects that exact
+            # claim/attempt/fence projection.  Once claim_ready advances the
+            # task, the historical cursor is no longer returned.  Keep this
+            # read behind the typed repository instead of opening DuckDB from
+            # a lane process.
+            raw = self._require_execution_repository().get_attempt(
+                attempt.attempt_id
+            )
+            if not isinstance(raw, Mapping):
+                return False
+            observed = self._attempt_from_mapping(raw)
+            identity_fields = (
+                "attempt_id",
+                "claim_id",
+                "task_cid",
+                "task_alias",
+                "attempt_number",
+                "owner_session_id",
+                "fencing_token",
+                "fence_epoch",
+                "lease_id",
+                "committed_phase",
+                "status",
+                "revision",
+            )
+            return all(
+                getattr(observed, field) == getattr(attempt, field)
+                for field in identity_fields
+            )
+        connection = self._require_connection()
+        row = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM database_task_attempts AS candidate
+            WHERE candidate.task_cid = ?
+              AND candidate.attempt_id != ?
+              AND candidate.attempt_number >= ?
+            """,
+            [
+                attempt.task_cid,
+                attempt.attempt_id,
+                int(attempt.attempt_number),
+            ],
+        ).fetchone()
+        return bool(row is not None and int(row[0] or 0) == 0)
+
+    def _released_blocked_neutral_callback_coordination(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        """Reproduce the released fence left by one neutral callback quarantine.
+
+        Released coordination is immutable historical evidence, never present
+        mutation authority.  The subsequent task revision/receipt CAS remains
+        the only authority capable of reopening shared control state.
+        """
+
+        if self.coordinator.get_prepared_task_completion(attempt.task_cid) is not None:
+            raise DatabaseImplementationAuthorityError(
+                "callback-integration recovery cannot cross a prepared completion"
+            )
+        get_successor = getattr(
+            self.coordinator,
+            "get_task_claim_successor_projection",
+            None,
+        )
+        if not callable(get_successor):
+            raise DatabaseImplementationAuthorityError(
+                "callback-integration recovery cannot prove successor absence"
+            )
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        coordination_attempt = self.coordinator.get_task_attempt(
+            attempt.attempt_id
+        )
+        get_lease = getattr(self.coordinator, "get_lease", None)
+        lease = get_lease(attempt.lease_id) if callable(get_lease) else None
+        projections: list[Any] = [claim, coordination_attempt, lease]
+        identities: list[Mapping[str, Any]] = []
+        for projection in projections:
+            to_dict = getattr(projection, "to_dict", None)
+            value = to_dict() if callable(to_dict) else None
+            if not isinstance(value, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "callback-integration recovery has no exact released "
+                    "claim/attempt/lease triple"
+                )
+            identities.append(value)
+        claim_identity, attempt_identity, lease_identity = identities
+        common_identity = {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        revisions = (
+            claim_identity.get("revision"),
+            attempt_identity.get("revision"),
+            lease_identity.get("revision"),
+        )
+        if (
+            claim_identity.get("claim_id") != attempt.claim_id
+            or claim_identity.get("lease_id") != attempt.lease_id
+            or any(
+                claim_identity.get(field) != expected
+                for field, expected in common_identity.items()
+            )
+            or any(
+                attempt_identity.get(field) != expected
+                for field, expected in common_identity.items()
+            )
+            or lease_identity.get("lease_id") != attempt.lease_id
+            or lease_identity.get("lease_kind") != "task"
+            or lease_identity.get("scope_key") != f"task:{attempt.task_cid}"
+            or lease_identity.get("scope") != attempt.task_cid
+            or lease_identity.get("mode") != "exclusive"
+            or lease_identity.get("claim_id") != attempt.claim_id
+            or any(
+                lease_identity.get(field) != expected
+                for field, expected in common_identity.items()
+            )
+            or claim_identity.get("state") != "released"
+            or attempt_identity.get("status") != "released"
+            or lease_identity.get("state") != "released"
+            or claim_identity.get("expires_at_ms")
+            != lease_identity.get("expires_at_ms")
+            or any(
+                isinstance(revision, bool)
+                or not isinstance(revision, int)
+                or revision < 1
+                for revision in revisions
+            )
+            or self._failed_attempt_coordination_successor(attempt) is not None
+        ):
+            raise DatabaseImplementationConflictError(
+                "callback-integration recovery released coordination does not "
+                "reproduce"
+            )
+        return {
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "lease_state": "released",
+            "claim_state": "released",
+            "claim_revision": int(claim_identity["revision"]),
+            "coordination_attempt_status": "released",
+            "coordination_attempt_revision": int(
+                attempt_identity["revision"]
+            ),
+            "lease_revision": int(lease_identity["revision"]),
+            "expires_at_ms": int(claim_identity.get("expires_at_ms") or 0),
+            "observed_at_ms": self._now_ms(),
+            "historical_released": True,
+            "mutation_authority": "task_revision_and_control_receipt_cas",
+        }
+
+    def _exact_latest_blocked_neutral_callback_source(
+        self,
+        raw: Mapping[str, Any],
+        task: Any,
+    ) -> tuple[DatabaseTaskAttempt, dict[str, Any]] | None:
+        """Return the one exact blocked callback source admitted for rearm."""
+
+        attempt = self.get_attempt(str(raw.get("source_attempt_id") or ""))
+        if attempt is None:
+            return None
+        blocked_phases = [
+            item
+            for item in self.phase_history(attempt.attempt_id)
+            if item.get("phase") == ATTEMPT_PHASE_BLOCKED
+        ]
+        blocked_body = (
+            blocked_phases[0].get("body")
+            if len(blocked_phases) == 1
+            else None
+        )
+        failure_evidence = (
+            blocked_body.get("failure_evidence")
+            if isinstance(blocked_body, Mapping)
+            else None
+        )
+        if (
+            attempt.task_cid != str(getattr(task, "task_cid", "") or "")
+            or attempt.task_alias != str(
+                getattr(task, "task_alias", "") or ""
+            )
+            or attempt.status != "blocked"
+            or attempt.committed_phase != ATTEMPT_PHASE_BLOCKED
+            or not self._post_merge_source_matches_latest(raw, attempt)
+            or not self._local_attempt_is_exact_latest(attempt)
+            or not isinstance(blocked_body, Mapping)
+            or blocked_body.get("reason") != "portal_neutral_failure"
+            or blocked_body.get("portal_retryable_failure") is not False
+            or blocked_body.get("portal_replay_suppressed") is not True
+            or blocked_body.get("task_quarantined") is not True
+            or not isinstance(failure_evidence, Mapping)
+            or not self._blocked_neutral_portal_phase_matches(
+                attempt,
+                failure_evidence,
+            )
+            or not self._strict_resume_rejection_receipt_matches(
+                task,
+                attempt,
+                expected_failure_evidence=failure_evidence,
+            )
+            or not self._unknown_callback_post_merge_source_admitted(
+                raw,
+                attempt,
+                task,
+            )
+        ):
+            return None
+        coordination = self._released_blocked_neutral_callback_coordination(
+            attempt
+        )
+        return attempt, coordination
+
+    def _physical_post_merge_completion_source_attempt(
+        self,
+        seed: Mapping[str, Any],
+    ) -> DatabaseTaskAttempt:
+        """Reload and prove the physical latest cursor named by a retry seed."""
+
+        verified = self._verified_post_merge_completion_recovery_seed(seed)
+        attempt = self.get_attempt(str(verified["attempt_id"]))
+        callback_unknown = (
+            verified.get("terminal_reason")
+            == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+        )
+        get_successor = getattr(
+            self.coordinator,
+            "get_task_claim_successor_projection",
+            None,
+        )
+        allowed_statuses = {"blocked", "failed"} if callback_unknown else {"failed"}
+        expected_phase = (
+            ATTEMPT_PHASE_BLOCKED
+            if callback_unknown
+            else ATTEMPT_PHASE_FAILED
+        )
+        if (
+            attempt is None
+            or attempt.task_cid != verified["task_cid"]
+            or attempt.task_alias != verified["task_alias"]
+            or attempt.attempt_id != verified["attempt_id"]
+            or attempt.attempt_number != verified["attempt_number"]
+            or attempt.claim_id != verified["claim_id"]
+            or attempt.lease_id != verified["lease_id"]
+            or attempt.owner_session_id != verified["owner_session_id"]
+            or int(attempt.fencing_token) != verified["fencing_token"]
+            or int(attempt.fence_epoch) != verified["fence_epoch"]
+            or attempt.status not in allowed_statuses
+            or attempt.committed_phase != expected_phase
+            or not self._local_attempt_is_exact_latest(attempt)
+            or not callable(get_successor)
+            or self.coordinator.get_prepared_task_completion(attempt.task_cid)
+            is not None
+            or self._failed_attempt_coordination_successor(attempt) is not None
+        ):
+            raise DatabaseImplementationConflictError(
+                "post-merge completion recovery source cursor was superseded"
+            )
+        return attempt
+
+    def _verified_callback_unknown_recovery_history(
+        self,
+        task: Any,
+        *,
+        expected_evidence: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Return the exact retry revision created for one callback quarantine.
+
+        The task may already have advanced beyond ``retrying``.  In that
+        case its current completion receipt belongs to the successor claim,
+        so recovery must use the immutable task-revision projection rather
+        than require the transient retry head to remain current.
+        """
+
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        if not task_cid:
+            return None
+        request_id = str(expected_evidence.get("request_id") or "")
+        evidence_id = str(expected_evidence.get("evidence_id") or "")
+        qualified_target_commit = str(
+            expected_evidence.get("qualified_target_commit") or ""
+        )
+        candidates: list[dict[str, Any]] = []
+        for revision in self._task_revision_history_for_recovery(task_cid):
+            body = revision.get("body")
+            receipt = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            seed = (
+                receipt.get("post_merge_completion_recovery_seed")
+                if isinstance(receipt, Mapping)
+                else None
+            )
+            if not (
+                revision.get("status") == "retrying"
+                and isinstance(receipt, Mapping)
+                and receipt.get("operation")
+                == (
+                    "database_post_merge_declared_outputs_"
+                    "callback_integration_recovery"
+                )
+                and receipt.get("request_id") == request_id
+                and receipt.get("callback_reconciliation_evidence_id")
+                == evidence_id
+                and receipt.get("qualified_target_commit")
+                == qualified_target_commit
+                and isinstance(seed, Mapping)
+                and seed.get("qualification_kind")
+                == "callback_integration"
+                and seed.get("terminal_reason")
+                == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+            ):
+                continue
+            candidates.append(revision)
+        if not candidates:
+            return None
+        if len(candidates) != 1:
+            raise DatabaseImplementationConflictError(
+                "callback-integration recovery history is not unique"
+            )
+        revision = candidates[0]
+        body = revision["body"]
+        receipt = body["completion_receipt"]
+        seed = receipt["post_merge_completion_recovery_seed"]
+        try:
+            historical_task = replace(
+                task,
+                status="retrying",
+                revision=int(revision["revision"]),
+                body=dict(body),
+            )
+        except (TypeError, ValueError):
+            to_dict = getattr(task, "to_dict", None)
+            projection = to_dict() if callable(to_dict) else None
+            if not isinstance(projection, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "callback-integration recovery cannot reconstruct its "
+                    "historical task revision"
+                )
+            historical_task = SimpleNamespace(
+                **{
+                    **dict(projection),
+                    "status": "retrying",
+                    "revision": int(revision["revision"]),
+                    "body": dict(body),
+                }
+            )
+        source_attempt = self._post_merge_completion_source_attempt_from_seed(
+            seed
+        )
+        verified = self._verified_post_merge_declared_output_recovery_state(
+            source_attempt,
+            historical_task,
+            expected_evidence=expected_evidence,
+        )
+        return {
+            "source_attempt": source_attempt,
+            "historical_task": historical_task,
+            "revision": int(revision["revision"]),
+            "receipt": dict(receipt),
+            "seed": dict(seed),
+            "verified": verified,
+        }
+
+    def _verified_callback_unknown_terminal_foreign_successor(
+        self,
+        source: DatabaseTaskAttempt,
+        *,
+        recovery_revision: int,
+        current: Any,
+        foreign: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Verify a completed foreign successor from canonical task history."""
+
+        status = str(getattr(current, "status", "") or "").strip().lower()
+        current_revision = getattr(current, "revision", None)
+        current_body = getattr(current, "body", None)
+        receipt = self._control_attempt_receipt(current)
+        expected_identity = {
+            "claim_id": foreign.get("successor_claim_id"),
+            "attempt_id": foreign.get("successor_attempt_id"),
+            "lease_id": foreign.get("successor_lease_id"),
+            "owner_session_id": foreign.get("successor_owner_session_id"),
+            "fencing_token": foreign.get("successor_fencing_token"),
+            "fence_epoch": foreign.get("successor_fence_epoch"),
+        }
+        completion_preparation = (
+            receipt.get("coordination_preparation")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        if (
+            status not in {"completed", "complete", "done"}
+            or isinstance(current_revision, bool)
+            or not isinstance(current_revision, int)
+            or current_revision <= recovery_revision
+            or not isinstance(current_body, Mapping)
+            or not isinstance(receipt, Mapping)
+            or set(receipt) != _DATABASE_COMPLETE_RECEIPT_FIELDS
+            or receipt.get("operation") != "database_complete"
+            or any(
+                receipt.get(name) != value
+                for name, value in expected_identity.items()
+            )
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(receipt.get("evidence_digest") or ""),
+            )
+            is None
+            or not isinstance(completion_preparation, Mapping)
+            or not isinstance(receipt.get("validation"), Mapping)
+        ):
+            raise DatabaseImplementationConflictError(
+                "callback-integration recovery terminal foreign successor "
+                "receipt does not reproduce"
+            )
+
+        typed_claim_source = callable(
+            getattr(self.task_source, "claim_process_attestation", None)
+        )
+        expected_claim_operation = (
+            "database_attempt_admitted"
+            if typed_claim_source
+            else "database_claim"
+        )
+        revisions = self._task_revision_history_for_recovery(source.task_cid)
+        history_head = revisions[-1] if revisions else None
+        current_is_history_head = bool(
+            isinstance(history_head, Mapping)
+            and history_head.get("revision") == current_revision
+            and str(history_head.get("status") or "").strip().lower()
+            == status
+            and isinstance(history_head.get("body"), Mapping)
+            and _task_body_canonical_json_bytes(dict(history_head["body"]))
+            == _task_body_canonical_json_bytes(dict(current_body))
+        )
+        candidates: list[tuple[dict[str, Any], Any, Mapping[str, Any]]] = []
+        for entry in revisions:
+            if not (
+                recovery_revision < int(entry["revision"]) < current_revision
+                and str(entry["status"]).strip().lower() == "in_progress"
+            ):
+                continue
+            body = entry["body"]
+            claim_receipt = body.get("completion_receipt")
+            if (
+                not isinstance(claim_receipt, Mapping)
+                or claim_receipt.get("operation")
+                != expected_claim_operation
+                or claim_receipt.get("claimed_from_revision")
+                != recovery_revision
+                or any(
+                    claim_receipt.get(name) != value
+                    for name, value in expected_identity.items()
+                )
+                or isinstance(claim_receipt.get("attempt_number"), bool)
+                or not isinstance(claim_receipt.get("attempt_number"), int)
+                or claim_receipt["attempt_number"]
+                <= int(source.attempt_number)
+            ):
+                continue
+            try:
+                historical_task = replace(
+                    current,
+                    status="in_progress",
+                    revision=int(entry["revision"]),
+                    body=dict(body),
+                )
+            except (TypeError, ValueError):
+                to_dict = getattr(current, "to_dict", None)
+                projection = to_dict() if callable(to_dict) else None
+                if not isinstance(projection, Mapping):
+                    raise DatabaseImplementationAuthorityError(
+                        "callback-integration recovery cannot reconstruct "
+                        "the foreign claim revision"
+                    )
+                historical_task = SimpleNamespace(
+                    **{
+                        **dict(projection),
+                        "status": "in_progress",
+                        "revision": int(entry["revision"]),
+                        "body": dict(body),
+                    }
+                )
+            if not self._shared_claim_revision_lineage_bound(
+                historical_task,
+                claim_receipt,
+            ):
+                continue
+            if typed_claim_source and not self._current_typed_attempt_admission(
+                historical_task,
+                claim_receipt,
+                expected_attempt_number=int(
+                    claim_receipt["attempt_number"]
+                ),
+            ):
+                continue
+            candidates.append((entry, historical_task, claim_receipt))
+        if not current_is_history_head or len(candidates) != 1:
+            raise DatabaseImplementationConflictError(
+                "callback-integration recovery terminal foreign successor "
+                "history is absent or ambiguous"
+            )
+        claim_entry, _historical_task, claim_receipt = candidates[0]
+        preparation_identity = {
+            "task_cid": source.task_cid,
+            **expected_identity,
+            "attempt_number": int(claim_receipt["attempt_number"]),
+        }
+        if (
+            any(
+                completion_preparation.get(name) != value
+                for name, value in preparation_identity.items()
+            )
+            or completion_preparation.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "task-completion-preparation@1"
+            )
+            or completion_preparation.get("control_expected_revision")
+            != int(claim_entry["revision"])
+            or str(
+                completion_preparation.get("control_expected_status") or ""
+            ).strip().lower()
+            != "in_progress"
+            or completion_preparation.get("evidence_digest")
+            != receipt.get("evidence_digest")
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(completion_preparation.get("preparation_digest") or ""),
+            )
+            is None
+            or isinstance(completion_preparation.get("prepared_at_ms"), bool)
+            or not isinstance(
+                completion_preparation.get("prepared_at_ms"),
+                int,
+            )
+            or completion_preparation["prepared_at_ms"] < 0
+            or not isinstance(completion_preparation.get("body"), Mapping)
+        ):
+            raise DatabaseImplementationConflictError(
+                "callback-integration recovery terminal completion "
+                "preparation does not bind the foreign claim"
+            )
+        return {
+            **expected_identity,
+            "attempt_number": int(claim_receipt["attempt_number"]),
+            "claimed_from_revision": recovery_revision,
+            "claim_revision": int(claim_entry["revision"]),
+            "control_revision": int(current_revision),
+            "control_operation": "database_complete",
+            "terminal_status": status,
+            "observation_authority": (
+                "canonical_task_history_and_completion_receipt"
+            ),
+        }
+
+    def _settle_callback_unknown_recovery_cursor(
+        self,
+        history_state: Mapping[str, Any],
+        task: Any,
+    ) -> dict[str, Any]:
+        """Retire the blocked cursor or prove a canonical successor won.
+
+        A successor may be claimed immediately after the recovery returns.
+        Therefore successor creation is a valid replay result, not a recovery
+        failure.  The old cursor is mutated only while it remains the exact
+        current execution projection; otherwise this method is observation
+        only.
+        """
+
+        source = history_state.get("source_attempt")
+        if not isinstance(source, DatabaseTaskAttempt):
+            raise DatabaseImplementationAuthorityError(
+                "callback-integration recovery history has no typed source"
+            )
+
+        def successor_outcome() -> dict[str, Any] | None:
+            successor = self._failed_attempt_coordination_successor(source)
+            control_status = str(
+                getattr(task, "status", "") or ""
+            ).strip().lower()
+            coordination_scope = "source_lane"
+            if successor is None:
+                foreign = self._fresh_failed_attempt_control_supersession(
+                    source
+                )
+                if foreign is None:
+                    return None
+                current = self.task_source.get(source.task_cid)
+                receipt = self._control_attempt_receipt(current)
+                recovery_revision = history_state.get("revision")
+                expected_foreign_identity = {
+                    "claim_id": foreign.get("successor_claim_id"),
+                    "attempt_id": foreign.get("successor_attempt_id"),
+                    "lease_id": foreign.get("successor_lease_id"),
+                    "owner_session_id": foreign.get(
+                        "successor_owner_session_id"
+                    ),
+                    "fencing_token": foreign.get(
+                        "successor_fencing_token"
+                    ),
+                    "fence_epoch": foreign.get("successor_fence_epoch"),
+                }
+                current_status = str(
+                    getattr(current, "status", "") or ""
+                ).strip().lower()
+                if (
+                    current_status in {"completed", "complete", "done"}
+                    and not isinstance(recovery_revision, bool)
+                    and isinstance(recovery_revision, int)
+                ):
+                    terminal_successor = (
+                        self._verified_callback_unknown_terminal_foreign_successor(
+                            source,
+                            recovery_revision=recovery_revision,
+                            current=current,
+                            foreign=foreign,
+                        )
+                    )
+                    return {
+                        "cursor_state": "superseded",
+                        "retired": False,
+                        "source_attempt_id": source.attempt_id,
+                        "successor": dict(terminal_successor),
+                        "control_status": current_status,
+                        "coordination_scope": "canonical_foreign_lane",
+                    }
+                typed_claim_source = callable(
+                    getattr(
+                        self.task_source,
+                        "claim_process_attestation",
+                        None,
+                    )
+                )
+                expected_operation = (
+                    "database_attempt_admitted"
+                    if typed_claim_source
+                    else "database_claim"
+                )
+                if (
+                    current is None
+                    or str(getattr(current, "status", "") or "")
+                    .strip()
+                    .lower()
+                    != "in_progress"
+                    or isinstance(recovery_revision, bool)
+                    or not isinstance(recovery_revision, int)
+                    or not isinstance(receipt, Mapping)
+                    or receipt.get("operation")
+                    != expected_operation
+                    or receipt.get("claimed_from_revision")
+                    != recovery_revision
+                    or not self._shared_claim_revision_lineage_bound(
+                        current,
+                        receipt,
+                    )
+                    or any(
+                        receipt.get(name) != value
+                        for name, value in expected_foreign_identity.items()
+                    )
+                    or isinstance(receipt.get("attempt_number"), bool)
+                    or not isinstance(receipt.get("attempt_number"), int)
+                    or receipt["attempt_number"]
+                    <= int(source.attempt_number)
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "callback-integration recovery foreign successor does "
+                        "not descend from the exact retry revision"
+                    )
+                successor = {
+                    **expected_foreign_identity,
+                    "attempt_number": int(receipt["attempt_number"]),
+                    "claimed_from_revision": recovery_revision,
+                    "control_revision": int(
+                        getattr(current, "revision", 0) or 0
+                    ),
+                    "control_operation": expected_operation,
+                    "observation_authority": "canonical_control_receipt",
+                }
+                control_status = "in_progress"
+                coordination_scope = "canonical_foreign_lane"
+            return {
+                "cursor_state": "superseded",
+                "retired": False,
+                "source_attempt_id": source.attempt_id,
+                "successor": dict(successor),
+                "control_status": control_status,
+                "coordination_scope": coordination_scope,
+            }
+
+        superseded = successor_outcome()
+        if superseded is not None:
+            return superseded
+        physical = self.get_attempt(source.attempt_id)
+        expected_identity = {
+            "attempt_id": source.attempt_id,
+            "claim_id": source.claim_id,
+            "task_cid": source.task_cid,
+            "task_alias": source.task_alias,
+            "attempt_number": int(source.attempt_number),
+            "owner_session_id": source.owner_session_id,
+            "fencing_token": int(source.fencing_token),
+            "fence_epoch": int(source.fence_epoch),
+            "lease_id": source.lease_id,
+            "committed_phase": ATTEMPT_PHASE_BLOCKED,
+        }
+        if physical is None or any(
+            getattr(physical, name) != expected
+            for name, expected in expected_identity.items()
+        ):
+            superseded = successor_outcome()
+            if superseded is not None:
+                return superseded
+            raise DatabaseImplementationConflictError(
+                "callback-integration recovery source cursor disappeared or changed"
+            )
+        if physical.status == "failed":
+            if int(physical.revision) != int(source.revision) + 1:
+                raise DatabaseImplementationConflictError(
+                    "callback-integration recovery cursor retirement revision differs"
+                )
+            return {
+                "cursor_state": "already_retired",
+                "retired": False,
+                "source_attempt_id": source.attempt_id,
+                "control_status": str(
+                    getattr(task, "status", "") or ""
+                ).strip().lower(),
+            }
+        if (
+            physical.status != "blocked"
+            or int(physical.revision) != int(source.revision)
+            or not self._local_attempt_is_exact_latest(physical)
+        ):
+            superseded = successor_outcome()
+            if superseded is not None:
+                return superseded
+            raise DatabaseImplementationConflictError(
+                "callback-integration recovery source is no longer retireable"
+            )
+        try:
+            retired = self._retire_stale_blocked_neutral_attempt(
+                physical,
+                task,
+            )
+        except Exception:
+            superseded = successor_outcome()
+            if superseded is not None:
+                return superseded
+            replay = self.get_attempt(source.attempt_id)
+            if (
+                replay is not None
+                and replay.status == "failed"
+                and replay.committed_phase == ATTEMPT_PHASE_BLOCKED
+                and int(replay.revision) == int(source.revision) + 1
+            ):
+                retired = replay
+            else:
+                raise
+        return {
+            "cursor_state": "retired",
+            "retired": True,
+            "source_attempt_id": retired.attempt_id,
+            "control_status": str(
+                getattr(task, "status", "") or ""
+            ).strip().lower(),
+        }
 
     @staticmethod
     def _post_merge_completion_crash_source_matches(
@@ -100942,19 +101901,37 @@ class DatabaseImplementationDaemon:
         )
         current_task = self.task_source.get(attempt.task_cid)
         terminal_reason = str(seed.get("terminal_reason") or "")
+        historical_task: Any = None
+        if current_task is not None and isinstance(body, Mapping):
+            try:
+                historical_task = replace(
+                    current_task,
+                    status="quarantined",
+                    revision=int(source_task_revision),
+                    body=dict(body),
+                )
+            except (TypeError, ValueError):
+                to_dict = getattr(current_task, "to_dict", None)
+                current_projection = (
+                    to_dict() if callable(to_dict) else None
+                )
+                if isinstance(current_projection, Mapping):
+                    historical_task = SimpleNamespace(
+                        **{
+                            **dict(current_projection),
+                            "status": "quarantined",
+                            "revision": int(source_task_revision),
+                            "body": dict(body),
+                        }
+                    )
         callback_unknown_source = bool(
             terminal_reason
             == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
             and entry.get("status") == "quarantined"
             and isinstance(body, Mapping)
-            and self._strict_resume_rejection_receipt_matches(
-                SimpleNamespace(
-                    task_cid=attempt.task_cid,
-                    task_alias=attempt.task_alias,
-                    status="quarantined",
-                    revision=source_task_revision,
-                    body=dict(body),
-                ),
+            and historical_task is not None
+            and self._historical_callback_unknown_quarantine_receipt_matches(
+                historical_task,
                 attempt,
             )
         )
@@ -101120,6 +102097,10 @@ class DatabaseImplementationDaemon:
                     "rearm receipt"
                 )
             source_execution = recovery_receipt
+        callback_unknown = (
+            verified.get("terminal_reason")
+            == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+        )
         source = DatabaseTaskAttempt(
             attempt_id=str(verified["attempt_id"]),
             claim_id=str(verified["claim_id"]),
@@ -101130,7 +102111,11 @@ class DatabaseImplementationDaemon:
             fencing_token=int(verified["fencing_token"]),
             fence_epoch=int(verified["fence_epoch"]),
             lease_id=str(verified["lease_id"]),
-            committed_phase=ATTEMPT_PHASE_FAILED,
+            committed_phase=(
+                ATTEMPT_PHASE_BLOCKED
+                if callback_unknown
+                else ATTEMPT_PHASE_FAILED
+            ),
             status="failed",
             started_at_ms=0,
             finished_at_ms=source_execution.get("execution_finished_at_ms"),
@@ -114631,13 +115616,78 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery rejected task identity or authority"
             )
         status = str(task.status or "").strip().lower()
+        task_body = getattr(task, "body", None)
+        retry_receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        retry_seed = (
+            retry_receipt.get("post_merge_completion_recovery_seed")
+            if isinstance(retry_receipt, Mapping)
+            else None
+        )
+        callback_recovery_history = (
+            self._verified_callback_unknown_recovery_history(
+                task,
+                expected_evidence=evidence,
+            )
+            if qualification_kind == "callback_integration"
+            else None
+        )
+        if callback_recovery_history is not None:
+            # The retry revision remains authoritative after its successor is
+            # claimed.  This is the restart/lost-response path: observe exact
+            # history, settle the old cursor only if it is still current, and
+            # never issue a second shared CAS.
+            cursor = self._settle_callback_unknown_recovery_cursor(
+                callback_recovery_history,
+                task,
+            )
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": True,
+                "changed": False,
+                "status": status,
+                "task_cid": task_cid,
+                "task_alias": str(raw["task_alias"]),
+                "request_id": str(raw["request_id"]),
+                "qualified_target_commit": qualified_target_commit,
+                "qualification_kind": qualification_kind,
+                "qualification_receipt_id": qualification_receipt_id,
+                **(
+                    {
+                        "repair_commit": qualified_target_commit,
+                        "repair_receipt_id": qualification_receipt_id,
+                    }
+                    if qualification_kind == "repair"
+                    else {}
+                ),
+                "evidence_id": evidence_id,
+                "cursor_state": str(cursor["cursor_state"]),
+                **(
+                    {"successor": dict(cursor["successor"])}
+                    if isinstance(cursor.get("successor"), Mapping)
+                    else {}
+                ),
+                "write_count": 0,
+            }
         crash_context = self._post_merge_completion_crash_recovery_context(
             task,
             require_current_blocked=True,
         )
+        blocked_callback_source = (
+            self._exact_latest_blocked_neutral_callback_source(raw, task)
+            if qualification_kind == "callback_integration"
+            and status == "quarantined"
+            else None
+        )
         latest = (
             crash_context["current_attempt"]
             if crash_context is not None
+            else blocked_callback_source[0]
+            if blocked_callback_source is not None
             else {
                 candidate.task_cid: candidate
                 for candidate in self._latest_failed_attempts()
@@ -114648,25 +115698,10 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery requires the latest failed attempt"
             )
         unknown_callback_source_admitted = (
-            qualification_kind == "callback_integration"
-            and self._unknown_callback_post_merge_source_admitted(
-                raw,
-                latest,
-                task,
-            )
+            blocked_callback_source is not None
+            and latest.attempt_id == blocked_callback_source[0].attempt_id
         )
         if status == "retrying":
-            task_body = getattr(task, "body", None)
-            retry_receipt = (
-                task_body.get("completion_receipt")
-                if isinstance(task_body, Mapping)
-                else None
-            )
-            retry_seed = (
-                retry_receipt.get("post_merge_completion_recovery_seed")
-                if isinstance(retry_receipt, Mapping)
-                else None
-            )
             source_attempt = (
                 latest
                 if retry_seed is None
@@ -114911,6 +115946,7 @@ class DatabaseImplementationDaemon:
                 control_receipt,
             )
             if not crash_source_admitted
+            and not unknown_callback_source_admitted
             else None
         )
         portable_coordination_authority = bool(
@@ -114921,6 +115957,9 @@ class DatabaseImplementationDaemon:
             dict(crash_context["current_receipt"]["coordination"])
             if crash_portable_coordination_authority
             and crash_context is not None
+            else dict(blocked_callback_source[1])
+            if unknown_callback_source_admitted
+            and blocked_callback_source is not None
             else dict(ordinary_portable_coordination)
             if ordinary_portable_coordination is not None
             else self._reconcile_failed_attempt_coordination(latest)
@@ -115033,6 +116072,11 @@ class DatabaseImplementationDaemon:
                 raw["source_projection_immutable_digest"]
             ),
             "queue_reason": queue_reason,
+            **(
+                {"backoff_ms": 0, "retry_not_before_ms": 0}
+                if unknown_callback_source_admitted
+                else {}
+            ),
             "queue_receipt": {},
             "coordination": transition_source_coordination,
             "control_expected_status": status,
@@ -115093,6 +116137,179 @@ class DatabaseImplementationDaemon:
             return guarded_queue_status(
                 **guarded_arguments,
             )
+
+        if unknown_callback_source_admitted:
+            # The neutral quarantine deliberately released its old fence.
+            # Treat that triple only as historical evidence and let the
+            # shared DuckDB task revision + exact control receipt authorize
+            # the one transition.  Generic failed-attempt recovery would
+            # either reject the released lease or, worse, risk treating it as
+            # current authority.
+            current_task = self.task_source.get(task_cid)
+            refreshed_source = (
+                self._exact_latest_blocked_neutral_callback_source(
+                    raw,
+                    current_task,
+                )
+                if current_task is not None
+                else None
+            )
+            current_body = getattr(current_task, "body", None)
+            current_control_receipt = (
+                current_body.get("completion_receipt")
+                if isinstance(current_body, Mapping)
+                else None
+            )
+            if (
+                refreshed_source is None
+                or refreshed_source[0].attempt_id != latest.attempt_id
+                or current_task is None
+                or int(current_task.revision) != int(task.revision)
+                or not isinstance(current_control_receipt, Mapping)
+                or dict(current_control_receipt) != dict(control_receipt)
+            ):
+                raise DatabaseImplementationConflictError(
+                    "callback-integration recovery control was superseded"
+                )
+            transition_error: BaseException | None = None
+            try:
+                direct_transition = project_recovery()
+            except Exception as exc:
+                # An owner command can commit and lose its response.  Accept
+                # only the exact durable retry projection reconstructed from
+                # canonical task history; otherwise preserve the original
+                # failure.
+                transition_error = exc
+                direct_transition = None
+            updated = self.task_source.get(task_cid)
+            if direct_transition is None:
+                try:
+                    if updated is None:
+                        raise DatabaseImplementationConflictError(
+                            "callback-integration recovery task disappeared"
+                        )
+                    replay_history = (
+                        self._verified_callback_unknown_recovery_history(
+                            updated,
+                            expected_evidence=evidence,
+                        )
+                    )
+                    if replay_history is None:
+                        raise DatabaseImplementationConflictError(
+                            "callback-integration recovery CAS has no durable "
+                            "retry revision"
+                        )
+                    cursor = self._settle_callback_unknown_recovery_cursor(
+                        replay_history,
+                        updated,
+                    )
+                except Exception:
+                    assert transition_error is not None
+                    raise transition_error
+                return {
+                    "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                    "attempted": True,
+                    "recovered": True,
+                    "changed": False,
+                    "status": str(
+                        getattr(updated, "status", "") or ""
+                    ).strip().lower(),
+                    "task_cid": task_cid,
+                    "task_alias": str(raw["task_alias"]),
+                    "request_id": str(raw["request_id"]),
+                    "qualified_target_commit": qualified_target_commit,
+                    "qualification_kind": qualification_kind,
+                    "qualification_receipt_id": qualification_receipt_id,
+                    "evidence_id": evidence_id,
+                    "cursor_state": str(cursor["cursor_state"]),
+                    **(
+                        {"successor": dict(cursor["successor"])}
+                        if isinstance(cursor.get("successor"), Mapping)
+                        else {}
+                    ),
+                    "write_count": 0,
+                }
+            if updated is None:
+                raise DatabaseImplementationDaemonError(
+                    "callback-integration recovery task disappeared after CAS"
+                )
+            result_map = dict(direct_transition)
+            cas_result = result_map.get("cas_result")
+            to_dict = getattr(cas_result, "to_dict", None)
+            queue_receipt = result_map.get("queue_receipt")
+            queue_reused = result_map.get("queue_reused")
+            if (
+                not callable(to_dict)
+                or not isinstance(queue_receipt, Mapping)
+                or type(queue_reused) is not bool
+            ):
+                raise DatabaseImplementationDaemonError(
+                    "callback-integration recovery CAS returned malformed evidence"
+                )
+            replay_history = self._verified_callback_unknown_recovery_history(
+                updated,
+                expected_evidence=evidence,
+            )
+            if replay_history is None:
+                raise DatabaseImplementationConflictError(
+                    "callback-integration recovery CAS has no durable retry revision"
+                )
+            cursor = self._settle_callback_unknown_recovery_cursor(
+                replay_history,
+                updated,
+            )
+            self._record_event(
+                (
+                    "unknown_callback_landed_recovery_attempt_retired"
+                    if cursor.get("retired") is True
+                    else "unknown_callback_landed_recovery_successor_observed"
+                ),
+                attempt_id=str(cursor["source_attempt_id"]),
+                task_cid=task_cid,
+                body={
+                    "request_id": str(raw["request_id"]),
+                    "recovery_evidence_id": evidence_id,
+                    "provider_dispatched": False,
+                    "source_provider_effect_state": "unknown_may_have_started",
+                    "task_transition_authority": (
+                        "task_revision_and_control_receipt_cas"
+                    ),
+                    "cursor_state": str(cursor["cursor_state"]),
+                    **(
+                        {"successor": dict(cursor["successor"])}
+                        if isinstance(cursor.get("successor"), Mapping)
+                        else {}
+                    ),
+                },
+            )
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": True,
+                "changed": True,
+                "status": str(
+                    getattr(updated, "status", "") or ""
+                ).strip().lower(),
+                "task_cid": task_cid,
+                "task_alias": str(raw["task_alias"]),
+                "request_id": str(raw["request_id"]),
+                "candidate_commit": str(raw["candidate_commit"]),
+                "qualified_target_commit": qualified_target_commit,
+                "qualification_kind": qualification_kind,
+                "qualification_receipt_id": qualification_receipt_id,
+                "evidence_id": evidence_id,
+                "coordination": coordination,
+                "queue_reused": queue_reused,
+                "queue_receipt": dict(queue_receipt),
+                "control_receipt": dict(to_dict()),
+                "cursor_state": str(cursor["cursor_state"]),
+                **(
+                    {"successor": dict(cursor["successor"])}
+                    if isinstance(cursor.get("successor"), Mapping)
+                    else {}
+                ),
+                "write_count": 1 if queue_reused else 2,
+            }
 
         transition = self._persist_failed_attempt_transition(
             latest,
