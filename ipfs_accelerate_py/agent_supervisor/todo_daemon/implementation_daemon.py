@@ -108127,6 +108127,21 @@ class DatabaseImplementationDaemon:
                 f"retryable attempt {attempt.attempt_id} has no control task"
             )
         task_status = str(task.status or "").strip().lower()
+        prior_task_body = getattr(task, "body", None)
+        prior_control_receipt = (
+            prior_task_body.get("completion_receipt")
+            if isinstance(prior_task_body, Mapping)
+            else None
+        )
+        landed_retrying_upgrade = bool(
+            landed_completion_recovery_evidence is not None
+            and task_status == "retrying"
+            and (
+                not isinstance(prior_control_receipt, Mapping)
+                or prior_control_receipt.get("operation")
+                != "database_portal_landed_completion_revalidation"
+            )
+        )
         get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
         record_queue_backoff = getattr(
             self.task_source,
@@ -108201,15 +108216,20 @@ class DatabaseImplementationDaemon:
                         or not isinstance(prior_deadline, int)
                         or prior_deadline < delay_ms
                     ):
-                        raise DatabaseImplementationAuthorityError(
-                            "retrying task has no reproducible typed cooldown "
-                            "deadline"
-                        )
-                    cooldown_started_at_ms = prior_deadline - delay_ms
+                        if not landed_retrying_upgrade:
+                            raise DatabaseImplementationAuthorityError(
+                                "retrying task has no reproducible typed cooldown "
+                                "deadline"
+                            )
+                        cooldown_started_at_ms = self._now_ms()
+                    else:
+                        cooldown_started_at_ms = prior_deadline - delay_ms
                 return record_task_retry_cooldown(
                     task_cid=attempt.task_cid,
                     expected_task_revision=(
-                        int(task.revision) - 1
+                        int(task.revision)
+                        if landed_retrying_upgrade
+                        else int(task.revision) - 1
                         if task_status == "retrying"
                         else int(task.revision)
                     ),
@@ -108559,7 +108579,7 @@ class DatabaseImplementationDaemon:
                 )
             return len(encoded), len(event_encoding)
 
-        if task_status == "retrying":
+        if task_status == "retrying" and not landed_retrying_upgrade:
             if validation_retry_successor_evidence is not None:
                 self._verified_validation_retry_successor_recovery_state(
                     attempt,
@@ -108871,7 +108891,11 @@ class DatabaseImplementationDaemon:
                 "queue_reused": queue_reused,
                 "queue_receipt": queue_receipt_dict,
             }
-        if task_status != "in_progress" and not blocked_recovery:
+        if (
+            task_status != "in_progress"
+            and not blocked_recovery
+            and not landed_retrying_upgrade
+        ):
             raise DatabaseImplementationConflictError(
                 f"retryable attempt {attempt.attempt_id} cannot move control "
                 f"task from {task_status!r} to 'retrying'"
@@ -108903,8 +108927,9 @@ class DatabaseImplementationDaemon:
                 )
 
         if (
-            task_status == "blocked"
+            task_status in {"blocked", "retrying"}
             and landed_completion_recovery_evidence is not None
+            and (task_status == "blocked" or landed_retrying_upgrade)
         ):
             verified_landed_recovery = (
                 self._verified_landed_completion_recovery_receipt(
@@ -109043,7 +109068,10 @@ class DatabaseImplementationDaemon:
         if (
             (
                 protected_path_recovery_evidence is not None
-                or landed_completion_recovery_evidence is not None
+                or (
+                    landed_completion_recovery_evidence is not None
+                    and not landed_retrying_upgrade
+                )
                 or capacity_retry_evidence is not None
                 or protected_preservation_evidence is not None
             )
