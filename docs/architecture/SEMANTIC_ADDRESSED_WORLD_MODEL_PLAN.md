@@ -1857,7 +1857,33 @@ coordination record, provider invocation, implementation commit, or merge
 attempt changes. M33 requires the exact live generation-29 owner and does not
 authorize a restart.
 
-## 42. Current limitations at seal time
+## 42. M34 recursive JSON-emission normalization successor
+
+`SAWM-R2-M34` preserves M33 event 284, projection
+`baguqeera5wkenkpg5zpndh5whgwrqkvpq2e7qz6xv6rflrajynrpqf7dtmla`, and
+receipt `sha256:ae8270d95f6b5d199a6dc20ba63b6fe5cb7f0fe4f8a30044b03af796a72dcf64`.
+It keeps the exact `run-r2-m27` generation-29 owner on port 24070 and appends
+only operator evidence event 285 with projection
+`baguqeeragsizyo6v4izu7qfvjbj5l5bjkuycw2xyaf3vhlzx2nai7xyrvd4q`.
+
+The bounded repair recursively converts closed operator output mappings,
+including nested `mappingproxy` values, and tuples/lists into plain JSON-ready
+objects before encoding. Non-string mapping keys and unsupported values still
+fail closed, and Quack credentials remain redacted. The repair changes no task,
+goal, plan, accepted completion, coordination state, provider invocation,
+implementation commit, merge attempt, owner identity, or generation. It does
+not authorize a restart, write a synthetic owner marker, or rewrite M33's
+receipt.
+
+M34 is selected by key presence before M33 and every older successor. Historical
+M33 source-chain validation is pinned to M34's accepted base commit/tree
+`a5aa77fe58cd706ed8a1a2ae9d3f1e652f28b7f9` and
+`8fe38992e84c291a0cab6d2afc6cda5bb4f08ab8`. Its nine protected control paths
+are unchanged. The initial control commit, tree, and blob identities remain
+zero placeholders until the bounded repair commit is sealed; they confer no
+runtime or completion authority.
+
+## 43. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

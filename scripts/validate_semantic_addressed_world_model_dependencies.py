@@ -3197,6 +3197,198 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m34_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = "json_emission_normalization_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m34_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    """Validate the M34 base and either its placeholders or final reseal."""
+
+    try:
+        chain = authority.get("source_chain", {})
+        initial_blobs = chain.get("initial_control_blobs", {})
+        zero = "0" * 40
+        if (
+            not isinstance(chain, Mapping)
+            or not isinstance(initial_blobs, Mapping)
+            or chain.get("base_control_commit")
+            != "a5aa77fe58cd706ed8a1a2ae9d3f1e652f28b7f9"
+            or chain.get("base_control_tree")
+            != "8fe38992e84c291a0cab6d2afc6cda5bb4f08ab8"
+            or set(initial_blobs) != set(authority.get("operator_control_paths", ()))
+            or len(initial_blobs) != 9
+            or _git(
+                root,
+                "rev-parse",
+                "a5aa77fe58cd706ed8a1a2ae9d3f1e652f28b7f9^{tree}",
+            )
+            != "8fe38992e84c291a0cab6d2afc6cda5bb4f08ab8"
+        ):
+            raise RuntimeError("M34 accepted base/control path identity differs")
+        identities = (
+            chain.get("initial_control_commit"),
+            chain.get("initial_control_tree"),
+            chain.get("final_reseal_parent"),
+            *initial_blobs.values(),
+        )
+        if all(value == zero for value in identities):
+            return []
+        if not hasattr(materializer, "_assert_m34_source_delta"):
+            raise RuntimeError("M34 final source-delta verifier is unavailable")
+        population = materializer.build_population(root)
+        materializer._assert_m34_source_delta(root, population, authority)
+        return []
+    except Exception as exc:
+        return [
+            "M34 exact JSON-emission repair/reseal chain differs: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m34_json_emission_normalization_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    key = "json_emission_normalization_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m34_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M34 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer._expected_m34_json_emission_normalization_authority()
+        )
+        reference = materializer._m34_authority_reference()
+        contract = materializer._validated_m34_live_preflight_contract(expected)
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append(
+                "M34 JSON-emission normalization authority is only partially declared"
+            )
+        if scheduler.get(key) != reference or migration.get(key) != reference:
+            errors.append("M34 JSON-emission authority reference differs")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M34 JSON-emission authority CID differs")
+        binding = expected.get("runtime_binding", {})
+        prior = expected.get("prior_authority", {})
+        repair = expected.get("accepted_control_plane_repair", {})
+        changes = expected.get("exact_changes", {})
+        preservation = expected.get("preservation", {})
+        source_chain = expected.get("source_chain", {})
+        initial_blobs = source_chain.get("initial_control_blobs", {})
+        if (
+            expected.get("schema")
+            != "sawm/json-emission-normalization-successor-authorization@1"
+            or expected.get("migration_revision") != "SAWM-R2-M34"
+            or expected.get("migration_kind") != key
+            or expected.get("target_generation") != 29
+            or expected.get("target_event_watermark") != 285
+            or expected.get("target_projection_cid")
+            != "baguqeeragsizyo6v4izu7qfvjbj5l5bjkuycw2xyaf3vhlzx2nai7xyrvd4q"
+            or binding.get("run_id") != "run-r2-m27"
+            or binding.get("prior_event_watermark") != 284
+            or binding.get("store_generation") != 29
+            or binding.get("quack_port") != 24_070
+            or prior.get("migration_revision") != "SAWM-R2-M33"
+            or prior.get("event_prefix_sha256")
+            != "22687fc6b6f5c082b1c30fcc4a1669d661bc8a67fe39e52e453b56d8eb3ee236"
+            or prior.get("projection_cid")
+            != "baguqeera5wkenkpg5zpndh5whgwrqkvpq2e7qz6xv6rflrajynrpqf7dtmla"
+            or prior.get("m33_receipt_sha256")
+            != "cb5040ce01d739240d0e29ce89f0874f9dd56302a4d0836acf4c076f56f4a682"
+            or prior.get("m33_receipt_cid")
+            != "sha256:ae8270d95f6b5d199a6dc20ba63b6fe5cb7f0fe4f8a30044b03af796a72dcf64"
+            or contract.get("migration_revision") != "SAWM-R2-M34"
+            or contract.get("expected_task_heads")
+            != materializer._m30_expected_task_heads()
+            or repair.get("defect") != "non_recursive_operator_json_serialization"
+            or repair.get("resolution")
+            != "recursively_normalize_closed_operator_output_before_json_encoding"
+            or repair.get("authority_weakened") is not False
+            or changes.get("event_suffix_length") != 1
+            or changes.get("operator_json_serialization_changes") != 1
+            or any(
+                changes.get(field) != 0
+                for field in (
+                    "task_revision_changes",
+                    "task_status_changes",
+                    "plan_revision_changes",
+                    "goal_revision_changes",
+                    "owner_generation_changes",
+                    "coordination_semantic_changes",
+                    "accepted_completion_changes",
+                )
+            )
+            or preservation.get("same_live_owner") is not True
+            or preservation.get("generation_restart") is not False
+            or preservation.get("m33_receipt_preserved") is not True
+            or source_chain.get("base_control_commit")
+            != "a5aa77fe58cd706ed8a1a2ae9d3f1e652f28b7f9"
+            or source_chain.get("base_control_tree")
+            != "8fe38992e84c291a0cab6d2afc6cda5bb4f08ab8"
+            or source_chain.get("initial_control_commit")
+            != materializer._M34_INITIAL_CONTROL_COMMIT
+            or source_chain.get("initial_control_tree")
+            != materializer._M34_INITIAL_CONTROL_TREE
+            or source_chain.get("final_reseal_parent")
+            != materializer._M34_INITIAL_CONTROL_COMMIT
+            or not isinstance(initial_blobs, Mapping)
+            or len(initial_blobs) != 9
+            or dict(initial_blobs) != dict(materializer._M34_INITIAL_CONTROL_BLOBS)
+        ):
+            errors.append("M34 JSON-emission normalization delta is not exact")
+        if require_active_runtime:
+            target_root = str(expected["target_runtime_root"])
+            program = scheduler.get("database_program")
+            owner = scheduler.get("quack_owner")
+            runtime = scheduler.get("runtime_paths")
+            if (
+                not isinstance(program, Mapping)
+                or program.get("store_id") != expected["target_store_id"]
+                or program.get("store_generation") != "29"
+                or program.get("quack_endpoint") != "quack:127.0.0.1:24070"
+                or not isinstance(owner, Mapping)
+                or owner.get("database_path") != expected["target_store_id"]
+                or owner.get("store_id") != expected["target_store_id"]
+                or owner.get("port") != 24_070
+                or runtime
+                != {
+                    "root": target_root,
+                    "state": f"{target_root}/state",
+                    "worktrees": f"{target_root}/worktrees",
+                    "merge_queue": f"{target_root}/merge-queue",
+                    "logs": f"{target_root}/logs",
+                    "generated_runtime_artifacts_are_completion_authority": False,
+                }
+            ):
+                errors.append("scheduler M34 target/runtime binding is not exact")
+        errors.extend(_m34_source_chain_errors(root, materializer, expected))
+        return errors
+    except Exception as exc:
+        return [
+            "M34 JSON-emission normalization authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m33_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -3210,9 +3402,26 @@ def _m33_source_chain_errors(
     root: Path,
     materializer: Any,
     authority: Mapping[str, Any],
+    *,
+    current_head: str | None = None,
 ) -> list[str]:
     try:
         population = materializer.build_population(root)
+        if current_head:
+            binding = dict(population["source_binding"])
+            binding.update(
+                {
+                    "head": current_head,
+                    "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                    "datasets_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                    ),
+                    "kit_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                    ),
+                }
+            )
+            population = {**population, "source_binding": binding}
         materializer._assert_m33_source_delta(root, population, authority)
         return []
     except Exception as exc:
@@ -3316,7 +3525,28 @@ def _m33_live_preflight_contract_successor_errors(
                 }
             ):
                 errors.append("scheduler M33 target/runtime binding is not exact")
-        errors.extend(_m33_source_chain_errors(root, materializer, expected))
+        historical_control_head = None
+        if not require_active_runtime and _m34_successor_declared(
+            scheduler, seal, migration
+        ):
+            m34 = (
+                materializer._expected_m34_json_emission_normalization_authority()
+            )
+            m34_source_chain = m34.get("source_chain", {})
+            if isinstance(m34_source_chain, Mapping):
+                historical_control_head = str(
+                    m34_source_chain.get("base_control_commit") or ""
+                ) or None
+            if historical_control_head is None:
+                errors.append("M34 prior M33 control source head is absent")
+        errors.extend(
+            _m33_source_chain_errors(
+                root,
+                materializer,
+                expected,
+                current_head=historical_control_head,
+            )
+        )
         return errors
     except Exception as exc:
         return [
@@ -9394,6 +9624,61 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m34_key = "json_emission_normalization_successor_materialization"
+    m34_presence = (
+        m34_key in scheduler,
+        m34_key in migration,
+        f"{m34_key}_cid" in seal,
+    )
+    if any(m34_presence):
+        if not all(m34_presence):
+            return effective, ["active M34 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m34_nested_source_materializer",
+                REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M34 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            reference = materializer._m34_authority_reference()
+            authority = (
+                materializer._expected_m34_json_emission_normalization_authority()
+            )
+            materializer._validated_m34_live_preflight_contract(authority)
+        except Exception as exc:
+            return effective, [f"active M34 nested-source authority unavailable: {exc}"]
+        if scheduler.get(m34_key) != reference or migration.get(m34_key) != reference:
+            return effective, ["active M34 nested-source authority differs"]
+        if seal.get(f"{m34_key}_cid") != materializer._identity(authority):
+            return effective, ["active M34 nested-source authority CID differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(authority.get("current_datasets_gitlink") or ""),
+                str(authority.get("current_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(authority.get("current_kit_gitlink") or ""),
+                str(authority.get("current_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M34 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     m33_key = "live_preflight_contract_successor_materialization"
     m33_presence = (
         m33_key in scheduler,
@@ -10009,6 +10294,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m34_key = "json_emission_normalization_successor_materialization"
+        m34_presence = (
+            m34_key in scheduler_probe,
+            m34_key in migration_probe,
+            f"{m34_key}_cid" in seal,
+        )
         m33_key = "live_preflight_contract_successor_materialization"
         m33_presence = (
             m33_key in scheduler_probe,
@@ -10101,7 +10392,35 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m33_presence):
+        if any(m34_presence):
+            scheduled = scheduler_probe.get(m34_key)
+            migrated = migration_probe.get(m34_key)
+            if not all(m34_presence) or scheduled != migrated:
+                unexpected = ["M34 authority is partial or differs across source controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m34_source_status_materializer",
+                    root / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M34 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer._expected_m34_json_emission_normalization_authority()
+                    )
+                    if (
+                        scheduled != materializer._m34_authority_reference()
+                        or seal.get(f"{m34_key}_cid")
+                        != materializer._identity(expected)
+                    ):
+                        unexpected = ["M34 authority/CID differs across source controls"]
+                    else:
+                        unexpected = _m34_source_chain_errors(
+                            root, materializer, expected
+                        )
+        elif any(m33_presence):
             scheduled = scheduler_probe.get(m33_key)
             migrated = migration_probe.get(m33_key)
             if not all(m33_presence) or scheduled != migrated:
@@ -11022,6 +11341,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m34_declared = _m34_successor_declared(scheduler, seal, migration)
         m33_declared = _m33_successor_declared(scheduler, seal, migration)
         m32_declared = _m32_successor_declared(scheduler, seal, migration)
         m31_declared = _m31_successor_declared(scheduler, seal, migration)
@@ -11031,7 +11351,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m33_declared
+            m34_declared
+            or m33_declared
             or m32_declared
             or m31_declared
             or m30_declared
@@ -11041,10 +11362,20 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
+            if m34_declared:
+                protocol_errors.extend(
+                    _m34_json_emission_normalization_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
             if m33_declared:
                 protocol_errors.extend(
                     _m33_live_preflight_contract_successor_errors(
-                        scheduler, seal, migration, root=root
+                        scheduler,
+                        seal,
+                        migration,
+                        root=root,
+                        require_active_runtime=not m34_declared,
                     )
                 )
             if m32_declared:
@@ -11054,7 +11385,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not m33_declared,
+                        require_active_runtime=not (m34_declared or m33_declared),
                     )
                 )
             if m31_declared:
@@ -11064,7 +11395,9 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not (m33_declared or m32_declared),
+                        require_active_runtime=not (
+                            m34_declared or m33_declared or m32_declared
+                        ),
                     )
                 )
             if m30_declared:
@@ -11075,7 +11408,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         migration,
                         root=root,
                         require_active_runtime=not (
-                            m33_declared or m32_declared or m31_declared
+                            m34_declared
+                            or m33_declared or m32_declared or m31_declared
                         ),
                     )
                 )

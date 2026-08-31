@@ -18,13 +18,14 @@ import sys
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import MappingProxyType, ModuleType, SimpleNamespace
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "json_emission_normalization_successor_materialization",
     "live_preflight_contract_successor_materialization",
     "live_preflight_plan_anchor_successor_materialization",
     "detached_coordinator_pid_recovery_successor_materialization",
@@ -4604,6 +4605,239 @@ def test_m29_presence_masks_m28_and_keeps_every_predecessor_historical(
     assert any("only partially declared" in error for error in errors)
 
 
+def test_m34_authority_and_recursive_json_emission_are_exact(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m34_authority_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m34_json_test",
+    )
+    key = "json_emission_normalization_successor_materialization"
+    authority = materializer._expected_m34_json_emission_normalization_authority()
+    reference = materializer._m34_authority_reference()
+    scheduler = json.loads(
+        (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
+        .read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json")
+        .read_text(encoding="utf-8")
+    )
+    assert scheduler[key] == reference == migration[key]
+    assert seal[f"{key}_cid"] == reference["authority_cid"]
+    assert reference == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M34",
+        "authority_cid": materializer._identity(authority),
+    }
+    assert authority["runtime_binding"]["run_id"] == "run-r2-m27"
+    assert authority["target_generation"] == 29
+    assert authority["target_quack_port"] == 24_070
+    assert authority["runtime_binding"]["prior_event_watermark"] == 284
+    assert authority["target_event_watermark"] == 285
+    assert authority["prior_authority"] == {
+        **authority["prior_authority"],
+        "migration_revision": "SAWM-R2-M33",
+        "event_prefix_sha256": (
+            "22687fc6b6f5c082b1c30fcc4a1669d661bc8a67fe39e52e453b56d8eb3ee236"
+        ),
+        "projection_cid": (
+            "baguqeera5wkenkpg5zpndh5whgwrqkvpq2e7qz6xv6rflrajynrpqf7dtmla"
+        ),
+        "m33_receipt_sha256": (
+            "cb5040ce01d739240d0e29ce89f0874f9dd56302a4d0836acf4c076f56f4a682"
+        ),
+        "m33_receipt_cid": (
+            "sha256:ae8270d95f6b5d199a6dc20ba63b6fe5cb7f0fe4f8a30044b03af796a72dcf64"
+        ),
+    }
+    assert authority["target_projection_cid"] == (
+        "baguqeeragsizyo6v4izu7qfvjbj5l5bjkuycw2xyaf3vhlzx2nai7xyrvd4q"
+    )
+    source_chain = authority["source_chain"]
+    assert source_chain["base_control_commit"] == (
+        "a5aa77fe58cd706ed8a1a2ae9d3f1e652f28b7f9"
+    )
+    assert source_chain["base_control_tree"] == (
+        "8fe38992e84c291a0cab6d2afc6cda5bb4f08ab8"
+    )
+    assert source_chain["initial_control_commit"] == "0" * 40
+    assert source_chain["initial_control_tree"] == "0" * 40
+    assert source_chain["final_reseal_parent"] == "0" * 40
+    assert len(authority["operator_control_paths"]) == 9
+    assert set(source_chain["initial_control_blobs"]) == set(
+        authority["operator_control_paths"]
+    )
+    assert set(source_chain["initial_control_blobs"].values()) == {"0" * 40}
+    assert dict(materializer._validated_m34_live_preflight_contract(authority)) == (
+        authority["live_preflight_contract"]
+    )
+
+    nested = MappingProxyType(
+        {
+            "valid": True,
+            "nested": MappingProxyType(
+                {"items": (MappingProxyType({"value": 7}), {"value": 8})}
+            ),
+        }
+    )
+    assert operator._emit(nested) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "valid": True,
+        "nested": {"items": [{"value": 7}, {"value": 8}]},
+    }
+
+    secret = "m34-quack-token-value"
+    monkeypatch.setenv("SAWM_TEST_QUACK_TOKEN", secret)
+    assert operator._emit(
+        MappingProxyType(
+            {
+                "valid": False,
+                f"key-{secret}": (MappingProxyType({"value": f"uses-{secret}"}),),
+            }
+        )
+    ) == 2
+    rendered = capsys.readouterr().out
+    assert secret not in rendered
+    assert json.loads(rendered) == {
+        "key-<redacted-quack-token>": [
+            {"value": "uses-<redacted-quack-token>"}
+        ],
+        "valid": False,
+    }
+    for invalid in (
+        MappingProxyType({1: "non-string-key"}),
+        MappingProxyType({"valid": True, "value": float("nan")}),
+        MappingProxyType({"valid": True, "value": object()}),
+        MappingProxyType({secret: 1, "<redacted-quack-token>": 2}),
+    ):
+        with pytest.raises(operator.OperatorError):
+            operator._emit(invalid)
+        assert capsys.readouterr().out == ""
+
+
+def test_m34_presence_masks_m33_and_m33_uses_historical_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m34_presence_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m34_presence_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m34_historical_m33_head_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m34_presence_test",
+    )
+    scheduler = json.loads((REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json").read_text(encoding="utf-8"))
+    migration = json.loads((REPO_ROOT / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json").read_text(encoding="utf-8"))
+    seal = json.loads((REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json").read_text(encoding="utf-8"))
+
+    selected = operator._active_source_repair_materialization(scheduler)
+    assert selected["migration_revision"] == "SAWM-R2-M34"
+    assert dict(selected) == materializer._expected_m34_json_emission_normalization_authority()
+    selection_source = inspect.getsource(operator._active_source_repair_materialization)
+    assert selection_source.index("if m34_key in config:") < selection_source.index("if m33_key in config:")
+    key = "json_emission_normalization_successor_materialization"
+    assert dependencies._m34_successor_declared({key: None}, {}, {}) is True
+
+    monkeypatch.setattr(board, "_m34_migration_errors", lambda *_args, **_kwargs: ["M34 active"])
+    historical_calls: list[bool] = []
+
+    def historical(*_args: object, **kwargs: object) -> list[str]:
+        historical_calls.append(kwargs.get("require_active_runtime") is False)
+        return []
+
+    for name in (
+        "_m33_migration_errors", "_m32_migration_errors", "_m31_migration_errors",
+        "_m30_migration_errors", "_m29_migration_errors", "_m28_migration_errors",
+        "_m27_migration_errors", "_m26_migration_errors", "_m25_migration_errors",
+        "_m24_migration_errors", "_m23_migration_errors", "_m22_migration_errors",
+        "_m21_migration_errors", "_m20_migration_errors", "_m19_migration_errors",
+        "_m18_migration_errors", "_m17_migration_errors", "_m16_migration_errors",
+    ):
+        monkeypatch.setattr(board, name, historical)
+    assert board._active_successor_migration_errors(
+        {key: None}, {}, {}
+    ) == [
+        "M34 active",
+        "M34 JSON-emission normalization authority is only partially declared",
+    ]
+    assert historical_calls == [True] * 18
+
+    observed: list[str | None] = []
+
+    def source_chain(
+        _root: Path, _materializer: object, _authority: Mapping[str, object],
+        *, current_head: str | None = None,
+    ) -> list[str]:
+        observed.append(current_head)
+        return []
+
+    monkeypatch.setattr(dependencies, "_m33_source_chain_errors", source_chain)
+    assert dependencies._m33_live_preflight_contract_successor_errors(
+        scheduler, seal, migration, root=REPO_ROOT, require_active_runtime=False
+    ) == []
+    assert observed == ["a5aa77fe58cd706ed8a1a2ae9d3f1e652f28b7f9"]
+
+
+def test_m34_is_evidence_only_without_restart_or_synthetic_marker() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m34_append_only_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m34_marker_test",
+    )
+    authority = materializer._expected_m34_json_emission_normalization_authority()
+    assert authority["live_owner"]["generation_restart_authorized"] is False
+    assert authority["preservation"]["generation_restart"] is False
+    assert authority["preservation"]["same_live_owner"] is True
+    assert authority["preservation"]["m33_receipt_preserved"] is True
+    assert authority["exact_changes"]["event_suffix_length"] == 1
+    assert authority["exact_changes"]["owner_generation_changes"] == 0
+    assert authority["exact_changes"]["task_revision_changes"] == 0
+    assert authority["exact_changes"]["accepted_completion_changes"] == 0
+
+    materialize_source = inspect.getsource(materializer._materialize_m34)
+    marker_source = inspect.getsource(operator._require_m34_source_successor_marker)
+    assert "record_evidence" in materialize_source
+    assert "record_completion" not in materialize_source
+    assert "record_generation_start" not in materialize_source
+    assert "m33-source-successor-receipt.json" in marker_source
+    assert "m34-source-successor-receipt.json" in marker_source
+    assert "checked is None" in marker_source
+    assert "write_text" not in marker_source
+    for required in (
+        "m33_receipt_cid",
+        "m33_event_prefix_verified",
+        "normalized_live_preflight_contract_verified",
+        "json_emission_normalization_verified",
+        "recursive_json_emission_normalization_verified",
+        "full_event_and_evidence_body_verified",
+    ):
+        assert required in marker_source
+
+
 def test_m33_authority_and_normalized_preflight_contract_are_exact() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -4735,6 +4969,13 @@ def test_m33_presence_masks_m32_and_m32_uses_historical_head(
     scheduler = json.loads((REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json").read_text(encoding="utf-8"))
     migration = json.loads((REPO_ROOT / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json").read_text(encoding="utf-8"))
     seal = json.loads((REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json").read_text(encoding="utf-8"))
+    scheduler, migration, seal = _historical_successor_controls_at(
+        "live_preflight_contract_successor_materialization",
+        scheduler,
+        migration,
+        seal,
+    )
+    assert migration is not None and seal is not None
     selected = operator._active_source_repair_materialization(scheduler)
     assert selected["migration_revision"] == "SAWM-R2-M33"
     assert dict(selected) == materializer._expected_m33_live_preflight_contract_authority()

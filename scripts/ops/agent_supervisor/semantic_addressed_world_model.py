@@ -30,6 +30,27 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+_M34_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.duckdb"
+)
+_M34_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.coordination.duckdb"
+)
+_M34_WORKTREE_ROOT = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/worktrees"
+)
+_M34_GENERATION = 29
+_M34_TARGET_PLAN_REVISION = 28
+_M34_TARGET_EVENT_WATERMARK = 285
+_M34_TARGET_PROJECTION_CID = (
+    "baguqeeragsizyo6v4izu7qfvjbj5l5bjkuycw2xyaf3vhlzx2nai7xyrvd4q"
+)
+_M34_TARGET_QUACK_PORT = 24_070
+_M34_INITIAL_CONTROL_COMMIT = "0000000000000000000000000000000000000000"
+_M34_INITIAL_CONTROL_TREE = "0000000000000000000000000000000000000000"
 _M33_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
     "run-r2-m27/control.duckdb"
@@ -794,8 +815,45 @@ def _config(path: Path) -> dict[str, Any]:
 
 
 def _emit(value: Mapping[str, Any]) -> int:
-    print(json.dumps(value, indent=2, sort_keys=True))
-    return 0 if value.get("valid", True) is True else 2
+    secrets = {
+        str(secret)
+        for name, secret in os.environ.items()
+        if name.endswith("_QUACK_TOKEN") and len(str(secret)) >= 8
+    }
+
+    def normalize(item: Any) -> Any:
+        if isinstance(item, Mapping):
+            normalized: dict[str, Any] = {}
+            for key, child in item.items():
+                if not isinstance(key, str):
+                    raise OperatorError("operator JSON output keys must be strings")
+                safe_key = key
+                for secret in sorted(secrets, key=len, reverse=True):
+                    safe_key = safe_key.replace(secret, "<redacted-quack-token>")
+                if safe_key in normalized:
+                    raise OperatorError("operator JSON output keys collide after redaction")
+                normalized[safe_key] = normalize(child)
+            return normalized
+        if isinstance(item, (list, tuple)):
+            return [normalize(child) for child in item]
+        if item is None or isinstance(item, (bool, int)):
+            return item
+        if isinstance(item, float):
+            if not math.isfinite(item):
+                raise OperatorError("operator JSON output contains a nonfinite number")
+            return item
+        if isinstance(item, str):
+            rendered = item
+            for secret in sorted(secrets, key=len, reverse=True):
+                rendered = rendered.replace(secret, "<redacted-quack-token>")
+            return rendered
+        raise OperatorError(
+            f"operator JSON output contains unsupported {type(item).__name__}"
+        )
+
+    normalized = normalize(value)
+    print(json.dumps(normalized, indent=2, sort_keys=True, allow_nan=False))
+    return 0 if normalized.get("valid", True) is True else 2
 
 
 def _credential_safe_error(exc: BaseException) -> str:
@@ -831,6 +889,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m34_key = "json_emission_normalization_successor_materialization"
     m33_key = "live_preflight_contract_successor_materialization"
     m32_key = "live_preflight_plan_anchor_successor_materialization"
     m31_key = "detached_coordinator_pid_recovery_successor_materialization"
@@ -858,6 +917,53 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m34_key in config:
+        authority = config.get(m34_key)
+        try:
+            materializer = _materializer()
+            expected = materializer._expected_m34_json_emission_normalization_authority()
+            reference = materializer._m34_authority_reference()
+            materializer._validated_m34_live_preflight_contract(expected)
+        except Exception as exc:
+            raise OperatorError("active M34 authority is unavailable") from exc
+        target_root = str(Path(_M34_STORE_ID).parent)
+        expected_runtime = {
+            "root": target_root,
+            "state": f"{target_root}/state",
+            "worktrees": _M34_WORKTREE_ROOT,
+            "merge_queue": f"{target_root}/merge-queue",
+            "logs": f"{target_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        binding = expected.get("runtime_binding")
+        if (
+            not isinstance(authority, Mapping)
+            or dict(authority) != reference
+            or expected.get("migration_revision") != "SAWM-R2-M34"
+            or not isinstance(binding, Mapping)
+            or binding.get("store_id") != _M34_STORE_ID
+            or binding.get("store_generation") != _M34_GENERATION
+            or binding.get("target_event_watermark") != _M34_TARGET_EVENT_WATERMARK
+            or binding.get("quack_port") != _M34_TARGET_QUACK_PORT
+            or expected.get("target_projection_cid") != _M34_TARGET_PROJECTION_CID
+            or not isinstance(program, Mapping)
+            or program.get("store_id") != _M34_STORE_ID
+            or program.get("store_generation") != str(_M34_GENERATION)
+            or program.get("quack_endpoint") != "quack:127.0.0.1:24070"
+            or program.get("worktree_root") != _M34_WORKTREE_ROOT
+            or not isinstance(owner, Mapping)
+            or owner.get("database_path") != _M34_STORE_ID
+            or owner.get("store_id") != _M34_STORE_ID
+            or owner.get("port") != _M34_TARGET_QUACK_PORT
+            or owner.get("state_dir") != f"{target_root}/quack-owner"
+            or config.get("runtime_paths") != expected_runtime
+        ):
+            raise OperatorError(
+                "active M34 JSON-emission normalization authority is invalid"
+            )
+        return MappingProxyType(expected)
     if m33_key in config:
         authority = config.get(m33_key)
         try:
@@ -2283,6 +2389,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            "json_emission_normalization_successor_materialization",
             "live_preflight_contract_successor_materialization",
             "live_preflight_plan_anchor_successor_materialization",
             "detached_coordinator_pid_recovery_successor_materialization",
@@ -4662,6 +4769,142 @@ def _require_m18_final_pair_marker(
                 "M18 materializer check differs from its final pair marker"
             )
     return MappingProxyType(dict(observed))
+
+
+def _require_m34_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M34 event 285 and the immutable M33 receipt/prefix."""
+
+    key = "json_emission_normalization_successor_materialization"
+    if key not in config:
+        return MappingProxyType({})
+    expected_authority = (
+        materializer._expected_m34_json_emission_normalization_authority()
+    )
+    expected_reference = materializer._m34_authority_reference()
+    source_chain = expected_authority.get("source_chain", {})
+    if (
+        dict(authority) != expected_authority
+        or config.get(key) != expected_reference
+        or source_chain.get("initial_control_commit") != _M34_INITIAL_CONTROL_COMMIT
+        or source_chain.get("initial_control_tree") != _M34_INITIAL_CONTROL_TREE
+    ):
+        raise OperatorError("M34 JSON-emission normalization authority differs")
+    materializer._validated_m34_live_preflight_contract(expected_authority)
+    if checked is None:
+        raise OperatorError("M34 marker requires exact live materializer verification")
+
+    m33_authority = materializer._expected_m33_live_preflight_contract_authority()
+    m33_path = (REPO_ROOT / _M34_STORE_ID).resolve().parent / (
+        "m33-source-successor-receipt.json"
+    )
+    try:
+        m33_observed, m33_sha256 = materializer._load_nofollow_json(
+            m33_path, root=REPO_ROOT, noun="M34 preserved M33 source receipt"
+        )
+    except Exception as exc:
+        raise OperatorError("M34 preserved M33 source receipt is unavailable") from exc
+    m33_unhashed = dict(m33_observed)
+    m33_claimed = str(m33_unhashed.pop("receipt_cid", ""))
+    prior = expected_authority["prior_authority"]
+    if (
+        m33_sha256 != prior["m33_receipt_sha256"]
+        or m33_claimed != prior["m33_receipt_cid"]
+        or m33_claimed != materializer._identity(m33_unhashed)
+        or m33_observed.get("target_event_watermark")
+        != prior["event_watermark"]
+        or m33_observed.get("projection_cid") != prior["projection_cid"]
+        or m33_observed.get("target_event_prefix_sha256")
+        != prior["event_prefix_sha256"]
+    ):
+        raise OperatorError("M34 preserved M33 source receipt differs")
+    m33_marker = _require_m33_source_successor_marker(
+        config,
+        m33_authority,
+        materializer,
+        checked={
+            "valid": True,
+            "event_watermark": m33_observed.get("target_event_watermark"),
+            "projection_cid": m33_observed.get("projection_cid"),
+            "prior_event_prefix_verified": True,
+            "full_event_and_evidence_body_verified": m33_observed.get(
+                "full_event_and_evidence_body_verified"
+            ),
+            "receipt": m33_observed,
+        },
+    )
+
+    path = (REPO_ROOT / _M34_STORE_ID).resolve().parent / (
+        "m34-source-successor-receipt.json"
+    )
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            path, root=REPO_ROOT, noun="M34 source successor receipt"
+        )
+    except Exception as exc:
+        raise OperatorError("M34 exact source successor receipt is unavailable") from exc
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        claimed != materializer._identity(unhashed)
+        or checked.get("valid") is not True
+        or checked.get("event_watermark") != _M34_TARGET_EVENT_WATERMARK
+        or checked.get("projection_cid") != _M34_TARGET_PROJECTION_CID
+        or checked.get("prior_event_prefix_verified") is not True
+        or checked.get("full_event_and_evidence_body_verified") is not True
+        or checked.get("receipt") != observed
+        or observed.get("migration_revision") != "SAWM-R2-M34"
+        or observed.get(f"{key}_cid") != materializer._identity(expected_authority)
+        or observed.get("target_generation") != _M34_GENERATION
+        or observed.get("target_event_watermark") != _M34_TARGET_EVENT_WATERMARK
+        or observed.get("projection_cid") != _M34_TARGET_PROJECTION_CID
+        or observed.get("m33_receipt_cid") != m33_claimed
+        or observed.get("m33_event_prefix_verified") is not True
+        or observed.get("normalized_live_preflight_contract_verified") is not True
+        or observed.get("json_emission_normalization_verified") is not True
+        or observed.get("recursive_json_emission_normalization_verified") is not True
+        or observed.get("same_live_generation_29_owner_verified") is not True
+        or observed.get("queried_and_mutated_through_live_quack_only") is not True
+        or observed.get("direct_authoritative_file_opened") is not False
+        or observed.get("full_event_and_evidence_body_verified") is not True
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M34 exact source successor receipt differs")
+    return MappingProxyType(
+        {
+            **dict(m33_marker),
+            **dict(observed),
+            "prior_final_pair_receipt_cid": m33_marker[
+                "prior_final_pair_receipt_cid"
+            ],
+            "m29_source_successor_receipt_cid": m33_marker[
+                "m29_source_successor_receipt_cid"
+            ],
+            "m30_source_successor_receipt_cid": m33_marker[
+                "m30_source_successor_receipt_cid"
+            ],
+            "m31_source_successor_receipt_cid": m33_marker[
+                "m31_source_successor_receipt_cid"
+            ],
+            "m32_source_successor_receipt_cid": m33_marker[
+                "m32_source_successor_receipt_cid"
+            ],
+            "m33_source_successor_receipt_cid": m33_claimed,
+            "m34_source_successor_receipt_cid": claimed,
+            "source_successor_receipt_cid": claimed,
+            "source_successor_receipt_verified": True,
+            "source_successor_chain": {
+                **dict(m33_marker["source_successor_chain"]),
+                "m34_source_successor_receipt_cid": claimed,
+            },
+            "final_pair_commit_marker_verified": False,
+        }
+    )
 
 
 def _require_m33_source_successor_marker(
@@ -8309,6 +8552,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if "json_emission_normalization_successor_materialization" in config:
+        return _require_m34_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if "live_preflight_contract_successor_materialization" in config:
         return _require_m33_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -9313,6 +9560,10 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
+    if "json_emission_normalization_successor_materialization" in config:
+        raise OperatorError(
+            "M34 requires the exact live generation-29 owner; restart is not authorized"
+        )
     if "live_preflight_contract_successor_materialization" in config:
         raise OperatorError(
             "M33 requires the exact live generation-29 owner; restart is not authorized"
@@ -10079,6 +10330,46 @@ def _m23_portal_completion_is_compatible(
         is False
         and operational_validation_revision.get("worker_self_approval") is False
     )
+
+
+def _verify_m34_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M34's evidence-only JSON-emission normalization target."""
+
+    materializer._validated_m34_live_preflight_contract(authority)
+    head = materializer._inspect_m34_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M34_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M34_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M34_TARGET_PROJECTION_CID
+        or head.get("projection_cid") != expected_projection_cid
+    ):
+        raise materializer.MigrationRequired("M34 live head projection differs")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        if observed is None:
+            raise materializer.MigrationRequired(f"M34 task is missing: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
 
 
 def _verify_m33_live_head_task_projection(
@@ -11522,6 +11813,18 @@ def _normalized_live_preflight_contract(
     """Resolve one closed preflight view without shape-dependent aliases."""
 
     revision = str(active_source_repair.get("migration_revision") or "")
+    if revision == "SAWM-R2-M34":
+        try:
+            return materializer._validated_m34_live_preflight_contract(
+                active_source_repair
+            )
+        except (
+            materializer.MigrationRequired,
+            materializer.MaterializationError,
+        ) as exc:
+            raise OperatorError(
+                f"M34 normalized preflight contract differs: {exc}"
+            ) from exc
     if revision == "SAWM-R2-M33":
         try:
             return materializer._validated_m33_live_preflight_contract(
@@ -11627,6 +11930,7 @@ def _live_preflight(
         }
     )
     active_revision = str(active_source_repair.get("migration_revision") or "")
+    m34_active = active_revision == "SAWM-R2-M34"
     m33_active = active_revision == "SAWM-R2-M33"
     m32_active = active_revision == "SAWM-R2-M32"
     m31_active = active_revision == "SAWM-R2-M31"
@@ -11644,10 +11948,18 @@ def _live_preflight(
     m19_active = active_revision == "SAWM-R2-M19"
     m18_active = active_revision == "SAWM-R2-M18"
     evidence_only_post_m27 = any(
-        (m33_active, m32_active, m31_active, m30_active, m29_active, m28_active)
+        (
+            m34_active,
+            m33_active,
+            m32_active,
+            m31_active,
+            m30_active,
+            m29_active,
+            m28_active,
+        )
     )
     deferred_live_evidence_marker = any(
-        (m33_active, m32_active, m31_active, m30_active, m29_active)
+        (m34_active, m33_active, m32_active, m31_active, m30_active, m29_active)
     )
     final_pair_marker: Mapping[str, Any] = MappingProxyType({})
     if not m18_active and not deferred_live_evidence_marker:
@@ -11759,7 +12071,42 @@ def _live_preflight(
     except Exception:
         raise OperatorError("authenticated live Quack preflight open failed") from None
     try:
-        if m33_active:
+        if m34_active:
+            try:
+                m34_verified = materializer._verify_m34_live_materialization(
+                    live,
+                    live_identity,
+                    population,
+                    config,
+                    active_source_repair,
+                    validation_digest,
+                )
+                expected_m34_receipt = (
+                    materializer._expected_m34_source_successor_receipt(
+                        population,
+                        active_source_repair,
+                        validation_digest,
+                        m34_verified,
+                    )
+                )
+                final_pair_marker = _require_active_final_pair_marker(
+                    config,
+                    active_source_repair,
+                    materializer,
+                    checked={
+                        "valid": True,
+                        "receipt": expected_m34_receipt,
+                        **m34_verified,
+                    },
+                )
+            except (
+                materializer.MigrationRequired,
+                materializer.MaterializationError,
+            ) as exc:
+                raise OperatorError(
+                    f"M34 exact JSON-emission source seal failed: {exc}"
+                ) from exc
+        elif m33_active:
             try:
                 m33_verified = materializer._verify_m33_live_materialization(
                     live,
@@ -11975,7 +12322,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if "live_preflight_contract_successor_materialization" in config:
+            if "json_emission_normalization_successor_materialization" in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m34_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif "live_preflight_contract_successor_materialization" in config:
                 statuses, _revisions, _receipts = (
                     _verify_m33_live_head_task_projection(
                         live,
@@ -12256,7 +12613,7 @@ def _live_preflight(
         live_plan_body = (
             live_plan.get("body") if isinstance(live_plan, Mapping) else {}
         )
-        if m33_active:
+        if m34_active or m33_active:
             contract_anchor = preflight_contract["preserved_plan_anchor"]
             preserved_plan_anchor = MappingProxyType(
                 {
