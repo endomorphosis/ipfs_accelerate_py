@@ -93188,6 +93188,29 @@ class DatabaseImplementationDaemon:
             and self._quack_command_gateway is not None
         )
 
+    def _uses_typed_owner_landed_completion(self) -> bool:
+        """Return whether landed completion must use admitted Quack commands.
+
+        Production lanes attach through state-owner bootstrap.  That path
+        sets ``authority_mode="quack"`` with ``_quack_command_gateway is
+        None``, so ``_uses_quack_command_gateway()`` is false.  Compact
+        ``retrying → completed`` CAS is still denied by the exclusive
+        owner.
+        """
+
+        authority_mode = str(
+            getattr(self, "authority_mode", "") or ""
+        ).strip().lower().replace("-", "_")
+        if authority_mode == "quack":
+            return True
+        uses_gateway = getattr(self, "_uses_quack_command_gateway", None)
+        if not callable(uses_gateway):
+            return False
+        try:
+            return bool(uses_gateway())
+        except Exception:
+            return False
+
     def _require_execution_repository(self) -> Any:
         if not self._uses_quack_command_gateway():
             raise DatabaseImplementationDaemonError(
@@ -119352,14 +119375,7 @@ class DatabaseImplementationDaemon:
             control_receipt = None
         if not self._task_outputs_landed_on_target(current):
             return None
-        uses_gateway = getattr(self, "_uses_quack_command_gateway", None)
-        uses_quack = False
-        if callable(uses_gateway):
-            try:
-                uses_quack = bool(uses_gateway())
-            except Exception:
-                uses_quack = False
-        if uses_quack:
+        if DatabaseImplementationDaemon._uses_typed_owner_landed_completion(self):
             return DatabaseImplementationDaemon._complete_landed_task_under_typed_owner(
                 self,
                 current,
@@ -119386,6 +119402,12 @@ class DatabaseImplementationDaemon:
         this compact repair.
         """
 
+        if DatabaseImplementationDaemon._uses_typed_owner_landed_completion(self):
+            return DatabaseImplementationDaemon._complete_landed_task_under_typed_owner(
+                self,
+                current,
+                control_receipt,
+            )
         task_cid = str(getattr(current, "task_cid", "") or "")
         proof, digest = self._landed_merge_repair_proof(current)
         record_validation = getattr(
