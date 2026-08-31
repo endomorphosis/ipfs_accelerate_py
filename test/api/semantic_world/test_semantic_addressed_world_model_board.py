@@ -25,6 +25,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "live_preflight_contract_successor_materialization",
+    "live_preflight_plan_anchor_successor_materialization",
     "detached_coordinator_pid_recovery_successor_materialization",
     "stopped_owner_restart_source_seal_successor_materialization",
     "committed_evidence_verification_successor_materialization",
@@ -4602,6 +4604,187 @@ def test_m29_presence_masks_m28_and_keeps_every_predecessor_historical(
     assert any("only partially declared" in error for error in errors)
 
 
+def test_m33_authority_and_normalized_preflight_contract_are_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m33_authority_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m33_contract_test",
+    )
+    key = "live_preflight_contract_successor_materialization"
+    authority = materializer._expected_m33_live_preflight_contract_authority()
+    reference = materializer._m33_authority_reference()
+    scheduler = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert scheduler[key] == reference == migration[key]
+    assert seal[f"{key}_cid"] == reference["authority_cid"]
+    assert reference["authority_cid"] == materializer._identity(authority)
+    assert authority["migration_revision"] == "SAWM-R2-M33"
+    assert authority["target_generation"] == 29
+    assert authority["runtime_binding"]["prior_event_watermark"] == 283
+    assert authority["target_event_watermark"] == 284
+    assert authority["source_chain"]["base_control_commit"] == (
+        "0de00631fa0fdd2195dc6d532050887b83ce72f7"
+    )
+    assert authority["source_chain"]["base_control_tree"] == (
+        "c624481b51808d6e5f7fc0e801328592b210aeb3"
+    )
+    assert authority["source_chain"]["initial_control_commit"] == (
+        "0000000000000000000000000000000000000000"
+    )
+    assert authority["source_chain"]["initial_control_tree"] == (
+        "0000000000000000000000000000000000000000"
+    )
+    assert set(authority["source_chain"]["initial_control_blobs"]) == set(
+        authority["operator_control_paths"]
+    )
+    assert len(authority["operator_control_paths"]) == 9
+    contract = authority["live_preflight_contract"]
+    assert set(contract) == {
+        "schema", "migration_revision", "successor_class", "target_store_id",
+        "database_uuid", "target_generation", "target_event_watermark",
+        "target_plan_revision", "target_projection_cid",
+        "semantic_authority_digest", "preserved_plan_anchor",
+        "expected_task_heads",
+    }
+    assert contract["schema"] == "sawm/live-preflight-contract@1"
+    assert contract["successor_class"] == "evidence_only_post_m27"
+    assert contract["preserved_plan_anchor"] == authority["preserved_plan_anchor"]
+    assert contract["expected_task_heads"] == authority["expected_task_heads"]
+    assert dict(materializer._validated_m33_live_preflight_contract(authority)) == contract
+    assert dict(operator._normalized_live_preflight_contract(authority, materializer)) == contract
+
+
+@pytest.mark.parametrize(
+    ("paths", "invalid"),
+    (
+        ((("live_preflight_contract", "migration_revision"), ("migration_revision",)),
+         "SAWM-R2-M33-drift"),
+        ((("live_preflight_contract", "database_uuid"),
+          ("runtime_binding", "database_uuid"), ("live_owner", "database_uuid")),
+         "database:m33-drift"),
+        ((("live_preflight_contract", "target_generation"), ("target_generation",),
+          ("runtime_binding", "store_generation"), ("live_owner", "generation")), 30),
+        ((("live_preflight_contract", "target_event_watermark"),
+          ("target_event_watermark",), ("runtime_binding", "target_event_watermark"),
+          ("target_authority", "event_watermark")), 285),
+        ((("live_preflight_contract", "target_plan_revision"),
+          ("target_plan_revision",), ("runtime_binding", "plan_revision"),
+          ("target_authority", "plan_revision")), 29),
+        ((("live_preflight_contract", "target_projection_cid"),
+          ("target_projection_cid",), ("target_authority", "projection_cid")),
+         "baguqeera-m33-drift"),
+        ((("live_preflight_contract", "semantic_authority_digest"),
+          ("prior_authority", "semantic_authority_digest")), "sha256:" + "0" * 64),
+    ),
+)
+def test_m33_normalized_contract_rejects_coordinated_drift(
+    paths: tuple[tuple[str, ...], ...], invalid: object
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m33_contract_drift_test_" + str(len(paths)),
+    )
+    authority = copy.deepcopy(materializer._expected_m33_live_preflight_contract_authority())
+    for path in paths:
+        cursor = authority
+        for component in path[:-1]:
+            cursor = cursor[component]
+        cursor[path[-1]] = copy.deepcopy(invalid)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M33 normalized live-preflight contract differs",
+    ):
+        materializer._validated_m33_live_preflight_contract(authority)
+
+
+def test_m33_presence_masks_m32_and_m32_uses_historical_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m33_presence_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m33_presence_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m33_historical_m32_head_test",
+    )
+    scheduler = json.loads((REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json").read_text(encoding="utf-8"))
+    migration = json.loads((REPO_ROOT / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json").read_text(encoding="utf-8"))
+    seal = json.loads((REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json").read_text(encoding="utf-8"))
+    selected = operator._active_source_repair_materialization(scheduler)
+    assert selected["migration_revision"] == "SAWM-R2-M33"
+    assert dict(selected) == materializer._expected_m33_live_preflight_contract_authority()
+    selection_source = inspect.getsource(operator._active_source_repair_materialization)
+    assert selection_source.index("if m33_key in config:") < selection_source.index("if m32_key in config:")
+    observed: list[str | None] = []
+
+    def source_chain(
+        _root: Path, _materializer: object, _authority: Mapping[str, object],
+        *, current_head: str | None = None,
+    ) -> list[str]:
+        observed.append(current_head)
+        return []
+
+    monkeypatch.setattr(dependencies, "_m32_source_chain_errors", source_chain)
+    assert dependencies._m32_live_preflight_plan_anchor_successor_errors(
+        scheduler, seal, migration, root=REPO_ROOT, require_active_runtime=False
+    ) == []
+    assert observed == [authority_head := materializer._expected_m33_live_preflight_contract_authority()["source_chain"]["base_control_commit"]]
+    assert authority_head == "0de00631fa0fdd2195dc6d532050887b83ce72f7"
+
+
+def test_m33_preflight_and_marker_are_contract_driven_and_append_only() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m33_contract_route_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m33_contract_route_test",
+    )
+    live_source = inspect.getsource(operator._live_preflight)
+    recovery_source = inspect.getsource(operator._recover_stale_quack)
+    offline_source = inspect.getsource(operator._validate_offline_quack_start)
+    marker_source = inspect.getsource(operator._require_m33_source_successor_marker)
+    materialize_source = inspect.getsource(materializer._materialize_m33)
+    assert "_normalized_live_preflight_contract" in live_source
+    assert 'preflight_contract["database_uuid"]' in live_source
+    assert 'active_source_repair["prior_database_uuid"]' not in live_source
+    assert "_normalized_live_preflight_contract" in recovery_source
+    assert "M33 requires the exact live generation-29 owner" in offline_source
+    assert "_require_m32_source_successor_marker" in marker_source
+    assert "m32-source-successor-receipt.json" in marker_source
+    assert "m33_source_successor_receipt_cid" in marker_source
+    assert "_M33_PRIOR_EVENT_WATERMARK" in materialize_source
+    assert "_M33_TARGET_EVENT_WATERMARK" in materialize_source
+    assert "record_evidence" in materialize_source
+    assert "record_completion" not in materialize_source
+
+
 def test_m32_authority_and_preserved_plan_anchor_are_exact() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -5410,6 +5593,7 @@ def test_m29_provider_environment_guard_rejects_quack_token_substrings(
     }
     authority = {
         "migration_revision": "SAWM-R2-M29-test",
+        "target_generation": 27,
         "target_event_watermark": 274,
         "target_plan_revision": 28,
         "target_store_id": target_store,

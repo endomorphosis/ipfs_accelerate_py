@@ -1833,7 +1833,31 @@ The initial nine-control repair commit is
 `10e153a78f5709e8b841567ab4475f60eff05db3`); one final nine-control reseal
 binds its exact blobs without rewriting M31 or its event-282 receipt.
 
-## 41. Current limitations at seal time
+## 41. M33 normalized live-preflight contract successor
+
+`SAWM-R2-M33` preserves M32 event 283, receipt
+`sha256:e4981d0d623454ac9c55820b972fe818c78c7d5d7cb2208b9e05eba7461ad744`,
+generation 29, every task/goal/plan head, coordination state, and the M27 plan
+anchor. It appends only evidence event 284 through the live Quack owner.
+
+The repair replaces shape-dependent reads such as `prior_database_uuid` with a
+closed `sawm/live-preflight-contract@1`. The contract cross-binds the store,
+database UUID, generation, event cursor, plan revision, projection, semantic
+digest, preserved plan anchor, and exact task heads. Revision selection is
+exclusive, so retained historical successor keys cannot accidentally select
+an older compatibility path.
+
+The bounded repair uses exactly the nine protected operator-control paths.
+Its base commit/tree are `0de00631fa0fdd2195dc6d532050887b83ce72f7` and
+`c624481b51808d6e5f7fc0e801328592b210aeb3`; the initial control commit/tree
+are `0000000000000000000000000000000000000000` and
+`0000000000000000000000000000000000000000` until the final reseal. No task
+definition, status, accepted completion, plan, goal, owner generation,
+coordination record, provider invocation, implementation commit, or merge
+attempt changes. M33 requires the exact live generation-29 owner and does not
+authorize a restart.
+
+## 42. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

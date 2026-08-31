@@ -1,4 +1,5 @@
 {
+  "live_preflight_contract_successor_materialization_cid": "sha256:3cbd784ec6ff07726858cb1f52b265b03a3c5257bf97a901cd0d11a8aaa1cb86",
   "live_preflight_plan_anchor_successor_materialization_cid": "sha256:7ed2ac5bc4b9ca94af6166ce7d5f7dba4a4bf73012290ba36f71e1fac822fb48",
   "detached_coordinator_pid_recovery_successor_materialization_cid": "sha256:e49534abcd4a4820057029a3781de5c469dd7f3a63723b66c50ff2a28d643afe",
   "stopped_owner_restart_source_seal_successor_materialization_cid": "sha256:7e504699e5bc073182917e49147fe5bdc7b67b7f0a2a2bcb344379312b530f48",

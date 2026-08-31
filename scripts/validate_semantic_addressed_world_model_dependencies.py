@@ -3197,6 +3197,134 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m33_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = "live_preflight_contract_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m33_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    try:
+        population = materializer.build_population(root)
+        materializer._assert_m33_source_delta(root, population, authority)
+        return []
+    except Exception as exc:
+        return [
+            "M33 exact contract-repair/reseal chain differs: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m33_live_preflight_contract_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    key = "live_preflight_contract_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m33_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M33 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m33_live_preflight_contract_authority()
+        reference = materializer._m33_authority_reference()
+        contract = materializer._validated_m33_live_preflight_contract(expected)
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append("M33 live-preflight contract authority is only partially declared")
+        if scheduler.get(key) != reference or migration.get(key) != reference:
+            errors.append("M33 live-preflight contract authority reference differs")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M33 live-preflight contract authority CID differs")
+        binding = expected.get("runtime_binding", {})
+        prior = expected.get("prior_authority", {})
+        changes = expected.get("exact_changes", {})
+        preservation = expected.get("preservation", {})
+        source_chain = expected.get("source_chain", {})
+        if (
+            expected.get("migration_revision") != "SAWM-R2-M33"
+            or expected.get("target_generation") != 29
+            or expected.get("target_event_watermark") != 284
+            or expected.get("target_projection_cid")
+            != "baguqeera5wkenkpg5zpndh5whgwrqkvpq2e7qz6xv6rflrajynrpqf7dtmla"
+            or binding.get("prior_event_watermark") != 283
+            or binding.get("store_generation") != 29
+            or prior.get("m32_receipt_cid")
+            != "sha256:e4981d0d623454ac9c55820b972fe818c78c7d5d7cb2208b9e05eba7461ad744"
+            or contract.get("database_uuid")
+            != "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4"
+            or contract.get("successor_class") != "evidence_only_post_m27"
+            or changes.get("event_suffix_length") != 1
+            or any(
+                changes.get(field) != 0
+                for field in (
+                    "task_revision_changes",
+                    "task_status_changes",
+                    "plan_revision_changes",
+                    "goal_revision_changes",
+                    "owner_generation_changes",
+                    "coordination_semantic_changes",
+                    "accepted_completion_changes",
+                )
+            )
+            or preservation.get("same_live_owner") is not True
+            or preservation.get("generation_restart") is not False
+            or preservation.get("m32_receipt_preserved") is not True
+            or source_chain.get("initial_control_commit")
+            != "0000000000000000000000000000000000000000"
+            or source_chain.get("initial_control_tree")
+            != "0000000000000000000000000000000000000000"
+        ):
+            errors.append("M33 live-preflight contract repair delta is not exact")
+        if require_active_runtime:
+            target_root = str(expected["target_runtime_root"])
+            program = scheduler.get("database_program")
+            owner = scheduler.get("quack_owner")
+            runtime = scheduler.get("runtime_paths")
+            if (
+                not isinstance(program, Mapping)
+                or program.get("store_id") != expected["target_store_id"]
+                or program.get("store_generation") != "29"
+                or program.get("quack_endpoint") != "quack:127.0.0.1:24070"
+                or not isinstance(owner, Mapping)
+                or owner.get("database_path") != expected["target_store_id"]
+                or owner.get("store_id") != expected["target_store_id"]
+                or owner.get("port") != 24_070
+                or runtime
+                != {
+                    "root": target_root,
+                    "state": f"{target_root}/state",
+                    "worktrees": f"{target_root}/worktrees",
+                    "merge_queue": f"{target_root}/merge-queue",
+                    "logs": f"{target_root}/logs",
+                    "generated_runtime_artifacts_are_completion_authority": False,
+                }
+            ):
+                errors.append("scheduler M33 target/runtime binding is not exact")
+        errors.extend(_m33_source_chain_errors(root, materializer, expected))
+        return errors
+    except Exception as exc:
+        return [
+            "M33 live-preflight contract authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m32_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -3210,9 +3338,26 @@ def _m32_source_chain_errors(
     root: Path,
     materializer: Any,
     authority: Mapping[str, Any],
+    *,
+    current_head: str | None = None,
 ) -> list[str]:
     try:
         population = materializer.build_population(root)
+        if current_head:
+            binding = dict(population["source_binding"])
+            binding.update(
+                {
+                    "head": current_head,
+                    "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                    "datasets_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                    ),
+                    "kit_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                    ),
+                }
+            )
+            population = {**population, "source_binding": binding}
         materializer._assert_m32_source_delta(root, population, authority)
         return []
     except Exception as exc:
@@ -3318,7 +3463,26 @@ def _m32_live_preflight_plan_anchor_successor_errors(
                 }
             ):
                 errors.append("scheduler M32 target/runtime binding is not exact")
-        errors.extend(_m32_source_chain_errors(root, materializer, expected))
+        historical_control_head = None
+        if not require_active_runtime and _m33_successor_declared(
+            scheduler, seal, migration
+        ):
+            m33 = materializer._expected_m33_live_preflight_contract_authority()
+            source_chain = m33.get("source_chain", {})
+            if isinstance(source_chain, Mapping):
+                historical_control_head = str(
+                    source_chain.get("base_control_commit") or ""
+                ) or None
+            if historical_control_head is None:
+                errors.append("M33 prior M32 control source head is absent")
+        errors.extend(
+            _m32_source_chain_errors(
+                root,
+                materializer,
+                expected,
+                current_head=historical_control_head,
+            )
+        )
         return errors
     except Exception as exc:
         return [
@@ -9230,6 +9394,59 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m33_key = "live_preflight_contract_successor_materialization"
+    m33_presence = (
+        m33_key in scheduler,
+        m33_key in migration,
+        f"{m33_key}_cid" in seal,
+    )
+    if any(m33_presence):
+        if not all(m33_presence):
+            return effective, ["active M33 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m33_nested_source_materializer",
+                REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M33 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            reference = materializer._m33_authority_reference()
+            authority = materializer._expected_m33_live_preflight_contract_authority()
+            materializer._validated_m33_live_preflight_contract(authority)
+        except Exception as exc:
+            return effective, [f"active M33 nested-source authority unavailable: {exc}"]
+        if scheduler.get(m33_key) != reference or migration.get(m33_key) != reference:
+            return effective, ["active M33 nested-source authority differs"]
+        if seal.get(f"{m33_key}_cid") != materializer._identity(authority):
+            return effective, ["active M33 nested-source authority CID differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(authority.get("current_datasets_gitlink") or ""),
+                str(authority.get("current_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(authority.get("current_kit_gitlink") or ""),
+                str(authority.get("current_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M33 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     m32_key = "live_preflight_plan_anchor_successor_materialization"
     m32_presence = (
         m32_key in scheduler,
@@ -9792,6 +10009,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m33_key = "live_preflight_contract_successor_materialization"
+        m33_presence = (
+            m33_key in scheduler_probe,
+            m33_key in migration_probe,
+            f"{m33_key}_cid" in seal,
+        )
         m32_key = "live_preflight_plan_anchor_successor_materialization"
         m32_presence = (
             m32_key in scheduler_probe,
@@ -9878,7 +10101,33 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m32_presence):
+        if any(m33_presence):
+            scheduled = scheduler_probe.get(m33_key)
+            migrated = migration_probe.get(m33_key)
+            if not all(m33_presence) or scheduled != migrated:
+                unexpected = ["M33 authority is partial or differs across source controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m33_source_status_materializer",
+                    root / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M33 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = materializer._expected_m33_live_preflight_contract_authority()
+                    if (
+                        scheduled != materializer._m33_authority_reference()
+                        or seal.get(f"{m33_key}_cid")
+                        != materializer._identity(expected)
+                    ):
+                        unexpected = ["M33 authority/CID differs across source controls"]
+                    else:
+                        unexpected = _m33_source_chain_errors(
+                            root, materializer, expected
+                        )
+        elif any(m32_presence):
             scheduled = scheduler_probe.get(m32_key)
             migrated = migration_probe.get(m32_key)
             if not all(m32_presence) or scheduled != migrated:
@@ -10773,6 +11022,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m33_declared = _m33_successor_declared(scheduler, seal, migration)
         m32_declared = _m32_successor_declared(scheduler, seal, migration)
         m31_declared = _m31_successor_declared(scheduler, seal, migration)
         m30_declared = _m30_successor_declared(scheduler, seal, migration)
@@ -10781,7 +11031,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m32_declared
+            m33_declared
+            or m32_declared
             or m31_declared
             or m30_declared
             or m29_declared
@@ -10790,10 +11041,20 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
+            if m33_declared:
+                protocol_errors.extend(
+                    _m33_live_preflight_contract_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
             if m32_declared:
                 protocol_errors.extend(
                     _m32_live_preflight_plan_anchor_successor_errors(
-                        scheduler, seal, migration, root=root
+                        scheduler,
+                        seal,
+                        migration,
+                        root=root,
+                        require_active_runtime=not m33_declared,
                     )
                 )
             if m31_declared:
@@ -10803,7 +11064,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not m32_declared,
+                        require_active_runtime=not (m33_declared or m32_declared),
                     )
                 )
             if m30_declared:
@@ -10813,7 +11074,9 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not (m32_declared or m31_declared),
+                        require_active_runtime=not (
+                            m33_declared or m32_declared or m31_declared
+                        ),
                     )
                 )
             if m29_declared:

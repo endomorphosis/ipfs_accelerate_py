@@ -388,6 +388,30 @@ def _m16_migration_errors(
         return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m33_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Reuse the exact M33 normalized live-preflight contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m33_live_preflight_contract_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
+            )
+        )
+    except Exception as exc:
+        return [f"M33 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _m32_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -779,12 +803,52 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M31 before every historical successor.  Consequently
+    Key presence selects M33 before every historical successor.  Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m33_key = "live_preflight_contract_successor_materialization"
+    m33_seal_key = f"{m33_key}_cid"
+    m33_presence = (
+        m33_key in scheduler,
+        m33_key in migration,
+        m33_seal_key in seal,
+    )
+    if any(m33_presence):
+        errors = _m33_migration_errors(scheduler, seal, migration)
+        if not all(m33_presence):
+            errors.append("M33 live-preflight contract authority is only partially declared")
+        for validator in (
+            _m32_migration_errors,
+            _m31_migration_errors,
+            _m30_migration_errors,
+            _m29_migration_errors,
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(
+                    scheduler,
+                    seal,
+                    migration,
+                    require_active_runtime=False,
+                )
+            )
+        return errors
 
     m32_key = "live_preflight_plan_anchor_successor_materialization"
     m32_seal_key = f"{m32_key}_cid"
@@ -3141,6 +3205,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m33_key = "live_preflight_contract_successor_materialization"
+    m33_selected = any(
+        (
+            m33_key in config,
+            m33_key in migration,
+            f"{m33_key}_cid" in seal,
+        )
+    )
     m32_key = "live_preflight_plan_anchor_successor_materialization"
     m32_selected = any(
         (
@@ -3222,7 +3294,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     multi_lane_selected = (
-        m32_selected
+        m33_selected
+        or m32_selected
         or m31_selected
         or m29_selected
         or m28_selected
@@ -3238,7 +3311,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or config.get("max_lanes") != expected_lane_count
     ):
         config_errors.append(
-            "four lanes are required for M31/M29/M28/M27/M26/M25/M24/M23"
+            "four lanes are required for M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
             if multi_lane_selected
             else "one lane is required until sidecars are lane-scoped"
         )
@@ -3420,6 +3493,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m33_selected
+        else "run-r2-m27"
         if m32_selected
         else "run-r2-m27"
         if m31_selected
@@ -3472,6 +3547,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_generation = (
         "29"
+        if m33_selected
+        else "29"
         if m32_selected
         else "29"
         if m31_selected
@@ -3524,6 +3601,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m33_selected
+        else 24070
         if m32_selected
         else 24070
         if m31_selected
@@ -3589,7 +3668,47 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m32_selected:
+    if m33_selected:
+        successor = config.get(m33_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = materializer._expected_m33_live_preflight_contract_authority()
+            reference = materializer._m33_authority_reference()
+            source_chain = expected.get("source_chain", {})
+            if (
+                successor != reference
+                or migration.get(m33_key) != reference
+                or seal.get(f"{m33_key}_cid") != materializer._identity(expected)
+                or source_chain.get("initial_control_commit")
+                != materializer._M33_INITIAL_CONTROL_COMMIT
+                or source_chain.get("initial_control_commit")
+                != "0000000000000000000000000000000000000000"
+                or source_chain.get("initial_control_tree")
+                != materializer._M33_INITIAL_CONTROL_TREE
+                or module._m33_live_preflight_contract_successor_errors(
+                    config, seal, migration, root=root
+                )
+            ):
+                config_errors.append(
+                    "M33 live-preflight contract authority/CID/source differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M33 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M33 active runtime paths are not exactly preserved")
+    elif m32_selected:
         successor = config.get(m32_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
