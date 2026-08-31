@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
@@ -31,6 +32,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
+    TaskRecord,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
@@ -43,10 +45,18 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     exclusive_file_lock,
     open_duckdb_connection,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    database_portal_bridge as database_portal_bridge_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_COMPLETE,
     ATTEMPT_PHASE_EFFECT,
     ATTEMPT_PHASE_PROVIDER,
+    DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+    DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1,
     DATABASE_DAEMON_PASS_HEARTBEAT_SCHEMA,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_TASK_ATTEMPT_INTERFACE,
@@ -59,7 +69,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     parse_args,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+    DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
     DatabasePortalBridgeError,
+    DatabasePortalExecutionBridge,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_database_implementation_daemon_from_args,
@@ -172,6 +185,229 @@ def _open_daemon(
         task_shard_index=task_shard_index,
         strict_task_sharding=strict_task_sharding,
         task_prefix=task_prefix,
+    )
+
+
+def _authority_task_record(*, revision: int) -> TaskRecord:
+    return TaskRecord(
+        task_cid="task:cid:authority",
+        task_alias="AUTH-001",
+        goal_cid="goal:cid:authority",
+        plan_cid="plan:cid:authority",
+        ordinal=1,
+        status="in_progress",
+        revision=revision,
+        priority="P0",
+        body={
+            "objective": "Recover one exact superseded attempt",
+            "completion": "auto",
+            "track": "implementation",
+        },
+    )
+
+
+def _legacy_control_binding(
+    control: dict[str, object],
+) -> dict[str, object]:
+    payload = dict(control)
+    payload.pop("binding_id")
+    payload.pop("database_portal_binding_basis")
+    payload.pop("database_portal_binding_basis_cid")
+    payload["schema"] = DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1
+    payload["binding_id"] = content_identity(payload)
+    return payload
+
+
+def _rehash_control_binding(
+    control: dict[str, object],
+) -> dict[str, object]:
+    payload = dict(control)
+    payload.pop("binding_id", None)
+    payload["binding_id"] = content_identity(payload)
+    return payload
+
+
+def _rehash_portal_binding(
+    binding: dict[str, object],
+) -> dict[str, object]:
+    payload = dict(binding)
+    payload.pop("binding_id", None)
+    payload["binding_id"] = database_portal_bridge_module._sha256_bytes(
+        database_portal_bridge_module._canonical_json(payload)
+    )
+    return payload
+
+
+def _authority_bound_attempt(
+    bridge: DatabasePortalExecutionBridge,
+    *,
+    attempt_id: str,
+    claim_id: str,
+    attempt_number: int,
+    owner_session_id: str,
+    fencing_token: int,
+    fence_epoch: int,
+    lease_id: str,
+    revision: int,
+    status: str,
+    control_schema: str,
+    portal_schema: str = "",
+) -> tuple[DatabaseTaskAttempt, dict[str, object], dict[str, object]]:
+    attempt = DatabaseTaskAttempt(
+        attempt_id=attempt_id,
+        claim_id=claim_id,
+        task_cid="task:cid:authority",
+        task_alias="AUTH-001",
+        attempt_number=attempt_number,
+        owner_session_id=owner_session_id,
+        fencing_token=fencing_token,
+        fence_epoch=fence_epoch,
+        lease_id=lease_id,
+        committed_phase="claimed" if status == "running" else status,
+        status=status,
+        started_at_ms=1,
+    )
+    record = _authority_task_record(revision=revision)
+    claim = SimpleNamespace(
+        task_cid=attempt.task_cid,
+        claim_id=attempt.claim_id,
+        attempt_id=attempt.attempt_id,
+        attempt_number=attempt.attempt_number,
+        lease_id=attempt.lease_id,
+        owner_session_id=attempt.owner_session_id,
+        fencing_token=attempt.fencing_token,
+        fence_epoch=attempt.fence_epoch,
+    )
+    control = DatabaseImplementationDaemon._control_claim_binding(claim, record)
+    if control_schema == DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1:
+        control = _legacy_control_binding(control)
+    else:
+        assert control_schema == DATABASE_CONTROL_CLAIM_BINDING_SCHEMA
+    attempt = replace(attempt, body={"control_binding": control})
+    selected_portal_schema = portal_schema or (
+        DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+        if control_schema == DATABASE_CONTROL_CLAIM_BINDING_SCHEMA
+        else DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1
+    )
+    projection = bridge._render_projection(attempt, record)
+    portal = bridge._binding(
+        attempt,
+        record,
+        projection,
+        schema=selected_portal_schema,
+    )
+    return attempt, control, portal
+
+
+class _SupersededAuthorityCoordinator:
+    def __init__(self, prior: DatabaseTaskAttempt) -> None:
+        self.prior_claim = SimpleNamespace(
+            claim_id=prior.claim_id,
+            task_cid=prior.task_cid,
+            attempt_id=prior.attempt_id,
+            attempt_number=prior.attempt_number,
+            owner_session_id=prior.owner_session_id,
+            fencing_token=prior.fencing_token,
+            fence_epoch=prior.fence_epoch,
+            lease_id=prior.lease_id,
+            state=SimpleNamespace(value="expired"),
+        )
+        self.prior_attempt = SimpleNamespace(
+            attempt_id=prior.attempt_id,
+            task_cid=prior.task_cid,
+            attempt_number=prior.attempt_number,
+            owner_session_id=prior.owner_session_id,
+            fencing_token=prior.fencing_token,
+            fence_epoch=prior.fence_epoch,
+            status=SimpleNamespace(value="failed"),
+        )
+
+    def get_task_claim(self, _claim_id: str) -> object:
+        return self.prior_claim
+
+    def get_task_attempt(self, _attempt_id: str) -> object:
+        return self.prior_attempt
+
+
+def _superseded_authority_fake(
+    current: DatabaseTaskAttempt,
+    prior: DatabaseTaskAttempt,
+) -> tuple[
+    DatabaseImplementationDaemon,
+    _SupersededAuthorityCoordinator,
+    list[str],
+]:
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    attempts = {
+        current.attempt_id: current,
+        prior.attempt_id: prior,
+    }
+    protected: list[str] = []
+    coordinator = _SupersededAuthorityCoordinator(prior)
+    daemon.get_attempt = lambda attempt_id: attempts.get(attempt_id)  # type: ignore[method-assign]
+    daemon._protect_attempt_write = (  # type: ignore[method-assign]
+        lambda attempt: protected.append(attempt.attempt_id)
+    )
+    daemon.open = lambda: daemon  # type: ignore[method-assign]
+    daemon._coordinator = coordinator
+    return daemon, coordinator, protected
+
+
+def _superseded_authority_fixture(
+    tmp_path: Path,
+    *,
+    current_control_schema: str = DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+    prior_control_schema: str = DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+    current_portal_schema: str = DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+    prior_portal_schema: str = DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+    current_revision: int = 11,
+    prior_revision: int = 11,
+) -> SimpleNamespace:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+    )
+    current, current_control, current_portal = _authority_bound_attempt(
+        bridge,
+        attempt_id="attempt:current",
+        claim_id="claim:current",
+        attempt_number=5,
+        owner_session_id="session:current",
+        fencing_token=7,
+        fence_epoch=3,
+        lease_id="lease:current",
+        revision=current_revision,
+        status="running",
+        control_schema=current_control_schema,
+        portal_schema=current_portal_schema,
+    )
+    prior, prior_control, prior_portal = _authority_bound_attempt(
+        bridge,
+        attempt_id="attempt:prior",
+        claim_id="claim:prior",
+        attempt_number=4,
+        owner_session_id="session:prior",
+        fencing_token=6,
+        fence_epoch=2,
+        lease_id="lease:prior",
+        revision=prior_revision,
+        status="failed",
+        control_schema=prior_control_schema,
+        portal_schema=prior_portal_schema,
+    )
+    daemon, coordinator, protected = _superseded_authority_fake(current, prior)
+    return SimpleNamespace(
+        bridge=bridge,
+        current=current,
+        prior=prior,
+        current_control=current_control,
+        prior_control=prior_control,
+        current_portal=current_portal,
+        prior_portal=prior_portal,
+        daemon=daemon,
+        coordinator=coordinator,
+        protected=protected,
     )
 
 
@@ -1281,12 +1517,379 @@ def test_claim_persists_exact_post_cas_control_revision_binding(
         assert binding["lease_id"] == attempt.lease_id
         assert binding["fencing_token"] == attempt.fencing_token
         assert binding["fence_epoch"] == attempt.fence_epoch
+        assert binding["owner_session_id"] == attempt.owner_session_id
+        assert binding["schema"] == DATABASE_CONTROL_CLAIM_BINDING_SCHEMA
         assert binding["control_expected_status"] == "in_progress"
         assert binding["control_expected_revision"] == task.revision == 2
-        assert str(binding["control_task_projection_cid"]).startswith("bagu")
+        assert binding["control_task_projection_cid"] == content_identity(
+            task.to_dict()
+        )
+        basis = binding["database_portal_binding_basis"]
+        assert set(basis) == {
+            "schema",
+            "task_alias",
+            "task_revision",
+            "goal_cid",
+            "plan_cid",
+            "task_body_digest",
+            "control_task_projection_cid",
+        }
+        assert basis["task_alias"] == attempt.task_alias
+        assert basis["task_revision"] == task.revision
+        assert basis["control_task_projection_cid"] == binding[
+            "control_task_projection_cid"
+        ]
+        assert binding["database_portal_binding_basis_cid"] == content_identity(
+            basis
+        )
         assert str(binding["binding_id"]).startswith("bagu")
+        assert daemon._control_binding_for_attempt(attempt) == binding
     finally:
         daemon.close()
+
+
+@pytest.mark.parametrize(
+    (
+        "current_control_schema",
+        "current_portal_schema",
+        "prior_control_schema",
+        "prior_portal_schema",
+        "current_revision",
+        "prior_revision",
+    ),
+    (
+        (
+            DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+            DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+            11,
+            11,
+        ),
+        (
+            DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+            DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
+            11,
+            11,
+        ),
+        (
+            DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
+            DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
+            11,
+            11,
+        ),
+        (
+            DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
+            DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
+            11,
+            11,
+        ),
+        (
+            DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+            DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+            12,
+            11,
+        ),
+    ),
+)
+def test_superseded_portal_authority_closes_control_and_legacy_contracts(
+    tmp_path: Path,
+    current_control_schema: str,
+    current_portal_schema: str,
+    prior_control_schema: str,
+    prior_portal_schema: str,
+    current_revision: int,
+    prior_revision: int,
+) -> None:
+    fixture = _superseded_authority_fixture(
+        tmp_path,
+        current_control_schema=current_control_schema,
+        prior_control_schema=prior_control_schema,
+        current_portal_schema=current_portal_schema,
+        prior_portal_schema=prior_portal_schema,
+        current_revision=current_revision,
+        prior_revision=prior_revision,
+    )
+
+    authority = fixture.daemon.authorize_superseded_portal_attempt_binding(
+        fixture.current,
+        fixture.current_portal,
+        fixture.prior_portal,
+    )
+
+    assert authority == {
+        "schema": database_portal_bridge_module.CROSS_ATTEMPT_LIFECYCLE_AUTHORITY_SCHEMA,
+        "authorized": True,
+        "task_cid": fixture.current.task_cid,
+        "task_alias": fixture.current.task_alias,
+        "current_attempt_id": fixture.current.attempt_id,
+        "prior_attempt_id": fixture.prior.attempt_id,
+        "current_attempt_number": fixture.current.attempt_number,
+        "prior_attempt_number": fixture.prior.attempt_number,
+        "current_binding_id": fixture.current_portal["binding_id"],
+        "prior_binding_id": fixture.prior_portal["binding_id"],
+        "current_fencing_token": fixture.current.fencing_token,
+        "prior_fencing_token": fixture.prior.fencing_token,
+        "current_control_binding_id": fixture.current_control["binding_id"],
+        "prior_control_binding_id": fixture.prior_control["binding_id"],
+        "current_control_task_projection_cid": fixture.current_control[
+            "control_task_projection_cid"
+        ],
+        "prior_control_task_projection_cid": fixture.prior_control[
+            "control_task_projection_cid"
+        ],
+        "current_control_expected_revision": current_revision,
+        "prior_control_expected_revision": prior_revision,
+        "prior_execution_status": "failed",
+        "prior_claim_state": "expired",
+        "prior_coordination_status": "failed",
+        "legacy_current_binding": current_portal_schema
+        == DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
+        "legacy_prior_binding": prior_portal_schema
+        == DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
+        "mutation_authority": False,
+        "completion_authority": False,
+    }
+    assert set(authority) == database_portal_bridge_module._PRIOR_AUTHORITY_FIELDS
+    assert DatabasePortalExecutionBridge._validated_prior_authority(
+        authority,
+        current_binding=fixture.current_portal,
+        prior_binding=fixture.prior_portal,
+    ) == authority
+    assert fixture.protected == [
+        fixture.current.attempt_id,
+        fixture.current.attempt_id,
+    ]
+    serialized = json.dumps(authority)
+    assert "lease_id" not in serialized
+    assert "owner_session_id" not in serialized
+
+
+@pytest.mark.parametrize(
+    ("side", "field"),
+    (
+        ("current", "control_binding_id"),
+        ("prior", "control_task_projection_cid"),
+        ("current", "control_portal_binding_basis_cid"),
+        ("prior", "goal_cid"),
+        ("current", "plan_cid"),
+        ("prior", "task_body_digest"),
+        ("current", "revision_pair"),
+    ),
+)
+def test_superseded_portal_authority_rejects_rehashed_portal_mismatch(
+    tmp_path: Path,
+    side: str,
+    field: str,
+) -> None:
+    fixture = _superseded_authority_fixture(tmp_path)
+    selected = dict(getattr(fixture, f"{side}_portal"))
+    if field == "task_body_digest":
+        selected[field] = "sha256:" + ("0" * 64)
+    elif field == "revision_pair":
+        selected["task_revision"] = 12
+        selected["control_expected_revision"] = 12
+    else:
+        selected[field] = f"forged:{field}"
+    selected = _rehash_portal_binding(selected)
+    current_portal = (
+        selected if side == "current" else fixture.current_portal
+    )
+    prior_portal = selected if side == "prior" else fixture.prior_portal
+
+    with pytest.raises(DatabaseImplementationAuthorityError):
+        fixture.daemon.authorize_superseded_portal_attempt_binding(
+            fixture.current,
+            current_portal,
+            prior_portal,
+        )
+
+
+@pytest.mark.parametrize(
+    ("control_schema", "mutation"),
+    (
+        (DATABASE_CONTROL_CLAIM_BINDING_SCHEMA, "basis_alias"),
+        (DATABASE_CONTROL_CLAIM_BINDING_SCHEMA, "basis_open_record"),
+        (DATABASE_CONTROL_CLAIM_BINDING_SCHEMA, "attempt_number"),
+        (DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1, "owner_session_id"),
+    ),
+)
+def test_superseded_portal_authority_rejects_rehashed_control_mismatch(
+    tmp_path: Path,
+    control_schema: str,
+    mutation: str,
+) -> None:
+    prior_portal_schema = (
+        DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+        if control_schema == DATABASE_CONTROL_CLAIM_BINDING_SCHEMA
+        else DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1
+    )
+    fixture = _superseded_authority_fixture(
+        tmp_path,
+        prior_control_schema=control_schema,
+        prior_portal_schema=prior_portal_schema,
+    )
+    control = dict(fixture.prior_control)
+    if mutation.startswith("basis_"):
+        basis = dict(control["database_portal_binding_basis"])
+        if mutation == "basis_alias":
+            basis["task_alias"] = "AUTH-FORGED"
+        else:
+            basis["unexpected"] = "forged"
+        control["database_portal_binding_basis"] = basis
+        control["database_portal_binding_basis_cid"] = content_identity(basis)
+    elif mutation == "attempt_number":
+        control["attempt_number"] = fixture.prior.attempt_number + 1
+    else:
+        control["owner_session_id"] = "session:forged"
+    control = _rehash_control_binding(control)
+    prior = replace(fixture.prior, body={"control_binding": control})
+    daemon, _coordinator, _protected = _superseded_authority_fake(
+        fixture.current,
+        prior,
+    )
+
+    with pytest.raises(DatabaseImplementationAuthorityError):
+        daemon.authorize_superseded_portal_attempt_binding(
+            fixture.current,
+            fixture.current_portal,
+            fixture.prior_portal,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("attempt_number", 6),
+        ("owner_session_id", "session:forged"),
+    ),
+)
+def test_superseded_portal_authority_rejects_stale_current_identity(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    fixture = _superseded_authority_fixture(tmp_path)
+    passed_current = replace(fixture.current, **{field: value})
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="stored identity",
+    ):
+        fixture.daemon.authorize_superseded_portal_attempt_binding(
+            passed_current,
+            fixture.current_portal,
+            fixture.prior_portal,
+        )
+
+
+@pytest.mark.parametrize(
+    ("target", "field", "value"),
+    (
+        ("prior_claim", "claim_id", "claim:forged"),
+        ("prior_claim", "task_cid", "task:cid:forged"),
+        ("prior_claim", "attempt_id", "attempt:forged"),
+        ("prior_claim", "attempt_number", True),
+        ("prior_claim", "owner_session_id", "session:forged"),
+        ("prior_claim", "fencing_token", 5),
+        ("prior_claim", "fence_epoch", 1),
+        ("prior_claim", "lease_id", "lease:forged"),
+        ("prior_claim", "state", SimpleNamespace(value="accepted")),
+        ("prior_attempt", "attempt_id", "attempt:forged"),
+        ("prior_attempt", "task_cid", "task:cid:forged"),
+        ("prior_attempt", "attempt_number", True),
+        ("prior_attempt", "owner_session_id", "session:forged"),
+        ("prior_attempt", "fencing_token", 5),
+        ("prior_attempt", "fence_epoch", 1),
+        ("prior_attempt", "status", SimpleNamespace(value="running")),
+    ),
+)
+def test_superseded_portal_authority_requires_exact_prior_coordination_tuple(
+    tmp_path: Path,
+    target: str,
+    field: str,
+    value: object,
+) -> None:
+    fixture = _superseded_authority_fixture(tmp_path)
+    setattr(getattr(fixture.coordinator, target), field, value)
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="remains live or mismatched",
+    ):
+        fixture.daemon.authorize_superseded_portal_attempt_binding(
+            fixture.current,
+            fixture.current_portal,
+            fixture.prior_portal,
+        )
+
+
+@pytest.mark.parametrize(
+    ("prior_attempt_number", "current_revision", "prior_revision"),
+    (
+        (5, 11, 11),
+        (4, 11, 12),
+    ),
+)
+def test_superseded_portal_authority_rejects_non_predecessor_order(
+    tmp_path: Path,
+    prior_attempt_number: int,
+    current_revision: int,
+    prior_revision: int,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+    )
+    current, _current_control, current_portal = _authority_bound_attempt(
+        bridge,
+        attempt_id="attempt:current",
+        claim_id="claim:current",
+        attempt_number=5,
+        owner_session_id="session:current",
+        fencing_token=7,
+        fence_epoch=3,
+        lease_id="lease:current",
+        revision=current_revision,
+        status="running",
+        control_schema=DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+    )
+    prior, _prior_control, prior_portal = _authority_bound_attempt(
+        bridge,
+        attempt_id="attempt:prior",
+        claim_id="claim:prior",
+        attempt_number=prior_attempt_number,
+        owner_session_id="session:prior",
+        fencing_token=6,
+        fence_epoch=2,
+        lease_id="lease:prior",
+        revision=prior_revision,
+        status="failed",
+        control_schema=DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
+    )
+    daemon, _coordinator, _protected = _superseded_authority_fake(
+        current,
+        prior,
+    )
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="not authoritatively superseded",
+    ):
+        daemon.authorize_superseded_portal_attempt_binding(
+            current,
+            current_portal,
+            prior_portal,
+        )
 
 
 def test_restart_recovers_owned_claim_after_crash_before_control_cas(

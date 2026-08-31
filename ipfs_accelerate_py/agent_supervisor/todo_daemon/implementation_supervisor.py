@@ -20766,6 +20766,27 @@ class PortalImplementationSupervisor:
                 if token == option
             }
 
+        if option_values("--manual-completion-authority-task-id") != set(
+            self.config.manual_completion_authority_task_ids
+        ):
+            return False
+        if option_values(
+            "--manual-completion-authority-required-task-id"
+        ) != set(self.config.manual_completion_authority_required_task_ids):
+            return False
+        expected_authority_epoch = (
+            {self.config.manual_completion_authority_epoch_id}
+            if self.config.manual_completion_authority_epoch_id
+            else set()
+        )
+        if option_values(
+            "--manual-completion-authority-epoch-id"
+        ) != expected_authority_epoch:
+            return False
+        if (
+            "--manual-completion-authority-revalidation-only" in tokens
+        ) != self.config.manual_completion_authority_revalidation_only:
+            return False
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids
         ):
@@ -20947,6 +20968,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Exact repo-relative file that managed implementation agents must treat as "
             "read-only. May be repeated or comma-separated."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID governed by operator-sealed manual "
+            "completion. Pending descendants ignore historical completion "
+            "evidence until they are freshly revalidated."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-required-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID that autonomous scheduling and task-"
+            "status completion must quarantine until a fresh supervisor "
+            "load verifies its operator seal."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-epoch-id",
+        default="",
+        help=(
+            "Content-addressed identity of the verified manual-completion "
+            "seal and policy set used for descendant revalidation."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-revalidation-only",
+        action="store_true",
+        help=(
+            "Run only zero-provider revalidation of completed tasks governed "
+            "by manual-completion authority; disable ordinary implementation, "
+            "merge reconciliation, and repository maintenance paths."
         ),
     )
     parser.add_argument(
@@ -21717,6 +21775,27 @@ def supervisor_config_from_args(
         implementation_protected_paths=normalize_implementation_protected_paths(
             resolved_implementation_protected_paths,
             repo_root=effective_repo_root,
+        ),
+        manual_completion_authority_task_ids=tuple(
+            getattr(args, "manual_completion_authority_task_id", ()) or ()
+        ),
+        manual_completion_authority_required_task_ids=tuple(
+            getattr(
+                args,
+                "manual_completion_authority_required_task_id",
+                (),
+            )
+            or ()
+        ),
+        manual_completion_authority_epoch_id=str(
+            getattr(args, "manual_completion_authority_epoch_id", "") or ""
+        ),
+        manual_completion_authority_revalidation_only=bool(
+            getattr(
+                args,
+                "manual_completion_authority_revalidation_only",
+                False,
+            )
         ),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,

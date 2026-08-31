@@ -1302,6 +1302,9 @@ def bind_database_portal_execution_from_args(
             getattr(parsed, "merge_target_branch", "") or ""
         ),
         task_header_prefix=parsed.task_prefix,
+        prior_attempt_authority=(
+            daemon.authorize_superseded_portal_attempt_binding
+        ),
     )
     binder(
         provider_fn=bridge.run_provider,
@@ -1414,6 +1417,13 @@ def build_portal_implementation_daemon_from_args(
     worktree_submodule_paths = (
         getattr(parsed, "worktree_submodule_path", None) or default_worktree_submodule_paths or None
     )
+    authority_revalidation_only = bool(
+        getattr(
+            parsed,
+            "manual_completion_authority_revalidation_only",
+            False,
+        )
+    )
     implementation_protected_paths = (
         getattr(parsed, "implementation_protected_path", None)
         or default_implementation_protected_paths
@@ -1445,9 +1455,17 @@ def build_portal_implementation_daemon_from_args(
         implementation_command=parsed.implementation_command or None,
         implementation_timeout=parsed.implementation_timeout
         or DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
-        use_ephemeral_worktree=parsed.implement and not parsed.no_ephemeral_worktree,
+        use_ephemeral_worktree=(
+            parsed.implement
+            and not parsed.no_ephemeral_worktree
+            and not authority_revalidation_only
+        ),
         worktree_root=parsed.worktree_root,
-        merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
+        merge_target_branch=(
+            None
+            if authority_revalidation_only
+            else getattr(parsed, "merge_target_branch", "") or None
+        ),
         merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
         worktree_submodule_paths=worktree_submodule_paths,
         implementation_protected_paths=implementation_protected_paths,
@@ -1466,12 +1484,8 @@ def build_portal_implementation_daemon_from_args(
             "manual_completion_authority_epoch_id",
             "",
         ),
-        manual_completion_authority_revalidation_only=bool(
-            getattr(
-                parsed,
-                "manual_completion_authority_revalidation_only",
-                False,
-            )
+        manual_completion_authority_revalidation_only=(
+            authority_revalidation_only
         ),
         objective_path=parsed.objective_path or default_objective_path,
         objective_bundle_dir=parsed.objective_bundle_dir or default_objective_bundle_dir,

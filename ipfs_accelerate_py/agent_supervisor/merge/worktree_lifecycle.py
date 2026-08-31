@@ -783,6 +783,57 @@ class WorktreeLifecycleStore:
             ),
         }
 
+    @staticmethod
+    def _task_index_payload(
+        record: WorkspaceLifecycleRecord,
+    ) -> dict[str, Any]:
+        """Return the closed task-index projection for one lifecycle record."""
+
+        return {
+            "schema": WORKTREE_LIFECYCLE_SCHEMA,
+            "workspace_path": record.workspace_path,
+            "record_id": record.record_id,
+            "task_id": record.task_id,
+            "canonical_task_cid": record.canonical_task_cid,
+            "attempt": int(record.attempt),
+            "fence": int(record.fence),
+            "lease_id": record.lease_id,
+            "state": record.state.value,
+        }
+
+    def _require_exact_task_index(
+        self,
+        record: WorkspaceLifecycleRecord,
+        *,
+        index_path: Path,
+    ) -> None:
+        """Require an exact, closed task-index projection for ``record``."""
+
+        expected_index = self._task_index_payload(record)
+        index_payload = _load_json_dict(index_path)
+        if (
+            index_payload is None
+            or set(index_payload) != set(expected_index)
+            or type(index_payload.get("attempt")) is not int
+            or type(index_payload.get("fence")) is not int
+            or any(
+                type(index_payload.get(key)) is not str
+                for key in (
+                    "schema",
+                    "workspace_path",
+                    "record_id",
+                    "task_id",
+                    "canonical_task_cid",
+                    "lease_id",
+                    "state",
+                )
+            )
+            or index_payload != expected_index
+        ):
+            raise WorktreeLifecycleError(
+                "orphan lifecycle task index mismatch"
+            )
+
     def _require_exact_dead_owner(
         self,
         current: WorkspaceLifecycleRecord,
@@ -835,40 +886,7 @@ class WorktreeLifecycleStore:
                 "orphan lifecycle binding mismatch: " + ", ".join(mismatches)
             )
 
-        expected_index = {
-            "schema": WORKTREE_LIFECYCLE_SCHEMA,
-            "workspace_path": current.workspace_path,
-            "record_id": current.record_id,
-            "task_id": current.task_id,
-            "canonical_task_cid": current.canonical_task_cid,
-            "attempt": int(current.attempt),
-            "fence": int(current.fence),
-            "lease_id": current.lease_id,
-            "state": current.state.value,
-        }
-        index_payload = _load_json_dict(index_path)
-        if (
-            index_payload is None
-            or set(index_payload) != set(expected_index)
-            or type(index_payload.get("attempt")) is not int
-            or type(index_payload.get("fence")) is not int
-            or any(
-                type(index_payload.get(key)) is not str
-                for key in (
-                    "schema",
-                    "workspace_path",
-                    "record_id",
-                    "task_id",
-                    "canonical_task_cid",
-                    "lease_id",
-                    "state",
-                )
-            )
-            or index_payload != expected_index
-        ):
-            raise WorktreeLifecycleError(
-                "orphan lifecycle task index mismatch"
-            )
+        self._require_exact_task_index(current, index_path=index_path)
 
         liveness = owner_liveness(current.owner, proc_root=self.proc_root)
         if liveness is OwnerLiveness.ALIVE:
@@ -1203,13 +1221,19 @@ class WorktreeLifecycleStore:
         expected_repo_root: str,
         expected_state_dir: str,
         reason: str,
+        terminal_owner: ProcessBirthIdentity | None = None,
+        terminal_lease_id: str = "",
+        now: float | None = None,
+        retain_terminal: bool = False,
     ) -> WorkspaceLifecycleRecord:
         """Terminalize and delete one phase-pinned dead-owner authority.
 
         Both durable records are authenticated again while holding the
         task-index and workspace guards.  Unlike generic owner transitions,
         this operation also pins the process-birth identity captured by the
-        caller's earlier quiescence proof.
+        caller's earlier quiescence proof.  Exact controlled-restart callers
+        may retain the terminal projection while the default reconciliation
+        path removes both authority files.
         """
 
         expected_binding = self._normalized_binding(
@@ -1246,35 +1270,142 @@ class WorktreeLifecycleStore:
                 )
                 terminal = current
                 if current.is_nonterminal:
-                    now = float(self.clock())
+                    clock_now = float(self.clock() if now is None else now)
                     terminal = replace(
                         current,
                         state=WorkspaceLifecycleState.TERMINAL,
+                        owner=terminal_owner or current.owner,
+                        lease_id=terminal_lease_id or current.lease_id,
                         fence=int(current.fence) + 1,
-                        updated_at=now,
-                        expires_at=now,
+                        updated_at=clock_now,
+                        expires_at=clock_now,
                         terminal_reason=str(reason or "finalized"),
                     )
                     _atomic_write_json(record_path, terminal.to_dict())
                     _atomic_write_json(
                         index_path,
-                        {
-                            "schema": WORKTREE_LIFECYCLE_SCHEMA,
-                            "workspace_path": terminal.workspace_path,
-                            "record_id": terminal.record_id,
-                            "task_id": terminal.task_id,
-                            "canonical_task_cid": (
-                                terminal.canonical_task_cid
-                            ),
-                            "attempt": terminal.attempt,
-                            "fence": terminal.fence,
-                            "lease_id": terminal.lease_id,
-                            "state": terminal.state.value,
-                        },
+                        self._task_index_payload(terminal),
                     )
-                record_path.unlink()
-                index_path.unlink()
+                if not retain_terminal:
+                    record_path.unlink()
+                    index_path.unlink()
                 return terminal
+
+    def repair_partial_finalize(
+        self,
+        workspace: str | Path,
+        *,
+        expected_terminal: WorkspaceLifecycleRecord,
+        expected_preterminal_state: WorkspaceLifecycleState | str,
+    ) -> WorkspaceLifecycleRecord:
+        """Repair only an exact workspace-first terminalization boundary.
+
+        ``finalize_exact_dead_owner`` publishes the full workspace authority
+        before its task-index projection.  A process crash between those two
+        atomic replacements leaves a canonical terminal workspace record and
+        the exact nonterminal predecessor index.  A prepared recovery receipt
+        can authenticate ``expected_terminal`` and use this narrow operation
+        to finish that one interrupted write without persisting predecessor
+        owner or lease details, reopening dead-owner adoption, or accepting an
+        unrelated terminal/race winner.
+
+        Both authorities are re-read under the normal task-index then
+        workspace-record lock order.  The workspace record must be exactly the
+        supplied terminal authority; the index must be its exact closed
+        projection at one lower fence and the supplied nonterminal state, with
+        the same owner-independent lease projection.  Only the stale index is
+        rewritten.
+        """
+
+        terminal = expected_terminal
+        normalized_workspace = normalize_workspace_path(workspace)
+        if not terminal.is_terminal:
+            raise WorktreeLifecycleError(
+                "partial finalize expected authority must be terminal"
+            )
+        if terminal.record_id != terminal.compute_record_id():
+            raise WorktreeLifecycleError(
+                "partial finalize terminal identity is invalid"
+            )
+        if normalize_workspace_path(terminal.workspace_path) != (
+            normalized_workspace
+        ):
+            raise OwnershipError(
+                "partial finalize terminal workspace binding mismatch"
+            )
+        if (
+            not terminal.repo_root
+            or normalize_workspace_path(terminal.repo_root)
+            != normalize_workspace_path(self.repo_root)
+        ):
+            raise OwnershipError(
+                "partial finalize terminal repository binding mismatch"
+            )
+        try:
+            preterminal_state = WorkspaceLifecycleState(
+                expected_preterminal_state
+            )
+        except ValueError as exc:
+            raise WorktreeLifecycleError(
+                "partial finalize predecessor state is invalid"
+            ) from exc
+        if preterminal_state.is_terminal:
+            raise WorktreeLifecycleError(
+                "partial finalize predecessor state must be nonterminal"
+            )
+        if int(terminal.fence) <= 1:
+            raise FenceMismatchError(
+                "partial finalize terminal fence has no predecessor"
+            )
+        if (
+            not terminal.terminal_reason
+            or float(terminal.expires_at) != float(terminal.updated_at)
+        ):
+            raise WorktreeLifecycleError(
+                "partial finalize terminal transition is invalid"
+            )
+
+        predecessor_projection = replace(
+            terminal,
+            state=preterminal_state,
+            fence=int(terminal.fence) - 1,
+        )
+        record_path = self.workspace_path_for(normalized_workspace)
+        index_path = self.task_index_path_for(
+            canonical_task_cid=terminal.canonical_task_cid,
+            task_id=terminal.task_id,
+            attempt=terminal.attempt,
+        )
+        with serialized_lock_update(index_path):
+            with serialized_lock_update(record_path):
+                current = self._load_strict_workspace_record(
+                    normalized_workspace
+                )
+                if current != terminal:
+                    raise WorktreeLifecycleError(
+                        "partial finalize terminal workspace mismatch"
+                    )
+                self._require_exact_task_index(
+                    predecessor_projection,
+                    index_path=index_path,
+                )
+                liveness = owner_liveness(
+                    terminal.owner,
+                    proc_root=self.proc_root,
+                )
+                if liveness is OwnerLiveness.ALIVE:
+                    raise OwnershipError(
+                        "partial finalize predecessor owner is still alive"
+                    )
+                if liveness is OwnerLiveness.UNKNOWN:
+                    raise OwnershipError(
+                        "partial finalize predecessor owner liveness is unknown"
+                    )
+                _atomic_write_json(
+                    index_path,
+                    self._task_index_payload(current),
+                )
+                return current
 
     # -------------------------------------------------------------- transitions
 
@@ -1498,23 +1629,64 @@ class WorktreeLifecycleStore:
     ) -> WorkspaceLifecycleRecord:
         """Heartbeat: advance fence and push expiry without changing state."""
 
+        captured = self._load_strict_workspace_record(workspace)
         record_path = self.workspace_path_for(workspace)
-        with serialized_lock_update(record_path):
-            current = self.load_workspace(workspace)
-            if current is None:
-                raise WorktreeLifecycleError("lifecycle record missing")
-            self._require_owner(current, lease_id=lease_id, expected_fence=expected_fence)
-            if current.is_terminal:
-                raise WorktreeLifecycleError("cannot renew a terminal lifecycle record")
-            now = float(self.clock())
-            updated = replace(
-                current,
-                fence=int(current.fence) + 1,
-                updated_at=now,
-                expires_at=now + self.lease_seconds,
-            )
-            _atomic_write_json(record_path, updated.to_dict())
-            return updated
+        index_path = self.task_index_path_for(
+            canonical_task_cid=captured.canonical_task_cid,
+            task_id=captured.task_id,
+            attempt=captured.attempt,
+        )
+        with serialized_lock_update(index_path):
+            with serialized_lock_update(record_path):
+                current = self._load_strict_workspace_record(workspace)
+                self._require_owner(
+                    current,
+                    lease_id=lease_id,
+                    expected_fence=expected_fence,
+                )
+                if current.record_id != current.compute_record_id():
+                    raise WorktreeLifecycleError(
+                        "lifecycle record identity is invalid"
+                    )
+                if normalize_workspace_path(current.workspace_path) != (
+                    normalize_workspace_path(workspace)
+                ):
+                    raise OwnershipError(
+                        "lifecycle workspace binding changed during renewal"
+                    )
+                if (
+                    not current.repo_root
+                    or normalize_workspace_path(current.repo_root)
+                    != normalize_workspace_path(self.repo_root)
+                ):
+                    raise OwnershipError(
+                        "lifecycle repository binding changed during renewal"
+                    )
+                if current != captured:
+                    raise WorktreeLifecycleError(
+                        "lifecycle record changed during lease renewal"
+                    )
+                self._require_exact_task_index(
+                    current,
+                    index_path=index_path,
+                )
+                if current.is_terminal:
+                    raise WorktreeLifecycleError(
+                        "cannot renew a terminal lifecycle record"
+                    )
+                clock_now = float(self.clock())
+                updated = replace(
+                    current,
+                    fence=int(current.fence) + 1,
+                    updated_at=clock_now,
+                    expires_at=clock_now + self.lease_seconds,
+                )
+                _atomic_write_json(record_path, updated.to_dict())
+                _atomic_write_json(
+                    index_path,
+                    self._task_index_payload(updated),
+                )
+                return updated
 
     # ---------------------------------------------------------------- cleanup
 
@@ -1712,65 +1884,61 @@ class WorktreeLifecycleStore:
         the prior process-birth identity is provably dead.
         """
 
-        expected_state = normalize_workspace_path(expected_state_dir)
-        if not expected_state:
+        if not str(expected_state_dir or "").strip():
             return None
+        expected_state = normalize_workspace_path(expected_state_dir)
         expected_repo = normalize_workspace_path(self.repo_root)
-        clock_now = float(self.clock() if now is None else now)
-        record_path = self.workspace_path_for(workspace)
-        with serialized_lock_update(record_path):
-            current = self.load_workspace(workspace)
-            if current is None or current.is_terminal:
+        try:
+            captured = self._load_strict_workspace_record(workspace)
+        except WorktreeLifecycleError:
+            return None
+        if captured.is_terminal:
+            return None
+        if (
+            not captured.repo_root
+            or normalize_workspace_path(captured.repo_root) != expected_repo
+        ):
+            return None
+        if (
+            not captured.state_dir
+            or normalize_workspace_path(captured.state_dir) != expected_state
+        ):
+            return None
+
+        expected = {
+            "expected_record_id": captured.record_id,
+            "expected_fence": captured.fence,
+            "expected_lease_id": captured.lease_id,
+            "expected_task_id": captured.task_id,
+            "expected_canonical_task_cid": captured.canonical_task_cid,
+            "expected_attempt": captured.attempt,
+            "expected_branch": captured.branch,
+            "expected_merge_target": captured.merge_target,
+            "expected_repo_root": captured.repo_root,
+            "expected_state_dir": captured.state_dir,
+        }
+        try:
+            verified = self.require_exact_dead_owner(workspace, **expected)
+            if verified != captured:
                 return None
-            if (
-                not current.repo_root
-                or normalize_workspace_path(current.repo_root) != expected_repo
-            ):
-                return None
-            if (
-                not current.state_dir
-                or normalize_workspace_path(current.state_dir) != expected_state
-            ):
-                return None
-            if (
-                owner_liveness(current.owner, proc_root=self.proc_root)
-                is not OwnerLiveness.DEAD
-            ):
-                return None
-            updated = replace(
-                current,
-                state=WorkspaceLifecycleState.TERMINAL,
-                owner=reclaimer or current_process_birth(proc_root=self.proc_root),
-                lease_id=(
+            return self.finalize_exact_dead_owner(
+                workspace,
+                expected_owner=captured.owner,
+                reason=str(reason or "controlled_restart_dead_owner"),
+                terminal_owner=(
+                    reclaimer
+                    or current_process_birth(proc_root=self.proc_root)
+                ),
+                terminal_lease_id=(
                     reclaimer_lease_id
                     or new_lease_id(seed="controlled-restart-reclaim")
                 ),
-                fence=int(current.fence) + 1,
-                updated_at=clock_now,
-                expires_at=clock_now,
-                terminal_reason=str(reason or "controlled_restart_dead_owner"),
+                now=float(self.clock() if now is None else now),
+                retain_terminal=True,
+                **expected,
             )
-            _atomic_write_json(record_path, updated.to_dict())
-            index_path = self.task_index_path_for(
-                canonical_task_cid=updated.canonical_task_cid,
-                task_id=updated.task_id,
-                attempt=updated.attempt,
-            )
-            _atomic_write_json(
-                index_path,
-                {
-                    "schema": WORKTREE_LIFECYCLE_SCHEMA,
-                    "workspace_path": updated.workspace_path,
-                    "record_id": updated.record_id,
-                    "task_id": updated.task_id,
-                    "canonical_task_cid": updated.canonical_task_cid,
-                    "attempt": updated.attempt,
-                    "fence": updated.fence,
-                    "lease_id": updated.lease_id,
-                    "state": updated.state.value,
-                },
-            )
-            return updated
+        except WorktreeLifecycleError:
+            return None
 
     def reclaim_dead_owners_for_controlled_restart(
         self,

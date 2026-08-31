@@ -2264,10 +2264,11 @@ def _configured_agent_implementation_route_plan(
 ) -> AgentImplementationRoutePlan | None:
     """Resolve an attempted sealed route through the canonical router.
 
-    A provider name by itself is the legacy daemon selector and does not
-    attempt the ordered six-field route.  Any ordered-route or authorization
-    metadata still enters the sealed parser and therefore fails closed when
-    incomplete.
+    Provider/model/reasoning values by themselves are legacy direct-provider
+    selectors and do not attempt the ordered six-field route.  The two
+    fallback-policy fields are the unambiguous route opt-in; either one, or
+    any scoped authorization metadata, enters the sealed parser and therefore
+    fails closed when incomplete.
     """
 
     route_values = {
@@ -2307,9 +2308,11 @@ def _configured_agent_implementation_route_plan(
         "route_id": os.environ.get(_ROUTE_ID_ENV, "").strip(),
     }
     sealed_tuple_attempted = any(
-        value
-        for field, value in route_values.items()
-        if field != "primary_provider_id"
+        route_values[field]
+        for field in (
+            "fallback_provider_id",
+            "fallback_trigger",
+        )
     )
     authorization_attempted = any(authorization_values.values())
     if not sealed_tuple_attempted and not authorization_attempted:
@@ -67706,8 +67709,14 @@ DATABASE_PORTAL_FAILURE_SETTLEMENT_SCHEMA = (
 DATABASE_PORTAL_FAILURE_QUARANTINE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/portal-failure-quarantine@1"
 )
-DATABASE_CONTROL_CLAIM_BINDING_SCHEMA = (
+DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1 = (
     "ipfs_accelerate_py/agent-supervisor/database-control-claim-binding@1"
+)
+DATABASE_CONTROL_CLAIM_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-control-claim-binding@2"
+)
+DATABASE_PORTAL_BINDING_BASIS_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-binding-basis@1"
 )
 
 _DATABASE_CONTROL_READY_STATUSES = frozenset(
@@ -67722,7 +67731,7 @@ _DATABASE_CONTROL_READY_STATUSES = frozenset(
         "open",
     }
 )
-_DATABASE_CONTROL_CLAIM_BINDING_KEYS = frozenset(
+_DATABASE_CONTROL_CLAIM_BINDING_KEYS_V1 = frozenset(
     {
         "schema",
         "task_cid",
@@ -67737,6 +67746,24 @@ _DATABASE_CONTROL_CLAIM_BINDING_KEYS = frozenset(
         "control_expected_revision",
         "control_task_projection_cid",
         "binding_id",
+    }
+)
+_DATABASE_CONTROL_CLAIM_BINDING_KEYS = frozenset(
+    {
+        *_DATABASE_CONTROL_CLAIM_BINDING_KEYS_V1,
+        "database_portal_binding_basis",
+        "database_portal_binding_basis_cid",
+    }
+)
+_DATABASE_PORTAL_BINDING_BASIS_KEYS = frozenset(
+    {
+        "schema",
+        "task_alias",
+        "task_revision",
+        "goal_cid",
+        "plan_cid",
+        "task_body_digest",
+        "control_task_projection_cid",
     }
 )
 _DATABASE_PORTAL_FAILURE_SETTLEMENT_KEYS = frozenset(
@@ -69145,6 +69172,8 @@ class DatabaseImplementationDaemon:
         immutable_fields = (
             "claim_id",
             "task_cid",
+            "task_alias",
+            "attempt_number",
             "owner_session_id",
             "fencing_token",
             "fence_epoch",
@@ -69250,6 +69279,424 @@ class DatabaseImplementationDaemon:
             expected_fence_epoch=int(attempt.fence_epoch),
             now_ms=self._now_ms(),
         )
+
+    def authorize_superseded_portal_attempt_binding(
+        self,
+        current: DatabaseTaskAttempt,
+        current_binding: Mapping[str, Any],
+        prior_binding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Prove one prior Portal binding is terminal behind the live claim.
+
+        This is an authority query, not a mutation.  The caller executes under
+        :meth:`_run_with_attempt_heartbeat`; nevertheless the proof closes its
+        own race by protecting the exact current claim again.  Lease IDs are
+        compared in memory and deliberately omitted from the returned receipt.
+        """
+
+        from .database_portal_bridge import (
+            CROSS_ATTEMPT_LIFECYCLE_AUTHORITY_SCHEMA,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+            DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
+            DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE,
+            _BINDING_FIELDS,
+            _BINDING_FIELDS_V1,
+            _PRIOR_AUTHORITY_FIELDS,
+            _canonical_json,
+            _sha256_bytes,
+        )
+
+        def closed_portal_binding(
+            raw: Mapping[str, Any],
+            *,
+            noun: str,
+        ) -> dict[str, Any]:
+            if type(raw) is not dict:
+                raise DatabaseImplementationAuthorityError(
+                    f"{noun} Portal binding is not a captured record"
+                )
+            binding = dict(raw)
+            schema = binding.get("schema")
+            expected_fields = (
+                _BINDING_FIELDS
+                if schema == DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+                else _BINDING_FIELDS_V1
+                if schema == DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1
+                else frozenset()
+            )
+            if not expected_fields or set(binding) != expected_fields:
+                raise DatabaseImplementationAuthorityError(
+                    f"{noun} Portal binding is not a closed record"
+                )
+            integer_fields = ("task_revision", "fencing_token", "fence_epoch")
+            required_string_fields = (
+                "schema",
+                "interface",
+                "attempt_id",
+                "claim_id",
+                "task_cid",
+                "task_alias",
+                "lease_id",
+                "task_body_digest",
+                "projection_seed_digest",
+                "projection_immutable_digest",
+                "binding_id",
+            )
+            if (
+                any(
+                    type(binding[field]) is not int or binding[field] < 1
+                    for field in integer_fields
+                )
+                or any(
+                    type(binding[field]) is not str or not binding[field]
+                    for field in required_string_fields
+                )
+                or type(binding["goal_cid"]) is not str
+                or type(binding["plan_cid"]) is not str
+                or binding["interface"]
+                != DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE
+                or binding["authoritative_task_store"] != "duckdb"
+                or binding["projection_authority"] is not False
+                or any(
+                    re.fullmatch(r"sha256:[0-9a-f]{64}", binding[field])
+                    is None
+                    for field in (
+                        "task_body_digest",
+                        "projection_seed_digest",
+                        "projection_immutable_digest",
+                        "binding_id",
+                    )
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    f"{noun} Portal binding identity is invalid"
+                )
+            if schema == DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA and (
+                type(binding["control_expected_revision"]) is not int
+                or binding["control_expected_revision"] < 1
+                or binding["control_expected_revision"]
+                != binding["task_revision"]
+                or any(
+                    type(binding[field]) is not str or not binding[field]
+                    for field in (
+                        "control_binding_id",
+                        "control_task_projection_cid",
+                        "control_portal_binding_basis_cid",
+                    )
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    f"{noun} Portal @2 control identity is invalid"
+                )
+            unsigned = dict(binding)
+            binding_id = unsigned.pop("binding_id")
+            if binding_id != _sha256_bytes(_canonical_json(unsigned)):
+                raise DatabaseImplementationAuthorityError(
+                    f"{noun} Portal binding content identity is invalid"
+                )
+            return binding
+
+        def require_attempt_identity(
+            attempt: DatabaseTaskAttempt,
+            *,
+            noun: str,
+        ) -> None:
+            if any(
+                type(getattr(attempt, field)) is not str
+                or not getattr(attempt, field)
+                for field in (
+                    "attempt_id",
+                    "claim_id",
+                    "task_cid",
+                    "task_alias",
+                    "owner_session_id",
+                    "lease_id",
+                )
+            ) or any(
+                type(getattr(attempt, field)) is not int
+                or getattr(attempt, field) < 1
+                for field in (
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    f"{noun} execution attempt identity is invalid"
+                )
+
+        def require_portal_attempt_join(
+            binding: Mapping[str, Any],
+            attempt: DatabaseTaskAttempt,
+            *,
+            noun: str,
+        ) -> None:
+            expected = {
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "task_cid": attempt.task_cid,
+                "task_alias": attempt.task_alias,
+                "fencing_token": attempt.fencing_token,
+                "fence_epoch": attempt.fence_epoch,
+                "lease_id": attempt.lease_id,
+            }
+            if any(
+                type(binding[field]) is not type(value)
+                or binding[field] != value
+                for field, value in expected.items()
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    f"{noun} Portal binding does not match its execution attempt"
+                )
+
+        def require_portal_control_join(
+            portal: Mapping[str, Any],
+            control: Mapping[str, Any],
+            *,
+            noun: str,
+        ) -> None:
+            if (
+                portal["task_revision"]
+                != control["control_expected_revision"]
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    f"{noun} Portal revision disagrees with claim-time control"
+                )
+            if control["schema"] == DATABASE_CONTROL_CLAIM_BINDING_SCHEMA:
+                basis = control["database_portal_binding_basis"]
+                basis_expected = {
+                    "task_alias": portal["task_alias"],
+                    "task_revision": portal["task_revision"],
+                    "goal_cid": portal["goal_cid"],
+                    "plan_cid": portal["plan_cid"],
+                    "task_body_digest": portal["task_body_digest"],
+                    "control_task_projection_cid": control[
+                        "control_task_projection_cid"
+                    ],
+                }
+                if any(
+                    basis[field] != value
+                    for field, value in basis_expected.items()
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        f"{noun} Portal binding disagrees with claim-time task basis"
+                    )
+            if portal["schema"] == DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA:
+                if control["schema"] != DATABASE_CONTROL_CLAIM_BINDING_SCHEMA:
+                    raise DatabaseImplementationAuthorityError(
+                        f"{noun} Portal @2 binding lacks @2 control authority"
+                    )
+                expected = {
+                    "control_binding_id": control["binding_id"],
+                    "control_task_projection_cid": control[
+                        "control_task_projection_cid"
+                    ],
+                    "control_expected_revision": control[
+                        "control_expected_revision"
+                    ],
+                    "control_portal_binding_basis_cid": control[
+                        "database_portal_binding_basis_cid"
+                    ],
+                }
+                if any(portal[field] != value for field, value in expected.items()):
+                    raise DatabaseImplementationAuthorityError(
+                        f"{noun} Portal @2 binding disagrees with control authority"
+                    )
+
+        current_portal = closed_portal_binding(
+            current_binding,
+            noun="current",
+        )
+        prior_portal = closed_portal_binding(prior_binding, noun="prior")
+        require_attempt_identity(current, noun="current")
+        stored_current = self.get_attempt(current.attempt_id)
+        if stored_current is None:
+            raise DatabaseImplementationAuthorityError(
+                "current Portal execution attempt disappeared"
+            )
+        require_attempt_identity(stored_current, noun="stored current")
+        if any(
+            type(getattr(current, field))
+            is not type(getattr(stored_current, field))
+            or getattr(current, field) != getattr(stored_current, field)
+            for field in (
+                "attempt_id",
+                "claim_id",
+                "task_cid",
+                "task_alias",
+                "attempt_number",
+                "owner_session_id",
+                "fencing_token",
+                "fence_epoch",
+                "lease_id",
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "current execution attempt does not match its stored identity"
+            )
+        current_control = self._control_binding_for_attempt(stored_current)
+        if self._control_binding_for_attempt(current) != current_control:
+            raise DatabaseImplementationAuthorityError(
+                "current execution attempt changed its control binding"
+            )
+        require_portal_attempt_join(
+            current_portal,
+            stored_current,
+            noun="current",
+        )
+        require_portal_control_join(
+            current_portal,
+            current_control,
+            noun="current",
+        )
+        self._protect_attempt_write(stored_current)
+
+        prior_attempt_id = prior_portal["attempt_id"]
+        prior = self.get_attempt(prior_attempt_id)
+        if prior is None:
+            raise DatabaseImplementationAuthorityError(
+                "prior Portal execution attempt is unavailable"
+            )
+        require_attempt_identity(prior, noun="prior")
+        require_portal_attempt_join(prior_portal, prior, noun="prior")
+        prior_control = self._control_binding_for_attempt(prior)
+        require_portal_control_join(prior_portal, prior_control, noun="prior")
+        terminal_execution_statuses = {
+            "succeeded",
+            "failed",
+            "released",
+            "expired",
+        }
+        if (
+            prior.status not in terminal_execution_statuses
+            or prior.attempt_id == stored_current.attempt_id
+            or prior.task_cid != stored_current.task_cid
+            or prior.task_alias != stored_current.task_alias
+            or prior.attempt_number >= stored_current.attempt_number
+            or prior.fencing_token >= stored_current.fencing_token
+            or prior.fence_epoch >= stored_current.fence_epoch
+            or prior_control["control_expected_revision"]
+            > current_control["control_expected_revision"]
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "prior Portal execution attempt is not authoritatively superseded"
+            )
+        if prior_control["control_expected_revision"] == current_control[
+            "control_expected_revision"
+        ] and (
+            prior_control["control_task_projection_cid"]
+            != current_control["control_task_projection_cid"]
+            or any(
+                prior_portal[field] != current_portal[field]
+                for field in ("goal_cid", "plan_cid", "task_body_digest")
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "same-revision Portal predecessor changed its task identity"
+            )
+
+        prior_claim = self.coordinator.get_task_claim(prior.claim_id)
+        prior_coordination_attempt = self.coordinator.get_task_attempt(
+            prior.attempt_id
+        )
+        if prior_claim is None or prior_coordination_attempt is None:
+            raise DatabaseImplementationAuthorityError(
+                "prior Portal coordination authority is unavailable"
+            )
+        prior_claim_state = str(
+            getattr(prior_claim.state, "value", prior_claim.state)
+        )
+        prior_coordination_status = str(
+            getattr(
+                prior_coordination_attempt.status,
+                "value",
+                prior_coordination_attempt.status,
+            )
+        )
+        missing = object()
+        prior_claim_expected = {
+            "claim_id": prior.claim_id,
+            "task_cid": prior.task_cid,
+            "attempt_id": prior.attempt_id,
+            "attempt_number": prior.attempt_number,
+            "owner_session_id": prior.owner_session_id,
+            "fencing_token": prior.fencing_token,
+            "fence_epoch": prior.fence_epoch,
+            "lease_id": prior.lease_id,
+        }
+        prior_coordination_expected = {
+            "attempt_id": prior.attempt_id,
+            "task_cid": prior.task_cid,
+            "attempt_number": prior.attempt_number,
+            "owner_session_id": prior.owner_session_id,
+            "fencing_token": prior.fencing_token,
+            "fence_epoch": prior.fence_epoch,
+        }
+        if (
+            any(
+                type(getattr(prior_claim, field, missing)) is not type(value)
+                or getattr(prior_claim, field, missing) != value
+                for field, value in prior_claim_expected.items()
+            )
+            or prior_claim_state
+            not in {"released", "expired", "superseded", "completed"}
+            or any(
+                type(getattr(prior_coordination_attempt, field, missing))
+                is not type(value)
+                or getattr(prior_coordination_attempt, field, missing) != value
+                for field, value in prior_coordination_expected.items()
+            )
+            or prior_coordination_status
+            not in {"succeeded", "failed", "released", "expired"}
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "prior Portal coordination claim remains live or mismatched"
+            )
+        # Protect once more after observing the terminal predecessor so a
+        # replacement current claim cannot race the returned authority.
+        self._protect_attempt_write(stored_current)
+        authority = {
+            "schema": CROSS_ATTEMPT_LIFECYCLE_AUTHORITY_SCHEMA,
+            "authorized": True,
+            "task_cid": stored_current.task_cid,
+            "task_alias": stored_current.task_alias,
+            "current_attempt_id": stored_current.attempt_id,
+            "prior_attempt_id": prior.attempt_id,
+            "current_attempt_number": stored_current.attempt_number,
+            "prior_attempt_number": prior.attempt_number,
+            "current_binding_id": current_portal["binding_id"],
+            "prior_binding_id": prior_portal["binding_id"],
+            "current_fencing_token": stored_current.fencing_token,
+            "prior_fencing_token": prior.fencing_token,
+            "current_control_binding_id": current_control["binding_id"],
+            "prior_control_binding_id": prior_control["binding_id"],
+            "current_control_task_projection_cid": current_control[
+                "control_task_projection_cid"
+            ],
+            "prior_control_task_projection_cid": prior_control[
+                "control_task_projection_cid"
+            ],
+            "current_control_expected_revision": current_control[
+                "control_expected_revision"
+            ],
+            "prior_control_expected_revision": prior_control[
+                "control_expected_revision"
+            ],
+            "prior_execution_status": prior.status,
+            "prior_claim_state": prior_claim_state,
+            "prior_coordination_status": prior_coordination_status,
+            "legacy_current_binding": current_portal["schema"]
+            == DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
+            "legacy_prior_binding": prior_portal["schema"]
+            == DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1,
+            "mutation_authority": False,
+            "completion_authority": False,
+        }
+        if set(authority) != _PRIOR_AUTHORITY_FIELDS:
+            raise DatabaseImplementationAuthorityError(
+                "Portal predecessor authority contract drifted"
+            )
+        return authority
 
     def _run_with_attempt_heartbeat(
         self,
@@ -70150,6 +70597,28 @@ class DatabaseImplementationDaemon:
                 "canonical control task exposes no deterministic projection"
             )
         task_projection = dict(to_dict())
+        task_body = dict(getattr(task, "body", {}) or {})
+        task_projection_cid = content_identity(task_projection)
+        portal_basis: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_BINDING_BASIS_SCHEMA,
+            "task_alias": str(
+                getattr(task, "task_alias", "")
+                or getattr(task, "task_id", "")
+            ),
+            "task_revision": int(task.revision),
+            "goal_cid": str(getattr(task, "goal_cid", "") or ""),
+            "plan_cid": str(
+                getattr(task, "plan_cid", "")
+                or task_body.get("plan_cid")
+                or task_body.get("plan_root_cid")
+                or ""
+            ),
+            "task_body_digest": "sha256:"
+            + hashlib.sha256(
+                canonical_json(task_body).encode("utf-8")
+            ).hexdigest(),
+            "control_task_projection_cid": task_projection_cid,
+        }
         binding: dict[str, Any] = {
             "schema": DATABASE_CONTROL_CLAIM_BINDING_SCHEMA,
             "task_cid": str(claim.task_cid),
@@ -70162,7 +70631,9 @@ class DatabaseImplementationDaemon:
             "fence_epoch": int(claim.fence_epoch),
             "control_expected_status": str(task.status).strip().lower(),
             "control_expected_revision": int(task.revision),
-            "control_task_projection_cid": content_identity(task_projection),
+            "control_task_projection_cid": task_projection_cid,
+            "database_portal_binding_basis": portal_basis,
+            "database_portal_binding_basis_cid": content_identity(portal_basis),
         }
         binding["binding_id"] = content_identity(binding)
         return binding
@@ -71633,39 +72104,98 @@ class DatabaseImplementationDaemon:
         attempt: DatabaseTaskAttempt,
     ) -> dict[str, Any]:
         raw = attempt.body.get("control_binding")
-        if not isinstance(raw, Mapping):
+        if type(raw) is not dict:
             raise DatabaseImplementationAuthorityError(
                 "execution attempt has no claim-bound control revision"
             )
         binding = dict(raw)
-        if set(binding) != _DATABASE_CONTROL_CLAIM_BINDING_KEYS:
+        schema = binding.get("schema")
+        expected_keys = (
+            _DATABASE_CONTROL_CLAIM_BINDING_KEYS
+            if schema == DATABASE_CONTROL_CLAIM_BINDING_SCHEMA
+            else _DATABASE_CONTROL_CLAIM_BINDING_KEYS_V1
+            if schema == DATABASE_CONTROL_CLAIM_BINDING_SCHEMA_V1
+            else frozenset()
+        )
+        if not expected_keys or set(binding) != expected_keys:
             raise DatabaseImplementationAuthorityError(
                 "control claim binding is not a closed record"
             )
-        binding_id = str(binding.pop("binding_id", "") or "")
-        if (
-            binding.get("schema") != DATABASE_CONTROL_CLAIM_BINDING_SCHEMA
-            or not binding_id
-            or content_identity(binding) != binding_id
-        ):
+        binding_id = binding.pop("binding_id")
+        try:
+            valid_binding_id = (
+                type(binding_id) is str
+                and bool(binding_id)
+                and content_identity(binding) == binding_id
+            )
+        except Exception:
+            valid_binding_id = False
+        if not valid_binding_id:
             raise DatabaseImplementationAuthorityError(
                 "control claim binding content identity is invalid"
             )
         binding["binding_id"] = binding_id
+        if any(
+            type(binding.get(field)) is not str or not binding[field]
+            for field in (
+                "schema",
+                "task_cid",
+                "claim_id",
+                "attempt_id",
+                "lease_id",
+                "owner_session_id",
+                "control_expected_status",
+                "control_task_projection_cid",
+            )
+        ) or any(
+            type(binding.get(field)) is not int or binding[field] < 1
+            for field in (
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+                "control_expected_revision",
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "control claim binding identity types are invalid"
+            )
+        if any(
+            type(getattr(attempt, field)) is not str
+            or not getattr(attempt, field)
+            for field in (
+                "task_cid",
+                "claim_id",
+                "attempt_id",
+                "lease_id",
+                "owner_session_id",
+            )
+        ) or any(
+            type(getattr(attempt, field)) is not int
+            or getattr(attempt, field) < 1
+            for field in (
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "execution attempt has invalid control identity types"
+            )
         expected = {
             "task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
-            "attempt_number": int(attempt.attempt_number),
+            "attempt_number": attempt.attempt_number,
             "lease_id": attempt.lease_id,
             "owner_session_id": attempt.owner_session_id,
-            "fencing_token": int(attempt.fencing_token),
-            "fence_epoch": int(attempt.fence_epoch),
+            "fencing_token": attempt.fencing_token,
+            "fence_epoch": attempt.fence_epoch,
         }
         mismatched = [
             name
             for name, value in expected.items()
-            if binding.get(name) != value
+            if type(binding.get(name)) is not type(value)
+            or binding.get(name) != value
         ]
         if mismatched:
             raise DatabaseImplementationAuthorityError(
@@ -71674,14 +72204,56 @@ class DatabaseImplementationDaemon:
             )
         if (
             binding.get("control_expected_status") != "in_progress"
-            or isinstance(binding.get("control_expected_revision"), bool)
-            or not isinstance(binding.get("control_expected_revision"), int)
-            or int(binding["control_expected_revision"]) < 1
-            or not str(binding.get("control_task_projection_cid") or "")
         ):
             raise DatabaseImplementationAuthorityError(
                 "control claim binding has invalid status/revision authority"
             )
+        if binding["schema"] == DATABASE_CONTROL_CLAIM_BINDING_SCHEMA:
+            basis = binding.get("database_portal_binding_basis")
+            if (
+                type(basis) is not dict
+                or set(basis) != _DATABASE_PORTAL_BINDING_BASIS_KEYS
+                or basis.get("schema") != DATABASE_PORTAL_BINDING_BASIS_SCHEMA
+                or type(basis.get("task_revision")) is not int
+                or basis["task_revision"] < 1
+                or basis["task_revision"]
+                != binding["control_expected_revision"]
+                or basis.get("control_task_projection_cid")
+                != binding["control_task_projection_cid"]
+                or not all(
+                    type(basis.get(field)) is str
+                    for field in (
+                        "task_alias",
+                        "goal_cid",
+                        "plan_cid",
+                        "task_body_digest",
+                        "control_task_projection_cid",
+                    )
+                )
+                or not str(basis.get("task_alias") or "")
+                or basis.get("task_alias") != attempt.task_alias
+                or not re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(basis.get("task_body_digest") or ""),
+                )
+                or type(binding.get("database_portal_binding_basis_cid"))
+                is not str
+                or not binding["database_portal_binding_basis_cid"]
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "control claim Portal binding basis is invalid"
+                )
+            try:
+                valid_basis_cid = (
+                    binding["database_portal_binding_basis_cid"]
+                    == content_identity(basis)
+                )
+            except Exception:
+                valid_basis_cid = False
+            if not valid_basis_cid:
+                raise DatabaseImplementationAuthorityError(
+                    "control claim Portal binding basis is invalid"
+                )
         return binding
 
     def _build_portal_failure_settlement_receipt(

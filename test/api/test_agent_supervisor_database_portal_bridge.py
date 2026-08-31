@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_repository_id,
+)
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    ProcessBirthIdentity,
+    WorktreeLifecycleStore,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
@@ -21,6 +28,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     database_portal_bridge as bridge_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    CROSS_ATTEMPT_LIFECYCLE_AUTHORITY_SCHEMA,
+    CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME,
     DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1,
@@ -394,6 +403,10 @@ def test_source_transition_binds_attempt_board_repository_and_exact_merge(
     )
     projection_seed = bridge._render_projection(_attempt(), _record())
     binding = bridge._binding(_attempt(), _record(), projection_seed)
+    paths.binding.write_text(
+        json.dumps(binding, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     paths.task_projection.write_text(
         projection_seed.replace("- Status: ready", "- Status: completed"),
         encoding="utf-8",
@@ -687,6 +700,10 @@ def test_source_transition_admits_exact_queued_reconciliation_only(
     paths.root.mkdir(parents=True)
     projection_seed = bridge._render_projection(_attempt(), _record())
     binding = bridge._binding(_attempt(), _record(), projection_seed)
+    paths.binding.write_text(
+        json.dumps(binding, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     paths.task_projection.write_text(
         projection_seed.replace("- Status: ready", "- Status: completed"),
         encoding="utf-8",
@@ -1270,6 +1287,922 @@ class _CompletingPortal:
 
     def close_event_runtime(self) -> None:
         self.closed = True
+
+
+def _cross_attempt_recovery_fixture(
+    tmp_path: Path,
+    *,
+    authority_allowed: bool = True,
+    prior_task_revision: int = 10,
+) -> tuple[
+    DatabasePortalExecutionBridge,
+    DatabaseTaskAttempt,
+    WorktreeLifecycleStore,
+    Path,
+    list[object],
+]:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str, cwd: Path = repository) -> str:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("branch", "-M", "main")
+    git("config", "user.name", "Portal Test")
+    git("config", "user.email", "portal@example.invalid")
+    (repository / "seed.py").write_text("SEED = True\n", encoding="utf-8")
+    git("add", "seed.py")
+    git("commit", "-q", "-m", "seed")
+
+    worktree_root = tmp_path / "worktrees"
+    worktree_root.mkdir()
+    workspace = worktree_root / "prior"
+    prior_branch = "implementation/lgswf-004-attempt-1"
+    git("branch", prior_branch)
+    git("worktree", "add", "-q", str(workspace), prior_branch)
+
+    current_record = _record()
+    prior_record = _record()
+    prior_record.revision = prior_task_revision
+    task_source = _TaskSource(current_record)
+    attempt_root = tmp_path / "attempts"
+    current_attempt = replace(_attempt(), attempt_number=2)
+    prior_attempt = DatabaseTaskAttempt(
+        attempt_id="attempt:prior",
+        claim_id="claim:prior",
+        task_cid=current_attempt.task_cid,
+        task_alias=current_attempt.task_alias,
+        attempt_number=1,
+        owner_session_id="session:prior",
+        fencing_token=6,
+        fence_epoch=2,
+        lease_id="lease:prior",
+        committed_phase="failed",
+        status="failed",
+        started_at_ms=1,
+    )
+    projection_bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: object(),
+        task_header_prefix="## LGSWF-",
+    )
+    prior_paths = projection_bridge._paths(prior_attempt)
+    prior_seed = projection_bridge._render_projection(
+        prior_attempt,
+        prior_record,
+    )
+    prior_binding = projection_bridge._binding(
+        prior_attempt,
+        prior_record,
+        prior_seed,
+    )
+    prior_paths.root.mkdir(parents=True)
+    prior_paths.task_projection.write_text(prior_seed, encoding="utf-8")
+    prior_paths.binding.write_text(
+        json.dumps(prior_binding, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    prior_identity = projection_bridge._prior_projection_identity(
+        prior_paths,
+        prior_binding,
+    )
+    prior_paths.state.write_text(
+        json.dumps(
+            {
+                "implementation_in_progress": True,
+                "active_task_id": prior_identity["task_id"],
+                "active_task_cid": prior_identity["canonical_task_cid"],
+                "active_task_key": prior_identity["canonical_task_key"],
+                "active_attempt": 1,
+                "active_worktree_path": str(workspace.resolve()),
+                "active_branch": prior_branch,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    store = WorktreeLifecycleStore(
+        repo_root=repository,
+        proc_root=proc_root,
+    )
+    lifecycle = store.begin_preparing(
+        task_id=current_attempt.task_alias,
+        canonical_task_cid=prior_identity["canonical_task_cid"],
+        attempt=1,
+        lane_id=f"{prior_paths.root.resolve()}:lane-1",
+        workspace_path=workspace,
+        branch=prior_branch,
+        merge_target="main",
+        state_dir=str(prior_paths.root.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=999_999,
+            start_time_ticks=1,
+            boot_id="test-boot",
+            parent_pid=1,
+        ),
+    )
+    lifecycle = store.mark_active(
+        workspace,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    store.mark_settling(
+        workspace,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+
+    portals: list[object] = []
+
+    class RecoveryPortal(_CompletingPortal):
+        def __init__(self, paths: object, task_alias: str) -> None:
+            super().__init__(paths, task_alias)
+            self.worktree_lifecycle = store
+            self.worktree_root = worktree_root
+            self.run_count = 0
+            self.checkout_lease_released = False
+
+        @staticmethod
+        def _list_process_commands() -> list[str]:
+            return []
+
+        @staticmethod
+        def _docker_isolation_active_for_worktree(_path: str) -> bool:
+            return False
+
+        @staticmethod
+        def _lock_owner_is_active(
+            _metadata: object,
+            *,
+            expected_kind: str,
+        ) -> bool:
+            assert expected_kind == "implementation"
+            return False
+
+        @staticmethod
+        def _acquire_checkout_mutation_lease(**_kwargs: object) -> tuple[
+            object,
+            str,
+            None,
+            float,
+        ]:
+            return object(), "acquired", None, 0.0
+
+        def _release_checkout_mutation_lease(self, _lease: object) -> bool:
+            self.checkout_lease_released = True
+            return True
+
+        def run_once(self) -> dict[str, object]:
+            self.run_count += 1
+            return super().run_once()
+
+    def factory(paths: object, alias: str) -> RecoveryPortal:
+        portal = RecoveryPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    def authority(
+        _attempt_value: object,
+        current_binding: object,
+        old_binding: object,
+    ) -> dict[str, object]:
+        assert isinstance(current_binding, dict)
+        assert isinstance(old_binding, dict)
+        return {
+            "schema": CROSS_ATTEMPT_LIFECYCLE_AUTHORITY_SCHEMA,
+            "authorized": authority_allowed,
+            "task_cid": current_binding["task_cid"],
+            "task_alias": current_binding["task_alias"],
+            "current_attempt_id": current_binding["attempt_id"],
+            "prior_attempt_id": old_binding["attempt_id"],
+            "current_attempt_number": current_attempt.attempt_number,
+            "prior_attempt_number": prior_attempt.attempt_number,
+            "current_binding_id": current_binding["binding_id"],
+            "prior_binding_id": old_binding["binding_id"],
+            "current_fencing_token": current_binding["fencing_token"],
+            "prior_fencing_token": old_binding["fencing_token"],
+            "current_control_binding_id": "sha256:control-current",
+            "prior_control_binding_id": "sha256:control-prior",
+            "current_control_task_projection_cid": (
+                "sha256:projection-current"
+            ),
+            "prior_control_task_projection_cid": "sha256:projection-prior",
+            "current_control_expected_revision": current_binding[
+                "task_revision"
+            ],
+            "prior_control_expected_revision": old_binding["task_revision"],
+            "prior_execution_status": "failed",
+            "prior_claim_state": "expired",
+            "prior_coordination_status": "failed",
+            "legacy_current_binding": True,
+            "legacy_prior_binding": True,
+            "mutation_authority": False,
+            "completion_authority": False,
+        }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=attempt_root,
+        portal_factory=factory,
+        repo_root=repository,
+        board_namespace="test-board-v1",
+        merge_target_branch="main",
+        task_header_prefix="## LGSWF-",
+        prior_attempt_authority=authority,
+    )
+    return bridge, current_attempt, store, workspace, portals
+
+
+@pytest.mark.parametrize("prior_task_revision", [10, 11])
+def test_bridge_exactly_retires_preserved_superseded_attempt_lifecycle(
+    tmp_path: Path,
+    prior_task_revision: int,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            prior_task_revision=prior_task_revision,
+        )
+    )
+
+    provider = bridge.run_provider(attempt)
+
+    assert provider["accepted"] is True
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None
+    assert terminal.is_terminal
+    assert terminal.terminal_reason == "superseded_database_attempt_preserved"
+    receipt_path = (
+        bridge._paths(attempt).root
+        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["phase"] == "committed"
+    assert receipt["worktree_deleted"] is False
+    assert receipt["provider_dispatched"] is False
+    assert receipt["task_completion_authority"] is False
+    assert receipt["preservation"]["preservation_mode"] == (
+        "clean_branch_commit"
+    )
+    assert "lease_id" not in json.dumps(receipt)
+    assert workspace.is_dir()
+    assert portals and portals[0].run_count == 1
+    assert portals[0].checkout_lease_released is True
+
+
+def test_bridge_preserves_lifecycle_when_database_authority_rejects(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            authority_allowed=False,
+        )
+    )
+    before = store.workspace_path_for(workspace).read_bytes()
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_database_authority_rejected",
+    ):
+        bridge.run_provider(attempt)
+
+    assert store.workspace_path_for(workspace).read_bytes() == before
+    assert store.load_workspace(workspace) is not None
+    assert portals and portals[0].run_count == 0
+    assert portals[0].closed is True
+
+
+def test_bridge_reauthorizes_database_immediately_before_lifecycle_finalize(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    original_authority = bridge.prior_attempt_authority
+    assert original_authority is not None
+    calls = 0
+
+    def revoked_on_second_read(
+        attempt_value: object,
+        current_binding: object,
+        prior_binding: object,
+    ) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        authority = dict(
+            original_authority(
+                attempt_value,
+                current_binding,
+                prior_binding,
+            )
+        )
+        if calls == 2:
+            authority["authorized"] = False
+        return authority
+
+    bridge.prior_attempt_authority = revoked_on_second_read
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_database_authority_rejected",
+    ):
+        bridge.run_provider(attempt)
+
+    record = store.load_workspace(workspace)
+    assert record is not None and record.is_nonterminal
+    receipt_path = (
+        bridge._paths(attempt).root
+        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["phase"] == "prepared"
+    assert portals and portals[0].run_count == 0
+
+    replacement = replace(
+        record,
+        lane_id=f"{Path(record.state_dir).resolve()}:replacement-lane",
+    )
+    store.workspace_path_for(workspace).write_text(
+        json.dumps(replacement.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_receipt_authority_mismatch",
+    ):
+        bridge.run_provider(attempt)
+
+    assert store.load_workspace(workspace) == replacement
+    assert portals[-1].run_count == 0
+
+
+def test_bridge_rejects_lifecycle_record_replacement_after_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    original = store.require_exact_dead_owner
+    changed_once = False
+
+    def replaced_record(*args: object, **kwargs: object) -> object:
+        nonlocal changed_once
+        record = original(*args, **kwargs)
+        if not changed_once and record.is_nonterminal:
+            changed_once = True
+            return replace(record, updated_at=record.updated_at + 1.0)
+        return record
+
+    monkeypatch.setattr(store, "require_exact_dead_owner", replaced_record)
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_record_changed",
+    ):
+        bridge.run_provider(attempt)
+
+    record = store.load_workspace(workspace)
+    assert record is not None and record.is_nonterminal
+    assert portals and portals[0].run_count == 0
+
+
+def test_bridge_rejects_open_database_authority_mapping(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    original_authority = bridge.prior_attempt_authority
+    assert original_authority is not None
+
+    def open_authority(
+        attempt_value: object,
+        current_binding: object,
+        prior_binding: object,
+    ) -> dict[str, object]:
+        value = dict(
+            original_authority(
+                attempt_value,
+                current_binding,
+                prior_binding,
+            )
+        )
+        value["unexpected_authority"] = True
+        return value
+
+    bridge.prior_attempt_authority = open_authority
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_database_authority_rejected",
+    ):
+        bridge.run_provider(attempt)
+
+    record = store.load_workspace(workspace)
+    assert record is not None and record.is_nonterminal
+    assert portals and portals[0].run_count == 0
+
+
+def test_bridge_rejects_relevant_hashed_sibling_mismatch(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    record = store.load_workspace(workspace)
+    assert record is not None
+    prior_root = Path(record.state_dir)
+    prior_root.rename(prior_root.with_name("f" * 24))
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_relevant_binding_invalid",
+    ):
+        bridge.run_provider(attempt)
+
+    assert store.load_workspace(workspace) is not None
+    assert portals and portals[0].run_count == 0
+
+
+def test_bridge_rejects_prior_portal_active_tuple_mismatch(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    record = store.load_workspace(workspace)
+    assert record is not None
+    state_path = Path(record.state_dir) / "portal-task-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["active_task_cid"] = "baguqeeraforeign"
+    state_path.write_text(
+        json.dumps(state, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_active_tuple_mismatch",
+    ):
+        bridge.run_provider(attempt)
+
+    assert store.load_workspace(workspace) is not None
+    assert portals and portals[0].run_count == 0
+
+
+def test_bridge_fails_closed_when_workspace_process_is_active(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    process = store.proc_root / "424242"
+    process.mkdir()
+    (process / "cwd").symlink_to(workspace)
+    (process / "cmdline").write_bytes(b"python\0worker.py\0")
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_worktree_process_active",
+    ):
+        bridge.run_provider(attempt)
+
+    record = store.load_workspace(workspace)
+    assert record is not None and record.is_nonterminal
+    assert portals and portals[0].run_count == 0
+
+
+def test_bridge_fails_closed_when_container_inventory_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+
+    def unavailable(_workspace: Path) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "cross_attempt_lifecycle_container_inventory_unavailable"
+        )
+
+    monkeypatch.setattr(bridge, "_strict_workspace_container_scan", unavailable)
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_container_inventory_unavailable",
+    ):
+        bridge.run_provider(attempt)
+
+    record = store.load_workspace(workspace)
+    assert record is not None and record.is_nonterminal
+    assert portals and portals[0].run_count == 0
+
+
+def test_container_root_mount_overlaps_recovery_workspace(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "worktrees" / "attempt"
+    workspace.mkdir(parents=True)
+
+    assert DatabasePortalExecutionBridge._mount_source_overlaps_workspace(
+        "/",
+        workspace,
+    ) is True
+
+
+def test_container_symlinked_parent_mount_overlaps_recovery_workspace(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "real-worktrees"
+    workspace = parent / "attempt"
+    workspace.mkdir(parents=True)
+    alias = tmp_path / "worktrees-alias"
+    alias.symlink_to(parent, target_is_directory=True)
+
+    assert DatabasePortalExecutionBridge._mount_source_overlaps_workspace(
+        str(alias),
+        workspace,
+    ) is True
+
+
+def test_bridge_resumes_prepared_receipt_after_terminal_crash_boundary(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    first = bridge.run_provider(attempt)
+    assert first["accepted"] is True
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    receipt_path = (
+        bridge._paths(attempt).root
+        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    committed = bridge._read_recovery_receipt(receipt_path)
+    prepared_body = {
+        field: committed[field]
+        for field in bridge_module._RECOVERY_RECEIPT_FIELDS.difference(
+            {"recovery_id", "receipt_id"}
+        )
+    }
+    prepared_body["phase"] = "prepared"
+    prepared_body["terminal_lifecycle_authority_id"] = ""
+    prepared = bridge._seal_recovery_receipt(prepared_body)
+    receipt_path.write_text(
+        json.dumps(prepared, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    historical_workspace = workspace.with_name("historical-terminal")
+    historical = replace(
+        terminal,
+        workspace_path=str(historical_workspace.resolve()),
+        record_id="",
+        updated_at=terminal.updated_at - 1.0,
+    )
+    store.workspace_path_for(historical_workspace).write_text(
+        json.dumps(historical.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    second = bridge.run_provider(attempt)
+
+    assert second["accepted"] is True
+    resumed = bridge._read_recovery_receipt(receipt_path)
+    assert resumed["phase"] == "committed"
+    assert resumed["recovery_id"] == prepared["recovery_id"]
+    assert store.load_workspace(workspace) == terminal
+    assert len(portals) == 2
+    assert portals[1].run_count == 0
+
+
+def test_bridge_repairs_prepared_terminal_with_stale_task_index(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    first = bridge.run_provider(attempt)
+    assert first["accepted"] is True
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    receipt_path = (
+        bridge._paths(attempt).root
+        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    committed = bridge._read_recovery_receipt(receipt_path)
+    prepared_body = {
+        field: committed[field]
+        for field in bridge_module._RECOVERY_RECEIPT_FIELDS.difference(
+            {"recovery_id", "receipt_id"}
+        )
+    }
+    prepared_body["phase"] = "prepared"
+    prepared_body["terminal_lifecycle_authority_id"] = ""
+    prepared = bridge._seal_recovery_receipt(prepared_body)
+    receipt_path.write_text(
+        json.dumps(prepared, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    predecessor = replace(
+        terminal,
+        state=terminal.state.__class__(prepared["prior_lifecycle_state"]),
+        fence=prepared["prior_lifecycle_fence"],
+    )
+    index_path = store.task_index_path_for(
+        canonical_task_cid=terminal.canonical_task_cid,
+        task_id=terminal.task_id,
+        attempt=terminal.attempt,
+    )
+    index_path.write_text(
+        json.dumps(
+            store._task_index_payload(predecessor),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    second = bridge.run_provider(attempt)
+
+    assert second["accepted"] is True
+    assert bridge._read_recovery_receipt(receipt_path)["phase"] == "committed"
+    assert json.loads(index_path.read_text(encoding="utf-8")) == (
+        store._task_index_payload(terminal)
+    )
+    assert len(portals) == 2
+    assert portals[1].run_count == 0
+
+
+def test_bridge_rejects_partial_terminal_not_bound_to_prepared_authority(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    assert bridge.run_provider(attempt)["accepted"] is True
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    receipt_path = (
+        bridge._paths(attempt).root
+        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    committed = bridge._read_recovery_receipt(receipt_path)
+    prepared_body = {
+        field: committed[field]
+        for field in bridge_module._RECOVERY_RECEIPT_FIELDS.difference(
+            {"recovery_id", "receipt_id"}
+        )
+    }
+    prepared_body["phase"] = "prepared"
+    prepared_body["terminal_lifecycle_authority_id"] = ""
+    prepared = bridge._seal_recovery_receipt(prepared_body)
+    receipt_path.write_text(
+        json.dumps(prepared, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    predecessor = replace(
+        terminal,
+        state=terminal.state.__class__(prepared["prior_lifecycle_state"]),
+        fence=prepared["prior_lifecycle_fence"],
+    )
+    index_path = store.task_index_path_for(
+        canonical_task_cid=terminal.canonical_task_cid,
+        task_id=terminal.task_id,
+        attempt=terminal.attempt,
+    )
+    stale_index = store._task_index_payload(predecessor)
+    index_path.write_text(
+        json.dumps(stale_index, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    replacement = replace(
+        terminal,
+        lane_id=f"{Path(terminal.state_dir).resolve()}:replacement-lane",
+    )
+    store.workspace_path_for(workspace).write_text(
+        json.dumps(replacement.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_receipt_authority_mismatch",
+    ):
+        bridge.run_provider(attempt)
+
+    assert json.loads(index_path.read_text(encoding="utf-8")) == stale_index
+    assert store.load_workspace(workspace) == replacement
+    assert len(portals) == 2
+    assert portals[1].run_count == 0
+
+
+def test_bridge_ignores_unrelated_process_count_changes_between_scans(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    inspected = iter((3, 4))
+    monkeypatch.setattr(
+        bridge,
+        "_strict_workspace_process_scan",
+        lambda _store, _workspace: {
+            "same_uid_processes_inspected": next(inspected)
+        },
+    )
+
+    result = bridge.run_provider(attempt)
+
+    assert result["accepted"] is True
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    assert portals and portals[0].run_count == 1
+
+
+def test_bridge_rejects_symlink_attempt_root_before_first_write(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "real-attempts"
+    target.mkdir()
+    attempt_root = tmp_path / "attempts"
+    attempt_root.symlink_to(target, target_is_directory=True)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: object(),
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="attempt root is not a sealed direct child",
+    ):
+        bridge._ensure_attempt_projection(_attempt(), _record())
+
+    assert tuple(target.iterdir()) == ()
+
+
+def test_bridge_atomic_write_rejects_attempt_directory_symlink_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge = _bridge_for_projection(tmp_path)
+    attacker_directory = tmp_path / "attacker-directory"
+    attacker_directory.mkdir()
+    displaced_directory = tmp_path / "displaced-attempt-directory"
+    original_seal = bridge._seal_attempt_directory
+    swapped = False
+
+    def seal_then_swap(
+        selected_paths: DatabasePortalAttemptPaths,
+        *,
+        attempt_id: object,
+        create: bool,
+    ) -> dict[str, int]:
+        nonlocal swapped
+        identity = original_seal(
+            selected_paths,
+            attempt_id=attempt_id,
+            create=create,
+        )
+        if not create and not swapped:
+            selected_paths.root.rename(displaced_directory)
+            selected_paths.root.symlink_to(
+                attacker_directory,
+                target_is_directory=True,
+            )
+            swapped = True
+        return identity
+
+    monkeypatch.setattr(bridge, "_seal_attempt_directory", seal_then_swap)
+
+    with pytest.raises(DatabasePortalBridgeError, match="sealed directory"):
+        bridge._ensure_attempt_projection(_attempt(), _record())
+
+    assert swapped is True
+    assert tuple(attacker_directory.iterdir()) == ()
+    assert tuple(displaced_directory.iterdir()) == ()
+
+
+def test_bridge_atomic_write_fsyncs_file_replace_and_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge = _bridge_for_projection(tmp_path)
+    paths = bridge._paths(_attempt())
+    directory_identity = bridge._seal_attempt_directory(
+        paths,
+        attempt_id=_attempt().attempt_id,
+        create=True,
+    )
+    paths.state.write_bytes(b"old-state")
+    operations: list[str] = []
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    def tracked_fsync(descriptor: int) -> None:
+        descriptor_identity = os.fstat(descriptor)
+        operations.append(
+            "fsync-directory"
+            if stat.S_ISDIR(descriptor_identity.st_mode)
+            else "fsync-file"
+        )
+        real_fsync(descriptor)
+
+    def tracked_replace(
+        source: str,
+        target: str,
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        assert src_dir_fd is not None
+        assert src_dir_fd == dst_dir_fd
+        assert Path(source).name == source
+        assert target == paths.state.name
+        operations.append("replace")
+        real_replace(
+            source,
+            target,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+        )
+
+    monkeypatch.setattr(bridge_module.os, "fsync", tracked_fsync)
+    monkeypatch.setattr(bridge_module.os, "replace", tracked_replace)
+
+    bridge_module._atomic_write(
+        paths.state,
+        b"durable-state",
+        sealed_directory_identity=directory_identity,
+    )
+
+    assert paths.state.read_bytes() == b"durable-state"
+    assert operations == ["fsync-file", "replace", "fsync-directory"]
+    assert tuple(paths.root.iterdir()) == (paths.state,)
+
+
+def test_database_daemon_rejects_open_superseded_binding_records() -> None:
+    current = replace(
+        _attempt(),
+        attempt_id="attempt:current",
+        claim_id="claim:current",
+        attempt_number=5,
+    )
+    protected: list[str] = []
+    fake = SimpleNamespace(
+        get_attempt=lambda _attempt_id: current,
+        _protect_attempt_write=lambda attempt: protected.append(
+            attempt.attempt_id
+        ),
+    )
+    current_binding = {
+        "attempt_id": current.attempt_id,
+        "claim_id": current.claim_id,
+        "task_cid": current.task_cid,
+        "task_alias": current.task_alias,
+        "fencing_token": current.fencing_token,
+        "fence_epoch": current.fence_epoch,
+        "lease_id": current.lease_id,
+        "binding_id": "sha256:current",
+    }
+    prior_binding = {
+        "attempt_id": "attempt:prior",
+        "claim_id": "claim:prior",
+        "task_cid": current.task_cid,
+        "task_alias": current.task_alias,
+        "fencing_token": 6,
+        "fence_epoch": 2,
+        "lease_id": "lease:prior",
+        "binding_id": "sha256:prior",
+    }
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="not a closed record",
+    ):
+        DatabaseImplementationDaemon.authorize_superseded_portal_attempt_binding(
+            fake,
+            current,
+            current_binding,
+            prior_binding,
+        )
+    assert protected == []
 
 
 def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
