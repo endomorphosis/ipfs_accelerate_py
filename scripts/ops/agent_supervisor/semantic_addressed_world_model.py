@@ -30,6 +30,25 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+_M29_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.duckdb"
+)
+_M29_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.coordination.duckdb"
+)
+_M29_WORKTREE_ROOT = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/worktrees"
+)
+_M29_GENERATION = 27
+_M29_TARGET_PLAN_REVISION = 28
+_M29_TARGET_EVENT_WATERMARK = 274
+_M29_TARGET_PROJECTION_CID = (
+    "baguqeera4z7aafxgr5xb7tfnb4mdhih4d2ynzkugodxrmrwpisi427hxnz7a"
+)
+_M29_TARGET_QUACK_PORT = 24_070
 _M28_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
     "run-r2-m27/control.duckdb"
@@ -697,6 +716,20 @@ def _emit(value: Mapping[str, Any]) -> int:
     return 0 if value.get("valid", True) is True else 2
 
 
+def _credential_safe_error(exc: BaseException) -> str:
+    """Render an operator error without exposing a live Quack credential."""
+
+    message = f"{type(exc).__name__}: {exc}"
+    secrets = {
+        str(value)
+        for name, value in os.environ.items()
+        if name.endswith("_QUACK_TOKEN") and len(str(value)) >= 8
+    }
+    for secret in sorted(secrets, key=len, reverse=True):
+        message = message.replace(secret, "<redacted-quack-token>")
+    return message
+
+
 def _validator(relative: str, function: str) -> dict[str, Any]:
     module = _load_script(relative, "_sawm_operator_" + function)
     return dict(getattr(module, function)(REPO_ROOT))
@@ -716,6 +749,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m29_key = "committed_evidence_verification_successor_materialization"
     m28_key = "live_claim_admission_recovery_successor_materialization"
     m27_key = "dead_owner_parallel_resume_successor_materialization"
     m26_key = "automatic_stall_recovery_successor_materialization"
@@ -738,6 +772,95 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m29_key in config:
+        authority = config.get(m29_key)
+        try:
+            expected = (
+                _materializer()
+                ._expected_m29_committed_evidence_verification_authority()
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "active M29 committed-evidence authority is unavailable"
+            ) from exc
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        runtime = config.get("runtime_paths")
+        target_root = str(Path(_M29_STORE_ID).parent)
+        expected_runtime = {
+            "root": target_root,
+            "state": f"{target_root}/state",
+            "worktrees": _M29_WORKTREE_ROOT,
+            "merge_queue": f"{target_root}/merge-queue",
+            "logs": f"{target_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }
+        binding = (
+            authority.get("runtime_binding")
+            if isinstance(authority, Mapping)
+            else None
+        )
+        changes = (
+            authority.get("exact_changes")
+            if isinstance(authority, Mapping)
+            else None
+        )
+        preservation = (
+            authority.get("preservation")
+            if isinstance(authority, Mapping)
+            else None
+        )
+        if (
+            not isinstance(authority, Mapping)
+            or dict(authority) != expected
+            or authority.get("migration_revision") != "SAWM-R2-M29"
+            or not isinstance(binding, Mapping)
+            or binding.get("store_id") != _M29_STORE_ID
+            or binding.get("coordination_store_id")
+            != _M29_COORDINATION_STORE_ID
+            or binding.get("store_generation") != _M29_GENERATION
+            or binding.get("plan_revision") != _M29_TARGET_PLAN_REVISION
+            or binding.get("target_event_watermark")
+            != _M29_TARGET_EVENT_WATERMARK
+            or binding.get("quack_port") != _M29_TARGET_QUACK_PORT
+            or authority.get("target_authority", {}).get("projection_cid")
+            != _M29_TARGET_PROJECTION_CID
+            or not isinstance(changes, Mapping)
+            or changes.get("event_suffix_length") != 1
+            or changes.get("evidence_node_changes") != 1
+            or any(
+                changes.get(name) != 0
+                for name in (
+                    "task_revision_changes", "task_status_changes",
+                    "plan_revision_changes", "accepted_completion_changes",
+                    "coordination_semantic_changes", "sidecar_changes",
+                    "store_generation_row_changes", "state_server_row_changes",
+                    "credential_row_changes",
+                )
+            )
+            or not isinstance(preservation, Mapping)
+            or preservation.get("failed_m28_post_append_attempt_preserved")
+            is not True
+            or preservation.get("m28_receipt_created_or_rewritten") is not False
+            or preservation.get("sidecars_preserved") is not True
+            or preservation.get("worker_self_approval") is not False
+            or not isinstance(program, Mapping)
+            or program.get("store_id") != _M29_STORE_ID
+            or program.get("store_generation") != str(_M29_GENERATION)
+            or program.get("quack_endpoint") != "quack:127.0.0.1:24070"
+            or program.get("worktree_root") != _M29_WORKTREE_ROOT
+            or not isinstance(owner, Mapping)
+            or owner.get("database_path") != _M29_STORE_ID
+            or owner.get("store_id") != _M29_STORE_ID
+            or owner.get("port") != _M29_TARGET_QUACK_PORT
+            or owner.get("state_dir") != f"{target_root}/quack-owner"
+            or not isinstance(runtime, Mapping)
+            or dict(runtime) != expected_runtime
+        ):
+            raise OperatorError(
+                "active M29 committed-evidence authority is invalid"
+            )
+        return authority
     if m28_key in config:
         authority = config.get(m28_key)
         try:
@@ -1894,6 +2017,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            "committed_evidence_verification_successor_materialization",
             "live_claim_admission_recovery_successor_materialization",
             "dead_owner_parallel_resume_successor_materialization",
             "automatic_stall_recovery_successor_materialization",
@@ -4268,6 +4392,86 @@ def _require_m18_final_pair_marker(
                 "M18 materializer check differs from its final pair marker"
             )
     return MappingProxyType(dict(observed))
+
+
+def _require_m29_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M27's final pair plus M29's exact verified source receipt."""
+
+    key = "committed_evidence_verification_successor_materialization"
+    if key not in config:
+        return MappingProxyType({})
+    expected_authority = (
+        materializer._expected_m29_committed_evidence_verification_authority()
+    )
+    if dict(authority) != expected_authority or config.get(key) != expected_authority:
+        raise OperatorError("M29 committed-evidence authority differs")
+    m27_authority = materializer._expected_m27_dead_owner_parallel_resume_authority()
+    m27_marker = _require_m27_final_pair_marker(
+        config,
+        m27_authority,
+        materializer,
+        require_current_coordination_store=False,
+    )
+    prior_final_pair_cid = str(m27_marker.get("receipt_cid") or "")
+    if (
+        prior_final_pair_cid
+        != expected_authority["prior_authority"]["m27_migration_receipt_cid"]
+    ):
+        raise OperatorError("M29 prior M27 final-pair receipt differs")
+    try:
+        materializer._assert_m29_m28_receipt_absent(REPO_ROOT, expected_authority)
+        path = (REPO_ROOT / _M29_STORE_ID).resolve().parent / (
+            "m29-source-successor-receipt.json"
+        )
+        observed, _ = materializer._load_nofollow_json(
+            path, root=REPO_ROOT, noun="M29 source successor receipt"
+        )
+    except Exception as exc:
+        raise OperatorError("M29 exact source successor receipt is unavailable") from exc
+    if checked is None:
+        raise OperatorError("M29 marker requires exact live materializer verification")
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        claimed != materializer._identity(unhashed)
+        or checked.get("valid") is not True
+        or checked.get("event_watermark") != _M29_TARGET_EVENT_WATERMARK
+        or checked.get("projection_cid") != _M29_TARGET_PROJECTION_CID
+        or checked.get("failed_m28_post_append_attempt_verified") is not True
+        or checked.get("full_event_and_evidence_body_verified") is not True
+        or checked.get("generation_26_27_restart_rows_verified") is not True
+        or checked.get("receipt") != observed
+        or observed.get("migration_revision") != "SAWM-R2-M29"
+        or observed.get(
+            "committed_evidence_verification_successor_materialization_cid"
+        )
+        != materializer._identity(expected_authority)
+        or observed.get("target_generation") != _M29_GENERATION
+        or observed.get("target_event_watermark") != _M29_TARGET_EVENT_WATERMARK
+        or observed.get("projection_cid") != _M29_TARGET_PROJECTION_CID
+        or observed.get("failed_m28_post_append_attempt_verified") is not True
+        or observed.get("m28_receipt_created_or_rewritten") is not False
+        or observed.get("full_event_and_evidence_body_verified") is not True
+        or observed.get("generation_26_27_restart_rows_verified") is not True
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M29 exact source successor receipt differs")
+    return MappingProxyType(
+        {
+            **dict(observed),
+            "prior_final_pair_receipt_cid": prior_final_pair_cid,
+            "prior_final_pair_commit_marker_verified": True,
+            "source_successor_receipt_cid": claimed,
+            "source_successor_receipt_verified": True,
+            "final_pair_commit_marker_verified": False,
+        }
+    )
 
 
 def _require_m28_source_successor_marker(
@@ -7359,6 +7563,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if "committed_evidence_verification_successor_materialization" in config:
+        return _require_m29_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if "live_claim_admission_recovery_successor_materialization" in config:
         return _require_m28_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -7580,33 +7788,45 @@ def _remote_owner_identity(
             "expected Quack owner identity is incomplete: " + ", ".join(missing)
         )
 
-    connection = open_quack_transport_connection(uri, token=token)
     try:
-        state_rows = connection.execute(
-            "SELECT server_id, store_id, database_uuid, process_birth_id, "
-            "listen_uri, extension_fingerprint, schema_revision, generation, "
-            "status, revision FROM state_servers WHERE server_id = ? AND generation = ?",
-            [expected["server_id"], int(expected["generation"])],
-        ).fetchall()
-        generation_rows = connection.execute(
-            "SELECT generation, schema_revision, fence_epoch, revision, "
-            "database_uuid, birth_id FROM store_generations WHERE generation = ?",
-            [int(expected["generation"])],
-        ).fetchall()
-        credential_id = (
-            f"cred:{expected['server_id']}:{int(expected['credential_generation'])}"
-        )
-        credential_rows = connection.execute(
-            "SELECT credential_id, secret_handle, generation, purpose, revoked_at, "
-            "revision FROM credentials WHERE credential_id = ?",
-            [credential_id],
-        ).fetchall()
-        metadata_rows = connection.execute(
-            "SELECT key, value FROM control_plane_metadata WHERE key IN "
-            "('database_uuid', 'schema_version', 'schema_fingerprint') ORDER BY key"
-        ).fetchall()
+        connection = open_quack_transport_connection(uri, token=token)
+    except Exception:
+        # The transport currently authenticates during ATTACH.  DuckDB may
+        # include failed SQL in its exception, so replace that exception before
+        # it can reach the operator's JSON/log surface.
+        raise OperatorError("authenticated Quack owner connection failed") from None
+    try:
+        try:
+            state_rows = connection.execute(
+                "SELECT server_id, store_id, database_uuid, process_birth_id, "
+                "listen_uri, extension_fingerprint, schema_revision, generation, "
+                "status, revision FROM state_servers WHERE server_id = ? AND generation = ?",
+                [expected["server_id"], int(expected["generation"])],
+            ).fetchall()
+            generation_rows = connection.execute(
+                "SELECT generation, schema_revision, fence_epoch, revision, "
+                "database_uuid, birth_id FROM store_generations WHERE generation = ?",
+                [int(expected["generation"])],
+            ).fetchall()
+            credential_id = (
+                f"cred:{expected['server_id']}:{int(expected['credential_generation'])}"
+            )
+            credential_rows = connection.execute(
+                "SELECT credential_id, secret_handle, generation, purpose, revoked_at, "
+                "revision FROM credentials WHERE credential_id = ?",
+                [credential_id],
+            ).fetchall()
+            metadata_rows = connection.execute(
+                "SELECT key, value FROM control_plane_metadata WHERE key IN "
+                "('database_uuid', 'schema_version', 'schema_fingerprint') ORDER BY key"
+            ).fetchall()
+        except Exception:
+            raise OperatorError("authenticated Quack owner query failed") from None
     finally:
-        connection.close()
+        try:
+            connection.close()
+        except Exception:
+            raise OperatorError("authenticated Quack owner close failed") from None
 
     if len(state_rows) != 1 or len(generation_rows) != 1 or len(credential_rows) != 1:
         raise OperatorError("live Quack owner identity rows are missing or ambiguous")
@@ -9046,6 +9266,45 @@ def _m23_portal_completion_is_compatible(
     )
 
 
+def _verify_m29_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M29's evidence-only target while preserving exact task heads."""
+
+    head = materializer._inspect_m28_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M29_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M29_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M29_TARGET_PROJECTION_CID
+        or head.get("projection_cid") != expected_projection_cid
+    ):
+        raise materializer.MigrationRequired("M29 live head projection differs")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        if observed is None:
+            raise materializer.MigrationRequired(f"M29 task is missing: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
+
+
 def _verify_m28_live_head_task_projection(
     source: Any,
     population: Mapping[str, Any],
@@ -10274,29 +10533,38 @@ def _live_preflight(
             "program_definition_cid": population["program_definition_cid"],
         }
     )
+    m29_active = (
+        "committed_evidence_verification_successor_materialization" in config
+    )
     m28_active = (
+        not m29_active
+        and
         "live_claim_admission_recovery_successor_materialization" in config
     )
     m27_active = (
-        not m28_active
+        not m29_active
+        and not m28_active
         and
         "dead_owner_parallel_resume_successor_materialization" in config
     )
     m26_active = (
-        not m28_active
+        not m29_active
+        and not m28_active
         and not m27_active
         and
         "automatic_stall_recovery_successor_materialization" in config
     )
     m25_active = (
-        not m28_active
+        not m29_active
+        and not m28_active
         and not m27_active
         and not m26_active
         and
         "native_duckdb_preload_successor_materialization" in config
     )
     m24_active = (
-        not m28_active
+        not m29_active
+        and not m28_active
         and not m27_active
         and not m26_active
         and not m25_active
@@ -10304,7 +10572,8 @@ def _live_preflight(
         "multi_lane_sidecar_reopen_successor_materialization" in config
     )
     m23_active = (
-        not m28_active
+        not m29_active
+        and not m28_active
         and not m27_active
         and not m26_active
         and not m25_active
@@ -10312,7 +10581,8 @@ def _live_preflight(
         and "multi_lane_successor_materialization" in config
     )
     m22_active = (
-        not m28_active
+        not m29_active
+        and not m28_active
         and not m27_active
         and not m26_active
         and not m25_active
@@ -10323,7 +10593,8 @@ def _live_preflight(
         in config
     )
     m21_active = (
-        not m28_active
+        not m29_active
+        and not m28_active
         and not m27_active
         and not m26_active
         and not m25_active
@@ -10333,7 +10604,8 @@ def _live_preflight(
         and "generation_realization_successor_materialization" in config
     )
     m20_active = (
-        not m28_active
+        not m29_active
+        and not m28_active
         and not m27_active
         and not m26_active
         and not m25_active
@@ -10345,7 +10617,8 @@ def _live_preflight(
         and "test_isolation_successor_materialization" in config
     )
     m19_active = (
-        not m28_active
+        not m29_active
+        and not m28_active
         and not m27_active
         and not m26_active
         and not m25_active
@@ -10360,7 +10633,8 @@ def _live_preflight(
         "live_catalog_inventory_successor_materialization" in config
     )
     m18_active = (
-        not m28_active
+        not m29_active
+        and not m28_active
         and not m27_active
         and not m26_active
         and not m25_active
@@ -10374,7 +10648,7 @@ def _live_preflight(
         and "portal_completion_persistence_successor_materialization" in config
     )
     final_pair_marker: Mapping[str, Any] = MappingProxyType({})
-    if not m18_active:
+    if not m18_active and not m29_active:
         final_pair_marker = _require_active_final_pair_marker(
             config,
             active_source_repair,
@@ -10475,12 +10749,69 @@ def _live_preflight(
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         DatabaseTaskSource,
     )
-    live = DatabaseTaskSource(discovery.uri, install_schema=False,
-                              repository_tree_id=population["repository_tree_id"],
-                              plan_root_cid=population["plan_root_cid"],
-                              owner_id="sawm-r2-live-preflight")
     try:
-        if m18_active:
+        live = DatabaseTaskSource(
+            discovery.uri,
+            install_schema=False,
+            repository_tree_id=population["repository_tree_id"],
+            plan_root_cid=population["plan_root_cid"],
+            owner_id="sawm-r2-live-preflight",
+        )
+    except Exception:
+        raise OperatorError("authenticated live Quack preflight open failed") from None
+    try:
+        if m29_active:
+            try:
+                materializer._assert_m29_m28_receipt_absent(
+                    REPO_ROOT, active_source_repair
+                )
+                m29_verified = materializer._verify_m29_live_materialization(
+                    live,
+                    live_identity,
+                    population,
+                    config,
+                    active_source_repair,
+                    validation_digest,
+                )
+                coordination = (
+                    REPO_ROOT
+                    / str(
+                        active_source_repair["runtime_binding"][
+                            "coordination_store_id"
+                        ]
+                    )
+                ).resolve()
+                m29_verified.update(
+                    materializer._inspect_m28_coordination_projection(
+                        coordination, active_source_repair
+                    )
+                )
+                expected_m29_receipt = (
+                    materializer._expected_m29_source_successor_receipt(
+                        population,
+                        active_source_repair,
+                        validation_digest,
+                        m29_verified,
+                    )
+                )
+                final_pair_marker = _require_active_final_pair_marker(
+                    config,
+                    active_source_repair,
+                    materializer,
+                    checked={
+                        "valid": True,
+                        "receipt": expected_m29_receipt,
+                        **m29_verified,
+                    },
+                )
+            except (
+                materializer.MigrationRequired,
+                materializer.MaterializationError,
+            ) as exc:
+                raise OperatorError(
+                    f"M29 exact committed-evidence verification failed: {exc}"
+                ) from exc
+        elif m18_active:
             final_pair_marker = _require_active_final_pair_marker(
                 config,
                 active_source_repair,
@@ -10505,7 +10836,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if "live_claim_admission_recovery_successor_materialization" in config:
+            if "committed_evidence_verification_successor_materialization" in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m29_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif "live_claim_admission_recovery_successor_materialization" in config:
                 statuses, _revisions, _receipts = (
                     _verify_m28_live_head_task_projection(
                         live,
@@ -10680,7 +11021,7 @@ def _live_preflight(
         expected_semantic_authority_digest = (
             str(final_pair_marker.get("semantic_authority_digest") or "")
             if (
-                m28_active or m27_active or m26_active or m25_active
+                m29_active or m28_active or m27_active or m26_active or m25_active
                 or m24_active or m23_active
             )
             else
@@ -10772,7 +11113,7 @@ def _live_preflight(
             or live_plan.get("plan_cid") != population["plan_root_cid"]
             or int(live_plan.get("revision") or 0) != expected_plan_revision
             or (
-                m28_active
+                (m29_active or m28_active)
                 and (
                     live_plan_body.get("current_source_binding_cid")
                     != active_source_repair["prior_authority"][
@@ -10789,7 +11130,7 @@ def _live_preflight(
                 )
             )
             or (
-                not m28_active
+                not (m29_active or m28_active)
                 and (
                     live_plan_body.get("current_source_binding_cid")
                     != population["source_binding"]["source_binding_cid"]
@@ -10812,8 +11153,15 @@ def _live_preflight(
             )
         if statuses.get("SAWM-000") not in {"completed", "complete", "done"}:
             raise OperatorError("live Quack authority lacks the SAWM-000 completion CAS")
+    except Exception as exc:
+        if discovery.token and discovery.token in str(exc):
+            raise OperatorError("authenticated live Quack preflight failed") from None
+        raise
     finally:
-        live.close()
+        try:
+            live.close()
+        except Exception:
+            raise OperatorError("authenticated live Quack preflight close failed") from None
     store_report = {
         "valid": True, "task_count": live_snapshot["task_count"],
         "goal_count": live_snapshot["goal_count"],
@@ -10913,7 +11261,10 @@ def _live_preflight(
             os.environ,
             program=database_program,
         )
-        if discovery.token in provider_environment.values():
+        if any(
+            discovery.token in str(value)
+            for value in provider_environment.values()
+        ):
             raise OperatorError("provider probe environment retained owner credential")
         readiness = probe_grok_codex_agent_route_readiness(
             grok_model=str(provider["primary_model_id"]),
@@ -11077,7 +11428,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     except Exception as exc:
         return _emit({"schema": "sawm/operator-error@1", "valid": False,
-                      "error": f"{type(exc).__name__}: {exc}"})
+                      "error": _credential_safe_error(exc)})
 
 
 if __name__ == "__main__":

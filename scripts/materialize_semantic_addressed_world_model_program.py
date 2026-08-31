@@ -1206,6 +1206,73 @@ _M28_REPAIR_BLOBS = MappingProxyType(
     }
 )
 
+# M28's authoritative evidence append committed at event 273, but its
+# non-authoritative adjacent receipt was never published because the original
+# verifier rejected the exact generation-bearing rows after the transaction had
+# committed.  M29 preserves that immutable failed post-append attempt, verifies
+# it byte-for-byte, and appends one new operator evidence/event pair.  It does
+# not create or rewrite the missing M28 receipt and it does not change tasks,
+# plans, coordination state, worktrees, lanes, or owner generation.
+_M29_MIGRATION_REVISION = "SAWM-R2-M29"
+_M29_SUPERSESSION_MODE = "append_only_committed_evidence_verification_source_seal"
+_M29_SUPERSESSION_REASON = (
+    "committed_evidence_verification_successor_materialization"
+)
+_M29_CONTROL_RECORDED_AT = "2026-08-31T02:20:00Z"
+_M29_PRIOR_EVENT_WATERMARK = 273
+_M29_TARGET_EVENT_WATERMARK = 274
+_M29_TARGET_PLAN_REVISION = 28
+_M29_TARGET_GENERATION = 27
+_M29_TARGET_QUACK_PORT = 24_070
+_M29_PRIOR_EVENT_PREFIX_SHA256 = (
+    "519bc8635dfebaf3f6b7fa843440aee9025f077e5b83a27d48f37816bb17e4c5"
+)
+_M29_PRIOR_PROJECTION_CID = _M28_TARGET_PROJECTION_CID
+_M29_TARGET_PROJECTION_CID = (
+    "baguqeera4z7aafxgr5xb7tfnb4mdhih4d2ynzkugodxrmrwpisi427hxnz7a"
+)
+_M29_PRIOR_SEMANTIC_AUTHORITY_DIGEST = (
+    "sha256:9de5fc91f217a511ffdb108cbfca5715804354db9d1493a4bd11d5e49a345092"
+)
+_M29_M28_CONTROL_COMMIT = "d7e2a4ba9bc7eef32ffad131ffd092ff11f934c4"
+_M29_VERIFIER_REPAIR_COMMIT = "bb79ffc69b199a735e672072a8cf534417918393"
+_M29_VERIFIER_REPAIR_TREE = "c1e0ebea9b82b635d70eaf0b61044118dc05c052"
+_M29_VERIFIER_REPAIR_BLOBS = MappingProxyType(
+    {
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "d88e511bbee55a577d046760de4311c3aabdb188"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "d7356bdf08f75e97494f2fc721cf8fb34894bd35"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "a1f2167768f6289ae6feff336ccd30a50821d13f"
+        ),
+    }
+)
+_M29_PRIOR_M28_EVENT_ID = (
+    "baguqeeragd2blhdw2gdjwwqovgwuoxlaulnto35lxtlycappubgqz4fm3lia"
+)
+_M29_PRIOR_M28_EVIDENCE_ID = (
+    "baguqeeraumvois7bdkb7dk27zfbqecpudpc5htrxskz4x2jgau56ivalqvla"
+)
+_M29_PRIOR_M28_EVIDENCE_DIGEST = (
+    "sha256:09cf02e35e461801b012c91afbd4f52b1304dad1ab56dd254471cdf348b92ee1"
+)
+_M29_PRIOR_M28_EVENT_BODY_SHA256 = (
+    "sha256:3cb367e5179dd16975e3504c5c51156ddc8e7995f7c43d525f8163fb099d991e"
+)
+_M29_PRIOR_M28_PROGRAM_DEFINITION_CID = (
+    "sha256:f581af1f2234c127231b47bb1bb8d42910b984dcd1bece9a6303949ac1ba0b72"
+)
+_M29_PRIOR_M28_SOURCE_BINDING_CID = (
+    "sha256:543c314eba87de4cff2af07296e87985dfc34fbda8b6436dad5cebc50652590e"
+)
+_M29_PRIOR_M28_SOURCE_TREE = "56b012539e6ca76af819f64dfdaa1f3d7e3df66c"
+_M29_PRIOR_M28_VALIDATION_DIGEST = (
+    "sha256:2599a864dcec5441a709ca2425af0954f937a39928646c73ad3941e0d7b84a8e"
+)
+
 _M21_MIGRATION_REVISION = "SAWM-R2-M21"
 _M21_SUPERSESSION_MODE = "generation_realization_successor_materialization"
 _M21_SUPERSESSION_REASON = "generation_realization_successor_materialization"
@@ -5996,6 +6063,256 @@ def _expected_m28_live_claim_admission_recovery_authority() -> dict[str, Any]:
             "worker_self_approval": False,
         },
     }
+
+
+def _expected_m29_committed_evidence_verification_authority() -> dict[str, Any]:
+    """Return M29's closed authorization over the committed M28 append."""
+
+    runtime_root = (
+        "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+    )
+    store_id = f"{runtime_root}/control.duckdb"
+    coordination_store_id = f"{runtime_root}/control.coordination.duckdb"
+    database_uuid = "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4"
+    endpoint = "quack:127.0.0.1:24070"
+    extension_fingerprint = (
+        "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b"
+    )
+    prior_server = "server:f0e56096-6fe5-4fdb-ba58-d1cb16cb7f2e"
+    prior_birth = "birth:e5067605f91c1d1dee62d2e7a0626d9f"
+    live_server = "server:ff5834df-4af2-4cb0-a4a4-7dbc4f258457"
+    live_birth = "birth:7157839e6e5bc6ce351f41c7d9cd6c94"
+    restart_rows = {
+        "state_servers_columns": [
+            "server_id", "store_id", "database_uuid", "process_birth_id",
+            "listen_uri", "extension_fingerprint", "schema_revision",
+            "generation", "started_at", "stopped_at", "status", "revision",
+            "extension_schema", "extension_json",
+        ],
+        "state_servers": [
+            [
+                prior_server, store_id, database_uuid, prior_birth, endpoint,
+                extension_fingerprint, 1, 26, "2026-08-30T23:52:56Z",
+                "2026-08-31T01:50:59Z", "stopped", 2, "", "{}",
+            ],
+            [
+                live_server, store_id, database_uuid, live_birth, endpoint,
+                extension_fingerprint, 1, 27, "2026-08-31T01:52:29Z", None,
+                "ready", 1, "", "{}",
+            ],
+        ],
+        "store_generations_columns": [
+            "generation", "schema_revision", "fence_epoch", "revision",
+            "database_uuid", "birth_id", "created_at", "extension_schema",
+            "extension_json",
+        ],
+        "store_generations": [
+            [
+                26, 1, 26, 0, database_uuid, prior_birth,
+                "2026-08-30T23:52:56Z", "", "{}",
+            ],
+            [
+                27, 1, 27, 0, database_uuid, live_birth,
+                "2026-08-31T01:52:29Z", "", "{}",
+            ],
+        ],
+        "credentials_columns": [
+            "credential_id", "secret_handle", "generation", "purpose",
+            "created_at", "rotated_at", "revoked_at", "revision",
+        ],
+        "credentials": [
+            [
+                f"cred:{prior_server}:26", "env://SAWM_QUACK_TOKEN", 26,
+                "quack-auth", "2026-08-30T23:52:56Z", None, None, 0,
+            ],
+            [
+                f"cred:{live_server}:27", "env://SAWM_QUACK_TOKEN", 27,
+                "quack-auth", "2026-08-31T01:52:29Z", None, None, 0,
+            ],
+        ],
+        "global_counts": {
+            "state_servers": 27,
+            "store_generations": 27,
+            "credentials": 27,
+        },
+    }
+    return {
+        "schema": (
+            "sawm/committed-evidence-verification-successor-materialization-"
+            "authorization@1"
+        ),
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": _M29_MIGRATION_REVISION,
+        "migration_kind": _M29_SUPERSESSION_REASON,
+        "supersession_mode": _M29_SUPERSESSION_MODE,
+        "control_recorded_at": _M29_CONTROL_RECORDED_AT,
+        "target_store_id": store_id,
+        "target_coordination_store_id": coordination_store_id,
+        "target_runtime_root": runtime_root,
+        "target_generation": _M29_TARGET_GENERATION,
+        "target_quack_port": _M29_TARGET_QUACK_PORT,
+        "target_plan_revision": _M29_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M29_TARGET_EVENT_WATERMARK,
+        "target_projection_cid": _M29_TARGET_PROJECTION_CID,
+        "prior_database_uuid": database_uuid,
+        "runtime_binding": {
+            "run_id": "run-r2-m27",
+            "runtime_root": runtime_root,
+            "store_id": store_id,
+            "coordination_store_id": coordination_store_id,
+            "worktree_root": f"{runtime_root}/worktrees",
+            "store_generation": _M29_TARGET_GENERATION,
+            "quack_port": _M29_TARGET_QUACK_PORT,
+            "quack_endpoint": endpoint,
+            "plan_revision": _M29_TARGET_PLAN_REVISION,
+            "prior_event_watermark": _M29_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M29_TARGET_EVENT_WATERMARK,
+            "database_uuid": database_uuid,
+            "server_id": live_server,
+            "process_birth_id": live_birth,
+        },
+        "prior_authority": {
+            "migration_revision": _M28_MIGRATION_REVISION,
+            "authorization_cid": _identity(
+                _expected_m28_live_claim_admission_recovery_authority()
+            ),
+            "receipt_path": f"{runtime_root}/m28-source-successor-receipt.json",
+            "receipt_absent": True,
+            "failure_stage": "post_append_verification_before_receipt_publication",
+            "event_watermark": _M29_PRIOR_EVENT_WATERMARK,
+            "event_prefix_sha256": _M29_PRIOR_EVENT_PREFIX_SHA256,
+            "projection_cid": _M29_PRIOR_PROJECTION_CID,
+            "semantic_authority_digest": _M29_PRIOR_SEMANTIC_AUTHORITY_DIGEST,
+            "event_id": _M29_PRIOR_M28_EVENT_ID,
+            "event_body_sha256": _M29_PRIOR_M28_EVENT_BODY_SHA256,
+            "evidence_id": _M29_PRIOR_M28_EVIDENCE_ID,
+            "evidence_digest": _M29_PRIOR_M28_EVIDENCE_DIGEST,
+            "evidence_kind": (
+                "operator_control_plane_live_claim_admission_recovery_successor"
+            ),
+            "recorded_at": _M28_CONTROL_RECORDED_AT,
+            "owner_id": "sawm-r2-m28-live-source-sealer",
+            "program_definition_cid": _M29_PRIOR_M28_PROGRAM_DEFINITION_CID,
+            "source_binding_cid": _M29_PRIOR_M28_SOURCE_BINDING_CID,
+            "source_head": _M29_M28_CONTROL_COMMIT,
+            "source_tree": _M29_PRIOR_M28_SOURCE_TREE,
+            "validation_digest": _M29_PRIOR_M28_VALIDATION_DIGEST,
+            "m27_migration_receipt_cid": (
+                "sha256:8f03517c24aefcce3dee415f82e6137303cd43977c2cb5d1773c6aba81beb82d"
+            ),
+            "coordination_event_count": 3_019,
+            "coordination_projection_digest": (
+                "sha256:7abbd22e48ed99b31fb02190c6406b631f3341de22c9904af3d2b5b10d9509c0"
+            ),
+            "plan_source_binding_cid": (
+                "sha256:83e28e01de41699d5b2312ead03e7f33d9989d809d97924ea0a230af2c038856"
+            ),
+            "plan_migration_digest": (
+                "sha256:43eb5eb9b3f05c6ffe00c918901524e61c4a94a8d7334a3a3261ef95870cc73b"
+            ),
+        },
+        "target_authority": {
+            "event_watermark": _M29_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M29_TARGET_PROJECTION_CID,
+            "plan_revision": _M29_TARGET_PLAN_REVISION,
+            "evidence_kind": (
+                "operator_control_plane_committed_evidence_verification_successor"
+            ),
+            "operator_task_cid": (
+                "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6"
+            ),
+        },
+        "generation_26_27_restart_rows": restart_rows,
+        "historical_transition_repair": (
+            _expected_m28_live_claim_admission_recovery_authority()[
+                "historical_transition_repair"
+            ]
+        ),
+        "source_chain": {
+            "m28_control_commit": _M29_M28_CONTROL_COMMIT,
+            "verifier_repair_commit": _M29_VERIFIER_REPAIR_COMMIT,
+            "verifier_repair_parent": _M29_M28_CONTROL_COMMIT,
+            "verifier_repair_tree": _M29_VERIFIER_REPAIR_TREE,
+            "verifier_repair_blobs": dict(_M29_VERIFIER_REPAIR_BLOBS),
+            "final_control_commit_count": 1,
+        },
+        "expected_task_heads": _m28_expected_task_heads(),
+        "operator_control_paths": sorted(_M18_OPERATOR_CONTROL_PATHS),
+        "current_datasets_gitlink": "b9f5b86199c03e427fd51fcea302479880421ff8",
+        "current_datasets_tree": "52c0c7be05a51956ba5aa2b6f85d38e03588f3b1",
+        "current_kit_gitlink": "fc9248073e9f67ac59ca607c7736746907b08037",
+        "current_kit_tree": "b26e05db1b199e7e491b45b686a0845fabbabadb",
+        "ordinary_source_changes": 0,
+        "exact_changes": {
+            "event_suffix_length": 1,
+            "evidence_node_changes": 1,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "plan_revision_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "coordination_semantic_changes": 0,
+            "sidecar_changes": 0,
+            "store_generation_row_changes": 0,
+            "state_server_row_changes": 0,
+            "credential_row_changes": 0,
+            "implementation_provider_invocations": 0,
+            "effect_claim_changes": 0,
+            "implementation_commit_changes": 0,
+            "merge_attempt_changes": 0,
+        },
+        "preservation": {
+            "failed_m28_post_append_attempt_preserved": True,
+            "m28_receipt_created_or_rewritten": False,
+            "same_live_owner": True,
+            "same_runtime_root": True,
+            "same_store_generation": True,
+            "control_base_copied": False,
+            "coordination_base_copied": False,
+            "sidecars_preserved": True,
+            "lane_sidecars_preserved_in_place": True,
+            "execution_sidecar_copied": False,
+            "read_replica_sidecar_copied": False,
+            "worktrees_copied": False,
+            "active_sawm_006_attempt_preserved": True,
+            "worker_self_approval": False,
+        },
+    }
+
+
+def _m29_successor_configured(config: Mapping[str, Any]) -> bool:
+    key = "committed_evidence_verification_successor_materialization"
+    if key not in config:
+        return False
+    expected = _expected_m29_committed_evidence_verification_authority()
+    observed = config.get(key)
+    if type(observed) is not dict or _identity(observed) != _identity(expected):
+        raise MaterializationError(
+            "M29 committed-evidence verification authority is invalid"
+        )
+    return True
+
+
+def _m29_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = "committed_evidence_verification_successor_materialization"
+    migration = _load_json(
+        root / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if not any(presence):
+        return False
+    if not all(presence):
+        raise MaterializationError(
+            "M29 committed-evidence verification authority is only partially declared"
+        )
+    return _m29_successor_configured(config)
 
 
 def _m28_successor_configured(config: Mapping[str, Any]) -> bool:
@@ -24329,6 +24646,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m29_successor_configured_on_any_surface(root, config):
+        return _check_m29_materialized(root, config_file)
     if _m28_successor_configured_on_any_surface(root, config):
         return _check_m28_materialized(root, config_file)
     if _m27_successor_configured_on_any_surface(root, config):
@@ -49772,6 +50091,194 @@ def _materialize_m26(
     }
 
 
+def _m29_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    expected = _expected_m29_committed_evidence_verification_authority()
+    key = "committed_evidence_verification_successor_materialization"
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if (
+        config.get(key) != expected
+        or not isinstance(inventory, Mapping)
+        or inventory.get(key) != expected
+        or seal.get(f"{key}_cid") != _identity(expected)
+    ):
+        raise MaterializationError("M29 authority differs across protected controls")
+    return expected
+
+
+def _assert_m29_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Require d7e2a4ba9 -> bb79ffc69 -> exactly one control child."""
+
+    current = str(population["source_binding"]["head"])
+    repair = _M29_VERIFIER_REPAIR_COMMIT
+    m28_control = _M29_M28_CONTROL_COMMIT
+    source_chain = authority.get("source_chain")
+    control_paths = set(authority.get("operator_control_paths") or ())
+    parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
+    repair_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", repair
+    ).split()
+    expected_repair_delta = {
+        path: "M" for path in _M29_VERIFIER_REPAIR_BLOBS
+    }
+    if (
+        current == repair
+        or not isinstance(source_chain, Mapping)
+        or control_paths != set(_M18_OPERATOR_CONTROL_PATHS)
+        or source_chain.get("m28_control_commit") != m28_control
+        or source_chain.get("verifier_repair_commit") != repair
+        or source_chain.get("verifier_repair_parent") != m28_control
+        or source_chain.get("verifier_repair_tree") != _M29_VERIFIER_REPAIR_TREE
+        or source_chain.get("verifier_repair_blobs")
+        != dict(_M29_VERIFIER_REPAIR_BLOBS)
+        or int(source_chain.get("final_control_commit_count") or 0) != 1
+        or repair_parents != [repair, m28_control]
+        or parents != [current, repair]
+        or _git(root, "rev-parse", f"{m28_control}^{{tree}}")
+        != _M29_PRIOR_M28_SOURCE_TREE
+        or _git(root, "rev-parse", f"{repair}^{{tree}}")
+        != _M29_VERIFIER_REPAIR_TREE
+        or population["source_binding"].get("tree")
+        != _git(root, "rev-parse", f"{current}^{{tree}}")
+        or _m27_name_status(root, m28_control, repair) != expected_repair_delta
+        or _m27_name_status(root, repair, current)
+        != {path: "M" for path in control_paths}
+        or int(authority.get("ordinary_source_changes", -1)) != 0
+    ):
+        raise MaterializationError(
+            "M29 source transition is not d7e2a4ba9 -> bb79ffc69 plus one control commit"
+        )
+    for path, blob_oid in _M29_VERIFIER_REPAIR_BLOBS.items():
+        if _git(root, "rev-parse", f"{repair}:{path}") != blob_oid:
+            raise MaterializationError(f"M29 verifier-repair blob differs: {path}")
+    for dependency, gitlink_key, tree_key, population_key in (
+        (
+            "ipfs_datasets_py", "current_datasets_gitlink",
+            "current_datasets_tree", "datasets_gitlink",
+        ),
+        ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree", "kit_gitlink"),
+    ):
+        gitlink = str(authority[gitlink_key])
+        if (
+            any(
+                _git(root, "rev-parse", f"{head}:{dependency}") != gitlink
+                for head in (m28_control, repair, current)
+            )
+            or population["source_binding"].get(population_key) != gitlink
+            or _git(root / dependency, "rev-parse", f"{gitlink}^{{tree}}")
+            != authority[tree_key]
+        ):
+            raise MaterializationError(f"M29 {dependency} authority differs")
+
+
+def _m29_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    runtime = authority["runtime_binding"]
+    program = config.get("database_program")
+    owner = config.get("quack_owner")
+    runtime_paths = config.get("runtime_paths")
+    target_root = str(runtime["runtime_root"])
+    expected_runtime_paths = {
+        "root": target_root,
+        "state": f"{target_root}/state",
+        "worktrees": f"{target_root}/worktrees",
+        "merge_queue": f"{target_root}/merge-queue",
+        "logs": f"{target_root}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+    if (
+        not isinstance(program, Mapping)
+        or not isinstance(owner, Mapping)
+        or program.get("store_id") != runtime["store_id"]
+        or program.get("store_generation") != str(runtime["store_generation"])
+        or program.get("quack_endpoint") != runtime["quack_endpoint"]
+        or program.get("worktree_root") != runtime["worktree_root"]
+        or owner.get("database_path") != runtime["store_id"]
+        or owner.get("store_id") != runtime["store_id"]
+        or owner.get("port") != runtime["quack_port"]
+        or owner.get("state_dir") != f"{target_root}/quack-owner"
+        or runtime_paths != expected_runtime_paths
+    ):
+        raise MaterializationError("scheduler M29 live runtime binding differs")
+    control = (root / str(runtime["store_id"])).resolve()
+    coordination = (root / str(runtime["coordination_store_id"])).resolve()
+    if not control.is_relative_to(root) or not coordination.is_relative_to(root):
+        raise MaterializationError("M29 runtime path escapes repository")
+    return control, coordination
+
+
+def _m29_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    authority = _expected_m29_committed_evidence_verification_authority()
+    return {
+        "schema": "sawm/committed-evidence-verification-source-seal@1",
+        "authority": "operator_control_plane",
+        "migration_revision": _M29_MIGRATION_REVISION,
+        "migration_kind": _M29_SUPERSESSION_REASON,
+        "supersession_mode": _M29_SUPERSESSION_MODE,
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "current_source_head": population["source_binding"]["head"],
+        "current_source_tree": population["source_binding"]["tree"],
+        "validation_digest": validation_digest,
+        "authorization_cid": _identity(authority),
+        "runtime_binding": authority["runtime_binding"],
+        "prior_authority": authority["prior_authority"],
+        "target_authority": authority["target_authority"],
+        "source_chain": authority["source_chain"],
+        "generation_26_27_restart_rows": authority[
+            "generation_26_27_restart_rows"
+        ],
+        "exact_changes": authority["exact_changes"],
+        "preservation": authority["preservation"],
+        "authenticated_mutation_route": {
+            "transport": "quack_proxy_only",
+            "endpoint_from_live_owner_discovery": True,
+            "token_from_secret_handoff_or_environment_only": True,
+            "token_in_argv": False,
+            "token_in_evidence": False,
+            "direct_authoritative_file_opened": False,
+        },
+        "scheduler_runtime_root": config["runtime_paths"]["root"],
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _m29_expected_prior_m28_body(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Reconstruct the immutable event-273 evidence body from sealed facts."""
+
+    population = {
+        "program_definition_cid": _M29_PRIOR_M28_PROGRAM_DEFINITION_CID,
+        "source_binding": {
+            "source_binding_cid": _M29_PRIOR_M28_SOURCE_BINDING_CID,
+            "head": _M29_M28_CONTROL_COMMIT,
+            "tree": _M29_PRIOR_M28_SOURCE_TREE,
+        },
+    }
+    return _m28_migration_body(
+        population, config, _M29_PRIOR_M28_VALIDATION_DIGEST
+    )
+
+
 def _m28_source_binding_authority(
     root: Path,
     population: Mapping[str, Any],
@@ -51349,6 +51856,8 @@ def _m28_live_source(
     config: Mapping[str, Any],
     population: Mapping[str, Any],
     authority: Mapping[str, Any],
+    *,
+    owner_id: str = "sawm-r2-m28-live-source-sealer",
 ) -> Iterator[tuple[Any, Mapping[str, Any]]]:
     """Authenticate to the existing owner without exposing its token."""
 
@@ -51421,24 +51930,451 @@ def _m28_live_source(
     os.environ.update(updates)
     source = None
     try:
-        source = DatabaseTaskSource(
-            discovery.uri,
-            install_schema=False,
-            repository_tree_id=str(population["repository_tree_id"]),
-            plan_root_cid=str(population["plan_root_cid"]),
-            owner_id="sawm-r2-m28-live-source-sealer",
-        )
-        yield source, identity
+        try:
+            source = DatabaseTaskSource(
+                discovery.uri,
+                install_schema=False,
+                repository_tree_id=str(population["repository_tree_id"]),
+                plan_root_cid=str(population["plan_root_cid"]),
+                owner_id=owner_id,
+            )
+        except Exception:
+            # The Quack transport currently supplies its token while attaching.
+            # Never permit an implementation-specific attach error to echo the
+            # SQL text (and therefore the credential) through a control report.
+            raise MigrationRequired(
+                "authenticated live Quack source open failed"
+            ) from None
+        try:
+            yield source, identity
+        except Exception as exc:
+            if discovery.token and discovery.token in str(exc):
+                raise MigrationRequired(
+                    "authenticated live Quack operation failed"
+                ) from None
+            raise
     finally:
         try:
             if source is not None:
-                source.close()
+                try:
+                    source.close()
+                except Exception:
+                    raise MigrationRequired(
+                        "authenticated live Quack source close failed"
+                    ) from None
         finally:
             for name, value in prior_environment.items():
                 if value is None:
                     os.environ.pop(name, None)
                 else:
                     os.environ[name] = value
+
+
+def _assert_m29_m28_receipt_absent(
+    root: Path, authority: Mapping[str, Any]
+) -> None:
+    path = (root / str(authority["prior_authority"]["receipt_path"])).resolve()
+    if not path.is_relative_to(root):
+        raise MaterializationError("M29 prior M28 receipt path escapes repository")
+    if os.path.lexists(path):
+        raise MigrationRequired(
+            "M29 refuses to create, consume, or rewrite the failed M28 receipt"
+        )
+
+
+def _inspect_m29_generation_restart_rows(
+    source: Any, authority: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Verify every selected field by integer index on exact generation rows."""
+
+    expected = authority["generation_26_27_restart_rows"]
+    state_columns = list(expected["state_servers_columns"])
+    generation_columns = list(expected["store_generations_columns"])
+    credential_columns = list(expected["credentials_columns"])
+    with source.intent._connection(write=False) as connection:
+        state_rows = connection.execute(
+            f"SELECT {','.join(state_columns)} FROM state_servers "
+            "WHERE generation IN (26,27) ORDER BY generation"
+        ).fetchall()
+        generation_rows = connection.execute(
+            f"SELECT {','.join(generation_columns)} FROM store_generations "
+            "WHERE generation IN (26,27) ORDER BY generation"
+        ).fetchall()
+        credential_rows = connection.execute(
+            f"SELECT {','.join(credential_columns)} FROM credentials "
+            "WHERE generation IN (26,27) ORDER BY generation"
+        ).fetchall()
+        counts = {
+            table: int(
+                connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            )
+            for table in ("state_servers", "store_generations", "credentials")
+        }
+    observed_states = [
+        [row[index] for index in range(len(state_columns))] for row in state_rows
+    ]
+    observed_generations = [
+        [row[index] for index in range(len(generation_columns))]
+        for row in generation_rows
+    ]
+    observed_credentials = [
+        [row[index] for index in range(len(credential_columns))]
+        for row in credential_rows
+    ]
+    if (
+        observed_states != expected["state_servers"]
+        or observed_generations != expected["store_generations"]
+        or observed_credentials != expected["credentials"]
+        or counts != expected["global_counts"]
+    ):
+        raise MigrationRequired("M29 exact generation-26/27 restart rows differ")
+    return {
+        "generation_26_27_restart_rows_verified": True,
+        "prior_owner_generation": 26,
+        "live_owner_generation": 27,
+        "live_server_id": expected["state_servers"][1][0],
+        "live_process_birth_id": expected["state_servers"][1][3],
+    }
+
+
+def _m29_expected_prior_m28_event(
+    config: Mapping[str, Any], authority: Mapping[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    prior = authority["prior_authority"]
+    body = _m29_expected_prior_m28_body(config)
+    inner = {
+        "evidence_id": prior["evidence_id"],
+        "parent_evidence_id": "",
+        "task_cid": authority["target_authority"]["operator_task_cid"],
+        "evidence_kind": prior["evidence_kind"],
+        "digest": prior["evidence_digest"],
+        "body": body,
+        "created_at": prior["recorded_at"],
+        "revision": 0,
+    }
+    event_body = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": prior["evidence_id"],
+        "body": inner,
+        "recorded_at": prior["recorded_at"],
+        "owner_id": prior["owner_id"],
+    }
+    if (
+        _identity(body) != prior["evidence_digest"]
+        or _identity(event_body) != prior["event_body_sha256"]
+    ):
+        raise MaterializationError("M29 sealed M28 evidence reconstruction differs")
+    return body, event_body
+
+
+def _inspect_m29_prior_m28_append(
+    source: Any,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify the committed event-273 attempt without inventing its receipt."""
+
+    prior = authority["prior_authority"]
+    body, event_body = _m29_expected_prior_m28_event(config, authority)
+    with source.intent._connection(write=False) as connection:
+        evidence = connection.execute(
+            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+            "created_at,body_json FROM evidence_nodes WHERE evidence_id=?",
+            [prior["evidence_id"]],
+        ).fetchone()
+        event = connection.execute(
+            "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+            "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+            "WHERE global_sequence=?",
+            [_M29_PRIOR_EVENT_WATERMARK],
+        ).fetchone()
+        prefix = _event_prefix_digest(connection, _M29_PRIOR_EVENT_WATERMARK)
+        semantic = _semantic_authority_digest_on(connection)
+    expected_evidence = [
+        prior["evidence_id"],
+        "",
+        authority["target_authority"]["operator_task_cid"],
+        prior["evidence_kind"],
+        prior["evidence_digest"],
+        prior["recorded_at"],
+        _canonical(body).decode("utf-8"),
+    ]
+    expected_event = [
+        prior["event_id"],
+        "stream:intent",
+        _M29_PRIOR_EVENT_WATERMARK,
+        _M29_PRIOR_EVENT_WATERMARK,
+        "intent.evidence_recorded",
+        authority["target_authority"]["operator_task_cid"],
+        "",
+        "session:intent",
+        prior["recorded_at"],
+        _canonical(event_body).decode("utf-8"),
+    ]
+    if (
+        evidence is None
+        or [evidence[index] for index in range(7)] != expected_evidence
+        or event is None
+        or [event[index] for index in range(10)] != expected_event
+        or prefix
+        != (prior["event_prefix_sha256"], _M29_PRIOR_EVENT_WATERMARK)
+        or semantic != prior["semantic_authority_digest"]
+    ):
+        raise MigrationRequired("M29 committed M28 event/evidence differs")
+    return {
+        "failed_m28_post_append_attempt_verified": True,
+        "prior_m28_event_id": prior["event_id"],
+        "prior_m28_evidence_id": prior["evidence_id"],
+        "prior_event_prefix_sha256": prior["event_prefix_sha256"],
+    }
+
+
+def _m29_expected_event_body(
+    body: Mapping[str, Any],
+    *,
+    evidence_id: str,
+    digest: str,
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    target = authority["target_authority"]
+    inner = {
+        "evidence_id": evidence_id,
+        "parent_evidence_id": "",
+        "task_cid": target["operator_task_cid"],
+        "evidence_kind": target["evidence_kind"],
+        "digest": digest,
+        "body": dict(body),
+        "created_at": _M29_CONTROL_RECORDED_AT,
+        "revision": 0,
+    }
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": evidence_id,
+        "body": inner,
+        "recorded_at": _M29_CONTROL_RECORDED_AT,
+        "owner_id": "sawm-r2-m29-live-source-sealer",
+    }
+
+
+def _verify_m29_live_materialization(
+    source: Any,
+    identity: Mapping[str, Any],
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    """Verify both evidence events, full bodies, restart rows, and unchanged heads."""
+
+    body = _m29_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence_id = content_identity(
+        {
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": body,
+        }
+    )
+    event_body = _m29_expected_event_body(
+        body, evidence_id=evidence_id, digest=digest, authority=authority
+    )
+    expected_event_id = content_identity(
+        {
+            "stream_id": "stream:intent",
+            "sequence": _M29_TARGET_EVENT_WATERMARK,
+            "global_sequence": _M29_TARGET_EVENT_WATERMARK,
+            "event_type": "intent.evidence_recorded",
+            "body": event_body,
+        }
+    )
+    head = _inspect_m28_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M29_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=_M29_TARGET_PROJECTION_CID,
+    )
+    prior = _inspect_m29_prior_m28_append(source, config, authority)
+    restart = _inspect_m29_generation_restart_rows(source, authority)
+    with source.intent._connection(write=False) as connection:
+        evidence = connection.execute(
+            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+            "created_at,body_json FROM evidence_nodes WHERE evidence_id=?",
+            [evidence_id],
+        ).fetchone()
+        event = connection.execute(
+            "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+            "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+            "WHERE global_sequence=?",
+            [_M29_TARGET_EVENT_WATERMARK],
+        ).fetchone()
+        prefix = _event_prefix_digest(connection, _M29_TARGET_EVENT_WATERMARK)
+        semantic = _semantic_authority_digest_on(connection)
+    expected_evidence = [
+        evidence_id, "", target["operator_task_cid"], target["evidence_kind"],
+        digest, _M29_CONTROL_RECORDED_AT, _canonical(body).decode("utf-8"),
+    ]
+    expected_event = [
+        expected_event_id,
+        "stream:intent",
+        _M29_TARGET_EVENT_WATERMARK,
+        _M29_TARGET_EVENT_WATERMARK,
+        "intent.evidence_recorded",
+        target["operator_task_cid"],
+        "",
+        "session:intent",
+        _M29_CONTROL_RECORDED_AT,
+        _canonical(event_body).decode("utf-8"),
+    ]
+    if (
+        evidence is None
+        or [evidence[index] for index in range(7)] != expected_evidence
+        or event is None
+        or [event[index] for index in range(10)] != expected_event
+        or prefix[1] != _M29_TARGET_EVENT_WATERMARK
+        or semantic != _M29_PRIOR_SEMANTIC_AUTHORITY_DIGEST
+        or str(identity.get("server_id")) != restart["live_server_id"]
+        or str(identity.get("process_birth_id"))
+        != restart["live_process_birth_id"]
+    ):
+        raise MigrationRequired("M29 exact target event/evidence authority differs")
+    return {
+        **head,
+        **prior,
+        **restart,
+        "migration_digest": digest,
+        "migration_evidence_id": evidence_id,
+        "migration_evidence_event_id": expected_event_id,
+        "target_event_prefix_sha256": prefix[0],
+        "semantic_authority_digest": semantic,
+        "live_server_id": str(identity["server_id"]),
+        "live_process_birth_id": str(identity["process_birth_id"]),
+        "full_event_and_evidence_body_verified": True,
+        "plan_revision_changes": 0,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _expected_m29_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": "sawm/non-authoritative-committed-evidence-successor-receipt@1",
+        "authoritative": False,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M29_MIGRATION_REVISION,
+        "migration_kind": _M29_SUPERSESSION_REASON,
+        "supersession_mode": _M29_SUPERSESSION_MODE,
+        "committed_evidence_verification_successor_materialization_cid": _identity(
+            authority
+        ),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "validation_digest": validation_digest,
+        "database_path": authority["runtime_binding"]["store_id"],
+        "coordination_path": authority["runtime_binding"][
+            "coordination_store_id"
+        ],
+        "target_generation": _M29_TARGET_GENERATION,
+        "target_plan_revision": _M29_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M29_TARGET_EVENT_WATERMARK,
+        "projection_cid": _M29_TARGET_PROJECTION_CID,
+        "coordination_projection_digest": verified[
+            "coordination_projection_digest"
+        ],
+        "coordination_event_count": verified["coordination_event_count"],
+        "migration_digest": verified["migration_digest"],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "migration_evidence_event_id": verified["migration_evidence_event_id"],
+        "target_event_prefix_sha256": verified["target_event_prefix_sha256"],
+        "semantic_authority_digest": verified["semantic_authority_digest"],
+        "prior_m28_event_id": verified["prior_m28_event_id"],
+        "prior_m28_evidence_id": verified["prior_m28_evidence_id"],
+        "failed_m28_post_append_attempt_verified": True,
+        "m28_receipt_created_or_rewritten": False,
+        "full_event_and_evidence_body_verified": True,
+        "generation_26_27_restart_rows_verified": True,
+        "live_server_id": verified["live_server_id"],
+        "live_process_birth_id": verified["live_process_birth_id"],
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "plan_revision_changes": 0,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "coordination_semantic_changes": 0,
+        "sidecars_preserved": True,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _ensure_m29_source_successor_receipt(
+    root: Path, control: Path, expected: Mapping[str, Any]
+) -> Mapping[str, Any]:
+    path = control.parent / "m29-source-successor-receipt.json"
+    lock_path = control.parent / ".m29-source-successor-receipt.publish.lock"
+    descriptor = os.open(
+        lock_path,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        if os.path.lexists(path):
+            observed, _ = _load_nofollow_json(
+                path, root=root, noun="M29 source successor receipt"
+            )
+            if observed != expected:
+                raise MigrationRequired("M29 source successor receipt differs")
+            return observed
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        out = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            os.write(out, _canonical(expected) + b"\n")
+            os.fsync(out)
+        finally:
+            os.close(out)
+        os.replace(temporary, path)
+        directory = os.open(
+            path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        return expected
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(descriptor)
 
 
 def _expected_m28_source_successor_receipt(
@@ -51619,6 +52555,189 @@ def _verify_m28_live_materialization(
         "task_status_changes": 0,
         "accepted_completion_changes": 0,
         "worker_self_approval": False,
+    }
+
+
+def _check_m29_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m29_source_binding_authority(root, population, config)
+    _assert_m29_source_delta(root, population, authority)
+    control, coordination = _m29_target_paths(root, config, authority)
+    _assert_m29_m28_receipt_absent(root, authority)
+    receipt_path = control.parent / "m29-source-successor-receipt.json"
+    if not os.path.lexists(receipt_path):
+        raise MigrationRequired("M29 source successor receipt is missing")
+    validation_digest = _m7_validation_digest(root, population)
+    coordination_before = _inspect_m28_coordination_projection(
+        coordination, authority
+    )
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        authority,
+        owner_id="sawm-r2-m29-live-source-sealer",
+    ) as (source, identity):
+        verified = _verify_m29_live_materialization(
+            source, identity, population, config, authority, validation_digest
+        )
+    coordination_after = _inspect_m28_coordination_projection(
+        coordination, authority
+    )
+    if coordination_after != coordination_before:
+        raise MigrationRequired("M29 coordination changed during live check")
+    verified.update(coordination_after)
+    _assert_m29_m28_receipt_absent(root, authority)
+    observed, _ = _load_nofollow_json(
+        receipt_path, root=root, noun="M29 source successor receipt"
+    )
+    expected = _expected_m29_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    if observed != expected:
+        raise MigrationRequired("M29 source successor receipt differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_committed_evidence_verification_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "receipt": observed,
+        **verified,
+    }
+
+
+def _materialize_m29(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    del config_file
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m29_source_binding_authority(root, population, config)
+    _assert_m29_source_delta(root, population, authority)
+    control, coordination = _m29_target_paths(root, config, authority)
+    _assert_m29_m28_receipt_absent(root, authority)
+    coordination_before = _inspect_m28_coordination_projection(
+        coordination, authority
+    )
+    validation_digest = _m7_validation_digest(root, population)
+    body = _m29_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence_id = content_identity(
+        {
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": body,
+        }
+    )
+    appended = False
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        authority,
+        owner_id="sawm-r2-m29-live-source-sealer",
+    ) as (source, identity):
+        snapshot = source.snapshot()
+        if snapshot.event_cursor == _M29_PRIOR_EVENT_WATERMARK:
+            _inspect_m28_live_projection(
+                source,
+                population,
+                authority,
+                expected_event_watermark=_M29_PRIOR_EVENT_WATERMARK,
+                expected_projection_cid=_M29_PRIOR_PROJECTION_CID,
+            )
+            _inspect_m29_prior_m28_append(source, config, authority)
+            _inspect_m29_generation_restart_rows(source, authority)
+            with source.intent._connection(write=False) as connection:
+                target_evidence_exists = connection.execute(
+                    "SELECT 1 FROM evidence_nodes WHERE evidence_id=?",
+                    [evidence_id],
+                ).fetchone()
+            if target_evidence_exists is not None:
+                raise MigrationRequired(
+                    "M29 target evidence predates its one authorized event append"
+                )
+            from ipfs_accelerate_py.agent_supervisor.task_sources import (
+                intent_repository,
+            )
+
+            original_clock = intent_repository._utc_iso
+
+            def fixed_m29_utc_iso(_moment: Any = None) -> str:
+                return _M29_CONTROL_RECORDED_AT
+
+            intent_repository._utc_iso = fixed_m29_utc_iso
+            try:
+                try:
+                    receipt = source.record_evidence(
+                        task_cid=target["operator_task_cid"],
+                        evidence_kind=target["evidence_kind"],
+                        digest=digest,
+                        body=body,
+                    )
+                except Exception:
+                    raise MaterializationError(
+                        "authenticated M29 evidence append failed"
+                    ) from None
+            finally:
+                clock_interference = (
+                    intent_repository._utc_iso is not fixed_m29_utc_iso
+                )
+                intent_repository._utc_iso = original_clock
+            if clock_interference or not receipt.changed:
+                raise MaterializationError("M29 evidence append clock/CAS differed")
+            appended = True
+        elif snapshot.event_cursor != _M29_TARGET_EVENT_WATERMARK:
+            raise MigrationRequired("M29 live event head is neither prior nor target")
+        verified = _verify_m29_live_materialization(
+            source, identity, population, config, authority, validation_digest
+        )
+        if verified["migration_evidence_id"] != evidence_id:
+            raise MaterializationError("M29 evidence identity differs")
+    coordination_after = _inspect_m28_coordination_projection(
+        coordination, authority
+    )
+    if coordination_after != coordination_before:
+        raise MigrationRequired("M29 coordination changed during live append")
+    verified.update(coordination_after)
+    _assert_m29_m28_receipt_absent(root, authority)
+    expected_receipt = _expected_m29_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    receipt = _ensure_m29_source_successor_receipt(
+        root, control, expected_receipt
+    )
+    _assert_m29_m28_receipt_absent(root, authority)
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": (
+            "materialized_committed_evidence_verification_successor"
+            if appended
+            else "checked_committed_evidence_verification_successor"
+        ),
+        "migration_required": False,
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "receipt": receipt,
+        **verified,
     }
 
 
@@ -52027,6 +53146,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m29_successor_configured_on_any_surface(root, config):
+        return _materialize_m29(root, config_file, config)
     if _m28_successor_configured_on_any_surface(root, config):
         return _materialize_m28(root, config_file, config)
     if _m27_successor_configured_on_any_surface(root, config):
@@ -52337,6 +53458,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 any(
                     key in config
                     for key in (
+                        "committed_evidence_verification_successor_materialization",
                         "live_claim_admission_recovery_successor_materialization",
                         "dead_owner_parallel_resume_successor_materialization",
                         "automatic_stall_recovery_successor_materialization",

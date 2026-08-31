@@ -1628,8 +1628,9 @@ It appends only one operator evidence node and its domain event to SAWM-000;
 the plan stays at revision 28 and every task definition, task revision, task
 status, accepted completion, coordination claim, implementation attempt,
 provider invocation, effect claim, worktree, log, and merge record remains
-unchanged.  The immutable M27 migration marker remains in place; M28 publishes
-an adjacent receipt after the live evidence mutation verifies.
+unchanged. The immutable M27 migration marker remains in place. M28 was
+intended to publish an adjacent receipt only after the live evidence mutation
+verified.
 
 ```text
 control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb
@@ -1654,7 +1655,52 @@ that verified admission CID.  M28 authorizes no task completion, worker
 self-approval, similarity reuse, validation reduction, source-history rewrite,
 or ordinary implementation change.
 
-## 37. Current limitations at seal time
+## 37. M29 committed-evidence verification successor
+
+The M28 evidence transaction committed exactly once at event 273 and produced
+the sealed target projection, but its post-append verifier iterated DuckDB row
+mappings as column names instead of reading their integer-indexed values. The
+verifier therefore failed closed before publishing
+`m28-source-successor-receipt.json`. M29 preserves that failed attempt and the
+absence of its non-authoritative receipt; it neither regenerates event 273 from
+new source nor invents, creates, or rewrites the missing receipt.
+
+Event 273 remains bound to source commit
+`d7e2a4ba9bc7eef32ffad131ffd092ff11f934c4`, evidence ID
+`baguqeeraumvois7bdkb7dk27zfbqecpudpc5htrxskz4x2jgau56ivalqvla`, and event ID
+`baguqeeragd2blhdw2gdjwwqovgwuoxlaulnto35lxtlycappubgqz4fm3lia`. The bounded
+verifier repair at `bb79ffc69b199a735e672072a8cf534417918393` compares row
+values by index, keeps the prior final-pair and newer source-seal receipts
+distinct, and retains token cleanup even when client construction or close
+fails. M29 verifies the full prior event and evidence bodies, exact generation
+26/27 lifecycle, generation, and credential rows, the unchanged task heads,
+and the exact coordination projection before appending one new operator
+evidence event at cursor 274.
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m27
+worktrees     data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/worktrees (preserved)
+Quack port    24070
+generation    27 (unchanged)
+plan revision 28 (unchanged)
+event cursor  273 -> 274 (one operator evidence event)
+coord events  3019 (unchanged; exact projection sha256:7abbd22e48ed99b31fb02190c6406b631f3341de22c9904af3d2b5b10d9509c0)
+pre-projection baguqeerazyzybkjnlihpazozv7xjiign23bfius47mpb3iol6fciuonvzd7a
+post-projection baguqeera4z7aafxgr5xb7tfnb4mdhih4d2ynzkugodxrmrwpisi427hxnz7a
+lanes         0, 1, 2, 3 (strict; no idle stealing)
+```
+
+M29 changes no task definition, task revision, task status, plan, accepted
+completion, coordination fact, worktree, sidecar, owner generation, provider
+invocation, effect, merge, or implementation result. Its source chain is the
+M28 control commit, the exact verifier repair, and one final commit modifying
+only the established nine protected controls. The adjacent M29 receipt is
+non-authoritative; launch admission still requires exact live Quack
+verification of both evidence events and every current authority binding.
+
+## 38. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

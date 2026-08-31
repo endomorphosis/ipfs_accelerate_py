@@ -388,6 +388,30 @@ def _m16_migration_errors(
         return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m29_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Reuse the exact M29 committed-evidence verification contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m29_committed_evidence_verification_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
+            )
+        )
+    except Exception as exc:
+        return [f"M29 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _m28_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -683,12 +707,51 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M28 before every historical successor.  Consequently
+    Key presence selects M29 before every historical successor.  Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m29_key = "committed_evidence_verification_successor_materialization"
+    m29_seal_key = f"{m29_key}_cid"
+    m29_presence = (
+        m29_key in scheduler,
+        m29_key in migration,
+        m29_seal_key in seal,
+    )
+    if any(m29_presence):
+        errors = _m29_migration_errors(scheduler, seal, migration)
+        if not all(m29_presence):
+            errors.append(
+                "M29 committed-evidence-verification authority is only "
+                "partially declared"
+            )
+        for validator in (
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(
+                    scheduler,
+                    seal,
+                    migration,
+                    require_active_runtime=False,
+                )
+            )
+        return errors
 
     m28_key = "live_claim_admission_recovery_successor_materialization"
     m28_seal_key = f"{m28_key}_cid"
@@ -2890,6 +2953,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m29_key = "committed_evidence_verification_successor_materialization"
+    m29_selected = any(
+        (
+            m29_key in config,
+            m29_key in migration,
+            f"{m29_key}_cid" in seal,
+        )
+    )
     m28_key = "live_claim_admission_recovery_successor_materialization"
     m28_selected = any(
         (
@@ -2939,7 +3010,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     multi_lane_selected = (
-        m28_selected
+        m29_selected
+        or m28_selected
         or m27_selected
         or m26_selected
         or m25_selected
@@ -2952,7 +3024,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or config.get("max_lanes") != expected_lane_count
     ):
         config_errors.append(
-            "four lanes are required for M28/M27/M26/M25/M24/M23"
+            "four lanes are required for M29/M28/M27/M26/M25/M24/M23"
             if multi_lane_selected
             else "one lane is required until sidecars are lane-scoped"
         )
@@ -2992,7 +3064,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     ):
         config_errors.append(
-            "M28/M27/M26/M25/M24/M23 exact four-lane identity mismatch"
+            "M29/M28/M27/M26/M25/M24/M23 exact four-lane identity mismatch"
         )
     provider = config.get("provider") if isinstance(config.get("provider"), Mapping) else {}
     expected_provider = {
@@ -3134,6 +3206,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m29_selected
+        else "run-r2-m27"
         if m28_selected
         else "run-r2-m27"
         if m27_selected
@@ -3178,6 +3252,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_generation = (
         "27"
+        if m29_selected
+        else "27"
         if m28_selected
         else "26"
         if m27_selected
@@ -3222,6 +3298,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m29_selected
+        else 24070
         if m28_selected
         else 24070
         if m27_selected
@@ -3279,7 +3357,49 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m28_selected:
+    if m29_selected:
+        successor = config.get(m29_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m29_committed_evidence_verification_authority()
+            )
+            if (
+                type(successor) is not dict
+                or materializer._identity(successor)
+                != materializer._identity(expected)
+                or type(migration.get(m29_key)) is not dict
+                or materializer._identity(migration.get(m29_key))
+                != materializer._identity(expected)
+                or seal.get(f"{m29_key}_cid")
+                != materializer._identity(expected)
+                or module
+                ._m29_committed_evidence_verification_successor_errors(
+                    config, seal, migration, root=root
+                )
+            ):
+                config_errors.append(
+                    "M29 committed-evidence-verification authority/CID/source "
+                    "differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M29 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M29 active runtime paths are not exactly preserved")
+    elif m28_selected:
         successor = config.get(m28_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
