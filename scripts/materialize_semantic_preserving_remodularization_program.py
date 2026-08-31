@@ -2258,7 +2258,10 @@ def _resume_execution_route_policy(
             binding.task_cid != task.task_cid
             or binding.task_alias != task.task_alias
             or binding.task_revision > task.revision
-            or binding.task_contract_cid != task_execution_contract_cid(task)
+            or (
+                binding.task_revision == task.revision
+                and binding.task_contract_cid != task_execution_contract_cid(task)
+            )
             or binding.execution_mode != GROK_CODEX_EXECUTION_MODE
             or not isinstance(receipt, Mapping)
             or receipt.get("execution_route_policy_id") != binding.policy_id

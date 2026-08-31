@@ -760,6 +760,33 @@ def test_restart_reuses_exact_owner_written_execution_route_policy() -> None:
     assert resumed == original_policy
 
 
+def test_restart_allows_operational_body_after_carried_route() -> None:
+    materializer = _materializer()
+    (
+        bootstrap,
+        current_snapshot,
+        operator_task,
+        _implementation_task,
+        retrying_task,
+        original_policy,
+    ) = _route_restart_fixture()
+    body = dict(retrying_task.body)
+    body["unknown_callback_reopen_count"] = 1
+    advanced = replace(
+        retrying_task,
+        revision=int(retrying_task.revision) + 1,
+        body=body,
+    )
+
+    resumed = materializer._resume_execution_route_policy(
+        bootstrap=bootstrap,
+        snapshot=current_snapshot,
+        tasks=(operator_task, advanced),
+    )
+
+    assert resumed == original_policy
+
+
 def test_restart_recovers_only_exact_post_merge_predecessor_route() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
         canonical_json_bytes,
