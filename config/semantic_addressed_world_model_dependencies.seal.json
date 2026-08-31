@@ -1,4 +1,5 @@
 {
+  "immutable_authority_identity_normalization_successor_materialization_cid": "sha256:304d2c4387fe4a1496a4ec524bfb4b96ff3d6465ba4f818229a8dfacd23d09b0",
   "json_emission_normalization_successor_materialization_cid": "sha256:b9a7f6cefa5ceb6cb90cdf3621e00a31bfa2c0687695173640eabc838bdc0dd7",
   "live_preflight_contract_successor_materialization_cid": "sha256:c5c86ba2e2c4e8af9f6ed9115a26208a3492053147c58dcc03884ccd694a66b9",
   "live_preflight_plan_anchor_successor_materialization_cid": "sha256:7ed2ac5bc4b9ca94af6166ce7d5f7dba4a4bf73012290ba36f71e1fac822fb48",

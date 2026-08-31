@@ -1886,7 +1886,37 @@ blob identities is independently pinned by the materializer and validators.
 The one permitted child commit only reseals these identities and the resulting
 authority CID; neither commit confers runtime or completion authority.
 
-## 43. Current limitations at seal time
+## 43. M35 immutable-authority identity normalization successor
+
+`SAWM-R2-M35` preserves M34 event 285, projection
+`baguqeeragsizyo6v4izu7qfvjbj5l5bjkuycw2xyaf3vhlzx2nai7xyrvd4q`, and receipt
+`sha256:759b71e0d0fa73a1ac81bb98fb1b96c93f3150b09667cd19fc05330b34b50b01`.
+It retains the exact `run-r2-m27` generation-29 owner on port 24070 and appends
+only evidence event 286 with projection
+`baguqeeravzrhagxizn7o45ukuevzkhreb7dzpabd4g4kmyci2if5rxr32dda`.
+
+M35 repairs the remaining immutable-authority identity boundary. The operator
+keeps the selected authority immutable internally, but passes an explicit
+`dict(active_source_repair)` snapshot to the expected-receipt constructor
+before canonical JSON identity calculation. This normalization changes no
+authority fields and does not weaken validation, rewrite a receipt, or make
+runtime projections completion authority.
+
+M35 is selected by key presence before M34 and every older successor. Historical
+M34 source-chain validation is pinned to M35's accepted base commit/tree
+`4dfe1c4c81ffd65f6a2d5c5cdc38b1cd33f1f443` and
+`894d9a4d206faf4e59328111023ec44fcf26f96e`. The same nine protected control
+paths apply. Initial control commit, tree, and blob identities are zero
+placeholders until the bounded repair is sealed; validators accept either the
+complete placeholder set or one complete nonzero reseal and reject mixed or
+partial identity states.
+
+M35 changes no task, goal, plan, accepted completion, coordination state,
+provider invocation, implementation commit, merge attempt, owner identity, or
+generation. It does not authorize a restart, create a synthetic owner marker,
+or rewrite the preserved M34 receipt.
+
+## 44. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

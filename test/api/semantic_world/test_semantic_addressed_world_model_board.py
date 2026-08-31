@@ -25,6 +25,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "immutable_authority_identity_normalization_successor_materialization",
     "json_emission_normalization_successor_materialization",
     "live_preflight_contract_successor_materialization",
     "live_preflight_plan_anchor_successor_materialization",
@@ -4605,6 +4606,212 @@ def test_m29_presence_masks_m28_and_keeps_every_predecessor_historical(
     assert any("only partially declared" in error for error in errors)
 
 
+def test_m35_authority_and_placeholder_or_sealed_chain_are_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m35_authority_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m35_authority_test",
+    )
+    key = "immutable_authority_identity_normalization_successor_materialization"
+    authority = (
+        materializer._expected_m35_immutable_authority_identity_normalization_authority()
+    )
+    reference = materializer._m35_authority_reference()
+    scheduler = json.loads((REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json").read_text(encoding="utf-8"))
+    migration = json.loads((REPO_ROOT / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json").read_text(encoding="utf-8"))
+    seal = json.loads((REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json").read_text(encoding="utf-8"))
+    assert scheduler[key] == reference == migration[key]
+    assert seal[f"{key}_cid"] == reference["authority_cid"]
+    assert reference == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M35",
+        "authority_cid": materializer._identity(authority),
+    }
+    assert authority["supersession_mode"] == (
+        "append_only_immutable_authority_identity_normalization"
+    )
+    assert authority["control_recorded_at"] == "2026-08-31T20:20:00Z"
+    assert authority["runtime_binding"]["run_id"] == "run-r2-m27"
+    assert authority["target_generation"] == 29
+    assert authority["target_quack_port"] == 24_070
+    assert authority["runtime_binding"]["prior_event_watermark"] == 285
+    assert authority["target_event_watermark"] == 286
+    assert authority["target_projection_cid"] == (
+        "baguqeeravzrhagxizn7o45ukuevzkhreb7dzpabd4g4kmyci2if5rxr32dda"
+    )
+    prior = authority["prior_authority"]
+    assert prior["event_prefix_sha256"] == (
+        "79797c1e1593fa880a4ac088796e1ca713dc276df8ad118c12aa0c1ab49f1c7f"
+    )
+    assert prior["projection_cid"] == (
+        "baguqeeragsizyo6v4izu7qfvjbj5l5bjkuycw2xyaf3vhlzx2nai7xyrvd4q"
+    )
+    assert prior["m34_receipt_sha256"] == (
+        "3ec2d6100998f430a388e4c32cbcdda2feb53f070b683b10bfef28ccfa85a872"
+    )
+    assert prior["m34_receipt_cid"] == (
+        "sha256:759b71e0d0fa73a1ac81bb98fb1b96c93f3150b09667cd19fc05330b34b50b01"
+    )
+    chain = authority["source_chain"]
+    assert chain["base_control_commit"] == "4dfe1c4c81ffd65f6a2d5c5cdc38b1cd33f1f443"
+    assert chain["base_control_tree"] == "894d9a4d206faf4e59328111023ec44fcf26f96e"
+    assert len(authority["operator_control_paths"]) == 9
+    assert dependencies._m35_source_chain_identity_state(
+        materializer, authority
+    ) == "placeholder"
+    assert dict(materializer._validated_m35_live_preflight_contract(authority)) == (
+        authority["live_preflight_contract"]
+    )
+
+    final = copy.deepcopy(authority)
+    final_chain = final["source_chain"]
+    final_chain["initial_control_commit"] = "1" * 40
+    final_chain["initial_control_tree"] = "2" * 40
+    final_chain["final_reseal_parent"] = "1" * 40
+    final_chain["initial_control_blobs"] = {
+        path: f"{index + 3:x}" * 40
+        for index, path in enumerate(authority["operator_control_paths"])
+    }
+    fake_materializer = SimpleNamespace(
+        _M35_INITIAL_CONTROL_COMMIT="1" * 40,
+        _M35_INITIAL_CONTROL_TREE="2" * 40,
+        _M35_INITIAL_CONTROL_BLOBS=final_chain["initial_control_blobs"],
+    )
+    assert dependencies._m35_source_chain_identity_state(
+        fake_materializer, final
+    ) == "sealed"
+    mixed = copy.deepcopy(final)
+    first_path = next(iter(mixed["source_chain"]["initial_control_blobs"]))
+    mixed["source_chain"]["initial_control_blobs"][first_path] = "0" * 40
+    mixed_materializer = SimpleNamespace(
+        _M35_INITIAL_CONTROL_COMMIT="1" * 40,
+        _M35_INITIAL_CONTROL_TREE="2" * 40,
+        _M35_INITIAL_CONTROL_BLOBS=mixed["source_chain"]["initial_control_blobs"],
+    )
+    with pytest.raises(RuntimeError, match="mix placeholder and sealed"):
+        dependencies._m35_source_chain_identity_state(mixed_materializer, mixed)
+
+
+def test_m35_operator_normalizes_immutable_authority_at_receipt_boundary() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m35_boundary_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m35_boundary_test",
+    )
+    authority = (
+        materializer._expected_m35_immutable_authority_identity_normalization_authority()
+    )
+    population = {
+        "program_definition_cid": "sha256:program",
+        "source_binding": {"source_binding_cid": "sha256:source"},
+    }
+    verified = {
+        "migration_digest": "sha256:migration",
+        "migration_evidence_id": "sha256:evidence",
+        "migration_evidence_event_id": 286,
+        "target_event_prefix_sha256": "sha256:prefix",
+        "semantic_authority_digest": "sha256:semantic",
+        "live_server_id": "server:test",
+        "live_process_birth_id": "birth:test",
+        "live_started_at": "2026-08-31T17:47:26Z",
+    }
+    immutable = MappingProxyType(authority)
+    assert materializer._expected_m35_source_successor_receipt(
+        population, immutable, "sha256:validation", verified
+    ) == materializer._expected_m35_source_successor_receipt(
+        population, dict(immutable), "sha256:validation", verified
+    )
+    source = inspect.getsource(operator._live_preflight)
+    assert "receipt_authority = dict(active_source_repair)" in source
+    m35_branch = source[source.index("if m35_active:"):source.index("elif m34_active:")]
+    assert "_expected_m35_source_successor_receipt" in m35_branch
+    assert "receipt_authority" in m35_branch
+
+
+def test_m35_presence_history_and_no_restart_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m35_presence_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m35_presence_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m35_history_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m35_presence_test",
+    )
+    scheduler = json.loads((REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json").read_text(encoding="utf-8"))
+    migration = json.loads((REPO_ROOT / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json").read_text(encoding="utf-8"))
+    seal = json.loads((REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json").read_text(encoding="utf-8"))
+    selected = operator._active_source_repair_materialization(scheduler)
+    assert selected["migration_revision"] == "SAWM-R2-M35"
+    selection_source = inspect.getsource(operator._active_source_repair_materialization)
+    assert selection_source.index("if m35_key in config:") < selection_source.index("if m34_key in config:")
+    key = "immutable_authority_identity_normalization_successor_materialization"
+    assert dependencies._m35_successor_declared({key: None}, {}, {}) is True
+
+    monkeypatch.setattr(board, "_m35_migration_errors", lambda *_a, **_k: ["M35 active"])
+    historical_calls: list[bool] = []
+    def historical(*_args: object, **kwargs: object) -> list[str]:
+        historical_calls.append(kwargs.get("require_active_runtime") is False)
+        return []
+    for name in (
+        "_m34_migration_errors", "_m33_migration_errors", "_m32_migration_errors",
+        "_m31_migration_errors", "_m30_migration_errors", "_m29_migration_errors",
+        "_m28_migration_errors", "_m27_migration_errors", "_m26_migration_errors",
+        "_m25_migration_errors", "_m24_migration_errors", "_m23_migration_errors",
+        "_m22_migration_errors", "_m21_migration_errors", "_m20_migration_errors",
+        "_m19_migration_errors", "_m18_migration_errors", "_m17_migration_errors",
+        "_m16_migration_errors",
+    ):
+        monkeypatch.setattr(board, name, historical)
+    assert board._active_successor_migration_errors({key: None}, {}, {}) == [
+        "M35 active",
+        "M35 immutable-authority identity authority is only partially declared",
+    ]
+    assert historical_calls == [True] * 19
+
+    observed: list[str | None] = []
+    def source_chain(
+        _root: Path, _materializer: object, _authority: Mapping[str, object],
+        *, current_head: str | None = None,
+    ) -> list[str]:
+        observed.append(current_head)
+        return []
+    monkeypatch.setattr(dependencies, "_m34_source_chain_errors", source_chain)
+    assert dependencies._m34_json_emission_normalization_successor_errors(
+        scheduler, seal, migration, root=REPO_ROOT, require_active_runtime=False
+    ) == []
+    assert observed == ["4dfe1c4c81ffd65f6a2d5c5cdc38b1cd33f1f443"]
+
+    authority = materializer._expected_m35_immutable_authority_identity_normalization_authority()
+    assert authority["live_owner"]["generation_restart_authorized"] is False
+    assert authority["preservation"]["generation_restart"] is False
+    assert authority["preservation"]["m34_receipt_preserved"] is True
+    materialize_source = inspect.getsource(materializer._materialize_m35)
+    marker_source = inspect.getsource(operator._require_m35_source_successor_marker)
+    assert "record_evidence" in materialize_source
+    assert "record_completion" not in materialize_source
+    assert "record_generation_start" not in materialize_source
+    assert "m34-source-successor-receipt.json" in marker_source
+    assert "m35-source-successor-receipt.json" in marker_source
+    assert "checked is None" in marker_source
+    assert "write_text" not in marker_source
+
+
 def test_m34_authority_and_recursive_json_emission_are_exact(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -4766,6 +4973,13 @@ def test_m34_presence_masks_m33_and_m33_uses_historical_head(
     scheduler = json.loads((REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json").read_text(encoding="utf-8"))
     migration = json.loads((REPO_ROOT / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json").read_text(encoding="utf-8"))
     seal = json.loads((REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json").read_text(encoding="utf-8"))
+    scheduler, migration, seal = _historical_successor_controls_at(
+        "json_emission_normalization_successor_materialization",
+        scheduler,
+        migration,
+        seal,
+    )
+    assert migration is not None and seal is not None
 
     selected = operator._active_source_repair_materialization(scheduler)
     assert selected["migration_revision"] == "SAWM-R2-M34"
