@@ -106,8 +106,8 @@ def test_closed_vocabularies_match_phase_zero_requirements() -> None:
     assert "integrating_first_parent" in CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS
     assert "integrating_merge" in CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS
     assert "landed_candidate_commit" in CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS
-    assert SUPERSEDED_INTEGRATING_MERGE == "e6fef127dbec7c86a03145a8b52b1b93a0ba0512"
-    assert SUPERSEDED_LANDED_NESTED_COMMIT == "45172ae3f46211ac92cb381fcfdbdf7286c35398"
+    assert SUPERSEDED_INTEGRATING_MERGE == "88da86df577543a248ae3a1c0a8e89638d4a3565"
+    assert SUPERSEDED_LANDED_NESTED_COMMIT == "242a57b3c87923b4415d3a2a9ecfc0751a40603f"
     assert PENDING_MERGE_RECOVERY_HERMETIC_SUITES == (
         "test/api/test_agent_supervisor_merge_train.py",
     )
@@ -648,26 +648,26 @@ def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
 
 def _example_current_tree_binding_kwargs() -> dict[str, str | bool]:
     return {
-        "outer_commit": "88da86df577543a248ae3a1c0a8e89638d4a3565",
-        "outer_tree": "5502355b8f4a65333e41a0ea533ce52fd1ea0c8a",
+        "outer_commit": "f1453923be6989ec1f3db08312f762a1c212f84c",
+        "outer_tree": "043656e12d086f6378dd66fc34bf80f9dfd089b2",
         "outer_subject": (
-            "Merge commit 'aff381d88012ce9f93c67b4b1610703397c77977' into "
+            "Merge commit 'abbd55d2fbc3b037176c012ddf94835e747b3757' into "
             "agent/proof-carrying-platform-qualification-and-release-v1"
         ),
         "origin_main": "bb8869ed72eb7002434345d9969efee729c4f7f6",
         "origin_main_is_ancestor": True,
-        "accelerator_pre_change_commit": "242a57b3c87923b4415d3a2a9ecfc0751a40603f",
-        "accelerator_pre_change_tree": "54a42506131d637e171d8097699d544919f74dd5",
-        "accelerator_gitlink": "242a57b3c87923b4415d3a2a9ecfc0751a40603f",
+        "accelerator_pre_change_commit": "1e40926b03f66a135429535bf29baf97326c5d7a",
+        "accelerator_pre_change_tree": "876695b8e0972a153b373f89764ec43af69f91bc",
+        "accelerator_gitlink": "1e40926b03f66a135429535bf29baf97326c5d7a",
         "accelerator_origin_main": "f8c2f633fa6a781b822176fd63e1a229f96b581c",
         "accelerator_origin_main_is_ancestor": True,
-        "prior_receipt_outer_commit": "aff381d88012ce9f93c67b4b1610703397c77977",
-        "prior_receipt_bound_outer_commit": "e6fef127dbec7c86a03145a8b52b1b93a0ba0512",
-        "landed_pcpr_001_nested_commit": "242a57b3c87923b4415d3a2a9ecfc0751a40603f",
+        "prior_receipt_outer_commit": "abbd55d2fbc3b037176c012ddf94835e747b3757",
+        "prior_receipt_bound_outer_commit": "88da86df577543a248ae3a1c0a8e89638d4a3565",
+        "landed_pcpr_001_nested_commit": "1e40926b03f66a135429535bf29baf97326c5d7a",
         "first_landed_pcpr_001_nested_commit": "38deb2ea57b171da90e5f2d4194ef6f100f9795b",
-        "integrating_merge": "88da86df577543a248ae3a1c0a8e89638d4a3565",
-        "integrating_first_parent": "e6fef127dbec7c86a03145a8b52b1b93a0ba0512",
-        "landed_candidate_commit": "aff381d88012ce9f93c67b4b1610703397c77977",
+        "integrating_merge": "f1453923be6989ec1f3db08312f762a1c212f84c",
+        "integrating_first_parent": "88da86df577543a248ae3a1c0a8e89638d4a3565",
+        "landed_candidate_commit": "abbd55d2fbc3b037176c012ddf94835e747b3757",
     }
 
 
@@ -765,16 +765,16 @@ def test_current_tree_binding_rejects_non_ancestor_and_mismatched_merge() -> Non
         "status": "implemented",
         "qualification_verdict": sections["qualification_verdict"],
         "current_tree_binding": {
-            "outer_commit": "88da86df577543a248ae3a1c0a8e89638d4a3565",
-            "outer_tree": "5502355b8f4a65333e41a0ea533ce52fd1ea0c8a",
+            "outer_commit": "f1453923be6989ec1f3db08312f762a1c212f84c",
+            "outer_tree": "043656e12d086f6378dd66fc34bf80f9dfd089b2",
             "origin_main": "bb8869ed72eb7002434345d9969efee729c4f7f6",
             "origin_main_is_ancestor": True,
-            "accelerator_pre_change_commit": "242a57b3c87923b4415d3a2a9ecfc0751a40603f",
-            "accelerator_pre_change_tree": "54a42506131d637e171d8097699d544919f74dd5",
-            "accelerator_gitlink": "242a57b3c87923b4415d3a2a9ecfc0751a40603f",
+            "accelerator_pre_change_commit": "1e40926b03f66a135429535bf29baf97326c5d7a",
+            "accelerator_pre_change_tree": "876695b8e0972a153b373f89764ec43af69f91bc",
+            "accelerator_gitlink": "1e40926b03f66a135429535bf29baf97326c5d7a",
             "accelerator_origin_main": "f8c2f633fa6a781b822176fd63e1a229f96b581c",
             "accelerator_origin_main_is_ancestor": True,
-            "integrating_merge": "e6fef127dbec7c86a03145a8b52b1b93a0ba0512",
+            "integrating_merge": "88da86df577543a248ae3a1c0a8e89638d4a3565",
             "evidence_kind": "measured",
         },
     }
@@ -786,7 +786,7 @@ def test_current_tree_binding_rejects_non_ancestor_and_mismatched_merge() -> Non
         "qualification_verdict": sections["qualification_verdict"],
         "current_tree_binding": {
             **_example_current_tree_binding_kwargs(),
-            "prior_receipt_bound_outer_commit": "88da86df577543a248ae3a1c0a8e89638d4a3565",
+            "prior_receipt_bound_outer_commit": "f1453923be6989ec1f3db08312f762a1c212f84c",
             "evidence_kind": "measured",
         },
     }
