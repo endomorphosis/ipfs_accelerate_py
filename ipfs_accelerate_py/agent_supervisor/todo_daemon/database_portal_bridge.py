@@ -21,6 +21,7 @@ import logging
 import math
 import os
 import re
+import secrets
 import shlex
 import stat
 import subprocess
@@ -41,6 +42,7 @@ except ImportError:  # pragma: no cover - Windows has no fcntl
 # Probe the real libc wrappers once. Tests may replace os.unlink later
 # without changing whether this platform can unlink through a dir-fd.
 _DIR_FD_OPEN = os.open in getattr(os, "supports_dir_fd", ())
+_DIR_FD_LINK = os.link in getattr(os, "supports_dir_fd", ())
 _DIR_FD_STAT = os.stat in getattr(os, "supports_dir_fd", ())
 _DIR_FD_UNLINK = os.unlink in getattr(os, "supports_dir_fd", ())
 
@@ -251,6 +253,9 @@ _CALLBACK_NO_EFFECT_RECOVERY_INTENT_FILENAME: Final[str] = (
 _PRE_DISPATCH_PROJECTION_RECOVERY_FILENAME: Final[str] = (
     "database-portal-pre-dispatch-projection-recovery.json"
 )
+_TRUSTED_SETUP_REPLAY_RECOVERY_FILENAME: Final[str] = (
+    "database-portal-trusted-setup-replay-recovery.json"
+)
 _CALLBACK_NO_EFFECT_RECOVERY_INTENT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-callback-no-effect-recovery-intent@1"
@@ -320,6 +325,13 @@ DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA: Final[str] = (
 DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-pre-dispatch-projection-recovery@1"
+)
+DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-trusted-setup-replay-recovery@1"
+)
+DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_REASON: Final[str] = (
+    "trusted_submodule_setup_misclassified_as_protected_mutation"
 )
 DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON: Final[str] = (
     "Portal protected-preservation projection does not contain the exact "
@@ -2046,6 +2058,456 @@ class _ProtectedPathRecoveryAttemptCapability:
         self._root_fd = -1
 
 
+@dataclass(frozen=True)
+class _TrustedSetupReplayEvidenceEntry:
+    """One immutable artifact held open by a trusted-replay capability."""
+
+    relative_name: str
+    parent_fd: int
+    leaf_name: str
+    descriptor: int
+    identity: tuple[int, int, int, int, int, int, int]
+    maximum: int
+    payload: bytes
+    digest: str
+
+
+class _TrustedSetupReplayEvidenceCapability:
+    """Hold one trusted replay's exact evidence through receipt publication.
+
+    Path-level no-follow reads close their descriptor before the receipt is
+    published, leaving a rename window between semantic verification and the
+    durable claim.  This capability instead anchors the attempt directory and
+    every evidence inode with open descriptors.  It verifies both descriptor
+    bytes and the dir-fd name bindings immediately before and after publishing
+    the immutable receipt through that same attempt dir-fd.
+    """
+
+    _FILE_IDENTITY_FIELDS: Final[tuple[str, ...]] = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+
+    def __init__(self, root: Path) -> None:
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
+        directory_flag = getattr(os, "O_DIRECTORY", 0)
+        if (
+            not nofollow
+            or not directory_flag
+            or not hasattr(os, "pread")
+            or not _DIR_FD_OPEN
+            or not _DIR_FD_LINK
+            or not _DIR_FD_STAT
+            or not _DIR_FD_UNLINK
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence capability is unavailable"
+            )
+        self._root_path = root
+        self._root_fd = -1
+        self._closed = False
+        self._directories: dict[
+            str, tuple[int, str, int, tuple[int, int, int, int]]
+        ] = {}
+        self._entries: dict[str, _TrustedSetupReplayEvidenceEntry] = {}
+        try:
+            self._root_fd = os.open(
+                root,
+                os.O_RDONLY
+                | directory_flag
+                | nofollow
+                | getattr(os, "O_CLOEXEC", 0),
+            )
+            root_metadata = os.fstat(self._root_fd)
+            if not stat.S_ISDIR(root_metadata.st_mode):
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay attempt capability is not a directory"
+                )
+            self._root_identity = self._directory_identity(root_metadata)
+            if not self.verify():
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay attempt root changed during binding"
+                )
+        except OSError as exc:
+            self.close()
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence capability could not be bound"
+            ) from exc
+        except BaseException:
+            self.close()
+            raise
+
+    @staticmethod
+    def _directory_identity(
+        metadata: os.stat_result,
+    ) -> tuple[int, int, int, int]:
+        return (
+            int(metadata.st_dev),
+            int(metadata.st_ino),
+            int(stat.S_IFMT(metadata.st_mode)),
+            int(metadata.st_nlink),
+        )
+
+    @classmethod
+    def _file_identity(
+        cls,
+        metadata: os.stat_result,
+    ) -> tuple[int, int, int, int, int, int, int]:
+        return tuple(
+            int(getattr(metadata, field))
+            for field in cls._FILE_IDENTITY_FIELDS
+        )  # type: ignore[return-value]
+
+    @staticmethod
+    def _relative_name(value: str) -> tuple[str, tuple[str, ...]]:
+        if (
+            not value
+            or "\x00" in value
+            or "\\" in value
+            or len(value.encode("utf-8")) > 4096
+            or value.startswith("/")
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence name is outside the attempt"
+            )
+        raw_parts = value.split("/")
+        if (
+            len(raw_parts) > 64
+            or any(part in {"", ".", ".."} for part in raw_parts)
+            or PurePosixPath(value).is_absolute()
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence name is outside the attempt"
+            )
+        normalized = PurePosixPath(value).as_posix()
+        if normalized != value:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence name is not canonical"
+            )
+        return normalized, tuple(raw_parts)
+
+    @classmethod
+    def _read_descriptor(cls, descriptor: int, *, maximum: int) -> bytes:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size < 0
+            or before.st_size > maximum
+        ):
+            raise DatabasePortalBridgeError(
+                "could not read Portal attempt artifact: trusted-setup replay "
+                "evidence is not a bounded private file"
+            )
+        chunks: list[bytes] = []
+        offset = 0
+        while offset < before.st_size:
+            chunk = os.pread(
+                descriptor,
+                min(before.st_size - offset, 1024 * 1024),
+                offset,
+            )
+            if not chunk:
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay evidence was truncated during read"
+                )
+            chunks.append(chunk)
+            offset += len(chunk)
+        if os.pread(descriptor, 1, offset):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence grew during read"
+            )
+        after = os.fstat(descriptor)
+        if cls._file_identity(before) != cls._file_identity(after):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence changed during read"
+            )
+        payload = b"".join(chunks)
+        if len(payload) != before.st_size:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence length changed during read"
+            )
+        return payload
+
+    def _parent_descriptor(self, parts: tuple[str, ...]) -> int:
+        parent_fd = self._root_fd
+        prefix: list[str] = []
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        for component in parts:
+            prefix.append(component)
+            key = "/".join(prefix)
+            cached = self._directories.get(key)
+            if cached is not None:
+                parent_fd = cached[2]
+                continue
+            descriptor = os.open(component, flags, dir_fd=parent_fd)
+            try:
+                metadata = os.fstat(descriptor)
+                if not stat.S_ISDIR(metadata.st_mode):
+                    raise DatabasePortalBridgeError(
+                        "trusted-setup replay evidence parent is not a directory"
+                    )
+                identity = self._directory_identity(metadata)
+                self._directories[key] = (
+                    parent_fd,
+                    component,
+                    descriptor,
+                    identity,
+                )
+                parent_fd = descriptor
+            except BaseException:
+                os.close(descriptor)
+                raise
+        return parent_fd
+
+    def capture(self, relative_name: str, *, maximum: int) -> bytes:
+        """Capture one bounded evidence file and retain its exact descriptor."""
+
+        if (
+            self._closed
+            or self._root_fd < 0
+            or isinstance(maximum, bool)
+            or not isinstance(maximum, int)
+            or maximum < 1
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence capture is unavailable"
+            )
+        normalized, parts = self._relative_name(relative_name)
+        existing = self._entries.get(normalized)
+        if existing is not None:
+            if existing.maximum != maximum or not self.verify():
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay evidence capture changed"
+                )
+            return existing.payload
+        if not self.verify():
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence changed before capture"
+            )
+        parent_fd = -1
+        descriptor = -1
+        try:
+            parent_fd = self._parent_descriptor(parts[:-1])
+            descriptor = os.open(
+                parts[-1],
+                os.O_RDONLY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+                dir_fd=parent_fd,
+            )
+            metadata = os.fstat(descriptor)
+            payload = self._read_descriptor(descriptor, maximum=maximum)
+            entry = _TrustedSetupReplayEvidenceEntry(
+                relative_name=normalized,
+                parent_fd=parent_fd,
+                leaf_name=parts[-1],
+                descriptor=descriptor,
+                identity=self._file_identity(metadata),
+                maximum=maximum,
+                payload=payload,
+                digest=_sha256_bytes(payload),
+            )
+            self._entries[normalized] = entry
+            descriptor = -1
+            if not self.verify():
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay evidence changed during capture"
+                )
+            return payload
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                f"trusted-setup replay evidence {parts[-1]!r} is unreadable"
+            ) from exc
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+
+    def verify(self) -> bool:
+        """Verify root, directory names, evidence inodes, and exact bytes."""
+
+        if self._closed or self._root_fd < 0:
+            return False
+        try:
+            root_descriptor = os.fstat(self._root_fd)
+            root_path = os.stat(self._root_path, follow_symlinks=False)
+            if (
+                not stat.S_ISDIR(root_descriptor.st_mode)
+                or not stat.S_ISDIR(root_path.st_mode)
+                or self._directory_identity(root_descriptor)
+                != self._root_identity
+                or self._directory_identity(root_path) != self._root_identity
+            ):
+                return False
+            for parent_fd, leaf_name, descriptor, identity in (
+                self._directories[key] for key in sorted(self._directories)
+            ):
+                descriptor_metadata = os.fstat(descriptor)
+                named_metadata = os.stat(
+                    leaf_name,
+                    dir_fd=parent_fd,
+                    follow_symlinks=False,
+                )
+                if (
+                    not stat.S_ISDIR(descriptor_metadata.st_mode)
+                    or not stat.S_ISDIR(named_metadata.st_mode)
+                    or self._directory_identity(descriptor_metadata) != identity
+                    or self._directory_identity(named_metadata) != identity
+                ):
+                    return False
+            for entry in self._entries.values():
+                descriptor_metadata = os.fstat(entry.descriptor)
+                named_metadata = os.stat(
+                    entry.leaf_name,
+                    dir_fd=entry.parent_fd,
+                    follow_symlinks=False,
+                )
+                if (
+                    self._file_identity(descriptor_metadata) != entry.identity
+                    or self._file_identity(named_metadata) != entry.identity
+                    or _sha256_bytes(
+                        self._read_descriptor(
+                            entry.descriptor,
+                            maximum=entry.maximum,
+                        )
+                    )
+                    != entry.digest
+                ):
+                    return False
+            return True
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return False
+
+    def publish_once(
+        self,
+        name: str,
+        payload: bytes,
+        *,
+        maximum: int,
+    ) -> bytes:
+        """Publish one immutable receipt through the bound attempt dir-fd."""
+
+        normalized, parts = self._relative_name(name)
+        if (
+            len(parts) != 1
+            or isinstance(maximum, bool)
+            or not isinstance(maximum, int)
+            or maximum < 1
+            or not isinstance(payload, bytes)
+            or len(payload) > maximum
+            or not self.verify()
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay receipt publication is not admissible"
+            )
+        temporary_name = f".{normalized}.{secrets.token_hex(16)}.tmp"
+        temporary_fd = -1
+        try:
+            temporary_fd = os.open(
+                temporary_name,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+                0o600,
+                dir_fd=self._root_fd,
+            )
+            view = memoryview(payload)
+            while view:
+                written = os.write(temporary_fd, view)
+                if written < 1:
+                    raise DatabasePortalBridgeError(
+                        "trusted-setup replay receipt write made no progress"
+                    )
+                view = view[written:]
+            os.fsync(temporary_fd)
+            temporary_metadata = os.fstat(temporary_fd)
+            if (
+                not stat.S_ISREG(temporary_metadata.st_mode)
+                or temporary_metadata.st_nlink != 1
+                or temporary_metadata.st_size != len(payload)
+                or not self.verify()
+            ):
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay evidence changed before publication"
+                )
+            try:
+                os.link(
+                    temporary_name,
+                    normalized,
+                    src_dir_fd=self._root_fd,
+                    dst_dir_fd=self._root_fd,
+                )
+            except FileExistsError:
+                pass
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay receipt could not be published"
+            ) from exc
+        finally:
+            if temporary_fd >= 0:
+                with suppress(OSError):
+                    os.close(temporary_fd)
+            try:
+                os.unlink(temporary_name, dir_fd=self._root_fd)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay receipt temporary file could not be removed"
+                ) from exc
+        try:
+            os.fsync(self._root_fd)
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay receipt publication was not durable"
+            ) from exc
+        if not self.verify():
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence changed after publication"
+            )
+        observed = self.capture(normalized, maximum=maximum)
+        if observed != payload or not self.verify():
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay recovery receipt evidence changed"
+            )
+        return observed
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        entry_fds = [entry.descriptor for entry in self._entries.values()]
+        directory_fds = [
+            self._directories[key][2]
+            for key in sorted(self._directories, reverse=True)
+        ]
+        self._entries.clear()
+        self._directories.clear()
+        for descriptor in [*entry_fds, *directory_fds, self._root_fd]:
+            if descriptor >= 0:
+                with suppress(OSError):
+                    os.close(descriptor)
+        self._root_fd = -1
+
+    def __enter__(self) -> "_TrustedSetupReplayEvidenceCapability":
+        return self
+
+    def __exit__(self, *_error: object) -> None:
+        self.close()
+
+
 def _canonical_json(value: Any) -> bytes:
     return json.dumps(
         value,
@@ -2428,23 +2890,58 @@ def _sha256_file(path: Path) -> str:
 
 
 def _bounded_file(path: Path, *, limit: int) -> bytes:
-    """Read one bounded regular artifact without accepting truncation."""
+    """Read one bounded regular artifact through a no-follow descriptor."""
 
+    descriptor = -1
     try:
-        if path.is_symlink() or not path.is_file():
-            raise OSError("artifact is not a regular non-symlink file")
-        size = path.stat().st_size
-        if size > limit:
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        if not isinstance(nofollow, int):
+            raise OSError("platform has no no-follow file-open authority")
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | nofollow,
+        )
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise OSError("artifact is not a singly linked regular file")
+        if before.st_size < 0 or before.st_size > limit:
             raise OSError("artifact exceeds its byte limit")
-        with path.open("rb") as handle:
-            payload = handle.read(limit + 1)
-        if len(payload) != size:
+        chunks: list[bytes] = []
+        remaining = int(before.st_size)
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                raise OSError("artifact was truncated while read")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise OSError("artifact grew while read")
+        after = os.fstat(descriptor)
+        stable_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if any(
+            getattr(before, field) != getattr(after, field)
+            for field in stable_fields
+        ):
             raise OSError("artifact changed while read")
+        payload = b"".join(chunks)
+        if len(payload) != before.st_size:
+            raise OSError("artifact length changed while read")
         return payload
-    except OSError as exc:
+    except (OSError, TypeError, ValueError) as exc:
         raise DatabasePortalBridgeError(
             f"could not read Portal attempt artifact {path.name!r}"
         ) from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
 
 
 def _atomic_write(path: Path, payload: bytes) -> None:
@@ -9339,8 +9836,18 @@ class DatabasePortalExecutionBridge:
     @staticmethod
     def _read_binding(path: Path) -> Mapping[str, Any]:
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            value = json.loads(
+                _bounded_file(
+                    path,
+                    limit=_MAX_DATABASE_PORTAL_BINDING_BYTES,
+                )
+            )
+        except (
+            DatabasePortalBridgeError,
+            UnicodeDecodeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
             raise DatabasePortalBridgeError(
                 "database Portal attempt binding is unreadable"
             ) from exc
@@ -9382,10 +9889,27 @@ class DatabasePortalExecutionBridge:
         return paths, expected
 
     @staticmethod
-    def _verify_projection(paths: DatabasePortalAttemptPaths, binding: Mapping[str, Any]) -> str:
+    def _verify_projection(
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        *,
+        payload: bytes | None = None,
+    ) -> str:
         try:
-            text = paths.task_projection.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as exc:
+            projection_bytes = (
+                payload
+                if payload is not None
+                else _bounded_file(
+                    paths.task_projection,
+                    limit=_MAX_DATABASE_PORTAL_PROJECTION_BYTES,
+                )
+            )
+            if len(projection_bytes) > _MAX_DATABASE_PORTAL_PROJECTION_BYTES:
+                raise DatabasePortalBridgeError(
+                    "Portal task projection exceeds its byte limit"
+                )
+            text = projection_bytes.decode("utf-8")
+        except (DatabasePortalBridgeError, UnicodeDecodeError) as exc:
             raise DatabasePortalBridgeError("Portal task projection is unreadable") from exc
         if _projection_immutable_digest(text) != str(
             binding.get("projection_immutable_digest") or ""
@@ -9539,6 +10063,106 @@ class DatabasePortalExecutionBridge:
             str(verified_projection["portal_canonical_task_key"]),
             str(verified_projection["portal_canonical_task_cid"]),
         )
+
+    @staticmethod
+    def _captured_portal_completion_event_identity(
+        *,
+        paths: DatabasePortalAttemptPaths,
+        projection_text: str,
+        binding: Mapping[str, Any],
+    ) -> tuple[str, str]:
+        """Derive Portal identity exclusively from one captured evidence set."""
+
+        alias = str(binding.get("task_alias") or "")
+        task_cid = str(binding.get("task_cid") or "")
+        task_key = str(binding.get("canonical_task_key") or "")
+        binding_body = dict(binding)
+        binding_id = str(binding_body.pop("binding_id", "") or "")
+        if (
+            set(binding) != _DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS
+            or binding.get("schema") != DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+            or binding.get("interface")
+            != DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE
+            or binding.get("authoritative_task_store") != "duckdb"
+            or binding.get("projection_authority") is not False
+            or not alias
+            or not task_cid
+            or not task_key
+            or binding_id != _sha256_bytes(_canonical_json(binding_body))
+            or _projection_immutable_digest(projection_text)
+            != str(binding.get("projection_immutable_digest") or "")
+            or _HEADER.findall(projection_text) != [alias]
+        ):
+            raise DatabasePortalBridgeError(
+                "captured Portal completion evidence is not canonical"
+            )
+        projected_fields = {
+            "Database task CID": task_cid,
+            "Database attempt ID": str(binding.get("attempt_id") or ""),
+            "Database claim ID": str(binding.get("claim_id") or ""),
+            "Database attempt number": str(binding.get("attempt_number") or ""),
+            "Database owner session ID": str(
+                binding.get("owner_session_id") or ""
+            ),
+            "Canonical task CID": task_cid,
+            "Canonical task key": task_key,
+            "Projection authority": "false",
+        }
+        if any(
+            _single_projection_field(projection_text, label) != value
+            for label, value in projected_fields.items()
+        ):
+            raise DatabasePortalBridgeError(
+                "captured Portal completion projection differs from its binding"
+            )
+
+        from .implementation_daemon import parse_task_text, portal_task_identity
+
+        try:
+            projected_tasks = parse_task_text(
+                projection_text,
+                path=paths.task_projection,
+                task_header_prefix=f"## {alias}",
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "captured Portal completion projection is malformed"
+            ) from exc
+        if len(projected_tasks) != 1:
+            raise DatabasePortalBridgeError(
+                "captured Portal completion projection is not exactly one task"
+            )
+        task = projected_tasks[0]
+        metadata = task.metadata
+        if (
+            task.task_id != alias
+            or metadata.get("projection authority") != "false"
+            or metadata.get("database task cid") != task_cid
+            or metadata.get("canonical task cid") != task_cid
+            or metadata.get("canonical task key") != task_key
+        ):
+            raise DatabasePortalBridgeError(
+                "captured Portal completion projection differs from its binding"
+            )
+        try:
+            identity = portal_task_identity(
+                task,
+                todo_path=paths.task_projection,
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "captured Portal completion event identity cannot be derived"
+            ) from exc
+        if (
+            not identity.canonical_task_key
+            or not identity.canonical_task_cid
+            or re.fullmatch(r"[0-9a-f]{64}", identity.semantic_fingerprint)
+            is None
+        ):
+            raise DatabasePortalBridgeError(
+                "captured Portal completion event identity is absent"
+            )
+        return identity.canonical_task_key, identity.canonical_task_cid
 
     @staticmethod
     def _has_completion_event_candidate(
@@ -13135,22 +13759,29 @@ class DatabasePortalExecutionBridge:
         return ""
 
     @staticmethod
-    def _verified_event_chain(paths: DatabasePortalAttemptPaths) -> list[dict[str, Any]]:
+    def _verified_event_chain(
+        paths: DatabasePortalAttemptPaths,
+        *,
+        payload: bytes | None = None,
+    ) -> list[dict[str, Any]]:
         """Read one bounded attempt-local event chain without repairing it."""
 
-        try:
-            size = paths.events.stat().st_size
-        except OSError as exc:
-            raise DatabasePortalBridgeError(
-                "validation retry has no durable Portal event stream"
-            ) from exc
+        event_bytes = (
+            payload
+            if payload is not None
+            else _bounded_file(
+                paths.events,
+                limit=_MAX_DATABASE_PORTAL_EVENT_BYTES,
+            )
+        )
+        size = len(event_bytes)
         if size <= 0 or size > _MAX_DATABASE_PORTAL_EVENT_BYTES:
             raise DatabasePortalBridgeError(
                 "validation retry Portal event stream exceeds its closed bound"
             )
         try:
-            raw_lines = paths.events.read_text(encoding="utf-8").splitlines()
-        except (OSError, UnicodeDecodeError) as exc:
+            raw_lines = event_bytes.decode("utf-8").splitlines()
+        except UnicodeDecodeError as exc:
             raise DatabasePortalBridgeError(
                 "validation retry Portal event stream is unreadable"
             ) from exc
@@ -18755,6 +19386,1214 @@ class DatabasePortalExecutionBridge:
         }
         return dict(candidate_seed), context
 
+    def _trusted_setup_replay_history(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+        binding: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Prove one replay after the earlier projection repair.
+
+        This is intentionally separate from ``_pre_dispatch_candidate_history``.
+        The earlier verifier admits a callback which never reached Portal;
+        this verifier admits one later zero-provider Portal reconciliation only
+        after its carried projection proof and four adjacent control revisions
+        reproduce exactly.  A receipt from this path is one-shot.
+        """
+
+        history_projection = getattr(
+            self.task_source,
+            "task_revision_history_projection",
+            None,
+        )
+        if not callable(history_projection):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay recovery has no revision history"
+            )
+        task_cid = str(attempt.task_cid)
+        history = history_projection(task_cid)
+        revisions = history.get("revisions") if isinstance(history, Mapping) else None
+        current_revision = int(getattr(record, "revision", 0) or 0)
+        from ..proof.formal_verification_contracts import content_identity
+        from ..task_sources.intent_repository import (
+            TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+        )
+
+        history_body = dict(history) if isinstance(history, Mapping) else {}
+        history_cid = history_body.pop("projection_cid", None)
+        if (
+            not isinstance(history, Mapping)
+            or set(history)
+            != {"schema", "task_cid", "revisions", "projection_cid"}
+            or history.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+            or history.get("task_cid") != task_cid
+            or not isinstance(revisions, list)
+            or len(revisions) < 4
+            or history_cid != content_identity(history_body)
+            or str(getattr(record, "status", "") or "").strip().lower()
+            != "blocked"
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay recovery history is incomplete"
+            )
+        entries = revisions[-4:]
+        if (
+            any(not isinstance(entry, Mapping) for entry in entries)
+            or [entry.get("revision") for entry in entries]
+            != list(range(current_revision - 3, current_revision + 1))
+            or [str(entry.get("status") or "").strip().lower() for entry in entries]
+            != ["retrying", "in_progress", "in_progress", "blocked"]
+            or entries[-1].get("body") != getattr(record, "body", None)
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay recovery history is not adjacent"
+            )
+        bodies = [entry.get("body") for entry in entries]
+        if any(not isinstance(body, Mapping) for body in bodies):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay recovery history body is malformed"
+            )
+        receipts = [body.get("completion_receipt") for body in bodies]
+        if any(not isinstance(receipt, Mapping) for receipt in receipts):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay recovery history has no control receipt"
+            )
+        recovery_receipt, claim_receipt, admission_receipt, terminal_receipt = receipts
+        candidate_seed = recovery_receipt.get(
+            "post_commit_candidate_recovery_seed"
+        )
+        prior_projection_proof = recovery_receipt.get(
+            "pre_dispatch_projection_recovery_receipt"
+        )
+        semantic_bodies: list[dict[str, Any]] = []
+        for body in bodies:
+            semantic = dict(body)
+            semantic.pop("completion_receipt", None)
+            semantic_bodies.append(semantic)
+        target_identity = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "owner_session_id": str(
+                getattr(attempt, "owner_session_id", "") or ""
+            ),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if (
+            [str(receipt.get("operation") or "") for receipt in receipts]
+            != [
+                "database_portal_post_commit_candidate_recovery",
+                "database_claim",
+                "database_attempt_admitted",
+                "database_portal_terminal_failure",
+            ]
+            or not isinstance(candidate_seed, Mapping)
+            or not isinstance(prior_projection_proof, Mapping)
+            or recovery_receipt.get("trusted_setup_replay_recovery_receipt")
+            is not None
+            or claim_receipt.get("post_commit_candidate_recovery_seed")
+            != candidate_seed
+            or admission_receipt.get("post_commit_candidate_recovery_seed")
+            != candidate_seed
+            or any(body != semantic_bodies[0] for body in semantic_bodies[1:])
+            or any(
+                claim_receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or any(
+                admission_receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or any(
+                terminal_receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or terminal_receipt.get("reason") != "not_attempted"
+            or terminal_receipt.get("retryable") is not False
+            or terminal_receipt.get("control_expected_status") != "in_progress"
+            or terminal_receipt.get("control_expected_revision")
+            != current_revision - 1
+            or binding.get("task_revision") != current_revision - 1
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay recovery lineage changed"
+            )
+        for entry in revisions:
+            entry_body = entry.get("body") if isinstance(entry, Mapping) else None
+            entry_receipt = (
+                entry_body.get("completion_receipt")
+                if isinstance(entry_body, Mapping)
+                else None
+            )
+            if (
+                isinstance(entry_receipt, Mapping)
+                and entry_receipt.get("trusted_setup_replay_recovery_receipt")
+                is not None
+            ):
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay recovery is one-shot"
+                )
+
+        source_attempt = SimpleNamespace(
+            task_cid=str(candidate_seed.get("task_cid") or ""),
+            task_alias=str(candidate_seed.get("task_alias") or ""),
+            attempt_id=str(candidate_seed.get("attempt_id") or ""),
+            claim_id=str(candidate_seed.get("claim_id") or ""),
+            lease_id=str(candidate_seed.get("lease_id") or ""),
+            attempt_number=candidate_seed.get("attempt_number"),
+            fencing_token=candidate_seed.get("fencing_token"),
+            fence_epoch=candidate_seed.get("fence_epoch"),
+        )
+        source_paths = self._paths(source_attempt)
+        source_binding = self._read_binding(source_paths.binding)
+        reproduced_seed = self._post_commit_candidate_recovery_receipt(
+            attempt=source_attempt,
+            paths=source_paths,
+            binding=source_binding,
+        )
+        prior_attempt = SimpleNamespace(
+            task_cid=task_cid,
+            task_alias=str(getattr(attempt, "task_alias", "") or ""),
+            attempt_id=str(prior_projection_proof.get("attempt_id") or ""),
+            claim_id=str(prior_projection_proof.get("claim_id") or ""),
+            lease_id=str(prior_projection_proof.get("lease_id") or ""),
+            attempt_number=prior_projection_proof.get("attempt_number"),
+            fencing_token=prior_projection_proof.get("fencing_token"),
+            fence_epoch=prior_projection_proof.get("fence_epoch"),
+        )
+        prior_paths = self._paths(prior_attempt)
+        if not (
+            prior_paths.root / _PRE_DISPATCH_PROJECTION_RECOVERY_FILENAME
+        ).is_file():
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay lost its prior projection proof"
+            )
+        prior_binding_bytes = _bounded_file(
+            prior_paths.binding,
+            limit=_MAX_DATABASE_PORTAL_BINDING_BYTES,
+        )
+        try:
+            prior_binding = json.loads(prior_binding_bytes)
+        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay prior binding is unreadable"
+            ) from exc
+        if not isinstance(prior_binding, Mapping):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay prior binding is malformed"
+            )
+        prior_receipt_path = (
+            prior_paths.root / _PRE_DISPATCH_PROJECTION_RECOVERY_FILENAME
+        )
+        reproduced_projection_proof = self._read_json_object(
+            prior_receipt_path,
+            noun="prior pre-dispatch projection recovery receipt",
+        )
+        prior_receipt_body = dict(reproduced_projection_proof)
+        prior_receipt_id = str(prior_receipt_body.pop("receipt_id", "") or "")
+        prior_artifacts = self._pre_dispatch_projection_artifacts(
+            prior_paths,
+            receipt_allowed=True,
+        )
+        prior_artifacts.pop(prior_receipt_path.name, None)
+        prior_projection_bytes = _bounded_file(
+            prior_paths.task_projection,
+            limit=_MAX_DATABASE_PORTAL_PROJECTION_BYTES,
+        )
+        prior_projection = self._verify_projection(
+            prior_paths,
+            prior_binding,
+            payload=prior_projection_bytes,
+        )
+        prior_portal_key, prior_portal_cid = (
+            self._captured_portal_completion_event_identity(
+                paths=prior_paths,
+                projection_text=prior_projection,
+                binding=prior_binding,
+            )
+        )
+        prior_windows: list[tuple[int, list[Mapping[str, Any]]]] = []
+        for index in range(3, len(revisions) - 4):
+            window = revisions[index - 3 : index + 1]
+            if any(not isinstance(entry, Mapping) for entry in window):
+                continue
+            window_bodies = [entry.get("body") for entry in window]
+            if any(not isinstance(body, Mapping) for body in window_bodies):
+                continue
+            window_receipts = [
+                body.get("completion_receipt") for body in window_bodies
+            ]
+            if any(
+                not isinstance(receipt, Mapping)
+                for receipt in window_receipts
+            ):
+                continue
+            if (
+                [
+                    str(entry.get("status") or "").strip().lower()
+                    for entry in window
+                ]
+                == ["retrying", "in_progress", "in_progress", "blocked"]
+                and [
+                    str(receipt.get("operation") or "")
+                    for receipt in window_receipts
+                ]
+                == [
+                    "database_portal_post_commit_candidate_recovery",
+                    "database_claim",
+                    "database_attempt_admitted",
+                    "database_portal_terminal_failure",
+                ]
+                and window_receipts[-1].get("attempt_id")
+                == prior_attempt.attempt_id
+                and window_receipts[-1].get("reason")
+                == DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON
+            ):
+                prior_windows.append((index, list(window)))
+        if len(prior_windows) != 1:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay prior projection lineage is ambiguous"
+            )
+        prior_terminal_index, prior_entries = prior_windows[0]
+        prior_revisions = [entry.get("revision") for entry in prior_entries]
+        prior_prefix = {
+            "schema": history["schema"],
+            "task_cid": task_cid,
+            "revisions": [
+                dict(item) for item in revisions[: prior_terminal_index + 1]
+            ],
+        }
+        prior_expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "history_projection_cid",
+            "recovery_task_revision",
+            "claim_task_revision",
+            "admission_task_revision",
+            "terminal_task_revision",
+            "source_candidate_receipt_id",
+            "source_portal_attempt",
+            "target_binding_id",
+            "projection_immutable_digest",
+            "projection_file_digest",
+            "portal_canonical_task_key",
+            "portal_canonical_task_cid",
+            "source_implementation_commit",
+            "source_rescue_branch",
+            "requires_database_callback_started_evidence",
+            "portal_provider_dispatched",
+            "portal_attempt_consumed",
+            "effect_state",
+            "merge_attempted",
+            "attempt_artifacts",
+            "receipt_id",
+        }
+        if (
+            dict(candidate_seed) != reproduced_seed
+            or dict(prior_projection_proof) != reproduced_projection_proof
+            or set(reproduced_projection_proof) != prior_expected_fields
+            or any(type(value) is not int for value in prior_revisions)
+            or prior_revisions
+            != list(
+                range(int(prior_revisions[0]), int(prior_revisions[0]) + 4)
+            )
+            or reproduced_projection_proof.get("history_projection_cid")
+            != content_identity(prior_prefix)
+            or reproduced_projection_proof.get("recovery_task_revision")
+            != prior_revisions[0]
+            or reproduced_projection_proof.get("claim_task_revision")
+            != prior_revisions[1]
+            or reproduced_projection_proof.get("admission_task_revision")
+            != prior_revisions[2]
+            or reproduced_projection_proof.get("terminal_task_revision")
+            != prior_revisions[3]
+            or prior_receipt_id != _sha256_bytes(
+                _canonical_json(prior_receipt_body)
+            )
+            or reproduced_projection_proof.get("schema")
+            != DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA
+            or reproduced_projection_proof.get("disposition")
+            != "retry_exact_post_commit_candidate"
+            or reproduced_projection_proof.get("reason")
+            != "protected_preservation_projection_revalidated"
+            or reproduced_projection_proof.get("task_cid") != task_cid
+            or reproduced_projection_proof.get("task_alias")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or reproduced_projection_proof.get("attempt_id")
+            != str(prior_attempt.attempt_id)
+            or reproduced_projection_proof.get("claim_id")
+            != str(prior_attempt.claim_id)
+            or reproduced_projection_proof.get("lease_id")
+            != str(prior_attempt.lease_id)
+            or reproduced_projection_proof.get("attempt_number")
+            != prior_attempt.attempt_number
+            or reproduced_projection_proof.get("fencing_token")
+            != prior_attempt.fencing_token
+            or reproduced_projection_proof.get("fence_epoch")
+            != prior_attempt.fence_epoch
+            or reproduced_projection_proof.get("attempt_artifacts")
+            != prior_artifacts
+            or reproduced_projection_proof.get("target_binding_id")
+            != str(prior_binding.get("binding_id") or "")
+            or reproduced_projection_proof.get("projection_immutable_digest")
+            != str(prior_binding.get("projection_immutable_digest") or "")
+            or reproduced_projection_proof.get("projection_file_digest")
+            != _sha256_bytes(prior_projection.encode("utf-8"))
+            or reproduced_projection_proof.get("portal_canonical_task_key")
+            != prior_portal_key
+            or reproduced_projection_proof.get("portal_canonical_task_cid")
+            != prior_portal_cid
+            or prior_projection_proof.get("source_candidate_receipt_id")
+            != candidate_seed.get("receipt_id")
+            or prior_projection_proof.get("source_portal_attempt")
+            != candidate_seed.get("portal_attempt")
+            or prior_projection_proof.get("source_implementation_commit")
+            != candidate_seed.get("implementation_commit")
+            or prior_projection_proof.get("source_rescue_branch")
+            != candidate_seed.get("rescue_branch")
+            or prior_projection_proof.get(
+                "requires_database_callback_started_evidence"
+            )
+            is not True
+            or prior_projection_proof.get("portal_provider_dispatched")
+            is not False
+            or prior_projection_proof.get("portal_attempt_consumed")
+            is not False
+            or prior_projection_proof.get("merge_attempted") is not False
+            or prior_projection_proof.get("effect_state")
+            != "proven_absent_before_portal_dispatch"
+            or candidate_seed.get("task_cid") != task_cid
+            or candidate_seed.get("task_alias")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or candidate_seed.get("attempt_id") == str(attempt.attempt_id)
+            or prior_projection_proof.get("attempt_id")
+            == str(attempt.attempt_id)
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay candidate or prior proof changed"
+            )
+        return dict(candidate_seed), {
+            "history_projection_cid": str(history_cid),
+            "recovery_task_revision": current_revision - 3,
+            "claim_task_revision": current_revision - 2,
+            "admission_task_revision": current_revision - 1,
+            "terminal_task_revision": current_revision,
+            "source_candidate_receipt_id": str(
+                candidate_seed.get("receipt_id") or ""
+            ),
+            "source_portal_attempt": int(
+                candidate_seed.get("portal_attempt") or 0
+            ),
+            "prior_projection_recovery_receipt_id": str(
+                prior_projection_proof.get("receipt_id") or ""
+            ),
+        }
+
+    @staticmethod
+    def _trusted_setup_replay_git(
+        repository: Path,
+        *arguments: str,
+        binary: bool = False,
+    ) -> str | bytes:
+        """Read an immutable Git object without changing repository state."""
+
+        try:
+            result = subprocess.run(
+                ["git", *arguments],
+                cwd=repository,
+                capture_output=True,
+                check=False,
+                text=not binary,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay Git proof is unavailable"
+            ) from exc
+        if result.returncode != 0:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay Git proof failed"
+            )
+        if binary:
+            return bytes(result.stdout)
+        return str(result.stdout).strip()
+
+    def _trusted_setup_replay_blob_identity(
+        self,
+        *,
+        candidate_commit: str,
+        relative: str,
+    ) -> dict[str, str | int]:
+        """Bind a setup-created file to its candidate submodule object."""
+
+        if self.repository_root is None:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay has no repository authority"
+            )
+        safe_relative = _safe_repository_path(relative)
+        relative_parts = PurePosixPath(safe_relative).parts
+        owners = [
+            owner
+            for owner in self.worktree_submodule_paths
+            if relative_parts[: len(PurePosixPath(owner).parts)]
+            == PurePosixPath(owner).parts
+            and len(relative_parts) > len(PurePosixPath(owner).parts)
+        ]
+        if len(owners) != 1:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay mutation is not owned by one configured "
+                "submodule"
+            )
+        owner = owners[0]
+        owner_parts = PurePosixPath(owner).parts
+        inside = PurePosixPath(*relative_parts[len(owner_parts) :]).as_posix()
+        tree_line = self._trusted_setup_replay_git(
+            self.repository_root,
+            "ls-tree",
+            candidate_commit,
+            "--",
+            owner,
+        )
+        assert isinstance(tree_line, str)
+        match = re.fullmatch(
+            r"160000 commit ([0-9a-f]{40})\t" + re.escape(owner),
+            tree_line,
+        )
+        if match is None:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay candidate submodule identity changed"
+            )
+        gitlink_commit = match.group(1)
+        submodule_repository = self.repository_root / owner
+        try:
+            current = self.repository_root
+            for component in PurePosixPath(owner).parts:
+                current = current / component
+                metadata = current.stat(follow_symlinks=False)
+                if stat.S_ISLNK(metadata.st_mode):
+                    raise DatabasePortalBridgeError(
+                        "trusted-setup replay refuses a linked submodule path"
+                    )
+                if not stat.S_ISDIR(metadata.st_mode):
+                    raise DatabasePortalBridgeError(
+                        "trusted-setup replay submodule ancestor is not a directory"
+                    )
+            submodule_root = submodule_repository.resolve(strict=True)
+            repository_root = self.repository_root.resolve(strict=True)
+            submodule_root.relative_to(repository_root)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay submodule repository is unavailable"
+            ) from exc
+        if submodule_repository.is_symlink() or not submodule_repository.is_dir():
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay submodule repository is unsafe"
+            )
+        blob_size_text = self._trusted_setup_replay_git(
+            submodule_repository,
+            "cat-file",
+            "-s",
+            f"{gitlink_commit}:{inside}",
+        )
+        assert isinstance(blob_size_text, str)
+        try:
+            blob_size = int(blob_size_text)
+        except ValueError as exc:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay blob size is malformed"
+            ) from exc
+        if not 0 <= blob_size <= _MAX_DATABASE_PORTAL_PROJECTION_BYTES:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay blob exceeds its byte bound"
+            )
+        blob = self._trusted_setup_replay_git(
+            submodule_repository,
+            "show",
+            f"{gitlink_commit}:{inside}",
+            binary=True,
+        )
+        assert isinstance(blob, bytes)
+        if len(blob) != blob_size:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay blob changed after size preflight"
+            )
+        return {
+            "submodule_path": owner,
+            "submodule_commit": gitlink_commit,
+            "relative_path": inside,
+            "size": blob_size,
+            "sha256": hashlib.sha256(blob).hexdigest(),
+        }
+
+    def _trusted_setup_replay_recovery_receipt(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Admit one replay while retaining every evidence descriptor."""
+
+        self._verify_protected_path_attempt_boundary(paths)
+        with _TrustedSetupReplayEvidenceCapability(paths.root) as evidence:
+            return self._trusted_setup_replay_recovery_receipt_from_evidence(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+                evidence=evidence,
+            )
+
+    def _trusted_setup_replay_recovery_receipt_from_evidence(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        evidence: _TrustedSetupReplayEvidenceCapability,
+    ) -> dict[str, Any]:
+        """Verify one validation-only replay from a descriptor-bound snapshot.
+
+        This verifier is deliberately narrower than ordinary protected-path
+        recovery.  It recognizes only files created below configured top-level
+        submodules whose bytes reproduce from the exact candidate gitlinks.
+        All validation commands must have passed, no provider or merge may
+        have run, and cleanup must have disposed the temporary worktree.
+        """
+
+        binding_bytes = evidence.capture(
+            paths.binding.name,
+            maximum=_MAX_DATABASE_PORTAL_BINDING_BYTES,
+        )
+        projection_bytes = evidence.capture(
+            paths.task_projection.name,
+            maximum=_MAX_DATABASE_PORTAL_PROJECTION_BYTES,
+        )
+        events_bytes = evidence.capture(
+            paths.events.name,
+            maximum=_MAX_DATABASE_PORTAL_EVENT_BYTES,
+        )
+        event_manifest_bytes = evidence.capture(
+            paths.events.with_suffix(paths.events.suffix + ".manifest.json").name,
+            maximum=_MAX_DATABASE_PORTAL_BINDING_BYTES,
+        )
+        try:
+            captured_binding = json.loads(binding_bytes)
+        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay binding is unreadable"
+            ) from exc
+        if not isinstance(captured_binding, Mapping) or captured_binding != binding:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay binding changed before evidence capture"
+            )
+
+        record = self._record_for_attempt(self.task_source, attempt)
+        candidate_seed, history = self._trusted_setup_replay_history(
+            attempt=attempt,
+            record=record,
+            binding=captured_binding,
+        )
+        events = self._verified_event_chain(paths, payload=events_bytes)
+        event_types = [str(event.get("type") or "") for event in events]
+        guard_count = event_types.count("nested_submodule_initialization_guarded")
+        expected_types = [
+            "implementation_task_claim_lock_cleared",
+            "implementation_protected_path_snapshot_recorded",
+            *(["nested_submodule_initialization_guarded"] * guard_count),
+            "worktree_reconciliation_validation_started",
+            "implementation_expected_outputs_checked",
+            "implementation_proposal_validated",
+            "implementation_protected_path_mutated",
+            "worktree_reconciliation_validation_finished",
+            "cleanup_finished",
+        ]
+        if guard_count < 1 or event_types != expected_types:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay event chain is not exact"
+            )
+        snapshot = events[1]
+        guards = events[2 : 2 + guard_count]
+        (
+            started,
+            outputs,
+            proposal,
+            mutation_event,
+            finished,
+            cleanup,
+        ) = events[2 + guard_count :]
+        claim_lock = events[0]
+        if (
+            claim_lock.get("task_id")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or claim_lock.get("branch") != ""
+            or isinstance(claim_lock.get("lock_owner_pid"), bool)
+            or not isinstance(claim_lock.get("lock_owner_pid"), int)
+            or int(claim_lock["lock_owner_pid"]) < 1
+            or not Path(str(claim_lock.get("lock_path") or "")).is_absolute()
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay claim-lock evidence changed"
+            )
+        for guard in guards:
+            guard_path = _safe_repository_path(str(guard.get("path") or ""))
+            guard_relative = _safe_repository_path(
+                str(guard.get("relative") or "")
+            )
+            guard_parts = PurePosixPath(guard_path).parts
+            guard_owners = [
+                owner
+                for owner in self.worktree_submodule_paths
+                if guard_parts[: len(PurePosixPath(owner).parts)]
+                == PurePosixPath(owner).parts
+            ]
+            if (
+                len(guard_owners) != 1
+                or guard.get("reason") != "configured_dependency_duplicate"
+                or guard.get("expected_gitlink_ref_available") is not True
+                or guard.get("path_sha256")
+                != hashlib.sha256(guard_path.encode("utf-8")).hexdigest()
+                or guard.get("path_bytes") != len(guard_path.encode("utf-8"))
+                or guard.get("path_parts") != len(guard_parts)
+                or guard.get("depth") != 1
+                or guard.get("max_depth") != 8
+                or guard.get("max_path_bytes") != 1024
+                or guard.get("max_path_parts") != 64
+                or not guard_relative
+                or re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(guard.get("expected_gitlink_ref_sha256") or ""),
+                )
+                is None
+                or re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(guard.get("matched_identity_sha256") or ""),
+                )
+                is None
+            ):
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay submodule guard evidence changed"
+                )
+        projection = self._verify_projection(
+            paths,
+            captured_binding,
+            payload=projection_bytes,
+        )
+        portal_task_key, portal_task_cid = (
+            self._captured_portal_completion_event_identity(
+                paths=paths,
+                projection_text=projection,
+                binding=captured_binding,
+            )
+        )
+        alias = str(getattr(attempt, "task_alias", "") or "")
+        task_cid = str(attempt.task_cid)
+        portal_attempt = started.get("attempt")
+        identity = {
+            "task_id": alias,
+            "canonical_task_key": portal_task_key,
+            "canonical_task_cid": portal_task_cid,
+            "attempt": portal_attempt,
+        }
+        if (
+            isinstance(portal_attempt, bool)
+            or not isinstance(portal_attempt, int)
+            or portal_attempt < 1
+            or any(
+                event.get(key) != value
+                for event in (snapshot, started, mutation_event, finished)
+                for key, value in identity.items()
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay event identity changed"
+            )
+        baseline_commit = str(candidate_seed.get("baseline_commit") or "")
+        candidate_commit = str(
+            candidate_seed.get("implementation_commit") or ""
+        )
+        branch = str(started.get("branch") or "")
+        workspace_text = str(started.get("worktree_path") or "")
+        recovery_key = str(started.get("recovery_key") or "")
+        log_text = str(started.get("log_path") or "")
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", baseline_commit) is None
+            or re.fullmatch(r"[0-9a-f]{40}", candidate_commit) is None
+            or not branch.startswith("implementation/")
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", recovery_key) is None
+            or started.get("baseline_ref") != baseline_commit
+            or started.get("implementation_commit") != candidate_commit
+            or started.get("task_cid") != task_cid
+            or started.get("provider_dispatched") is not False
+            or started.get("attempt_consumed") is not False
+            or any(
+                finished.get(field) != started.get(field)
+                for field in (
+                    "branch",
+                    "worktree_path",
+                    "baseline_ref",
+                    "implementation_commit",
+                    "recovery_key",
+                    "log_path",
+                    "provider_dispatched",
+                    "attempt_consumed",
+                )
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay candidate identity changed"
+            )
+        if self.worktree_root is None or not workspace_text:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay has no worktree authority"
+            )
+        try:
+            worktree_root = self.worktree_root.resolve(strict=True)
+            workspace = Path(workspace_text).resolve(strict=False)
+            workspace.relative_to(worktree_root)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay worktree is outside authority"
+            ) from exc
+        if str(workspace) != workspace_text or workspace.exists():
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay worktree was not disposed"
+            )
+        try:
+            log_path = Path(log_text).resolve(strict=True)
+            attempt_root = paths.root.resolve(strict=True)
+            log_path.relative_to((attempt_root / "implementation-logs").resolve())
+            log_relative = log_path.relative_to(attempt_root).as_posix()
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay validation log is outside authority"
+            ) from exc
+        if log_path.is_symlink() or not log_path.is_file():
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay validation log is unsafe"
+            )
+
+        active_path = paths.root / _IMPLEMENTATION_PROTECTED_ACTIVE_FILENAME
+        incident_path = paths.root / _IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME
+        active_bytes = evidence.capture(
+            active_path.name,
+            maximum=2 * 1024 * 1024,
+        )
+        incident_bytes = evidence.capture(
+            incident_path.name,
+            maximum=512 * 1024,
+        )
+        validation_log_bytes = evidence.capture(
+            log_relative,
+            maximum=4 * 1024 * 1024,
+        )
+        if not active_bytes or not incident_bytes or not validation_log_bytes:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence is empty"
+            )
+        try:
+            active = json.loads(active_bytes)
+            incident = json.loads(incident_bytes)
+        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence is unreadable"
+            ) from exc
+        if not isinstance(active, dict) or not isinstance(incident, dict):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay evidence is not an object"
+            )
+        active_snapshot = active.get("snapshot")
+        workspace_snapshot = (
+            active_snapshot.get("workspace")
+            if isinstance(active_snapshot, Mapping)
+            else None
+        )
+        shared_snapshot = (
+            active_snapshot.get("shared_checkout")
+            if isinstance(active_snapshot, Mapping)
+            else None
+        )
+        active_paths = active.get("protected_paths")
+        mutations = incident.get("mutations")
+        protected_paths = incident.get("protected_paths")
+        normalized_active_paths = (
+            tuple(
+                sorted(
+                    _safe_repository_path(path)
+                    for path in active_paths
+                )
+            )
+            if isinstance(active_paths, list)
+            and all(type(path) is str for path in active_paths)
+            else ()
+        )
+        if (
+            active.get("schema") != "implementation-protected-path-active-v1"
+            or active.get("task_id") != alias
+            or active.get("attempt") != portal_attempt
+            or active.get("canonical_task_key") != portal_task_key
+            or active.get("canonical_task_cid") != portal_task_cid
+            or active.get("workspace_path") != workspace_text
+            or active.get("ephemeral_worktree") is not True
+            or not isinstance(active_paths, list)
+            or not self.implementation_protected_paths
+            or len(normalized_active_paths) != len(active_paths)
+            or len(set(normalized_active_paths)) != len(normalized_active_paths)
+            or normalized_active_paths != self.implementation_protected_paths
+            or active_paths != snapshot.get("protected_paths")
+            or not isinstance(workspace_snapshot, Mapping)
+            or workspace_snapshot.get("root") != workspace_text
+            or workspace_snapshot.get("git_head") != candidate_commit
+            or not isinstance(shared_snapshot, Mapping)
+            or self.repository_root is None
+            or shared_snapshot.get("root")
+            != str(self.repository_root.resolve(strict=True))
+            or re.fullmatch(
+                r"[0-9a-f]{40}",
+                str(shared_snapshot.get("git_head") or ""),
+            )
+            is None
+            or not isinstance(mutations, list)
+            or not mutations
+            or len(mutations) > len(self.worktree_submodule_paths)
+            or not isinstance(protected_paths, list)
+            or len(protected_paths) != len(set(map(str, protected_paths)))
+            or protected_paths != [mutation.get("path") for mutation in mutations]
+            or any(path not in active_paths for path in protected_paths)
+            or any(path not in self.implementation_protected_paths for path in protected_paths)
+            or incident.get("schema")
+            != "implementation-protected-path-incident-v1"
+            or incident.get("reason") != "implementation_protected_path_mutated"
+            or incident.get("requires_operator_clearance") is not True
+            or incident.get("shared_checkout_restored") is not False
+            or incident.get("task_id") != alias
+            or incident.get("attempt") != portal_attempt
+            or incident.get("canonical_task_key") != portal_task_key
+            or incident.get("canonical_task_cid") != portal_task_cid
+            or incident.get("workspace_path") != workspace_text
+            or mutation_event.get("reason")
+            != "implementation_protected_path_mutated"
+            or mutation_event.get("workspace_path") != workspace_text
+            or mutation_event.get("mutations") != mutations
+            or mutation_event.get("protected_paths") != protected_paths
+            or mutation_event.get("shared_checkout_restored") is not False
+            or finished.get("protected_path_violation") != incident
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay protected-path evidence changed"
+            )
+        workspace_paths = workspace_snapshot.get("paths")
+        shared_paths = shared_snapshot.get("paths")
+        if not isinstance(workspace_paths, Mapping) or not isinstance(
+            shared_paths, Mapping
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay snapshot paths are incomplete"
+            )
+        if (
+            set(map(str, workspace_paths)) != set(map(str, active_paths))
+            or set(map(str, shared_paths)) != set(map(str, active_paths))
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay snapshot population changed"
+            )
+        setup_files: list[dict[str, Any]] = []
+        for mutation in mutations:
+            if not isinstance(mutation, Mapping):
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay mutation is malformed"
+                )
+            relative = _safe_repository_path(str(mutation.get("path") or ""))
+            after = mutation.get("after")
+            if (
+                mutation.get("scope") != "workspace"
+                or mutation.get("change") != "created"
+                or mutation.get("before") != {"state": "missing"}
+                or workspace_paths.get(relative) != {"state": "missing"}
+                or not isinstance(after, Mapping)
+                or after.get("state") != "present"
+                or after.get("kind") != "regular_file"
+                or isinstance(after.get("size"), bool)
+                or not isinstance(after.get("size"), int)
+                or int(after["size"]) < 0
+                or re.fullmatch(r"[0-9a-f]{64}", str(after.get("sha256") or ""))
+                is None
+            ):
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay mutation is not setup materialization"
+                )
+            blob_identity = self._trusted_setup_replay_blob_identity(
+                candidate_commit=candidate_commit,
+                relative=relative,
+            )
+            shared_identity = shared_paths.get(relative)
+            if (
+                blob_identity["size"] != after.get("size")
+                or blob_identity["sha256"] != after.get("sha256")
+                or not isinstance(shared_identity, Mapping)
+                or shared_identity.get("state") != "present"
+                or shared_identity.get("kind") != "regular_file"
+                or shared_identity.get("size") != blob_identity["size"]
+                or shared_identity.get("sha256") != blob_identity["sha256"]
+            ):
+                raise DatabasePortalBridgeError(
+                    "trusted-setup replay protected content digest changed"
+                )
+            setup_files.append({"path": relative, **blob_identity})
+
+        validation = finished.get("validation_result")
+        merge_result = finished.get("merge_result")
+        commit_result = finished.get("commit_result")
+        if not all(
+            isinstance(value, Mapping)
+            for value in (validation, merge_result, commit_result)
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay terminal evidence is incomplete"
+            )
+        assert isinstance(validation, Mapping)
+        proposal_gate = validation.get("proposal_gate")
+        validation_dag = validation.get("validation_dag_receipt")
+        results = validation.get("results")
+        stages = validation.get("stages")
+        nodes = validation_dag.get("nodes") if isinstance(validation_dag, Mapping) else None
+        changed_paths = (
+            proposal_gate.get("changed_paths")
+            if isinstance(proposal_gate, Mapping)
+            else None
+        )
+        if (
+            validation.get("attempted") is not True
+            or validation.get("passed") is not False
+            or validation.get("merge_eligible") is not False
+            or validation.get("authoritative") is not False
+            or validation.get("proof_authoritative") is not False
+            or validation.get("completion_authoritative") is not False
+            or validation.get("target_commit") != baseline_commit
+            or validation.get("reason") != "implementation_protected_path_mutated"
+            or validation.get("returncode") != 1
+            or validation.get("protected_path_violation") != incident
+            or not isinstance(results, list)
+            or not results
+            or any(
+                not isinstance(result, Mapping)
+                or result.get("returncode") != 0
+                or result.get("timed_out") is not False
+                for result in results
+            )
+            or not isinstance(stages, list)
+            or not stages
+            or any(
+                not isinstance(stage, Mapping)
+                or stage.get("passed") is not True
+                or stage.get("planned_count") != stage.get("executed_count")
+                for stage in stages
+            )
+            or not isinstance(proposal_gate, Mapping)
+            or not isinstance(validation_dag, Mapping)
+            or validation_dag.get("passed") is not True
+            or validation_dag.get("coverage_complete") is not True
+            or validation_dag.get("uncovered_impact") is not False
+            or validation_dag.get("repository_tree_id") != baseline_commit
+            or validation_dag.get("proposal_receipt_id")
+            != proposal_gate.get("receipt_id")
+            or validation_dag.get("objective_id") != task_cid
+            or not isinstance(nodes, list)
+            or not nodes
+            or any(
+                not isinstance(node, Mapping)
+                or node.get("mandatory") is not True
+                or node.get("selected") is not True
+                or node.get("disposition") != "succeeded"
+                or node.get("returncode") != 0
+                for node in nodes
+            )
+            or proposal_gate.get("attempted") is not True
+            or proposal_gate.get("accepted") is not True
+            or proposal_gate.get("reason_codes") not in ([], ())
+            or proposal_gate.get("proof_authoritative") is not False
+            or proposal_gate.get("completion_authoritative") is not False
+            or proposal_gate.get("repository_tree_id") != baseline_commit
+            or not isinstance(changed_paths, list)
+            or not changed_paths
+            or outputs.get("task_id") != alias
+            or outputs.get("proposal_id") != proposal_gate.get("proposal_id")
+            or outputs.get("expected_paths") != changed_paths
+            or outputs.get("passed") is not True
+            or outputs.get("issues") not in ([], ())
+            or outputs.get("proof_authoritative") is not False
+            or outputs.get("completion_authoritative") is not False
+            or proposal.get("task_id") != alias
+            or proposal.get("proposal_id") != proposal_gate.get("proposal_id")
+            or proposal.get("receipt_id") != proposal_gate.get("receipt_id")
+            or proposal.get("policy_id") != proposal_gate.get("policy_id")
+            or proposal.get("repository_tree_id")
+            != proposal_gate.get("repository_tree_id")
+            or proposal.get("changed_paths") != changed_paths
+            or proposal.get("attempted") is not True
+            or proposal.get("accepted") is not True
+            or proposal.get("reason_codes") not in ([], ())
+            or proposal.get("proof_authoritative") is not False
+            or proposal.get("completion_authoritative") is not False
+            or commit_result != {"committed": False}
+            or merge_result != {"merged": False, "reason": "not_attempted"}
+            or finished.get("returncode") != 1
+            or finished.get("provider_dispatched") is not False
+            or finished.get("attempt_consumed") is not False
+            or cleanup.get("branch") != branch
+            or cleanup.get("worktree_path") != workspace_text
+            or cleanup.get("cleaned") is not True
+            or cleanup.get("removed_worktree") is not True
+            or cleanup.get("deleted_branch") is not True
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay validation evidence changed"
+            )
+        for container in (finished, validation, proposal_gate):
+            assert isinstance(container, Mapping)
+            for field in (
+                "denied_effects",
+                "forbidden_effects",
+                "unauthorized_effects",
+            ):
+                if container.get(field) not in (None, [], ()):
+                    raise DatabasePortalBridgeError(
+                        "trusted-setup replay contains a denied effect"
+                    )
+        cleanup_rows = cleanup.get("submodule_cleanup")
+        setup_owners = {
+            str(item["submodule_path"]) for item in setup_files
+        }
+        if (
+            not isinstance(cleanup_rows, list)
+            or not cleanup_rows
+            or any(
+                not isinstance(item, Mapping)
+                or item.get("cleaned") is not True
+                or item.get("removed_worktree") is not True
+                or item.get("errors") not in ([], ())
+                for item in cleanup_rows
+            )
+            or not setup_owners.issubset(
+                {str(item.get("path") or "") for item in cleanup_rows}
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay submodule cleanup changed"
+            )
+        branch_presence = subprocess.run(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+            cwd=self.repository_root,
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+        if branch_presence.returncode not in {1}:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay cleanup did not delete its branch"
+            )
+        evidence_digests = {
+            "active_snapshot": _sha256_bytes(active_bytes),
+            "binding": _sha256_bytes(binding_bytes),
+            "event_manifest": _sha256_bytes(event_manifest_bytes),
+            "events": _sha256_bytes(events_bytes),
+            "incident": _sha256_bytes(incident_bytes),
+            "projection": _sha256_bytes(projection_bytes),
+            "validation_log": _sha256_bytes(validation_log_bytes),
+        }
+        receipt: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA,
+            "disposition": "retry_exact_post_commit_candidate",
+            "reason": DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_REASON,
+            "task_cid": task_cid,
+            "task_alias": alias,
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            **history,
+            "target_binding_id": str(
+                captured_binding.get("binding_id") or ""
+            ),
+            "projection_immutable_digest": str(
+                captured_binding.get("projection_immutable_digest") or ""
+            ),
+            "source_candidate_receipt_id": str(
+                candidate_seed.get("receipt_id") or ""
+            ),
+            "source_pre_dispatch_recovery_receipt_id": str(
+                history["prior_projection_recovery_receipt_id"]
+            ),
+            "baseline_commit": baseline_commit,
+            "implementation_commit": candidate_commit,
+            "source_rescue_branch": str(
+                candidate_seed.get("rescue_branch") or ""
+            ),
+            "portal_attempt": int(portal_attempt),
+            "event_stream_id": str(finished.get("stream_id") or ""),
+            "snapshot_event_id": str(snapshot.get("event_id") or ""),
+            "validation_started_event_id": str(started.get("event_id") or ""),
+            "expected_outputs_event_id": str(outputs.get("event_id") or ""),
+            "proposal_event_id": str(proposal.get("event_id") or ""),
+            "mutation_event_id": str(mutation_event.get("event_id") or ""),
+            "validation_finished_event_id": str(finished.get("event_id") or ""),
+            "cleanup_event_id": str(cleanup.get("event_id") or ""),
+            "guard_event_ids": [str(event.get("event_id") or "") for event in guards],
+            "evidence_digests": evidence_digests,
+            "setup_files": setup_files,
+            "validation_commands_passed": True,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "merge_attempted": False,
+            "effect_state": "proven_absent_after_validation_only_replay",
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        if len(_canonical_json(receipt)) > 262_144:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay receipt exceeds its owner bound"
+            )
+        receipt_bytes = (
+            json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
+            + b"\n"
+        )
+        if len(receipt_bytes) > 512 * 1024:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay serialized receipt exceeds its bound"
+            )
+        observed_bytes = evidence.publish_once(
+            _TRUSTED_SETUP_REPLAY_RECOVERY_FILENAME,
+            receipt_bytes,
+            maximum=512 * 1024,
+        )
+        try:
+            observed = json.loads(observed_bytes)
+        except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay recovery receipt is unreadable"
+            ) from exc
+        if (
+            not isinstance(observed, dict)
+            or observed != receipt
+            or not evidence.verify()
+        ):
+            raise DatabasePortalBridgeError(
+                "trusted-setup replay recovery receipt evidence changed"
+            )
+        return observed
+
     def _pre_dispatch_projection_recovery_receipt(
         self,
         *,
@@ -18927,6 +20766,21 @@ class DatabasePortalExecutionBridge:
             record=record,
             paths=paths,
         )
+        body = getattr(record, "body", None)
+        terminal_receipt = (
+            body.get("completion_receipt") if isinstance(body, Mapping) else None
+        )
+        if (
+            isinstance(terminal_receipt, Mapping)
+            and terminal_receipt.get("operation")
+            == "database_portal_terminal_failure"
+            and terminal_receipt.get("reason") == "not_attempted"
+        ):
+            return self._trusted_setup_replay_recovery_receipt(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+            )
         if not paths.events.exists():
             return self._pre_dispatch_projection_recovery_receipt(
                 attempt=attempt,

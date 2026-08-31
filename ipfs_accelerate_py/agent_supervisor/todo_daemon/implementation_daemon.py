@@ -98495,7 +98495,13 @@ class DatabaseImplementationDaemon:
                 pre_dispatch_projection_receipt = prior_status_receipt.get(
                     "pre_dispatch_projection_recovery_receipt"
                 )
+                trusted_setup_replay_receipt = prior_status_receipt.get(
+                    "trusted_setup_replay_recovery_receipt"
+                )
                 failed_target: DatabaseTaskAttempt | None = None
+                trusted_failed_target: DatabaseTaskAttempt | None = None
+                verified_projection: dict[str, Any] | None = None
+                verified_trusted_setup: dict[str, Any] | None = None
                 if (
                     str(getattr(task, "status", "") or "").lower()
                     != "retrying"
@@ -98557,7 +98563,56 @@ class DatabaseImplementationDaemon:
                         raise DatabaseImplementationConflictError(
                             "database claim pre-dispatch proof changed its candidate"
                         )
-                forbidden = (failed_target,) if failed_target is not None else ()
+                if trusted_setup_replay_receipt is not None:
+                    if (
+                        not isinstance(trusted_setup_replay_receipt, Mapping)
+                        or verified_projection is None
+                    ):
+                        raise DatabaseImplementationAuthorityError(
+                            "database claim trusted-setup proof is malformed"
+                        )
+                    trusted_failed_target_id = str(
+                        trusted_setup_replay_receipt.get("attempt_id") or ""
+                    )
+                    trusted_failed_target = self.get_attempt(
+                        trusted_failed_target_id
+                    )
+                    if (
+                        trusted_failed_target is None
+                        or trusted_failed_target.status
+                        not in {"blocked", "failed"}
+                        or trusted_failed_target.task_cid != task_cid
+                        or trusted_failed_target.attempt_id
+                        == failed_target.attempt_id
+                    ):
+                        raise DatabaseImplementationAuthorityError(
+                            "database claim trusted-setup source is unavailable"
+                        )
+                    verified_trusted_setup = (
+                        self._verified_trusted_setup_replay_recovery_receipt(
+                            trusted_failed_target,
+                            task,
+                            trusted_setup_replay_receipt,
+                        )
+                    )
+                    if (
+                        verified_trusted_setup.get(
+                            "source_candidate_receipt_id"
+                        )
+                        != verified_post_commit_seed.get("receipt_id")
+                        or verified_trusted_setup.get(
+                            "source_pre_dispatch_recovery_receipt_id"
+                        )
+                        != verified_projection.get("receipt_id")
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "database claim trusted-setup proof changed its lineage"
+                        )
+                forbidden = tuple(
+                    item
+                    for item in (failed_target, trusted_failed_target)
+                    if item is not None
+                )
                 target_identity, target_claim_identity = feature_retry_target(
                     source_attempt,
                     forbidden_attempts=forbidden,
@@ -98573,6 +98628,24 @@ class DatabaseImplementationDaemon:
                         ),
                         "post_commit_candidate_recovery_seed": (
                             verified_post_commit_seed
+                        ),
+                        **(
+                            {
+                                "pre_dispatch_projection_recovery_receipt": (
+                                    verified_projection
+                                )
+                            }
+                            if verified_projection is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "trusted_setup_replay_recovery_receipt": (
+                                    verified_trusted_setup
+                                )
+                            }
+                            if verified_trusted_setup is not None
+                            else {}
                         ),
                     }
                 )
@@ -122368,6 +122441,539 @@ class DatabaseImplementationDaemon:
         receipt["receipt_id"] = receipt_id
         return receipt
 
+    def _trusted_setup_replay_recovery_source(
+        self,
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        """Reproduce the one zero-provider trusted-setup replay suffix."""
+
+        history_projection = getattr(
+            self.task_source,
+            "task_revision_history_projection",
+            None,
+        )
+        if not callable(history_projection):
+            raise DatabaseImplementationAuthorityError(
+                "trusted-setup replay recovery has no revision history"
+            )
+        task_cid = str(attempt.task_cid)
+        history = history_projection(task_cid)
+        revisions = history.get("revisions") if isinstance(history, Mapping) else None
+        projection_body = dict(history) if isinstance(history, Mapping) else {}
+        projection_cid = projection_body.pop("projection_cid", None)
+        if (
+            not isinstance(history, Mapping)
+            or set(history)
+            != {"schema", "task_cid", "revisions", "projection_cid"}
+            or history.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+            or history.get("task_cid") != task_cid
+            or not isinstance(revisions, list)
+            or projection_cid != content_identity(projection_body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "trusted-setup replay history failed identity verification"
+            )
+        matches: list[tuple[int, list[Mapping[str, Any]]]] = []
+        trusted_receipt_entries: list[tuple[int, Mapping[str, Any]]] = []
+        for entry_index, entry in enumerate(revisions):
+            entry_body = entry.get("body") if isinstance(entry, Mapping) else None
+            entry_receipt = (
+                entry_body.get("completion_receipt")
+                if isinstance(entry_body, Mapping)
+                else None
+            )
+            if (
+                isinstance(entry_receipt, Mapping)
+                and isinstance(
+                    entry_receipt.get("trusted_setup_replay_recovery_receipt"),
+                    Mapping,
+                )
+            ):
+                trusted_receipt_entries.append((entry_index, entry_receipt))
+        for index in range(3, len(revisions)):
+            window = revisions[index - 3 : index + 1]
+            if any(not isinstance(entry, Mapping) for entry in window):
+                continue
+            bodies = [entry.get("body") for entry in window]
+            if any(not isinstance(body, Mapping) for body in bodies):
+                continue
+            receipts = [body.get("completion_receipt") for body in bodies]
+            if any(not isinstance(receipt, Mapping) for receipt in receipts):
+                continue
+            if (
+                [
+                    str(entry.get("status") or "").strip().lower()
+                    for entry in window
+                ]
+                != ["retrying", "in_progress", "in_progress", "blocked"]
+                or [
+                    str(receipt.get("operation") or "")
+                    for receipt in receipts
+                ]
+                != [
+                    "database_portal_post_commit_candidate_recovery",
+                    "database_claim",
+                    "database_attempt_admitted",
+                    "database_portal_terminal_failure",
+                ]
+                or receipts[-1].get("attempt_id") != attempt.attempt_id
+                or receipts[-1].get("reason") != "not_attempted"
+            ):
+                continue
+            matches.append((index, list(window)))
+        if len(matches) != 1 or len(trusted_receipt_entries) > 1:
+            raise DatabaseImplementationConflictError(
+                "trusted-setup replay history is absent, ambiguous, or repeated"
+            )
+        terminal_index, entries = matches[0]
+        revision_values = [entry.get("revision") for entry in entries]
+        if (
+            any(type(value) is not int for value in revision_values)
+            or revision_values
+            != list(range(int(revision_values[0]), int(revision_values[0]) + 4))
+        ):
+            raise DatabaseImplementationConflictError(
+                "trusted-setup replay revisions are not adjacent"
+            )
+        bodies = [entry["body"] for entry in entries]
+        receipts = [body["completion_receipt"] for body in bodies]
+        recovery_receipt, claim_receipt, admission_receipt, terminal_receipt = receipts
+        semantic_bodies: list[dict[str, Any]] = []
+        for body in bodies:
+            semantic = dict(body)
+            semantic.pop("completion_receipt", None)
+            semantic_bodies.append(semantic)
+        seed = recovery_receipt.get("post_commit_candidate_recovery_seed")
+        pre_dispatch_raw = recovery_receipt.get(
+            "pre_dispatch_projection_recovery_receipt"
+        )
+        target_identity = self._control_attempt_identity(attempt)
+        if (
+            any(semantic != semantic_bodies[0] for semantic in semantic_bodies[1:])
+            or not isinstance(seed, Mapping)
+            or not isinstance(pre_dispatch_raw, Mapping)
+            or recovery_receipt.get("trusted_setup_replay_recovery_receipt")
+            is not None
+            or claim_receipt.get("post_commit_candidate_recovery_seed") != seed
+            or admission_receipt.get("post_commit_candidate_recovery_seed")
+            != seed
+            or any(
+                receipt.get(field) != expected
+                for receipt in (claim_receipt, admission_receipt, terminal_receipt)
+                for field, expected in target_identity.items()
+            )
+            or any(
+                receipt.get("attempt_number") != int(attempt.attempt_number)
+                for receipt in (claim_receipt, admission_receipt, terminal_receipt)
+            )
+            or terminal_receipt.get("reason") != "not_attempted"
+            or terminal_receipt.get("retryable") is not False
+            or terminal_receipt.get("control_expected_status") != "in_progress"
+            or terminal_receipt.get("control_expected_revision")
+            != int(revision_values[-1]) - 1
+        ):
+            raise DatabaseImplementationConflictError(
+                "trusted-setup replay control lineage changed"
+            )
+        prior_attempt_id = str(pre_dispatch_raw.get("attempt_id") or "")
+        prior_attempt = self.get_attempt(prior_attempt_id)
+        if (
+            prior_attempt is None
+            or prior_attempt.status not in {"blocked", "failed"}
+            or prior_attempt.task_cid != task_cid
+            or prior_attempt.attempt_id == attempt.attempt_id
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "trusted-setup replay prior projection attempt is unavailable"
+            )
+        prior_source = self._pre_dispatch_projection_recovery_source(
+            task,
+            prior_attempt,
+        )
+        verified_pre_dispatch = (
+            self._verified_pre_dispatch_projection_recovery_receipt(
+                prior_attempt,
+                task,
+                pre_dispatch_raw,
+            )
+        )
+        source_attempt_id = str(seed.get("attempt_id") or "")
+        source_attempt = self.get_attempt(source_attempt_id)
+        if (
+            source_attempt is None
+            or source_attempt.status not in {"blocked", "failed"}
+            or source_attempt.task_cid != task_cid
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "trusted-setup replay candidate source is unavailable"
+            )
+        verified_seed = self._verified_post_commit_candidate_recovery_receipt(
+            source_attempt,
+            seed,
+        )
+        if (
+            verified_seed != prior_source["seed"]
+            or verified_pre_dispatch.get("source_candidate_receipt_id")
+            != verified_seed.get("receipt_id")
+        ):
+            raise DatabaseImplementationConflictError(
+                "trusted-setup replay changed its retained candidate"
+            )
+
+        failed = [
+            phase
+            for phase in self.phase_history(attempt.attempt_id)
+            if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        failed_body = failed[-1].get("body") if failed else None
+        expected_failed_body = {
+            "reason": "not_attempted",
+            "portal_retryable_failure": False,
+            "portal_terminal_failure": True,
+            "deferred": False,
+            "attempt_consumed": "unknown",
+            "provider_dispatched": "unknown",
+            "typed_deferral_slot_consumed": "unknown",
+            "backoff_seconds": 0,
+        }
+        phases = self.phase_history(attempt.attempt_id)
+        forbidden_phases = {
+            ATTEMPT_PHASE_PROVIDER,
+            ATTEMPT_PHASE_EFFECT,
+            ATTEMPT_PHASE_VALIDATION,
+            ATTEMPT_PHASE_COMPLETE,
+        }
+        connection = self._require_connection()
+        provider_rows = connection.execute(
+            """
+            SELECT idempotency_key, result_json FROM provider_invocations
+            WHERE attempt_id = ? ORDER BY invocation_id
+            """,
+            [attempt.attempt_id],
+        ).fetchall()
+        effect_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM effect_claims WHERE attempt_id = ?",
+                [attempt.attempt_id],
+            ).fetchone()[0]
+        )
+        callback_events = connection.execute(
+            """
+            SELECT event_type, body_json FROM daemon_execution_events
+            WHERE attempt_id = ? ORDER BY recorded_at_ms, event_id
+            """,
+            [attempt.attempt_id],
+        ).fetchall()
+        provider_key = f"provider:{attempt.attempt_id}"
+        provider_intent = (
+            _database_daemon_load_json(provider_rows[0][1])
+            if len(provider_rows) == 1
+            else {}
+        )
+        try:
+            sealed_intent = _sealed_database_provider_callback_unknown_evidence(
+                provider_intent
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                "trusted-setup replay has no exact callback intent"
+            ) from exc
+        started = [
+            _database_daemon_load_json(row[1])
+            for row in callback_events
+            if row[0] == "provider_callback_started"
+        ]
+        forbidden_events = {
+            "provider_callback_outcome_bound",
+            "provider_invocation_committed",
+            "effect_invocation_committed",
+        }
+        from .database_portal_bridge import (
+            database_portal_authoritative_repository_tree_id,
+            database_portal_task_contract_digest,
+        )
+
+        repository_tree_id = database_portal_authoritative_repository_tree_id(
+            self.task_source,
+            task_cid,
+        )
+        task_contract_digest = database_portal_task_contract_digest(task)
+        if (
+            len(failed) != 1
+            or dict(failed_body or {}) != expected_failed_body
+            or any(phase.get("phase") in forbidden_phases for phase in phases)
+            or len(provider_rows) != 1
+            or provider_rows[0][0] != provider_key
+            or effect_count != 0
+            or len(started) != 1
+            or any(row[0] in forbidden_events for row in callback_events)
+            or started[0].get("idempotency_key") != provider_key
+            or started[0].get("failure_fingerprint")
+            != sealed_intent.get("failure_fingerprint")
+            or started[0].get("provider_effect_state")
+            != "unknown_may_have_started"
+            or sealed_intent.get("database_binding_id") != ""
+            or sealed_intent.get("portal_failure_fingerprint") != ""
+            or sealed_intent.get("task_contract_digest") != task_contract_digest
+            or sealed_intent.get("repository_tree_id") != repository_tree_id
+            or any(
+                sealed_intent.get(field) != expected
+                for field, expected in {
+                    **target_identity,
+                    "task_cid": task_cid,
+                    "idempotency_key": provider_key,
+                }.items()
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "trusted-setup replay cannot prove callback no-effect"
+            )
+        prefix_body = {
+            "schema": history["schema"],
+            "task_cid": task_cid,
+            "revisions": [dict(item) for item in revisions[: terminal_index + 1]],
+        }
+        if trusted_receipt_entries:
+            trusted_index, trusted_control = trusted_receipt_entries[0]
+            trusted_raw = trusted_control.get(
+                "trusted_setup_replay_recovery_receipt"
+            )
+            if (
+                trusted_index != terminal_index + 1
+                or revisions[trusted_index].get("status") != "retrying"
+                or trusted_control.get("operation")
+                != "database_portal_post_commit_candidate_recovery"
+                or trusted_control.get("post_commit_candidate_recovery_seed")
+                != verified_seed
+                or trusted_control.get(
+                    "pre_dispatch_projection_recovery_receipt"
+                )
+                != verified_pre_dispatch
+                or not isinstance(trusted_raw, Mapping)
+                or trusted_raw.get("attempt_id") != attempt.attempt_id
+            ):
+                raise DatabaseImplementationConflictError(
+                    "trusted-setup replay one-shot lineage changed"
+                )
+        return {
+            "seed": verified_seed,
+            "pre_dispatch": verified_pre_dispatch,
+            "prior_attempt": prior_attempt,
+            "provider_intent": sealed_intent,
+            "terminal_receipt": dict(terminal_receipt),
+            "history_projection_cid": content_identity(prefix_body),
+            "recovery_task_revision": int(revision_values[0]),
+            "claim_task_revision": int(revision_values[1]),
+            "admission_task_revision": int(revision_values[2]),
+            "terminal_task_revision": int(revision_values[3]),
+        }
+
+    def _verified_trusted_setup_replay_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Independently admit Portal's trusted-setup replay proof."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_REASON,
+            DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "trusted-setup replay receipt is malformed"
+            )
+        source = self._trusted_setup_replay_recovery_source(task, attempt)
+        seed = source["seed"]
+        pre_dispatch = source["pre_dispatch"]
+        receipt = dict(raw)
+        receipt_id = str(receipt.pop("receipt_id", "") or "")
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "history_projection_cid",
+            "recovery_task_revision",
+            "claim_task_revision",
+            "admission_task_revision",
+            "terminal_task_revision",
+            "source_candidate_receipt_id",
+            "source_portal_attempt",
+            "prior_projection_recovery_receipt_id",
+            "source_pre_dispatch_recovery_receipt_id",
+            "target_binding_id",
+            "projection_immutable_digest",
+            "baseline_commit",
+            "implementation_commit",
+            "source_rescue_branch",
+            "portal_attempt",
+            "event_stream_id",
+            "snapshot_event_id",
+            "validation_started_event_id",
+            "expected_outputs_event_id",
+            "proposal_event_id",
+            "mutation_event_id",
+            "validation_finished_event_id",
+            "cleanup_event_id",
+            "guard_event_ids",
+            "evidence_digests",
+            "setup_files",
+            "validation_commands_passed",
+            "provider_dispatched",
+            "attempt_consumed",
+            "merge_attempted",
+            "effect_state",
+        }
+        exact_identity = {
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "task_cid": attempt.task_cid,
+            "task_alias": attempt.task_alias,
+            "attempt_number": int(attempt.attempt_number),
+        }
+        evidence_digests = receipt.get("evidence_digests")
+        setup_files = receipt.get("setup_files")
+        guard_event_ids = receipt.get("guard_event_ids")
+        event_id_fields = (
+            "snapshot_event_id",
+            "validation_started_event_id",
+            "expected_outputs_event_id",
+            "proposal_event_id",
+            "mutation_event_id",
+            "validation_finished_event_id",
+            "cleanup_event_id",
+        )
+        if (
+            set(receipt) != expected_fields
+            or receipt.get("schema")
+            != DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA
+            or receipt.get("disposition")
+            != "retry_exact_post_commit_candidate"
+            or receipt.get("reason")
+            != DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_REASON
+            or any(
+                receipt.get(field) != expected
+                for field, expected in exact_identity.items()
+            )
+            or any(
+                receipt.get(field) != source.get(field)
+                for field in (
+                    "history_projection_cid",
+                    "recovery_task_revision",
+                    "claim_task_revision",
+                    "admission_task_revision",
+                    "terminal_task_revision",
+                )
+            )
+            or receipt.get("source_candidate_receipt_id")
+            != seed.get("receipt_id")
+            or receipt.get("source_portal_attempt") != seed.get("portal_attempt")
+            or receipt.get("prior_projection_recovery_receipt_id")
+            != pre_dispatch.get("receipt_id")
+            or receipt.get("source_pre_dispatch_recovery_receipt_id")
+            != pre_dispatch.get("receipt_id")
+            or receipt.get("baseline_commit") != seed.get("baseline_commit")
+            or receipt.get("implementation_commit")
+            != seed.get("implementation_commit")
+            or receipt.get("source_rescue_branch") != seed.get("rescue_branch")
+            or isinstance(receipt.get("portal_attempt"), bool)
+            or not isinstance(receipt.get("portal_attempt"), int)
+            or int(receipt["portal_attempt"]) < 1
+            or not str(receipt.get("event_stream_id") or "")
+            or any(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(receipt.get(field) or ""),
+                )
+                is None
+                for field in event_id_fields
+            )
+            or not isinstance(guard_event_ids, list)
+            or not guard_event_ids
+            or len(guard_event_ids) != len(set(map(str, guard_event_ids)))
+            or any(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(value or ""))
+                is None
+                for value in guard_event_ids
+            )
+            or not isinstance(evidence_digests, Mapping)
+            or set(evidence_digests)
+            != {
+                "active_snapshot",
+                "binding",
+                "event_manifest",
+                "events",
+                "incident",
+                "projection",
+                "validation_log",
+            }
+            or any(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(value or ""))
+                is None
+                for value in evidence_digests.values()
+            )
+            or not isinstance(setup_files, list)
+            or not setup_files
+            or len(setup_files) > 256
+            or len({str(item.get("path") or "") for item in setup_files})
+            != len(setup_files)
+            or any(
+                not isinstance(item, Mapping)
+                or not str(item.get("path") or "")
+                or not str(item.get("submodule_path") or "")
+                or not str(item.get("relative_path") or "")
+                or re.fullmatch(
+                    r"[0-9a-f]{40}",
+                    str(item.get("submodule_commit") or ""),
+                )
+                is None
+                or isinstance(item.get("size"), bool)
+                or not isinstance(item.get("size"), int)
+                or int(item["size"]) < 0
+                or re.fullmatch(
+                    r"[0-9a-f]{64}", str(item.get("sha256") or "")
+                )
+                is None
+                for item in setup_files
+            )
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(receipt.get("target_binding_id") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(receipt.get("projection_immutable_digest") or ""),
+            )
+            is None
+            or receipt.get("validation_commands_passed") is not True
+            or receipt.get("provider_dispatched") is not False
+            or receipt.get("attempt_consumed") is not False
+            or receipt.get("merge_attempted") is not False
+            or receipt.get("effect_state")
+            != "proven_absent_after_validation_only_replay"
+            or receipt_id != _database_daemon_evidence_digest(receipt)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "trusted-setup replay receipt failed verification"
+            )
+        receipt["receipt_id"] = receipt_id
+        return receipt
+
     def _reopen_unimplemented_unknown_callback_task(
         self,
         task: Any,
@@ -122404,7 +123010,13 @@ class DatabaseImplementationDaemon:
             == DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON
             and receipt.get("retryable") is False
         )
-        if not (neutral_source or projection_source):
+        trusted_setup_source = bool(
+            task_status == "blocked"
+            and receipt.get("operation") == "database_portal_terminal_failure"
+            and receipt.get("reason") == "not_attempted"
+            and receipt.get("retryable") is False
+        )
+        if not (neutral_source or projection_source or trusted_setup_source):
             return None
         recover = self._post_commit_candidate_recovery_fn
         if not callable(recover):
@@ -122414,12 +123026,25 @@ class DatabaseImplementationDaemon:
         attempt_id = str(receipt.get("attempt_id") or "")
         attempt = self.get_attempt(attempt_id)
         pre_dispatch_source: dict[str, Any] | None = None
+        trusted_source: dict[str, Any] | None = None
         source_matches = bool(
             attempt is not None
             and attempt.task_cid == str(getattr(task, "task_cid", "") or "")
             and attempt.status in {"blocked", "failed"}
         )
-        if source_matches and projection_source:
+        if source_matches and trusted_setup_source:
+            try:
+                assert attempt is not None
+                trusted_source = self._trusted_setup_replay_recovery_source(
+                    task,
+                    attempt,
+                )
+            except (
+                DatabaseImplementationAuthorityError,
+                DatabaseImplementationConflictError,
+            ):
+                source_matches = False
+        elif source_matches and projection_source:
             try:
                 assert attempt is not None
                 pre_dispatch_source = (
@@ -122459,6 +123084,7 @@ class DatabaseImplementationDaemon:
             from .database_portal_bridge import (
                 DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA,
                 DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA,
+                DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA,
             )
             if (
                 recovered_schema
@@ -122528,6 +123154,7 @@ class DatabaseImplementationDaemon:
             no_effect: dict[str, Any] | None = None
             seed: dict[str, Any] | None = None
             pre_dispatch: dict[str, Any] | None = None
+            trusted_setup: dict[str, Any] | None = None
             if (
                 recovered_schema
                 == DATABASE_PORTAL_CALLBACK_NO_EFFECT_RECOVERY_SCHEMA
@@ -122552,6 +123179,23 @@ class DatabaseImplementationDaemon:
                     )
                 )
                 seed = dict(pre_dispatch_source["seed"])
+            elif (
+                recovered_schema
+                == DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA
+            ):
+                if trusted_source is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "trusted-setup replay evidence has no exact source"
+                    )
+                trusted_setup = (
+                    self._verified_trusted_setup_replay_recovery_receipt(
+                        attempt,
+                        task,
+                        recovered,
+                    )
+                )
+                seed = dict(trusted_source["seed"])
+                pre_dispatch = dict(trusted_source["pre_dispatch"])
             else:
                 seed = self._verified_post_commit_candidate_recovery_receipt(
                     attempt,
@@ -122596,11 +123240,19 @@ class DatabaseImplementationDaemon:
                 )
                 if neutral_source
                 else (
-                    self._pre_dispatch_projection_recovery_source(
+                    self._trusted_setup_replay_recovery_source(
                         current,
                         attempt,
                     )["seed"]
-                    == (pre_dispatch_source or {}).get("seed")
+                    == (trusted_source or {}).get("seed")
+                    if trusted_setup_source
+                    else (
+                        self._pre_dispatch_projection_recovery_source(
+                            current,
+                            attempt,
+                        )["seed"]
+                        == (pre_dispatch_source or {}).get("seed")
+                    )
                 )
             )
         )
@@ -122735,7 +123387,9 @@ class DatabaseImplementationDaemon:
         claim = self.coordinator.get_task_claim(attempt.claim_id)
         coordination = claim.to_dict() if claim is not None else {}
         source_evidence = (
-            pre_dispatch
+            trusted_setup
+            if trusted_setup is not None
+            else pre_dispatch
             if pre_dispatch is not None
             else no_effect
             if no_effect is not None
@@ -122743,7 +123397,10 @@ class DatabaseImplementationDaemon:
         )
         assert source_evidence is not None
         callback_no_effect = no_effect is not None
-        pre_dispatch_projection = pre_dispatch is not None
+        trusted_setup_replay = trusted_setup is not None
+        pre_dispatch_projection = (
+            pre_dispatch is not None and not trusted_setup_replay
+        )
         retained_implementation_commit = (
             str((seed or {}).get("implementation_commit") or "")
             if not callback_no_effect
@@ -122753,6 +123410,8 @@ class DatabaseImplementationDaemon:
             (
                 "database_portal_callback_no_effect_recovery:"
                 if callback_no_effect
+                else "database_portal_trusted_setup_replay_recovery:"
+                if trusted_setup_replay
                 else "database_portal_pre_dispatch_projection_recovery:"
                 if pre_dispatch_projection
                 else "database_portal_post_commit_candidate_recovery:"
@@ -122795,6 +123454,8 @@ class DatabaseImplementationDaemon:
             "reason": (
                 "exact_no_effect_callback_reconciled"
                 if callback_no_effect
+                else "exact_trusted_setup_replay_reconciled"
+                if trusted_setup_replay
                 else "exact_pre_dispatch_projection_reconciled"
                 if pre_dispatch_projection
                 else "exact_post_commit_candidate_retained"
@@ -122820,9 +123481,21 @@ class DatabaseImplementationDaemon:
                 if pre_dispatch_projection
                 else {}
             ),
+            **(
+                {
+                    "pre_dispatch_projection_recovery_receipt": dict(
+                        pre_dispatch or {}
+                    ),
+                    "trusted_setup_replay_recovery_receipt": dict(
+                        trusted_setup or {}
+                    ),
+                }
+                if trusted_setup_replay
+                else {}
+            ),
             **route_lineage,
         }
-        if pre_dispatch_projection:
+        if pre_dispatch_projection or trusted_setup_replay:
             # The terminal Portal mismatch deliberately left the exact claim
             # accepted because ordinary blocked tasks never reopen.  This
             # proof establishes that Portal/provider work never began, so
@@ -122832,7 +123505,11 @@ class DatabaseImplementationDaemon:
             # strand a retrying task behind its own accepted lease.
             self._release_exact_attempt_lease(
                 attempt,
-                reason="pre_dispatch_projection_recovery",
+                reason=(
+                    "trusted_setup_replay_recovery"
+                    if trusted_setup_replay
+                    else "pre_dispatch_projection_recovery"
+                ),
             )
         result = guarded(
             task_cid=str(current.task_cid),
@@ -122864,6 +123541,19 @@ class DatabaseImplementationDaemon:
                 )
                 != dict(pre_dispatch or {})
             )
+            or (
+                trusted_setup_replay
+                and (
+                    updated.body["completion_receipt"].get(
+                        "pre_dispatch_projection_recovery_receipt"
+                    )
+                    != dict(pre_dispatch or {})
+                    or updated.body["completion_receipt"].get(
+                        "trusted_setup_replay_recovery_receipt"
+                    )
+                    != dict(trusted_setup or {})
+                )
+            )
         ):
             raise DatabaseImplementationAuthorityError(
                 "post-commit recovery retry projection did not persist"
@@ -122877,6 +123567,8 @@ class DatabaseImplementationDaemon:
             (
                 "callback_no_effect_recovery_rearmed"
                 if callback_no_effect
+                else "trusted_setup_replay_recovery_rearmed"
+                if trusted_setup_replay
                 else "pre_dispatch_projection_recovery_rearmed"
                 if pre_dispatch_projection
                 else "post_commit_candidate_recovery_rearmed"
@@ -122894,7 +123586,9 @@ class DatabaseImplementationDaemon:
                 ),
                 "provider_dispatched": False,
                 "source_provider_dispatched": True,
-                "database_callback_started": bool(pre_dispatch_projection),
+                "database_callback_started": bool(
+                    pre_dispatch_projection or trusted_setup_replay
+                ),
                 "portal_provider_dispatched": False,
                 "attempt_consumed": bool(callback_no_effect),
             },
@@ -122907,13 +123601,17 @@ class DatabaseImplementationDaemon:
             "reason": (
                 "exact_no_effect_callback_rearmed"
                 if callback_no_effect
+                else "exact_trusted_setup_replay_rearmed"
+                if trusted_setup_replay
                 else "exact_pre_dispatch_projection_rearmed"
                 if pre_dispatch_projection
                 else "exact_post_commit_candidate_rearmed"
             ),
             "provider_dispatched": False,
             "source_provider_dispatched": True,
-            "database_callback_started": bool(pre_dispatch_projection),
+            "database_callback_started": bool(
+                pre_dispatch_projection or trusted_setup_replay
+            ),
             "portal_provider_dispatched": False,
             "attempt_consumed": bool(callback_no_effect),
             "source_receipt_id": str(source_evidence["receipt_id"]),
