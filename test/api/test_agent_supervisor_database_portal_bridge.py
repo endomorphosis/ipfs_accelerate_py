@@ -490,6 +490,41 @@ def test_protected_candidate_projection_read_recovers_one_stale_loader(
     assert task_cid
 
 
+def test_protected_candidate_projection_read_accepts_exact_sealed_generation(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    attempt = _attempt()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "sealed-generation projection read dispatched Portal"
+        ),
+    )
+    paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    projected = parse_task_text(
+        paths.task_projection.read_text(encoding="utf-8"),
+        path=paths.task_projection,
+        task_header_prefix="## LGSWF-004",
+    )[0]
+    # A sealed control-plane module can produce an equivalent task object
+    # whose Python class identity differs from the current bridge module.
+    sealed_task = SimpleNamespace(**asdict(projected))
+
+    task, _projection, _task_key, _task_cid = (
+        bridge._coherent_protected_preservation_task(
+            paths=paths,
+            binding=binding,
+            alias=attempt.task_alias,
+            database_task_cid=attempt.task_cid,
+            load_tasks=lambda: [sealed_task],
+        )
+    )
+
+    assert task is sealed_task
+
+
 def test_protected_candidate_projection_read_stays_bounded(
     tmp_path: Path,
 ) -> None:

@@ -19479,6 +19479,62 @@ class DatabasePortalExecutionBridge:
 
         from .implementation_daemon import parse_task_text
 
+        def task_snapshot(task: Any) -> dict[str, Any] | None:
+            """Return the closed projection contract across code generations.
+
+            The Portal executor can be imported from the sealed control-plane
+            generation while this bridge runs from a later, admitted recovery
+            generation.  Equal dataclass values from those two module objects
+            are not necessarily equal by Python class identity.  Compare the
+            complete primitive projection contract instead; this neither
+            relaxes any task field nor admits a second task population.
+            """
+
+            scalar_fields = (
+                "task_id",
+                "title",
+                "status",
+                "completion",
+                "priority",
+                "track",
+                "acceptance",
+                "canonical_task_key",
+                "canonical_task_cid",
+                "board_namespace",
+            )
+            sequence_fields = ("depends_on", "outputs", "validation")
+            scalar_values = {
+                field: getattr(task, field, None) for field in scalar_fields
+            }
+            sequences = {
+                field: getattr(task, field, None) for field in sequence_fields
+            }
+            metadata = getattr(task, "metadata", None)
+            source_line = getattr(task, "source_line", None)
+            if (
+                any(not isinstance(value, str) for value in scalar_values.values())
+                or any(not isinstance(value, list) for value in sequences.values())
+                or any(
+                    any(not isinstance(item, str) for item in value)
+                    for value in sequences.values()
+                )
+                or not isinstance(metadata, Mapping)
+                or any(
+                    not isinstance(key, str) or not isinstance(value, str)
+                    for key, value in metadata.items()
+                )
+                or isinstance(source_line, bool)
+                or not isinstance(source_line, int)
+                or source_line < 1
+            ):
+                return None
+            return {
+                **scalar_values,
+                **{field: tuple(value) for field, value in sequences.items()},
+                "metadata": dict(metadata),
+                "source_line": source_line,
+            }
+
         last_load_error: Exception | None = None
         for _read in range(4):
             projection_before = self._verify_projection(paths, binding)
@@ -19510,9 +19566,16 @@ class DatabasePortalExecutionBridge:
                 if len(tasks) == 1
                 else ""
             )
+            loaded_snapshot = task_snapshot(tasks[0]) if len(tasks) == 1 else None
+            projected_snapshot = (
+                task_snapshot(projected_tasks[0])
+                if len(projected_tasks) == 1
+                else None
+            )
             if (
                 len(tasks) == 1
-                and tasks == projected_tasks
+                and loaded_snapshot is not None
+                and loaded_snapshot == projected_snapshot
                 and str(getattr(tasks[0], "task_id", "") or "") == alias
                 and isinstance(getattr(tasks[0], "metadata", None), Mapping)
                 and tasks[0].metadata.get("database task cid")
