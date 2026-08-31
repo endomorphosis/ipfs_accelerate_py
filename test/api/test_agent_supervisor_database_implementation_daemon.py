@@ -1191,6 +1191,77 @@ def test_restart_retires_prepared_absent_expired_attempt_then_refences_retry(
         replacement.close()
 
 
+def test_restart_replays_failed_expired_attempt_control_requeue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    session = "session:recover-failed-expired-requeue"
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    first = _open_daemon(
+        tmp_path,
+        session=session,
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(1))
+        old_attempt = first.claim_next()
+        assert old_attempt is not None
+        old_attempt = first.commit_phase(old_attempt, "context")
+        old_attempt, _, duplicated = first.run_provider(old_attempt)
+        assert duplicated is False
+        now["ms"] = 7_000
+
+        def crash_before_control_requeue(*args: object, **kwargs: object) -> object:
+            raise SystemExit("simulated death before control requeue")
+
+        monkeypatch.setattr(
+            first,
+            "_requeue_control_after_expired_attempt",
+            crash_before_control_requeue,
+        )
+        with pytest.raises(SystemExit, match="before control requeue"):
+            first.run_once()
+        retired = first.get_attempt(old_attempt.attempt_id)
+        assert retired is not None and retired.status == "failed"
+        task = first.task_source.get(old_attempt.task_cid)
+        assert task is not None and task.status == "in_progress"
+        claim = first.coordinator.get_task_claim(old_attempt.claim_id)
+        assert claim is not None and claim.state.value == "expired"
+    finally:
+        first.close()
+
+    replacement = _open_daemon(
+        tmp_path,
+        session=session,
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        result = replacement.run_once()
+        assert result["implementation_result"]["status"] == "succeeded"
+        assert result["attempt_id"] != old_attempt.attempt_id
+        assert len(result["orphan_claim_reconciliations"]) == 1
+        replay = result["orphan_claim_reconciliations"][0]
+        assert replay["operation"] == (
+            "automatic_failed_attempt_requeue_replay"
+        )
+        assert replay["attempt_id"] == old_attempt.attempt_id
+        assert replay["claim_state"] == "expired"
+        assert replay["prior_execution_evidence_reused"] is False
+        assert result["write_count"] == 2
+        assert provider_calls == [old_attempt.task_cid, old_attempt.task_cid]
+        assert effect_calls == [old_attempt.task_cid]
+    finally:
+        replacement.close()
+
+
 def test_claim_persists_exact_post_cas_control_revision_binding(
     tmp_path: Path,
 ) -> None:
@@ -1216,6 +1287,193 @@ def test_claim_persists_exact_post_cas_control_revision_binding(
         assert str(binding["binding_id"]).startswith("bagu")
     finally:
         daemon.close()
+
+
+def test_restart_recovers_owned_claim_after_crash_before_control_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = "session:recover-before-control-cas"
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    first = _open_daemon(
+        tmp_path,
+        session=session,
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+    )
+    try:
+        first.materialize_population(_population(1))
+
+        def crash_before_control_cas(*args: object, **kwargs: object) -> object:
+            raise SystemExit("simulated process death before control CAS")
+
+        monkeypatch.setattr(
+            first,
+            "_cas_task_status_database",
+            crash_before_control_cas,
+        )
+        with pytest.raises(SystemExit, match="before control CAS"):
+            first.claim_next()
+        leases = first.coordinator.list_active_leases(
+            lease_kind="task",
+            owner_session_id=session,
+        )
+        assert len(leases) == 1
+        original_claim = first.coordinator.get_task_claim(leases[0].claim_id)
+        assert original_claim is not None
+        assert first.get_attempt(original_claim.attempt_id) is None
+        task = first.task_source.get(original_claim.task_cid)
+        assert task is not None and task.status == "ready"
+    finally:
+        first.close()
+
+    replacement = _open_daemon(
+        tmp_path,
+        session=session,
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+    )
+    try:
+        result = replacement.run_once()
+        assert result["implementation_result"]["status"] == "succeeded"
+        assert result["claim_id"] == original_claim.claim_id
+        assert result["attempt_id"] == original_claim.attempt_id
+        assert provider_calls == [original_claim.task_cid]
+        assert effect_calls == [original_claim.task_cid]
+    finally:
+        replacement.close()
+
+
+def test_restart_recovers_owned_claim_after_control_cas_before_attempt_insert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = "session:recover-after-control-cas"
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    first = _open_daemon(
+        tmp_path,
+        session=session,
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+    )
+    try:
+        first.materialize_population(_population(1))
+
+        def crash_before_attempt_insert(*args: object, **kwargs: object) -> object:
+            raise SystemExit("simulated process death before attempt insert")
+
+        monkeypatch.setattr(
+            first,
+            "_insert_attempt_from_claim",
+            crash_before_attempt_insert,
+        )
+        with pytest.raises(SystemExit, match="before attempt insert"):
+            first.claim_next()
+        leases = first.coordinator.list_active_leases(
+            lease_kind="task",
+            owner_session_id=session,
+        )
+        assert len(leases) == 1
+        original_claim = first.coordinator.get_task_claim(leases[0].claim_id)
+        assert original_claim is not None
+        assert first.get_attempt(original_claim.attempt_id) is None
+        task = first.task_source.get(original_claim.task_cid)
+        assert task is not None and task.status == "in_progress"
+        assert task.body["completion_receipt"] == (
+            first._database_claim_receipt(original_claim)
+        )
+    finally:
+        first.close()
+
+    replacement = _open_daemon(
+        tmp_path,
+        session=session,
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+    )
+    try:
+        result = replacement.run_once()
+        assert result["implementation_result"]["status"] == "succeeded"
+        assert result["claim_id"] == original_claim.claim_id
+        assert result["attempt_id"] == original_claim.attempt_id
+        assert provider_calls == [original_claim.task_cid]
+        assert effect_calls == [original_claim.task_cid]
+    finally:
+        replacement.close()
+
+
+def test_expired_unadmitted_claim_is_exactly_requeued_and_reclaimed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    session = "session:recover-expired-unadmitted"
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    first = _open_daemon(
+        tmp_path,
+        session=session,
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        first.materialize_population(_population(1))
+
+        def crash_before_attempt_insert(*args: object, **kwargs: object) -> object:
+            raise SystemExit("simulated process death before attempt insert")
+
+        monkeypatch.setattr(
+            first,
+            "_insert_attempt_from_claim",
+            crash_before_attempt_insert,
+        )
+        with pytest.raises(SystemExit, match="before attempt insert"):
+            first.claim_next()
+        leases = first.coordinator.list_active_leases(
+            lease_kind="task",
+            owner_session_id=session,
+        )
+        assert len(leases) == 1
+        original_claim = first.coordinator.get_task_claim(leases[0].claim_id)
+        assert original_claim is not None
+    finally:
+        first.close()
+
+    now["ms"] = 7_000
+    replacement = _open_daemon(
+        tmp_path,
+        session=session,
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        result = replacement.run_once()
+        assert result["implementation_result"]["status"] == "succeeded"
+        assert result["claim_id"] != original_claim.claim_id
+        assert result["attempt_id"] != original_claim.attempt_id
+        assert len(result["orphan_claim_reconciliations"]) == 1
+        assert result["write_count"] == 2
+        recovery = result["orphan_claim_reconciliations"][0]
+        assert recovery["claim_id"] == original_claim.claim_id
+        assert recovery["claim_state"] == "expired"
+        assert recovery["provider_execution_admitted"] is False
+        assert recovery["effect_execution_admitted"] is False
+        replacement_claim = replacement.coordinator.get_task_claim(
+            result["claim_id"]
+        )
+        assert replacement_claim is not None
+        assert replacement_claim.attempt_number == original_claim.attempt_number + 1
+        assert replacement_claim.fencing_token > original_claim.fencing_token
+        assert provider_calls == [original_claim.task_cid]
+        assert effect_calls == [original_claim.task_cid]
+    finally:
+        replacement.close()
 
 
 def test_automatic_claim_exclusions_re_resolve_legacy_on_hold_projection(

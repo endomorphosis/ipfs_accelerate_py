@@ -20,6 +20,9 @@ from ..core.wrapper_utils import (
     with_repeated_default,
 )
 from ..runtime.event_log import append_jsonl_event
+from ..runtime.configured_board_live_capsule import (
+    ConfiguredBoardLiveCapsuleAdmission,
+)
 
 
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
@@ -1174,6 +1177,9 @@ def bind_database_portal_execution_from_args(
     default_implementation_protected_paths: Sequence[str] | None = None,
     default_objective_path: Path | None = None,
     default_objective_bundle_dir: Path | None = None,
+    configured_board_live_admission: (
+        ConfiguredBoardLiveCapsuleAdmission | None
+    ) = None,
 ) -> object | None:
     """Bind real Portal execution to a database daemon in production mode.
 
@@ -1206,20 +1212,21 @@ def bind_database_portal_execution_from_args(
         or default_implementation_protected_paths
         or None
     )
-    configured_board_admission_cid = ""
-    raw_live_admission = str(
-        getattr(parsed, "configured_board_live_admission_json", "") or ""
-    ).strip()
-    if raw_live_admission:
-        from ..runtime.configured_board_live_capsule import (
-            parse_configured_board_live_capsule_admission,
+    if (
+        configured_board_live_admission is not None
+        and not isinstance(
+            configured_board_live_admission,
+            ConfiguredBoardLiveCapsuleAdmission,
         )
-
-        configured_board_admission_cid = (
-            parse_configured_board_live_capsule_admission(
-                raw_live_admission
-            ).admission_cid
+    ):
+        raise TypeError(
+            "configured_board_live_admission must be a verified admission object"
         )
+    configured_board_admission_cid = (
+        configured_board_live_admission.admission_cid
+        if configured_board_live_admission is not None
+        else ""
+    )
 
     def portal_factory(paths: Any, task_alias: str) -> object:
         return portal_daemon_class(
@@ -1312,6 +1319,9 @@ def build_portal_implementation_daemon_from_args(
     default_implementation_protected_paths: Sequence[str] | None = None,
     default_objective_path: Path | None = None,
     default_objective_bundle_dir: Path | None = None,
+    configured_board_live_admission: (
+        ConfiguredBoardLiveCapsuleAdmission | None
+    ) = None,
 ) -> tuple[object, ImplementationDaemonRunContext]:
     """Build a portal or database implementation daemon from parsed CLI args."""
 
@@ -1392,6 +1402,7 @@ def build_portal_implementation_daemon_from_args(
             ),
             default_objective_path=default_objective_path,
             default_objective_bundle_dir=default_objective_bundle_dir,
+            configured_board_live_admission=configured_board_live_admission,
         )
         return daemon, ImplementationDaemonRunContext(
             parsed=parsed,

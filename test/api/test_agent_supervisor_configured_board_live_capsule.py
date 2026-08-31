@@ -32,7 +32,16 @@ from ipfs_accelerate_py.agent_supervisor.runtime import (
     multi_supervisor_runner as runner,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as daemon_module,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_supervisor as implementation,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalExecutionBridge,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
+    build_portal_implementation_daemon_from_args,
 )
 
 _SYNTHETIC_QUACK_EXTENSION = b"synthetic-quack-extension-v1\x00\x01"
@@ -688,7 +697,121 @@ def test_policy_is_closed_required_and_canonical() -> None:
             {**policy, "control_paths": list(reversed(policy["control_paths"]))}
         )
     with pytest.raises(capsule.ConfiguredBoardLiveCapsuleError):
-        capsule.parse_configured_board_live_capsule_policy({**policy, "required": False})
+        capsule.parse_configured_board_live_capsule_policy(
+            {**policy, "required": False}
+        )
+
+
+def test_sealed_daemon_verified_admission_reaches_bridge_without_inner_cli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    quack_projection: _ProjectionFixture,
+) -> None:
+    projection_pin, extension_set_pin, _projection_home = quack_projection
+    root, raw_paths = _seed_handoff(tmp_path, extension_set_pin)
+    admission = _admission(
+        root,
+        tuple(sorted(raw_paths)),
+        projection_pin,
+        extension_set_pin,
+    )
+    pin = _pin(root)
+    native_launch = _native_launch()
+    inner_argv: list[str] = []
+    captured_bridge: list[DatabasePortalExecutionBridge] = []
+
+    monkeypatch.setattr(
+        implementation,
+        "parse_accepted_control_plane_pin",
+        lambda _raw: pin,
+    )
+    monkeypatch.setattr(
+        implementation,
+        "verify_agent_implementation_sealed_control_plane",
+        lambda _pin, _fd: Path(sys.executable),
+    )
+    monkeypatch.setattr(implementation.fcntl, "fcntl", lambda *_args: 0)
+    monkeypatch.setattr(
+        implementation,
+        "parse_native_dependency_launch_json",
+        lambda _raw: native_launch,
+    )
+    monkeypatch.setattr(
+        implementation,
+        "verify_agent_supervisor_native_dependency_sealed_fd",
+        lambda _launch: None,
+    )
+    monkeypatch.setattr(
+        implementation,
+        "verify_configured_board_live_capsule",
+        lambda *_args, **_kwargs: admission,
+    )
+
+    def inner_main(argv: list[str]) -> int:
+        inner_argv.extend(argv)
+        parsed = daemon_module.parse_args(argv)
+        daemon, _context = build_portal_implementation_daemon_from_args(
+            parsed,
+            repo_root=root,
+            configured_board_live_admission=(
+                daemon_module._IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
+            ),
+        )
+        try:
+            bridge = getattr(daemon._provider_fn, "__self__", None)
+            assert isinstance(bridge, DatabasePortalExecutionBridge)
+            captured_bridge.append(bridge)
+        finally:
+            daemon.close()
+        return 0
+
+    monkeypatch.setattr(daemon_module, "main", inner_main)
+    original_admission = daemon_module._IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
+    result = implementation._run_sealed_daemon_child(
+        [
+            "--accepted-control-plane-pin-json",
+            "{}",
+            "--accepted-control-plane-fd",
+            "17",
+            "--configured-board-live-admission-json",
+            admission.to_json(),
+            "--configured-board-live-native-launch-json",
+            "{}",
+            "--configured-board-live-native-fd",
+            "19",
+            "--",
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "capsule-lane",
+            "--task-prefix",
+            "TEST-",
+            "--worktree-root",
+            str(tmp_path / "worktrees"),
+            "--implement",
+            "--once",
+        ]
+    )
+
+    assert result == 0
+    assert len(captured_bridge) == 1
+    assert captured_bridge[0].configured_board_admission_cid == (
+        admission.admission_cid
+    )
+    assert "--configured-board-live-admission-json" not in inner_argv
+    assert daemon_module._IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION is (
+        original_admission
+    )
+    with pytest.raises(SystemExit):
+        daemon_module.parse_args(
+            ["--configured-board-live-admission-json", admission.to_json()]
+        )
 
 
 def test_admission_binds_board_source_controls_and_quack(

@@ -68383,6 +68383,7 @@ class DatabaseImplementationDaemon:
         self._embedded_writer_lock_handle: Any = None
         self._markdown_status_writes = 0
         self._last_claim_withdrawal: dict[str, Any] = {}
+        self._last_orphan_claim_reconciliations: tuple[dict[str, Any], ...] = ()
         self._last_unsettled_quarantine_task_cids: tuple[str, ...] = ()
         # Renew long-running provider/effect/validation calls well before the
         # task lease expires.  Tests may shorten this private interval without
@@ -69560,6 +69561,295 @@ class DatabaseImplementationDaemon:
 
     # -- claim / attempt ----------------------------------------------------
 
+    @staticmethod
+    def _database_claim_receipt(claim: Any) -> dict[str, Any]:
+        """Return the closed canonical-control receipt for one exact claim."""
+
+        return {
+            "operation": "database_claim",
+            "claim_id": str(claim.claim_id),
+            "attempt_id": str(claim.attempt_id),
+            "lease_id": str(claim.lease_id),
+            "attempt_number": int(claim.attempt_number),
+            "owner_session_id": str(claim.owner_session_id),
+            "fencing_token": int(claim.fencing_token),
+            "fence_epoch": int(claim.fence_epoch),
+        }
+
+    @classmethod
+    def _task_has_exact_database_claim_receipt(
+        cls,
+        task: Any,
+        claim: Any,
+    ) -> bool:
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return False
+        receipt = body.get("completion_receipt")
+        return isinstance(receipt, Mapping) and dict(receipt) == (
+            cls._database_claim_receipt(claim)
+        )
+
+    def _task_is_in_lane(self, task: Any, *, task_cid: str) -> bool:
+        alias = str(getattr(task, "task_alias", "") or task_cid)
+        if self.task_prefix and not alias.startswith(self.task_prefix):
+            return False
+        return (
+            not self.strict_task_sharding
+            or self.task_shard_count <= 1
+            or self._task_belongs_to_shard(
+                self._shard_key_for_task(task, task_cid=task_cid)
+            )
+        )
+
+    def _failed_attempt_cross_store_reconciliation(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any] | None:
+        """Resolve the exact durable receipt for a retired attempt.
+
+        A crash may occur after the execution sidecar records the failed
+        cross-store reconciliation but before canonical control is moved to
+        ``retrying``.  Only that closed receipt shape is eligible for replay;
+        ordinary provider failures and quarantines are deliberately excluded.
+        """
+
+        if attempt.status != "failed" or attempt.committed_phase != (
+            ATTEMPT_PHASE_FAILED
+        ):
+            return None
+        phases = [
+            item
+            for item in self.phase_history(attempt.attempt_id)
+            if item.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        if not phases:
+            return None
+        phase = max(phases, key=lambda item: int(item.get("revision") or 0))
+        body = phase.get("body")
+        if not isinstance(body, Mapping) or (
+            body.get("cross_store_reconciled") is not True
+        ):
+            return None
+        reconciliation = body.get("reconciliation")
+        if not isinstance(reconciliation, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "failed cross-store attempt has no reconciliation receipt"
+            )
+        for name, expected in (
+            ("task_cid", attempt.task_cid),
+            ("claim_id", attempt.claim_id),
+            ("attempt_id", attempt.attempt_id),
+        ):
+            if str(reconciliation.get(name) or "") != str(expected):
+                raise DatabaseImplementationAuthorityError(
+                    "failed cross-store reconciliation identity differs: "
+                    + name
+                )
+        return dict(reconciliation)
+
+    def _recover_owned_unadmitted_claim(
+        self,
+        *,
+        excluded_task_cids: set[str],
+    ) -> Any | None:
+        """Recover this lane's exact live claim after a pre-attempt crash.
+
+        Coordination commits before canonical-control CAS and execution-sidecar
+        admission.  A process death at either boundary must not leave the
+        stable logical owner unable to make progress until lease expiry.  The
+        absence of the claim's local attempt proves that provider execution
+        could not yet have started; an ``in_progress`` control task additionally
+        requires the exact claim receipt written by the lost CAS response.
+        """
+
+        list_active = getattr(self.coordinator, "list_active_leases", None)
+        if not callable(list_active):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator does not expose active leases for claim recovery"
+            )
+        leases = list_active(
+            lease_kind="task",
+            owner_session_id=self.owner_session_id,
+            now_ms=self._now_ms(),
+        )
+        for lease in leases:
+            claim_id = str(getattr(lease, "claim_id", "") or "")
+            if not claim_id:
+                raise DatabaseImplementationAuthorityError(
+                    "owned active task lease has no claim identity"
+                )
+            claim = self.coordinator.get_task_claim(claim_id)
+            if claim is None:
+                raise DatabaseImplementationAuthorityError(
+                    "owned active task lease has no exact task claim"
+                )
+            self._protect_new_claim(claim)
+            if self.get_attempt(str(claim.attempt_id)) is not None:
+                continue
+            task_cid = str(claim.task_cid)
+            if task_cid in excluded_task_cids:
+                continue
+            task = self.task_source.get(task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    "owned unadmitted claim has no canonical control task"
+                )
+            if not self._task_is_in_lane(task, task_cid=task_cid):
+                raise DatabaseImplementationAuthorityError(
+                    "owned unadmitted claim is outside its sealed lane"
+                )
+            task_status = str(task.status or "").strip().lower()
+            if task_status in _DATABASE_CONTROL_READY_STATUSES:
+                return claim
+            if task_status == "in_progress" and (
+                self._task_has_exact_database_claim_receipt(task, claim)
+            ):
+                return claim
+            if task_status == "in_progress":
+                raise DatabaseImplementationAuthorityError(
+                    "owned unadmitted claim does not match the canonical "
+                    "in-progress control receipt"
+                )
+        return None
+
+    def _requeue_expired_owned_claims(self) -> list[dict[str, Any]]:
+        """Requeue exact crash-boundary claims once their fence is closed.
+
+        This is intentionally narrower than generic stale-task recovery.  It
+        applies only to an ``in_progress`` task whose current receipt names an
+        expired/released/superseded claim owned by this stable lane.  With no
+        local attempt it proves that provider execution was never admitted.
+        With a failed local attempt it additionally requires the exact durable
+        cross-store reconciliation receipt, and never reuses its execution
+        evidence under the replacement fence.
+        """
+
+        # This call also deterministically sweeps accepted leases whose expiry
+        # has passed before historical claims are inspected below.
+        list_active = getattr(self.coordinator, "list_active_leases", None)
+        if not callable(list_active):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator does not expose active leases for claim recovery"
+            )
+        list_active(
+            lease_kind="task",
+            owner_session_id=self.owner_session_id,
+            now_ms=self._now_ms(),
+        )
+        reconciled: list[dict[str, Any]] = []
+        page = self.task_source.list_tasks(
+            status=("in_progress",),
+            limit=TASK_SOURCE_QUERY_LIMIT,
+        )
+        for task in page.tasks:
+            task_cid = str(task.task_cid)
+            if not self._task_is_in_lane(task, task_cid=task_cid):
+                continue
+            body = task.body if isinstance(task.body, Mapping) else {}
+            receipt = body.get("completion_receipt")
+            if not isinstance(receipt, Mapping):
+                continue
+            if str(receipt.get("operation") or "") != "database_claim":
+                continue
+            if str(receipt.get("owner_session_id") or "") != self.owner_session_id:
+                continue
+            claim_id = str(receipt.get("claim_id") or "")
+            if not claim_id:
+                continue
+            claim = self.coordinator.get_task_claim(claim_id)
+            if claim is None or not self._task_has_exact_database_claim_receipt(
+                task,
+                claim,
+            ):
+                continue
+            claim_state = str(
+                getattr(
+                    getattr(claim, "state", ""),
+                    "value",
+                    getattr(claim, "state", ""),
+                )
+                or ""
+            )
+            if claim_state == "accepted":
+                continue
+            if claim_state not in {"expired", "released", "superseded"}:
+                raise DatabaseImplementationAuthorityError(
+                    "orphan claim has an unsupported terminal state"
+                )
+            attempt = self.get_attempt(str(claim.attempt_id))
+            if attempt is not None:
+                reconciliation = (
+                    self._failed_attempt_cross_store_reconciliation(attempt)
+                )
+                if reconciliation is None:
+                    continue
+                updated = self._requeue_control_after_expired_attempt(
+                    claim=claim,
+                    reconciliation=reconciliation,
+                )
+                record = {
+                    "operation": "automatic_failed_attempt_requeue_replay",
+                    "task_cid": task_cid,
+                    "prior_control_revision": int(task.revision),
+                    "resulting_control_revision": int(updated.revision),
+                    "claim_id": str(claim.claim_id),
+                    "attempt_id": str(claim.attempt_id),
+                    "lease_id": str(claim.lease_id),
+                    "owner_session_id": str(claim.owner_session_id),
+                    "fencing_token": int(claim.fencing_token),
+                    "fence_epoch": int(claim.fence_epoch),
+                    "claim_state": claim_state,
+                    "prior_execution_evidence_reused": False,
+                    "reconciliation": reconciliation,
+                }
+                reconciled.append(record)
+                continue
+            running_row = self._require_connection().execute(
+                "SELECT attempt_id FROM database_task_attempts "
+                "WHERE task_cid = ? AND status = 'running' LIMIT 1",
+                [task_cid],
+            ).fetchone()
+            if running_row is not None:
+                continue
+            recovery_receipt = {
+                "operation": "automatic_unadmitted_claim_requeue",
+                "task_cid": task_cid,
+                "prior_control_revision": int(task.revision),
+                "claim_id": str(claim.claim_id),
+                "attempt_id": str(claim.attempt_id),
+                "lease_id": str(claim.lease_id),
+                "owner_session_id": str(claim.owner_session_id),
+                "fencing_token": int(claim.fencing_token),
+                "fence_epoch": int(claim.fence_epoch),
+                "claim_state": claim_state,
+                "provider_execution_admitted": False,
+                "effect_execution_admitted": False,
+            }
+            result = self._cas_task_status_database(
+                task_cid,
+                expected_revision=int(task.revision),
+                new_status="retrying",
+                receipt=recovery_receipt,
+            )
+            updated = getattr(result, "task", None)
+            if (
+                updated is None
+                or str(updated.status or "").strip().lower() != "retrying"
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "orphan-claim recovery did not enter retrying"
+                )
+            record = dict(recovery_receipt)
+            record["resulting_control_revision"] = int(updated.revision)
+            reconciled.append(record)
+            self._record_event(
+                "unadmitted_claim_requeued",
+                task_cid=task_cid,
+                body=record,
+            )
+        return reconciled
+
     def claim_next(
         self,
         *,
@@ -69569,8 +69859,13 @@ class DatabaseImplementationDaemon:
         """Claim one ready task for this session; four sessions never share work."""
 
         self._last_claim_withdrawal = {}
+        self._last_orphan_claim_reconciliations = ()
         self._last_unsettled_quarantine_task_cids = ()
         self.sync_ready_tasks_into_coordination()
+        orphan_reconciliations = self._requeue_expired_owned_claims()
+        self._last_orphan_claim_reconciliations = tuple(orphan_reconciliations)
+        if orphan_reconciliations:
+            self.sync_ready_tasks_into_coordination()
         excluded = {
             str(task_cid)
             for task_cid in exclude_task_cids
@@ -69598,13 +69893,17 @@ class DatabaseImplementationDaemon:
                 for task in ready.tasks
                 if not accept_task_cid(str(task.task_cid))
             )
-        claim = self.coordinator.claim_ready_task(
-            owner_session_id=self.owner_session_id,
-            lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
-            exclude_task_cids=excluded,
-            now_ms=self._now_ms(),
-            accept_task_cid=accept_task_cid,
+        claim = self._recover_owned_unadmitted_claim(
+            excluded_task_cids=excluded,
         )
+        if claim is None:
+            claim = self.coordinator.claim_ready_task(
+                owner_session_id=self.owner_session_id,
+                lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
+                exclude_task_cids=excluded,
+                now_ms=self._now_ms(),
+                accept_task_cid=accept_task_cid,
+            )
         if claim is None:
             return None
         task = self.task_source.get(claim.task_cid)
@@ -69628,27 +69927,47 @@ class DatabaseImplementationDaemon:
             # the execution attempt before a provider can run.
             if task_status in _DATABASE_CONTROL_READY_STATUSES:
                 self._protect_new_claim(claim)
-                cas_result = self._cas_task_status_database(
-                    task.task_cid,
-                    expected_revision=int(task.revision),
-                    new_status="in_progress",
-                    receipt={
-                        "operation": "database_claim",
-                        "claim_id": claim.claim_id,
-                        "attempt_id": claim.attempt_id,
-                        "lease_id": claim.lease_id,
-                        "attempt_number": int(claim.attempt_number),
-                        "owner_session_id": self.owner_session_id,
-                        "fencing_token": int(claim.fencing_token),
-                        "fence_epoch": int(claim.fence_epoch),
-                    },
-                )
-                task = getattr(cas_result, "task", None)
-                if task is None:
-                    raise DatabaseImplementationAuthorityError(
-                        "control claim CAS returned no exact task projection"
+                claim_receipt = self._database_claim_receipt(claim)
+                try:
+                    cas_result = self._cas_task_status_database(
+                        task.task_cid,
+                        expected_revision=int(task.revision),
+                        new_status="in_progress",
+                        receipt=claim_receipt,
                     )
-                task_status = str(task.status or "").strip().lower()
+                except Exception:
+                    # A transport/process response may be lost after the
+                    # canonical CAS committed.  Continue only when a fresh
+                    # read proves the exact claim receipt; otherwise retain
+                    # the existing withdrawal/error behavior below.
+                    observed = self.task_source.get(claim.task_cid)
+                    observed_status = str(
+                        getattr(observed, "status", "") or ""
+                    ).strip().lower()
+                    if (
+                        observed_status == "in_progress"
+                        and self._task_has_exact_database_claim_receipt(
+                            observed,
+                            claim,
+                        )
+                    ):
+                        task = observed
+                        task_status = observed_status
+                    else:
+                        raise
+                else:
+                    task = getattr(cas_result, "task", None)
+                    if task is None:
+                        raise DatabaseImplementationAuthorityError(
+                            "control claim CAS returned no exact task projection"
+                        )
+                    task_status = str(task.status or "").strip().lower()
+            elif task_status == "in_progress":
+                if not self._task_has_exact_database_claim_receipt(task, claim):
+                    raise DatabaseImplementationAuthorityError(
+                        "canonical in-progress task is not bound to the exact "
+                        "coordination claim"
+                    )
             elif task_status != "in_progress":
                 # The coordination ready bit is a projection and may have
                 # raced a canonical BLOCKED/terminal transition after the
@@ -70762,6 +71081,96 @@ class DatabaseImplementationDaemon:
         )
         return updated
 
+    def _requeue_control_after_expired_attempt(
+        self,
+        *,
+        claim: Any,
+        reconciliation: Mapping[str, Any],
+    ) -> Any:
+        """Move an exactly retired attempt back to canonical retry authority."""
+
+        attempt = self.get_attempt(str(claim.attempt_id))
+        if (
+            attempt is None
+            or attempt.status != "failed"
+            or not self._claim_matches_execution_attempt(claim, attempt)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "expired-attempt retry lacks an exact failed execution cursor"
+            )
+        task = self.task_source.get(str(claim.task_cid))
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "expired-attempt retry has no canonical control task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status != "in_progress" or not (
+            self._task_has_exact_database_claim_receipt(task, claim)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "expired-attempt retry does not match canonical claim authority"
+            )
+        evidence_counts = self._attempt_execution_evidence_counts(
+            attempt.attempt_id
+        )
+        receipt = {
+            "operation": "automatic_expired_attempt_requeue",
+            "task_cid": attempt.task_cid,
+            "prior_control_revision": int(task.revision),
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "provider_invocation_count": int(
+                evidence_counts["provider_invocation_count"]
+            ),
+            "effect_claim_count": int(evidence_counts["effect_claim_count"]),
+            "prior_execution_evidence_reused": False,
+            "reconciliation": dict(reconciliation),
+        }
+        try:
+            result = self._cas_task_status_database(
+                attempt.task_cid,
+                expected_revision=int(task.revision),
+                new_status="retrying",
+                receipt=receipt,
+            )
+            updated = getattr(result, "task", None)
+        except Exception:
+            updated = self.task_source.get(attempt.task_cid)
+            updated_body = getattr(updated, "body", None)
+            observed_receipt = (
+                updated_body.get("completion_receipt")
+                if isinstance(updated_body, Mapping)
+                else None
+            )
+            if (
+                updated is None
+                or str(updated.status or "").strip().lower() != "retrying"
+                or not isinstance(observed_receipt, Mapping)
+                or dict(observed_receipt) != receipt
+            ):
+                raise
+        if (
+            updated is None
+            or str(updated.status or "").strip().lower() != "retrying"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "expired-attempt recovery did not enter retrying"
+            )
+        self._record_event(
+            "expired_attempt_control_requeued",
+            attempt_id=attempt.attempt_id,
+            task_cid=attempt.task_cid,
+            body={
+                **receipt,
+                "resulting_control_revision": int(updated.revision),
+            },
+        )
+        return updated
+
     def reconcile_prepared_task_completions(self) -> list[dict[str, Any]]:
         """Resolve PREPARED or promoted barriers from authoritative truth.
 
@@ -70879,6 +71288,10 @@ class DatabaseImplementationDaemon:
                 self._commit_reconciled_attempt_terminal(
                     prepared,
                     succeeded=False,
+                    reconciliation=outcome,
+                )
+                self._requeue_control_after_expired_attempt(
+                    claim=claim,
                     reconciliation=outcome,
                 )
             outcomes.append(outcome)
@@ -71012,6 +71425,10 @@ class DatabaseImplementationDaemon:
             self._commit_reconciled_attempt_terminal(
                 identity,
                 succeeded=False,
+                reconciliation=outcome,
+            )
+            self._requeue_control_after_expired_attempt(
+                claim=claim,
                 reconciliation=outcome,
             )
             outcomes.append(outcome)
@@ -72018,6 +72435,12 @@ class DatabaseImplementationDaemon:
             }
 
         attempt = self.claim_next()
+        orphan_claim_reconciliations = list(
+            self._last_orphan_claim_reconciliations
+        )
+        orphan_reconciliation_write_count = len(
+            orphan_claim_reconciliations
+        )
         if attempt is None:
             withdrawal = dict(self._last_claim_withdrawal)
             quarantined_task_cids = list(
@@ -72025,9 +72448,12 @@ class DatabaseImplementationDaemon:
             )
             return {
                 "unchanged": (
-                    reconciliation_write_count == 0 and not withdrawal
+                    reconciliation_write_count == 0
+                    and orphan_reconciliation_write_count == 0
+                    and not withdrawal
                 ),
                 "write_count": reconciliation_write_count
+                + orphan_reconciliation_write_count
                 + (1 if withdrawal else 0),
                 "active_task_id": "",
                 "selection_idle_reason": (
@@ -72040,6 +72466,7 @@ class DatabaseImplementationDaemon:
                     )
                 ),
                 "claim_withdrawal": withdrawal,
+                "orphan_claim_reconciliations": orphan_claim_reconciliations,
                 "unsettled_quarantine_task_cids": quarantined_task_cids,
                 "implementation_result": None,
                 "authority_mode": self.authority_mode,
@@ -72059,7 +72486,11 @@ class DatabaseImplementationDaemon:
         result = self._resume_attempt_without_process_crash(attempt)
         return {
             "unchanged": False,
-            "write_count": 1 + reconciliation_write_count,
+            "write_count": (
+                1
+                + reconciliation_write_count
+                + orphan_reconciliation_write_count
+            ),
             "active_task_id": attempt.task_alias or attempt.task_cid,
             "implementation_result": result,
             "authority_mode": self.authority_mode,
@@ -72073,6 +72504,7 @@ class DatabaseImplementationDaemon:
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
+            "orphan_claim_reconciliations": orphan_claim_reconciliations,
         }
 
     def wait_for_wake(self, timeout: float = 0.0) -> None:
@@ -72798,6 +73230,9 @@ def main(argv: list[str] | None = None) -> None:
             args,
             repo_root=REPO_ROOT,
             portal_daemon_class=PortalImplementationDaemon,
+            configured_board_live_admission=(
+                _IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
+            ),
         )
     else:
         daemon = PortalImplementationDaemon(
@@ -73022,6 +73457,12 @@ except (OSError, ValueError, subprocess.SubprocessError):
     _IMPORTED_CONTROL_PLANE_CAPSULE = None
     _IMPORTED_CONTROL_PLANE_LAUNCH = None
     _IMPORTED_CONTROL_PLANE_TEMP_ROOT = None
+
+# A configured-board admission reaches this module only through the sealed
+# parent wrapper after full verification.  It is deliberately absent from the
+# ordinary daemon CLI and environment so a worker cannot mint its own source
+# transition authority.
+_IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION: Any | None = None
 
 
 if __name__ == "__main__":

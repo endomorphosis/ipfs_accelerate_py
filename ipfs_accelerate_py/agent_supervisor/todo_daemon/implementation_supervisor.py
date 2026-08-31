@@ -1983,7 +1983,7 @@ def _run_sealed_daemon_child(argv: Sequence[str]) -> int:
         ):
             raise ValueError("sealed daemon native descriptor was substituted")
         verify_agent_supervisor_native_dependency_sealed_fd(native_launch)
-        verify_configured_board_live_capsule(
+        verified_live_admission = verify_configured_board_live_capsule(
             pinned.configured_board_live_admission_json,
             control_plane_pin=pin,
             control_plane_descriptor=pinned.accepted_control_plane_fd,
@@ -1999,13 +1999,22 @@ def _run_sealed_daemon_child(argv: Sequence[str]) -> int:
 
     original_capsule = daemon_module._IMPORTED_CONTROL_PLANE_CAPSULE
     original_launch = daemon_module._IMPORTED_CONTROL_PLANE_LAUNCH
+    original_live_admission = (
+        daemon_module._IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION
+    )
     daemon_module._IMPORTED_CONTROL_PLANE_CAPSULE = pin
     daemon_module._IMPORTED_CONTROL_PLANE_LAUNCH = launch
+    daemon_module._IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION = (
+        verified_live_admission
+    )
     try:
         return int(daemon_module.main(daemon_argv) or 0)
     finally:
         daemon_module._IMPORTED_CONTROL_PLANE_CAPSULE = original_capsule
         daemon_module._IMPORTED_CONTROL_PLANE_LAUNCH = original_launch
+        daemon_module._IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION = (
+            original_live_admission
+        )
 
 
 # --- restored _run_plan_bound_daemon_child ---
