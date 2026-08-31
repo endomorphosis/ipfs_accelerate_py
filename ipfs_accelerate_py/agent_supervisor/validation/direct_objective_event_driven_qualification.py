@@ -273,10 +273,10 @@ INTEGRATING_MERGE_CURRENT_HEAD_REBIND_HERMETIC_SUITES: Final[tuple[str, ...]] = 
     "test/api/test_agent_supervisor_database_implementation_daemon.py",
 )
 SUPERSEDED_INTEGRATING_MERGE: Final = (
-    "0ff88eb0d3c065f6d6744623abc4ae23ae189930"
+    "e6fef127dbec7c86a03145a8b52b1b93a0ba0512"
 )
 SUPERSEDED_LANDED_NESTED_COMMIT: Final = (
-    "cdf251bc742681825181f6363c4e403a02efbd22"
+    "45172ae3f46211ac92cb381fcfdbdf7286c35398"
 )
 CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS: Final[tuple[str, ...]] = (
     "outer_commit",
