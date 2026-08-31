@@ -122,6 +122,7 @@ from .multi_supervisor_runner import (
     PlanBoundSupervisorChild,
     _read_stable_regular_bytes,
     _read_stable_regular_json,
+    _reserve_owned_pid_projection,
     _StableArtifactReadError,
     accepted_control_plane_pin_json,
     build_configured_multi_supervisor_cli_runner,
@@ -248,6 +249,18 @@ class _ConfiguredBoardDependencySealSnapshot:
 
     payload: Mapping[str, Any]
     artifact: Mapping[str, object]
+
+
+@dataclass
+class _CoordinatorPIDReservation:
+    """An exact marker with explicit cross-facade ownership transfer."""
+
+    path: Path
+    descriptor: int
+    identity: tuple[int, int]
+    state: str = "reserved"
+    descriptor_closed: bool = False
+    published_pid: int = 0
 
 
 def _plan_bound_profile(board: "ConfiguredBoard") -> bool:
@@ -3323,51 +3336,159 @@ def _open_plan_bound_coordinator_log(log_path: Path):
 
 
 def _reserve_coordinator_pid_projection(pid_path: Path) -> tuple[int, tuple[int, int]]:
-    """Exclusively reserve a no-follow PID artifact before process creation."""
+    """Recover dead evidence, then reserve before irreversible launch work."""
 
-    path = Path(pid_path)
-    with serialized_lock_update(path):
+    try:
+        return _reserve_owned_pid_projection(
+            Path(pid_path),
+            artifact_label="detached coordinator PID projection",
+        )
+    except (OSError, ValueError) as exc:
+        raise ConfiguredBoardError(str(exc)) from exc
+
+
+def _reserve_detached_coordinator_pid(
+    board: ConfiguredBoard,
+) -> _CoordinatorPIDReservation:
+    """Reserve the configured marker before token/native handoff retirement."""
+
+    state_dir = _ensure_plan_bound_runtime_directory(
+        board.repo_root,
+        board.path(board.runtime_paths["state"]),
+    )
+    pid_path = state_dir / "configured-board-master.pid"
+    _lexical_repo_artifact(board.repo_root, pid_path)
+    descriptor, identity = _reserve_coordinator_pid_projection(pid_path)
+    return _CoordinatorPIDReservation(
+        path=pid_path,
+        descriptor=descriptor,
+        identity=identity,
+    )
+
+
+def _validate_coordinator_pid_reservation(
+    board: ConfiguredBoard,
+    reservation: _CoordinatorPIDReservation,
+    *,
+    allowed_states: tuple[str, ...] = ("reserved",),
+) -> None:
+    """Authenticate an empty reservation before accepting facade ownership."""
+
+    if not isinstance(reservation, _CoordinatorPIDReservation):
+        raise ConfiguredBoardError("coordinator PID reservation is untyped")
+    if reservation.state not in allowed_states:
+        raise ConfiguredBoardError(
+            "coordinator PID reservation is not transferable: "
+            f"state={reservation.state!r}"
+        )
+    if reservation.descriptor_closed or reservation.descriptor < 3:
+        raise ConfiguredBoardError("coordinator PID reservation fd is closed")
+    expected_path = (
+        board.path(board.runtime_paths["state"])
+        / "configured-board-master.pid"
+    )
+    _lexical_repo_artifact(board.repo_root, expected_path)
+    if reservation.path != expected_path:
+        raise ConfiguredBoardError(
+            "coordinator PID reservation path was substituted"
+        )
+    try:
+        opened = os.fstat(reservation.descriptor)
+        observed = os.lstat(reservation.path)
+        inheritable = os.get_inheritable(reservation.descriptor)
         try:
-            existing = os.lstat(path)
-        except FileNotFoundError:
-            existing = None
-        except OSError as exc:
-            raise ConfiguredBoardError(
-                "cannot inspect detached coordinator PID projection"
-            ) from exc
-        if existing is not None:
-            if stat.S_ISLNK(existing.st_mode):
-                reason = "symbolic link"
-            elif not stat.S_ISREG(existing.st_mode):
-                reason = "non-regular file"
-            elif int(existing.st_nlink) != 1:
-                reason = "hardlinked file"
-            else:
-                reason = "existing owned file"
-            raise ConfiguredBoardError(
-                "detached coordinator PID projection is an unsafe " + reason
+            import fcntl
+
+            descriptor_flags = int(
+                fcntl.fcntl(reservation.descriptor, fcntl.F_GETFL)
             )
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        flags |= getattr(os, "O_CLOEXEC", 0)
-        flags |= getattr(os, "O_NOFOLLOW", 0)
-        try:
-            descriptor = os.open(path, flags, 0o600)
-        except OSError as exc:
+        except (ImportError, OSError) as exc:
             raise ConfiguredBoardError(
-                "cannot exclusively reserve detached coordinator PID projection"
+                "coordinator PID reservation fd flags are unavailable"
             ) from exc
-        opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(opened.st_mode)
-            or int(opened.st_nlink) != 1
-            or int(opened.st_uid) != os.geteuid()
-            or stat.S_IMODE(opened.st_mode) != 0o600
-        ):
-            os.close(descriptor)
-            raise ConfiguredBoardError(
-                "detached coordinator PID reservation is not a single-link file"
-            )
-        return descriptor, (int(opened.st_dev), int(opened.st_ino))
+    except OSError as exc:
+        raise ConfiguredBoardError(
+            "coordinator PID reservation cannot be inspected"
+        ) from exc
+    if (
+        (int(opened.st_dev), int(opened.st_ino)) != reservation.identity
+        or (int(observed.st_dev), int(observed.st_ino))
+        != reservation.identity
+        or stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISREG(opened.st_mode)
+        or not stat.S_ISREG(observed.st_mode)
+        or int(opened.st_nlink) != 1
+        or int(observed.st_nlink) != 1
+        or int(opened.st_uid) != os.geteuid()
+        or int(observed.st_uid) != os.geteuid()
+        or stat.S_IMODE(opened.st_mode) != 0o600
+        or stat.S_IMODE(observed.st_mode) != 0o600
+        or int(opened.st_size) != 0
+        or int(observed.st_size) != 0
+        or inheritable
+        or descriptor_flags & os.O_ACCMODE != os.O_WRONLY
+    ):
+        raise ConfiguredBoardError(
+            "coordinator PID reservation is not one exact empty CLOEXEC file"
+        )
+
+
+def _claim_coordinator_pid_reservation(
+    board: ConfiguredBoard,
+    reservation: _CoordinatorPIDReservation,
+) -> None:
+    """Transfer one exact reservation to the scheduler exactly once."""
+
+    _validate_coordinator_pid_reservation(board, reservation)
+    reservation.state = "claimed"
+
+
+def _mark_coordinator_pid_reservation_published(
+    reservation: _CoordinatorPIDReservation,
+    *,
+    pid: int,
+) -> None:
+    """Prevent cleanup from deleting a successfully published live marker."""
+
+    if reservation.state != "claimed":
+        raise ConfiguredBoardError(
+            "coordinator PID reservation publication lacks ownership"
+        )
+    reservation.published_pid = int(pid)
+    reservation.state = "published"
+
+
+def _close_coordinator_pid_reservation(
+    reservation: _CoordinatorPIDReservation,
+) -> None:
+    """Close the held fd at most once."""
+
+    if reservation.descriptor_closed:
+        return
+    try:
+        os.close(reservation.descriptor)
+    finally:
+        reservation.descriptor_closed = True
+
+
+def _discard_coordinator_pid_reservation(
+    reservation: _CoordinatorPIDReservation,
+) -> None:
+    """Idempotently remove an unpublished exact empty reservation only."""
+
+    if reservation.state == "discarded":
+        return
+    if reservation.state == "published":
+        _close_coordinator_pid_reservation(reservation)
+        return
+    try:
+        _close_coordinator_pid_reservation(reservation)
+    finally:
+        _remove_reserved_coordinator_pid(
+            reservation.path,
+            reservation.identity,
+        )
+        reservation.state = "discarded"
 
 
 def _publish_reserved_coordinator_pid(
@@ -3428,6 +3549,7 @@ def _remove_reserved_coordinator_pid(
             and int(observed.st_nlink) == 1
             and int(observed.st_uid) == os.geteuid()
             and stat.S_IMODE(observed.st_mode) == 0o600
+            and int(observed.st_size) == 0
         ):
             pid_path.unlink()
 
@@ -4202,45 +4324,67 @@ def _launch_detached_plan_bound_coordinator(
     duration_seconds: float,
     native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
     dependency_seal_snapshot: _ConfiguredBoardDependencySealSnapshot | None = None,
+    coordinator_pid_reservation: _CoordinatorPIDReservation | None = None,
 ) -> dict[str, Any]:
     """Detach the outer coordinator, never an individual finite wave."""
 
-    state_dir = _ensure_plan_bound_runtime_directory(
-        board.repo_root,
-        board.path(board.runtime_paths["state"]),
-    )
-    log_dir = _ensure_plan_bound_runtime_directory(
-        board.repo_root,
-        board.path(board.runtime_paths["logs"]),
-    )
-    stamp = utc_run_stamp()
-    log_path = log_dir / f"configured-board-{stamp}.log"
-    pid_path = state_dir / "configured-board-master.pid"
-    accepted_tree_root = Path(__file__).absolute().parents[3]
-    if board.repo_root != accepted_tree_root:
-        raise ConfiguredBoardError(
-            "detached coordinator repo root is not the accepted module tree"
-        )
-    entry = accepted_tree_root / CONFIGURED_SCHEDULER_ENTRY_PATH
-    _lexical_repo_artifact(accepted_tree_root, pid_path)
-    source_head, _source_tree = _git_identity(accepted_tree_root)
-    for authority_path in (
-        entry,
-        board.config_path,
-        board.path(board.taskboard_path),
-    ):
-        _tracked_head_snapshot(
-            repo_root=accepted_tree_root,
-            path=authority_path,
-            source_head=source_head,
-        )
-    descriptor, reserved_identity = _reserve_coordinator_pid_projection(
-        pid_path
+    reservation = (
+        coordinator_pid_reservation
+        if coordinator_pid_reservation is not None
+        else _reserve_detached_coordinator_pid(board)
     )
     process: subprocess.Popen[bytes] | None = None
     sealed: AgentImplementationSealedControlPlane | None = None
     capsule_parent: Path | None = None
     try:
+        # This function owns cleanup as soon as it receives the reservation.
+        # Keep claim/revalidation inside the rollback region so a substitution
+        # or fd failure in the handoff seam cannot leak an empty blocker after
+        # the caller relinquishes ownership.
+        if reservation.state == "reserved":
+            _claim_coordinator_pid_reservation(board, reservation)
+        else:
+            _validate_coordinator_pid_reservation(
+                board,
+                reservation,
+                allowed_states=("claimed",),
+            )
+        descriptor = reservation.descriptor
+        reserved_identity = reservation.identity
+        pid_path = reservation.path
+        state_dir = _ensure_plan_bound_runtime_directory(
+            board.repo_root,
+            board.path(board.runtime_paths["state"]),
+        )
+        expected_pid_path = state_dir / "configured-board-master.pid"
+        if pid_path != expected_pid_path:
+            raise ConfiguredBoardError(
+                "detached coordinator PID reservation path changed"
+            )
+        log_dir = _ensure_plan_bound_runtime_directory(
+            board.repo_root,
+            board.path(board.runtime_paths["logs"]),
+        )
+        stamp = utc_run_stamp()
+        log_path = log_dir / f"configured-board-{stamp}.log"
+        accepted_tree_root = Path(__file__).absolute().parents[3]
+        if board.repo_root != accepted_tree_root:
+            raise ConfiguredBoardError(
+                "detached coordinator repo root is not the accepted module tree"
+            )
+        entry = accepted_tree_root / CONFIGURED_SCHEDULER_ENTRY_PATH
+        _lexical_repo_artifact(accepted_tree_root, pid_path)
+        source_head, _source_tree = _git_identity(accepted_tree_root)
+        for authority_path in (
+            entry,
+            board.config_path,
+            board.path(board.taskboard_path),
+        ):
+            _tracked_head_snapshot(
+                repo_root=accepted_tree_root,
+                path=authority_path,
+                source_head=source_head,
+            )
         pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(
             board
         )
@@ -4307,6 +4451,10 @@ def _launch_detached_plan_bound_coordinator(
             reserved_identity,
             process.pid,
         )
+        _mark_coordinator_pid_reservation_published(
+            reservation,
+            pid=process.pid,
+        )
     except BaseException:
         if process is not None and process.poll() is None:
             try:
@@ -4321,7 +4469,7 @@ def _launch_detached_plan_bound_coordinator(
                     process.wait(timeout=2.0)
                 except subprocess.TimeoutExpired:
                     pass
-        _remove_reserved_coordinator_pid(pid_path, reserved_identity)
+        _discard_coordinator_pid_reservation(reservation)
         if capsule_parent is not None:
             try:
                 shutil.rmtree(capsule_parent)
@@ -4329,7 +4477,7 @@ def _launch_detached_plan_bound_coordinator(
                 pass
         raise
     finally:
-        os.close(descriptor)
+        _close_coordinator_pid_reservation(reservation)
         if sealed is not None:
             os.close(sealed.descriptor)
     assert process is not None
@@ -4477,9 +4625,39 @@ def _remove_owned_coordinator_pid(board: ConfiguredBoard) -> bool:
         return False
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    coordinator_pid_reservation: _CoordinatorPIDReservation | None = None,
+) -> int:
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
+    if coordinator_pid_reservation is not None and (
+        args.command != "launch"
+        or bool(getattr(args, "dry_run", False))
+        or bool(getattr(args, "foreground", False))
+        or bool(args.accepted_control_plane_pin_json)
+        or args.accepted_control_plane_fd >= 3
+        or args.accepted_control_plane_capsule_parent is not None
+    ):
+        print(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "configured-board-error@1"
+                    ),
+                    "valid": False,
+                    "errors": [
+                        "coordinator PID reservation is valid only for one "
+                        "real detached outer launch"
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 2
     control_plane_pin: AgentImplementationControlPlanePin | None = None
     control_plane_descriptor = -1
     control_plane_parent: Path | None = None
@@ -4595,22 +4773,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "configured scheduler accepted-tree root is foreign"
                 )
         preflight = preflight_configured_board(board)
-        if (
-            args.command == "launch"
-            and not args.dry_run
-            and preflight.get("valid") is True
-            and sealed_control_plane_required
-            and not _plan_bound_profile(board)
-            and control_plane_pin is None
-        ):
-            dependency_seal_snapshot = (
-                _configured_board_dependency_seal_snapshot(board)
-            )
-            native_dependency_launch = _seal_configured_board_native_dependency(
-                board,
-                dependency_seal_snapshot=dependency_seal_snapshot,
-            )
-            native_dependency_owned = True
     except ConfiguredBoardError as exc:
         print(
             json.dumps(
@@ -4639,10 +4801,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if (
         sealed_control_plane_required
         and not _plan_bound_profile(board)
-        and (
-            not board.live_capsule_control_paths
-            or native_dependency_launch is None
-        )
+        and not board.live_capsule_control_paths
         and not args.dry_run
     ):
         print(
@@ -4674,14 +4833,67 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(json.dumps(plan, indent=2, sort_keys=True))
             return 0
+        detached_plan: dict[str, Any] | None = None
+        active_pid_reservation: _CoordinatorPIDReservation | None = None
         if detach and control_plane_pin is None:
-            plan = configured_board_launch_plan(
+            # Build every read-only launch input before reserving the PID
+            # pathname.  The reservation itself must nevertheless precede
+            # native dependency sealing and one-time credential retirement.
+            detached_plan = configured_board_launch_plan(
                 board,
                 implement=bool(args.implement),
                 detach=True,
                 duration_seconds=float(args.duration_seconds),
             )
+        if control_plane_pin is None:
             try:
+                if not _plan_bound_profile(board):
+                    dependency_seal_snapshot = (
+                        _configured_board_dependency_seal_snapshot(board)
+                    )
+                if detach:
+                    candidate_reservation = (
+                        coordinator_pid_reservation
+                        if coordinator_pid_reservation is not None
+                        else _reserve_detached_coordinator_pid(board)
+                    )
+                    _claim_coordinator_pid_reservation(
+                        board,
+                        candidate_reservation,
+                    )
+                    active_pid_reservation = candidate_reservation
+                if not _plan_bound_profile(board):
+                    native_dependency_launch = (
+                        _seal_configured_board_native_dependency(
+                            board,
+                            dependency_seal_snapshot=dependency_seal_snapshot,
+                        )
+                    )
+                    native_dependency_owned = True
+            except (ConfiguredBoardError, OSError, ValueError) as exc:
+                if active_pid_reservation is not None:
+                    _discard_coordinator_pid_reservation(
+                        active_pid_reservation
+                    )
+                    active_pid_reservation = None
+                print(
+                    json.dumps(
+                        {
+                            "valid": False,
+                            "errors": [f"coordinator_prepare: {exc}"],
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+                return 2
+        if detach and control_plane_pin is None:
+            assert detached_plan is not None
+            assert active_pid_reservation is not None
+            plan = detached_plan
+            try:
+                launch_reservation = active_pid_reservation
+                active_pid_reservation = None
                 plan.update(
                     _launch_detached_plan_bound_coordinator(
                         board,
@@ -4689,6 +4901,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         duration_seconds=float(args.duration_seconds),
                         native_dependency_launch=native_dependency_launch,
                         dependency_seal_snapshot=dependency_seal_snapshot,
+                        coordinator_pid_reservation=launch_reservation,
                     )
                 )
             except (ConfiguredBoardError, OSError) as exc:

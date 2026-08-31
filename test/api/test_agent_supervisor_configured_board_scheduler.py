@@ -1397,6 +1397,636 @@ def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
     assert not pid_path.exists()
 
 
+def test_detached_coordinator_quarantines_dead_owned_legacy_pid_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    state_dir = board.path(board.runtime_paths["state"])
+    state_dir.mkdir(parents=True)
+    os.chmod(state_dir, 0o700)
+    pid_path = state_dir / "configured-board-master.pid"
+    stale_pid = 3_554_888
+    stale_payload = f"{stale_pid}\n".encode("ascii")
+    pid_path.write_bytes(stale_payload)
+    os.chmod(pid_path, 0o664)
+    stale_stat = os.lstat(pid_path)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_pid_projection_liveness",
+        lambda pid: (
+            multi_runner_module.OwnerLiveness.DEAD
+            if pid == stale_pid
+            else multi_runner_module.OwnerLiveness.UNKNOWN
+        ),
+    )
+
+    descriptor, identity = scheduler_module._reserve_coordinator_pid_projection(
+        pid_path
+    )
+    try:
+        fresh = os.lstat(pid_path)
+        assert identity == (int(fresh.st_dev), int(fresh.st_ino))
+        assert identity != (int(stale_stat.st_dev), int(stale_stat.st_ino))
+        assert stat.S_IMODE(fresh.st_mode) == 0o600
+        assert fresh.st_size == 0
+        quarantine = state_dir / "stale-pid-projections"
+        raw = list(quarantine.glob("*.pid"))
+        receipts = list(quarantine.glob("*.pid.receipt.json"))
+        assert len(raw) == 1
+        assert len(receipts) == 1
+        assert raw[0].read_bytes() == stale_payload
+        assert stat.S_IMODE(raw[0].stat().st_mode) == 0o664
+        receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+        assert receipt["recorded_pid"] == stale_pid
+        assert receipt["liveness"] == "dead"
+        assert receipt["original_path"] == str(pid_path)
+        assert receipt["quarantine_path"] == str(raw[0])
+        assert receipt["receipt_id"].startswith("baguqeera")
+    finally:
+        os.close(descriptor)
+        scheduler_module._remove_reserved_coordinator_pid(pid_path, identity)
+
+
+@pytest.mark.parametrize(
+    ("liveness", "message"),
+    (
+        ("alive", "names a live process"),
+        ("unknown", "liveness is unknown"),
+    ),
+)
+def test_detached_coordinator_preserves_live_or_unknown_pid_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    liveness: str,
+    message: str,
+) -> None:
+    _repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    state_dir = board.path(board.runtime_paths["state"])
+    state_dir.mkdir(parents=True)
+    os.chmod(state_dir, 0o700)
+    pid_path = state_dir / "configured-board-master.pid"
+    pid_path.write_text("424242\n", encoding="ascii")
+    os.chmod(pid_path, 0o600)
+    before = os.lstat(pid_path)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_pid_projection_liveness",
+        lambda _pid: multi_runner_module.OwnerLiveness(liveness),
+    )
+
+    with pytest.raises(ConfiguredBoardError, match=message):
+        scheduler_module._reserve_coordinator_pid_projection(pid_path)
+
+    after = os.lstat(pid_path)
+    assert (after.st_dev, after.st_ino) == (before.st_dev, before.st_ino)
+    assert pid_path.read_bytes() == b"424242\n"
+    assert not (state_dir / "stale-pid-projections").exists()
+
+
+def test_master_pid_projection_adopts_only_exact_current_process_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(mode=0o700)
+    pid_path = state_dir / "configured-board-master.pid"
+    pid_path.write_text(f"{os.getpid()}\n", encoding="ascii")
+    os.chmod(pid_path, 0o600)
+    before = os.lstat(pid_path)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_pid_projection_liveness",
+        lambda pid: (
+            multi_runner_module.OwnerLiveness.ALIVE
+            if pid == os.getpid()
+            else multi_runner_module.OwnerLiveness.UNKNOWN
+        ),
+    )
+
+    adopted = multi_runner_module._reserve_or_adopt_current_pid_projection(
+        pid_path,
+        expected_pid=os.getpid(),
+    )
+
+    assert adopted.adopted_existing is True
+    assert adopted.descriptor is None
+    assert adopted.identity == (int(before.st_dev), int(before.st_ino))
+    assert stat.S_IMODE(pid_path.stat().st_mode) == 0o600
+    assert multi_runner_module._remove_owned_pid_projection(
+        pid_path,
+        os.getpid(),
+    ) is True
+
+
+def test_master_pid_projection_fresh_publication_is_owner_only(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(mode=0o700)
+    pid_path = state_dir / "configured-board-master.pid"
+
+    reservation = multi_runner_module._reserve_or_adopt_current_pid_projection(
+        pid_path,
+        expected_pid=os.getpid(),
+    )
+    assert reservation.adopted_existing is False
+    assert reservation.descriptor is not None
+    assert os.get_inheritable(reservation.descriptor) is False
+    try:
+        multi_runner_module._publish_reserved_pid_projection(
+            pid_path,
+            reservation.descriptor,
+            reservation.identity,
+            os.getpid(),
+        )
+    finally:
+        os.close(reservation.descriptor)
+
+    assert pid_path.read_bytes() == f"{os.getpid()}\n".encode("ascii")
+    assert stat.S_IMODE(pid_path.stat().st_mode) == 0o600
+    assert multi_runner_module._remove_owned_pid_projection(
+        pid_path,
+        os.getpid(),
+    ) is True
+
+
+def test_detached_runner_rolls_back_reservation_on_capsule_validation_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "state"
+    master_log = state_dir / "configured-board-master.log"
+    pid_path = state_dir / "configured-board-master.pid"
+    captured: dict[str, object] = {}
+    original_reserve = multi_runner_module._reserve_owned_pid_projection
+
+    def reserve(path: Path, *, artifact_label: str):
+        descriptor, identity = original_reserve(
+            path,
+            artifact_label=artifact_label,
+        )
+        captured.update(descriptor=descriptor, identity=identity)
+        return descriptor, identity
+
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_master_paths",
+        lambda _args: (master_log, pid_path),
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_reserve_owned_pid_projection",
+        reserve,
+    )
+    monkeypatch.setattr(
+        multi_runner_module.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail(
+            "invalid capsule handoff launched a child"
+        ),
+    )
+    args = SimpleNamespace(
+        require_configured_board_live_seal=False,
+        require_configured_board_live_capsule=True,
+        configured_board_live_admission_json="",
+        accepted_control_plane_pin_json="",
+        accepted_control_plane_fd=-1,
+        configured_board_live_native_launch_json="",
+        configured_board_live_native_fd=-1,
+    )
+
+    with pytest.raises(ValueError, match="lacks its live capsule"):
+        multi_runner_module.launch_detached(args, ("--detach",))
+
+    assert not pid_path.exists()
+    with pytest.raises(OSError):
+        os.fstat(int(captured["descriptor"]))
+
+
+def test_detached_runner_publishes_pid_before_child_adopts_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The child cannot mistake its parent's empty reservation for stale state."""
+
+    import threading
+
+    state_dir = tmp_path / "state"
+    master_log = state_dir / "configured-board-master.log"
+    pid_path = state_dir / "configured-board-master.pid"
+    adoption_started = threading.Event()
+    adoption_finished = threading.Event()
+    adopted: dict[str, object] = {}
+
+    class FakeProcess:
+        pid = os.getpid()
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+    def adopt_from_child() -> None:
+        adoption_started.set()
+        adopted["reservation"] = (
+            multi_runner_module._reserve_or_adopt_current_pid_projection(
+                pid_path,
+                expected_pid=os.getpid(),
+                artifact_label="master PID projection",
+            )
+        )
+        adoption_finished.set()
+
+    child_thread: threading.Thread | None = None
+
+    def popen(*_args, **_kwargs):
+        nonlocal child_thread
+        assert pid_path.read_bytes() == b""
+        child_thread = threading.Thread(target=adopt_from_child, daemon=True)
+        child_thread.start()
+        assert adoption_started.wait(timeout=1.0)
+        assert adoption_finished.wait(timeout=0.05) is False
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_master_paths",
+        lambda _args: (master_log, pid_path),
+    )
+    monkeypatch.setattr(multi_runner_module.subprocess, "Popen", popen)
+    args = SimpleNamespace(
+        require_configured_board_live_seal=False,
+        require_configured_board_live_capsule=False,
+        repo_root=str(tmp_path),
+        stamp="pid-adoption-order",
+    )
+
+    report = multi_runner_module.launch_detached(args, ("--detach",))
+
+    assert child_thread is not None
+    child_thread.join(timeout=2.0)
+    assert adoption_finished.is_set()
+    reservation = adopted["reservation"]
+    assert reservation.adopted_existing is True
+    assert reservation.descriptor is None
+    assert report["master_pid"] == os.getpid()
+    assert pid_path.read_bytes() == f"{os.getpid()}\n".encode("ascii")
+    assert multi_runner_module._remove_owned_pid_projection(
+        pid_path,
+        os.getpid(),
+    ) is True
+
+
+def test_pre_reserved_coordinator_rolls_back_on_pre_spawn_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    module_path = (
+        repo
+        / "ipfs_accelerate_py/agent_supervisor/runtime/"
+        "configured_board_scheduler.py"
+    )
+    monkeypatch.setattr(scheduler_module, "__file__", str(module_path))
+    reservation = scheduler_module._reserve_detached_coordinator_pid(board)
+    pid_path = reservation.path
+    monkeypatch.setattr(
+        scheduler_module,
+        "_git_identity",
+        lambda _root: ("a" * 40, "b" * 40),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_tracked_head_snapshot",
+        lambda **_kwargs: (b"tracked", "sha256:tracked"),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_materialize_plan_bound_control_plane",
+        lambda _board: (_ for _ in ()).throw(
+            ConfiguredBoardError("synthetic pre-spawn failure")
+        ),
+    )
+    monkeypatch.setattr(
+        scheduler_module.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail("pre-spawn failure launched child"),
+    )
+
+    with pytest.raises(ConfiguredBoardError, match="synthetic pre-spawn failure"):
+        scheduler_module._launch_detached_plan_bound_coordinator(
+            board,
+            implement=True,
+            duration_seconds=1.0,
+            coordinator_pid_reservation=reservation,
+        )
+
+    assert not pid_path.exists()
+    with pytest.raises(OSError):
+        os.fstat(reservation.descriptor)
+
+
+def test_claimed_coordinator_handoff_validation_failure_rolls_back(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The callee owns cleanup before it revalidates a claimed reservation."""
+
+    repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    module_path = (
+        repo
+        / "ipfs_accelerate_py/agent_supervisor/runtime/"
+        "configured_board_scheduler.py"
+    )
+    monkeypatch.setattr(scheduler_module, "__file__", str(module_path))
+    reservation = scheduler_module._reserve_detached_coordinator_pid(board)
+    scheduler_module._claim_coordinator_pid_reservation(board, reservation)
+    pid_path = reservation.path
+
+    def reject_handoff(*_args, **_kwargs) -> None:
+        raise ConfiguredBoardError("synthetic claimed handoff failure")
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_validate_coordinator_pid_reservation",
+        reject_handoff,
+    )
+    monkeypatch.setattr(
+        scheduler_module.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: pytest.fail(
+            "invalid claimed handoff launched a child"
+        ),
+    )
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="synthetic claimed handoff failure",
+    ):
+        scheduler_module._launch_detached_plan_bound_coordinator(
+            board,
+            implement=True,
+            duration_seconds=1.0,
+            coordinator_pid_reservation=reservation,
+        )
+
+    assert reservation.state == "discarded"
+    assert reservation.descriptor_closed is True
+    assert not pid_path.exists()
+    with pytest.raises(OSError):
+        os.fstat(reservation.descriptor)
+
+
+def test_detached_main_reserves_before_native_seal_and_rolls_back(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, config_path, seeded = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    board = replace(
+        seeded,
+        board_namespace="semantic-addressed-world-model-v1",
+        live_capsule_control_paths=("config/scheduler.json",),
+    )
+    events: list[str] = []
+    original_reserve = scheduler_module._reserve_detached_coordinator_pid
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "load_configured_board",
+        lambda *_args, **_kwargs: board,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "preflight_configured_board",
+        lambda _board: {"valid": True, "errors": []},
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_sealed_configured_control_plane_required",
+        lambda _board: True,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_plan_bound_profile",
+        lambda _board: False,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_launch_plan",
+        lambda *_args, **_kwargs: {"valid": True},
+    )
+
+    def dependency_snapshot(_board):
+        events.append("dependency_snapshot")
+        return object()
+
+    def reserve(_board):
+        events.append("pid_reserve")
+        return original_reserve(_board)
+
+    def fail_native_seal(_board, *, dependency_seal_snapshot):
+        assert dependency_seal_snapshot is not None
+        events.append("native_seal")
+        pid_path = (
+            board.path(board.runtime_paths["state"])
+            / "configured-board-master.pid"
+        )
+        assert pid_path.is_file()
+        assert pid_path.stat().st_size == 0
+        assert stat.S_IMODE(pid_path.stat().st_mode) == 0o600
+        raise ConfiguredBoardError("synthetic native seal failure")
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_configured_board_dependency_seal_snapshot",
+        dependency_snapshot,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_reserve_detached_coordinator_pid",
+        reserve,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_seal_configured_board_native_dependency",
+        fail_native_seal,
+    )
+
+    result = scheduler_module.main(
+        (
+            "--repo-root",
+            str(repo),
+            "--config",
+            str(config_path),
+            "launch",
+            "--implement",
+        )
+    )
+
+    assert result == 2
+    assert events == ["dependency_snapshot", "pid_reserve", "native_seal"]
+    assert not (
+        board.path(board.runtime_paths["state"])
+        / "configured-board-master.pid"
+    ).exists()
+
+
+def test_detached_main_claims_supplied_reservation_once_and_preserves_publish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    reservation = scheduler_module._reserve_detached_coordinator_pid(board)
+    pid_path = reservation.path
+    launches: list[str] = []
+    monkeypatch.setattr(
+        scheduler_module,
+        "load_configured_board",
+        lambda *_args, **_kwargs: board,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "preflight_configured_board",
+        lambda _board: {"valid": True, "errors": []},
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_sealed_configured_control_plane_required",
+        lambda _board: True,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_launch_plan",
+        lambda *_args, **_kwargs: {"valid": True},
+    )
+
+    def launch(_board, **kwargs):
+        supplied = kwargs["coordinator_pid_reservation"]
+        assert supplied is reservation
+        assert supplied.state == "claimed"
+        launches.append("launch")
+        scheduler_module._publish_reserved_coordinator_pid(
+            supplied.path,
+            supplied.descriptor,
+            supplied.identity,
+            os.getpid(),
+        )
+        scheduler_module._mark_coordinator_pid_reservation_published(
+            supplied,
+            pid=os.getpid(),
+        )
+        scheduler_module._close_coordinator_pid_reservation(supplied)
+        return {"coordinator_pid": os.getpid()}
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_launch_detached_plan_bound_coordinator",
+        launch,
+    )
+    argv = (
+        "--repo-root",
+        str(repo),
+        "--config",
+        str(config_path),
+        "launch",
+        "--implement",
+    )
+
+    assert scheduler_module.main(
+        argv,
+        coordinator_pid_reservation=reservation,
+    ) == 0
+    assert launches == ["launch"]
+    assert reservation.state == "published"
+    assert reservation.descriptor_closed is True
+    assert pid_path.read_bytes() == f"{os.getpid()}\n".encode("ascii")
+    scheduler_module._discard_coordinator_pid_reservation(reservation)
+    assert pid_path.exists(), "published marker must not be discarded"
+
+    assert scheduler_module.main(
+        argv,
+        coordinator_pid_reservation=reservation,
+    ) == 2
+    assert launches == ["launch"]
+    assert pid_path.exists()
+    assert scheduler_module._remove_owned_coordinator_pid(board) is True
+
+
+def test_detached_main_rejects_supplied_reservation_substitution_without_spawn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    reservation = scheduler_module._reserve_detached_coordinator_pid(board)
+    original_path = reservation.path
+    reservation.path = original_path.with_name("substituted-master.pid")
+    monkeypatch.setattr(
+        scheduler_module,
+        "load_configured_board",
+        lambda *_args, **_kwargs: board,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "preflight_configured_board",
+        lambda _board: {"valid": True, "errors": []},
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_sealed_configured_control_plane_required",
+        lambda _board: True,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_launch_plan",
+        lambda *_args, **_kwargs: {"valid": True},
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_launch_detached_plan_bound_coordinator",
+        lambda *_args, **_kwargs: pytest.fail(
+            "substituted reservation reached Popen boundary"
+        ),
+    )
+
+    assert scheduler_module.main(
+        (
+            "--repo-root",
+            str(repo),
+            "--config",
+            str(config_path),
+            "launch",
+            "--implement",
+        ),
+        coordinator_pid_reservation=reservation,
+    ) == 2
+    assert reservation.state == "reserved"
+    assert original_path.exists()
+    reservation.path = original_path
+    scheduler_module._discard_coordinator_pid_reservation(reservation)
+    assert not original_path.exists()
+
+
 def test_plan_bound_wave_and_supervisor_pid_projections_reject_links(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

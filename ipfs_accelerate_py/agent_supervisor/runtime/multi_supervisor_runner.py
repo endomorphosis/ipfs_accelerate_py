@@ -14,6 +14,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
@@ -81,6 +82,11 @@ from ..core.wrapper_utils import (
     env_str,
 )
 from ..merge.checkout_lock import serialized_lock_update
+from ..merge.worktree_lifecycle import (
+    OwnerLiveness,
+    ProcessBirthIdentity,
+    owner_liveness,
+)
 from ..proof.formal_verification_contracts import content_identity
 from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
 from .configured_board_extension_projection import (
@@ -3886,31 +3892,418 @@ def _remove_owned_pid_projection(pid_path: Path, expected_pid: int) -> bool:
         return False
 
 
-def _reserve_owned_pid_projection(
-    pid_path: Path,
-) -> tuple[int, tuple[int, int]]:
-    """Reserve a no-follow, owner-only PID projection before process birth."""
+@dataclass(frozen=True)
+class _OwnedPIDProjectionReservation:
+    """One fresh reservation or an exact current-process handoff adoption."""
 
-    path = Path(pid_path)
-    with serialized_lock_update(path):
-        _require_absent_pid_projection(path)
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        flags |= getattr(os, "O_CLOEXEC", 0)
-        flags |= getattr(os, "O_NOFOLLOW", 0)
-        try:
-            descriptor = os.open(path, flags, 0o600)
-        except OSError as exc:
-            raise ValueError("cannot reserve plan-bound PID projection") from exc
+    descriptor: int | None
+    identity: tuple[int, int]
+    adopted_existing: bool
+    stale_receipt_path: Path | None = None
+
+
+def _pid_projection_liveness(pid: int) -> OwnerLiveness:
+    """Classify a bare PID conservatively; inspection uncertainty is typed."""
+
+    return owner_liveness(
+        ProcessBirthIdentity(
+            pid=int(pid),
+            start_time_ticks=0,
+            boot_id="",
+            parent_pid=0,
+        )
+    )
+
+
+def _fsync_directory(path: Path) -> None:
+    """Durably publish one directory entry when the host supports it."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _pid_projection_quarantine_directory(pid_path: Path) -> Path:
+    """Return a verified owner-only directory for stale PID evidence."""
+
+    parent = Path(pid_path).parent
+    try:
+        parent_stat = os.lstat(parent)
+    except OSError as exc:
+        raise ValueError("PID projection parent cannot be inspected") from exc
+    parent_mode = stat.S_IMODE(parent_stat.st_mode)
+    if (
+        stat.S_ISLNK(parent_stat.st_mode)
+        or not stat.S_ISDIR(parent_stat.st_mode)
+        or int(parent_stat.st_uid) != os.geteuid()
+        or parent_mode & 0o022
+    ):
+        raise ValueError("PID projection parent is not a safe owned directory")
+
+    quarantine = parent / "stale-pid-projections"
+    try:
+        os.mkdir(quarantine, 0o700)
+        _fsync_directory(parent)
+    except FileExistsError:
+        pass
+    except OSError as exc:
+        raise ValueError("cannot create PID projection quarantine") from exc
+    try:
+        observed = os.lstat(quarantine)
+    except OSError as exc:
+        raise ValueError("cannot inspect PID projection quarantine") from exc
+    if (
+        stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISDIR(observed.st_mode)
+        or int(observed.st_uid) != os.geteuid()
+        or stat.S_IMODE(observed.st_mode) != 0o700
+    ):
+        raise ValueError("PID projection quarantine is not owner-only")
+    return quarantine
+
+
+def _write_stale_pid_projection_receipt(
+    *,
+    quarantine_path: Path,
+    original_path: Path,
+    pid: int,
+    evidence: Mapping[str, Any],
+    artifact_label: str,
+) -> Path:
+    """Publish an owner-only self-identifying quarantine receipt."""
+
+    body: dict[str, Any] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "stale-pid-projection-quarantine@1"
+        ),
+        "artifact_label": str(artifact_label),
+        "original_path": str(original_path),
+        "quarantine_path": str(quarantine_path),
+        "recorded_pid": int(pid),
+        "liveness": OwnerLiveness.DEAD.value,
+        "reason": "recorded_process_provably_dead",
+        "content_sha256": str(evidence["content_sha256"]),
+        "size": int(evidence["size"]),
+        "device": int(evidence["device"]),
+        "inode": int(evidence["inode"]),
+        "uid": int(evidence["uid"]),
+        "gid": int(evidence["gid"]),
+        "mode": stat.S_IMODE(int(evidence["mode"])),
+        "mtime_ns": int(evidence["mtime_ns"]),
+        "ctime_ns": int(evidence["ctime_ns"]),
+        "quarantined_at": datetime.now(timezone.utc).isoformat(),
+    }
+    body["receipt_id"] = content_identity(body)
+    payload = (
+        json.dumps(body, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
+    receipt_path = quarantine_path.with_name(
+        quarantine_path.name + ".receipt.json"
+    )
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(receipt_path, flags, 0o600)
+    except OSError as exc:
+        raise ValueError("cannot reserve stale PID quarantine receipt") from exc
+    try:
+        written = 0
+        while written < len(payload):
+            count = os.write(descriptor, payload[written:])
+            if count <= 0:
+                raise OSError("short stale PID quarantine receipt write")
+            written += count
+        os.fsync(descriptor)
         opened = os.fstat(descriptor)
+        observed = os.lstat(receipt_path)
         if (
             not stat.S_ISREG(opened.st_mode)
             or int(opened.st_nlink) != 1
             or int(opened.st_uid) != os.geteuid()
             or stat.S_IMODE(opened.st_mode) != 0o600
+            or (int(opened.st_dev), int(opened.st_ino))
+            != (int(observed.st_dev), int(observed.st_ino))
+            or stat.S_ISLNK(observed.st_mode)
+            or int(observed.st_size) != len(payload)
         ):
-            os.close(descriptor)
-            raise ValueError("plan-bound PID reservation is not owner-only")
-        return descriptor, (int(opened.st_dev), int(opened.st_ino))
+            raise OSError("stale PID quarantine receipt changed")
+    except OSError as exc:
+        raise ValueError("cannot publish stale PID quarantine receipt") from exc
+    finally:
+        os.close(descriptor)
+    _fsync_directory(receipt_path.parent)
+    return receipt_path
+
+
+def _pid_projection_matches_evidence(
+    observed: os.stat_result,
+    evidence: Mapping[str, Any],
+    *,
+    allow_rename_ctime: bool = False,
+) -> bool:
+    """Match the complete no-follow identity captured by the stable reader."""
+
+    return (
+        not stat.S_ISLNK(observed.st_mode)
+        and stat.S_ISREG(observed.st_mode)
+        and int(observed.st_nlink) == 1
+        and int(observed.st_dev) == int(evidence["device"])
+        and int(observed.st_ino) == int(evidence["inode"])
+        and int(observed.st_mode) == int(evidence["mode"])
+        and int(observed.st_uid) == int(evidence["uid"])
+        and int(observed.st_gid) == int(evidence["gid"])
+        and int(observed.st_size) == int(evidence["size"])
+        and int(observed.st_mtime_ns) == int(evidence["mtime_ns"])
+        and (
+            allow_rename_ctime
+            or int(observed.st_ctime_ns) == int(evidence["ctime_ns"])
+        )
+    )
+
+
+def _quarantine_stale_owned_pid_projection_locked(
+    pid_path: Path,
+    *,
+    artifact_label: str,
+) -> Path:
+    """Move only a stable, local, provably dead PID projection to evidence."""
+
+    path = Path(pid_path)
+    try:
+        existing = os.lstat(path)
+    except FileNotFoundError as exc:
+        raise ValueError(f"{artifact_label} disappeared during recovery") from exc
+    except OSError as exc:
+        raise ValueError(f"cannot inspect {artifact_label}") from exc
+    if stat.S_ISLNK(existing.st_mode):
+        raise ValueError(f"{artifact_label} is an unsafe symbolic link")
+    if not stat.S_ISREG(existing.st_mode):
+        raise ValueError(f"{artifact_label} is an unsafe non-regular file")
+    if int(existing.st_nlink) != 1:
+        raise ValueError(f"{artifact_label} is an unsafe hardlinked file")
+    if int(existing.st_uid) != os.geteuid():
+        raise ValueError(f"{artifact_label} is an unsafe foreign-owned file")
+
+    leaf_mode = stat.S_IMODE(existing.st_mode)
+    if (
+        leaf_mode & 0o111
+        or leaf_mode & 0o002
+        or existing.st_mode & (stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX)
+    ):
+        raise ValueError(f"{artifact_label} has unsafe permissions")
+    parent = os.lstat(path.parent)
+    parent_mode = stat.S_IMODE(parent.st_mode)
+    if (
+        stat.S_ISLNK(parent.st_mode)
+        or not stat.S_ISDIR(parent.st_mode)
+        or int(parent.st_uid) != os.geteuid()
+        or parent_mode & 0o022
+        or (leaf_mode & 0o020 and parent_mode & 0o077)
+    ):
+        raise ValueError(f"{artifact_label} has an unsafe parent directory")
+
+    try:
+        payload, evidence = _read_stable_regular_bytes(path, max_bytes=32)
+    except _StableArtifactReadError as exc:
+        raise ValueError(f"cannot stably read {artifact_label}") from exc
+    if payload is None or not re.fullmatch(rb"[1-9][0-9]*\n", payload):
+        raise ValueError(f"{artifact_label} does not contain one exact PID")
+    recorded_pid = int(payload[:-1].decode("ascii"))
+    liveness = _pid_projection_liveness(recorded_pid)
+    if liveness is OwnerLiveness.ALIVE:
+        raise ValueError(f"{artifact_label} names a live process")
+    if liveness is not OwnerLiveness.DEAD:
+        raise ValueError(f"{artifact_label} liveness is unknown")
+
+    quarantine_dir = _pid_projection_quarantine_directory(path)
+    digest = str(evidence["content_sha256"]).removeprefix("sha256:")[:16]
+    descriptor, quarantine_name = tempfile.mkstemp(
+        prefix=f"{path.name}.dead-{recorded_pid}-{digest}.",
+        suffix=".pid",
+        dir=str(quarantine_dir),
+    )
+    os.close(descriptor)
+    quarantine_path = Path(quarantine_name)
+    try:
+        os.chmod(quarantine_path, 0o600)
+        # Revalidate the pathname without following links immediately before
+        # the atomic move.  Cooperative writers are excluded by the adjacent
+        # update lock; this comparison also detects a non-cooperating replace
+        # after the stable no-follow read.
+        try:
+            before_replace = os.lstat(path)
+        except OSError as exc:
+            raise ValueError(
+                "stale PID projection changed before quarantine"
+            ) from exc
+        if not _pid_projection_matches_evidence(before_replace, evidence):
+            raise ValueError("stale PID projection changed before quarantine")
+        os.replace(path, quarantine_path)
+        quarantined = os.lstat(quarantine_path)
+        if not _pid_projection_matches_evidence(
+            quarantined,
+            evidence,
+            allow_rename_ctime=True,
+        ):
+            # A non-cooperating substitution in the final rename window is
+            # not stale evidence.  Restore that exact directory entry only
+            # when the active name is still absent; never overwrite a newer
+            # owner.  If restoration cannot be proved, retain it in quarantine
+            # rather than deleting evidence.
+            try:
+                os.link(
+                    quarantine_path,
+                    path,
+                    follow_symlinks=False,
+                )
+            except OSError:
+                pass
+            else:
+                quarantine_path.unlink()
+            raise ValueError("stale PID projection changed during quarantine")
+        _fsync_directory(path.parent)
+        _fsync_directory(quarantine_dir)
+        return _write_stale_pid_projection_receipt(
+            quarantine_path=quarantine_path,
+            original_path=path,
+            pid=recorded_pid,
+            evidence=evidence,
+            artifact_label=artifact_label,
+        )
+    except BaseException:
+        # Never erase the quarantined evidence on a receipt or durability
+        # failure.  Its absence at the active pathname still prevents it from
+        # being mistaken for a current coordinator.
+        raise
+
+
+def _create_owned_pid_projection_locked(
+    pid_path: Path,
+    *,
+    artifact_label: str,
+) -> tuple[int, tuple[int, int]]:
+    """Create one canonical owner-only empty projection under its lock."""
+
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(pid_path, flags, 0o600)
+    except OSError as exc:
+        raise ValueError(f"cannot exclusively reserve {artifact_label}") from exc
+    opened = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(opened.st_mode)
+        or int(opened.st_nlink) != 1
+        or int(opened.st_uid) != os.geteuid()
+        or stat.S_IMODE(opened.st_mode) != 0o600
+    ):
+        os.close(descriptor)
+        raise ValueError(f"{artifact_label} reservation is not owner-only")
+    return descriptor, (int(opened.st_dev), int(opened.st_ino))
+
+
+def _reserve_owned_pid_projection(
+    pid_path: Path,
+    *,
+    artifact_label: str = "plan-bound PID projection",
+) -> tuple[int, tuple[int, int]]:
+    """Recover a dead projection, then reserve before process birth."""
+
+    path = Path(pid_path)
+    with serialized_lock_update(path):
+        try:
+            os.lstat(path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise ValueError(f"cannot inspect {artifact_label}") from exc
+        else:
+            _quarantine_stale_owned_pid_projection_locked(
+                path,
+                artifact_label=artifact_label,
+            )
+        return _create_owned_pid_projection_locked(
+            path,
+            artifact_label=artifact_label,
+        )
+
+
+def _reserve_or_adopt_current_pid_projection(
+    pid_path: Path,
+    *,
+    expected_pid: int,
+    artifact_label: str = "master PID projection",
+) -> _OwnedPIDProjectionReservation:
+    """Adopt the exact handoff marker or reserve a canonical fresh marker."""
+
+    path = Path(pid_path)
+    if int(expected_pid) != os.getpid():
+        raise ValueError("PID projection adoption requires the current process")
+    with serialized_lock_update(path):
+        try:
+            existing = os.lstat(path)
+        except FileNotFoundError:
+            existing = None
+        except OSError as exc:
+            raise ValueError(f"cannot inspect {artifact_label}") from exc
+        if existing is not None:
+            try:
+                payload, evidence = _read_stable_regular_bytes(
+                    path,
+                    max_bytes=32,
+                )
+            except _StableArtifactReadError as exc:
+                raise ValueError(f"cannot stably read {artifact_label}") from exc
+            expected = f"{int(expected_pid)}\n".encode("ascii")
+            if payload == expected:
+                observed = os.lstat(path)
+                if (
+                    evidence.get("state") != "present"
+                    or (int(observed.st_dev), int(observed.st_ino))
+                    != (
+                        int(evidence.get("device", -1)),
+                        int(evidence.get("inode", -1)),
+                    )
+                    or stat.S_ISLNK(observed.st_mode)
+                    or not stat.S_ISREG(observed.st_mode)
+                    or int(observed.st_nlink) != 1
+                    or int(observed.st_uid) != os.geteuid()
+                    or stat.S_IMODE(observed.st_mode) != 0o600
+                    or _pid_projection_liveness(expected_pid)
+                    is not OwnerLiveness.ALIVE
+                ):
+                    raise ValueError(
+                        f"{artifact_label} current-process handoff is unsafe"
+                    )
+                return _OwnedPIDProjectionReservation(
+                    descriptor=None,
+                    identity=(int(observed.st_dev), int(observed.st_ino)),
+                    adopted_existing=True,
+                )
+            receipt_path = _quarantine_stale_owned_pid_projection_locked(
+                path,
+                artifact_label=artifact_label,
+            )
+        else:
+            receipt_path = None
+        descriptor, identity = _create_owned_pid_projection_locked(
+            path,
+            artifact_label=artifact_label,
+        )
+        return _OwnedPIDProjectionReservation(
+            descriptor=descriptor,
+            identity=identity,
+            adopted_existing=False,
+            stale_receipt_path=receipt_path,
+        )
 
 
 def _require_absent_pid_projection(pid_path: Path) -> None:
@@ -3962,6 +4355,48 @@ def _publish_reserved_pid_projection(
         or int(observed.st_size) != len(payload)
     ):
         raise ValueError("plan-bound PID projection changed during publication")
+
+
+def _validate_reserved_pid_projection_locked(
+    pid_path: Path,
+    descriptor: int,
+    identity: tuple[int, int],
+) -> None:
+    """Require the held descriptor to remain one exact empty reservation.
+
+    Callers hold :func:`serialized_lock_update` for ``pid_path``.  Keeping
+    that lock through process creation and PID publication prevents the new
+    child from racing its own exact-current-PID adoption against the parent's
+    still-empty reservation.
+    """
+
+    try:
+        opened = os.fstat(descriptor)
+        observed = os.lstat(pid_path)
+        inheritable = os.get_inheritable(descriptor)
+    except OSError as exc:
+        raise ValueError(
+            "plan-bound PID projection reservation cannot be inspected"
+        ) from exc
+    if (
+        (int(opened.st_dev), int(opened.st_ino)) != identity
+        or (int(observed.st_dev), int(observed.st_ino)) != identity
+        or stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISREG(opened.st_mode)
+        or not stat.S_ISREG(observed.st_mode)
+        or int(opened.st_nlink) != 1
+        or int(observed.st_nlink) != 1
+        or int(opened.st_uid) != os.geteuid()
+        or int(observed.st_uid) != os.geteuid()
+        or stat.S_IMODE(opened.st_mode) != 0o600
+        or stat.S_IMODE(observed.st_mode) != 0o600
+        or int(opened.st_size) != 0
+        or int(observed.st_size) != 0
+        or inheritable
+    ):
+        raise ValueError(
+            "plan-bound PID projection reservation changed before process birth"
+        )
 
 
 def _discard_reserved_pid_projection(
@@ -7535,9 +7970,27 @@ def run_supervisor_tracks(
             finally:
                 os.close(master_descriptor)
         else:
-            resolved_master_pid.write_text(
-                f"{os.getpid()}\n", encoding="utf-8"
+            master_reservation = _reserve_or_adopt_current_pid_projection(
+                resolved_master_pid,
+                expected_pid=os.getpid(),
+                artifact_label="master PID projection",
             )
+            if master_reservation.descriptor is not None:
+                try:
+                    _publish_reserved_pid_projection(
+                        resolved_master_pid,
+                        master_reservation.descriptor,
+                        master_reservation.identity,
+                        os.getpid(),
+                    )
+                except BaseException:
+                    _discard_reserved_pid_projection(
+                        resolved_master_pid,
+                        master_reservation.identity,
+                    )
+                    raise
+                finally:
+                    os.close(master_reservation.descriptor)
     processes: dict[str, subprocess.Popen[bytes]] = {}
 
     def _handle_signal(signum: int, _frame: object) -> None:
@@ -8336,79 +8789,122 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
     master_log, master_pid = _master_paths(args)
     master_log.parent.mkdir(parents=True, exist_ok=True)
     master_pid.parent.mkdir(parents=True, exist_ok=True)
-    pass_fds: tuple[int, ...] = ()
-    if args.require_configured_board_live_capsule:
-        if (
-            not args.configured_board_live_admission_json
-            or not args.accepted_control_plane_pin_json
-            or args.accepted_control_plane_fd < 3
-            or not args.configured_board_live_native_launch_json
-            or args.configured_board_live_native_fd < 3
-        ):
-            raise ValueError(
-                "configured-board detached launch lacks its live capsule"
-            )
-        pin = parse_accepted_control_plane_pin(
-            args.accepted_control_plane_pin_json
-        )
-        admission = parse_configured_board_live_capsule_admission(
-            args.configured_board_live_admission_json
-        )
-        native_launch = parse_native_dependency_launch_json(
-            args.configured_board_live_native_launch_json
-        )
-        if (
-            native_launch.descriptor.descriptor
-            != args.configured_board_live_native_fd
-        ):
-            raise ValueError(
-                "configured-board detached native descriptor was substituted"
-            )
-        verify_agent_supervisor_native_dependency_sealed_fd(native_launch)
-        verify_configured_board_live_capsule(
-            admission,
-            control_plane_pin=pin,
-            control_plane_descriptor=args.accepted_control_plane_fd,
-            native_dependency_launch=native_launch,
-            repo_root=args.repo_root,
-            expected_board_namespace=args.label,
-        )
-        command = build_sealed_control_plane_module_command(
-            python_executable=sys.executable,
-            pin=pin,
-            descriptor=args.accepted_control_plane_fd,
-            native_dependency_launch=native_launch,
-            module_name=(
-                "ipfs_accelerate_py.agent_supervisor.runtime."
-                "multi_supervisor_runner"
-            ),
-            argv=_without_detach(argv),
-        )
-        pass_fds = (
-            args.accepted_control_plane_fd,
-            args.configured_board_live_native_fd,
-        )
-    else:
-        command = [
-            sys.executable,
-            "-m",
-            "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
-            *_without_detach(argv),
-        ]
-    out_handle = master_log.open("ab")
+    master_descriptor, master_identity = _reserve_owned_pid_projection(
+        master_pid,
+        artifact_label="detached runner master PID projection",
+    )
+    process: subprocess.Popen[bytes] | None = None
     try:
-        process = subprocess.Popen(
-            command,
-            cwd=args.repo_root,
-            stdin=subprocess.DEVNULL,
-            stdout=out_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-            pass_fds=pass_fds,
-        )
+        # Everything after the exclusive reservation remains inside the
+        # rollback region.  In particular, a malformed live-capsule handoff
+        # or command-construction failure must not leak either the descriptor
+        # or an empty PID projection that blocks the next launch.
+        pass_fds: tuple[int, ...] = ()
+        if args.require_configured_board_live_capsule:
+            if (
+                not args.configured_board_live_admission_json
+                or not args.accepted_control_plane_pin_json
+                or args.accepted_control_plane_fd < 3
+                or not args.configured_board_live_native_launch_json
+                or args.configured_board_live_native_fd < 3
+            ):
+                raise ValueError(
+                    "configured-board detached launch lacks its live capsule"
+                )
+            pin = parse_accepted_control_plane_pin(
+                args.accepted_control_plane_pin_json
+            )
+            admission = parse_configured_board_live_capsule_admission(
+                args.configured_board_live_admission_json
+            )
+            native_launch = parse_native_dependency_launch_json(
+                args.configured_board_live_native_launch_json
+            )
+            if (
+                native_launch.descriptor.descriptor
+                != args.configured_board_live_native_fd
+            ):
+                raise ValueError(
+                    "configured-board detached native descriptor was substituted"
+                )
+            verify_agent_supervisor_native_dependency_sealed_fd(native_launch)
+            verify_configured_board_live_capsule(
+                admission,
+                control_plane_pin=pin,
+                control_plane_descriptor=args.accepted_control_plane_fd,
+                native_dependency_launch=native_launch,
+                repo_root=args.repo_root,
+                expected_board_namespace=args.label,
+            )
+            command = build_sealed_control_plane_module_command(
+                python_executable=sys.executable,
+                pin=pin,
+                descriptor=args.accepted_control_plane_fd,
+                native_dependency_launch=native_launch,
+                module_name=(
+                    "ipfs_accelerate_py.agent_supervisor.runtime."
+                    "multi_supervisor_runner"
+                ),
+                argv=_without_detach(argv),
+            )
+            pass_fds = (
+                args.accepted_control_plane_fd,
+                args.configured_board_live_native_fd,
+            )
+        else:
+            command = [
+                sys.executable,
+                "-m",
+                (
+                    "ipfs_accelerate_py.agent_supervisor.runtime."
+                    "multi_supervisor_runner"
+                ),
+                *_without_detach(argv),
+            ]
+        out_handle = master_log.open("ab")
+        try:
+            # The child adopts this same pathname as its master PID marker.
+            # Hold the adjacent update lock until the exact child PID is
+            # durable so it cannot observe and reject the parent's empty
+            # pre-birth reservation.
+            with serialized_lock_update(master_pid):
+                _validate_reserved_pid_projection_locked(
+                    master_pid,
+                    master_descriptor,
+                    master_identity,
+                )
+                process = subprocess.Popen(
+                    command,
+                    cwd=args.repo_root,
+                    stdin=subprocess.DEVNULL,
+                    stdout=out_handle,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                    pass_fds=pass_fds,
+                )
+                _publish_reserved_pid_projection(
+                    master_pid,
+                    master_descriptor,
+                    master_identity,
+                    process.pid,
+                )
+        finally:
+            out_handle.close()
+    except BaseException:
+        if process is not None and process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=2.0)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+        _discard_reserved_pid_projection(master_pid, master_identity)
+        raise
     finally:
-        out_handle.close()
-    master_pid.write_text(f"{process.pid}\n", encoding="utf-8")
+        os.close(master_descriptor)
+    assert process is not None
     # The child normally removes its own projection after fencing every
     # track.  Cover the short-run race where it exits before this parent can
     # publish the detached PID.
