@@ -15,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.direct_objective_event_drive
     GITLINK_LANDED_MERGE_HERMETIC_SUITES,
     HARD_ZERO_INVARIANTS,
     HERMETIC_CANDIDATE_SUITES,
+    LANDED_CANDIDATE_FRESH_VALIDATION_HERMETIC_SUITES,
     LANDED_RECOVERY_SEED_HERMETIC_SUITES,
     LIVE_OBJECTIVE_MINIMUM,
     LIVE_REPLAY_MINIMUM,
@@ -89,6 +90,10 @@ def test_closed_vocabularies_match_phase_zero_requirements() -> None:
         "test/api/test_agent_supervisor_landed_completion_recovery.py",
         "test/api/test_agent_supervisor_database_implementation_daemon.py",
     )
+    assert LANDED_CANDIDATE_FRESH_VALIDATION_HERMETIC_SUITES == (
+        "test/api/test_agent_supervisor_landed_completion_recovery.py",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+    )
     assert PENDING_MERGE_RECOVERY_HERMETIC_SUITES == (
         "test/api/test_agent_supervisor_merge_train.py",
     )
@@ -98,6 +103,10 @@ def test_closed_vocabularies_match_phase_zero_requirements() -> None:
         *PENDING_MERGE_RECOVERY_HERMETIC_SUITES,
     )
     assert all(path in POST_LANDING_HERMETIC_SUITES for path in LANDED_RECOVERY_SEED_HERMETIC_SUITES)
+    assert all(
+        path in POST_LANDING_HERMETIC_SUITES
+        for path in LANDED_CANDIDATE_FRESH_VALIDATION_HERMETIC_SUITES
+    )
     assert all(
         path in HERMETIC_CANDIDATE_SUITES["automatic_task_frontier_refill"]
         for path in POST_LANDING_HERMETIC_SUITES
@@ -586,6 +595,7 @@ def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
     assert "landed recovery seed binding" in refill_section["reason"]
     assert "leftover-retrying landed recovery" in refill_section["reason"]
     assert "pending-merge recovery" in refill_section["reason"]
+    assert "landed-candidate fresh validation" in refill_section["reason"]
     stale_section = next(
         item for item in section["cases"] if item["case_id"] == "stale_task_recovery"
     )
@@ -595,5 +605,14 @@ def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
     assert "leftover-retrying landed recovery" in stale_section["reason"]
     assert "pending-merge dummy-consumer" in stale_section["reason"]
     assert "stale index.lock" in stale_section["reason"]
+    assert "landed-candidate fresh validation" in stale_section["reason"]
     assert all(path in refill.hermetic_suite_paths for path in LANDED_RECOVERY_SEED_HERMETIC_SUITES)
     assert all(path in stale.hermetic_suite_paths for path in LANDED_RECOVERY_SEED_HERMETIC_SUITES)
+    assert all(
+        path in refill.hermetic_suite_paths
+        for path in LANDED_CANDIDATE_FRESH_VALIDATION_HERMETIC_SUITES
+    )
+    assert all(
+        path in stale.hermetic_suite_paths
+        for path in LANDED_CANDIDATE_FRESH_VALIDATION_HERMETIC_SUITES
+    )
