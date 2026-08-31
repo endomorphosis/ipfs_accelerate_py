@@ -2203,6 +2203,9 @@ def bind_database_portal_execution_from_args(
             repo_root=repo_root,
             merge_target_branch=configured_merge_target_branch,
             portal_attempt_root=bridge.attempt_root,
+            callback_requalification_setup_audit_paths=(
+                bridge.worktree_submodule_paths
+            ),
         )
         recovery_binder = getattr(daemon, "bind_post_merge_recovery", None)
         if callable(recovery_binder) and callable(

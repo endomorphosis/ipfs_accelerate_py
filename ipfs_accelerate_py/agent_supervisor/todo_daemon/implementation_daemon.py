@@ -90720,6 +90720,7 @@ class DatabaseImplementationDaemon:
         self._merge_repo_root: Path | None = None
         self._merge_target_branch = ""
         self._merge_portal_attempt_root: Path | None = None
+        self._callback_requalification_setup_audit_paths: tuple[str, ...] = ()
         self._quack_attach_blocked_until = 0.0
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
@@ -92904,6 +92905,7 @@ class DatabaseImplementationDaemon:
         repo_root: Path | str,
         merge_target_branch: str,
         portal_attempt_root: Path | str | None = None,
+        callback_requalification_setup_audit_paths: Sequence[str] = (),
     ) -> None:
         """Bind the shared merge queue for invalid-metadata quarantine settlement.
 
@@ -92918,6 +92920,36 @@ class DatabaseImplementationDaemon:
         if merge_queue is None or not branch:
             raise DatabaseImplementationAuthorityError(
                 "merge-train recovery requires a bound queue and target branch"
+            )
+        try:
+            from .database_portal_bridge import (
+                _CALLBACK_REQUALIFICATION_SETUP_AUDIT_MAX_PARENTS,
+                _safe_repository_path,
+            )
+
+            raw_audit_paths = tuple(
+                callback_requalification_setup_audit_paths or ()
+            )
+            if (
+                len(raw_audit_paths)
+                > _CALLBACK_REQUALIFICATION_SETUP_AUDIT_MAX_PARENTS
+                or any(type(path) is not str for path in raw_audit_paths)
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "merge-train recovery setup-audit scope is invalid"
+                )
+            audit_paths = tuple(
+                _safe_repository_path(path) for path in raw_audit_paths
+            )
+        except DatabaseImplementationAuthorityError:
+            raise
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "merge-train recovery setup-audit scope is invalid"
+            ) from exc
+        if len(set(audit_paths)) != len(audit_paths):
+            raise DatabaseImplementationAuthorityError(
+                "merge-train recovery setup-audit scope is duplicated"
             )
         configured_attempt_root: Path | None = None
         if portal_attempt_root is not None:
@@ -92941,6 +92973,7 @@ class DatabaseImplementationDaemon:
             self._merge_repo_root = Path(repo_root)
             self._merge_target_branch = branch
             self._merge_portal_attempt_root = configured_attempt_root
+            self._callback_requalification_setup_audit_paths = audit_paths
 
     def _settle_invalid_metadata_portal_quarantines(self) -> dict[str, Any]:
         """Settle leftover invalid-metadata portal quarantines before DuckDB work."""
@@ -112227,7 +112260,12 @@ class DatabaseImplementationDaemon:
                 _safe_repository_path(path) for path in changed_submodule_paths
             )
             configured_audit_paths = tuple(
-                getattr(self, "worktree_submodule_paths", ()) or ()
+                getattr(
+                    self,
+                    "_callback_requalification_setup_audit_paths",
+                    (),
+                )
+                or ()
             )
             if (
                 len(configured_audit_paths)
