@@ -87412,6 +87412,7 @@ from ..task_sources.typed_state_owner import (
     TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
     TYPED_RETRYING_RECEIPT_OPERATIONS,
     TypedStateOwnerAuthorizationError,
+    TypedStateOwnerRemoteError,
     _validated_database_claim_process_attestation,
     _validated_database_strict_resume_rejection_receipt,
     typed_database_strict_resume_rejection_receipt_id,
@@ -118615,12 +118616,29 @@ class DatabaseImplementationDaemon:
                     DatabaseProviderCallbackOutcomeUnknownError,
                 ),
             ):
+                task = self.task_source.get(attempt.task_cid)
+                if task is not None:
+                    landed = self._complete_landed_quarantined_task(task)
+                    if landed and landed.get("completed") is True:
+                        return {
+                            "resumed": True,
+                            "landed_outputs_completed": True,
+                            "portal_retryable_failure": False,
+                            "attempt_id": attempt.attempt_id,
+                            "task_alias": attempt.task_alias,
+                            "status": "completed",
+                            **landed,
+                        }
                 try:
                     return self._quarantine_neutral_portal_failure(
                         attempt,
                         exc,
                     )
-                except DatabaseCoordinationExpiredError:
+                except (
+                    DatabaseCoordinationExpiredError,
+                    TypedStateOwnerAuthorizationError,
+                    TypedStateOwnerRemoteError,
+                ):
                     task = self.task_source.get(attempt.task_cid)
                     if task is None:
                         raise

@@ -151,6 +151,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationConflictError,
+    DatabaseProviderCallbackOutcomeUnknownError,
     DatabaseImplementationCoordinationDriftError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
@@ -14766,6 +14767,44 @@ def test_resume_without_process_crash_completes_landed_missing_receipt() -> None
             "completed": True,
             "reason": "database_landed_merge_repair",
         },
+    )
+
+    result = DatabaseImplementationDaemon._resume_attempt_without_process_crash(
+        daemon,
+        attempt,
+    )
+    assert result["resumed"] is True
+    assert result["landed_outputs_completed"] is True
+    assert result["status"] == "completed"
+
+
+def test_resume_unknown_callback_completes_landed_outputs() -> None:
+    attempt = SimpleNamespace(
+        attempt_id="attempt:1",
+        task_cid="task:pcpr-001",
+        task_alias="PCPR-001",
+    )
+    task = SimpleNamespace(
+        task_cid="task:pcpr-001",
+        task_alias="PCPR-001",
+        status="in_progress",
+        revision=3,
+        body={"completion_receipt": {"operation": "database_attempt_admitted"}},
+    )
+    daemon = SimpleNamespace(
+        task_source=SimpleNamespace(get=lambda _cid: task),
+        resume_attempt=lambda _attempt: (_ for _ in ()).throw(
+            DatabaseProviderCallbackOutcomeUnknownError(failure_evidence={})
+        ),
+        _complete_landed_quarantined_task=lambda _task: {
+            "task_cid": "task:pcpr-001",
+            "task_alias": "PCPR-001",
+            "completed": True,
+            "reason": "database_landed_merge_repair",
+        },
+        _quarantine_neutral_portal_failure=lambda *_args, **_kwargs: (
+            (_ for _ in ()).throw(AssertionError("landed resume must not quarantine"))
+        ),
     )
 
     result = DatabaseImplementationDaemon._resume_attempt_without_process_crash(
