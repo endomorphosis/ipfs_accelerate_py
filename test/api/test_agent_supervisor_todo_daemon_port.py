@@ -9892,6 +9892,65 @@ def test_implementation_daemon_records_merged_root_submodule_gitlink(tmp_path):
     assert _git(repo, "status", "--porcelain") == ""
 
 
+def test_implementation_daemon_types_partial_gitlink_recording_without_crash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/auto-partial-gitlink")
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-PARTIAL: feature")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_merged_submodule_gitlinks",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "ok": False,
+            "committed": True,
+            "failures": [{"reason": "checkout_alignment_failed"}],
+        },
+    )
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-partial-gitlink",
+        PortalTask(
+            task_id="AUTO-PARTIAL",
+            title="Type partial gitlink publication",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+    )
+
+    assert result["merged"] is False
+    assert result["returncode"] == 2
+    assert result["reason"] == "submodule_gitlink_recording_failed"
+    assert result["merged_gitlink_recording"]["reason"] == (
+        "merged_gitlink_recording_commit_missing"
+    )
+
+
 def test_implementation_daemon_records_nested_gitlink_chain_and_preserves_local_dirt(
     tmp_path,
 ):

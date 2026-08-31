@@ -39388,11 +39388,13 @@ class PortalImplementationDaemon:
                 for event in events
                 if str(event.get("type") or "")
                 == "worktree_reconciliation_candidate_queued"
-                and (
-                    event_request_id(event) == request_id
-                    or source_projection_id(event)
-                    == source_provenance["source_projection_id"]
-                )
+                # A same-request transport failure envelope can legitimately
+                # precede callback reconciliation.  It is not the sealed
+                # semantic source.  Match only the content-addressed source
+                # projection so transport history cannot masquerade as, or
+                # conflict with, completion evidence.
+                and source_projection_id(event)
+                == source_provenance["source_projection_id"]
             ]
             if not local_projection_sources:
                 if any(
@@ -39574,11 +39576,11 @@ class PortalImplementationDaemon:
                     for event in events
                     if str(event.get("type") or "")
                     == "worktree_reconciliation_candidate_queued"
-                    and (
-                        event_request_id(event) == request_id
-                        or synchronous_projection_id(event)
-                        == synchronous_provenance["source_projection_id"]
-                    )
+                    # Transport failures and their semantic projection share
+                    # a request ID.  Only the sealed projection identity is
+                    # authoritative for callback reconciliation.
+                    and synchronous_projection_id(event)
+                    == synchronous_provenance["source_projection_id"]
                 ]
                 if not projected_sources:
                     if any(
@@ -65598,7 +65600,26 @@ class PortalImplementationDaemon:
                     task=task,
                 )
                 if merged_gitlink_recording.get("committed", False):
-                    merge_commit = str(merged_gitlink_recording["commit"])
+                    recorded_gitlink_commit = str(
+                        merged_gitlink_recording.get("commit") or ""
+                    )
+                    if re.fullmatch(
+                        r"[0-9a-f]{40}", recorded_gitlink_commit
+                    ):
+                        merge_commit = recorded_gitlink_commit
+                    else:
+                        # A nested gitlink chain can commit an inner parent and
+                        # then fail its outer checkout-alignment proof.  That
+                        # is a typed partial integration, not permission to
+                        # index a success-only field or crash the queue
+                        # callback after an observed Git effect.
+                        merged_gitlink_recording = {
+                            **merged_gitlink_recording,
+                            "ok": False,
+                            "reason": (
+                                "merged_gitlink_recording_commit_missing"
+                            ),
+                        }
                 if not merged_gitlink_recording.get("ok", True):
                     merge_returncode = 2
             elif removed_untracked:
