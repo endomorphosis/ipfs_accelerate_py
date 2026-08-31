@@ -108965,13 +108965,31 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "blocked retry recovery requires atomic queue/status authority"
             )
+        if landed_retrying_upgrade and not callable(guarded_queue_status):
+            raise DatabaseImplementationAuthorityError(
+                "landed retrying upgrade requires atomic queue/status authority"
+            )
         if callable(guarded_queue_status) and (
-            blocked_recovery or not callable(record_task_retry_cooldown)
+            blocked_recovery
+            or landed_retrying_upgrade
+            or not callable(record_task_retry_cooldown)
         ):
             if task_status == "retrying":
-                control_operations = (
+                control_operations = set(
                     _DATABASE_CONTROL_ATTEMPT_OPERATIONS_BY_STATUS["retrying"]
                 )
+                prior_operation = (
+                    prior_control_receipt.get("operation")
+                    if isinstance(prior_control_receipt, Mapping)
+                    else None
+                )
+                if (
+                    landed_retrying_upgrade
+                    and type(prior_operation) is str
+                    and prior_operation
+                ):
+                    control_operations.add(prior_operation)
+                control_operations = frozenset(control_operations)
             elif task_status == "in_progress":
                 control_operations = frozenset({"database_claim"})
             elif blocked_recovery:
@@ -108996,7 +109014,7 @@ class DatabaseImplementationDaemon:
             )
             transition_receipt = (
                 dict(control_receipt)
-                if task_status == "retrying"
+                if task_status == "retrying" and not landed_retrying_upgrade
                 else retry_control_receipt(
                     retry_not_before_ms=0,
                     queue_reused=False,
