@@ -20238,6 +20238,25 @@ class DatabasePortalExecutionBridge:
             and all(type(path) is str for path in active_paths)
             else ()
         )
+        incident_semantic_fields = (
+            "reason",
+            "task_id",
+            "attempt",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "workspace_path",
+            "protected_paths",
+            "mutations",
+            "shared_checkout_restored",
+        )
+        finished_violation = finished.get("protected_path_violation")
+        expected_finished_violation = {
+            field: incident.get(field) for field in incident_semantic_fields
+        }
+        mutation_violation = {
+            field: mutation_event.get(field)
+            for field in incident_semantic_fields
+        }
         if (
             active.get("schema") != "implementation-protected-path-active-v1"
             or active.get("task_id") != alias
@@ -20277,6 +20296,9 @@ class DatabasePortalExecutionBridge:
             != "implementation-protected-path-incident-v1"
             or incident.get("reason") != "implementation_protected_path_mutated"
             or incident.get("requires_operator_clearance") is not True
+            or type(incident.get("latched_at")) is not str
+            or not str(incident.get("latched_at") or "").strip()
+            or len(str(incident.get("latched_at") or "")) > 128
             or incident.get("shared_checkout_restored") is not False
             or incident.get("task_id") != alias
             or incident.get("attempt") != portal_attempt
@@ -20289,7 +20311,11 @@ class DatabasePortalExecutionBridge:
             or mutation_event.get("mutations") != mutations
             or mutation_event.get("protected_paths") != protected_paths
             or mutation_event.get("shared_checkout_restored") is not False
-            or finished.get("protected_path_violation") != incident
+            or not isinstance(finished_violation, Mapping)
+            or set(map(str, finished_violation))
+            != set(incident_semantic_fields)
+            or dict(finished_violation) != expected_finished_violation
+            or dict(finished_violation) != mutation_violation
         ):
             raise DatabasePortalBridgeError(
                 "trusted-setup replay protected-path evidence changed"

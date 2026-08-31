@@ -1054,6 +1054,7 @@ def _trusted_setup_replay_fixture(
         "schema": "implementation-protected-path-incident-v1",
         "reason": "implementation_protected_path_mutated",
         "requires_operator_clearance": True,
+        "latched_at": "2026-08-31T00:00:00+00:00",
         "shared_checkout_restored": False,
         "task_id": target.task_alias,
         "attempt": 1,
@@ -1281,7 +1282,20 @@ def _trusted_setup_replay_fixture(
             "provider_dispatched": False,
             "attempt_consumed": False,
             "validation_result": validation_result,
-            "protected_path_violation": incident,
+            "protected_path_violation": {
+                key: incident[key]
+                for key in (
+                    "reason",
+                    "task_id",
+                    "attempt",
+                    "canonical_task_key",
+                    "canonical_task_cid",
+                    "workspace_path",
+                    "protected_paths",
+                    "mutations",
+                    "shared_checkout_restored",
+                )
+            },
             "commit_result": {"committed": False},
             "merge_result": {"merged": False, "reason": "not_attempted"},
         },
