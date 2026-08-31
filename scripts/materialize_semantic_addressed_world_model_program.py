@@ -53298,34 +53298,49 @@ def _inspect_m30_generation_restart_rows(
     ):
         raise MigrationRequired("M30 live generation-28 identity differs")
     with source.intent._connection(write=False) as connection:
-        state_rows = connection.execute(
-            "SELECT server_id,store_id,database_uuid,process_birth_id,listen_uri,"
-            "extension_fingerprint,schema_revision,generation,started_at,"
-            "stopped_at,status,revision,extension_schema,extension_json "
-            "FROM state_servers "
-            "WHERE generation>=27 ORDER BY generation"
-        ).fetchall()
-        generation_rows = connection.execute(
-            "SELECT generation,schema_revision,fence_epoch,revision,"
-            "database_uuid,birth_id,created_at,extension_schema,extension_json FROM "
-            "store_generations WHERE generation>=27 ORDER BY generation"
-        ).fetchall()
-        credential_rows = connection.execute(
-            "SELECT credential_id,secret_handle,generation,purpose,created_at,"
-            "rotated_at,revoked_at,revision "
-            "FROM credentials WHERE generation>=27 ORDER BY generation"
-        ).fetchall()
-        epoch_rows = connection.execute(
-            "SELECT server_id,epoch,fence_epoch,started_at,ended_at FROM server_epochs "
-            "WHERE server_id=?",
-            [server_id],
-        ).fetchall()
-        capability_rows = connection.execute(
-            "SELECT snapshot_id,server_id,profile_id,duckdb_version,extension_name,"
-            "extension_fingerprint,status,observed_at,body_json FROM "
-            "capability_snapshots WHERE server_id=?",
-            [server_id],
-        ).fetchall()
+        state_rows = _positional_rows(
+            connection.execute(
+                "SELECT server_id,store_id,database_uuid,process_birth_id,listen_uri,"
+                "extension_fingerprint,schema_revision,generation,started_at,"
+                "stopped_at,status,revision,extension_schema,extension_json "
+                "FROM state_servers "
+                "WHERE generation>=27 ORDER BY generation"
+            ).fetchall(),
+            14,
+        )
+        generation_rows = _positional_rows(
+            connection.execute(
+                "SELECT generation,schema_revision,fence_epoch,revision,"
+                "database_uuid,birth_id,created_at,extension_schema,extension_json FROM "
+                "store_generations WHERE generation>=27 ORDER BY generation"
+            ).fetchall(),
+            9,
+        )
+        credential_rows = _positional_rows(
+            connection.execute(
+                "SELECT credential_id,secret_handle,generation,purpose,created_at,"
+                "rotated_at,revoked_at,revision "
+                "FROM credentials WHERE generation>=27 ORDER BY generation"
+            ).fetchall(),
+            8,
+        )
+        epoch_rows = _positional_rows(
+            connection.execute(
+                "SELECT server_id,epoch,fence_epoch,started_at,ended_at FROM "
+                "server_epochs WHERE server_id=?",
+                [server_id],
+            ).fetchall(),
+            5,
+        )
+        capability_rows = _positional_rows(
+            connection.execute(
+                "SELECT snapshot_id,server_id,profile_id,duckdb_version,extension_name,"
+                "extension_fingerprint,status,observed_at,body_json "
+                "FROM capability_snapshots WHERE server_id=?",
+                [server_id],
+            ).fetchall(),
+            9,
+        )
         counts = {
             table: int(
                 connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]

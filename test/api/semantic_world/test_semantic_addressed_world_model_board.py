@@ -4833,6 +4833,158 @@ def test_m30_restart_verifier_pins_full_lifecycle_rows() -> None:
         assert required in source
 
 
+def test_m30_restart_verifier_accepts_positional_duckdb_rows() -> None:
+    """The live Quack facade returns Mapping rows, not plain tuples."""
+
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m30_duckdb_row_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        DuckDBRow,
+    )
+
+    authority = (
+        materializer._expected_m30_stopped_owner_restart_source_seal_authority()
+    )
+    stopped = authority["stopped_owner"]
+    server_id = "server:m30-positional-row-test"
+    birth_id = "birth:m30-positional-row-test"
+    started_at = "2026-08-31T16:00:00Z"
+    startup_epoch = 1_788_192_000
+    fingerprint = materializer._M30_EXTENSION_FINGERPRINT
+    identity = {
+        "server_id": server_id,
+        "store_id": materializer._M30_STORE_ID,
+        "database_uuid": materializer._M30_DATABASE_UUID,
+        "process_birth_id": birth_id,
+        "listen_uri": "quack:127.0.0.1:24070",
+        "extension_fingerprint": fingerprint,
+        "schema_revision": 1,
+        "generation": 28,
+        "fence_epoch": 28,
+        "started_at": started_at,
+        "status": "ready",
+        "revision": 0,
+        "credential_generation": 28,
+        "startup_epoch": startup_epoch,
+    }
+    capability_body = json.dumps(
+        {
+            "status": "compatible",
+            "profile_id": "agent-supervisor-duckdb-quack-1.5",
+            "extension_fingerprint": fingerprint,
+        },
+        sort_keys=True,
+    )
+    rows = {
+        "state_servers": [
+            (
+                stopped["server_id"], stopped["store_id"],
+                stopped["database_uuid"], stopped["process_birth_id"],
+                stopped["listen_uri"], fingerprint, 1, 27,
+                stopped["started_at"], stopped["stopped_at"], "stopped", 2,
+                "", "{}",
+            ),
+            (
+                server_id, materializer._M30_STORE_ID,
+                materializer._M30_DATABASE_UUID, birth_id,
+                "quack:127.0.0.1:24070", fingerprint, 1, 28, started_at,
+                None, "ready", 1, "", "{}",
+            ),
+        ],
+        "store_generations": [
+            (
+                27, 1, 27, 0, materializer._M30_DATABASE_UUID,
+                materializer._M30_PRIOR_PROCESS_BIRTH_ID,
+                materializer._M30_PRIOR_STARTED_AT, "", "{}",
+            ),
+            (
+                28, 1, 28, 0, materializer._M30_DATABASE_UUID, birth_id,
+                started_at, "", "{}",
+            ),
+        ],
+        "credentials": [
+            (
+                f"cred:{materializer._M30_PRIOR_SERVER_ID}:27",
+                "env://SAWM_QUACK_TOKEN", 27, "quack-auth",
+                materializer._M30_PRIOR_STARTED_AT, None, None, 0,
+            ),
+            (
+                f"cred:{server_id}:28", "env://SAWM_QUACK_TOKEN", 28,
+                "quack-auth", started_at, None, None, 0,
+            ),
+        ],
+        "server_epochs": [(server_id, startup_epoch, 28, started_at, None)],
+        "capability_snapshots": [
+            (
+                f"cap:{server_id}:28", server_id,
+                "agent-supervisor-duckdb-quack-1.5", "1.5.5", "quack",
+                fingerprint, "compatible", started_at, capability_body,
+            )
+        ],
+    }
+
+    class Cursor:
+        def __init__(self, values: list[tuple[object, ...]]) -> None:
+            self.values = values
+
+        def fetchall(self) -> list[DuckDBRow]:
+            return [
+                DuckDBRow(
+                    (f"column_{index}" for index in range(len(value))), value
+                )
+                for value in self.values
+            ]
+
+        def fetchone(self) -> DuckDBRow | None:
+            values = self.fetchall()
+            return values[0] if values else None
+
+    class Connection:
+        def execute(
+            self, statement: str, parameters: object = None
+        ) -> Cursor:
+            del parameters
+            normalized = " ".join(statement.split())
+            if normalized.startswith("SELECT COUNT(*) FROM "):
+                return Cursor([(28,)])
+            for table, values in rows.items():
+                if f" FROM {table} " in f" {normalized} ":
+                    return Cursor(values)
+            raise AssertionError(f"unexpected statement: {normalized}")
+
+    @contextlib.contextmanager
+    def connection(*, write: bool = False) -> object:
+        assert write is False
+        yield Connection()
+
+    source = SimpleNamespace(
+        intent=SimpleNamespace(_connection=connection)
+    )
+    verified = materializer._inspect_m30_generation_restart_rows(
+        source, identity, authority
+    )
+    assert verified == {
+        "generation_27_28_restart_rows_verified": True,
+        "prior_owner_generation": 27,
+        "live_owner_generation": 28,
+        "live_server_id": server_id,
+        "live_process_birth_id": birth_id,
+        "live_started_at": started_at,
+    }
+    poisoned = list(rows["capability_snapshots"][0])
+    poisoned[6] = "incompatible"
+    rows["capability_snapshots"][0] = tuple(poisoned)
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M30 exact generation-27/28 restart rows differ",
+    ):
+        materializer._inspect_m30_generation_restart_rows(
+            source, identity, authority
+        )
+
+
 def test_m29_provider_environment_guard_rejects_quack_token_substrings(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
