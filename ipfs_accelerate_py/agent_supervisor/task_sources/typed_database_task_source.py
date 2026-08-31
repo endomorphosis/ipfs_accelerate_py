@@ -859,9 +859,10 @@ class TypedDatabaseTaskSource:
                 ):
                     continue
                 # A stale or missing cooldown must not fail-close the whole
-                # ready snapshot.  Unbound retrying rows stay unready until
-                # repair_retrying_cooldown_bindings rewrites the lease from
-                # the current control receipt.
+                # ready snapshot.  Missing leases stay unready until
+                # repair_retrying_cooldown_bindings rewrites them from the
+                # current control receipt.  An expired leftover lease stays
+                # selectable so landed work can claim instead of crash-looping.
                 return snapshot_row, records, revision, MappingProxyType(cooldowns)
         raise TaskSourceConflictError(
             "typed task/cooldown projection changed during bounded snapshot"
@@ -1489,7 +1490,7 @@ class TypedDatabaseTaskSource:
                 or record.status not in _READY_STATUSES
                 or (
                     record.status == "retrying"
-                    and not self._retrying_cooldown_is_current(record, cooldown)
+                    and cooldown is None
                 )
                 or int(
                     (cooldown or {}).get(

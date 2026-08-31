@@ -626,7 +626,7 @@ def _default_templates() -> dict[str, StatementTemplate]:
                 "release_reason = ?, retry_not_before_ms = ?, owner_session_id "
                 "= ?, fence_epoch = ?, revision = ?, extension_schema = ?, "
                 "extension_json = ? WHERE task_cid = ? AND revision = ? AND "
-                "attempt = ? AND attempt < ? AND extension_schema = ? RETURNING "
+                "attempt = ? AND attempt <= ? AND extension_schema = ? RETURNING "
                 "task_cid, claim_cid, resolution_cid, claimant_did, "
                 "logical_epoch, fencing_token, expires_at_ms, attempt, state, "
                 "started_at_ms, release_reason, retry_not_before_ms, "
@@ -3772,24 +3772,31 @@ class QuackStateClient:
                     prior_extension.get(name) != expected
                     for name, expected in replay_identity.items()
                 ):
-                    raise QuackClientError(
-                        "retry cooldown same-attempt replay identity differs"
-                    )
-                try:
-                    started_at_ms = int(prior_extension["started_at_ms"])
-                    retry_not_before_ms = int(
-                        prior_extension["retry_not_before_ms"]
-                    )
-                    expected_queue_revision = int(
-                        prior_extension["expected_queue_revision"]
-                    )
-                    expected_queue_attempt = int(
-                        prior_extension["expected_queue_attempt"]
-                    )
-                except (KeyError, TypeError, ValueError) as exc:
-                    raise QuackClientError(
-                        "retry cooldown replay receipt is malformed"
-                    ) from exc
+                    if expected_status != "retrying":
+                        raise QuackClientError(
+                            "retry cooldown same-attempt replay identity differs"
+                        )
+                    # Control already CAS'd a newer retrying receipt for this
+                    # attempt.  Rebound the leftover lease onto that receipt
+                    # instead of fail-closing the lane on revision lineage.
+                    expected_queue_revision = prior_revision
+                    expected_queue_attempt = prior_attempt
+                else:
+                    try:
+                        started_at_ms = int(prior_extension["started_at_ms"])
+                        retry_not_before_ms = int(
+                            prior_extension["retry_not_before_ms"]
+                        )
+                        expected_queue_revision = int(
+                            prior_extension["expected_queue_revision"]
+                        )
+                        expected_queue_attempt = int(
+                            prior_extension["expected_queue_attempt"]
+                        )
+                    except (KeyError, TypeError, ValueError) as exc:
+                        raise QuackClientError(
+                            "retry cooldown replay receipt is malformed"
+                        ) from exc
             elif prior_attempt < normalized_ints["attempt_number"]:
                 expected_queue_revision = prior_revision
                 expected_queue_attempt = prior_attempt

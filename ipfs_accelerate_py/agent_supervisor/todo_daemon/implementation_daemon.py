@@ -207,6 +207,7 @@ from ..task_sources.database_task_source import (
     TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION,
     typed_deferral_budget_supersession_matches,
 )
+from ..task_sources.quack_state_client import QuackClientError
 from ..task_sources.intent_repository import (
     TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
 )
@@ -108817,6 +108818,8 @@ class DatabaseImplementationDaemon:
                     "typed retry recovery found a foreign queue entry"
                 )
             queue_reused = existing_entry is not None
+            receipt_bound_cooldown = False
+            queue_receipt_dict: dict[str, Any] = {}
             if callable(record_task_retry_cooldown) and existing_entry is not None:
                 validate_retrying_cooldown = getattr(
                     self.task_source,
@@ -108827,27 +108830,14 @@ class DatabaseImplementationDaemon:
                     raise DatabaseImplementationAuthorityError(
                         "typed retry repair has no exact cooldown validator"
                     )
+                attempt_bound = False
                 admitted_delay_ms = (
                     prior_control_receipt.get("backoff_ms")
                     if isinstance(prior_control_receipt, Mapping)
                     else None
                 )
-                if (
-                    isinstance(admitted_delay_ms, bool)
-                    or not isinstance(admitted_delay_ms, int)
-                    or admitted_delay_ms < delay_ms
-                ):
-                    raise DatabaseImplementationAuthorityError(
-                        "retrying task has no reproducible admitted cooldown delay"
-                    )
-                admitted_delay_ms = (
-                    self._database_portal_capacity_backoff_ms(admitted_delay_ms)
-                    if capacity_retry_evidence is not None
-                    else self._database_portal_backoff_ms(admitted_delay_ms)
-                )
-                existing_entry = validate_retrying_cooldown(
-                    attempt.task_cid,
-                    expected_attempt_identity={
+                attempt_expected: dict[str, Any] = {
+                    "expected_attempt_identity": {
                         "attempt_id": attempt.attempt_id,
                         "claim_id": attempt.claim_id,
                         "lease_id": attempt.lease_id,
@@ -108856,20 +108846,73 @@ class DatabaseImplementationDaemon:
                         "fencing_token": int(attempt.fencing_token),
                         "fence_epoch": int(attempt.fence_epoch),
                     },
-                    expected_reason=queue_reason,
-                    # ``delay_ms`` is the remaining window reconstructed from
-                    # the failed phase and therefore shrinks on every replay.
-                    # The task receipt and typed cooldown instead seal the
-                    # immutable delay admitted by the original transition.
-                    expected_delay_ms=admitted_delay_ms,
-                )
-                queue_receipt_dict = {}
-            elif existing_entry is None:
-                queue_receipt = self._execute_with_retry_transition_authority(
-                    attempt,
-                    coordination_evidence,
-                    persist_retry_cooldown,
-                )
+                    "expected_reason": queue_reason,
+                }
+                if (
+                    not isinstance(admitted_delay_ms, bool)
+                    and isinstance(admitted_delay_ms, int)
+                    and admitted_delay_ms >= delay_ms
+                ):
+                    attempt_expected["expected_delay_ms"] = (
+                        self._database_portal_capacity_backoff_ms(
+                            admitted_delay_ms
+                        )
+                        if capacity_retry_evidence is not None
+                        else self._database_portal_backoff_ms(admitted_delay_ms)
+                    )
+                try:
+                    existing_entry = validate_retrying_cooldown(
+                        attempt.task_cid,
+                        **attempt_expected,
+                    )
+                    attempt_bound = True
+                    queue_receipt_dict = {}
+                except (
+                    TaskSourceIntegrityError,
+                    DatabaseTaskSourceIntegrityError,
+                ):
+                    attempt_bound = False
+                if not attempt_bound:
+                    try:
+                        existing_entry = validate_retrying_cooldown(
+                            attempt.task_cid
+                        )
+                        receipt_bound_cooldown = True
+                        queue_receipt_dict = {}
+                    except (
+                        TaskSourceIntegrityError,
+                        DatabaseTaskSourceIntegrityError,
+                    ):
+                        existing_entry = None
+                        queue_reused = False
+            if existing_entry is None:
+                try:
+                    queue_receipt = self._execute_with_retry_transition_authority(
+                        attempt,
+                        coordination_evidence,
+                        persist_retry_cooldown,
+                    )
+                except (
+                    TaskSourceIntegrityError,
+                    DatabaseTaskSourceIntegrityError,
+                    QuackClientError,
+                ) as exc:
+                    leftover = get_queue_entry(attempt.task_cid)
+                    return {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "retrying",
+                        "changed": False,
+                        "backoff_seconds": delay_seconds,
+                        "backoff_ms": delay_ms,
+                        "retry_not_before_ms": int(
+                            getattr(leftover, "retry_not_before_ms", 0) or 0
+                        ),
+                        "evidence_source": evidence_source,
+                        "queue_reused": leftover is not None,
+                        "queue_receipt": {},
+                        "reason": str(exc)[:300],
+                    }
                 existing_entry = get_queue_entry(attempt.task_cid)
                 if existing_entry is None:
                     raise DatabaseImplementationAuthorityError(
@@ -108877,9 +108920,7 @@ class DatabaseImplementationDaemon:
                     )
                 queue_receipt_dict = queue_receipt.to_dict()
                 queue_reused = not bool(queue_receipt.changed)
-            else:
-                queue_receipt_dict = {}
-            return {
+            outcome = {
                 "task_cid": attempt.task_cid,
                 "attempt_id": attempt.attempt_id,
                 "status": "retrying",
@@ -108893,6 +108934,9 @@ class DatabaseImplementationDaemon:
                 "queue_reused": queue_reused,
                 "queue_receipt": queue_receipt_dict,
             }
+            if receipt_bound_cooldown:
+                outcome["reason"] = "retrying_cooldown_bound_to_control_receipt"
+            return outcome
         if (
             task_status != "in_progress"
             and not blocked_recovery
@@ -118571,6 +118615,27 @@ class DatabaseImplementationDaemon:
         Persist its typed retry, deferral, or terminal disposition so restart
         reconciliation cannot spin on an incomplete in-progress projection.
         """
+
+        task = self.task_source.get(attempt.task_cid)
+        if task is not None:
+            try:
+                landed = self._complete_landed_quarantined_task(task)
+            except (
+                TypedStateOwnerAuthorizationError,
+                TypedStateOwnerRemoteError,
+                DatabaseImplementationAuthorityError,
+            ):
+                landed = None
+            if landed and landed.get("completed") is True:
+                return {
+                    "resumed": True,
+                    "landed_outputs_completed": True,
+                    "portal_retryable_failure": False,
+                    "attempt_id": attempt.attempt_id,
+                    "task_alias": attempt.task_alias,
+                    "status": "completed",
+                    **landed,
+                }
 
         try:
             return self.resume_attempt(attempt)

@@ -3082,7 +3082,7 @@ def _validated_stored_retry_cooldown(
         or (revision == 1 and expected_prior_attempt != 0)
         or (
             revision > 1
-            and not 1 <= expected_prior_attempt < attempt
+            and not 1 <= expected_prior_attempt <= attempt
         )
     ):
         raise TypedStateOwnerAuthorizationError(

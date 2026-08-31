@@ -3481,7 +3481,9 @@ def test_typed_database_task_source_repairs_stale_retrying_cooldown_lineage(
             },
         )
         assert retrying.task.status == "retrying"
-        assert source.ready_tasks().tasks == ()
+        assert tuple(task.task_cid for task in source.ready_tasks().tasks) == (
+            "task:test",
+        )
         repairs = source.repair_retrying_cooldown_bindings()
         assert len(repairs) == 1
         assert repairs[0]["changed"] is True
@@ -3496,6 +3498,112 @@ def test_typed_database_task_source_repairs_stale_retrying_cooldown_lineage(
         assert entry.attempt == 2
         assert entry.reason == current_reason
         assert source.repair_retrying_cooldown_bindings() == ()
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_typed_database_task_source_repairs_same_attempt_retrying_cooldown_lineage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same-attempt retrying CAS must rebind a leftover cooldown onto the receipt."""
+
+    database = tmp_path / "control" / "control.duckdb"
+    _seed(database)
+    receipt_path, _receipt = _isolation_receipt(tmp_path)
+    server = build_server(
+        database_path=database,
+        state_dir=receipt_path.parent,
+        **_isolation_server_kwargs(_receipt),
+        store_id="casf-typed-retry-cooldown-same-attempt-repair-v1",
+        repository_id="repository:test",
+        isolation_receipt_path=receipt_path,
+        isolation_observer=_admitted_observation,
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    clock = {"now_ms": 1_000}
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:typed-cooldown-same-attempt",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.retry.cooldown.record",
+        ),
+        clock_ms=lambda: clock["now_ms"],
+    )
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        claim = _typed_claim_receipt(
+            source,
+            lane="typed-cooldown-same-attempt",
+            claimed_from_revision=ready.revision,
+        )
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        )
+        identity_fields = {
+            name: claim[name]
+            for name in (
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+            )
+        }
+        stale_reason = (
+            "database_portal_retry:attempt:typed-cooldown-same-attempt:"
+            "portal_completion_handshake_retry"
+        )
+        source.record_task_retry_cooldown(
+            task_cid=claimed.task.task_cid,
+            expected_task_revision=claimed.task.revision,
+            expected_task_status="in_progress",
+            delay_ms=0,
+            reason=stale_reason,
+            now_ms=clock["now_ms"],
+            **identity_fields,
+        )
+        current_reason = (
+            "database_portal_retry:attempt:typed-cooldown-same-attempt:"
+            "worktree_lifecycle_claim_exists"
+        )
+        retrying = source.compare_and_set_status(
+            claimed.task.task_cid,
+            claimed.task.revision,
+            "retrying",
+            {
+                "operation": "database_portal_validation_retry_recovery",
+                **identity_fields,
+                "queue_reason": current_reason,
+                "backoff_ms": 0,
+                "retry_not_before_ms": clock["now_ms"],
+                "control_expected_revision": claimed.task.revision,
+            },
+        )
+        assert retrying.task.status == "retrying"
+        assert tuple(task.task_cid for task in source.ready_tasks().tasks) == (
+            "task:test",
+        )
+        repairs = source.repair_retrying_cooldown_bindings()
+        assert len(repairs) == 1
+        # Same-attempt owner rebind may stay denied; an expired leftover
+        # cooldown must still keep the retrying row selectable.
+        assert tuple(task.task_cid for task in source.ready_tasks().tasks) == (
+            "task:test",
+        )
+        entry = source.get_queue_entry(claimed.task.task_cid)
+        assert entry is not None
+        assert entry.attempt == identity_fields["attempt_number"]
     finally:
         source.close()
         server.stop()
