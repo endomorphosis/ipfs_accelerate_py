@@ -1237,3 +1237,76 @@ def test_reconnect_exclusive_owner_keeps_usable_handle(tmp_path: Path) -> None:
         assert int(probe[0]) == 1
     finally:
         owner.close()
+
+
+def test_process_mutations_skips_signed_owner_command_requests(
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+    mutation_dir = tmp_path / "mutations"
+    mutation_dir.mkdir()
+    request = mutation_dir / "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.request.json"
+    request.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "quack-owner-command-request@1"
+                ),
+                "command": "compare_and_set_status",
+                "sql": "DELETE FROM tasks",
+            }
+        ),
+        encoding="utf-8",
+    )
+    executed: list[object] = []
+    server = SimpleNamespace(
+        _connection=SimpleNamespace(
+            execute=lambda *args, **kwargs: executed.append(args)
+        ),
+        _owner_transaction_lock=threading.RLock(),
+    )
+    materializer._process_mutations(server, mutation_dir)
+    assert request.exists()
+    assert executed == []
+    assert not (mutation_dir / "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.done.json").exists()
+
+
+def test_process_mutations_applies_board_unstall_op(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    mutation_dir = tmp_path / "mutations"
+    mutation_dir.mkdir()
+    request = mutation_dir / "board.request.json"
+    request.write_text(
+        json.dumps({"op": "board_unstall", "stale_seconds": 16_200}),
+        encoding="utf-8",
+    )
+    applied: list[object] = []
+
+    def _apply(connection: object, payload: object, **_kwargs: object) -> dict[str, object]:
+        applied.append((connection, payload))
+        return {"ok": True, "rowcount": 1, "board_unstall": {"unstalled": []}}
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state."
+        "apply_owner_command_payload",
+        _apply,
+    )
+    connection = object()
+    server = SimpleNamespace(
+        _connection=connection,
+        _owner_transaction_lock=threading.RLock(),
+    )
+    materializer._process_mutations(server, mutation_dir)
+    assert applied == [
+        (connection, {"op": "board_unstall", "stale_seconds": 16_200})
+    ]
+    assert not request.exists()
+    done = json.loads(
+        (mutation_dir / "board.done.json").read_text(encoding="utf-8")
+    )
+    assert done["ok"] is True
+    assert done["rowcount"] == 1

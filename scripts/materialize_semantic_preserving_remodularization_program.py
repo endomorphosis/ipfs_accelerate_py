@@ -1785,6 +1785,11 @@ def _normalized_owner_dml(sql: str) -> str:
 
 def _process_mutations(server: Any, mutation_dir: Path) -> None:
     mutation_dir.mkdir(parents=True, exist_ok=True)
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
+        apply_owner_command_payload,
+    )
+
     for request in sorted(mutation_dir.glob("*.request.json")):
         done = request.with_name(request.name.replace(".request.json", ".done.json"))
         try:
@@ -1796,6 +1801,33 @@ def _process_mutations(server: Any, mutation_dir: Path) -> None:
                 continue
             if not isinstance(payload, Mapping):
                 raise OperatorError("mutation request must be an object")
+            # Signed owner-command envelopes are applied by
+            # process_mutation_inbox. Do not treat them as SQL and unlink.
+            if str(payload.get("schema") or "") == QUACK_OWNER_COMMAND_REQUEST_SCHEMA:
+                continue
+            owner_connection = getattr(server, "_connection", None)
+            if owner_connection is None:
+                raise OperatorError("state-owner connection is unavailable")
+            op = str(payload.get("op") or "").strip()
+            if op:
+                lock = getattr(server, "_owner_transaction_lock", None)
+                if lock is not None:
+                    with lock:
+                        result = apply_owner_command_payload(
+                            owner_connection,
+                            payload,
+                        )
+                else:
+                    result = apply_owner_command_payload(
+                        owner_connection,
+                        payload,
+                    )
+                _atomic_json(done, dict(result))
+                try:
+                    request.unlink()
+                except FileNotFoundError:
+                    pass
+                continue
             sql = str(payload.get("sql") or "")
             _normalized_owner_dml(sql)
             parameters = payload.get("parameters")
@@ -2052,6 +2084,12 @@ def _serve_state_owner(
                 child_returncode = child.poll()
                 if child_returncode is not None:
                     break
+            process_inbox = getattr(server, "process_mutation_inbox", None)
+            if callable(process_inbox):
+                try:
+                    process_inbox()
+                except Exception:
+                    pass
             _process_mutations(server, mutation_dir)
             now = time.monotonic()
             if now >= next_projection:
@@ -2066,6 +2104,12 @@ def _serve_state_owner(
                 pass
             deadline = time.monotonic() + 30.0
             while child.poll() is None and time.monotonic() < deadline:
+                process_inbox = getattr(server, "process_mutation_inbox", None)
+                if callable(process_inbox):
+                    try:
+                        process_inbox()
+                    except Exception:
+                        pass
                 _process_mutations(server, mutation_dir)
                 time.sleep(0.05)
             if child.poll() is None:

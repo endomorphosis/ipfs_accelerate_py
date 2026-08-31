@@ -8,7 +8,7 @@
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py": "acdb6dbe535176711cc0bba09b671755d14c9033d910f31c1bcf6af3a4eb74a2",
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py": "a47e4cfe10a6fd331249444c8f0f9c76507c10a3ce9174802e0f383ba9e0dcb3",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": "4953f0bc6c9f94c96d23a8d2df50298bf5233eaaa415814c9f56ba32acf67ed9",
-    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "c1054b5ec4c7976e9c895c8f2be3ce9fd3c1e5cf98d1d925e32ede26c125f4d7",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": "3a6bcfb51ad4d66ffc50e4abe652936b8bcc771407fd59dcd59b3779c94ef8d6",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": "bc597557408093c02116ac45ce53906f49f4e168948720893e95d591f12ee048",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/pre_implementation_kernel.py": "63b812cd94b259de48e98f3bcbc8ff5fe3cb8bd825ed311d38d5c4bee90cdc5d",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/pre_implementation_provider_gate.py": "7d8e0d7ffd53acdf0a08117970f9e837ec00dd8c8c3330a9f702bb5aaad71bee",
@@ -29,11 +29,11 @@
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/overlap_gap_matrix.json": "4c59e622a6497ad3538e20b23557b1acd37a6e14e78ba7de4dfc0321cce445d8",
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/repository_baseline.json": "6ef71a960844a5b49b13293de74b9ae8dc8c70e714beac4e1671f3c7ba61107a",
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/rollout_baseline.json": "b77373a0cefd1ea29058ed8a30cd1bb97be8bef6e420385629c5ff69fd5d3f39",
-    "scripts/materialize_semantic_preserving_remodularization_program.py": "947fafad9d538ff3ac3c8718496abdd0506f66f6b17fa749a9065304c1b0f03d",
+    "scripts/materialize_semantic_preserving_remodularization_program.py": "2e020495956ff70d7225c5be2645568a16502a141669e5c2833f7cf3700deb7c",
     "scripts/ops/agent_supervisor/semantic_preserving_remodularization.py": "e0e105751262e6e2958d27f371b44dde8ccad2ec6af5eea4808e90044d4fe6e7",
     "scripts/validate_semantic_preserving_remodularization_board.py": "2f6cbe622e97e207ac6c901ccf1e70244739214b25e710c244d9c5b2b7c8d00d",
     "scripts/validate_semantic_preserving_remodularization_dependencies.py": "d42033c1c2f51c1f9d208bba2ec8e4144cc6e4b8c8625d318ae789ec2496af23",
-    "test/api/semantic_refactoring/test_bootstrap_controls.py": "32be725da8331cb371b129ff557cff22b4444a1b7d41776f028af26539bff9a2"
+    "test/api/semantic_refactoring/test_bootstrap_controls.py": "0e1f8c9ba778b90631698a5c927ec2dd66f678f98d14a5389e99aa6ab35aa3bf"
   },
   "dependency_count": 109,
   "dependency_edges": [
@@ -491,7 +491,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:c7fca85bedf96fad52e893abcb627e0f8113235ca4be95dfba3831d504b141fe",
+  "seal_cid": "sha256:fdd5710e6fc53db17ad0336f7c6aef07b0c2f745438e4541a86611234df753e9",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",

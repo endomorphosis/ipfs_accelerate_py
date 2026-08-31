@@ -88635,7 +88635,16 @@ DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-pending-same-board-merge-consume@1"
 )
-_LANDED_MERGE_REPAIR_STATUSES = frozenset({"quarantined"})
+_LANDED_MERGE_REPAIR_STATUSES = frozenset(
+    {"quarantined", "in_progress", "claimed", "running"}
+)
+_OWNER_REPAIR_STATUS_OPERATIONS = frozenset(
+    {
+        "database_landed_merge_repair",
+        "requeue_unimplemented_stale_attempt",
+        "reopen_unimplemented_unknown_callback_quarantine",
+    }
+)
 DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-requalification-recovery@1"
@@ -97958,6 +97967,50 @@ class DatabaseImplementationDaemon:
             "virgin_task_transfer_claim_cursor": dict(cursor_raw),
         }
 
+    def _apply_owner_command_status_cas(
+        self,
+        task_cid: str,
+        *,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any],
+        expected_control_receipt: Mapping[str, Any] | None,
+        evidence_digests: Sequence[str] | None,
+    ) -> Any | None:
+        """Apply idle repair CAS on the exclusive owner, not the typed client.
+
+        Typed-client ``task.status.cas`` requires the live claim holder.
+        Landed-merge completion and unimplemented requeue run while idle, so
+        that path is ``authorization_denied``. Owner-command CAS is the
+        admitted writer for those repairs.
+        """
+
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+            quack_owner_command_dir,
+            submit_quack_owner_command,
+        )
+
+        if quack_owner_command_dir() is None:
+            return None
+        return submit_quack_owner_command(
+            QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+            {
+                "task_cid_or_alias": task_cid,
+                "expected_revision": int(expected_revision),
+                "status": new_status,
+                "receipt": dict(receipt),
+                "expected_control_receipt": (
+                    dict(expected_control_receipt)
+                    if expected_control_receipt is not None
+                    else None
+                ),
+                "evidence_digests": (
+                    list(evidence_digests) if evidence_digests is not None else None
+                ),
+            },
+        )
+
     def _cas_task_status_database(
         self,
         task_cid: str,
@@ -99156,6 +99209,20 @@ class DatabaseImplementationDaemon:
                         ),
                     }
                 )
+        if (
+            str(receipt_payload.get("operation") or "")
+            in _OWNER_REPAIR_STATUS_OPERATIONS
+        ):
+            owner_applied = self._apply_owner_command_status_cas(
+                task_cid,
+                expected_revision=int(expected_revision),
+                new_status=new_status,
+                receipt=receipt_payload,
+                expected_control_receipt=expected_control_receipt,
+                evidence_digests=evidence_digests,
+            )
+            if owner_applied is not None:
+                return owner_applied
         try:
             return cas(
                 task_cid,
@@ -99764,6 +99831,56 @@ class DatabaseImplementationDaemon:
                 "task source returned a malformed board unstall receipt"
             )
         return [item for item in unstalled if isinstance(item, Mapping)]
+
+    def reconcile_orphaned_in_progress_gates(self) -> list[dict[str, Any]]:
+        """Requeue in_progress control rows that have no live attempt.
+
+        Lane-local leases can expire while ``tasks.status`` stays
+        ``in_progress``.  Those rows freeze ``claim_next`` for the shard
+        (SPAR-018 blocked SPAR-036).  If declared outputs already landed,
+        complete; otherwise return the row to ``todo``.
+        """
+
+        if self.repo_root is None:
+            return []
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        try:
+            live_cids = {
+                str(getattr(attempt, "task_cid", "") or "")
+                for attempt in self.list_running_attempts()
+            }
+        except Exception as exc:
+            if _is_quack_attach_error(exc):
+                return []
+            raise
+        page = list_tasks(status="in_progress", limit=TASK_SOURCE_QUERY_LIMIT)
+        outcomes: list[dict[str, Any]] = []
+        for task in tuple(getattr(page, "tasks", ()) or ()):
+            cid = str(getattr(task, "task_cid", "") or "")
+            if not cid or cid in live_cids:
+                continue
+            try:
+                if self._task_outputs_landed_on_target(task):
+                    outcome = self._complete_landed_quarantined_task(task)
+                    if outcome is not None:
+                        outcomes.append(outcome)
+                    continue
+                requeued = self._requeue_unimplemented_control_task(task)
+            except Exception as exc:
+                outcomes.append(
+                    {
+                        "task_cid": cid,
+                        "requeued": False,
+                        "completed": False,
+                        "reason": str(exc),
+                    }
+                )
+                continue
+            if requeued is not None:
+                outcomes.append(requeued)
+        return outcomes
 
     def reconcile_inflight_deferral_blocks(self) -> list[dict[str, Any]]:
         """Retry gates blocked only by process-death / attach deferral caps.
@@ -121119,6 +121236,9 @@ class DatabaseImplementationDaemon:
         stale_in_progress_unstalls = self._run_reconciliation_step(
             self.reconcile_stale_in_progress_gates
         )
+        orphaned_in_progress_requeues = self._run_reconciliation_step(
+            self.reconcile_orphaned_in_progress_gates
+        )
         protected_path_recovery_reconciliations = self._run_reconciliation_step(
             self.reconcile_blocked_protected_path_recoveries
         )
@@ -121194,6 +121314,7 @@ class DatabaseImplementationDaemon:
                 if item.get("changed") is True
             )
             + len(stale_in_progress_unstalls)
+            + len(orphaned_in_progress_requeues)
             + sum(
                 1
                 for item in inflight_deferral_unstalls
@@ -121316,6 +121437,7 @@ class DatabaseImplementationDaemon:
                         pooled_worktree_create_recovery_reconciliations
                     ),
                     "stale_in_progress_unstalls": stale_in_progress_unstalls,
+                    "orphaned_in_progress_requeues": orphaned_in_progress_requeues,
                     "inflight_deferral_unstalls": inflight_deferral_unstalls,
                     "declared_output_rearm": output_rearm,
                     "merge_quarantine_settlement": merge_quarantine_settlement,
@@ -121372,6 +121494,7 @@ class DatabaseImplementationDaemon:
                     pooled_worktree_create_recovery_reconciliations
                 ),
                 "stale_in_progress_unstalls": stale_in_progress_unstalls,
+                "orphaned_in_progress_requeues": orphaned_in_progress_requeues,
                 "inflight_deferral_unstalls": inflight_deferral_unstalls,
                 "declared_output_rearm": output_rearm,
                 "merge_quarantine_settlement": merge_quarantine_settlement,
@@ -121418,6 +121541,7 @@ class DatabaseImplementationDaemon:
                 pooled_worktree_create_recovery_reconciliations
             ),
             "stale_in_progress_unstalls": stale_in_progress_unstalls,
+            "orphaned_in_progress_requeues": orphaned_in_progress_requeues,
             "inflight_deferral_unstalls": inflight_deferral_unstalls,
             "declared_output_rearm": output_rearm,
             "merge_quarantine_settlement": merge_quarantine_settlement,

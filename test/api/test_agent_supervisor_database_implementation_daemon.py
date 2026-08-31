@@ -2748,6 +2748,36 @@ def test_landed_quarantined_task_with_outputs_is_completed(
         daemon.close()
 
 
+def test_orphaned_in_progress_without_attempt_is_requeued(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "missing_facade.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "in_progress",
+            receipt={"operation": "database_claim"},
+        )
+        result = daemon.run_once()
+        requeued = result.get("orphaned_in_progress_requeues") or []
+        assert requeued
+        assert requeued[0]["requeued"] is True
+        current = daemon.task_source.get("task:cid:001")
+        assert current is not None
+        assert current.status in {"todo", "in_progress", "retrying", "completed"}
+    finally:
+        daemon.close()
+
+
 def test_declared_output_paths_split_database_body_csv_fields() -> None:
     task = SimpleNamespace(
         outputs=(),
