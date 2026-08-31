@@ -452,6 +452,36 @@ _PORTAL_EVENT_ENVELOPE_FIELDS: Final[frozenset[str]] = frozenset(
         "type",
     }
 )
+_CALLBACK_REQUALIFICATION_SETUP_AUDIT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "offline-nested-submodule-skip@1"
+)
+_CALLBACK_REQUALIFICATION_SETUP_AUDIT_TYPE: Final[str] = (
+    "offline_nested_submodule_initialization_skipped"
+)
+_CALLBACK_REQUALIFICATION_SETUP_AUDIT_MAX_PARENTS: Final[int] = 64
+_CALLBACK_REQUALIFICATION_SETUP_AUDIT_MAX_DECLARED_PATHS: Final[int] = 32
+_CALLBACK_REQUALIFICATION_SETUP_AUDIT_FIELDS: Final[frozenset[str]] = (
+    _PORTAL_EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "declared_submodule_count",
+            "declared_submodule_manifest_sha256",
+            "declared_submodule_paths",
+            "declared_submodule_paths_omitted",
+            "fallback_used",
+            "fetch_attempted",
+            "max_recorded_paths",
+            "nested_creator_invoked",
+            "nested_discovery_invoked",
+            "offline_local_only",
+            "parent_relative",
+            "reason",
+            "recursive_initialization_attempted",
+            "schema",
+        }
+    )
+)
 _CONSUMED_ATTEMPT_TERMINAL_EVENT_FIELDS: Final[
     Mapping[str, frozenset[str]]
 ] = {
@@ -6648,6 +6678,130 @@ class DatabasePortalExecutionBridge:
             current_tree=current_tree,
         )
 
+    def _exact_callback_requalification_setup_audit_suffix(
+        self,
+        events: Sequence[Mapping[str, Any]],
+        *,
+        previous_event: Mapping[str, Any],
+    ) -> bool:
+        """Admit only a bounded no-effect validation setup audit suffix.
+
+        Callback requalification historically reused the attempt Portal while
+        preparing an offline detached validation worktree.  That Portal
+        appended one diagnostic per configured top-level submodule after the
+        semantic callback status event.  Those records carry no task, queue,
+        provider, checkout, or database authority, but treating their physical
+        presence as a new semantic callback event made the validated source
+        unreplayable.  Preserve the append-only stream while closing this
+        exception to the exact diagnostic schema and configured path order.
+        """
+
+        suffix = list(events)
+        if not suffix:
+            return True
+        configured_audit_parents = getattr(
+            self,
+            "_callback_requalification_setup_audit_paths",
+            None,
+        )
+        expected_parents = tuple(
+            (
+                getattr(self, "worktree_submodule_paths", ())
+                if configured_audit_parents is None
+                else configured_audit_parents
+            )
+            or ()
+        )
+        if (
+            not expected_parents
+            or len(expected_parents)
+            > _CALLBACK_REQUALIFICATION_SETUP_AUDIT_MAX_PARENTS
+            or len(suffix) > len(expected_parents)
+        ):
+            return False
+        try:
+            canonical_parents = tuple(
+                _safe_repository_path(path) for path in expected_parents
+            )
+        except DatabasePortalBridgeError:
+            return False
+        if len(set(canonical_parents)) != len(canonical_parents):
+            return False
+
+        prior = previous_event
+        for index, event in enumerate(suffix):
+            declared = event.get("declared_submodule_paths")
+            declared_count = event.get("declared_submodule_count")
+            omitted_count = event.get("declared_submodule_paths_omitted")
+            max_recorded = event.get("max_recorded_paths")
+            sequence = event.get("sequence")
+            prior_sequence = prior.get("sequence")
+            if (
+                set(event) != _CALLBACK_REQUALIFICATION_SETUP_AUDIT_FIELDS
+                or event.get("type")
+                != _CALLBACK_REQUALIFICATION_SETUP_AUDIT_TYPE
+                or event.get("schema")
+                != _CALLBACK_REQUALIFICATION_SETUP_AUDIT_SCHEMA
+                or event.get("reason")
+                != "explicit_authority_dependencies_only"
+                or event.get("parent_relative") != canonical_parents[index]
+                or event.get("offline_local_only") is not True
+                or event.get("nested_creator_invoked") is not False
+                or event.get("nested_discovery_invoked") is not False
+                or event.get("recursive_initialization_attempted") is not False
+                or event.get("fetch_attempted") is not False
+                or event.get("fallback_used") is not False
+                or type(declared_count) is not int
+                or type(omitted_count) is not int
+                or type(max_recorded) is not int
+                or declared_count < 0
+                or omitted_count != 0
+                or max_recorded
+                != _CALLBACK_REQUALIFICATION_SETUP_AUDIT_MAX_DECLARED_PATHS
+                or not isinstance(declared, list)
+                or declared_count != len(declared)
+                or len(declared) > max_recorded
+                or any(type(path) is not str for path in declared)
+                or len(set(declared)) != len(declared)
+                or declared != sorted(declared)
+                or re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(event.get("declared_submodule_manifest_sha256") or ""),
+                )
+                is None
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(event.get("event_id") or ""),
+                )
+                is None
+                or event.get("previous_event_id") != prior.get("event_id")
+                or type(sequence) is not int
+                or type(prior_sequence) is not int
+                or sequence != prior_sequence + 1
+                or event.get("stream_id") != prior.get("stream_id")
+                or event.get("snapshot_id") != prior.get("snapshot_id")
+                or not isinstance(event.get("timestamp"), str)
+                or not event.get("timestamp")
+            ):
+                return False
+            try:
+                canonical_declared = [
+                    _safe_repository_path(path) for path in declared
+                ]
+            except DatabasePortalBridgeError:
+                return False
+            manifest = json.dumps(
+                canonical_declared,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            if event.get("declared_submodule_manifest_sha256") != (
+                hashlib.sha256(manifest).hexdigest()
+            ):
+                return False
+            prior = event
+        return True
+
     def _reconciled_callback_transport_source_evidence(
         self,
         request: Any,
@@ -7160,7 +7314,10 @@ class DatabasePortalExecutionBridge:
             < projected_index
             < reconciliation_index
             < status_index
-            or status_index != len(events) - 1
+            or not self._exact_callback_requalification_setup_audit_suffix(
+                events[status_index + 1 :],
+                previous_event=status_event,
+            )
             or reconciliation_receipt.get("event_id")
             != reconciliation.get("event_id")
             or not provenance_body
@@ -9757,6 +9914,11 @@ class DatabasePortalExecutionBridge:
                 "_initialize_worktree_submodules",
                 None,
             )
+            validation_event_sink = getattr(
+                portal,
+                "_scoped_validation_event_sink",
+                None,
+            )
             cleanup_submodules = getattr(
                 portal,
                 "_cleanup_worktree_submodules",
@@ -9777,6 +9939,7 @@ class DatabasePortalExecutionBridge:
                     callback_submodule_paths
                     and (
                         not callable(initialize_submodules)
+                        or not callable(validation_event_sink)
                         or not callable(cleanup_submodules)
                     )
                 )
@@ -10028,14 +10191,20 @@ class DatabasePortalExecutionBridge:
                         # Detached superproject worktrees leave gitlinks empty.
                         # Reuse only exact objects already available from the
                         # configured sibling checkouts; recovery may not fetch.
+                        setup_audit_path = (
+                            root
+                            / "validation-events"
+                            / f"{path.stem}.jsonl"
+                        )
                         try:
-                            initialize_submodules(
-                                temporary,
-                                branch_name="",
-                                offline_local_only=True,
-                                task=loaded_task,
-                                submodule_paths=callback_submodule_paths,
-                            )
+                            with validation_event_sink(setup_audit_path):
+                                initialize_submodules(
+                                    temporary,
+                                    branch_name="",
+                                    offline_local_only=True,
+                                    task=loaded_task,
+                                    submodule_paths=callback_submodule_paths,
+                                )
                         except (OSError, RuntimeError, ValueError) as exc:
                             result["reason"] = (
                                 "callback_submodule_initialization_failed"
@@ -10616,6 +10785,20 @@ class DatabasePortalExecutionBridge:
             return qualification
         if qualification is None:
             return None
+        reproduced_source = self._callback_integration_source_evidence(
+            request,
+            projection,
+            train=train,
+        )
+        if reproduced_source is None or dict(reproduced_source) != dict(source):
+            self._record_post_merge_recovery_stage(
+                "callback_integration_source_replay_rejected",
+                request=request,
+                reason_code="source_authority_changed_during_requalification",
+                rejection_sink=rejection_sink,
+            )
+            return None
+        source = reproduced_source
         binding = projection.binding
         evidence: dict[str, Any] = {
             "schema": _DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA,
@@ -23478,11 +23661,13 @@ class DatabasePortalExecutionBridge:
         """Verify the only event suffix an interrupted callback may leave.
 
         An empty suffix means the queue consumer had not yet invoked the
-        callback.  Once callback effects exist, the suffix is closed to the
-        ordinary synchronous projection, its exact reconciliation, and the
-        exact status projection emitted from the callback's returned
-        ``todo_update_result``.  The tuple reports ``(valid, suffix_length)``
-        so receipt authority is required only after the full suffix exists.
+        callback.  Once callback effects exist, the semantic suffix is closed
+        to the ordinary synchronous projection, its exact reconciliation, and
+        the exact status projection emitted from the callback's returned
+        ``todo_update_result``.  A bounded exact no-effect setup-audit tail may
+        follow that status record.  The tuple reports the *semantic*
+        ``(valid, suffix_length)`` so receipt authority is required only after
+        the three authoritative callback records exist.
         """
 
         from ..proof.formal_verification_contracts import content_identity
@@ -23492,7 +23677,21 @@ class DatabasePortalExecutionBridge:
         suffix = list(events[transport_index + 1 :])
         if not suffix:
             return True, 0
-        if len(suffix) > 3:
+        configured_audit_parents = getattr(
+            self,
+            "_callback_requalification_setup_audit_paths",
+            None,
+        )
+        audit_parents = (
+            getattr(self, "worktree_submodule_paths", ())
+            if configured_audit_parents is None
+            else configured_audit_parents
+        )
+        max_audit_events = min(
+            len(tuple(audit_parents or ())),
+            _CALLBACK_REQUALIFICATION_SETUP_AUDIT_MAX_PARENTS,
+        )
+        if len(suffix) > 3 + max_audit_events:
             return False, len(suffix)
         source = suffix[0]
         reconciliation = suffix[1] if len(suffix) >= 2 else None
@@ -23707,31 +23906,36 @@ class DatabasePortalExecutionBridge:
             "updated_checkbox_task_ids",
             "updated_task_ids",
         }
-        return (
-            bool(
-                status_event.get("type") == "todo_status_updated"
-                and status_event.get("previous_event_id")
-                == reconciliation.get("event_id")
-                and set(status_payload) == status_fields
-                and status_payload.get("updated") is True
-                and status_payload.get("task_id") == alias
-                and status_payload.get("completion_reason") == "single_task"
-                and status_payload.get("updated_task_ids") == [alias]
-                and status_payload.get("already_completed_task_ids") == []
-                and status_payload.get("inserted_status_task_ids") == []
-                and status_payload.get("missing_status_task_ids") == []
-                and status_payload.get("missing_task_ids") == []
-                and status_payload.get("updated_checkbox_task_ids") == []
-                and isinstance(status_payload.get("commit_result"), Mapping)
-                and status_payload.get("completion_receipts")
-                == completion_receipts
-                and (
-                    expected_todo is None
-                    or status_payload == dict(expected_todo)
-                )
-            ),
-            3,
+        status_valid = bool(
+            status_event.get("type") == "todo_status_updated"
+            and status_event.get("previous_event_id")
+            == reconciliation.get("event_id")
+            and set(status_payload) == status_fields
+            and status_payload.get("updated") is True
+            and status_payload.get("task_id") == alias
+            and status_payload.get("completion_reason") == "single_task"
+            and status_payload.get("updated_task_ids") == [alias]
+            and status_payload.get("already_completed_task_ids") == []
+            and status_payload.get("inserted_status_task_ids") == []
+            and status_payload.get("missing_status_task_ids") == []
+            and status_payload.get("missing_task_ids") == []
+            and status_payload.get("updated_checkbox_task_ids") == []
+            and isinstance(status_payload.get("commit_result"), Mapping)
+            and status_payload.get("completion_receipts")
+            == completion_receipts
+            and (
+                expected_todo is None
+                or status_payload == dict(expected_todo)
+            )
         )
+        audit_valid = bool(
+            status_valid
+            and self._exact_callback_requalification_setup_audit_suffix(
+                suffix[3:],
+                previous_event=status_event,
+            )
+        )
+        return audit_valid, 3
 
     def _settle_exact_callback_reconciliation_transport(
         self,

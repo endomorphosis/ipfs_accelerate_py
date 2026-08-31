@@ -25,11 +25,21 @@ import tempfile
 import threading
 import time
 import zlib
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType, SimpleNamespace
-from typing import Any, Callable, ClassVar, Iterable, Mapping, Sequence, TextIO
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+    TextIO,
+)
 from urllib.parse import unquote, urlsplit
 
 from ...llm_router import (
@@ -85852,6 +85862,47 @@ class PortalImplementationDaemon:
         projected["workspace_setup"] = setup
         return projected
 
+    @contextmanager
+    def _scoped_validation_event_sink(
+        self,
+        events_path: Path | str,
+    ) -> Iterator[None]:
+        """Route validation-only diagnostics away from source authority.
+
+        A callback requalification Portal is a read-only verifier of an
+        already-sealed attempt stream.  Its detached-worktree setup may still
+        emit useful diagnostics, but those records must not extend and thereby
+        invalidate the historical source lineage being verified.  The caller
+        supplies a durable attempt-local sink and this dedicated Portal
+        instance restores its ordinary event path before returning.
+        """
+
+        original = Path(self.events_path).absolute()
+        selected = Path(events_path).absolute()
+        try:
+            if selected.resolve(strict=False) == original.resolve(strict=False):
+                raise ValueError(
+                    "validation event sink must differ from source event path"
+                )
+        except OSError as exc:
+            raise ValueError("validation event sink is not resolvable") from exc
+        if selected.is_symlink() or (
+            selected.exists() and not selected.is_file()
+        ):
+            raise ValueError("validation event sink is not a regular file")
+        selected.parent.mkdir(parents=True, exist_ok=True)
+        if selected.parent.is_symlink() or not selected.parent.is_dir():
+            raise ValueError("validation event sink parent is unsafe")
+
+        original_value = self.events_path
+        self.events_path = selected
+        self._invalidate_event_cache()
+        try:
+            yield
+        finally:
+            self.events_path = original_value
+            self._invalidate_event_cache()
+
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
         bounded_payload = self._project_dependency_preflights_for_event(
             payload
@@ -111910,6 +111961,7 @@ class DatabaseImplementationDaemon:
                 DatabasePortalBridgeError,
                 DatabasePortalExecutionBridge,
                 _DatabasePortalRecoveryProjection,
+                _CALLBACK_REQUALIFICATION_SETUP_AUDIT_MAX_PARENTS,
                 _safe_repository_path,
                 verify_database_portal_attempt_projection,
             )
@@ -112174,6 +112226,24 @@ class DatabaseImplementationDaemon:
             safe_submodule_paths = tuple(
                 _safe_repository_path(path) for path in changed_submodule_paths
             )
+            configured_audit_paths = tuple(
+                getattr(self, "worktree_submodule_paths", ()) or ()
+            )
+            if (
+                len(configured_audit_paths)
+                > _CALLBACK_REQUALIFICATION_SETUP_AUDIT_MAX_PARENTS
+                or any(type(path) is not str for path in configured_audit_paths)
+            ):
+                raise DatabasePortalBridgeError(
+                    "callback recovery setup-audit scope is invalid"
+                )
+            safe_audit_paths = tuple(
+                _safe_repository_path(path) for path in configured_audit_paths
+            )
+            if len(set(safe_audit_paths)) != len(safe_audit_paths):
+                raise DatabasePortalBridgeError(
+                    "callback recovery setup-audit scope is duplicated"
+                )
             verifier.repository_root = repo
             verifier.merge_queue = queue
             verifier.merge_target_branch = branch
@@ -112181,6 +112251,13 @@ class DatabaseImplementationDaemon:
             # every member to the exact candidate/target Gitlinks and the
             # callback's admitted handoff proof before it can qualify bytes.
             verifier.worktree_submodule_paths = safe_submodule_paths
+            # Validation setup diagnostics were emitted for the producer's
+            # complete configured sibling scope, which is intentionally
+            # distinct from the changed-path mutation allowlist above.  This
+            # scope can recognize only the closed no-effect audit suffix.
+            verifier._callback_requalification_setup_audit_paths = (
+                safe_audit_paths
+            )
             projection = _DatabasePortalRecoveryProjection(
                 paths=paths,
                 binding=binding,

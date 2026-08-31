@@ -6,6 +6,7 @@ import hashlib
 import json
 import subprocess
 import threading
+from contextlib import contextmanager
 from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -14149,6 +14150,69 @@ def test_callback_integration_authority_reloads_float_receipt_and_git(
     assert parsed["finished_at"] == 1787658878.9458497
 
 
+def test_callback_integration_authority_separates_changed_and_audit_scopes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, qualification, evidence, _train_path, _repo = (
+        _callback_integration_authority_fixture(tmp_path)
+    )
+    request = daemon._merge_queue.get(str(qualification["request_id"]))
+    assert request is not None
+    changed_path = "external/ipfs_datasets"
+    audit_paths = (
+        "external/ipfs_accelerate",
+        changed_path,
+        "external/ipfs_kit",
+    )
+    request.metadata["changed_submodule_paths"] = [changed_path]
+    request.file_path.write_text(
+        json.dumps(request.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    daemon.worktree_submodule_paths = audit_paths
+    observed: dict[str, tuple[str, ...]] = {}
+
+    def source_authority(
+        verifier: DatabasePortalExecutionBridge,
+        _request: object,
+        _projection: object,
+        *,
+        train: object,
+    ) -> dict[str, object]:
+        assert train is not None
+        observed["changed"] = verifier.worktree_submodule_paths
+        observed["audit"] = (
+            verifier._callback_requalification_setup_audit_paths
+        )
+        return {
+            "current_target_commit": qualification["current_target_commit"],
+            "current_target_tree": qualification["current_target_tree"],
+        }
+
+    monkeypatch.setattr(
+        DatabasePortalExecutionBridge,
+        "_callback_integration_source_evidence",
+        source_authority,
+    )
+
+    verified = (
+        daemon._verified_post_merge_callback_integration_source_authority(
+            qualification,
+            evidence,
+        )
+    )
+
+    assert verified == {
+        "current_target_commit": qualification["current_target_commit"],
+        "current_target_tree": qualification["current_target_tree"],
+    }
+    assert observed == {
+        "changed": (changed_path,),
+        "audit": audit_paths,
+    }
+
+
 @pytest.mark.parametrize(
     "tamper",
     [
@@ -15790,6 +15854,15 @@ def _run_vrif_callback_hygiene_requalification(
                 submodule_calls.append(("initialize", expected))
 
         @staticmethod
+        @contextmanager
+        def _scoped_validation_event_sink(events_path: Path) -> object:
+            assert events_path.parent.name == "validation-events"
+            assert events_path.suffix == ".jsonl"
+            if submodule_calls is not None:
+                submodule_calls.append(("event-sink", str(events_path)))
+            yield
+
+        @staticmethod
         def _cleanup_worktree_submodules(
             worktree: Path,
             branch_name: str,
@@ -16067,7 +16140,11 @@ def test_callback_requalification_initializes_exact_gitlinked_validation_repo(
 
     assert receipt is not None, submodule_calls
     assert receipt["validation"][0]["passed"] is True
-    assert [item[0] for item in submodule_calls] == ["initialize", "cleanup"]
+    assert [item[0] for item in submodule_calls] == [
+        "event-sink",
+        "initialize",
+        "cleanup",
+    ]
     expected_gitlink = subprocess.run(
         ["git", "rev-parse", "HEAD:validation-child"],
         cwd=repo,
@@ -16075,8 +16152,8 @@ def test_callback_requalification_initializes_exact_gitlinked_validation_repo(
         check=True,
         text=True,
     ).stdout.strip()
-    assert submodule_calls[0] == ("initialize", expected_gitlink)
-    assert submodule_calls[1] == ("cleanup", "0")
+    assert submodule_calls[1] == ("initialize", expected_gitlink)
+    assert submodule_calls[2] == ("cleanup", "0")
     assert cleanup_statuses == [b" D validation-child\x00"]
 
 
@@ -17989,6 +18066,52 @@ def _exact_callback_reconciliation_suffix_fixture(
     return [source, reconciliation, status], todo
 
 
+def _callback_requalification_setup_audit_suffix_fixture(
+    previous_event: dict[str, object],
+    parent_paths: tuple[str, ...],
+) -> list[dict[str, object]]:
+    events: list[dict[str, object]] = []
+    prior = previous_event
+    for offset, parent in enumerate(parent_paths, start=1):
+        declared = [f"nested/dependency-{offset}"]
+        manifest = json.dumps(
+            declared,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        event = {
+            "type": "offline_nested_submodule_initialization_skipped",
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "offline-nested-submodule-skip@1"
+            ),
+            "reason": "explicit_authority_dependencies_only",
+            "parent_relative": parent,
+            "declared_submodule_count": len(declared),
+            "declared_submodule_paths": declared,
+            "declared_submodule_paths_omitted": 0,
+            "declared_submodule_manifest_sha256": hashlib.sha256(
+                manifest
+            ).hexdigest(),
+            "max_recorded_paths": 32,
+            "offline_local_only": True,
+            "nested_creator_invoked": False,
+            "nested_discovery_invoked": False,
+            "recursive_initialization_attempted": False,
+            "fetch_attempted": False,
+            "fallback_used": False,
+            "timestamp": f"2026-08-31T00:00:0{offset + 2}+00:00",
+            "stream_id": prior["stream_id"],
+            "snapshot_id": prior["snapshot_id"],
+            "sequence": int(prior["sequence"]) + 1,
+            "previous_event_id": prior["event_id"],
+            "event_id": "sha256:" + str(offset + 5) * 64,
+        }
+        events.append(event)
+        prior = event
+    return events
+
+
 def test_exact_callback_reconciliation_transport_is_closed_and_replayable() -> None:
     bridge, events, request, binding = (
         _exact_callback_reconciliation_transport_fixture()
@@ -18150,6 +18273,96 @@ def test_exact_callback_reconciliation_transport_accepts_only_closed_crash_prefi
         request=pending,
         binding=binding,
         expected_todo=todo if suffix_length == 3 else None,
+    )[0]
+
+
+def test_exact_callback_transport_admits_only_closed_setup_audit_tail() -> None:
+    bridge, events, request, binding = (
+        _exact_callback_reconciliation_transport_fixture()
+    )
+    semantic, todo = _exact_callback_reconciliation_suffix_fixture(
+        bridge,
+        events,
+        request,
+    )
+    parent_paths = (
+        "external/ipfs_accelerate",
+        "external/ipfs_datasets",
+        "external/ipfs_kit",
+    )
+    bridge.repository_root = Path("/repository")
+    bridge.worktree_submodule_paths = parent_paths
+    bridge._exact_callback_reconciliation_for_completion_source = (
+        lambda *_args, **_kwargs: True
+    )
+    audit = _callback_requalification_setup_audit_suffix_fixture(
+        semantic[-1],
+        parent_paths,
+    )
+    complete = [*events, *semantic, *audit]
+
+    assert bridge._exact_callback_reconciliation_transport_suffix(
+        complete,
+        transport_index=1,
+        request=request,
+        binding=binding,
+        expected_todo=todo,
+    ) == (True, 3)
+
+    for field, value in (
+        ("schema", "foreign@1"),
+        ("reason", "authority_changed"),
+        ("parent_relative", "../escape"),
+        ("declared_submodule_count", 2),
+        ("declared_submodule_paths_omitted", 1),
+        ("declared_submodule_manifest_sha256", "0" * 64),
+        ("max_recorded_paths", 31),
+        ("offline_local_only", False),
+        ("nested_creator_invoked", True),
+        ("nested_discovery_invoked", True),
+        ("recursive_initialization_attempted", True),
+        ("fetch_attempted", True),
+        ("fallback_used", True),
+        ("previous_event_id", "sha256:" + "9" * 64),
+    ):
+        tampered = json.loads(json.dumps(complete))
+        tampered[5][field] = value
+        assert not bridge._exact_callback_reconciliation_transport_suffix(
+            tampered,
+            transport_index=1,
+            request=request,
+            binding=binding,
+            expected_todo=todo,
+        )[0], field
+
+    extra_field = json.loads(json.dumps(complete))
+    extra_field[5]["task_id"] = request.task_id
+    assert not bridge._exact_callback_reconciliation_transport_suffix(
+        extra_field,
+        transport_index=1,
+        request=request,
+        binding=binding,
+        expected_todo=todo,
+    )[0]
+
+    duplicate = [*complete, dict(audit[-1])]
+    duplicate[-1]["previous_event_id"] = audit[-1]["event_id"]
+    duplicate[-1]["sequence"] = int(audit[-1]["sequence"]) + 1
+    duplicate[-1]["event_id"] = "sha256:" + "9" * 64
+    assert not bridge._exact_callback_reconciliation_transport_suffix(
+        duplicate,
+        transport_index=1,
+        request=request,
+        binding=binding,
+        expected_todo=todo,
+    )[0]
+
+    partial_semantic = [*events, semantic[0], audit[0]]
+    assert not bridge._exact_callback_reconciliation_transport_suffix(
+        partial_semantic,
+        transport_index=1,
+        request=request,
+        binding=binding,
     )[0]
 
 
@@ -18519,6 +18732,18 @@ def test_reconciled_callback_transport_requires_new_semantic_source(
     bridge.repository_root = tmp_path
     (tmp_path / repository).mkdir(parents=True)
     bridge.worktree_submodule_paths = (repository,)
+    audit_parent_paths = (
+        "external/ipfs_accelerate",
+        "external/ipfs_datasets",
+        "external/ipfs_kit",
+    )
+    bridge._callback_requalification_setup_audit_paths = audit_parent_paths
+    events.extend(
+        _callback_requalification_setup_audit_suffix_fixture(
+            status_event,
+            audit_parent_paths,
+        )
+    )
     bridge._verified_event_chain = lambda _paths: events
     bridge._exact_callback_reconciliation_for_completion_source = (
         lambda *_args, **_kwargs: True
@@ -18648,6 +18873,60 @@ def test_reconciled_callback_transport_requires_new_semantic_source(
         projection,
         train=train,
     ) is None
+
+
+def test_callback_requalification_replays_source_before_returning_evidence() -> None:
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    request = SimpleNamespace(
+        request_id="request:source-replay",
+        task_id="DOEP-011",
+        commit_sha="a" * 40,
+    )
+    projection = SimpleNamespace(
+        binding={
+            "task_cid": "task:database:doep-011",
+            "attempt_id": "attempt:doep-011",
+            "claim_id": "claim:doep-011",
+            "lease_id": "lease:doep-011",
+            "fencing_token": 7,
+            "fence_epoch": 3,
+            "binding_id": "sha256:" + "1" * 64,
+            "projection_immutable_digest": "sha256:" + "2" * 64,
+        }
+    )
+    source_calls: list[int] = []
+
+    def source(*_args: object, **_kwargs: object) -> dict[str, object]:
+        source_calls.append(len(source_calls) + 1)
+        return {
+            "source": "exact" if len(source_calls) == 1 else "changed"
+        }
+
+    bridge._callback_integration_source_evidence = source
+    bridge._requalify_callback_integration = lambda *_args, **_kwargs: {
+        "receipt_id": "receipt:qualified",
+        "current_target_commit": "b" * 40,
+    }
+    recorded: list[dict[str, object]] = []
+    bridge._record_post_merge_recovery_stage = (
+        lambda stage, **kwargs: recorded.append(
+            {"stage": stage, **kwargs}
+        )
+    )
+
+    assert bridge._post_merge_callback_integration_evidence(
+        request,
+        projection,
+        evidence_digest=lambda _value: "sha256:" + "3" * 64,
+        train=object(),
+    ) is None
+    assert source_calls == [1, 2]
+    assert recorded[-1]["stage"] == (
+        "callback_integration_source_replay_rejected"
+    )
+    assert recorded[-1]["reason_code"] == (
+        "source_authority_changed_during_requalification"
+    )
 
 
 def test_unknown_callback_ordinary_implementation_source_regression() -> None:
