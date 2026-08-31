@@ -640,25 +640,25 @@ def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
 
 def _example_current_tree_binding_kwargs() -> dict[str, str | bool]:
     return {
-        "outer_commit": "112fcbefff41e3005b94f31ef618906e8ce48ea9",
-        "outer_tree": "099c2002de95e37a7f7181ca34f64af5de727937",
+        "outer_commit": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
+        "outer_tree": "108b81b2187aa08d3685831673dc53bd43fe74a5",
         "outer_subject": (
-            "Merge commit '0ebe3663122d61bd399aebaf21dc4ef3088a5e27' into "
+            "Merge commit '8e5a2842580cb878b24b4b092046a8ad5e0ef7cc' into "
             "agent/proof-carrying-platform-qualification-and-release-v1"
         ),
         "origin_main": "bb8869ed72eb7002434345d9969efee729c4f7f6",
         "origin_main_is_ancestor": True,
-        "accelerator_pre_change_commit": "9905447d2fa7d5b9f8005e54a401afe3f960eef4",
-        "accelerator_pre_change_tree": "3728c957a477e1c18e1d12f10a8120a688005ba3",
-        "accelerator_gitlink": "9905447d2fa7d5b9f8005e54a401afe3f960eef4",
+        "accelerator_pre_change_commit": "5268250e377992aa44d0167d8a7a7f49b43514f2",
+        "accelerator_pre_change_tree": "d68edc763a981651ce4830e710094a8f8db5fd8f",
+        "accelerator_gitlink": "5268250e377992aa44d0167d8a7a7f49b43514f2",
         "accelerator_origin_main": "f8c2f633fa6a781b822176fd63e1a229f96b581c",
         "accelerator_origin_main_is_ancestor": True,
-        "prior_receipt_outer_commit": "0ebe3663122d61bd399aebaf21dc4ef3088a5e27",
-        "prior_receipt_bound_outer_commit": "cf05ef0004a76684a8f0e2e0e30b2e35a7d9b0a9",
-        "landed_pcpr_001_nested_commit": "9905447d2fa7d5b9f8005e54a401afe3f960eef4",
+        "prior_receipt_outer_commit": "8e5a2842580cb878b24b4b092046a8ad5e0ef7cc",
+        "prior_receipt_bound_outer_commit": "112fcbefff41e3005b94f31ef618906e8ce48ea9",
+        "landed_pcpr_001_nested_commit": "5268250e377992aa44d0167d8a7a7f49b43514f2",
         "first_landed_pcpr_001_nested_commit": "38deb2ea57b171da90e5f2d4194ef6f100f9795b",
-        "integrating_merge": "112fcbefff41e3005b94f31ef618906e8ce48ea9",
-        "landed_candidate_commit": "0ebe3663122d61bd399aebaf21dc4ef3088a5e27",
+        "integrating_merge": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
+        "landed_candidate_commit": "8e5a2842580cb878b24b4b092046a8ad5e0ef7cc",
     }
 
 
@@ -669,6 +669,9 @@ def test_current_tree_binding_rebind_is_measured_and_not_a_release() -> None:
     assert binding["accelerator_origin_main_is_ancestor"] is True
     assert binding["integrating_merge"] == binding["outer_commit"]
     assert binding["landed_pcpr_001_nested_commit"] == binding["accelerator_gitlink"]
+    assert binding["accelerator_pre_change_commit"] == binding["accelerator_gitlink"]
+    assert binding["landed_candidate_commit"] != binding["outer_commit"]
+    assert binding["prior_receipt_bound_outer_commit"] != binding["outer_commit"]
     assert binding["accelerator_post_change_commit"] == "pending nested commit after admission"
     assert all(outcome not in binding["outer_subject"] for outcome in CLOSED_RELEASE_OUTCOMES)
     assert "closed_release_outcome" not in binding
@@ -708,19 +711,31 @@ def test_current_tree_binding_rejects_non_ancestor_and_mismatched_merge() -> Non
     kwargs["landed_pcpr_001_nested_commit"] = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="gitlink"):
         pcpr_phase0_current_tree_binding(**kwargs)
+    kwargs = _example_current_tree_binding_kwargs()
+    kwargs["accelerator_pre_change_commit"] = "cccccccccccccccccccccccccccccccccccccccc"
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="accelerator_pre_change_commit"):
+        pcpr_phase0_current_tree_binding(**kwargs)
+    kwargs = _example_current_tree_binding_kwargs()
+    kwargs["landed_candidate_commit"] = kwargs["outer_commit"]
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="merge source"):
+        pcpr_phase0_current_tree_binding(**kwargs)
+    kwargs = _example_current_tree_binding_kwargs()
+    kwargs["prior_receipt_bound_outer_commit"] = kwargs["outer_commit"]
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="new outer_commit"):
+        pcpr_phase0_current_tree_binding(**kwargs)
     sections = current_head_pcpr_phase0_receipt_sections()
     forged = {
         "task_id": PCPR_PHASE0_TASK_ID,
         "status": "implemented",
         "qualification_verdict": sections["qualification_verdict"],
         "current_tree_binding": {
-            "outer_commit": "112fcbefff41e3005b94f31ef618906e8ce48ea9",
-            "outer_tree": "099c2002de95e37a7f7181ca34f64af5de727937",
+            "outer_commit": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
+            "outer_tree": "108b81b2187aa08d3685831673dc53bd43fe74a5",
             "origin_main": "bb8869ed72eb7002434345d9969efee729c4f7f6",
             "origin_main_is_ancestor": True,
-            "accelerator_pre_change_commit": "9905447d2fa7d5b9f8005e54a401afe3f960eef4",
-            "accelerator_pre_change_tree": "3728c957a477e1c18e1d12f10a8120a688005ba3",
-            "accelerator_gitlink": "9905447d2fa7d5b9f8005e54a401afe3f960eef4",
+            "accelerator_pre_change_commit": "5268250e377992aa44d0167d8a7a7f49b43514f2",
+            "accelerator_pre_change_tree": "d68edc763a981651ce4830e710094a8f8db5fd8f",
+            "accelerator_gitlink": "5268250e377992aa44d0167d8a7a7f49b43514f2",
             "accelerator_origin_main": "f8c2f633fa6a781b822176fd63e1a229f96b581c",
             "accelerator_origin_main_is_ancestor": True,
             "evidence_kind": "simulated",
@@ -728,3 +743,35 @@ def test_current_tree_binding_rejects_non_ancestor_and_mismatched_merge() -> Non
     }
     with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="measured"):
         validate_pcpr_phase0_outer_receipt(forged)
+    stale_merge = {
+        "task_id": PCPR_PHASE0_TASK_ID,
+        "status": "implemented",
+        "qualification_verdict": sections["qualification_verdict"],
+        "current_tree_binding": {
+            "outer_commit": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
+            "outer_tree": "108b81b2187aa08d3685831673dc53bd43fe74a5",
+            "origin_main": "bb8869ed72eb7002434345d9969efee729c4f7f6",
+            "origin_main_is_ancestor": True,
+            "accelerator_pre_change_commit": "5268250e377992aa44d0167d8a7a7f49b43514f2",
+            "accelerator_pre_change_tree": "d68edc763a981651ce4830e710094a8f8db5fd8f",
+            "accelerator_gitlink": "5268250e377992aa44d0167d8a7a7f49b43514f2",
+            "accelerator_origin_main": "f8c2f633fa6a781b822176fd63e1a229f96b581c",
+            "accelerator_origin_main_is_ancestor": True,
+            "integrating_merge": "112fcbefff41e3005b94f31ef618906e8ce48ea9",
+            "evidence_kind": "measured",
+        },
+    }
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="integrating_merge"):
+        validate_pcpr_phase0_outer_receipt(stale_merge)
+    stale_bound = {
+        "task_id": PCPR_PHASE0_TASK_ID,
+        "status": "implemented",
+        "qualification_verdict": sections["qualification_verdict"],
+        "current_tree_binding": {
+            **_example_current_tree_binding_kwargs(),
+            "prior_receipt_bound_outer_commit": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
+            "evidence_kind": "measured",
+        },
+    }
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="new outer_commit"):
+        validate_pcpr_phase0_outer_receipt(stale_bound)

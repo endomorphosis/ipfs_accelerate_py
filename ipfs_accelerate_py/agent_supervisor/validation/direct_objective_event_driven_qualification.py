@@ -1009,6 +1009,18 @@ def pcpr_phase0_current_tree_binding(
         raise DirectObjectiveEventDrivenQualificationError(
             "landed nested Accelerate commit must equal the current gitlink"
         )
+    if binding["accelerator_pre_change_commit"] != binding["accelerator_gitlink"]:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "accelerator_pre_change_commit must equal the current gitlink for a post-landing rebind"
+        )
+    if binding["landed_candidate_commit"] == binding["outer_commit"]:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "landed_candidate_commit must be the merge source, not the integrating merge"
+        )
+    if binding["prior_receipt_bound_outer_commit"] == binding["outer_commit"]:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "current-head rebind requires a new outer_commit"
+        )
     return binding
 
 
@@ -1045,6 +1057,42 @@ def _validate_current_tree_binding(payload: Mapping[str, Any]) -> None:
         "accelerator_origin_main",
     ):
         _git_object_id(binding.get(name), f"current_tree_binding.{name}")
+    integrating_merge = binding.get("integrating_merge")
+    if integrating_merge is not None:
+        _git_object_id(integrating_merge, "current_tree_binding.integrating_merge")
+        if integrating_merge != binding.get("outer_commit"):
+            raise DirectObjectiveEventDrivenQualificationError(
+                "current_tree_binding.integrating_merge must equal outer_commit"
+            )
+    nested = binding.get("landed_pcpr_001_nested_commit")
+    if nested is not None:
+        _git_object_id(nested, "current_tree_binding.landed_pcpr_001_nested_commit")
+        if nested != binding.get("accelerator_gitlink"):
+            raise DirectObjectiveEventDrivenQualificationError(
+                "current_tree_binding.landed nested Accelerate commit must equal the current gitlink"
+            )
+    constructor_keys = (
+        "outer_commit",
+        "outer_tree",
+        "outer_subject",
+        "origin_main",
+        "origin_main_is_ancestor",
+        "accelerator_pre_change_commit",
+        "accelerator_pre_change_tree",
+        "accelerator_gitlink",
+        "accelerator_origin_main",
+        "accelerator_origin_main_is_ancestor",
+        "prior_receipt_outer_commit",
+        "prior_receipt_bound_outer_commit",
+        "landed_pcpr_001_nested_commit",
+        "first_landed_pcpr_001_nested_commit",
+        "integrating_merge",
+        "landed_candidate_commit",
+    )
+    if all(key in binding for key in constructor_keys):
+        pcpr_phase0_current_tree_binding(
+            **{key: binding[key] for key in constructor_keys}
+        )
 
 
 LIVE_COUNT_CASES: Final[frozenset[str]] = frozenset(
