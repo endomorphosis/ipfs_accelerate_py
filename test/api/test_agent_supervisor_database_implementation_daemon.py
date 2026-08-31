@@ -114,6 +114,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
     DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON,
     DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
+    DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_REASON,
+    DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DATABASE_PORTAL_VERIFICATION_DEFERRED_PRESERVATION_SCHEMA,
     DatabasePortalBridgeConsumedNoProgressError,
@@ -4709,8 +4711,12 @@ def test_expired_callback_rearms_only_exact_post_commit_candidate(
         provider_calls.append(attempt.attempt_id)
         if len(provider_calls) == 1:
             raise SimulatedProcessCrash("injected post-commit crash")
+        if len(provider_calls) == 2:
+            raise DatabasePortalBridgeError(
+                DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON
+            )
         raise DatabasePortalBridgeError(
-            DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON
+            "not_attempted"
         )
 
     first = _open_daemon(
@@ -4928,25 +4934,37 @@ def test_expired_callback_rearms_only_exact_post_commit_candidate(
         admission_receipt = dict(admission_body["completion_receipt"])
         admission_receipt["operation"] = "database_attempt_admitted"
         admission_body["completion_receipt"] = admission_receipt
+        shifted_terminal_body = dict(terminal_entry["body"])
+        shifted_terminal_receipt = dict(
+            shifted_terminal_body["completion_receipt"]
+        )
+        shifted_terminal_receipt["control_expected_revision"] = 4
+        shifted_terminal_body["completion_receipt"] = shifted_terminal_receipt
         exact_revisions = [
-            *actual_revisions[:-4],
+            *actual_revisions[:-5],
             {
                 **dict(recovery_entry),
+                "revision": 2,
+            },
+            {
+                **dict(claim_entry),
                 "revision": 3,
             },
             {
                 **dict(claim_entry),
                 "revision": 4,
-            },
-            {
-                **dict(claim_entry),
-                "revision": 5,
                 "body": admission_body,
             },
             {
                 **dict(terminal_entry),
-                "revision": 6,
+                "revision": 5,
+                "body": shifted_terminal_body,
             },
+            # The compatibility projection keeps the actual r6 current
+            # snapshot outside the r2-r5 proof window.  The next exact
+            # recovery replaces this spare snapshot with its r6-r9 window,
+            # preserving both proofs without duplicate revisions.
+            dict(terminal_entry),
         ]
         exact_history_body = {
             "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
@@ -5088,6 +5106,348 @@ def test_expired_callback_rearms_only_exact_post_commit_candidate(
         assert final_claimed.body["completion_receipt"][
             "post_commit_candidate_recovery_seed"
         ] == carried["post_commit_candidate_recovery_seed"]
+
+        final_terminal = restarted._resume_attempt_without_process_crash(
+            final_successor
+        )
+        assert final_terminal["portal_terminal_failure"] is True
+        assert final_terminal["reason"] == "not_attempted"
+        provider_calls_before_recovery = list(provider_calls)
+        assert provider_calls_before_recovery == [
+            attempt.attempt_id,
+            successor.attempt_id,
+            final_successor.attempt_id,
+        ]
+        trusted_blocked = restarted.task_source.get(attempt.task_cid)
+        assert trusted_blocked is not None
+        assert trusted_blocked.status == "blocked"
+        trusted_source_revision = int(trusted_blocked.revision)
+        canonical_trusted_history = original_history_projection(
+            restarted.task_source,
+            attempt.task_cid,
+        )
+        (
+            trusted_recovery_entry,
+            trusted_claim_entry,
+            trusted_terminal_entry,
+        ) = list(canonical_trusted_history["revisions"])[-3:]
+        trusted_claim_body = dict(trusted_claim_entry["body"])
+        trusted_admission_body = dict(trusted_claim_body)
+        trusted_admission_receipt = dict(
+            trusted_admission_body["completion_receipt"]
+        )
+        trusted_admission_receipt["operation"] = "database_attempt_admitted"
+        trusted_admission_body["completion_receipt"] = (
+            trusted_admission_receipt
+        )
+        # This legacy fixture's task source coalesces admission with claim.
+        # Preserve the already-proven r3-r6 pre-dispatch window and project the
+        # missing admission row for the bounded r6-r9 compatibility suffix.
+        # Production DuckDB rows (including live r12-r15) already carry the
+        # separate admission revision.
+        exact_trusted_revisions = [
+            *exact_revisions[:-1],
+            {
+                **dict(trusted_recovery_entry),
+                "revision": trusted_source_revision - 3,
+            },
+            {
+                **dict(trusted_claim_entry),
+                "revision": trusted_source_revision - 2,
+                "body": trusted_claim_body,
+            },
+            {
+                **dict(trusted_claim_entry),
+                "revision": trusted_source_revision - 1,
+                "body": trusted_admission_body,
+            },
+            {
+                **dict(trusted_terminal_entry),
+                "revision": trusted_source_revision,
+            },
+        ]
+
+        def exact_trusted_shape_history(
+            source: object,
+            task_cid: str,
+        ) -> Mapping[str, object]:
+            if task_cid == attempt.task_cid:
+                current_history = original_history_projection(source, task_cid)
+                trailing = [
+                    dict(item)
+                    for item in current_history["revisions"]
+                    if int(item["revision"]) > trusted_source_revision
+                ]
+                body = {
+                    "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+                    "task_cid": task_cid,
+                    "revisions": [*exact_trusted_revisions, *trailing],
+                }
+                return {**body, "projection_cid": content_identity(body)}
+            return original_history_projection(source, task_cid)
+
+        monkeypatch.setattr(
+            type(restarted.task_source),
+            "task_revision_history_projection",
+            exact_trusted_shape_history,
+        )
+        trusted_history = (
+            restarted.task_source.task_revision_history_projection(
+                attempt.task_cid
+            )
+        )
+        trusted_entries = list(trusted_history["revisions"])[-4:]
+        assert [entry["revision"] for entry in trusted_entries] == list(
+            range(trusted_source_revision - 3, trusted_source_revision + 1)
+        )
+        trusted_statuses = [entry["status"] for entry in trusted_entries]
+        assert trusted_statuses == [
+            "retrying",
+            "in_progress",
+            "in_progress",
+            "blocked",
+        ], [
+            (
+                entry["revision"],
+                entry["status"],
+                entry["body"]["completion_receipt"].get("operation"),
+            )
+            for entry in trusted_entries
+        ]
+        trusted_recovery_receipt = trusted_entries[0]["body"][
+            "completion_receipt"
+        ]
+        trusted_seed = trusted_recovery_receipt[
+            "post_commit_candidate_recovery_seed"
+        ]
+        trusted_pre_dispatch = trusted_recovery_receipt[
+            "pre_dispatch_projection_recovery_receipt"
+        ]
+        trusted_body: dict[str, object] = {
+            "schema": DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA,
+            "disposition": "retry_exact_post_commit_candidate",
+            "reason": DATABASE_PORTAL_TRUSTED_SETUP_REPLAY_RECOVERY_REASON,
+            "task_cid": final_successor.task_cid,
+            "task_alias": final_successor.task_alias,
+            "attempt_id": final_successor.attempt_id,
+            "claim_id": final_successor.claim_id,
+            "lease_id": final_successor.lease_id,
+            "attempt_number": int(final_successor.attempt_number),
+            "fencing_token": int(final_successor.fencing_token),
+            "fence_epoch": int(final_successor.fence_epoch),
+            "history_projection_cid": trusted_history["projection_cid"],
+            "recovery_task_revision": trusted_entries[0]["revision"],
+            "claim_task_revision": trusted_entries[1]["revision"],
+            "admission_task_revision": trusted_entries[2]["revision"],
+            "terminal_task_revision": trusted_entries[3]["revision"],
+            "source_candidate_receipt_id": trusted_seed["receipt_id"],
+            "source_portal_attempt": trusted_seed["portal_attempt"],
+            "prior_projection_recovery_receipt_id": (
+                trusted_pre_dispatch["receipt_id"]
+            ),
+            "source_pre_dispatch_recovery_receipt_id": (
+                trusted_pre_dispatch["receipt_id"]
+            ),
+            "target_binding_id": "sha256:" + "c" * 64,
+            "projection_immutable_digest": "sha256:" + "d" * 64,
+            "baseline_commit": trusted_seed["baseline_commit"],
+            "implementation_commit": trusted_seed[
+                "implementation_commit"
+            ],
+            "source_rescue_branch": trusted_seed["rescue_branch"],
+            "portal_attempt": 1,
+            "event_stream_id": "stream:trusted-setup-replay",
+            "snapshot_event_id": "sha256:" + "e" * 64,
+            "validation_started_event_id": "sha256:" + "f" * 64,
+            "expected_outputs_event_id": "sha256:" + "1" * 64,
+            "proposal_event_id": "sha256:" + "2" * 64,
+            "mutation_event_id": "sha256:" + "3" * 64,
+            "validation_finished_event_id": "sha256:" + "4" * 64,
+            "cleanup_event_id": "sha256:" + "5" * 64,
+            "guard_event_ids": ["sha256:" + "6" * 64],
+            "evidence_digests": {
+                "active_snapshot": "sha256:" + "7" * 64,
+                "binding": "sha256:" + "8" * 64,
+                "event_manifest": "sha256:" + "9" * 64,
+                "events": "sha256:" + "a" * 64,
+                "incident": "sha256:" + "b" * 64,
+                "projection": "sha256:" + "c" * 64,
+                "validation_log": "sha256:" + "d" * 64,
+            },
+            "setup_files": [
+                {
+                    "path": "external/ipfs_accelerate/pyproject.toml",
+                    "submodule_path": "external/ipfs_accelerate",
+                    "submodule_commit": "c" * 40,
+                    "relative_path": "pyproject.toml",
+                    "size": 101,
+                    "sha256": "e" * 64,
+                },
+                {
+                    "path": "external/ipfs_datasets/pyproject.toml",
+                    "submodule_path": "external/ipfs_datasets",
+                    "submodule_commit": "d" * 40,
+                    "relative_path": "pyproject.toml",
+                    "size": 103,
+                    "sha256": "f" * 64,
+                },
+            ],
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "validation_commands_passed": True,
+            "merge_attempted": False,
+            "effect_state": "proven_absent_after_validation_only_replay",
+        }
+        trusted_body["receipt_id"] = (
+            implementation_daemon_module._database_daemon_evidence_digest(
+                trusted_body
+            )
+        )
+        trusted_source = restarted._trusted_setup_replay_recovery_source(
+            trusted_blocked,
+            final_successor,
+        )
+        assert trusted_source["seed"] == trusted_seed
+        assert trusted_source["pre_dispatch"] == trusted_pre_dispatch
+        verified_trusted = (
+            restarted._verified_trusted_setup_replay_recovery_receipt(
+                final_successor,
+                trusted_blocked,
+                trusted_body,
+            )
+        )
+        assert verified_trusted == trusted_body
+        tampered = dict(trusted_body)
+        tampered["receipt_id"] = "sha256:" + "e" * 64
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="trusted.setup replay receipt failed verification",
+        ):
+            restarted._verified_trusted_setup_replay_recovery_receipt(
+                final_successor,
+                trusted_blocked,
+                tampered,
+            )
+        restarted._post_commit_candidate_recovery_fn = lambda _source: tampered
+
+        rejected = (
+            restarted.reconcile_unimplemented_unknown_callback_quarantines()
+        )
+        assert len(rejected) == 1
+        assert rejected[0]["reason"] == (
+            "post_commit_recovery_evidence_rejected"
+        )
+        assert restarted.task_source.get(attempt.task_cid).revision == (
+            trusted_source_revision
+        )
+        assert provider_calls == provider_calls_before_recovery
+        live_claim = restarted.coordinator.get_task_claim(
+            final_successor.claim_id
+        )
+        assert live_claim is not None
+        assert live_claim.to_dict()["state"] == "accepted"
+
+        restarted._post_commit_candidate_recovery_fn = (
+            lambda _source: dict(trusted_body)
+        )
+        trusted_recovered = (
+            restarted.reconcile_unimplemented_unknown_callback_quarantines()
+        )
+        assert len(trusted_recovered) == 1
+        assert trusted_recovered[0]["reason"] == (
+            "exact_trusted_setup_replay_rearmed"
+        )
+        assert trusted_recovered[0]["provider_dispatched"] is False
+        assert trusted_recovered[0]["attempt_consumed"] is False
+        assert provider_calls == provider_calls_before_recovery
+        trusted_rearmed = restarted.task_source.get(attempt.task_cid)
+        assert trusted_rearmed is not None
+        assert trusted_rearmed.status == "retrying"
+        assert trusted_rearmed.revision == trusted_source_revision + 1
+        trusted_transition = trusted_rearmed.body["completion_receipt"]
+        assert trusted_transition["operation"] == (
+            "database_portal_post_commit_candidate_recovery"
+        )
+        assert trusted_transition["post_commit_candidate_recovery_seed"] == (
+            trusted_seed
+        )
+        assert trusted_transition[
+            "pre_dispatch_projection_recovery_receipt"
+        ] == trusted_pre_dispatch
+        assert trusted_transition[
+            "trusted_setup_replay_recovery_receipt"
+        ] == trusted_body
+        released_claim = restarted.coordinator.get_task_claim(
+            final_successor.claim_id
+        )
+        released_lease = restarted.coordinator.get_lease(
+            final_successor.lease_id
+        )
+        assert released_claim is not None
+        assert released_claim.to_dict()["state"] == "released"
+        assert released_lease is not None
+        assert released_lease.to_dict()["state"] == "released"
+        retired = restarted.get_attempt(final_successor.attempt_id)
+        assert retired is not None and retired.status == "failed"
+        assert (
+            restarted.reconcile_unimplemented_unknown_callback_quarantines()
+            == []
+        )
+        assert provider_calls == provider_calls_before_recovery
+
+        assert attempt.task_cid in restarted.sync_ready_tasks_into_coordination()
+        post_recovery_successor = restarted.claim_next()
+        claim_failure_task = restarted.task_source.get(attempt.task_cid)
+        assert post_recovery_successor is not None, {
+            "task": {
+                "status": getattr(claim_failure_task, "status", ""),
+                "revision": getattr(claim_failure_task, "revision", 0),
+                "receipt": dict(
+                    getattr(claim_failure_task, "body", {}).get(
+                        "completion_receipt",
+                        {},
+                    )
+                ),
+            },
+            "automatic_exclusions": sorted(
+                restarted._automatic_claim_exclusions()
+            ),
+            "control_rejections": sorted(
+                restarted._current_control_claim_rejections()
+            ),
+        }
+        assert post_recovery_successor.attempt_id not in {
+            successor.attempt_id,
+            final_successor.attempt_id,
+        }
+        assert post_recovery_successor.claim_id not in {
+            successor.claim_id,
+            final_successor.claim_id,
+        }
+        assert post_recovery_successor.lease_id not in {
+            successor.lease_id,
+            final_successor.lease_id,
+        }
+        assert post_recovery_successor.attempt_number > max(
+            successor.attempt_number,
+            final_successor.attempt_number,
+        )
+        post_recovery_claimed = restarted.task_source.get(attempt.task_cid)
+        assert post_recovery_claimed is not None
+        post_recovery_claim = post_recovery_claimed.body[
+            "completion_receipt"
+        ]
+        assert post_recovery_claim["operation"] == "database_claim"
+        assert post_recovery_claim[
+            "post_commit_candidate_recovery_seed"
+        ] == trusted_seed
+        assert post_recovery_claim[
+            "pre_dispatch_projection_recovery_receipt"
+        ] == trusted_pre_dispatch
+        assert post_recovery_claim[
+            "trusted_setup_replay_recovery_receipt"
+        ] == trusted_body
+        assert provider_calls == provider_calls_before_recovery
     finally:
         restarted.close()
 

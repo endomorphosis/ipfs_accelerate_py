@@ -184,6 +184,8 @@ def _record() -> SimpleNamespace:
 
 def _post_commit_candidate_fixture(
     tmp_path: Path,
+    *,
+    with_protected_submodule: bool = False,
 ) -> tuple[
     DatabasePortalExecutionBridge,
     DatabaseTaskAttempt,
@@ -197,6 +199,59 @@ def _post_commit_candidate_fixture(
     repo = tmp_path / "post-commit-repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    if with_protected_submodule:
+        dependency = tmp_path / "protected-dependency"
+        dependency.mkdir()
+        subprocess.run(
+            ["git", "init", "-q", "-b", "main"],
+            cwd=dependency,
+            check=True,
+        )
+        (dependency / "pyproject.toml").write_text(
+            "[project]\nname = 'protected-dependency'\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Post Commit Recovery",
+                "-c",
+                "user.email=post-commit@example.invalid",
+                "add",
+                "pyproject.toml",
+            ],
+            cwd=dependency,
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Post Commit Recovery",
+                "-c",
+                "user.email=post-commit@example.invalid",
+                "commit",
+                "-qm",
+                "protected dependency",
+            ],
+            cwd=dependency,
+            check=True,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "-q",
+                str(dependency),
+                "vendor/dependency",
+            ],
+            cwd=repo,
+            check=True,
+        )
     (repo / "README.md").write_text("base\n", encoding="utf-8")
     subprocess.run(
         [
@@ -727,6 +782,870 @@ def test_bridge_reconciles_exact_pre_dispatch_projection_rejection(
     with pytest.raises(
         DatabasePortalBridgeError,
         match="pre-dispatch projection recovery receipt evidence changed",
+    ):
+        bridge.recover_post_commit_candidate(target)
+
+
+_TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-trusted-setup-replay-recovery@1"
+)
+
+
+def _protected_file_identity(path: Path) -> dict[str, object]:
+    metadata = path.stat(follow_symlinks=False)
+    return {
+        "state": "present",
+        "kind": "regular_file",
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+        "mode": metadata.st_mode,
+        "links": metadata.st_nlink,
+        "uid": metadata.st_uid,
+        "gid": metadata.st_gid,
+        "size": metadata.st_size,
+        "mtime_ns": metadata.st_mtime_ns,
+        "ctime_ns": metadata.st_ctime_ns,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    }
+
+
+def _trusted_setup_replay_fixture(
+    tmp_path: Path,
+) -> tuple[
+    DatabasePortalExecutionBridge,
+    DatabaseTaskAttempt,
+    SimpleNamespace,
+    object,
+    dict[str, object],
+    Path,
+    list[dict[str, object]],
+]:
+    """Reproduce the exact zero-provider setup/snapshot ordering terminal."""
+
+    source_bridge, source, record, source_paths, seed, _factory_calls = (
+        _post_commit_candidate_fixture(
+            tmp_path,
+            with_protected_submodule=True,
+        )
+    )
+    repo = source_bridge.repository_root
+    worktree_root = source_bridge.worktree_root
+    assert repo is not None
+    assert worktree_root is not None
+
+    semantic = dict(record.body)
+    semantic.pop("completion_receipt", None)
+    projection_target = replace(
+        source,
+        attempt_id="attempt:projection-target",
+        claim_id="claim:projection-target",
+        lease_id="lease:projection-target",
+        owner_session_id="session:projection-target",
+        attempt_number=41,
+        fencing_token=43,
+        fence_epoch=5,
+    )
+    projection_recovery = {
+        "operation": "database_portal_post_commit_candidate_recovery",
+        "post_commit_candidate_recovery_seed": dict(seed),
+    }
+    projection_claim = {
+        "operation": "database_claim",
+        "attempt_id": projection_target.attempt_id,
+        "claim_id": projection_target.claim_id,
+        "lease_id": projection_target.lease_id,
+        "owner_session_id": projection_target.owner_session_id,
+        "attempt_number": projection_target.attempt_number,
+        "fencing_token": projection_target.fencing_token,
+        "fence_epoch": projection_target.fence_epoch,
+        "post_commit_candidate_recovery_seed": dict(seed),
+    }
+    projection_admission = {
+        **projection_claim,
+        "operation": "database_attempt_admitted",
+    }
+    projection_terminal = {
+        "operation": "database_portal_terminal_failure",
+        "attempt_id": projection_target.attempt_id,
+        "claim_id": projection_target.claim_id,
+        "lease_id": projection_target.lease_id,
+        "owner_session_id": projection_target.owner_session_id,
+        "attempt_number": projection_target.attempt_number,
+        "fencing_token": projection_target.fencing_token,
+        "fence_epoch": projection_target.fence_epoch,
+        "reason": (
+            "Portal protected-preservation projection does not contain the "
+            "exact pending database task"
+        ),
+        "retryable": False,
+        "control_expected_status": "in_progress",
+        "control_expected_revision": 14,
+    }
+    history_rows: list[dict[str, object]] = [
+        {
+            "revision": revision,
+            "status": status,
+            "body": {**semantic, "completion_receipt": receipt},
+        }
+        for revision, status, receipt in (
+            (12, "retrying", projection_recovery),
+            (13, "in_progress", projection_claim),
+            (14, "in_progress", projection_admission),
+            (15, "blocked", projection_terminal),
+        )
+    ]
+
+    class HistoricalTaskSource(_TaskSource):
+        def task_revision_history_projection(self, _task_cid: str) -> object:
+            body = {
+                "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+                "task_cid": projection_target.task_cid,
+                "revisions": list(history_rows),
+            }
+            return {**body, "projection_cid": content_identity(body)}
+
+    class ProjectionPortal:
+        def __init__(self, paths: object) -> None:
+            self.paths = paths
+
+        def _load_tasks(self) -> list[object]:
+            return parse_task_text(
+                self.paths.task_projection.read_text(encoding="utf-8"),
+                path=self.paths.task_projection,
+                task_header_prefix="## LGSWF-004",
+            )
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    task_source = HistoricalTaskSource(record)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=source_paths.root.parent,
+        repository_root=repo,
+        worktree_root=worktree_root,
+        portal_factory=lambda paths, _alias: ProjectionPortal(paths),
+        max_task_attempts=2,
+        implementation_protected_paths=(
+            "vendor/dependency/pyproject.toml",
+        ),
+        worktree_submodule_paths=("vendor/dependency",),
+    )
+    record.status = "in_progress"
+    record.revision = 14
+    record.body = {**semantic, "completion_receipt": projection_admission}
+    bridge._ensure_attempt_projection(projection_target, record)
+    record.status = "blocked"
+    record.revision = 15
+    record.body = {**semantic, "completion_receipt": projection_terminal}
+    pre_dispatch_receipt = dict(
+        bridge.recover_post_commit_candidate(projection_target)
+    )
+
+    target = replace(
+        projection_target,
+        attempt_id="attempt:trusted-setup-target",
+        claim_id="claim:trusted-setup-target",
+        lease_id="lease:trusted-setup-target",
+        owner_session_id="session:trusted-setup-target",
+        attempt_number=42,
+        fencing_token=44,
+        fence_epoch=6,
+    )
+    replay_recovery = {
+        "operation": "database_portal_post_commit_candidate_recovery",
+        "post_commit_candidate_recovery_seed": dict(seed),
+        "pre_dispatch_projection_recovery_receipt": dict(
+            pre_dispatch_receipt
+        ),
+    }
+    replay_claim = {
+        "operation": "database_claim",
+        "attempt_id": target.attempt_id,
+        "claim_id": target.claim_id,
+        "lease_id": target.lease_id,
+        "owner_session_id": target.owner_session_id,
+        "attempt_number": target.attempt_number,
+        "fencing_token": target.fencing_token,
+        "fence_epoch": target.fence_epoch,
+        "post_commit_candidate_source_attempt_id": source.attempt_id,
+        "post_commit_candidate_recovery_seed": dict(seed),
+    }
+    replay_admission = {
+        **replay_claim,
+        "operation": "database_attempt_admitted",
+    }
+    replay_terminal = {
+        "operation": "database_portal_terminal_failure",
+        "attempt_id": target.attempt_id,
+        "claim_id": target.claim_id,
+        "lease_id": target.lease_id,
+        "owner_session_id": target.owner_session_id,
+        "attempt_number": target.attempt_number,
+        "fencing_token": target.fencing_token,
+        "fence_epoch": target.fence_epoch,
+        "reason": "not_attempted",
+        "retryable": False,
+        "control_expected_status": "in_progress",
+        "control_expected_revision": 18,
+    }
+    history_rows.extend(
+        {
+            "revision": revision,
+            "status": status,
+            "body": {**semantic, "completion_receipt": receipt},
+        }
+        for revision, status, receipt in (
+            (16, "retrying", replay_recovery),
+            (17, "in_progress", replay_claim),
+            (18, "in_progress", replay_admission),
+            (19, "blocked", replay_terminal),
+        )
+    )
+    record.status = "in_progress"
+    record.revision = 18
+    record.body = {**semantic, "completion_receipt": replay_admission}
+    paths, binding = bridge._ensure_attempt_projection(target, record)
+    record.status = "blocked"
+    record.revision = 19
+    record.body = {**semantic, "completion_receipt": replay_terminal}
+
+    protected_relative = "vendor/dependency/pyproject.toml"
+    protected_path = repo / protected_relative
+    protected_identity = _protected_file_identity(protected_path)
+    recovery_worktree = worktree_root / "disposed-trusted-setup-replay"
+    active = {
+        "schema": "implementation-protected-path-active-v1",
+        "task_id": target.task_alias,
+        "attempt": 1,
+        "canonical_task_key": binding["canonical_task_key"],
+        "canonical_task_cid": target.task_cid,
+        "workspace_path": str(recovery_worktree),
+        "ephemeral_worktree": True,
+        "protected_paths": [protected_relative],
+        "snapshot": {
+            "shared_checkout": {
+                "root": str(repo.resolve()),
+                "git_head": subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=repo,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip(),
+                "paths": {protected_relative: protected_identity},
+            },
+            "workspace": {
+                "root": str(recovery_worktree.resolve()),
+                "git_head": seed["implementation_commit"],
+                "paths": {protected_relative: {"state": "missing"}},
+            },
+        },
+    }
+    mutation = {
+        "path": protected_relative,
+        "scope": "workspace",
+        "change": "created",
+        "before": {"state": "missing"},
+        "after": protected_identity,
+    }
+    incident = {
+        "schema": "implementation-protected-path-incident-v1",
+        "reason": "implementation_protected_path_mutated",
+        "requires_operator_clearance": True,
+        "shared_checkout_restored": False,
+        "task_id": target.task_alias,
+        "attempt": 1,
+        "canonical_task_key": binding["canonical_task_key"],
+        "canonical_task_cid": target.task_cid,
+        "workspace_path": str(recovery_worktree),
+        "protected_paths": [protected_relative],
+        "mutations": [mutation],
+    }
+    (paths.root / "implementation-protected-path-active.json").write_text(
+        json.dumps(active, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    incident_path = paths.root / "implementation-protected-path-incident.json"
+    incident_path.write_text(
+        json.dumps(incident, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    event_identity = {
+        "task_id": target.task_alias,
+        "canonical_task_key": binding["canonical_task_key"],
+        "canonical_task_cid": target.task_cid,
+        "attempt": 1,
+    }
+    append_jsonl_event(
+        paths.events,
+        "implementation_task_claim_lock_cleared",
+        {
+            "task_id": target.task_alias,
+            "branch": "",
+            "lock_owner_pid": 1234,
+            "lock_path": str(tmp_path / "disposed-task-claim.lock"),
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_protected_path_snapshot_recorded",
+        {
+            **event_identity,
+            "workspace_path": str(recovery_worktree),
+            "protected_paths": [protected_relative],
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "nested_submodule_initialization_guarded",
+        {
+            "path": "vendor/dependency",
+            "parent_relative": ".",
+            "relative": "vendor/dependency",
+            "depth": 1,
+            "max_depth": 8,
+            "max_path_bytes": 1024,
+            "max_path_parts": 64,
+            "path_bytes": len(b"vendor/dependency"),
+            "path_parts": 2,
+            "path_sha256": hashlib.sha256(
+                b"vendor/dependency"
+            ).hexdigest(),
+            "reason": "configured_dependency_duplicate",
+            "expected_gitlink_ref_available": True,
+            "expected_gitlink_ref_sha256": hashlib.sha256(
+                str(seed["implementation_commit"]).encode()
+            ).hexdigest(),
+            "matched_identity_sha256": hashlib.sha256(
+                protected_path.read_bytes()
+            ).hexdigest(),
+        },
+    )
+    branch = "implementation/lgswf-004-protected-trusted-setup"
+    recovery_key = "sha256:" + "7" * 64
+    validation_log = paths.root / "implementation-logs" / "trusted-setup.log"
+    validation_log.parent.mkdir()
+    validation_log.write_text("1 passed\n", encoding="utf-8")
+    append_jsonl_event(
+        paths.events,
+        "worktree_reconciliation_validation_started",
+        {
+            **event_identity,
+            "task_cid": target.task_cid,
+            "branch": branch,
+            "worktree_path": str(recovery_worktree),
+            "baseline_ref": seed["baseline_commit"],
+            "implementation_commit": seed["implementation_commit"],
+            "recovery_key": recovery_key,
+            "log_path": str(validation_log),
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+        },
+    )
+    expected_paths = ["inventory/result.json"]
+    append_jsonl_event(
+        paths.events,
+        "implementation_expected_outputs_checked",
+        {
+            **event_identity,
+            "proposal_id": "proposal:trusted-setup",
+            "expected_paths": expected_paths,
+            "staged_paths": [],
+            "force_staged_paths": [],
+            "issues": [],
+            "passed": True,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_proposal_validated",
+        {
+            **event_identity,
+            "proposal_id": "proposal:trusted-setup",
+            "receipt_id": "sha256:" + "8" * 64,
+            "policy_id": "sha256:" + "9" * 64,
+            "repository_tree_id": seed["baseline_commit"],
+            "changed_paths": expected_paths,
+            "reason_codes": [],
+            "attempted": True,
+            "accepted": True,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_protected_path_mutated",
+        {
+            **event_identity,
+            "workspace_path": str(recovery_worktree),
+            "reason": "implementation_protected_path_mutated",
+            "protected_paths": [protected_relative],
+            "mutations": [mutation],
+            "shared_checkout_restored": False,
+        },
+    )
+    validation_result = {
+        "attempted": True,
+        "passed": False,
+        "merge_eligible": False,
+        "authoritative": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+        "target_commit": seed["baseline_commit"],
+        "reason": "implementation_protected_path_mutated",
+        "returncode": 1,
+        "results": [
+            {
+                "command": "python3 -m pytest focused.py -q",
+                "returncode": 0,
+                "timed_out": False,
+            }
+        ],
+        "nodes": [
+            {
+                "node_id": "validation:focused",
+                "mandatory": True,
+                "selected": True,
+                "disposition": "succeeded",
+                "reason": "validation_passed",
+                "returncode": 0,
+            }
+        ],
+        "stages": [
+            {
+                "stage": "targeted",
+                "planned_count": 1,
+                "executed_count": 1,
+                "passed": True,
+            }
+        ],
+        "proposal_gate": {
+            "attempted": True,
+            "accepted": True,
+            "proposal_id": "proposal:trusted-setup",
+            "receipt_id": "sha256:" + "8" * 64,
+            "policy_id": "sha256:" + "9" * 64,
+            "repository_tree_id": seed["baseline_commit"],
+            "changed_paths": expected_paths,
+            "reason_codes": [],
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        },
+        "validation_dag_receipt": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "validation-dag-receipt@3"
+            ),
+            "passed": True,
+            "coverage_complete": True,
+            "uncovered_impact": False,
+            "repository_tree_id": seed["baseline_commit"],
+            "proposal_receipt_id": "sha256:" + "8" * 64,
+            "objective_id": target.task_cid,
+            "changed_paths": expected_paths,
+            "required_validation_ids": ["validation:focused"],
+            "selected_node_ids": ["validation:focused"],
+            "nodes": [
+                {
+                    "node_id": "validation:focused",
+                    "mandatory": True,
+                    "selected": True,
+                    "disposition": "succeeded",
+                    "reason": "validation_passed",
+                    "returncode": 0,
+                }
+            ],
+            "receipt_id": "sha256:" + "a" * 64,
+        },
+        "protected_path_violation": incident,
+    }
+    append_jsonl_event(
+        paths.events,
+        "worktree_reconciliation_validation_finished",
+        {
+            **event_identity,
+            "task_cid": target.task_cid,
+            "branch": branch,
+            "worktree_path": str(recovery_worktree),
+            "baseline_ref": seed["baseline_commit"],
+            "implementation_commit": seed["implementation_commit"],
+            "recovery_key": recovery_key,
+            "log_path": str(validation_log),
+            "returncode": 1,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "validation_result": validation_result,
+            "protected_path_violation": incident,
+            "commit_result": {"committed": False},
+            "merge_result": {"merged": False, "reason": "not_attempted"},
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "cleanup_finished",
+        {
+            "branch": branch,
+            "worktree_path": str(recovery_worktree),
+            "cleaned": True,
+            "removed_worktree": True,
+            "deleted_branch": True,
+            "submodule_cleanup": [
+                {
+                    "path": "vendor/dependency",
+                    "cleaned": True,
+                    "removed_worktree": True,
+                    "deleted_branch": False,
+                    "errors": [],
+                }
+            ],
+        },
+    )
+    assert not recovery_worktree.exists()
+    return bridge, target, record, paths, seed, incident_path, history_rows
+
+
+def test_bridge_recovers_exact_trusted_setup_replay_without_provider(
+    tmp_path: Path,
+) -> None:
+    (
+        bridge,
+        target,
+        _record_value,
+        _paths,
+        seed,
+        _incident_path,
+        history_rows,
+    ) = (
+        _trusted_setup_replay_fixture(tmp_path)
+    )
+
+    receipt = dict(bridge.recover_post_commit_candidate(target))
+    replay = dict(bridge.recover_post_commit_candidate(target))
+
+    assert receipt == replay
+    assert receipt["schema"] == _TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA
+    assert receipt["disposition"] == "retry_exact_post_commit_candidate"
+    assert receipt["reason"] == (
+        "trusted_submodule_setup_misclassified_as_protected_mutation"
+    )
+    assert receipt["source_candidate_receipt_id"] == seed["receipt_id"]
+    assert receipt["source_pre_dispatch_recovery_receipt_id"]
+    assert receipt["provider_dispatched"] is False
+    assert receipt["attempt_consumed"] is False
+    assert receipt["validation_commands_passed"] is True
+    assert receipt["merge_attempted"] is False
+    assert receipt["effect_state"] == (
+        "proven_absent_after_validation_only_replay"
+    )
+    body = dict(receipt)
+    receipt_id = body.pop("receipt_id")
+    assert receipt_id == database_portal_bridge_module._sha256_bytes(
+        database_portal_bridge_module._canonical_json(body)
+    )
+
+    prior_semantic = dict(history_rows[0]["body"])
+    prior_semantic.pop("completion_receipt", None)
+    history_rows.insert(
+        0,
+        {
+            "revision": 11,
+            "status": "blocked",
+            "body": {
+                **prior_semantic,
+                "completion_receipt": {
+                    "operation": (
+                        "database_portal_post_commit_candidate_recovery"
+                    ),
+                    "trusted_setup_replay_recovery_receipt": receipt,
+                },
+            },
+        },
+    )
+    with pytest.raises(DatabasePortalBridgeError, match="one-shot"):
+        bridge.recover_post_commit_candidate(target)
+
+
+def test_bridge_trusted_setup_replay_uses_captured_projection_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        bridge,
+        target,
+        _record_value,
+        paths,
+        _seed,
+        _incident_path,
+        _history_rows,
+    ) = _trusted_setup_replay_fixture(tmp_path)
+
+    def reject_path_reopen(**_kwargs: object) -> tuple[str, str]:
+        raise AssertionError("path-level projection identity helper was reopened")
+
+    monkeypatch.setattr(
+        bridge,
+        "_portal_completion_event_identity",
+        reject_path_reopen,
+    )
+
+    receipt = dict(bridge.recover_post_commit_candidate(target))
+
+    assert receipt["schema"] == _TRUSTED_SETUP_REPLAY_RECOVERY_SCHEMA
+    assert receipt["provider_dispatched"] is False
+    assert (
+        paths.root / "database-portal-trusted-setup-replay-recovery.json"
+    ).is_file()
+
+
+def test_bridge_trusted_setup_replay_rejects_evidence_replacement_at_publish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        bridge,
+        target,
+        _record_value,
+        paths,
+        _seed,
+        _incident_path,
+        _history_rows,
+    ) = _trusted_setup_replay_fixture(tmp_path)
+    receipt_path = (
+        paths.root / "database-portal-trusted-setup-replay-recovery.json"
+    )
+    active_path = paths.root / "implementation-protected-path-active.json"
+    active_bytes = active_path.read_bytes()
+    capability_type = (
+        database_portal_bridge_module._TrustedSetupReplayEvidenceCapability
+    )
+    original_publish_once = capability_type.publish_once
+
+    def replace_evidence_then_publish(
+        capability: object,
+        name: str,
+        payload: bytes,
+        *,
+        maximum: int,
+    ) -> bytes:
+        active_path.unlink()
+        active_path.write_bytes(active_bytes)
+        return original_publish_once(
+            capability,
+            name,
+            payload,
+            maximum=maximum,
+        )
+
+    monkeypatch.setattr(
+        capability_type,
+        "publish_once",
+        replace_evidence_then_publish,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="receipt publication is not admissible|evidence changed",
+    ):
+        bridge.recover_post_commit_candidate(target)
+
+    assert not receipt_path.exists()
+
+
+def test_bridge_trusted_setup_replay_rejects_attempt_root_replacement_at_publish(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        bridge,
+        target,
+        _record_value,
+        paths,
+        _seed,
+        _incident_path,
+        _history_rows,
+    ) = _trusted_setup_replay_fixture(tmp_path)
+    original_root = paths.root
+    displaced_root = original_root.with_name(original_root.name + "-displaced")
+    receipt_name = "database-portal-trusted-setup-replay-recovery.json"
+    capability_type = (
+        database_portal_bridge_module._TrustedSetupReplayEvidenceCapability
+    )
+    original_publish_once = capability_type.publish_once
+
+    def replace_attempt_root_then_publish(
+        capability: object,
+        name: str,
+        payload: bytes,
+        *,
+        maximum: int,
+    ) -> bytes:
+        original_root.rename(displaced_root)
+        original_root.mkdir()
+        return original_publish_once(
+            capability,
+            name,
+            payload,
+            maximum=maximum,
+        )
+
+    monkeypatch.setattr(
+        capability_type,
+        "publish_once",
+        replace_attempt_root_then_publish,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="receipt publication is not admissible|evidence changed",
+    ):
+        bridge.recover_post_commit_candidate(target)
+
+    assert not (original_root / receipt_name).exists()
+    assert not (displaced_root / receipt_name).exists()
+
+
+def test_bridge_trusted_setup_replay_incident_tamper_fails_closed(
+    tmp_path: Path,
+) -> None:
+    (
+        bridge,
+        target,
+        _record_value,
+        _paths,
+        _seed,
+        incident_path,
+        _history_rows,
+    ) = (
+        _trusted_setup_replay_fixture(tmp_path)
+    )
+    bridge.recover_post_commit_candidate(target)
+    incident = json.loads(incident_path.read_text(encoding="utf-8"))
+    incident["mutations"][0]["after"]["sha256"] = "f" * 64
+    incident_path.write_text(
+        json.dumps(incident, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="trusted.setup.*evidence changed|protected.*digest",
+    ):
+        bridge.recover_post_commit_candidate(target)
+
+
+def test_bridge_trusted_setup_replay_rejects_incomplete_active_population(
+    tmp_path: Path,
+) -> None:
+    (
+        bridge,
+        target,
+        _record_value,
+        paths,
+        _seed,
+        incident_path,
+        _history_rows,
+    ) = _trusted_setup_replay_fixture(tmp_path)
+    active_path = paths.root / "implementation-protected-path-active.json"
+    active = json.loads(active_path.read_text(encoding="utf-8"))
+    incident = json.loads(incident_path.read_text(encoding="utf-8"))
+
+    # The recorded active/incident evidence is internally complete for the
+    # single path it claims.  It must still fail closed when it omits one path
+    # from the bridge's exact current protected-path authority.
+    recorded = set(active["protected_paths"])
+    assert set(active["snapshot"]["shared_checkout"]["paths"]) == recorded
+    assert set(active["snapshot"]["workspace"]["paths"]) == recorded
+    assert set(incident["protected_paths"]) == recorded
+    assert bridge.repository_root is not None
+    assert (bridge.repository_root / "README.md").is_file()
+    bridge.implementation_protected_paths = tuple(
+        sorted((*bridge.implementation_protected_paths, "README.md"))
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="trusted-setup replay protected-path evidence changed",
+    ):
+        bridge.recover_post_commit_candidate(target)
+
+
+def test_bridge_trusted_setup_replay_receipt_publication_is_immutable(
+    tmp_path: Path,
+) -> None:
+    (
+        bridge,
+        target,
+        _record_value,
+        paths,
+        _seed,
+        _incident_path,
+        _history_rows,
+    ) = _trusted_setup_replay_fixture(tmp_path)
+    receipt_path = (
+        paths.root / "database-portal-trusted-setup-replay-recovery.json"
+    )
+    preexisting = (
+        json.dumps(
+            {
+                "schema": "foreign-concurrent-receipt@1",
+                "receipt_id": "sha256:" + "f" * 64,
+            },
+            indent=2,
+            sort_keys=True,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    receipt_path.write_bytes(preexisting)
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="trusted-setup replay recovery receipt evidence changed",
+    ):
+        bridge.recover_post_commit_candidate(target)
+
+    assert receipt_path.read_bytes() == preexisting
+
+
+@pytest.mark.parametrize("unsafe_kind", ("symlink", "hardlink", "oversized"))
+def test_bridge_trusted_setup_replay_rejects_unsafe_evidence_input(
+    tmp_path: Path,
+    unsafe_kind: str,
+) -> None:
+    (
+        bridge,
+        target,
+        _record_value,
+        paths,
+        _seed,
+        incident_path,
+        _history_rows,
+    ) = _trusted_setup_replay_fixture(tmp_path)
+    active_path = paths.root / "implementation-protected-path-active.json"
+
+    if unsafe_kind == "symlink":
+        backing = tmp_path / "linked-active.json"
+        backing.write_bytes(active_path.read_bytes())
+        active_path.unlink()
+        active_path.symlink_to(backing)
+    elif unsafe_kind == "hardlink":
+        backing = tmp_path / "hard-linked-active.json"
+        backing.hardlink_to(active_path)
+    else:
+        incident_path.write_bytes(b"{" + b"x" * (512 * 1024) + b"}")
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match=(
+            "refuses linked attempt artifacts|"
+            "refuses hard-linked attempt artifacts|"
+            "could not read Portal attempt artifact"
+        ),
     ):
         bridge.recover_post_commit_candidate(target)
 
