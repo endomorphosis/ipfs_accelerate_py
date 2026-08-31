@@ -118568,7 +118568,23 @@ class DatabaseImplementationDaemon:
             )
             and self._task_outputs_landed_on_target(task)
         ):
-            completed = self._complete_landed_running_attempt(current, task)
+            try:
+                completed = self._complete_landed_running_attempt(current, task)
+            except (
+                TypedStateOwnerAuthorizationError,
+                TypedStateOwnerRemoteError,
+                DatabaseImplementationAuthorityError,
+                TransactionError,
+            ):
+                return {
+                    "resumed": True,
+                    "retryable": True,
+                    "landed_outputs_completed": False,
+                    "reason": "landed_complete_authorization_denied",
+                    "attempt_id": current.attempt_id,
+                    "task_alias": current.task_alias,
+                    "status": str(getattr(task, "status", "") or ""),
+                }
             self._record_event(
                 "landed_merge_completed_instead_of_quarantine",
                 attempt_id=completed.attempt_id,
