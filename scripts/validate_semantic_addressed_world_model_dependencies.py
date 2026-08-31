@@ -3255,6 +3255,8 @@ def _m32_live_preflight_plan_anchor_successor_errors(
         anchor = expected.get("preserved_plan_anchor", {})
         changes = expected.get("exact_changes", {})
         preservation = expected.get("preservation", {})
+        source_chain = expected.get("source_chain", {})
+        expected_task_heads = expected.get("expected_task_heads", {})
         if (
             expected.get("migration_revision") != "SAWM-R2-M32"
             or expected.get("target_generation") != 29
@@ -3284,6 +3286,11 @@ def _m32_live_preflight_plan_anchor_successor_errors(
             or preservation.get("same_live_owner") is not True
             or preservation.get("generation_restart") is not False
             or preservation.get("m31_receipt_preserved") is not True
+            or source_chain.get("initial_control_commit")
+            != "547485ffacd636c6046b00ed23dc0f4c53de4315"
+            or source_chain.get("initial_control_tree")
+            != "10e153a78f5709e8b841567ab4475f60eff05db3"
+            or expected_task_heads != materializer._m30_expected_task_heads()
         ):
             errors.append("M32 live-preflight plan-anchor repair delta is not exact")
         if require_active_runtime:
@@ -3335,9 +3342,26 @@ def _m31_source_chain_errors(
     root: Path,
     materializer: Any,
     authority: Mapping[str, Any],
+    *,
+    current_head: str | None = None,
 ) -> list[str]:
     try:
         population = materializer.build_population(root)
+        if current_head:
+            binding = dict(population["source_binding"])
+            binding.update(
+                {
+                    "head": current_head,
+                    "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                    "datasets_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                    ),
+                    "kit_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                    ),
+                }
+            )
+            population = {**population, "source_binding": binding}
         materializer._assert_m31_source_delta(root, population, authority)
         return []
     except Exception as exc:
@@ -3453,7 +3477,26 @@ def _m31_detached_coordinator_pid_recovery_successor_errors(
                 }
             ):
                 errors.append("scheduler M31 target/runtime binding is not exact")
-        errors.extend(_m31_source_chain_errors(root, materializer, expected))
+        historical_control_head = None
+        if not require_active_runtime and _m32_successor_declared(
+            scheduler, seal, migration
+        ):
+            m32 = materializer._expected_m32_live_preflight_plan_anchor_authority()
+            source_chain = m32.get("source_chain", {})
+            if isinstance(source_chain, Mapping):
+                historical_control_head = str(
+                    source_chain.get("base_control_commit") or ""
+                ) or None
+            if historical_control_head is None:
+                errors.append("M32 prior M31 control source head is absent")
+        errors.extend(
+            _m31_source_chain_errors(
+                root,
+                materializer,
+                expected,
+                current_head=historical_control_head,
+            )
+        )
         return errors
     except Exception as exc:
         return [

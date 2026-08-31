@@ -1325,10 +1325,39 @@ _M32_OPERATOR_CONTROL_PATHS = frozenset(
         "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
     }
 )
-_M32_INITIAL_CONTROL_COMMIT = "0000000000000000000000000000000000000000"
-_M32_INITIAL_CONTROL_TREE = "0000000000000000000000000000000000000000"
+_M32_INITIAL_CONTROL_COMMIT = "547485ffacd636c6046b00ed23dc0f4c53de4315"
+_M32_INITIAL_CONTROL_TREE = "10e153a78f5709e8b841567ab4475f60eff05db3"
 _M32_INITIAL_CONTROL_BLOBS = MappingProxyType(
-    {path: "0000000000000000000000000000000000000000" for path in _M32_OPERATOR_CONTROL_PATHS}
+    {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "ca3fb76ed2b3136e82463ef9489811cf494d0ec8"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "ff082caa2782dc5537870ca3d9e2b34f6e73672b"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "96bbc28f7be83c187b18133bd2e52a955c2df4c6"
+        ),
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ): "6b236c752f94254ded8816742802d57e7db87586",
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "d3808f4f82fb59f40a8b77316615198daa7dd7d6"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "ed2eff0c9cdcf252190e1831f12f4aba4536d336"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "20110c307145b5390776d828a14c87c6347741a4"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "7c526eb5186f166b5b6e5612e4729c2604adb69b"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "2dcf7acd6b568f7cee52d65e5cd8e9e856dd3c50"
+        ),
+    }
 )
 _M32_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
@@ -6619,6 +6648,7 @@ def _expected_m32_live_preflight_plan_anchor_authority() -> dict[str, Any]:
             "final_reseal_parent": _M32_INITIAL_CONTROL_COMMIT,
             "final_control_commit_count": 1,
         },
+        "expected_task_heads": _m30_expected_task_heads(),
         "operator_control_paths": sorted(_M32_OPERATOR_CONTROL_PATHS),
         "current_datasets_gitlink": "b9f5b86199c03e427fd51fcea302479880421ff8",
         "current_datasets_tree": "52c0c7be05a51956ba5aa2b6f85d38e03588f3b1",

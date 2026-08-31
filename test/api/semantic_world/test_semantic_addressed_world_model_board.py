@@ -4639,6 +4639,13 @@ def test_m32_authority_and_preserved_plan_anchor_are_exact() -> None:
     assert authority["target_projection_cid"] == (
         "baguqeerab3m6k3ea4ulaouojsdazccvepipcfryyblps7676ymqrtbyc5tiq"
     )
+    assert authority["source_chain"]["initial_control_commit"] == (
+        "547485ffacd636c6046b00ed23dc0f4c53de4315"
+    )
+    assert authority["source_chain"]["initial_control_tree"] == (
+        "10e153a78f5709e8b841567ab4475f60eff05db3"
+    )
+    assert authority["expected_task_heads"] == materializer._m30_expected_task_heads()
     anchor = operator._preserved_m27_plan_anchor(
         scheduler, authority, materializer
     )
@@ -4676,6 +4683,59 @@ def test_m32_preserved_plan_anchor_fails_closed_on_historical_m29_drift() -> Non
             materializer._expected_m32_live_preflight_plan_anchor_authority(),
             materializer,
         )
+
+
+def test_m32_validates_m31_source_chain_at_its_preserved_historical_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m32_historical_m31_head_test",
+    )
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m32_historical_m31_head_test",
+    )
+    scheduler = json.loads(
+        (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
+        .read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json")
+        .read_text(encoding="utf-8")
+    )
+    observed: list[str | None] = []
+
+    def source_chain(
+        _root: Path,
+        _materializer: object,
+        _authority: Mapping[str, object],
+        *,
+        current_head: str | None = None,
+    ) -> list[str]:
+        observed.append(current_head)
+        return []
+
+    monkeypatch.setattr(dependencies, "_m31_source_chain_errors", source_chain)
+    assert dependencies._m31_detached_coordinator_pid_recovery_successor_errors(
+        scheduler,
+        seal,
+        migration,
+        root=REPO_ROOT,
+        require_active_runtime=False,
+    ) == []
+    assert observed == [
+        materializer._expected_m32_live_preflight_plan_anchor_authority()[
+            "source_chain"
+        ]["base_control_commit"]
+    ]
 
 
 def test_m31_authority_pins_dead_pid_event_281_and_generation_29() -> None:

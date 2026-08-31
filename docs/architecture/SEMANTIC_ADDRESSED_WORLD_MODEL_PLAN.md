@@ -1828,6 +1828,10 @@ post-projection baguqeerab3m6k3ea4ulaouojsdazccvepipcfryyblps7676ymqrtbyc5tiq
 
 M32 does not authorize a generation restart. If generation 29 stops before
 the board launches, a separately sealed generation-30 successor is required.
+The initial nine-control repair commit is
+`547485ffacd636c6046b00ed23dc0f4c53de4315` (tree
+`10e153a78f5709e8b841567ab4475f60eff05db3`); one final nine-control reseal
+binds its exact blobs without rewriting M31 or its event-282 receipt.
 
 ## 41. Current limitations at seal time
 

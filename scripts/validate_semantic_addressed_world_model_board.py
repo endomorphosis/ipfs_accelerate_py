@@ -3605,6 +3605,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 or seal.get(f"{m32_key}_cid") != materializer._identity(expected)
                 or source_chain.get("initial_control_commit")
                 != materializer._M32_INITIAL_CONTROL_COMMIT
+                or source_chain.get("initial_control_commit")
+                != "547485ffacd636c6046b00ed23dc0f4c53de4315"
                 or source_chain.get("initial_control_tree")
                 != materializer._M32_INITIAL_CONTROL_TREE
                 or module._m32_live_preflight_plan_anchor_successor_errors(
