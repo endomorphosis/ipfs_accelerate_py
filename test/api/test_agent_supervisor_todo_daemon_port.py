@@ -6446,6 +6446,39 @@ def _nested_submodule_guard_events(daemon: TodoImplementationDaemon) -> list[dic
     ]
 
 
+def test_callback_validation_event_sink_preserves_source_stream(
+    tmp_path: Path,
+) -> None:
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    source_path = daemon.events_path
+    sink_path = tmp_path / "requalification" / "validation-events.jsonl"
+
+    with daemon._scoped_validation_event_sink(sink_path):
+        daemon._record_offline_nested_submodule_skip(
+            nested,
+            parent_relative="external/ipfs_datasets",
+        )
+
+    assert daemon.events_path == source_path
+    assert not source_path.exists()
+    [audit] = [
+        json.loads(line)
+        for line in sink_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert audit["type"] == (
+        "offline_nested_submodule_initialization_skipped"
+    )
+    assert audit["offline_local_only"] is True
+    assert audit["fetch_attempted"] is False
+
+    daemon._record_event("validation_event_sink_restored", {"restored": True})
+    [source] = [
+        json.loads(line)
+        for line in source_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert source["type"] == "validation_event_sink_restored"
+
+
 def test_implementation_daemon_guards_nested_repository_cycle_before_worktree_creation(
     tmp_path: Path,
     monkeypatch,
