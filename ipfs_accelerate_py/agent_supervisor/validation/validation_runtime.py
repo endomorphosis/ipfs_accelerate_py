@@ -885,21 +885,24 @@ def formal_toolchain_deployment_manifest(
     return {**manifest, "manifest_sha256": identity}
 
 
-def validation_python_executable(
-    environment: Mapping[str, object] | None = None,
-) -> str:
-    """Return the canonical approved Python executable for validation commands.
+def _is_ephemeral_interpreter_path(path: Path | str) -> bool:
+    """Return whether ``path`` is a procfs/memfd launcher, not a real binary."""
 
-    Never execute the original launcher spelling after validating only its
-    target: a launcher in a writable directory could be replaced between the
-    check and ``exec``.  The child instead executes the already-resolved,
-    non-writable system binary.  Approved package roots are supplied
-    separately by :func:`_runtime_python_path_entries`.
-    """
+    text = str(path)
+    if (
+        text.startswith("/proc/")
+        or text.startswith("/memfd:")
+        or "/proc/self/fd/" in text
+    ):
+        return True
+    try:
+        resolved = Path(path).resolve()
+    except OSError:
+        return False
+    return str(resolved).startswith("/memfd:")
 
-    source = os.environ if environment is None else environment
-    configured = str(source.get(VALIDATION_PYTHON_ENV) or "").strip()
-    candidate = Path(configured) if configured else Path(sys.executable)
+
+def _admit_on_disk_validation_python(candidate: Path) -> str:
     if not candidate.is_absolute():
         raise ValidationRuntimeError(
             f"{VALIDATION_PYTHON_ENV} must be an absolute executable path"
@@ -910,12 +913,60 @@ def validation_python_executable(
         raise ValidationRuntimeError(
             f"validation Python is unavailable: {candidate}"
         ) from exc
+    if _is_ephemeral_interpreter_path(resolved):
+        raise ValidationRuntimeError(
+            f"validation Python is a sealed launcher, not an interpreter: "
+            f"{candidate}"
+        )
     if not resolved.is_file() or not os.access(resolved, os.X_OK):
         raise ValidationRuntimeError(
             f"validation Python is not executable: {candidate}"
         )
     _reject_writable_path(resolved, source="validation Python")
     return str(resolved)
+
+
+def validation_python_executable(
+    environment: Mapping[str, object] | None = None,
+) -> str:
+    """Return the canonical approved Python executable for validation commands.
+
+    Never execute the original launcher spelling after validating only its
+    target: a launcher in a writable directory could be replaced between the
+    check and ``exec``.  The child instead executes the already-resolved,
+    non-writable system binary.  Approved package roots are supplied
+    separately by :func:`_runtime_python_path_entries`.
+
+    Sealed ``/proc/self/fd`` launchers inherited from a parent supervisor are
+    not interpreters.  Falling back to the on-disk binary lets metadata-only
+    dependency probes run inside credential-bearing daemons.
+    """
+
+    source = os.environ if environment is None else environment
+    configured = str(source.get(VALIDATION_PYTHON_ENV) or "").strip()
+    if configured:
+        candidate = Path(configured)
+        if not candidate.is_absolute():
+            raise ValidationRuntimeError(
+                f"{VALIDATION_PYTHON_ENV} must be an absolute executable path"
+            )
+        if not _is_ephemeral_interpreter_path(candidate):
+            return _admit_on_disk_validation_python(candidate)
+    last_error: ValidationRuntimeError | None = None
+    for fallback in (
+        Path(str(getattr(sys, "_base_executable", "") or sys.executable)),
+        Path(sys.executable),
+    ):
+        if not fallback.is_absolute() or _is_ephemeral_interpreter_path(fallback):
+            continue
+        try:
+            return _admit_on_disk_validation_python(fallback)
+        except ValidationRuntimeError as exc:
+            last_error = exc
+            continue
+    if last_error is not None:
+        raise last_error
+    raise ValidationRuntimeError("validation Python is unavailable")
 
 
 def _known_runtime_package_roots() -> set[Path]:

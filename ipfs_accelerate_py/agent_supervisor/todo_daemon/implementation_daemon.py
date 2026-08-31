@@ -32949,7 +32949,7 @@ class PortalImplementationDaemon:
             )
             if len(prior_fingerprints) >= 8:
                 break
-        return project_dependency_preflight_backoff_seconds(
+        backoff_seconds = project_dependency_preflight_backoff_seconds(
             str(
                 receipt.get("retry_fingerprint")
                 or receipt.get("receipt_id")
@@ -32957,6 +32957,26 @@ class PortalImplementationDaemon:
             ),
             prior_fingerprints,
         )
+        probe = receipt.get("probe")
+        probe_reason = (
+            str(probe.get("reason") or "")
+            if isinstance(probe, Mapping)
+            else ""
+        )
+        if (
+            str(receipt.get("reason") or "")
+            in {
+                "approved_validation_environment_dependency_probe_failed",
+                "project_dependency_preflight_infrastructure_error",
+            }
+            and probe_reason
+            in {
+                "dependency_probe_infrastructure_error",
+                "",
+            }
+        ):
+            return min(backoff_seconds, 30)
+        return backoff_seconds
 
     def _require_validation_project_dependency_preflight(
         self,

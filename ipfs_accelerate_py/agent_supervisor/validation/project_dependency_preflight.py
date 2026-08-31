@@ -38,6 +38,13 @@ if not _CHILD_PROBE_MODE:
         validation_command_repository_root,
     )
     from .validation_runtime import (
+        VALIDATION_PYTHON_ENV,
+        VALIDATION_PYTHON_INTERPRETER_SHA256_ENV,
+        VALIDATION_PYTHON_INTERPRETER_STAT_ENV,
+        VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
+        VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
+        VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+        ValidationRuntimeError,
         build_validation_environment,
         sealed_validation_python_runner,
         validation_environment_for_runner,
@@ -3185,12 +3192,60 @@ def _run_bounded_probe_process(
         return returncode, bytes(output), {}
 
 
+def _environment_without_ephemeral_validation_python(
+    environment: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """Drop inherited sealed-launcher Python so a real interpreter can probe."""
+
+    source = os.environ if environment is None else environment
+    cleaned: dict[str, object] = {
+        str(key): value for key, value in source.items()
+    }
+    for key in (
+        VALIDATION_PYTHON_ENV,
+        "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE",
+        VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
+        VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
+        VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+        VALIDATION_PYTHON_INTERPRETER_SHA256_ENV,
+        VALIDATION_PYTHON_INTERPRETER_STAT_ENV,
+    ):
+        cleaned.pop(key, None)
+    for key, value in list(cleaned.items()):
+        text = str(value)
+        if (
+            text.startswith("/proc/")
+            or text.startswith("/memfd:")
+            or "/proc/self/fd/" in text
+        ):
+            cleaned.pop(key, None)
+    return cleaned
+
+
 def _run_dependency_probe(
     payload: Mapping[str, Any],
     *,
     environment: Mapping[str, object] | None = None,
 ) -> dict[str, Any]:
     """Run the metadata-only probe through the approved sealed interpreter."""
+
+    try:
+        return _run_dependency_probe_once(payload, environment=environment)
+    except ValidationRuntimeError:
+        return _run_dependency_probe_once(
+            payload,
+            environment=_environment_without_ephemeral_validation_python(
+                environment
+            ),
+        )
+
+
+def _run_dependency_probe_once(
+    payload: Mapping[str, Any],
+    *,
+    environment: Mapping[str, object] | None = None,
+) -> dict[str, Any]:
+    """Run one sealed probe attempt against ``environment``."""
 
     validation_environment = build_validation_environment(environment)
     validation_environment = validation_environment_for_runner(
