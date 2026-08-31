@@ -2119,16 +2119,6 @@ def execute_quack_owner_command(
             result = source.rearm_blocked_task(task.task_cid, receipt=request)
             return result.to_dict()
         if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS:
-            if (
-                str(args["status"] or "").strip().lower()
-                in _REOPENED_TASK_STATUSES
-                and args["receipt"].get("operation")
-                == _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
-            ):
-                raise TaskSourceConflictError(
-                    "leftover-wait recovery is unavailable through the generic "
-                    "remote queue/status command"
-                )
             result = source.record_queue_backoff_and_cas_status(
                 task_cid=args["task_cid"],
                 expected_revision=args["expected_revision"],
@@ -3710,15 +3700,6 @@ class DatabaseTaskSource:
             if _post_merge_recovery_admission is not None:
                 raise TaskSourceConflictError(
                     "process-local post-merge recovery admission cannot cross Quack"
-                )
-            if (
-                str(status or "").strip().lower() in _REOPENED_TASK_STATUSES
-                and receipt.get("operation")
-                == _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_OPERATION
-            ):
-                raise TaskSourceConflictError(
-                    "leftover-wait recovery is unavailable through the generic "
-                    "remote queue/status command"
                 )
             try:
                 result = submit_quack_owner_command(

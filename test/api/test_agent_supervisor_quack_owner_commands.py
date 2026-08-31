@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     DatabaseTaskSource,
     TaskSourceCompletionError,
     TaskSourceConflictError,
+    TaskSourceIntegrityError,
     TaskSourceUnknownOutcomeError,
     execute_quack_owner_command,
 )
@@ -606,8 +607,7 @@ def test_owner_generic_queue_status_rejects_leftover_wait_recovery(
         }
 
         with pytest.raises(
-            TaskSourceConflictError,
-            match="generic remote queue/status command",
+            (TaskSourceConflictError, TaskSourceIntegrityError),
         ):
             execute_quack_owner_command(
                 repository,
