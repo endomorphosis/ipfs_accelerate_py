@@ -12,7 +12,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,8 +20,10 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime import event_log as event_log_module
 from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     append_jsonl_event,
+    rotate_event_log_if_needed,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     DatabaseProgramConfig,
@@ -455,6 +457,82 @@ def _break_event_chain_with_valid_event_id(paths: object) -> None:
     )
 
 
+def _rewrite_active_event_chain(
+    paths: object,
+    mutate: Callable[[list[dict[str, object]]], None],
+) -> None:
+    """Rewrite one test-only chain and reseal its exact physical manifest."""
+
+    event_path = Path(paths.events)
+    events = [
+        json.loads(line)
+        for line in event_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    mutate(events)
+    previous = ""
+    for event in events:
+        event["previous_event_id"] = previous
+        unsigned = dict(event)
+        unsigned.pop("event_id", None)
+        event["event_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                unsigned,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        previous = str(event["event_id"])
+    payload = b"".join(
+        json.dumps(
+            event,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        + b"\n"
+        for event in events
+    )
+    event_path.write_bytes(payload)
+    source_stat = event_path.stat()
+    manifest_path = event_path.with_name(event_path.name + ".manifest.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    active = next(
+        item
+        for item in manifest["files"]
+        if item["path"] == event_path.name
+    )
+    active.update(
+        {
+            "size_bytes": len(payload),
+            "event_count": len(events),
+            "first_sequence": int(events[0]["sequence"]),
+            "last_sequence": int(events[-1]["sequence"]),
+            "device": int(source_stat.st_dev),
+            "inode": int(source_stat.st_ino),
+            "mtime_ns": int(source_stat.st_mtime_ns),
+        }
+    )
+    manifest["active_indexed_bytes"] = len(payload)
+    manifest["latest_sequence"] = int(events[-1]["sequence"])
+    manifest["last_event_id"] = str(events[-1]["event_id"])
+    unsigned_manifest = dict(manifest)
+    unsigned_manifest.pop("manifest_digest", None)
+    manifest["manifest_digest"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            unsigned_manifest,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
 def test_exact_nested_setup_failure_rearms_without_same_turn_dispatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -726,6 +804,339 @@ def test_nested_setup_failure_rearm_rejects_world_writable_authority(
         assert daemon.reconcile_blocked_unknown_outcome_tasks() == []
     finally:
         selected.chmod(original_mode)
+        daemon.close()
+
+
+def test_nested_setup_failure_rearm_uses_only_sealed_read_only_event_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    manifest = Path(paths.events).with_name(
+        Path(paths.events).name + ".manifest.json"
+    )
+    watched = (Path(paths.events), manifest)
+    before = {
+        path: (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in watched
+    }
+
+    def forbidden_scanner(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("rearm verifier invoked a repairing event scanner")
+
+    monkeypatch.setattr(
+        event_log_module,
+        "event_log_manifest",
+        forbidden_scanner,
+    )
+    monkeypatch.setattr(
+        event_log_module,
+        "event_log_sources",
+        forbidden_scanner,
+    )
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        evidence = bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        )
+        assert evidence is not None
+        assert {
+            path: (path.read_bytes(), path.stat().st_mtime_ns)
+            for path in watched
+        } == before
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_rearm_rejects_group_writable_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    rotation = rotate_event_log_if_needed(
+        Path(paths.events),
+        max_bytes=1,
+        retain_recent=1,
+        max_archives=2,
+    )
+    assert rotation["rotated"] is True
+    manifest = Path(paths.events).with_name(
+        Path(paths.events).name + ".manifest.json"
+    )
+    lock = Path(paths.events).with_name("." + Path(paths.events).name + ".lock")
+    targets = (
+        Path(bridge.attempt_root).parent,
+        Path(bridge.attempt_root),
+        Path(paths.root),
+        Path(paths.binding),
+        Path(paths.task_projection),
+        Path(paths.state),
+        Path(paths.events),
+        manifest,
+        lock,
+        Path(str(rotation["archive_path"])),
+    )
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is not None
+        for selected in targets:
+            original_mode = stat.S_IMODE(selected.lstat().st_mode)
+            try:
+                selected.chmod(original_mode | stat.S_IWGRP)
+                assert bridge.no_provider_dispatch_rearm_evidence(
+                    terminal,
+                    outer_block_receipt=task.body["completion_receipt"],
+                ) is None, selected
+            finally:
+                selected.chmod(original_mode)
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_rearm_rejects_hardlinked_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    rotation = rotate_event_log_if_needed(
+        Path(paths.events),
+        max_bytes=1,
+        retain_recent=1,
+        max_archives=2,
+    )
+    assert rotation["rotated"] is True
+    manifest = Path(paths.events).with_name(
+        Path(paths.events).name + ".manifest.json"
+    )
+    targets = (
+        Path(paths.binding),
+        Path(paths.task_projection),
+        Path(paths.state),
+        Path(paths.events),
+        manifest,
+        Path(str(rotation["archive_path"])),
+    )
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        for index, selected in enumerate(targets):
+            extra = Path(paths.root) / f"adversarial-hardlink-{index}"
+            try:
+                os.link(selected, extra)
+                assert bridge.no_provider_dispatch_rearm_evidence(
+                    terminal,
+                    outer_block_receipt=task.body["completion_receipt"],
+                ) is None, selected
+            finally:
+                extra.unlink(missing_ok=True)
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_rearm_rejects_mid_replay_retarget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    original_reader = bridge._read_exact_private_child
+    binding = Path(paths.binding)
+    relocated = binding.with_name(binding.name + ".retargeted")
+    retargeted = False
+
+    def retarget_after_read(
+        directory_fd: int,
+        name: str,
+        *,
+        maximum_bytes: int,
+    ) -> tuple[bytes, tuple[int, ...]]:
+        nonlocal retargeted
+        result = original_reader(
+            directory_fd,
+            name,
+            maximum_bytes=maximum_bytes,
+        )
+        if name == binding.name and not retargeted:
+            binding.rename(relocated)
+            binding.symlink_to(relocated.name)
+            retargeted = True
+        return result
+
+    monkeypatch.setattr(bridge, "_read_exact_private_child", retarget_after_read)
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is None
+        assert retargeted is True
+    finally:
+        if binding.is_symlink():
+            binding.unlink()
+        if relocated.exists():
+            relocated.rename(binding)
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    (
+        ("effect_dispatched", False),
+        ("validation_attempted", False),
+        ("commit_created", False),
+        ("board_completed", False),
+    ),
+)
+def test_nested_setup_failure_rearm_rejects_unknown_effect_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field_name: str,
+    field_value: object,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    try:
+        _rewrite_active_event_chain(
+            paths,
+            lambda events: events[-2].__setitem__(field_name, field_value),
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is None
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("unknown", "foreign_population", "boolean_attempt"),
+)
+def test_nested_setup_failure_rearm_rejects_nonexact_portal_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    try:
+        state_path = Path(paths.state)
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        if mutation == "unknown":
+            state["effect_dispatched"] = False
+        elif mutation == "foreign_population":
+            state["task_statuses"]["PCTDD-FOREIGN"] = "ready"
+        else:
+            state["implementation_attempts"]["PCTDD-001"] = True
+        state_path.write_text(
+            json.dumps(state, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is None
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_rearm_blocks_coordinator_reentry_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    raced = False
+
+    def inject_claim_race(*_args: object, **_kwargs: object) -> object:
+        nonlocal raced
+        raced = True
+        return daemon.coordinator.get_task_claim(attempt.claim_id)
+
+    monkeypatch.setattr(daemon, "_cas_task_status_database", inject_claim_race)
+    try:
+        result = daemon.run_once()
+        assert raced is True
+        assert result["unknown_outcome_rearms"] == []
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+        assert task.body["completion_receipt"]["operation"] == (
+            "database_unknown_outcome_blocked"
+        )
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_rearm_rechecks_prepared_completion_at_barrier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    original_lookup = daemon.coordinator._prepared_completion_unlocked
+    lookup_count = 0
+
+    def inject_prepared_race(
+        connection: object,
+        task_cid: str,
+        *,
+        required: bool,
+        include_promoted: bool = False,
+    ) -> object:
+        nonlocal lookup_count
+        lookup_count += 1
+        if lookup_count >= 2:
+            return {"status": "prepared", "task_cid": task_cid}
+        return original_lookup(
+            connection,
+            task_cid,
+            required=required,
+            include_promoted=include_promoted,
+        )
+
+    monkeypatch.setattr(
+        daemon.coordinator,
+        "_prepared_completion_unlocked",
+        inject_prepared_race,
+    )
+    try:
+        result = daemon.run_once()
+        assert lookup_count >= 2
+        assert result["unknown_outcome_rearms"] == []
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+        assert task.body["completion_receipt"]["operation"] == (
+            "database_unknown_outcome_blocked"
+        )
+    finally:
         daemon.close()
 
 

@@ -4666,6 +4666,99 @@ class DatabaseCoordinator:
                 self._fenced_callback_active = False
                 self._fenced_callback_reentry_detected = False
 
+    def execute_with_terminal_task_claim_barrier(
+        self,
+        claim: TaskClaim | Mapping[str, Any],
+        callback: Callable[[], Any],
+    ) -> Any:
+        """Run one control CAS behind an exact terminal-claim barrier.
+
+        This narrow cross-store guard is for recovery transitions which must
+        prove that an old claim is still exactly released/expired and that no
+        task-completion preparation exists immediately before the external
+        control-store CAS.  The coordinator lock and transaction stay held
+        across the callback, and the same negative facts are revalidated
+        afterwards.  Re-entry into this coordinator from the callback is
+        rejected, so a racing preparation or claim rewrite cannot be hidden
+        inside the control transition.
+        """
+
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+        supplied = (
+            claim.to_dict() if isinstance(claim, TaskClaim) else dict(claim)
+        )
+        identity = self._task_claim_identity(supplied)
+        supplied_state = str(supplied.get("state") or "").strip().lower()
+        if supplied_state not in {
+            LeaseState.RELEASED.value,
+            LeaseState.EXPIRED.value,
+        }:
+            raise DatabaseCoordinationStaleFenceError(
+                "terminal task-claim barrier requires released or expired authority"
+            )
+
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            if not getattr(connection, "in_transaction", False):
+                raise DatabaseCoordinationError(
+                    "could not start terminal task-claim barrier transaction"
+                )
+            self._fenced_callback_reentry_detected = False
+            try:
+                def exact_terminal_claim() -> TaskClaim:
+                    row = connection.execute(
+                        "SELECT * FROM task_claims WHERE claim_id = ?",
+                        [identity["claim_id"]],
+                    ).fetchone()
+                    if row is None:
+                        raise DatabaseCoordinationStaleFenceError(
+                            "terminal task claim disappeared before control CAS"
+                        )
+                    observed = self._task_claim_from_row(row)
+                    if observed.to_dict() != supplied:
+                        raise DatabaseCoordinationStaleFenceError(
+                            "terminal task claim changed before control CAS"
+                        )
+                    if observed.state not in {
+                        LeaseState.RELEASED,
+                        LeaseState.EXPIRED,
+                    }:
+                        raise DatabaseCoordinationStaleFenceError(
+                            "terminal task claim became active before control CAS"
+                        )
+                    if self._prepared_completion_unlocked(
+                        connection,
+                        str(identity["task_cid"]),
+                        required=False,
+                        include_promoted=True,
+                    ) is not None:
+                        raise DatabaseCoordinationStaleFenceError(
+                            "task completion appeared before recovery control CAS"
+                        )
+                    return observed
+
+                exact_terminal_claim()
+                self._fenced_callback_active = True
+                try:
+                    result = callback()
+                finally:
+                    self._fenced_callback_active = False
+                if self._fenced_callback_reentry_detected:
+                    raise DatabaseCoordinationConflictError(
+                        "terminal task-claim callback re-entered coordinator"
+                    )
+                exact_terminal_claim()
+                connection.commit()
+                return result
+            except BaseException:
+                self._rollback_if_open(connection)
+                raise
+            finally:
+                self._fenced_callback_active = False
+                self._fenced_callback_reentry_detected = False
+
     def expire_task_claim(
         self,
         claim: TaskClaim | Mapping[str, Any],

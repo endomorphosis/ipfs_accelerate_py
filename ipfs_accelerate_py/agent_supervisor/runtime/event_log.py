@@ -263,7 +263,16 @@ class _EventLogLock:
         self._thread_lock.acquire()
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._handle = self._path.open("a+b")
+            descriptor = os.open(
+                self._path,
+                os.O_RDWR
+                | os.O_APPEND
+                | os.O_CREAT
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            self._handle = os.fdopen(descriptor, "a+b")
             fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX)
         except BaseException:
             if self._handle is not None:

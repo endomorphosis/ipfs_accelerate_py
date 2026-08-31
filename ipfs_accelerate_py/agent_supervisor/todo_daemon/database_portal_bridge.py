@@ -30,10 +30,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Final
 
-from ..runtime.event_log import (
-    event_log_manifest,
-    event_log_sources,
-)
+from ..runtime.event_log import EVENT_LOG_MANIFEST_SCHEMA
 from ..task_sources.intent_repository import (
     VALIDATION_ARGV_REPRESENTATION,
     VALIDATION_REPRESENTATION_POLICY_KEY,
@@ -55,6 +52,224 @@ DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-no-provider-rearm-evidence@1"
 )
+_EVENT_MANIFEST_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "generation",
+        "updated_at",
+        "active_path",
+        "stream_id",
+        "snapshot_id",
+        "earliest_sequence",
+        "latest_sequence",
+        "last_event_id",
+        "active_indexed_bytes",
+        "files",
+        "manifest_digest",
+    }
+)
+_EVENT_MANIFEST_FILE_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "path",
+        "size_bytes",
+        "event_count",
+        "sha256",
+        "first_sequence",
+        "last_sequence",
+        "start_previous_event_id",
+        "offset_index",
+        "canonical_events",
+        "device",
+        "inode",
+        "mtime_ns",
+    }
+)
+_EVENT_ENVELOPE_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "type",
+        "timestamp",
+        "stream_id",
+        "snapshot_id",
+        "sequence",
+        "previous_event_id",
+        "event_id",
+    }
+)
+_NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
+    "task_selected": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "task_id",
+            "title",
+            "track",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+        }
+    ),
+    "cleanup_finished": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "started_at",
+            "finished_at",
+            "worktree_path",
+            "branch",
+            "removed_worktree",
+            "deleted_branch",
+            "cleaned",
+            "submodule_cleanup",
+            "lifecycle_finalize",
+        }
+    ),
+    "failed_setup_worktree_cleanup": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "task_id",
+            "attempt",
+            "worktree_path",
+            "requested_worktree_path",
+            "branch",
+            "cleanup_result",
+            "exception_result",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+        }
+    ),
+    "implementation_exception": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "task_id",
+            "attempt",
+            "phase",
+            "exception_type",
+            "message",
+            "worktree_path",
+            "branch",
+            "cleanup_result",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+        }
+    ),
+    "implementation_finished": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "task_id",
+            "task_cid",
+            "attempt",
+            "attempt_consumed",
+            "returncode",
+            "implementation_commit",
+            "worktree_path",
+            "branch",
+            "log_path",
+            "baseline_ref",
+            "provider_dispatched",
+            "validation_result",
+            "commit_result",
+            "merge_result",
+            "board_completion",
+            "cleanup_result",
+            "lifecycle_finalize",
+            "exception_result",
+            "failed_preservation_result",
+            "workspace_setup",
+            "cache_hit",
+            "setup_duration_seconds",
+            "saved_duration_seconds",
+            "diagnostic_receipt_id",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+        }
+    ),
+    "daemon_pass": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "completed_count",
+            "ready_count",
+            "selectable_ready_count",
+            "eligible_ready_count",
+            "strict_deprioritized_ready_count",
+            "waiting_count",
+            "blocked_count",
+            "active_task_id",
+            "selection_idle_reason",
+            "max_task_attempts",
+            "retry_budget_reset_task_ids",
+            "retry_budget_rearmed_task_ids",
+            "retry_budget_reset_deferred_task_ids",
+            "released_retry_budget_strategy_block_task_ids",
+            "attempt_limited_task_ids",
+            "ordinary_provider_dispatch_allowed",
+            "protected_path_conflicts",
+            "projection_delta_keys",
+            "shared_completed_task_ids",
+            "shared_active_merge_task_ids",
+            "quarantined_manual_completion_status_task_ids",
+            "manual_completion_authority_task_ids",
+            "manual_completion_authority_required_task_ids",
+            "manual_completion_authority_revalidation_only",
+            "manual_completion_revalidation_task_ids",
+            "manual_completion_revalidation_only_task_ids",
+            "manual_completion_authority_dependency_task_ids",
+            "manual_completion_authority_affected_goal_ids",
+            "manual_completion_renewal_quarantined_task_ids",
+            "completion_receipt_task_ids",
+            "execution_slice_task_statuses",
+            "execution_slice_task_cids_by_id",
+            "virgin_task_transfer",
+        }
+    ),
+}
+_SETUP_EVENT_FIELD_VARIANTS: Final[
+    dict[str, frozenset[frozenset[str]]]
+] = {
+    "nested_submodule_initialization_guarded": frozenset(
+        {
+            _EVENT_ENVELOPE_FIELDS
+            | frozenset({"reason", "source_key", "fallback_returncode"}),
+            _EVENT_ENVELOPE_FIELDS
+            | frozenset(
+                {
+                    "path",
+                    "relative",
+                    "parent_relative",
+                    "reason",
+                    "depth",
+                    "max_depth",
+                    "path_parts",
+                    "max_path_parts",
+                    "path_bytes",
+                    "max_path_bytes",
+                    "path_sha256",
+                    "expected_gitlink_ref_available",
+                    "expected_gitlink_ref_sha256",
+                    "matched_identity_sha256",
+                }
+            ),
+        }
+    ),
+    "submodule_worktree_base_ref_retried": frozenset(
+        {
+            _EVENT_ENVELOPE_FIELDS
+            | frozenset({"reason", "source_key", "fallback_returncode"}),
+            _EVENT_ENVELOPE_FIELDS
+            | frozenset(
+                {
+                    "worktree_path",
+                    "source",
+                    "source_key",
+                    "bad_ref",
+                    "fallback_ref",
+                    "fallback_returncode",
+                    "fallback_error",
+                }
+            ),
+        }
+    ),
+}
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {"completed", "complete", "done"}
 )
@@ -248,7 +463,7 @@ def _ensure_durable_directory(path: Path) -> None:
         )
     for directory in reversed(missing):
         try:
-            directory.mkdir()
+            directory.mkdir(mode=0o700)
         except FileExistsError:
             pass
         if directory.is_symlink() or not directory.is_dir():
@@ -1853,6 +2068,61 @@ class DatabasePortalExecutionBridge:
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
         return receipt
 
+    @staticmethod
+    def _prepare_private_event_log(paths: DatabasePortalAttemptPaths) -> None:
+        """Create the attempt-local active journal with owner-only write mode."""
+
+        directory_flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        descriptor = -1
+        directory_fd = -1
+        try:
+            directory_fd = os.open(paths.root, directory_flags)
+            flags = (
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            try:
+                descriptor = os.open(
+                    paths.events.name,
+                    flags,
+                    0o600,
+                    dir_fd=directory_fd,
+                )
+                os.fsync(descriptor)
+                os.fsync(directory_fd)
+            except FileExistsError as exc:
+                observed = os.stat(
+                    paths.events.name,
+                    dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+                if (
+                    not stat.S_ISREG(observed.st_mode)
+                    or observed.st_uid != os.geteuid()
+                    or observed.st_gid != os.getegid()
+                    or int(observed.st_nlink) != 1
+                    or bool(
+                        observed.st_mode
+                        & (stat.S_IWGRP | stat.S_IWOTH)
+                    )
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal event journal is not owner-private"
+                    ) from exc
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            if directory_fd >= 0:
+                os.close(directory_fd)
+
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
@@ -1896,6 +2166,7 @@ class DatabasePortalExecutionBridge:
                         "database_portal_preentry_published"
                     ) from exc
                 raise
+        self._prepare_private_event_log(paths)
         summaries: list[Mapping[str, Any]] = []
         daemon = self.portal_factory(
             paths,
@@ -1993,40 +2264,209 @@ class DatabasePortalExecutionBridge:
         )
 
     @staticmethod
-    def _read_exact_owner_bytes(
-        path: Path,
+    def _authority_fingerprint(item: os.stat_result) -> tuple[
+        int,
+        int,
+        int,
+        int,
+        int,
+        int,
+        int,
+        int,
+        int,
+    ]:
+        return (
+            int(item.st_dev),
+            int(item.st_ino),
+            int(item.st_mode),
+            int(item.st_uid),
+            int(item.st_gid),
+            int(item.st_nlink),
+            int(item.st_size),
+            int(item.st_mtime_ns),
+            int(item.st_ctime_ns),
+        )
+
+    @classmethod
+    def _validate_private_directory(
+        cls,
+        item: os.stat_result,
         *,
-        maximum_bytes: int = 2 * 1024 * 1024,
-    ) -> bytes:
-        """Read one exact owner-group file through a no-follow descriptor.
+        authority: str,
+    ) -> None:
+        if (
+            not stat.S_ISDIR(item.st_mode)
+            or item.st_uid != os.geteuid()
+            or item.st_gid != os.getegid()
+            or bool(item.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+        ):
+            raise DatabasePortalBridgeError(
+                f"database Portal {authority} is not an owner-private directory"
+            )
 
-        Portal attempt artifacts are created under the daemon owner's primary
-        private group.  Group readability/writability is therefore accepted,
-        but a different group or any world-writable authority is not.  The
-        descriptor and directory entry must name the same stable inode before
-        the bytes are returned.
-        """
+    @classmethod
+    def _open_pinned_private_attempt_directory(
+        cls,
+        *,
+        authority_root: Path,
+        attempt_key: str,
+    ) -> tuple[int, int, int, tuple[Any, ...]]:
+        """Pin parent, authority root, and exact attempt child without links."""
 
+        if (
+            not re.fullmatch(r"[0-9a-f]{24}", attempt_key)
+            or authority_root.name in {"", ".", ".."}
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal no-provider attempt root key is malformed"
+            )
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        descriptors: list[int] = []
+        try:
+            parent_fd = os.open(authority_root.parent, flags)
+            descriptors.append(parent_fd)
+            authority_fd = os.open(
+                authority_root.name,
+                flags,
+                dir_fd=parent_fd,
+            )
+            descriptors.append(authority_fd)
+            attempt_fd = os.open(attempt_key, flags, dir_fd=authority_fd)
+            descriptors.append(attempt_fd)
+            parent_stat = os.fstat(parent_fd)
+            authority_stat = os.fstat(authority_fd)
+            attempt_stat = os.fstat(attempt_fd)
+            cls._validate_private_directory(
+                parent_stat,
+                authority="attempt parent",
+            )
+            cls._validate_private_directory(
+                authority_stat,
+                authority="attempt authority root",
+            )
+            cls._validate_private_directory(
+                attempt_stat,
+                authority="attempt root",
+            )
+            published_authority = os.stat(
+                authority_root.name,
+                dir_fd=parent_fd,
+                follow_symlinks=False,
+            )
+            published_attempt = os.stat(
+                attempt_key,
+                dir_fd=authority_fd,
+                follow_symlinks=False,
+            )
+            if (
+                cls._authority_fingerprint(authority_stat)
+                != cls._authority_fingerprint(published_authority)
+                or cls._authority_fingerprint(attempt_stat)
+                != cls._authority_fingerprint(published_attempt)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal no-provider attempt directory was retargeted"
+                )
+            snapshot = (
+                cls._authority_fingerprint(parent_stat),
+                cls._authority_fingerprint(authority_stat),
+                cls._authority_fingerprint(attempt_stat),
+                authority_root.name,
+                attempt_key,
+            )
+            return parent_fd, authority_fd, attempt_fd, snapshot
+        except BaseException:
+            for descriptor in reversed(descriptors):
+                with suppress(OSError):
+                    os.close(descriptor)
+            raise
+
+    @classmethod
+    def _verify_pinned_private_attempt_directory(
+        cls,
+        *,
+        parent_fd: int,
+        authority_fd: int,
+        attempt_fd: int,
+        snapshot: tuple[Any, ...],
+    ) -> None:
+        parent_expected, authority_expected, attempt_expected, root_name, attempt_key = (
+            snapshot
+        )
+        observed = (
+            cls._authority_fingerprint(os.fstat(parent_fd)),
+            cls._authority_fingerprint(os.fstat(authority_fd)),
+            cls._authority_fingerprint(os.fstat(attempt_fd)),
+            cls._authority_fingerprint(
+                os.stat(root_name, dir_fd=parent_fd, follow_symlinks=False)
+            ),
+            cls._authority_fingerprint(
+                os.stat(attempt_key, dir_fd=authority_fd, follow_symlinks=False)
+            ),
+        )
+        if observed != (
+            parent_expected,
+            authority_expected,
+            attempt_expected,
+            authority_expected,
+            attempt_expected,
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal no-provider attempt authority changed during replay"
+            )
+
+    @classmethod
+    def _read_exact_private_child(
+        cls,
+        directory_fd: int,
+        name: str,
+        *,
+        maximum_bytes: int,
+    ) -> tuple[bytes, tuple[int, ...]]:
+        """Read one exact child through a pinned directory descriptor."""
+
+        if (
+            not name
+            or name in {".", ".."}
+            or "/" in name
+            or "\x00" in name
+            or len(os.fsencode(name)) > 255
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal recovery child name is malformed"
+            )
         flags = (
             os.O_RDONLY
             | getattr(os, "O_CLOEXEC", 0)
             | getattr(os, "O_NOFOLLOW", 0)
         )
         try:
-            descriptor = os.open(path, flags)
+            descriptor = os.open(name, flags, dir_fd=directory_fd)
         except OSError as exc:
             raise DatabasePortalBridgeError(
                 "database Portal recovery authority is unreadable"
             ) from exc
         try:
             before = os.fstat(descriptor)
+            published_before = os.stat(
+                name,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
             if (
                 not stat.S_ISREG(before.st_mode)
                 or before.st_uid != os.geteuid()
                 or before.st_gid != os.getegid()
                 or int(before.st_nlink) != 1
-                or bool(before.st_mode & stat.S_IWOTH)
+                or bool(before.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
                 or int(before.st_size) > maximum_bytes
+                or cls._authority_fingerprint(before)
+                != cls._authority_fingerprint(published_before)
             ):
                 raise DatabasePortalBridgeError(
                     "database Portal recovery authority is not an exact private file"
@@ -2041,413 +2481,808 @@ class DatabasePortalExecutionBridge:
                 remaining -= len(chunk)
             raw = b"".join(chunks)
             after = os.fstat(descriptor)
+            published_after = os.stat(
+                name,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
         finally:
             os.close(descriptor)
-
-        def fingerprint(item: os.stat_result) -> tuple[
-            int,
-            int,
-            int,
-            int,
-            int,
-            int,
-            int,
-            int,
-            int,
-        ]:
-            return (
-                int(item.st_dev),
-                int(item.st_ino),
-                int(item.st_mode),
-                int(item.st_uid),
-                int(item.st_gid),
-                int(item.st_nlink),
-                int(item.st_size),
-                int(item.st_mtime_ns),
-                int(item.st_ctime_ns),
-            )
-        try:
-            published = path.lstat()
-        except OSError as exc:
-            raise DatabasePortalBridgeError(
-                "database Portal recovery authority changed during read"
-            ) from exc
+        fingerprint = cls._authority_fingerprint(before)
         if (
             len(raw) > maximum_bytes
             or len(raw) != int(before.st_size)
-            or fingerprint(before) != fingerprint(after)
-            or fingerprint(before) != fingerprint(published)
-            or stat.S_ISLNK(published.st_mode)
+            or fingerprint != cls._authority_fingerprint(after)
+            or fingerprint != cls._authority_fingerprint(published_after)
         ):
             raise DatabasePortalBridgeError(
                 "database Portal recovery authority changed during read"
             )
-        return raw
+        return raw, fingerprint
 
     @classmethod
-    def _strict_private_json_object_with_digest(
+    def _revalidate_private_children(
         cls,
-        path: Path,
-        *,
-        maximum_bytes: int = 2 * 1024 * 1024,
-    ) -> tuple[dict[str, Any], str]:
-        """Read one owner-private regular JSON object without normalization."""
-
-        def closed_object(
-            pairs: Sequence[tuple[str, Any]],
-        ) -> dict[str, Any]:
-            result: dict[str, Any] = {}
-            for key, value in pairs:
-                if key in result:
-                    raise DatabasePortalBridgeError(
-                        "database Portal recovery authority contains duplicate keys"
-                    )
-                result[key] = value
-            return result
-
-        raw = cls._read_exact_owner_bytes(
-            path,
-            maximum_bytes=maximum_bytes,
-        )
-        try:
-            value = json.loads(
-                raw.decode("utf-8"),
-                object_pairs_hook=closed_object,
-                parse_constant=lambda _value: (_ for _ in ()).throw(
-                    DatabasePortalBridgeError(
-                        "database Portal recovery authority contains a nonfinite value"
-                    )
-                ),
-            )
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise DatabasePortalBridgeError(
-                "database Portal recovery authority is malformed"
-            ) from exc
-        if not isinstance(value, Mapping):
-            raise DatabasePortalBridgeError(
-                "database Portal recovery authority is not an object"
-            )
-        return dict(value), _sha256_bytes(raw)
-
-    @classmethod
-    def _strict_private_json_object(
-        cls,
-        path: Path,
-        *,
-        maximum_bytes: int = 2 * 1024 * 1024,
-    ) -> dict[str, Any]:
-        value, _digest = cls._strict_private_json_object_with_digest(
-            path,
-            maximum_bytes=maximum_bytes,
-        )
-        return value
-
-    @classmethod
-    def _strict_private_projection(
-        cls,
-        paths: DatabasePortalAttemptPaths,
-        binding: Mapping[str, Any],
-    ) -> str:
-        try:
-            text = cls._read_exact_owner_bytes(
-                paths.task_projection,
-                maximum_bytes=2 * 1024 * 1024,
-            ).decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise DatabasePortalBridgeError(
-                "Portal task projection is unreadable"
-            ) from exc
-        if _projection_immutable_digest(text) != str(
-            binding.get("projection_immutable_digest") or ""
-        ):
-            raise DatabasePortalBridgeError(
-                "Portal task projection changed outside its mutable status field"
-            )
-        if _HEADER.findall(text) != [str(binding.get("task_alias") or "")]:
-            raise DatabasePortalBridgeError(
-                "Portal task projection no longer contains exactly the claimed task"
-            )
-        return text
-
-    def _complete_attempt_event_chain(
-        self,
-        paths: DatabasePortalAttemptPaths,
-    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Strictly replay one complete, unrotated-from-genesis event chain."""
-
-        manifest_path = paths.events.with_name(
-            f"{paths.events.name}.manifest.json"
-        )
-        if (
-            paths.root.is_symlink()
-            or paths.events.is_symlink()
-            or manifest_path.is_symlink()
-            or not paths.events.is_file()
-        ):
-            raise DatabasePortalBridgeError(
-                "database Portal no-provider event authority is not exact"
-            )
-        try:
-            root = paths.root.resolve(strict=True)
-            authority_root = self.attempt_root.resolve(strict=True)
-            if root.parent != authority_root:
-                raise DatabasePortalBridgeError(
-                    "database Portal no-provider event authority escapes its root"
-                )
-            sealed_manifest = self._strict_private_json_object(
-                manifest_path,
-                maximum_bytes=2 * 1024 * 1024,
-            )
-            before = event_log_manifest(paths.events)
-            sources = event_log_sources((paths.events,), include_rotated=True)
-        except (OSError, ValueError) as exc:
-            raise DatabasePortalBridgeError(
-                "database Portal no-provider event manifest is unavailable"
-            ) from exc
-        if (
-            int(before.get("earliest_sequence") or 0) != 1
-            or int(before.get("latest_sequence") or 0) < 1
-            or not str(before.get("stream_id") or "")
-            or not str(before.get("snapshot_id") or "")
-            or not re.fullmatch(
-                r"sha256:[0-9a-f]{64}",
-                str(before.get("last_event_id") or ""),
-            )
-            or sealed_manifest != before
-            or not sources
-            or len(sources) > 64
-        ):
-            raise DatabasePortalBridgeError(
-                "database Portal no-provider event history is incomplete"
-            )
-        source_stats: dict[
-            Path,
-            tuple[int, int, int, int, int, int, int, int, int],
-        ] = {}
-        source_payloads: dict[Path, bytes] = {}
-        total_source_bytes = 0
-
-        def file_fingerprint(item: os.stat_result) -> tuple[
-            int,
-            int,
-            int,
-            int,
-            int,
-            int,
-            int,
-            int,
-            int,
-        ]:
-            return (
-                int(item.st_dev),
-                int(item.st_ino),
-                int(item.st_mode),
-                int(item.st_uid),
-                int(item.st_gid),
-                int(item.st_nlink),
-                int(item.st_size),
-                int(item.st_mtime_ns),
-                int(item.st_ctime_ns),
-            )
-
-        for source in sources:
+        directory_fd: int,
+        snapshots: Mapping[str, tuple[int, ...]],
+    ) -> None:
+        for name, expected in snapshots.items():
             try:
-                source_parent = source.parent.resolve(strict=True)
-                raw_source = self._read_exact_owner_bytes(
-                    source,
-                    maximum_bytes=16 * 1024 * 1024,
+                observed = os.stat(
+                    name,
+                    dir_fd=directory_fd,
+                    follow_symlinks=False,
                 )
-                source_stat = source.lstat()
             except OSError as exc:
                 raise DatabasePortalBridgeError(
-                    "database Portal no-provider event source is unavailable"
+                    "database Portal recovery authority changed during replay"
                 ) from exc
-            if (
-                source_parent != root
-                or source.is_symlink()
-                or not stat.S_ISREG(source_stat.st_mode)
-                or source_stat.st_uid != os.geteuid()
-                or source_stat.st_gid != os.getegid()
-                or int(source_stat.st_nlink) != 1
-                or bool(source_stat.st_mode & stat.S_IWOTH)
-            ):
+            if cls._authority_fingerprint(observed) != expected:
                 raise DatabasePortalBridgeError(
-                    "database Portal no-provider event source is not exact"
+                    "database Portal recovery authority changed during replay"
                 )
-            source_stats[source] = file_fingerprint(source_stat)
-            total_source_bytes += len(raw_source)
-            if total_source_bytes > 16 * 1024 * 1024:
-                raise DatabasePortalBridgeError(
-                    "database Portal no-provider event history is oversized"
-                )
-            source_payloads[source] = raw_source
 
-        manifest_records = {
-            str(record.get("path") or ""): record
-            for record in before.get("files", ())
-            if isinstance(record, Mapping)
-            and str(record.get("path") or "")
-        }
-        if set(manifest_records) != {source.name for source in sources}:
-            raise DatabasePortalBridgeError(
-                "database Portal no-provider event manifest population is not exact"
-            )
-        events_by_sequence: dict[int, dict[str, Any]] = {}
-        latest_sequence = 0
-        latest_event_id = ""
-
-        def closed_event_object(
+    @staticmethod
+    def _strict_json_object_bytes(
+        raw: bytes,
+        *,
+        authority: str,
+    ) -> dict[str, Any]:
+        def closed_object(
             pairs: Sequence[tuple[str, Any]],
         ) -> dict[str, Any]:
             value: dict[str, Any] = {}
             for key, item in pairs:
                 if key in value:
                     raise DatabasePortalBridgeError(
-                        "database Portal no-provider event contains duplicate keys"
+                        f"database Portal {authority} contains duplicate keys"
                     )
                 value[key] = item
             return value
 
         try:
-            for source in sources:
-                record = manifest_records.get(source.name)
-                if record is None:
-                    raise DatabasePortalBridgeError(
-                        "database Portal no-provider event source is unmanifested"
+            value = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=closed_object,
+                parse_constant=lambda _value: (_ for _ in ()).throw(
+                    DatabasePortalBridgeError(
+                        f"database Portal {authority} contains a nonfinite value"
                     )
-                source_stat = source_stats[source]
-                source_bytes = source_payloads[source]
-                source_digest = str(record.get("sha256") or "")
-                if (
-                    len(source_bytes) != int(record.get("size_bytes") or 0)
-                    or (
-                        source_digest
-                        and hashlib.sha256(source_bytes).hexdigest()
-                        != source_digest
-                    )
-                    or source_stat[0] != int(record.get("device") or -1)
-                    or source_stat[1] != int(record.get("inode") or -1)
-                    or source_stat[7] != int(record.get("mtime_ns") or -1)
-                ):
-                    raise DatabasePortalBridgeError(
-                        "database Portal no-provider event source digest "
-                        "disagrees with its manifest"
-                    )
-                source_count = 0
-                source_first = 0
-                source_last = 0
-                for raw_line in source_bytes.splitlines():
-                    if not raw_line.strip():
-                        continue
-                    if len(raw_line) > 2 * 1024 * 1024:
-                        raise DatabasePortalBridgeError(
-                            "database Portal no-provider event is oversized"
-                        )
-                    source_count += 1
-                    raw_event = json.loads(
-                        raw_line.decode("utf-8"),
-                        object_pairs_hook=closed_event_object,
-                        parse_constant=lambda _value: (_ for _ in ()).throw(
-                            DatabasePortalBridgeError(
-                                "database Portal no-provider event contains "
-                                "a nonfinite value"
-                            )
-                        ),
-                    )
-                    if not isinstance(raw_event, Mapping):
-                        raise DatabasePortalBridgeError(
-                            "database Portal no-provider event is not an object"
-                        )
-                    event = dict(raw_event)
-                    sequence = event.get("sequence")
-                    if (
-                        isinstance(sequence, bool)
-                        or not isinstance(sequence, int)
-                        or sequence < 1
-                        or event.get("stream_id") != before["stream_id"]
-                        or event.get("snapshot_id") != before["snapshot_id"]
-                    ):
-                        raise DatabasePortalBridgeError(
-                            "database Portal no-provider event identity is malformed"
-                        )
-                    unsigned = dict(event)
-                    event_id = str(unsigned.pop("event_id", "") or "")
-                    expected_id = _sha256_bytes(_canonical_json(unsigned))
-                    if event_id != expected_id:
-                        raise DatabasePortalBridgeError(
-                            "database Portal no-provider event identity does not verify"
-                        )
-                    source_first = source_first or sequence
-                    source_last = sequence
-                    known = events_by_sequence.get(sequence)
-                    if known is not None:
-                        if known != event:
-                            raise DatabasePortalBridgeError(
-                                "database Portal no-provider event sequence conflicts"
-                            )
-                        continue
-                    if sequence != latest_sequence + 1 or str(
-                        event.get("previous_event_id") or ""
-                    ) != latest_event_id:
-                        raise DatabasePortalBridgeError(
-                            "database Portal no-provider event chain is broken"
-                        )
-                    events_by_sequence[sequence] = event
-                    latest_sequence = sequence
-                    latest_event_id = event_id
-                    if latest_sequence > 4096:
-                        raise DatabasePortalBridgeError(
-                            "database Portal no-provider event history is oversized"
-                        )
-                if (
-                    source_count != int(record.get("event_count") or 0)
-                    or source_first != int(record.get("first_sequence") or 0)
-                    or source_last != int(record.get("last_sequence") or 0)
-                ):
-                    raise DatabasePortalBridgeError(
-                        "database Portal no-provider event source disagrees "
-                        "with its manifest"
-                    )
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise DatabasePortalBridgeError(
-                "database Portal no-provider event chain does not verify"
-            ) from exc
-        after = event_log_manifest(paths.events)
-        sealed_after = self._strict_private_json_object(
-            manifest_path,
-            maximum_bytes=2 * 1024 * 1024,
-        )
-        if before != after or sealed_manifest != sealed_after:
-            raise DatabasePortalBridgeError(
-                "database Portal no-provider event authority changed during replay"
+                ),
             )
-        for source, expected_stat in source_stats.items():
-            try:
-                observed = source.lstat()
-            except OSError as exc:
-                raise DatabasePortalBridgeError(
-                    "database Portal no-provider event source changed during replay"
-                ) from exc
-            if expected_stat != file_fingerprint(observed):
-                raise DatabasePortalBridgeError(
-                    "database Portal no-provider event source changed during replay"
+        except DatabasePortalBridgeError:
+            raise
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeError(
+                f"database Portal {authority} is malformed"
+            ) from exc
+        if not isinstance(value, Mapping):
+            raise DatabasePortalBridgeError(
+                f"database Portal {authority} is not an object"
+            )
+        return dict(value)
+
+    @classmethod
+    def _strict_portal_state_bytes(
+        cls,
+        raw: bytes,
+    ) -> tuple[dict[str, Any], str]:
+        payload = cls._strict_json_object_bytes(
+            raw,
+            authority="nested task state",
+        )
+        from .implementation_daemon import PortalTaskState
+
+        defaults = PortalTaskState()
+        expected_fields = {item.name for item in fields(PortalTaskState)}
+        if set(payload) != expected_fields:
+            raise DatabasePortalBridgeError(
+                "database Portal nested task state population is not exact"
+            )
+        nullable_integer_fields = {
+            "last_implementation_returncode",
+            "last_merge_returncode",
+        }
+        for state_field in fields(PortalTaskState):
+            name = state_field.name
+            observed = payload[name]
+            expected = getattr(defaults, name)
+            valid = False
+            if name in nullable_integer_fields:
+                valid = observed is None or (
+                    isinstance(observed, int) and not isinstance(observed, bool)
                 )
-        expected_latest_sequence = int(before["latest_sequence"])
-        events = [
-            events_by_sequence[sequence]
-            for sequence in sorted(events_by_sequence)
-        ]
-        if (
-            len(events) != expected_latest_sequence
-            or [int(event.get("sequence") or 0) for event in events]
-            != list(range(1, expected_latest_sequence + 1))
-            or latest_sequence != expected_latest_sequence
-            or latest_event_id != str(before["last_event_id"])
+            elif isinstance(expected, bool):
+                valid = isinstance(observed, bool)
+            elif isinstance(expected, int):
+                valid = isinstance(observed, int) and not isinstance(observed, bool)
+            elif isinstance(expected, str):
+                valid = isinstance(observed, str)
+            elif isinstance(expected, list):
+                valid = isinstance(observed, list) and all(
+                    isinstance(item, str) for item in observed
+                )
+            elif isinstance(expected, dict):
+                valid = isinstance(observed, dict)
+            if not valid:
+                raise DatabasePortalBridgeError(
+                    "database Portal nested task state has malformed " + name
+                )
+        for name in (
+            "implementation_attempts",
+            "implementation_attempts_by_cid",
+            "protected_implementation_attempts",
+        ):
+            population = payload[name]
+            if any(
+                not isinstance(key, str)
+                or not key
+                or isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+                for key, value in population.items()
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal nested task state has malformed " + name
+                )
+        if any(
+            not isinstance(key, str)
+            or not key
+            or not isinstance(value, str)
+            or not value
+            for key, value in payload["task_statuses"].items()
         ):
             raise DatabasePortalBridgeError(
-                "database Portal no-provider event population is incomplete"
+                "database Portal nested task state has malformed task_statuses"
             )
-        return events, before
+        for name in ("task_artifacts", "task_validation"):
+            population = payload[name]
+            if any(
+                not isinstance(key, str)
+                or not key
+                or not isinstance(value, list)
+                or any(not isinstance(item, str) for item in value)
+                for key, value in population.items()
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal nested task state has malformed " + name
+                )
+        if any(
+            not isinstance(key, str)
+            or not key
+            or not isinstance(value, Mapping)
+            for key, value in payload["task_identities"].items()
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal nested task state has malformed task_identities"
+            )
+        return payload, _sha256_bytes(raw)
+
+    @staticmethod
+    def _event_manifest_digest(value: Mapping[str, Any]) -> str:
+        unsigned = dict(value)
+        unsigned.pop("manifest_digest", None)
+        return _sha256_bytes(_canonical_json(unsigned))
+
+    @classmethod
+    def _strict_sealed_event_manifest(
+        cls,
+        raw: bytes,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        manifest = cls._strict_json_object_bytes(
+            raw,
+            authority="event manifest",
+        )
+        if (
+            set(manifest) != _EVENT_MANIFEST_FIELDS
+            or manifest.get("schema") != EVENT_LOG_MANIFEST_SCHEMA
+            or manifest.get("active_path") != "portal-events.jsonl"
+            or manifest.get("manifest_digest")
+            != cls._event_manifest_digest(manifest)
+            or not isinstance(manifest.get("generation"), int)
+            or isinstance(manifest.get("generation"), bool)
+            or int(manifest["generation"]) < 0
+            or not isinstance(manifest.get("updated_at"), str)
+            or not str(manifest["updated_at"])
+            or not isinstance(manifest.get("stream_id"), str)
+            or not str(manifest["stream_id"])
+            or not isinstance(manifest.get("snapshot_id"), str)
+            or not str(manifest["snapshot_id"])
+            or not isinstance(manifest.get("files"), list)
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal event manifest is not exact"
+            )
+        integer_fields = (
+            "earliest_sequence",
+            "latest_sequence",
+            "active_indexed_bytes",
+        )
+        if any(
+            isinstance(manifest.get(name), bool)
+            or not isinstance(manifest.get(name), int)
+            or int(manifest[name]) < 0
+            for name in integer_fields
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal event manifest counters are malformed"
+            )
+        records: list[dict[str, Any]] = []
+        names: list[str] = []
+        active_name = str(manifest["active_path"])
+        rotated_pattern = re.compile(
+            re.escape(active_name) + r"\.rotated-[A-Za-z0-9][A-Za-z0-9._-]{0,127}"
+        )
+        for raw_record in manifest["files"]:
+            if not isinstance(raw_record, Mapping):
+                raise DatabasePortalBridgeError(
+                    "database Portal event manifest file record is malformed"
+                )
+            record = dict(raw_record)
+            name = str(record.get("path") or "")
+            if (
+                set(record) != _EVENT_MANIFEST_FILE_FIELDS
+                or (name != active_name and rotated_pattern.fullmatch(name) is None)
+                or record.get("canonical_events") is not True
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal event manifest file record is not exact"
+                )
+            for field_name in (
+                "size_bytes",
+                "event_count",
+                "first_sequence",
+                "last_sequence",
+                "device",
+                "inode",
+                "mtime_ns",
+            ):
+                observed = record.get(field_name)
+                if (
+                    isinstance(observed, bool)
+                    or not isinstance(observed, int)
+                    or int(observed) < 0
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal event manifest file counter is malformed"
+                    )
+            if not isinstance(record.get("start_previous_event_id"), str):
+                raise DatabasePortalBridgeError(
+                    "database Portal event manifest chain anchor is malformed"
+                )
+            offsets = record.get("offset_index")
+            if not isinstance(offsets, list) or any(
+                not isinstance(item, list)
+                or len(item) != 2
+                or any(
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or value < 0
+                    for value in item
+                )
+                for item in offsets
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal event manifest offset index is malformed"
+                )
+            physical_digest = str(record.get("sha256") or "")
+            if physical_digest and not re.fullmatch(
+                r"[0-9a-f]{64}", physical_digest
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal event source digest is malformed"
+                )
+            if name != active_name and not physical_digest:
+                raise DatabasePortalBridgeError(
+                    "database Portal archived event source lacks its digest"
+                )
+            names.append(name)
+            records.append(record)
+        expected_names = sorted(name for name in names if name != active_name) + [
+            active_name
+        ]
+        if (
+            not records
+            or len(records) > 64
+            or names != expected_names
+            or len(set(names)) != len(names)
+            or int(manifest["earliest_sequence"]) != 1
+            or int(manifest["latest_sequence"]) < 1
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(manifest.get("last_event_id") or ""),
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal event manifest population is incomplete"
+            )
+        return manifest, records
+
+    @staticmethod
+    def _validate_no_provider_event_shape(event: Mapping[str, Any]) -> None:
+        event_type = str(event.get("type") or "")
+        expected = _NO_PROVIDER_EVENT_FIELDS.get(event_type)
+        variants = _SETUP_EVENT_FIELD_VARIANTS.get(event_type)
+        keys = frozenset(str(key) for key in event)
+        if (expected is None or keys != expected) and (
+            variants is None or keys not in variants
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal no-provider event schema is not closed"
+            )
+        if (
+            not isinstance(event.get("type"), str)
+            or not isinstance(event.get("timestamp"), str)
+            or not str(event.get("timestamp") or "")
+            or not isinstance(event.get("stream_id"), str)
+            or not isinstance(event.get("snapshot_id"), str)
+            or isinstance(event.get("sequence"), bool)
+            or not isinstance(event.get("sequence"), int)
+            or not isinstance(event.get("previous_event_id"), str)
+            or not isinstance(event.get("event_id"), str)
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal no-provider event envelope is malformed"
+            )
+        if event_type == "task_selected":
+            if any(
+                not isinstance(event.get(name), str)
+                or not str(event.get(name) or "")
+                for name in (
+                    "task_id",
+                    "title",
+                    "track",
+                    "canonical_task_key",
+                    "canonical_task_cid",
+                    "board_namespace",
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal task-selected event is malformed"
+                )
+        elif event_type == "nested_submodule_initialization_guarded":
+            if "depth" in event:
+                string_fields = (
+                    "path",
+                    "relative",
+                    "parent_relative",
+                    "reason",
+                    "path_sha256",
+                    "expected_gitlink_ref_sha256",
+                    "matched_identity_sha256",
+                )
+                integer_fields = (
+                    "depth",
+                    "max_depth",
+                    "path_parts",
+                    "max_path_parts",
+                    "path_bytes",
+                    "max_path_bytes",
+                )
+                if (
+                    any(
+                        not isinstance(event.get(name), str)
+                        or not str(event.get(name) or "")
+                        for name in string_fields
+                    )
+                    or any(
+                        isinstance(event.get(name), bool)
+                        or not isinstance(event.get(name), int)
+                        or int(event[name]) < 0
+                        for name in integer_fields
+                    )
+                    or not isinstance(
+                        event.get("expected_gitlink_ref_available"), bool
+                    )
+                    or any(
+                        re.fullmatch(r"[0-9a-f]{64}", str(event[name]))
+                        is None
+                        for name in (
+                            "path_sha256",
+                            "expected_gitlink_ref_sha256",
+                            "matched_identity_sha256",
+                        )
+                    )
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal nested-submodule diagnostic is malformed"
+                    )
+            elif (
+                not isinstance(event.get("reason"), str)
+                or not str(event.get("reason") or "")
+                or not isinstance(event.get("source_key"), str)
+                or not str(event.get("source_key") or "")
+                or isinstance(event.get("fallback_returncode"), bool)
+                or not isinstance(event.get("fallback_returncode"), int)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal nested-submodule diagnostic is malformed"
+                )
+        elif event_type == "submodule_worktree_base_ref_retried":
+            required_strings = (
+                ("worktree_path", "source", "source_key", "bad_ref", "fallback_ref")
+                if "bad_ref" in event
+                else ("reason", "source_key")
+            )
+            if (
+                any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in required_strings
+                )
+                or (
+                    "fallback_error" in event
+                    and not isinstance(event.get("fallback_error"), str)
+                )
+                or isinstance(event.get("fallback_returncode"), bool)
+                or not isinstance(event.get("fallback_returncode"), int)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal base-ref diagnostic is malformed"
+                )
+        elif event_type == "cleanup_finished":
+            if (
+                any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in (
+                        "started_at",
+                        "finished_at",
+                        "worktree_path",
+                        "branch",
+                    )
+                )
+                or any(
+                    not isinstance(event.get(name), bool)
+                    for name in ("removed_worktree", "deleted_branch", "cleaned")
+                )
+                or not isinstance(event.get("submodule_cleanup"), list)
+                or event.get("submodule_cleanup") != []
+                or not isinstance(event.get("lifecycle_finalize"), Mapping)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal cleanup event is malformed"
+                )
+        elif event_type in {
+            "failed_setup_worktree_cleanup",
+            "implementation_exception",
+            "implementation_finished",
+        }:
+            if (
+                any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in (
+                        "task_id",
+                        "worktree_path",
+                        "branch",
+                        "canonical_task_key",
+                        "canonical_task_cid",
+                        "board_namespace",
+                    )
+                )
+                or isinstance(event.get("attempt"), bool)
+                or not isinstance(event.get("attempt"), int)
+                or int(event["attempt"]) < 1
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal implementation terminal event is malformed"
+                )
+        elif event_type == "daemon_pass":
+            integer_fields = (
+                "completed_count",
+                "ready_count",
+                "selectable_ready_count",
+                "eligible_ready_count",
+                "strict_deprioritized_ready_count",
+                "waiting_count",
+                "blocked_count",
+                "max_task_attempts",
+            )
+            if (
+                any(
+                    isinstance(event.get(name), bool)
+                    or not isinstance(event.get(name), int)
+                    or int(event[name]) < 0
+                    for name in integer_fields
+                )
+                or not isinstance(event.get("active_task_id"), str)
+                or not isinstance(event.get("selection_idle_reason"), str)
+                or not isinstance(
+                    event.get("ordinary_provider_dispatch_allowed"), bool
+                )
+                or not isinstance(
+                    event.get("execution_slice_task_statuses"), Mapping
+                )
+                or not isinstance(
+                    event.get("execution_slice_task_cids_by_id"), Mapping
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal daemon-pass event is malformed"
+                )
+
+    @classmethod
+    @contextmanager
+    def _shared_private_event_lock(
+        cls,
+        directory_fd: int,
+        directory_names: set[str],
+    ) -> Any:
+        """Share the writer's lock without creating or repairing anything."""
+
+        lock_name = ".portal-events.jsonl.lock"
+        descriptor = -1
+        if lock_name in directory_names:
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            try:
+                descriptor = os.open(
+                    lock_name,
+                    flags,
+                    dir_fd=directory_fd,
+                )
+                identity = os.fstat(descriptor)
+                published = os.stat(
+                    lock_name,
+                    dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+                if (
+                    not stat.S_ISREG(identity.st_mode)
+                    or identity.st_uid != os.geteuid()
+                    or identity.st_gid != os.getegid()
+                    or int(identity.st_nlink) != 1
+                    or bool(identity.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+                    or cls._authority_fingerprint(identity)
+                    != cls._authority_fingerprint(published)
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal event lock is not an exact private file"
+                    )
+                fcntl.flock(descriptor, fcntl.LOCK_SH)
+            except BaseException:
+                if descriptor >= 0:
+                    with suppress(OSError):
+                        os.close(descriptor)
+                raise
+        try:
+            yield
+        finally:
+            if descriptor >= 0:
+                with suppress(OSError):
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+                os.close(descriptor)
+
+    def _pinned_no_provider_snapshot(
+        self,
+        paths: DatabasePortalAttemptPaths,
+    ) -> dict[str, Any]:
+        """Read a closed terminal snapshot without a repairing scanner."""
+        parent_fd = authority_fd = attempt_fd = -1
+        snapshot: tuple[Any, ...] = ()
+        try:
+            parent_fd, authority_fd, attempt_fd, snapshot = (
+                self._open_pinned_private_attempt_directory(
+                    authority_root=self.attempt_root,
+                    attempt_key=paths.root.name,
+                )
+            )
+            names_before = set(os.listdir(attempt_fd))
+            directory_before = self._authority_fingerprint(
+                os.fstat(attempt_fd)
+            )
+            with self._shared_private_event_lock(
+                attempt_fd,
+                names_before,
+            ):
+                child_snapshots: dict[str, tuple[int, ...]] = {}
+
+                def read_child(name: str, maximum: int) -> bytes:
+                    raw, fingerprint = self._read_exact_private_child(
+                        attempt_fd,
+                        name,
+                        maximum_bytes=maximum,
+                    )
+                    child_snapshots[name] = fingerprint
+                    return raw
+
+                manifest_name = "portal-events.jsonl.manifest.json"
+                manifest_raw = read_child(manifest_name, 2 * 1024 * 1024)
+                manifest, records = self._strict_sealed_event_manifest(
+                    manifest_raw
+                )
+                source_names = [str(record["path"]) for record in records]
+                physical_event_names = {
+                    name
+                    for name in names_before
+                    if name == "portal-events.jsonl"
+                    or name.startswith("portal-events.jsonl.rotated-")
+                }
+                if physical_event_names != set(source_names):
+                    raise DatabasePortalBridgeError(
+                        "database Portal event source population is not exact"
+                    )
+
+                binding_raw = read_child(
+                    "database-attempt-binding.json",
+                    256 * 1024,
+                )
+                projection_raw = read_child(
+                    "task-projection.md",
+                    2 * 1024 * 1024,
+                )
+                state_raw = read_child(
+                    "portal-task-state.json",
+                    2 * 1024 * 1024,
+                )
+                binding = self._strict_json_object_bytes(
+                    binding_raw,
+                    authority="attempt binding",
+                )
+                try:
+                    projection = projection_raw.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise DatabasePortalBridgeError(
+                        "database Portal task projection is malformed"
+                    ) from exc
+                state, state_digest = self._strict_portal_state_bytes(
+                    state_raw
+                )
+                source_payloads: dict[str, bytes] = {}
+                total_bytes = 0
+                for record in records:
+                    name = str(record["path"])
+                    source = read_child(name, 16 * 1024 * 1024)
+                    total_bytes += len(source)
+                    if total_bytes > 16 * 1024 * 1024:
+                        raise DatabasePortalBridgeError(
+                            "database Portal event history is oversized"
+                        )
+                    fingerprint = child_snapshots[name]
+                    physical_digest = str(record.get("sha256") or "")
+                    if (
+                        len(source) != int(record["size_bytes"])
+                        or fingerprint[0] != int(record["device"])
+                        or fingerprint[1] != int(record["inode"])
+                        or fingerprint[7] != int(record["mtime_ns"])
+                        or (
+                            physical_digest
+                            and hashlib.sha256(source).hexdigest()
+                            != physical_digest
+                        )
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "database Portal event source disagrees with manifest"
+                        )
+                    source_payloads[name] = source
+
+                events_by_sequence: dict[int, dict[str, Any]] = {}
+                latest_sequence = 0
+                latest_event_id = ""
+                for record in records:
+                    name = str(record["path"])
+                    source_count = 0
+                    source_first = 0
+                    source_last = 0
+                    if str(record["start_previous_event_id"]) != latest_event_id:
+                        raise DatabasePortalBridgeError(
+                            "database Portal event segment anchor is stale"
+                        )
+                    for raw_line in source_payloads[name].splitlines():
+                        if not raw_line.strip():
+                            continue
+                        if len(raw_line) > 2 * 1024 * 1024:
+                            raise DatabasePortalBridgeError(
+                                "database Portal event is oversized"
+                            )
+                        source_count += 1
+                        event = self._strict_json_object_bytes(
+                            raw_line,
+                            authority="event",
+                        )
+                        self._validate_no_provider_event_shape(event)
+                        sequence = int(event["sequence"])
+                        if (
+                            sequence < 1
+                            or event["stream_id"] != manifest["stream_id"]
+                            or event["snapshot_id"] != manifest["snapshot_id"]
+                        ):
+                            raise DatabasePortalBridgeError(
+                                "database Portal event identity is malformed"
+                            )
+                        unsigned = dict(event)
+                        event_id = str(unsigned.pop("event_id"))
+                        if event_id != _sha256_bytes(_canonical_json(unsigned)):
+                            raise DatabasePortalBridgeError(
+                                "database Portal event identity does not verify"
+                            )
+                        source_first = source_first or sequence
+                        source_last = sequence
+                        known = events_by_sequence.get(sequence)
+                        if known is not None:
+                            if known != event:
+                                raise DatabasePortalBridgeError(
+                                    "database Portal event sequence conflicts"
+                                )
+                            continue
+                        if (
+                            sequence != latest_sequence + 1
+                            or event["previous_event_id"] != latest_event_id
+                        ):
+                            raise DatabasePortalBridgeError(
+                                "database Portal event chain is broken"
+                            )
+                        events_by_sequence[sequence] = event
+                        latest_sequence = sequence
+                        latest_event_id = event_id
+                        if latest_sequence > 4096:
+                            raise DatabasePortalBridgeError(
+                                "database Portal event history is oversized"
+                            )
+                    if (
+                        source_count != int(record["event_count"])
+                        or source_first != int(record["first_sequence"])
+                        or source_last != int(record["last_sequence"])
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "database Portal event segment population is stale"
+                        )
+                expected_latest = int(manifest["latest_sequence"])
+                events = [
+                    events_by_sequence[index]
+                    for index in range(1, expected_latest + 1)
+                    if index in events_by_sequence
+                ]
+                active_record = records[-1]
+                if (
+                    str(active_record["path"]) != manifest["active_path"]
+                    or int(active_record["size_bytes"])
+                    != int(manifest["active_indexed_bytes"])
+                    or len(events) != expected_latest
+                    or latest_sequence != expected_latest
+                    or latest_event_id != manifest["last_event_id"]
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal event population is incomplete"
+                    )
+                self._revalidate_private_children(
+                    attempt_fd,
+                    child_snapshots,
+                )
+                if (
+                    set(os.listdir(attempt_fd)) != names_before
+                    or self._authority_fingerprint(os.fstat(attempt_fd))
+                    != directory_before
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal attempt snapshot changed during replay"
+                    )
+                return {
+                    "binding": binding,
+                    "projection": projection,
+                    "state": state,
+                    "state_digest": state_digest,
+                    "events": events,
+                    "manifest": manifest,
+                }
+        finally:
+            try:
+                if snapshot:
+                    self._verify_pinned_private_attempt_directory(
+                        parent_fd=parent_fd,
+                        authority_fd=authority_fd,
+                        attempt_fd=attempt_fd,
+                        snapshot=snapshot,
+                    )
+            finally:
+                for descriptor in (attempt_fd, authority_fd, parent_fd):
+                    if descriptor >= 0:
+                        with suppress(OSError):
+                            os.close(descriptor)
 
     def no_provider_dispatch_rearm_evidence(
         self,
@@ -2494,57 +3329,43 @@ class DatabasePortalExecutionBridge:
             return None
 
         paths = self._paths(attempt)
-        try:
-            authority_root = self.attempt_root.resolve(strict=True)
-            selected_root = paths.root.resolve(strict=True)
-            authority_metadata = self.attempt_root.lstat()
-            selected_metadata = paths.root.lstat()
-        except OSError:
-            return None
         expected_root = self.attempt_root / hashlib.sha256(
             str(attempt.attempt_id).encode("utf-8")
         ).hexdigest()[:24]
-        if (
-            self.attempt_root.is_symlink()
-            or paths.root.is_symlink()
-            or paths.binding.is_symlink()
-            or paths.task_projection.is_symlink()
-            or paths.state.is_symlink()
-            or paths.events.is_symlink()
-            or paths.root != expected_root
-            or selected_root.parent != authority_root
-            or any(
-                not stat.S_ISDIR(metadata.st_mode)
-                or metadata.st_uid != os.geteuid()
-                or metadata.st_gid != os.getegid()
-                or bool(metadata.st_mode & stat.S_IWOTH)
-                for metadata in (authority_metadata, selected_metadata)
-            )
-        ):
+        if paths.root != expected_root:
             return None
         try:
-            binding = self._strict_private_json_object(
-                paths.binding,
-                maximum_bytes=256 * 1024,
-            )
+            sealed = self._pinned_no_provider_snapshot(paths)
+            binding = dict(sealed["binding"])
             self._verify_binding_identity(binding)
             durable_binding = (
                 self._binding_lookup(attempt)
                 if self._binding_lookup is not None
                 else None
             )
-            projection = self._strict_private_projection(paths, binding)
+            projection = str(sealed["projection"])
+            if (
+                _projection_immutable_digest(projection)
+                != str(binding.get("projection_immutable_digest") or "")
+                or _HEADER.findall(projection)
+                != [str(binding.get("task_alias") or "")]
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal task projection identity changed"
+                )
             identity = self._projection_task_identity(
                 paths,
                 binding,
                 projection,
             )
-            state, state_digest = self._strict_private_json_object_with_digest(
-                paths.state
-            )
-            events, manifest = self._complete_attempt_event_chain(paths)
-        except DatabasePortalBridgeError:
+            state = dict(sealed["state"])
+            state_digest = str(sealed["state_digest"])
+            events = list(sealed["events"])
+            manifest = dict(sealed["manifest"])
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
             return None
+        authority_root = self.attempt_root
+        selected_root = paths.root
         if not isinstance(durable_binding, Mapping):
             return None
         durable_expected = {
@@ -2698,34 +3519,98 @@ class DatabasePortalExecutionBridge:
         commit = finished_event.get("commit_result")
         merge = finished_event.get("merge_result")
         board = finished_event.get("board_completion")
+        workspace_setup = finished_event.get("workspace_setup")
         worktree_path = str(finished_event.get("worktree_path") or "")
         branch = str(finished_event.get("branch") or "")
+        cleanup_fields = {
+            "started_at",
+            "finished_at",
+            "worktree_path",
+            "branch",
+            "removed_worktree",
+            "deleted_branch",
+            "cleaned",
+            "submodule_cleanup",
+            "lifecycle_finalize",
+        }
+        lifecycle_fields = {"fence", "finalized", "reason", "state"}
+        finished_lifecycle_fields = {
+            "fence",
+            "finalized",
+            "prior_reason",
+            "reason",
+            "state",
+        }
+        exception_fields = {
+            "phase",
+            "exception_type",
+            "message",
+            "worktree_path",
+            "branch",
+        }
+        finished_exception_fields = exception_fields | {"cleanup_result"}
         if not (
             isinstance(cleanup_result, Mapping)
+            and set(cleanup_result) == cleanup_fields
             and cleanup_result.get("cleaned") is True
             and cleanup_result == exception_cleanup == finished_cleanup
             and cleanup_result.get("worktree_path") == worktree_path
             and cleanup_result.get("branch") == branch
+            and cleanup_result.get("submodule_cleanup") == []
             and all(
                 adjacent_cleanup_event.get(field) == value
                 for field, value in cleanup_result.items()
             )
             and isinstance(lifecycle, Mapping)
+            and set(lifecycle) == lifecycle_fields
+            and isinstance(lifecycle.get("fence"), int)
+            and not isinstance(lifecycle.get("fence"), bool)
             and lifecycle.get("finalized") is True
             and lifecycle.get("state") == "terminal"
+            and lifecycle.get("reason") == "worktree_cleaned"
             and isinstance(finished_lifecycle, Mapping)
+            and set(finished_lifecycle) == finished_lifecycle_fields
+            and isinstance(finished_lifecycle.get("fence"), int)
+            and not isinstance(finished_lifecycle.get("fence"), bool)
             and finished_lifecycle.get("finalized") is True
             and finished_lifecycle.get("state") == "terminal"
+            and finished_lifecycle.get("prior_reason") == "worktree_cleaned"
+            and finished_lifecycle.get("reason")
+            == "implementation_attempt_finished"
             and exception_event.get("phase") == "worktree_setup"
             and exception_event.get("worktree_path") == worktree_path
             and exception_event.get("branch") == branch
+            and isinstance(cleanup_event.get("exception_result"), Mapping)
+            and set(cleanup_event["exception_result"]) == exception_fields
+            and dict(cleanup_event["exception_result"])
+            == {
+                name: exception_event.get(name)
+                for name in exception_fields
+            }
             and isinstance(exception_result, Mapping)
+            and set(exception_result) == finished_exception_fields
             and exception_result.get("phase") == "worktree_setup"
             and exception_result.get("worktree_path") == worktree_path
             and exception_result.get("branch") == branch
             and exception_result.get("exception_type")
             == exception_event.get("exception_type")
             and exception_result.get("message") == exception_event.get("message")
+            and exception_result.get("cleanup_result") == cleanup_result
+            and all(
+                event.get("canonical_task_key")
+                == identity.get("canonical_task_key")
+                and event.get("canonical_task_cid") == nested_task_cid
+                and event.get("board_namespace")
+                == identity.get("board_namespace")
+                for event in (
+                    selected_event,
+                    cleanup_event,
+                    exception_event,
+                    finished_event,
+                )
+            )
+            and selected_event.get("track") == "implementation"
+            and finished_event.get("task_cid") == nested_task_cid
             and finished_event.get("provider_dispatched") is False
             and finished_event.get("attempt_consumed") is True
             and isinstance(finished_event.get("returncode"), int)
@@ -2733,21 +3618,47 @@ class DatabasePortalExecutionBridge:
             and int(finished_event["returncode"]) != 0
             and str(finished_event.get("implementation_commit") or "") == ""
             and isinstance(commit, Mapping)
-            and commit.get("committed") is False
-            and not str(commit.get("commit") or "")
+            and dict(commit) == {"committed": False}
             and isinstance(validation, Mapping)
-            and validation.get("attempted") is False
-            and validation.get("reason") == "not_run"
-            and list(validation.get("results") or ()) == []
+            and dict(validation)
+            == {
+                "attempted": False,
+                "passed": True,
+                "reason": "not_run",
+                "results": [],
+                "returncode": 0,
+            }
             and isinstance(merge, Mapping)
-            and merge.get("merged") is False
-            and merge.get("attempted") is not True
-            and merge.get("queued") is not True
-            and merge.get("reason") == "not_attempted"
-            and not str(merge.get("merge_commit") or "")
+            and dict(merge) == {"merged": False, "reason": "not_attempted"}
             and isinstance(board, Mapping)
-            and board.get("complete") is False
-            and board.get("pending_merge") is False
+            and dict(board)
+            == {
+                "complete": False,
+                "pending_merge": False,
+                "reason": "implementation_or_validation_failed",
+            }
+            and finished_event.get("failed_preservation_result") == {}
+            and isinstance(workspace_setup, Mapping)
+            and set(workspace_setup)
+            == {
+                "cache_hit",
+                "pool_enabled",
+                "reused",
+                "saved_duration_seconds",
+                "setup_duration_seconds",
+            }
+            and workspace_setup.get("cache_hit") is False
+            and workspace_setup.get("reused") is False
+            and isinstance(workspace_setup.get("pool_enabled"), bool)
+            and isinstance(finished_event.get("cache_hit"), bool)
+            and finished_event.get("cache_hit") is False
+            and daemon_pass.get("active_task_id") == ""
+            and daemon_pass.get("selection_idle_reason") == ""
+            and daemon_pass.get("ordinary_provider_dispatch_allowed") is True
+            and daemon_pass.get("execution_slice_task_statuses")
+            == {task_alias: "ready"}
+            and daemon_pass.get("execution_slice_task_cids_by_id")
+            == {task_alias: nested_task_cid}
         ):
             return None
         if any(
@@ -2778,34 +3689,126 @@ class DatabasePortalExecutionBridge:
             "implementation_attempts_by_cid"
         )
         state_statuses = state.get("task_statuses")
+        state_identity_record = (
+            state_identity.get(task_alias)
+            if isinstance(state_identity, Mapping)
+            else None
+        )
+        expected_state_identity_fields = {
+            "board_namespace",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "display_task_id",
+            "identity_version",
+            "semantic_fingerprint",
+            "source_path",
+        }
+        canonical_task_key = str(identity.get("canonical_task_key") or "")
+        semantic_fingerprint = canonical_task_key.rsplit("/", 1)[-1]
         if not (
             state.get("implementation_in_progress") is False
             and state.get("active_task_id") == ""
+            and state.get("active_task_key") == ""
             and state.get("active_task_cid") == ""
+            and state.get("active_task_title") == ""
+            and state.get("active_task_track") == ""
+            and state.get("active_task_started_at") == ""
             and state.get("active_attempt") == 0
             and state.get("active_phase") == ""
+            and state.get("active_phase_started_at") == ""
+            and state.get("active_phase_detail") == ""
+            and state.get("active_log_path") == ""
             and state.get("active_worktree_path") == ""
             and state.get("active_branch") == ""
             and state.get("active_provider_runner") == {}
             and state.get("last_implementation_task_id") == task_alias
+            and state.get("last_implementation_task_key")
+            == canonical_task_key
             and state.get("last_implementation_task_cid") == nested_task_cid
             and state.get("last_implementation_returncode")
             == finished_event.get("returncode")
             and state.get("last_implementation_worktree_path") == worktree_path
             and state.get("last_implementation_branch") == branch
             and state.get("last_implementation_commit") == ""
+            and isinstance(state.get("last_implementation_started_at"), str)
+            and bool(state.get("last_implementation_started_at"))
+            and isinstance(state.get("last_implementation_finished_at"), str)
+            and bool(state.get("last_implementation_finished_at"))
+            and isinstance(state.get("last_implementation_log_path"), str)
+            and bool(state.get("last_implementation_log_path"))
+            and state.get("last_proof_workflow") == {}
+            and state.get("last_merge_started_at") == ""
+            and state.get("last_merge_finished_at") == ""
+            and state.get("last_merge_branch") == ""
             and state.get("last_merge_commit") == ""
+            and state.get("last_merge_returncode") is None
             and state.get("last_merge_error") == "not_attempted"
             and isinstance(state_identity, Mapping)
-            and isinstance(state_identity.get(task_alias), Mapping)
-            and state_identity[task_alias].get("canonical_task_cid")
+            and set(state_identity) == {task_alias}
+            and isinstance(state_identity_record, Mapping)
+            and set(state_identity_record) == expected_state_identity_fields
+            and state_identity_record.get("display_task_id") == task_alias
+            and state_identity_record.get("canonical_task_key")
+            == canonical_task_key
+            and state_identity_record.get("canonical_task_cid")
             == nested_task_cid
+            and state_identity_record.get("board_namespace")
+            == identity.get("board_namespace")
+            and isinstance(
+                state_identity_record.get("identity_version"), int
+            )
+            and not isinstance(
+                state_identity_record.get("identity_version"), bool
+            )
+            and state_identity_record.get("identity_version") == 1
+            and state_identity_record.get("semantic_fingerprint")
+            == semantic_fingerprint
+            and state_identity_record.get("source_path")
+            == str(paths.task_projection)
             and isinstance(state_attempts, Mapping)
-            and state_attempts.get(task_alias) == nested_attempt
+            and dict(state_attempts) == {task_alias: nested_attempt}
             and isinstance(state_attempts_by_cid, Mapping)
-            and state_attempts_by_cid.get(nested_task_cid) == nested_attempt
+            and dict(state_attempts_by_cid)
+            == {nested_task_cid: nested_attempt}
             and isinstance(state_statuses, Mapping)
-            and state_statuses.get(task_alias) == "ready"
+            and dict(state_statuses) == {task_alias: "ready"}
+            and state.get("ready_task_ids") == [task_alias]
+            and state.get("selectable_ready_task_ids") == [task_alias]
+            and state.get("eligible_ready_task_ids") == [task_alias]
+            and state.get("completed_task_ids") == []
+            and state.get("external_reserved_task_ids") == []
+            and state.get("assumed_completed_task_ids") == []
+            and state.get("strict_deprioritized_ready_task_ids") == []
+            and state.get("waiting_task_ids") == []
+            and state.get("blocked_task_ids") == []
+            and state.get("task_count") == 1
+            and state.get("ready_count") == 1
+            and state.get("selectable_ready_count") == 1
+            and state.get("eligible_ready_count") == 1
+            and state.get("completed_count") == 0
+            and state.get("external_reserved_count") == 0
+            and state.get("assumed_completed_count") == 0
+            and state.get("strict_deprioritized_ready_count") == 0
+            and state.get("waiting_count") == 0
+            and state.get("blocked_count") == 0
+            and state.get("recommended_task_id") == ""
+            and state.get("recommended_actions") == []
+            and state.get("task_artifacts") == {task_alias: []}
+            and isinstance(state.get("task_validation"), Mapping)
+            and set(state["task_validation"]) == {task_alias}
+            and isinstance(state["task_validation"][task_alias], list)
+            and bool(state["task_validation"][task_alias])
+            and all(
+                isinstance(command, str) and bool(command)
+                for command in state["task_validation"][task_alias]
+            )
+            and state.get("protected_implementation_attempts") == {}
+            and state.get("retry_budget_repair_receipts") == {}
+            and state.get("retry_budget_repair_rearm_receipts") == {}
+            and state.get("stale_proposal_replay_rearm_receipts") == {}
+            and state.get("validation_obsolescence_rearm_receipts") == {}
+            and state.get("strategy_generation") == 0
+            and state.get("selection_idle_reason") == ""
         ):
             return None
 

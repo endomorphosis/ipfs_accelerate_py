@@ -76785,6 +76785,7 @@ class DatabaseImplementationDaemon:
             if prior_rearms >= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT:
                 continue
             claim_id = str(receipt.get("claim_id") or "")
+            terminal_claim: Any | None = None
             if claim_id:
                 claim = self.coordinator.get_task_claim(claim_id)
                 if claim is not None:
@@ -76802,6 +76803,7 @@ class DatabaseImplementationDaemon:
                         expires_at_ms = 0
                     if claim_state == "accepted" and expires_at_ms > self._now_ms():
                         continue
+                    terminal_claim = claim
             rearm_receipt = self._retry_budget_receipt(
                 task,
                 attempts_used=0,
@@ -76827,12 +76829,62 @@ class DatabaseImplementationDaemon:
                 rearm_receipt["no_provider_rearm_evidence_id"] = str(
                     no_provider_evidence.get("evidence_id") or ""
                 )
-            self._cas_task_status_database(
-                task.task_cid,
-                expected_revision=int(task.revision),
-                new_status="retrying",
-                receipt=rearm_receipt,
-            )
+            if no_provider_evidence is not None:
+                barrier = getattr(
+                    self.coordinator,
+                    "execute_with_terminal_task_claim_barrier",
+                    None,
+                )
+                if not callable(barrier) or terminal_claim is None:
+                    continue
+                claim_record = terminal_claim.to_dict()
+                claim_state = str(claim_record.get("state") or "")
+                expected_terminal_claim = {
+                    "task_cid": str(task.task_cid),
+                    "claim_id": claim_id,
+                    "attempt_id": str(receipt.get("attempt_id") or ""),
+                    "attempt_number": int(
+                        receipt.get("attempt_number") or 0
+                    ),
+                    "owner_session_id": str(
+                        receipt.get("owner_session_id") or ""
+                    ),
+                    "lease_id": str(receipt.get("lease_id") or ""),
+                    "fencing_token": int(
+                        receipt.get("fencing_token") or 0
+                    ),
+                    "fence_epoch": int(receipt.get("fence_epoch") or 0),
+                }
+                if (
+                    claim_state not in {"released", "expired"}
+                    or any(
+                        claim_record.get(name) != expected
+                        for name, expected in expected_terminal_claim.items()
+                    )
+                ):
+                    continue
+
+                def rearm_control_task() -> Any:
+                    return self._cas_task_status_database(
+                        task.task_cid,
+                        expected_revision=int(task.revision),
+                        new_status="retrying",
+                        receipt=rearm_receipt,
+                    )
+
+                try:
+                    barrier(terminal_claim, rearm_control_task)
+                except Exception:
+                    # A prepared completion, claim rewrite, control CAS race,
+                    # or coordinator re-entry preserves the original block.
+                    continue
+            else:
+                self._cas_task_status_database(
+                    task.task_cid,
+                    expected_revision=int(task.revision),
+                    new_status="retrying",
+                    receipt=rearm_receipt,
+                )
             outcome = {
                 "task_cid": str(task.task_cid),
                 "task_alias": alias,
