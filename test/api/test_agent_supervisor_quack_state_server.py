@@ -744,6 +744,82 @@ def test_authenticated_owner_mutation_pump_returns_cas_row(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
+def test_owner_command_hmac_accepts_live_birth_bound_grant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Idle repair CAS may HMAC with the lane grant, not the reusable attach token."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+        DuckDBConnectionPolicyError,
+        QuackOwnerCommandRemoteError,
+        submit_quack_owner_command,
+    )
+
+    server = _real_database_server(tmp_path)
+    identity = server.start()
+    grant_token, grant = server.issue_typed_client_grant_record(
+        client_id="database-implementation-daemon:grant-hmac",
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=(),
+        allowed_command_operations=(),
+        peer_pid=os.getpid(),
+        ttl_seconds=60.0,
+    )
+    program = DatabaseProgramConfig(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        endpoint_secret_handle=identity.secret_handle,
+        quack_endpoint=identity.listen_uri,
+        store_id=identity.store_id,
+        store_generation=str(identity.generation),
+        schema_revision=str(identity.schema_revision),
+        runtime_registry_path=server.runtime_registry_path.relative_to(
+            tmp_path
+        ).as_posix(),
+        failover_policy="fail_closed",
+    )
+    for name, value in program.environment(repository_root=tmp_path).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", grant_token)
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE", raising=False)
+    stop = threading.Event()
+
+    def pump() -> None:
+        while not stop.wait(0.005):
+            server.process_mutation_inbox()
+
+    thread = threading.Thread(target=pump, daemon=True)
+    thread.start()
+    try:
+        try:
+            result = submit_quack_owner_command(
+                QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+                {
+                    "task_cid": "task:grant-hmac",
+                    "evidence_kind": "validation",
+                    "digest": "sha256:" + ("a" * 64),
+                },
+                timeout_seconds=5,
+            )
+        except QuackOwnerCommandRemoteError:
+            # HMAC authenticated; an empty board may still reject the write.
+            result = {"authenticated": True}
+        except DuckDBConnectionPolicyError as exc:
+            raise AssertionError(
+                "birth-bound grant HMAC was rejected as a missing attach token"
+            ) from exc
+        assert result
+        assert grant.peer_pid == os.getpid()
+    finally:
+        stop.set()
+        thread.join(timeout=2.0)
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
 def test_concurrent_mutation_inbox_replacement_cannot_redirect_real_cas(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

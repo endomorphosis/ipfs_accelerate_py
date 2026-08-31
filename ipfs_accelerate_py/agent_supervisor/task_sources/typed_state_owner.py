@@ -5309,6 +5309,43 @@ class TypedStateOwnerGateway:
             self._grants[token] = grant
         return token, grant
 
+    def live_owner_command_hmac_tokens(
+        self,
+        *,
+        writer_pid: int | None = None,
+    ) -> tuple[str, ...]:
+        """Return live grant tokens that may sign filesystem owner commands.
+
+        SPAR lanes HMAC idle repair with the birth-bound grant because the
+        reusable attach token is not persisted.  Only grants whose kernel
+        peer still matches the writer PID are admitted.
+        """
+
+        now_ms = int(time.time() * 1_000)
+        selected_pid = writer_pid
+        if selected_pid is not None and (
+            isinstance(selected_pid, bool) or selected_pid < 1
+        ):
+            return ()
+        matched: list[str] = []
+        with self._grants_lock:
+            items = tuple(self._grants.items())
+            revoked = set(self._revoked_grants)
+        for token, grant in items:
+            if grant.grant_id in revoked or now_ms >= grant.expires_at:
+                continue
+            if selected_pid is not None and grant.peer_pid != selected_pid:
+                continue
+            try:
+                uid = os.stat(f"/proc/{grant.peer_pid}").st_uid
+                start = _process_start_time_ticks(grant.peer_pid)
+            except (OSError, TypedStateOwnerAuthorizationError):
+                continue
+            if uid != grant.peer_uid or start != grant.peer_start_time_ticks:
+                continue
+            matched.append(token)
+        return tuple(matched)
+
     def revoke_grant(self, grant_id: str) -> None:
         selected = str(grant_id or "")
         with self._grants_lock:

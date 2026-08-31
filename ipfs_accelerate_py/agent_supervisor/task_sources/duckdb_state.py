@@ -3972,7 +3972,10 @@ def resolve_quack_attach_token(
             raise DuckDBConnectionPolicyError(
                 "quack attach token must be an opaque url-safe secret"
             )
-        if environment is None:
+        live_env = str(source.get(_QUACK_ATTACH_TOKEN_ENV, "") or "").strip()
+        # Persist only a live environ credential. Captured birth-bound grants
+        # are process-private and must not occupy the shared owner vault.
+        if environment is None and live_env:
             persist_quack_attach_token_vault(secret)
         return secret
     handle = str(source.get(_QUACK_SECRET_HANDLE_ENV, "") or "").strip()

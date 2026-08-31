@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import json
+import os
 from pathlib import Path
 import threading
 
@@ -288,6 +289,34 @@ def test_resolve_quack_attach_token_prefers_vault_over_stale_env(
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "staleEnv_token_value")
     assert resolve_quack_attach_token() == "vaultTok_value1234567890"
     assert resolve_quack_attach_token("explicit_token_ok") == "explicit_token_ok"
+
+
+def test_resolve_quack_attach_token_does_not_persist_captured_grant(
+    tmp_path, monkeypatch
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        capture_state_authority_credentials,
+        clear_captured_state_authority_credentials,
+    )
+
+    store = tmp_path / "control.duckdb"
+    store.write_bytes(b"")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(store))
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE", raising=False)
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "grantTok_value1234567890",
+    )
+    clear_captured_state_authority_credentials()
+    try:
+        assert capture_state_authority_credentials() is True
+        assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in os.environ
+        assert resolve_quack_attach_token() == "grantTok_value1234567890"
+        vault = quack_token_vault_path()
+        assert vault is not None
+        assert not vault.is_file()
+    finally:
+        clear_captured_state_authority_credentials()
 
 
 def test_resolve_quack_attach_token_persists_missing_vault(

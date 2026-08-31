@@ -116,6 +116,7 @@ from ..task_sources.duckdb_state import (
     open_duckdb_connection,
     open_quack_state_owner_connection,
     quack_owner_command_response,
+    quack_owner_command_signature,
     quack_owner_mutation_content_id,
     quack_owner_mutation_inbox_path,
     quack_owner_mutation_mac,
@@ -5750,6 +5751,42 @@ class QuackStateServer:
             finally:
                 path.unlink(missing_ok=True)
 
+    def _quack_owner_command_hmac_token(
+        self,
+        request: Mapping[str, Any],
+    ) -> str:
+        """Return the vault or live birth-bound grant token that signed ``request``."""
+
+        assert self._identity is not None
+        assert self._vault is not None
+        vault_token = self._vault.resolve(self._identity.secret_handle)
+        writer = str(request.get("writer_identity") or "")
+        writer_pid: int | None = None
+        match = re.fullmatch(r"supervisor-process:([1-9][0-9]{0,19})", writer)
+        if match is not None:
+            writer_pid = int(match.group(1))
+        candidates = [vault_token]
+        gateway = self._command_gateway
+        if gateway is not None:
+            candidates.extend(
+                gateway.live_owner_command_hmac_tokens(writer_pid=writer_pid)
+            )
+        observed = str(request.get("signature") or "")
+        matched = ""
+        for token in candidates:
+            try:
+                expected = quack_owner_command_signature(request, token)
+            except DuckDBConnectionPolicyError:
+                continue
+            if hmac.compare_digest(observed, expected):
+                matched = token
+                break
+        if not matched:
+            raise DuckDBConnectionPolicyError(
+                "quack owner command authorization is invalid"
+            )
+        return matched
+
     def _service_owner_command_request(
         self,
         *,
@@ -5803,7 +5840,7 @@ class QuackStateServer:
         response: dict[str, Any] | None = None
         try:
             request = _read_bounded_canonical_json(processing)
-            token = self._vault.resolve(self._identity.secret_handle)
+            token = self._quack_owner_command_hmac_token(request)
             configured_generation = str(
                 os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "")
                 or ""
@@ -5901,7 +5938,10 @@ class QuackStateServer:
             if request is None:
                 published = True
             else:
-                token = self._vault.resolve(self._identity.secret_handle)
+                try:
+                    token = self._quack_owner_command_hmac_token(request)
+                except DuckDBConnectionPolicyError:
+                    token = self._vault.resolve(self._identity.secret_handle)
                 response = quack_owner_command_response(
                     request,
                     token=token,
@@ -5982,7 +6022,10 @@ class QuackStateServer:
             repository.close()
         if result is None:
             return False
-        token = self._vault.resolve(self._identity.secret_handle)
+        try:
+            token = self._quack_owner_command_hmac_token(request)
+        except DuckDBConnectionPolicyError:
+            token = self._vault.resolve(self._identity.secret_handle)
         response = quack_owner_command_response(
             request,
             token=token,
