@@ -1802,7 +1802,34 @@ can authorize its own output. The runtime repair is
 `c9fe9a657d2d0e1e05172688dbc44dea6f699265`); this final protected-control
 reseal binds its exact blobs without attempting a self-referential commit ID.
 
-## 40. Current limitations at seal time
+## 40. M32 live-preflight plan-anchor compatibility successor
+
+`SAWM-R2-M32` preserves M31 event 282, its exact receipt, generation 29,
+every task head, and the unchanged revision-28 M27 plan anchor. The first live
+M31 check exposed a bounded control defect after materialization: historical
+M29 key presence correctly selected the evidence-only plan validation class,
+but the operator attempted to read M27 plan-anchor fields from the active M31
+predecessor authority. M31 intentionally does not duplicate those fields, so
+the check failed with a typed `KeyError` before preflight, provider probing,
+or task dispatch.
+
+M32 resolves and validates the preserved M27 plan anchor through the exact
+sealed M29 authority, appends one operator evidence event through the same
+live generation-29 Quack owner, and changes no task, goal, plan, lifecycle,
+coordination, completion, provider, merge, or implementation authority.
+
+```text
+generation    29 ready (unchanged owner)
+plan revision 28 (unchanged)
+event cursor  282 -> 283
+pre-projection baguqeerakjradc5sa5dmflygtfh2birrd5onygnt6q2pkvoomsxrspi22jaa
+post-projection baguqeerab3m6k3ea4ulaouojsdazccvepipcfryyblps7676ymqrtbyc5tiq
+```
+
+M32 does not authorize a generation restart. If generation 29 stops before
+the board launches, a separately sealed generation-30 successor is required.
+
+## 41. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

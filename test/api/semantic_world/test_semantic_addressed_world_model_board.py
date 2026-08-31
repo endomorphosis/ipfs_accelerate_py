@@ -4602,6 +4602,82 @@ def test_m29_presence_masks_m28_and_keeps_every_predecessor_historical(
     assert any("only partially declared" in error for error in errors)
 
 
+def test_m32_authority_and_preserved_plan_anchor_are_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m32_authority_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m32_plan_anchor_test",
+    )
+    key = "live_preflight_plan_anchor_successor_materialization"
+    authority = materializer._expected_m32_live_preflight_plan_anchor_authority()
+    reference = materializer._m32_authority_reference()
+    scheduler = json.loads(
+        (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
+        .read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json")
+        .read_text(encoding="utf-8")
+    )
+    assert scheduler[key] == reference == migration[key]
+    assert reference["authority_cid"] == materializer._identity(authority)
+    assert seal[f"{key}_cid"] == reference["authority_cid"]
+    assert authority["migration_revision"] == "SAWM-R2-M32"
+    assert authority["target_generation"] == 29
+    assert authority["prior_authority"]["event_watermark"] == 282
+    assert authority["target_event_watermark"] == 283
+    assert authority["target_projection_cid"] == (
+        "baguqeerab3m6k3ea4ulaouojsdazccvepipcfryyblps7676ymqrtbyc5tiq"
+    )
+    anchor = operator._preserved_m27_plan_anchor(
+        scheduler, authority, materializer
+    )
+    assert dict(anchor) == {
+        "plan_source_binding_cid": (
+            "sha256:83e28e01de41699d5b2312ead03e7f33d9989d809d97924ea0a230af2c038856"
+        ),
+        "plan_migration_digest": (
+            "sha256:43eb5eb9b3f05c6ffe00c918901524e61c4a94a8d7334a3a3261ef95870cc73b"
+        ),
+    }
+    live_source = inspect.getsource(operator._live_preflight)
+    assert "_preserved_m27_plan_anchor" in live_source
+    assert 'active_source_repair["prior_authority"]' not in live_source
+
+
+def test_m32_preserved_plan_anchor_fails_closed_on_historical_m29_drift() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m32_anchor_drift_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m32_anchor_drift_test",
+    )
+    config = json.loads(
+        (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
+        .read_text(encoding="utf-8")
+    )
+    key = "committed_evidence_verification_successor_materialization"
+    config[key]["prior_authority"]["plan_source_binding_cid"] = "sha256:" + "0" * 64
+    with pytest.raises(operator.OperatorError, match="preserved M29 plan authority differs"):
+        operator._preserved_m27_plan_anchor(
+            config,
+            materializer._expected_m32_live_preflight_plan_anchor_authority(),
+            materializer,
+        )
+
+
 def test_m31_authority_pins_dead_pid_event_281_and_generation_29() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",

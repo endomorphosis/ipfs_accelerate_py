@@ -1273,6 +1273,95 @@ _M29_PRIOR_M28_VALIDATION_DIGEST = (
     "sha256:2599a864dcec5441a709ca2425af0954f937a39928646c73ad3941e0d7b84a8e"
 )
 
+# M32 seals the bounded live-preflight plan-anchor compatibility repair after
+# M31 event 282.  It reuses the exact live generation-29 owner and appends one
+# evidence event; it changes no task, plan, goal, lifecycle, or coordination
+# authority.
+_M32_MIGRATION_REVISION = "SAWM-R2-M32"
+_M32_SUPERSESSION_MODE = "append_only_live_preflight_plan_anchor_compatibility"
+_M32_SUPERSESSION_REASON = "live_preflight_plan_anchor_successor_materialization"
+_M32_CONTROL_RECORDED_AT = "2026-08-31T18:01:30Z"
+_M32_PRIOR_EVENT_WATERMARK = 282
+_M32_TARGET_EVENT_WATERMARK = 283
+_M32_TARGET_PLAN_REVISION = 28
+_M32_TARGET_GENERATION = 29
+_M32_TARGET_QUACK_PORT = 24_070
+_M32_PRIOR_EVENT_PREFIX_SHA256 = (
+    "f861200d5480cb76e3153b98afd53fa851b2dbae678466d6b58cfe8c1774f027"
+)
+_M32_PRIOR_PROJECTION_CID = (
+    "baguqeerakjradc5sa5dmflygtfh2birrd5onygnt6q2pkvoomsxrspi22jaa"
+)
+_M32_TARGET_PROJECTION_CID = (
+    "baguqeerab3m6k3ea4ulaouojsdazccvepipcfryyblps7676ymqrtbyc5tiq"
+)
+_M32_PRIOR_SEMANTIC_AUTHORITY_DIGEST = (
+    "sha256:395168339f24de03f6d6f91cc0ca0365df2ffa8d71a80ac9fecab6e282817163"
+)
+_M32_PROGRAM_DEFINITION_CID = (
+    "sha256:f581af1f2234c127231b47bb1bb8d42910b984dcd1bece9a6303949ac1ba0b72"
+)
+_M32_PLAN_ROOT_CID = (
+    "sha256:d9481937430405ff6a512e779b14b7ce676de45d277c65d3763ebe49445ba914"
+)
+_M32_BASE_SOURCE_BINDING_CID = (
+    "sha256:cae0a57bda87c867ad6b98d9bd12a65a508ffa4c9863a558742fed7d8ae70b1d"
+)
+_M32_BASE_CONTROL_COMMIT = "07d6cfadc8b251137be15317373b8d42f4476104"
+_M32_BASE_CONTROL_TREE = "60d5a06af202263c24af32a1cc5c75f3b81bab41"
+_M32_OPERATOR_CONTROL_PATHS = frozenset(
+    {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+        "config/semantic_addressed_world_model_dependencies.seal.json",
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+    }
+)
+_M32_INITIAL_CONTROL_COMMIT = "0000000000000000000000000000000000000000"
+_M32_INITIAL_CONTROL_TREE = "0000000000000000000000000000000000000000"
+_M32_INITIAL_CONTROL_BLOBS = MappingProxyType(
+    {path: "0000000000000000000000000000000000000000" for path in _M32_OPERATOR_CONTROL_PATHS}
+)
+_M32_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.duckdb"
+)
+_M32_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.coordination.duckdb"
+)
+_M32_RUNTIME_ROOT = (
+    "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+)
+_M32_WORKTREE_ROOT = f"{_M32_RUNTIME_ROOT}/worktrees"
+_M32_DATABASE_UUID = "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4"
+_M32_EXTENSION_FINGERPRINT = (
+    "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b"
+)
+_M32_LIVE_SERVER_ID = "server:1205bb8e-2f09-440c-829a-50458e9f9e7f"
+_M32_LIVE_PROCESS_BIRTH_ID = "birth:2458ebe71d9a348272706db40cfd3fec"
+_M32_LIVE_STARTED_AT = "2026-08-31T17:47:26Z"
+_M32_M31_RECEIPT_SHA256 = (
+    "c51d93d107702a9d5de6f4d4aca3e7fe20467639991bf236ef8298b86aa81b04"
+)
+_M32_M31_RECEIPT_CID = (
+    "sha256:e1baa264e6c62eaf723208fe41e0501d087876e7999204626942810978a3edde"
+)
+_M32_PLAN_SOURCE_BINDING_CID = (
+    "sha256:83e28e01de41699d5b2312ead03e7f33d9989d809d97924ea0a230af2c038856"
+)
+_M32_PLAN_MIGRATION_DIGEST = (
+    "sha256:43eb5eb9b3f05c6ffe00c918901524e61c4a94a8d7334a3a3261ef95870cc73b"
+)
+
 # M31 recovers the failed detached launch that consumed generation 28's
 # one-time credential handoff before process creation.  The predecessor is the
 # exact cleanly stopped generation-28/event-281 authority.  The successor may
@@ -6428,6 +6517,154 @@ def _m30_expected_task_heads() -> dict[str, dict[str, Any]]:
     return heads
 
 
+def _expected_m32_live_preflight_plan_anchor_authority() -> dict[str, Any]:
+    """Return M32's closed same-owner event-283 control repair authority."""
+
+    endpoint = "quack:127.0.0.1:24070"
+    return {
+        "schema": "sawm/live-preflight-plan-anchor-successor-authorization@1",
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": _M32_MIGRATION_REVISION,
+        "migration_kind": _M32_SUPERSESSION_REASON,
+        "supersession_mode": _M32_SUPERSESSION_MODE,
+        "control_recorded_at": _M32_CONTROL_RECORDED_AT,
+        "target_store_id": _M32_STORE_ID,
+        "target_coordination_store_id": _M32_COORDINATION_STORE_ID,
+        "target_runtime_root": _M32_RUNTIME_ROOT,
+        "target_generation": _M32_TARGET_GENERATION,
+        "target_quack_port": _M32_TARGET_QUACK_PORT,
+        "target_plan_revision": _M32_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M32_TARGET_EVENT_WATERMARK,
+        "target_projection_cid": _M32_TARGET_PROJECTION_CID,
+        "runtime_binding": {
+            "run_id": "run-r2-m27",
+            "runtime_root": _M32_RUNTIME_ROOT,
+            "store_id": _M32_STORE_ID,
+            "coordination_store_id": _M32_COORDINATION_STORE_ID,
+            "worktree_root": _M32_WORKTREE_ROOT,
+            "store_generation": _M32_TARGET_GENERATION,
+            "quack_port": _M32_TARGET_QUACK_PORT,
+            "quack_endpoint": endpoint,
+            "plan_revision": _M32_TARGET_PLAN_REVISION,
+            "prior_event_watermark": _M32_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M32_TARGET_EVENT_WATERMARK,
+            "database_uuid": _M32_DATABASE_UUID,
+            "server_id": _M32_LIVE_SERVER_ID,
+            "process_birth_id": _M32_LIVE_PROCESS_BIRTH_ID,
+        },
+        "prior_authority": {
+            "migration_revision": "SAWM-R2-M31",
+            "event_watermark": _M32_PRIOR_EVENT_WATERMARK,
+            "event_prefix_sha256": _M32_PRIOR_EVENT_PREFIX_SHA256,
+            "projection_cid": _M32_PRIOR_PROJECTION_CID,
+            "semantic_authority_digest": _M32_PRIOR_SEMANTIC_AUTHORITY_DIGEST,
+            "program_definition_cid": _M32_PROGRAM_DEFINITION_CID,
+            "plan_root_cid": _M32_PLAN_ROOT_CID,
+            "source_binding_cid": _M32_BASE_SOURCE_BINDING_CID,
+            "source_head": _M32_BASE_CONTROL_COMMIT,
+            "source_tree": _M32_BASE_CONTROL_TREE,
+            "m31_receipt_path": f"{_M32_RUNTIME_ROOT}/m31-source-successor-receipt.json",
+            "m31_receipt_sha256": _M32_M31_RECEIPT_SHA256,
+            "m31_receipt_cid": _M32_M31_RECEIPT_CID,
+        },
+        "preserved_plan_anchor": {
+            "plan_revision": _M32_TARGET_PLAN_REVISION,
+            "current_source_binding_cid": _M32_PLAN_SOURCE_BINDING_CID,
+            "source_migration_revision": "SAWM-R2-M27",
+            "source_migration_digest": _M32_PLAN_MIGRATION_DIGEST,
+            "supersession_mode": "append_only_stopped_run_recovery_successor",
+        },
+        "live_owner": {
+            "server_id": _M32_LIVE_SERVER_ID,
+            "process_birth_id": _M32_LIVE_PROCESS_BIRTH_ID,
+            "generation": _M32_TARGET_GENERATION,
+            "started_at": _M32_LIVE_STARTED_AT,
+            "status": "ready",
+            "database_uuid": _M32_DATABASE_UUID,
+            "store_id": _M32_STORE_ID,
+            "listen_uri": endpoint,
+            "extension_fingerprint": _M32_EXTENSION_FINGERPRINT,
+            "same_owner_required": True,
+            "generation_restart_authorized": False,
+        },
+        "target_authority": {
+            "event_watermark": _M32_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M32_TARGET_PROJECTION_CID,
+            "plan_revision": _M32_TARGET_PLAN_REVISION,
+            "evidence_kind": "operator_control_plane_live_preflight_plan_anchor_repair",
+            "operator_task_cid": (
+                "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6"
+            ),
+        },
+        "accepted_control_plane_repair": {
+            "defect": "historical_m29_plan_anchor_read_from_active_m31_authority",
+            "failure": "KeyError: plan_source_binding_cid",
+            "resolution": "resolve_and_validate_the_exact_preserved_m27_plan_anchor",
+            "changed_paths": [
+                "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+                "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+            ],
+            "ordinary_program_implementation": False,
+            "authority_weakened": False,
+            "receipts_rewritten": False,
+            "worker_self_approval": False,
+        },
+        "source_chain": {
+            "base_control_commit": _M32_BASE_CONTROL_COMMIT,
+            "base_control_tree": _M32_BASE_CONTROL_TREE,
+            "initial_control_commit": _M32_INITIAL_CONTROL_COMMIT,
+            "initial_control_tree": _M32_INITIAL_CONTROL_TREE,
+            "initial_control_blobs": dict(_M32_INITIAL_CONTROL_BLOBS),
+            "final_reseal_parent": _M32_INITIAL_CONTROL_COMMIT,
+            "final_control_commit_count": 1,
+        },
+        "operator_control_paths": sorted(_M32_OPERATOR_CONTROL_PATHS),
+        "current_datasets_gitlink": "b9f5b86199c03e427fd51fcea302479880421ff8",
+        "current_datasets_tree": "52c0c7be05a51956ba5aa2b6f85d38e03588f3b1",
+        "current_kit_gitlink": "fc9248073e9f67ac59ca607c7736746907b08037",
+        "current_kit_tree": "b26e05db1b199e7e491b45b686a0845fabbabadb",
+        "exact_changes": {
+            "event_suffix_length": 1,
+            "evidence_node_changes": 1,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "plan_revision_changes": 0,
+            "goal_revision_changes": 0,
+            "owner_generation_changes": 0,
+            "coordination_semantic_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "provider_invocation_count": 0,
+            "implementation_commit_count": 0,
+            "merge_attempt_count": 0,
+        },
+        "preservation": {
+            "same_live_owner": True,
+            "same_store_generation": True,
+            "generation_restart": False,
+            "task_heads_preserved": True,
+            "plan_head_preserved": True,
+            "coordination_store_preserved": True,
+            "m31_receipt_preserved": True,
+            "sidecars_preserved": True,
+            "worktrees_preserved": True,
+            "worker_self_approval": False,
+        },
+    }
+
+
+def _m32_authority_reference() -> dict[str, Any]:
+    """Return the compact scheduler/inventory reference to M32's sealed authority."""
+
+    authority = _expected_m32_live_preflight_plan_anchor_authority()
+    return {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": _M32_MIGRATION_REVISION,
+        "authority_cid": _identity(authority),
+    }
+
+
 def _expected_m31_detached_coordinator_pid_recovery_authority() -> dict[str, Any]:
     """Return the closed generation-29/event-282 M31 authorization."""
 
@@ -7049,6 +7286,38 @@ def _expected_m29_committed_evidence_verification_authority() -> dict[str, Any]:
             "worker_self_approval": False,
         },
     }
+
+
+def _m32_successor_configured(config: Mapping[str, Any]) -> bool:
+    key = _M32_SUPERSESSION_REASON
+    if key not in config:
+        return False
+    expected = _m32_authority_reference()
+    observed = config.get(key)
+    if type(observed) is not dict or _identity(observed) != _identity(expected):
+        raise MaterializationError("M32 live-preflight plan authority is invalid")
+    return True
+
+
+def _m32_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M32_SUPERSESSION_REASON
+    migration = _load_json(
+        root / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if not any(presence):
+        return False
+    if not all(presence):
+        raise MaterializationError(
+            "M32 live-preflight plan authority is only partially declared"
+        )
+    return _m32_successor_configured(config)
 
 
 def _m31_successor_configured(config: Mapping[str, Any]) -> bool:
@@ -25482,6 +25751,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m32_successor_configured_on_any_surface(root, config):
+        return _check_m32_materialized(root, config_file)
     if _m31_successor_configured_on_any_surface(root, config):
         return _check_m31_materialized(root, config_file)
     if _m30_successor_configured_on_any_surface(root, config):
@@ -50931,6 +51202,172 @@ def _materialize_m26(
     }
 
 
+def _m32_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    expected = _expected_m32_live_preflight_plan_anchor_authority()
+    reference = _m32_authority_reference()
+    key = _M32_SUPERSESSION_REASON
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if (
+        config.get(key) != reference
+        or not isinstance(inventory, Mapping)
+        or inventory.get(key) != reference
+        or seal.get(f"{key}_cid") != _identity(expected)
+    ):
+        raise MaterializationError("M32 authority differs across protected controls")
+    return expected
+
+
+def _assert_m32_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Require exactly one nine-control repair commit and one reseal."""
+
+    identities = (
+        _M32_INITIAL_CONTROL_COMMIT,
+        _M32_INITIAL_CONTROL_TREE,
+        *tuple(_M32_INITIAL_CONTROL_BLOBS.values()),
+    )
+    if any(value == "0" * 40 or re.fullmatch(r"[0-9a-f]{40}", value) is None for value in identities):
+        raise MaterializationError("M32 source identities are not resealed")
+    current = str(population["source_binding"]["head"])
+    chain = authority.get("source_chain")
+    control_paths = set(authority.get("operator_control_paths") or ())
+    current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
+    initial_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M32_INITIAL_CONTROL_COMMIT
+    ).split()
+    if (
+        current in {_M32_BASE_CONTROL_COMMIT, _M32_INITIAL_CONTROL_COMMIT}
+        or not isinstance(chain, Mapping)
+        or control_paths != set(_M32_OPERATOR_CONTROL_PATHS)
+        or _M32_OPERATOR_CONTROL_PATHS != _M31_OPERATOR_CONTROL_PATHS
+        or chain.get("base_control_commit") != _M32_BASE_CONTROL_COMMIT
+        or chain.get("base_control_tree") != _M32_BASE_CONTROL_TREE
+        or chain.get("initial_control_commit") != _M32_INITIAL_CONTROL_COMMIT
+        or chain.get("initial_control_tree") != _M32_INITIAL_CONTROL_TREE
+        or chain.get("initial_control_blobs") != dict(_M32_INITIAL_CONTROL_BLOBS)
+        or chain.get("final_reseal_parent") != _M32_INITIAL_CONTROL_COMMIT
+        or initial_parents != [_M32_INITIAL_CONTROL_COMMIT, _M32_BASE_CONTROL_COMMIT]
+        or current_parents != [current, _M32_INITIAL_CONTROL_COMMIT]
+        or _git(root, "rev-parse", f"{_M32_BASE_CONTROL_COMMIT}^{{tree}}")
+        != _M32_BASE_CONTROL_TREE
+        or _git(root, "rev-parse", f"{_M32_INITIAL_CONTROL_COMMIT}^{{tree}}")
+        != _M32_INITIAL_CONTROL_TREE
+        or _m27_name_status(root, _M32_BASE_CONTROL_COMMIT, _M32_INITIAL_CONTROL_COMMIT)
+        != {path: "M" for path in control_paths}
+        or _m27_name_status(root, _M32_INITIAL_CONTROL_COMMIT, current)
+        != {path: "M" for path in control_paths}
+        or population["source_binding"].get("tree")
+        != _git(root, "rev-parse", f"{current}^{{tree}}")
+    ):
+        raise MaterializationError("M32 exact control-repair/reseal source chain differs")
+    for path, oid in _M32_INITIAL_CONTROL_BLOBS.items():
+        if _git(root, "rev-parse", f"{_M32_INITIAL_CONTROL_COMMIT}:{path}") != oid:
+            raise MaterializationError(f"M32 initial-control blob differs: {path}")
+    for dependency, gitlink_key, tree_key, population_key in (
+        ("ipfs_datasets_py", "current_datasets_gitlink", "current_datasets_tree", "datasets_gitlink"),
+        ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree", "kit_gitlink"),
+    ):
+        gitlink = str(authority[gitlink_key])
+        if (
+            any(
+                _git(root, "rev-parse", f"{head}:{dependency}") != gitlink
+                for head in (_M32_BASE_CONTROL_COMMIT, _M32_INITIAL_CONTROL_COMMIT, current)
+            )
+            or population["source_binding"].get(population_key) != gitlink
+            or _git(root / dependency, "rev-parse", f"{gitlink}^{{tree}}")
+            != authority[tree_key]
+        ):
+            raise MaterializationError(f"M32 {dependency} authority differs")
+
+
+def _m32_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    runtime = authority["runtime_binding"]
+    program = config.get("database_program")
+    owner = config.get("quack_owner")
+    expected_runtime_paths = {
+        "root": _M32_RUNTIME_ROOT,
+        "state": f"{_M32_RUNTIME_ROOT}/state",
+        "worktrees": _M32_WORKTREE_ROOT,
+        "merge_queue": f"{_M32_RUNTIME_ROOT}/merge-queue",
+        "logs": f"{_M32_RUNTIME_ROOT}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+    if (
+        not isinstance(program, Mapping)
+        or not isinstance(owner, Mapping)
+        or program.get("store_id") != _M32_STORE_ID
+        or program.get("store_generation") != str(_M32_TARGET_GENERATION)
+        or program.get("quack_endpoint") != runtime["quack_endpoint"]
+        or program.get("worktree_root") != _M32_WORKTREE_ROOT
+        or owner.get("database_path") != _M32_STORE_ID
+        or owner.get("store_id") != _M32_STORE_ID
+        or owner.get("port") != _M32_TARGET_QUACK_PORT
+        or owner.get("state_dir") != f"{_M32_RUNTIME_ROOT}/quack-owner"
+        or config.get("runtime_paths") != expected_runtime_paths
+    ):
+        raise MaterializationError("scheduler M32 runtime binding differs")
+    control = (root / _M32_STORE_ID).resolve()
+    coordination = (root / _M32_COORDINATION_STORE_ID).resolve()
+    if not control.is_relative_to(root) or not coordination.is_relative_to(root):
+        raise MaterializationError("M32 runtime path escapes repository")
+    return control, coordination
+
+
+def _m32_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    authority = _expected_m32_live_preflight_plan_anchor_authority()
+    return {
+        "schema": "sawm/live-preflight-plan-anchor-source-seal@1",
+        "authority": "operator_control_plane",
+        "migration_revision": _M32_MIGRATION_REVISION,
+        "migration_kind": _M32_SUPERSESSION_REASON,
+        "supersession_mode": _M32_SUPERSESSION_MODE,
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "current_source_head": population["source_binding"]["head"],
+        "current_source_tree": population["source_binding"]["tree"],
+        "validation_digest": validation_digest,
+        "authorization_cid": _identity(authority),
+        "runtime_binding": authority["runtime_binding"],
+        "prior_authority": authority["prior_authority"],
+        "preserved_plan_anchor": authority["preserved_plan_anchor"],
+        "live_owner": authority["live_owner"],
+        "target_authority": authority["target_authority"],
+        "accepted_control_plane_repair": authority["accepted_control_plane_repair"],
+        "source_chain": authority["source_chain"],
+        "exact_changes": authority["exact_changes"],
+        "preservation": authority["preservation"],
+        "authenticated_mutation_route": {
+            "transport": "quack_proxy_only",
+            "endpoint_from_live_owner_discovery": True,
+            "token_from_secret_handoff_or_environment_only": True,
+            "token_in_argv": False,
+            "token_in_evidence": False,
+            "direct_authoritative_file_opened": False,
+        },
+        "scheduler_runtime_root": config["runtime_paths"]["root"],
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
 def _m31_source_binding_authority(
     root: Path,
     population: Mapping[str, Any],
@@ -53324,7 +53761,7 @@ def _inspect_m28_live_projection(
         or plan_body.get("supersession_mode") != _M27_SUPERSESSION_MODE
     ):
         raise MigrationRequired("M28 live snapshot/plan projection differs")
-    for alias, expected in authority["expected_task_heads"].items():
+    for alias, expected in _m30_expected_task_heads().items():
         task = source.get_task(alias)
         if (
             task is None
@@ -54230,6 +54667,301 @@ def _verify_m28_live_materialization(
     }
 
 
+def _inspect_m32_live_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    *,
+    expected_event_watermark: int,
+    expected_projection_cid: str,
+) -> dict[str, Any]:
+    snapshot = source.snapshot()
+    plan = source.get_plan(str(population["plan_root_cid"]))
+    plan_body = plan.get("body") if isinstance(plan, Mapping) else None
+    anchor = authority["preserved_plan_anchor"]
+    if (
+        snapshot.event_cursor != expected_event_watermark
+        or snapshot.projection_cid != expected_projection_cid
+        or snapshot.task_count != 45
+        or snapshot.goal_count != 29
+        or snapshot.dependency_count != 136
+        or snapshot.plan_count != 1
+        or snapshot.plan_root_cid != str(population["plan_root_cid"])
+        or plan is None
+        or int(plan.get("revision") or 0) != anchor["plan_revision"]
+        or not isinstance(plan_body, Mapping)
+        or plan_body.get("current_source_binding_cid")
+        != anchor["current_source_binding_cid"]
+        or plan_body.get("source_migration_revision")
+        != anchor["source_migration_revision"]
+        or plan_body.get("source_migration_digest")
+        != anchor["source_migration_digest"]
+        or plan_body.get("supersession_mode") != anchor["supersession_mode"]
+    ):
+        raise MigrationRequired("M32 live snapshot/plan projection differs")
+    for alias, expected in authority["expected_task_heads"].items():
+        task = source.get_task(alias)
+        if (
+            task is None
+            or task.status != expected["status"]
+            or int(task.revision) != int(expected["revision"])
+        ):
+            raise MigrationRequired(f"M32 live task head differs: {alias}")
+    return {
+        "event_watermark": snapshot.event_cursor,
+        "projection_cid": snapshot.projection_cid,
+        "plan_revision": int(plan["revision"]),
+    }
+
+
+def _m32_expected_event_body(
+    body: Mapping[str, Any],
+    *,
+    evidence_id: str,
+    digest: str,
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    target = authority["target_authority"]
+    inner = {
+        "evidence_id": evidence_id,
+        "parent_evidence_id": "",
+        "task_cid": target["operator_task_cid"],
+        "evidence_kind": target["evidence_kind"],
+        "digest": digest,
+        "body": dict(body),
+        "created_at": _M32_CONTROL_RECORDED_AT,
+        "revision": 0,
+    }
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": evidence_id,
+        "body": inner,
+        "recorded_at": _M32_CONTROL_RECORDED_AT,
+        "owner_id": "sawm-r2-m32-live-source-sealer",
+    }
+
+
+def _verify_m32_live_materialization(
+    source: Any,
+    identity: Mapping[str, Any],
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    body = _m32_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence_id = content_identity(
+        {
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": body,
+        }
+    )
+    event_body = _m32_expected_event_body(
+        body, evidence_id=evidence_id, digest=digest, authority=authority
+    )
+    expected_event_id = content_identity(
+        {
+            "stream_id": "stream:intent",
+            "sequence": _M32_TARGET_EVENT_WATERMARK,
+            "global_sequence": _M32_TARGET_EVENT_WATERMARK,
+            "event_type": "intent.evidence_recorded",
+            "body": event_body,
+        }
+    )
+    head = _inspect_m32_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M32_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=_M32_TARGET_PROJECTION_CID,
+    )
+    restart = _inspect_m31_generation_restart_rows(
+        source,
+        identity,
+        _expected_m31_detached_coordinator_pid_recovery_authority(),
+    )
+    live_owner = authority["live_owner"]
+    if (
+        restart.get("live_server_id") != live_owner["server_id"]
+        or restart.get("live_process_birth_id") != live_owner["process_birth_id"]
+        or restart.get("live_started_at") != live_owner["started_at"]
+    ):
+        raise MigrationRequired("M32 exact live generation-29 owner differs")
+    with source.intent._connection(write=False) as connection:
+        evidence = connection.execute(
+            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+            "created_at,body_json FROM evidence_nodes WHERE evidence_id=?",
+            [evidence_id],
+        ).fetchone()
+        event = connection.execute(
+            "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+            "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+            "WHERE global_sequence=?",
+            [_M32_TARGET_EVENT_WATERMARK],
+        ).fetchone()
+        prior_prefix = _event_prefix_digest(connection, _M32_PRIOR_EVENT_WATERMARK)
+        prefix = _event_prefix_digest(connection, _M32_TARGET_EVENT_WATERMARK)
+        semantic = _semantic_authority_digest_on(connection)
+    expected_evidence = [
+        evidence_id,
+        "",
+        target["operator_task_cid"],
+        target["evidence_kind"],
+        digest,
+        _M32_CONTROL_RECORDED_AT,
+        _canonical(body).decode("utf-8"),
+    ]
+    expected_event = [
+        expected_event_id,
+        "stream:intent",
+        _M32_TARGET_EVENT_WATERMARK,
+        _M32_TARGET_EVENT_WATERMARK,
+        "intent.evidence_recorded",
+        target["operator_task_cid"],
+        "",
+        "session:intent",
+        _M32_CONTROL_RECORDED_AT,
+        _canonical(event_body).decode("utf-8"),
+    ]
+    if (
+        evidence is None
+        or [evidence[index] for index in range(7)] != expected_evidence
+        or event is None
+        or [event[index] for index in range(10)] != expected_event
+        or prior_prefix
+        != (_M32_PRIOR_EVENT_PREFIX_SHA256, _M32_PRIOR_EVENT_WATERMARK)
+        or prefix[1] != _M32_TARGET_EVENT_WATERMARK
+        or semantic != _M32_PRIOR_SEMANTIC_AUTHORITY_DIGEST
+    ):
+        raise MigrationRequired("M32 exact target event/evidence authority differs")
+    return {
+        **head,
+        **restart,
+        "migration_digest": digest,
+        "migration_evidence_id": evidence_id,
+        "migration_evidence_event_id": expected_event_id,
+        "target_event_prefix_sha256": prefix[0],
+        "prior_event_prefix_verified": True,
+        "semantic_authority_digest": semantic,
+        "full_event_and_evidence_body_verified": True,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "plan_revision_changes": 0,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _expected_m32_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": "sawm/non-authoritative-live-preflight-plan-anchor-receipt@1",
+        "authoritative": False,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M32_MIGRATION_REVISION,
+        "migration_kind": _M32_SUPERSESSION_REASON,
+        "supersession_mode": _M32_SUPERSESSION_MODE,
+        f"{_M32_SUPERSESSION_REASON}_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "validation_digest": validation_digest,
+        "database_path": _M32_STORE_ID,
+        "coordination_path": _M32_COORDINATION_STORE_ID,
+        "target_generation": _M32_TARGET_GENERATION,
+        "target_plan_revision": _M32_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M32_TARGET_EVENT_WATERMARK,
+        "projection_cid": _M32_TARGET_PROJECTION_CID,
+        "migration_digest": verified["migration_digest"],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "migration_evidence_event_id": verified["migration_evidence_event_id"],
+        "target_event_prefix_sha256": verified["target_event_prefix_sha256"],
+        "semantic_authority_digest": verified["semantic_authority_digest"],
+        "generation_28_29_restart_rows_verified": True,
+        "same_live_generation_29_owner_verified": True,
+        "live_server_id": verified["live_server_id"],
+        "live_process_birth_id": verified["live_process_birth_id"],
+        "live_started_at": verified["live_started_at"],
+        "m31_receipt_cid": _M32_M31_RECEIPT_CID,
+        "m31_event_prefix_verified": True,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "full_event_and_evidence_body_verified": True,
+        "plan_revision_changes": 0,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "coordination_semantic_changes": 0,
+        "sidecars_preserved": True,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _ensure_m32_source_successor_receipt(
+    root: Path, control: Path, expected: Mapping[str, Any]
+) -> Mapping[str, Any]:
+    path = control.parent / "m32-source-successor-receipt.json"
+    lock_path = control.parent / ".m32-source-successor-receipt.publish.lock"
+    descriptor = os.open(
+        lock_path,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        if os.path.lexists(path):
+            observed, _ = _load_nofollow_json(
+                path, root=root, noun="M32 source successor receipt"
+            )
+            if observed != dict(expected):
+                raise MigrationRequired("M32 source successor receipt differs")
+            return dict(observed)
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        out = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            os.write(out, _canonical(expected) + b"\n")
+            os.fsync(out)
+        finally:
+            os.close(out)
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        return dict(expected)
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(descriptor)
+
+
 def _inspect_m31_live_projection(
     source: Any,
     population: Mapping[str, Any],
@@ -55060,6 +55792,200 @@ def _ensure_m30_source_successor_receipt(
         except OSError:
             pass
         os.close(descriptor)
+
+
+def _verify_m32_preserved_files(root: Path, control: Path, coordination: Path) -> dict[str, Any]:
+    if not coordination.is_file():
+        raise MigrationRequired("M32 preserved coordination store is unavailable")
+    receipt_path = control.parent / "m31-source-successor-receipt.json"
+    observed, observed_sha = _load_nofollow_json(
+        receipt_path, root=root, noun="M32 preserved M31 source receipt"
+    )
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        observed_sha != _M32_M31_RECEIPT_SHA256
+        or claimed != _M32_M31_RECEIPT_CID
+        or claimed != _identity(unhashed)
+        or observed.get("target_event_watermark") != _M32_PRIOR_EVENT_WATERMARK
+        or observed.get("projection_cid") != _M32_PRIOR_PROJECTION_CID
+        or observed.get("target_event_prefix_sha256")
+        != _M32_PRIOR_EVENT_PREFIX_SHA256
+    ):
+        raise MigrationRequired("M32 preserved M31 source receipt differs")
+    return observed
+
+
+def _check_m32_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m32_source_binding_authority(root, population, config)
+    _assert_m32_source_delta(root, population, authority)
+    control, coordination = _m32_target_paths(root, config, authority)
+    receipt_path = control.parent / "m32-source-successor-receipt.json"
+    if not os.path.lexists(receipt_path):
+        raise MigrationRequired("M32 source successor receipt is missing")
+    m31_receipt = _verify_m32_preserved_files(root, control, coordination)
+    validation_digest = _m7_validation_digest(root, population)
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        authority,
+        owner_id="sawm-r2-m32-live-source-sealer",
+    ) as (source, identity):
+        verified = _verify_m32_live_materialization(
+            source, identity, population, config, authority, validation_digest
+        )
+    observed, _ = _load_nofollow_json(
+        receipt_path, root=root, noun="M32 source successor receipt"
+    )
+    expected = _expected_m32_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    if observed != expected:
+        raise MigrationRequired("M32 source successor receipt differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_live_preflight_plan_anchor_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "prior_receipt": m31_receipt,
+        "receipt": observed,
+        **verified,
+    }
+
+
+def _materialize_m32(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    del config_file
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m32_source_binding_authority(root, population, config)
+    _assert_m32_source_delta(root, population, authority)
+    control, coordination = _m32_target_paths(root, config, authority)
+    m31_receipt = _verify_m32_preserved_files(root, control, coordination)
+    validation_digest = _m7_validation_digest(root, population)
+    body = _m32_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence_id = content_identity(
+        {
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": body,
+        }
+    )
+    appended = False
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        authority,
+        owner_id="sawm-r2-m32-live-source-sealer",
+    ) as (source, identity):
+        snapshot = source.snapshot()
+        if snapshot.event_cursor == _M32_PRIOR_EVENT_WATERMARK:
+            _inspect_m32_live_projection(
+                source,
+                population,
+                authority,
+                expected_event_watermark=_M32_PRIOR_EVENT_WATERMARK,
+                expected_projection_cid=_M32_PRIOR_PROJECTION_CID,
+            )
+            restart = _inspect_m31_generation_restart_rows(
+                source,
+                identity,
+                _expected_m31_detached_coordinator_pid_recovery_authority(),
+            )
+            if (
+                restart.get("live_server_id") != _M32_LIVE_SERVER_ID
+                or restart.get("live_process_birth_id") != _M32_LIVE_PROCESS_BIRTH_ID
+                or restart.get("live_started_at") != _M32_LIVE_STARTED_AT
+            ):
+                raise MigrationRequired("M32 prior live owner differs")
+            with source.intent._connection(write=False) as connection:
+                target_evidence_exists = connection.execute(
+                    "SELECT 1 FROM evidence_nodes WHERE evidence_id=?", [evidence_id]
+                ).fetchone()
+                prior_prefix = _event_prefix_digest(
+                    connection, _M32_PRIOR_EVENT_WATERMARK
+                )
+            if (
+                target_evidence_exists is not None
+                or prior_prefix
+                != (_M32_PRIOR_EVENT_PREFIX_SHA256, _M32_PRIOR_EVENT_WATERMARK)
+            ):
+                raise MigrationRequired("M32 prior event/evidence authority differs")
+            from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+            original_clock = intent_repository._utc_iso
+
+            def fixed_m32_utc_iso(_moment: Any = None) -> str:
+                return _M32_CONTROL_RECORDED_AT
+
+            intent_repository._utc_iso = fixed_m32_utc_iso
+            try:
+                try:
+                    evidence_receipt = source.record_evidence(
+                        task_cid=target["operator_task_cid"],
+                        evidence_kind=target["evidence_kind"],
+                        digest=digest,
+                        body=body,
+                    )
+                except Exception:
+                    raise MaterializationError(
+                        "authenticated M32 evidence append failed"
+                    ) from None
+            finally:
+                clock_interference = intent_repository._utc_iso is not fixed_m32_utc_iso
+                intent_repository._utc_iso = original_clock
+            if clock_interference or not evidence_receipt.changed:
+                raise MaterializationError("M32 evidence append clock/CAS differed")
+            appended = True
+        elif snapshot.event_cursor != _M32_TARGET_EVENT_WATERMARK:
+            raise MigrationRequired("M32 live event head is neither prior nor target")
+        verified = _verify_m32_live_materialization(
+            source, identity, population, config, authority, validation_digest
+        )
+        if verified["migration_evidence_id"] != evidence_id:
+            raise MaterializationError("M32 evidence identity differs")
+    _verify_m32_preserved_files(root, control, coordination)
+    expected_receipt = _expected_m32_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    receipt = _ensure_m32_source_successor_receipt(root, control, expected_receipt)
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": (
+            "materialized_live_preflight_plan_anchor_successor"
+            if appended
+            else "checked_live_preflight_plan_anchor_successor"
+        ),
+        "migration_required": False,
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "prior_receipt": m31_receipt,
+        "receipt": receipt,
+        **verified,
+    }
 
 
 def _check_m31_materialized(root: Path, config_file: Path) -> dict[str, Any]:
@@ -55995,6 +56921,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m32_successor_configured_on_any_surface(root, config):
+        return _materialize_m32(root, config_file, config)
     if _m31_successor_configured_on_any_surface(root, config):
         return _materialize_m31(root, config_file, config)
     if _m30_successor_configured_on_any_surface(root, config):
@@ -56311,6 +57239,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 any(
                     key in config
                     for key in (
+                        "live_preflight_plan_anchor_successor_materialization",
                         "detached_coordinator_pid_recovery_successor_materialization",
                         "stopped_owner_restart_source_seal_successor_materialization",
                         "committed_evidence_verification_successor_materialization",
