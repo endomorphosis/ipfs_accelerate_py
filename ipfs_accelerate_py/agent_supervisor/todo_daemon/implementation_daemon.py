@@ -116899,6 +116899,28 @@ class DatabaseImplementationDaemon:
                 "observed_at_ms": now,
                 "expired_now": False,
             }
+        if claim_state == "released":
+            # Portal releases the fence after a validated effect.  Landed
+            # leftover rows still need that history observed so rearm can
+            # admit a fresh claim instead of fail-closing the lane.
+            return {
+                "claim_id": attempt.claim_id,
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "lease_state": "released",
+                "claim_state": "released",
+                "claim_revision": int(getattr(claim, "revision", 0) or 0),
+                "coordination_attempt_status": str(
+                    attempt_identity.get("status") or ""
+                ),
+                "coordination_attempt_revision": int(
+                    attempt_identity.get("revision") or 0
+                ),
+                "expires_at_ms": expires_at_ms,
+                "observed_at_ms": now,
+                "expired_now": False,
+                "historical_released": True,
+            }
         if claim_state not in {"accepted", "expired"}:
             raise DatabaseImplementationAuthorityError(
                 "retryable failed attempt has incompatible coordination state "

@@ -14778,6 +14778,61 @@ def test_resume_without_process_crash_completes_landed_missing_receipt() -> None
     assert result["status"] == "completed"
 
 
+def test_reconcile_failed_attempt_observes_released_claim() -> None:
+    attempt = SimpleNamespace(
+        task_cid="task:pcpr-002",
+        attempt_id="attempt:1",
+        attempt_number=1,
+        owner_session_id="session:1",
+        lease_id="lease:1",
+        fencing_token=1,
+        fence_epoch=1,
+        claim_id="claim:1",
+        revision=2,
+        status="failed",
+    )
+    claim = SimpleNamespace(
+        state="released",
+        revision=4,
+        expires_at_ms=0,
+    )
+    claim.to_dict = lambda: {
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "attempt_number": 1,
+        "owner_session_id": "session:1",
+        "lease_id": "lease:1",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+    }
+    coord_attempt = SimpleNamespace()
+    coord_attempt.to_dict = lambda: {
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "attempt_number": 1,
+        "owner_session_id": "session:1",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "status": "failed",
+        "revision": 2,
+    }
+    daemon = SimpleNamespace(
+        coordinator=SimpleNamespace(
+            get_prepared_task_completion=lambda _cid: None,
+            get_task_claim=lambda _cid: claim,
+            get_task_attempt=lambda _aid: coord_attempt,
+        ),
+        _now_ms=lambda: 10_000,
+    )
+    observed = DatabaseImplementationDaemon._reconcile_failed_attempt_coordination(
+        daemon,
+        attempt,
+    )
+    assert observed["claim_state"] == "released"
+    assert observed["historical_released"] is True
+    assert observed["attempt_id"] == "attempt:1"
+
+
 def test_typed_attempt_floor_survives_stale_retry_cooldown() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         TaskSourceIntegrityError,
