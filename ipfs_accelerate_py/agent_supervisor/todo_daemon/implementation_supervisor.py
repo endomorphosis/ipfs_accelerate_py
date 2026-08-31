@@ -77,6 +77,7 @@ from ..control.plan_execution_store import (
 )
 from ..runtime.resource_scheduler import evaluate_capacity_drift
 from ..task_sources.plan_revision_store import PlanRevisionStore
+from ..task_sources.intent_repository import IntentRepository
 from ..proof.formal_verification_contracts import content_identity
 from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
 from .implementation_supervisor_runner import (
@@ -177,6 +178,9 @@ logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.impl
 
 RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {"child_exited", "launch_failed", "max_restarts_reached"}
 CONTROL_PLANE_RELOAD_STATUS = "control_plane_reload_required"
+CONTROL_PLANE_RELOAD_DEFERRED_UNSEALED_STATUS = (
+    "control_plane_reload_deferred_unsealed"
+)
 CONTROL_PLANE_SOURCE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.control_plane_source@1"
 )
@@ -189,6 +193,57 @@ CONTROL_PLANE_SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
 )
 
+DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-reload-projection@1"
+)
+DATABASE_PORTAL_RELOAD_PAGE_LIMIT = 128
+DATABASE_PORTAL_RELOAD_MAX_PAGES = 32
+_QUACK_OWNER_BINDING_FIELDS = (
+    "server_id",
+    "store_id",
+    "database_uuid",
+    "schema_revision",
+    "schema_fingerprint",
+    "generation",
+    "process_birth_id",
+    "listen_uri",
+    "extension_fingerprint",
+)
+_DATABASE_CLAIM_REQUIRED_FIELDS = frozenset(
+    "schema operation task_cid validation_spec_cid attempts_used "
+    "max_task_attempts retry_exhausted process_instance_id owner_session_id "
+    "attempt_id claim_id lease_id attempt_number fencing_token fence_epoch".split()
+)
+_DATABASE_CLAIM_OPTIONAL_FIELDS = frozenset(
+    "unknown_outcome_rearm_count unknown_outcome_rearm_count_malformed".split()
+)
+
+
+class _PinnedReadIntentRepository(IntentRepository):
+    """Read-only IntentRepository facade over one already-open transaction.
+
+    ``DatabaseTaskSource`` is the task projection authority, but its ordinary
+    repository opens one connection per method.  Reload safety needs a single
+    authenticated Quack generation for the complete population read.  This
+    facade makes inherited read methods share the caller-owned connection.
+    """
+
+    def __init__(self, connection: Any) -> None:
+        self.database_path = Path("quack:pinned-read-transaction")
+        self._connection_value = connection
+        self._open = True
+        self._closed = False
+
+    def _require_open(self) -> None:
+        if self._closed or not self._open:
+            raise RuntimeError("pinned intent repository is not open")
+
+    @contextmanager
+    def _connection(self, *, write: bool = False) -> Any:
+        self._require_open()
+        if write:
+            raise RuntimeError("pinned intent repository is read-only")
+        yield self._connection_value
 
 def _read_control_plane_source_snapshot() -> dict[str, Any]:
     """Return the current accelerator control-plane tree and file identity."""
@@ -7145,19 +7200,50 @@ class PortalImplementationSupervisor:
         update_maintenance_phase, finish_maintenance = self._begin_supervisor_maintenance_heartbeat(
             "run_once"
         )
-        failed = False
         try:
-            return self._run_once_with_maintenance(
-                update_maintenance_phase,
-                include_refill=include_refill,
+            program = self.config.database_program
+            database_guard_required = bool(
+                program is not None
+                and program.authority_mode == "quack"
+                and program.task_source_kind == "duckdb"
             )
+            if database_guard_required:
+                with serialized_lock_update(
+                    self._managed_daemon_launch_lock_path()
+                ):
+                    quiescence = self._terminate_managed_daemon_tree(
+                        grace_seconds=2.0,
+                        _launch_lock_held=True,
+                    )
+                    if quiescence.get("quiesced") is not True:
+                        result = {
+                            "stuck": False,
+                            "maintenance_blocked": True,
+                            "reason": "managed_child_quiescence_unproven",
+                            "managed_child_quiescence": quiescence,
+                        }
+                    else:
+                        result = self._run_once_with_maintenance(
+                            update_maintenance_phase,
+                            include_refill=include_refill,
+                            managed_daemon_launch_lock_held=True,
+                        )
+            else:
+                result = self._run_once_with_maintenance(
+                    update_maintenance_phase,
+                    include_refill=include_refill,
+                )
         except Exception as exc:
-            failed = True
             finish_maintenance("failed", f"{type(exc).__name__}: {exc}")
             raise
-        finally:
-            if not failed:
-                finish_maintenance("completed")
+        if result.get("maintenance_blocked") is True:
+            finish_maintenance(
+                "deferred",
+                str(result.get("reason") or "maintenance_inconclusive"),
+            )
+        else:
+            finish_maintenance("completed")
+        return result
 
     def _implementation_protected_maintenance_guard(self) -> dict[str, Any]:
         """Block supervisor mutations while an agent fence is active/latched."""
@@ -7808,30 +7894,315 @@ class PortalImplementationSupervisor:
         update_maintenance_phase,
         *,
         include_refill: bool = True,
+        managed_daemon_launch_lock_held: bool = False,
     ) -> dict[str, Any]:
+        maintenance_kwargs = {
+            "include_refill": include_refill,
+            "implementation_maintenance_lease": None,
+        }
+        if managed_daemon_launch_lock_held:
+            maintenance_kwargs["managed_daemon_launch_lock_held"] = True
         if not self.config.implementation_protected_paths:
-            return self._run_once_with_maintenance_under_lease(
+            result = self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
-                include_refill=include_refill,
-                implementation_maintenance_lease=None,
+                **maintenance_kwargs,
             )
-        lease, lease_guard = self._acquire_implementation_maintenance_lease()
-        if lease is None:
+        else:
+            lease, lease_guard = self._acquire_implementation_maintenance_lease()
+            if lease is None:
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": str(lease_guard.get("reason") or ""),
+                    "protected_path_guard": lease_guard,
+                }
+            try:
+                update_maintenance_phase("implementation_maintenance_lease")
+                maintenance_kwargs["implementation_maintenance_lease"] = lease
+                result = self._run_once_with_maintenance_under_lease(
+                    update_maintenance_phase,
+                    **maintenance_kwargs,
+                )
+            finally:
+                self._release_implementation_maintenance_lease(lease)
+
+        # Database reconciliation owns its task claim, implementation lease,
+        # protected-path journal, and checkout mutation lease.  Never lend it
+        # the supervisor maintenance lease.  Complete this phase only after
+        # the supervisor lease above has been released.
+        if result.get("database_portal_daemon_reconciliation_pending") is True:
+            return self._run_database_portal_daemon_reconciliation(
+                result,
+                update_maintenance_phase,
+                managed_daemon_launch_lock_held=(
+                    managed_daemon_launch_lock_held
+                ),
+            )
+        return result
+
+    def _run_database_portal_guarded_worktree_maintenance(
+        self,
+        update_maintenance_phase,
+        *,
+        implementation_maintenance_lease: Mapping[str, Any] | None,
+        managed_daemon_launch_lock_held: bool,
+    ) -> dict[str, Any]:
+        """Guard only the supervisor-owned worktree maintenance phase."""
+
+        if not managed_daemon_launch_lock_held:
             return {
-                "stuck": False,
                 "maintenance_blocked": True,
-                "reason": str(lease_guard.get("reason") or ""),
-                "protected_path_guard": lease_guard,
+                "reason": "managed_child_quiescence_unproven",
+                "database_portal_reload_projection": {},
             }
-        try:
-            update_maintenance_phase("implementation_maintenance_lease")
-            return self._run_once_with_maintenance_under_lease(
-                update_maintenance_phase,
-                include_refill=include_refill,
-                implementation_maintenance_lease=lease,
+
+        lock_path = self._repo_merge_lock_path()
+        adoption: dict[str, Any] = {}
+        current_lease = self._current_supervisor_checkout_lease()
+        active_outer_lease = bool(
+            current_lease is not None
+            and self._supervisor_checkout_transaction_depth() > 0
+        )
+        if active_outer_lease:
+            if checkout_mutation_lease_state(current_lease) != "current":
+                return {
+                    "maintenance_blocked": True,
+                    "reason": "outer_checkout_lease_not_current",
+                    "lock_path": str(lock_path),
+                    "database_portal_reload_projection": {},
+                }
+        elif not self._retained_generated_checkout_lease():
+            adoption = self._adopt_supervisor_protected_recovery()
+            if adoption.get("required") and adoption.get("blocked"):
+                return {
+                    "maintenance_blocked": True,
+                    "reason": str(
+                        adoption.get("reason")
+                        or "checkout_mutation_protected_recovery_required"
+                    ),
+                    "lock_path": str(lock_path),
+                    "database_portal_reload_projection": {},
+                    "retained_generated_checkout_recovery": adoption,
+                }
+
+        retained_checkout = self._retained_generated_checkout_lease()
+        lease_owned = False
+        if active_outer_lease:
+            lease = current_lease
+        elif retained_checkout:
+            lease = self._current_supervisor_checkout_lease()
+            if lease is None or checkout_mutation_lease_state(lease) != "current":
+                return {
+                    "maintenance_blocked": True,
+                    "reason": "retained_checkout_lease_not_current",
+                    "lock_path": str(lock_path),
+                    "database_portal_reload_projection": {},
+                }
+        else:
+            metadata = self._supervisor_checkout_lock_metadata(
+                operation="database_portal_guarded_worktree_maintenance",
             )
+            lease, lock_reason, existing_lock = (
+                self._acquire_supervisor_checkout_lease(lock_path, metadata)
+            )
+            if lease is None:
+                result: dict[str, Any] = {
+                    "maintenance_blocked": True,
+                    "reason": f"checkout_mutation_{lock_reason}",
+                    "lock_path": str(lock_path),
+                    "database_portal_reload_projection": {},
+                }
+                if existing_lock:
+                    result["lock_owner_pid"] = int(
+                        existing_lock.get("pid") or 0
+                    )
+                    result["lock_owner_task_id"] = str(
+                        existing_lock.get("task_id") or ""
+                    )
+                return result
+            lease_owned = True
+        try:
+            update_maintenance_phase("database_portal_reload_projection")
+            projection = self._database_portal_reload_projection()
+            if projection.get("defer_maintenance") is True:
+                return {
+                    "maintenance_blocked": True,
+                    "reason": str(
+                        projection.get("reason")
+                        or "database_portal_projection_inconclusive"
+                    ),
+                    "database_portal_reload_projection": projection,
+                    "lock_path": str(lock_path),
+                }
+            if retained_checkout:
+                # The retained lease is itself the repo-wide mutation fence.
+                # Repair it only after the exact DB population proved idle,
+                # then require a new projection cycle before any other
+                # checkout mutation.
+                update_maintenance_phase(
+                    "retained_generated_checkout_recovery"
+                )
+                retained_recovery = (
+                    self._recover_retained_generated_checkout_lease()
+                )
+                retained = bool(retained_recovery.get("retained_lease"))
+                return {
+                    "maintenance_blocked": True,
+                    "reason": (
+                        "checkout_mutation_protected_recovery_required"
+                        if retained
+                        else "retained_checkout_recovered_recheck_required"
+                    ),
+                    "database_portal_reload_projection": projection,
+                    "retained_generated_checkout_recovery": (
+                        retained_recovery
+                    ),
+                    "lock_path": str(lock_path),
+                }
+            retained_recovery = {
+                "attempted": False,
+                "recovered": False,
+                "retained_lease": False,
+                "reason": "no_retained_generated_checkout_lease",
+                "adoption": {
+                    key: value
+                    for key, value in adoption.items()
+                    if key != "lease"
+                },
+            }
+            update_maintenance_phase("stale_worktree_detection")
+            stale_worktree_detection = self.detect_stale_worktrees()
+            update_maintenance_phase("stale_active_state_repair")
+            stale_active_state_repair = (
+                self.repair_stale_active_execution_state()
+            )
+            update_maintenance_phase("completed_leftover_execution")
+            completed_leftover_execution = (
+                self.release_completed_leftover_execution(
+                    _launch_lock_held=True,
+                )
+            )
+            update_maintenance_phase("guarded_dirty_worktree_rescue")
+            guarded_dirty_worktree_rescue = (
+                self.reconcile_backlogged_worktrees(
+                    preacquired_implementation_lock=(
+                        implementation_maintenance_lease
+                    ),
+                    rescue_dirty_only=True,
+                )
+            )
+            update_maintenance_phase("worktree_cleanup")
+            worktree_cleanup = self._cleanup_backlogged_worktrees_locked()
+            guarded_result = {
+                "maintenance_blocked": False,
+                "reason": "guarded_supervisor_worktree_mutations_completed",
+                "database_portal_reload_projection": projection,
+                "guarded_dirty_worktree_rescue": (
+                    guarded_dirty_worktree_rescue
+                ),
+                "retained_generated_checkout_recovery": retained_recovery,
+                "stale_worktree_detection": stale_worktree_detection,
+                "stale_active_state_repair": stale_active_state_repair,
+                "completed_leftover_execution": (
+                    completed_leftover_execution
+                ),
+                "worktree_cleanup": worktree_cleanup,
+                "lock_path": str(lock_path),
+            }
         finally:
-            self._release_implementation_maintenance_lease(lease)
+            if lease_owned:
+                self._release_supervisor_checkout_lease(
+                    lease,
+                    operation=(
+                        "database_portal_guarded_worktree_maintenance"
+                    ),
+                )
+
+        return {
+            **guarded_result,
+            "reason": "guarded_supervisor_worktree_maintenance_completed",
+            "database_portal_daemon_reconciliation_pending": True,
+        }
+
+    def _run_database_portal_daemon_reconciliation(
+        self,
+        result: Mapping[str, Any],
+        update_maintenance_phase,
+        *,
+        managed_daemon_launch_lock_held: bool,
+    ) -> dict[str, Any]:
+        """Run daemon-owned reconciliation after supervisor leases are gone."""
+
+        def blocked(reason: str, **extra: Any) -> dict[str, Any]:
+            return {
+                **dict(result),
+                "maintenance_blocked": True,
+                "reason": reason,
+                "database_portal_daemon_reconciliation_pending": False,
+                **extra,
+            }
+
+        if not managed_daemon_launch_lock_held:
+            return blocked("managed_child_quiescence_unproven")
+        if (
+            self._find_matching_managed_daemon_pid() is not None
+            or bool(self._active_agent_worker_processes())
+            or self._active_validation_subprocess_exists()
+        ):
+            return blocked("managed_child_quiescence_changed_between_phases")
+
+        # The supervisor implementation lease was released between phases.
+        # Re-project the complete DB claim population from one current Quack
+        # generation before allowing the daemon to acquire its own claims.
+        update_maintenance_phase("database_portal_daemon_reconciliation_projection")
+        projection = self._database_portal_reload_projection()
+        if projection.get("defer_maintenance") is True:
+            return blocked(
+                str(
+                    projection.get("reason")
+                    or "database_portal_projection_inconclusive"
+                ),
+                database_portal_reload_projection=projection,
+            )
+        if (
+            self._find_matching_managed_daemon_pid() is not None
+            or bool(self._active_agent_worker_processes())
+            or self._active_validation_subprocess_exists()
+        ):
+            return blocked(
+                "managed_child_quiescence_changed_after_projection",
+                database_portal_reload_projection=projection,
+            )
+
+        try:
+            update_maintenance_phase("worktree_reconciliation")
+            worktree_reconciliation = self.reconcile_backlogged_worktrees(
+                allow_dirty_rescue=False,
+            )
+            update_maintenance_phase("worktree_reconciliation_replay")
+            worktree_reconciliation_replay = (
+                self.recover_already_merged_reconciliation_candidates()
+            )
+        except Exception as exc:
+            logger.warning(
+                "Daemon-owned worktree reconciliation failed closed",
+                exc_info=True,
+            )
+            return blocked(
+                "daemon_owned_reconciliation_failed",
+                database_portal_reload_projection=projection,
+                error_type=type(exc).__name__,
+                error=str(exc)[:1000],
+            )
+        return {
+            **dict(result),
+            "maintenance_blocked": False,
+            "reason": "database_portal_daemon_reconciliation_completed",
+            "database_portal_daemon_reconciliation_pending": False,
+            "database_portal_daemon_reconciliation_projection": projection,
+            "worktree_reconciliation": worktree_reconciliation,
+            "worktree_reconciliation_replay": worktree_reconciliation_replay,
+        }
 
     def _run_once_with_maintenance_under_lease(
         self,
@@ -7839,23 +8210,96 @@ class PortalImplementationSupervisor:
         *,
         include_refill: bool = True,
         implementation_maintenance_lease: Mapping[str, Any] | None = None,
+        managed_daemon_launch_lock_held: bool = False,
+        database_checkout_guard_held: bool = False,
     ) -> dict[str, Any]:
-        # A producer can retain the checkout lease only when its protected
-        # outputs could not be proven clean.  Resolve that state before any
-        # other maintenance callback is allowed to mutate repository state.
-        update_maintenance_phase("retained_generated_checkout_recovery")
-        retained_generated_checkout_recovery = (
-            self._recover_retained_generated_checkout_lease()
+        program = self.config.database_program
+        database_guard_required = bool(
+            program is not None
+            and program.authority_mode == "quack"
+            and program.task_source_kind == "duckdb"
         )
-        if retained_generated_checkout_recovery.get("retained_lease"):
+        if database_guard_required and not managed_daemon_launch_lock_held:
             return {
                 "stuck": False,
                 "maintenance_blocked": True,
-                "reason": "checkout_mutation_protected_recovery_required",
-                "retained_generated_checkout_recovery": (
-                    retained_generated_checkout_recovery
-                ),
+                "reason": "managed_child_quiescence_unproven",
             }
+        if database_guard_required and not database_checkout_guard_held:
+            adoption = self._adopt_supervisor_protected_recovery()
+            if adoption.get("required") and adoption.get("blocked"):
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": str(
+                        adoption.get("reason")
+                        or "checkout_mutation_protected_recovery_required"
+                    ),
+                    "retained_generated_checkout_recovery": adoption,
+                }
+            if self._retained_generated_checkout_lease():
+                # The retained checkout lease is already the exclusive fence.
+                # Its exact projection and bounded recovery are handled by the
+                # guarded helper; a later cycle will acquire the ordinary
+                # supervisor transaction for all remaining mutations.
+                return self._run_once_with_maintenance_under_lease(
+                    update_maintenance_phase,
+                    include_refill=include_refill,
+                    implementation_maintenance_lease=(
+                        implementation_maintenance_lease
+                    ),
+                    managed_daemon_launch_lock_held=True,
+                    database_checkout_guard_held=True,
+                )
+
+            def deferred_checkout(payload: Mapping[str, Any]) -> dict[str, Any]:
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": str(
+                        payload.get("reason")
+                        or "checkout_mutation_lease_unavailable"
+                    ),
+                    "checkout_mutation_guard": dict(payload),
+                }
+
+            return self._run_generated_board_producer(
+                producer="database_portal_guarded_supervisor_maintenance",
+                commit_outputs=True,
+                operation="database_portal_guarded_supervisor_maintenance",
+                callback=lambda: self._run_once_with_maintenance_under_lease(
+                    update_maintenance_phase,
+                    include_refill=include_refill,
+                    implementation_maintenance_lease=(
+                        implementation_maintenance_lease
+                    ),
+                    managed_daemon_launch_lock_held=True,
+                    database_checkout_guard_held=True,
+                ),
+                deferred_result=deferred_checkout,
+            )
+        if database_guard_required:
+            # Retained checkout recovery is a checkout mutation and is handled
+            # by the DB guard below only after an exact projection while the
+            # same repo-wide lease remains current.
+            retained_generated_checkout_recovery: dict[str, Any] = {}
+        else:
+            # A producer can retain the checkout lease only when its protected
+            # outputs could not be proven clean.  Preserve the legacy order
+            # for supervisors not using the DB Portal authority.
+            update_maintenance_phase("retained_generated_checkout_recovery")
+            retained_generated_checkout_recovery = (
+                self._recover_retained_generated_checkout_lease()
+            )
+            if retained_generated_checkout_recovery.get("retained_lease"):
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": "checkout_mutation_protected_recovery_required",
+                    "retained_generated_checkout_recovery": (
+                        retained_generated_checkout_recovery
+                    ),
+                }
         update_maintenance_phase("event_log_repair")
         event_log_repair = self.ensure_event_log_file()
         update_maintenance_phase("state_file_repair")
@@ -7874,32 +8318,114 @@ class PortalImplementationSupervisor:
                     retained_generated_checkout_recovery
                 ),
             }
-        update_maintenance_phase("stale_worktree_detection")
-        stale_worktree_detection = self.detect_stale_worktrees()
-        update_maintenance_phase("stale_active_state_repair")
-        stale_active_state_repair = self.repair_stale_active_execution_state()
-        update_maintenance_phase("completed_leftover_execution")
-        completed_leftover_execution = self.release_completed_leftover_execution()
+        database_portal_daemon_reconciliation_pending = False
+        if database_guard_required:
+            guarded_worktree_maintenance = (
+                self._run_database_portal_guarded_worktree_maintenance(
+                    update_maintenance_phase,
+                    implementation_maintenance_lease=(
+                        implementation_maintenance_lease
+                    ),
+                    managed_daemon_launch_lock_held=(
+                        managed_daemon_launch_lock_held
+                    ),
+                )
+            )
+            if guarded_worktree_maintenance.get("maintenance_blocked") is True:
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": str(
+                        guarded_worktree_maintenance.get("reason") or ""
+                    ),
+                    "event_log_repair": event_log_repair,
+                    "state_file_repair": state_file_repair,
+                    "protected_path_guard": protected_path_guard,
+                    "retained_generated_checkout_recovery": (
+                        guarded_worktree_maintenance.get(
+                            "retained_generated_checkout_recovery"
+                        )
+                        or {}
+                    ),
+                    "database_portal_reload_projection": (
+                        guarded_worktree_maintenance.get(
+                            "database_portal_reload_projection"
+                        )
+                        or {}
+                    ),
+                    "guarded_worktree_maintenance": guarded_worktree_maintenance,
+                }
+            retained_generated_checkout_recovery = dict(
+                guarded_worktree_maintenance.get(
+                    "retained_generated_checkout_recovery"
+                )
+                or {}
+            )
+            stale_worktree_detection = dict(
+                guarded_worktree_maintenance.get("stale_worktree_detection")
+                or {}
+            )
+            stale_active_state_repair = dict(
+                guarded_worktree_maintenance.get("stale_active_state_repair")
+                or {}
+            )
+            completed_leftover_execution = dict(
+                guarded_worktree_maintenance.get(
+                    "completed_leftover_execution"
+                )
+                or {}
+            )
+            database_portal_daemon_reconciliation_pending = bool(
+                guarded_worktree_maintenance.get(
+                    "database_portal_daemon_reconciliation_pending"
+                )
+            )
+            worktree_reconciliation = dict(
+                guarded_worktree_maintenance.get("worktree_reconciliation")
+                or {}
+            )
+            worktree_reconciliation_replay = dict(
+                guarded_worktree_maintenance.get(
+                    "worktree_reconciliation_replay"
+                )
+                or {}
+            )
+            worktree_cleanup = dict(
+                guarded_worktree_maintenance.get("worktree_cleanup") or {}
+            )
+        else:
+            update_maintenance_phase("stale_worktree_detection")
+            stale_worktree_detection = self.detect_stale_worktrees()
+            update_maintenance_phase("stale_active_state_repair")
+            stale_active_state_repair = self.repair_stale_active_execution_state()
+            update_maintenance_phase("completed_leftover_execution")
+            completed_leftover_execution = (
+                self.release_completed_leftover_execution()
+            )
+            update_maintenance_phase("worktree_reconciliation")
+            worktree_reconciliation = self.reconcile_backlogged_worktrees(
+                preacquired_implementation_lock=implementation_maintenance_lease,
+            )
+            update_maintenance_phase("worktree_reconciliation_replay")
+            worktree_reconciliation_replay = (
+                self.recover_already_merged_reconciliation_candidates(
+                    preacquired_implementation_lock=(
+                        implementation_maintenance_lease
+                    ),
+                )
+            )
+            update_maintenance_phase("worktree_cleanup")
+            worktree_cleanup = self.cleanup_backlogged_worktrees()
         update_maintenance_phase("main_checkout_repair")
-        main_checkout_repair = self.repair_main_checkout_merge_state()
+        main_checkout_repair = (
+            self.repair_main_checkout_merge_state(
+                _checkout_lease_held=True,
+            )
+            if database_guard_required
+            else self.repair_main_checkout_merge_state()
+        )
         update_maintenance_phase("generated_dirty_repair")
         generated_dirty_repair = self.repair_generated_dirty_checkouts()
-        update_maintenance_phase("worktree_reconciliation")
-        worktree_reconciliation = self.reconcile_backlogged_worktrees(
-            preacquired_implementation_lock=(
-                implementation_maintenance_lease
-            ),
-        )
-        update_maintenance_phase("worktree_reconciliation_replay")
-        worktree_reconciliation_replay = (
-            self.recover_already_merged_reconciliation_candidates(
-                preacquired_implementation_lock=(
-                    implementation_maintenance_lease
-                ),
-            )
-        )
-        update_maintenance_phase("worktree_cleanup")
-        worktree_cleanup = self.cleanup_backlogged_worktrees()
         update_maintenance_phase("strategy_state_repair")
         strategy_file_repair = self.ensure_strategy_file()
         todo_board_repair = self.ensure_todo_board_for_refill()
@@ -8026,6 +8552,9 @@ class PortalImplementationSupervisor:
                 "guardrail_unblock_count": len(guardrail_releases),
                 "retained_generated_checkout_recovery": (
                     retained_generated_checkout_recovery
+                ),
+                "database_portal_daemon_reconciliation_pending": (
+                    database_portal_daemon_reconciliation_pending
                 ),
             }
         update_maintenance_phase("retry_dependency_guardrails")
@@ -8285,6 +8814,9 @@ class PortalImplementationSupervisor:
             "retained_generated_checkout_recovery": (
                 retained_generated_checkout_recovery
             ),
+            "database_portal_daemon_reconciliation_pending": (
+                database_portal_daemon_reconciliation_pending
+            ),
         }
 
     def run_forever(self) -> None:
@@ -8345,7 +8877,13 @@ class PortalImplementationSupervisor:
 
     def _run_forever_loop(self) -> None:
         self.ensure_event_log_file()
-        self.repair_main_checkout_merge_state()
+        program = self.config.database_program
+        if not (
+            program is not None
+            and program.authority_mode == "quack"
+            and program.task_source_kind == "duckdb"
+        ):
+            self.repair_main_checkout_merge_state()
         pid_guard = self.ensure_managed_daemon_pid_file()
         if pid_guard.get("blocked") is True:
             raise RuntimeError(
@@ -8363,7 +8901,14 @@ class PortalImplementationSupervisor:
                 },
             )
             raise
-        self._record_event("supervisor_preflight_maintenance_pass", preflight)
+        self._record_event(
+            (
+                "supervisor_preflight_maintenance_deferred"
+                if preflight.get("maintenance_blocked") is True
+                else "supervisor_preflight_maintenance_pass"
+            ),
+            preflight,
+        )
         self._last_supervisor_maintenance_at = time.monotonic()
         while True:
             loop = self.shared_supervisor_loop_class(
@@ -8413,7 +8958,11 @@ class PortalImplementationSupervisor:
                 )
             else:
                 self._record_event(
-                    "supervisor_loop_recovery_pass",
+                    (
+                        "supervisor_loop_recovery_deferred"
+                        if recovery.get("maintenance_blocked") is True
+                        else "supervisor_loop_recovery_pass"
+                    ),
                     {
                         "loop_result": result_payload,
                         "recovery": recovery,
@@ -8533,6 +9082,41 @@ class PortalImplementationSupervisor:
             status_extra_fields=dict(proof_rollout_status_fields),
         )
 
+    def _quiesce_supervised_child_for_control_gate(
+        self,
+        child: Any,
+        *,
+        reason: str,
+        _launch_lock_held: bool = False,
+    ) -> dict[str, Any]:
+        """Fence the exact managed child before reload or maintenance reads."""
+
+        if not _launch_lock_held:
+            with serialized_lock_update(
+                self._managed_daemon_launch_lock_path()
+            ):
+                return self._quiesce_supervised_child_for_control_gate(
+                    child,
+                    reason=reason,
+                    _launch_lock_held=True,
+                )
+        cleanup = self._terminate_managed_daemon_tree(
+            grace_seconds=2.0,
+            _launch_lock_held=True,
+        )
+        child_pid = int(getattr(child, "pid", 0) or 0)
+        child_alive = bool(child_pid and process_is_running(child_pid))
+        result = {
+            **dict(cleanup),
+            "reason": str(reason),
+            "supervised_child_pid": child_pid,
+            "supervised_child_alive": child_alive,
+        }
+        result["quiesced"] = bool(
+            cleanup.get("quiesced") is True and not child_alive
+        )
+        return result
+
     def _supervisor_loop_watchdog_decision(
         self,
         _loop: SupervisorLoop,
@@ -8543,41 +9127,96 @@ class PortalImplementationSupervisor:
         control_plane_status = self._control_plane_status_projection()
         self._set_loop_status_fields(_loop, control_plane_status)
         if control_plane_status["control_plane_update_pending"]:
-            state = PortalTaskState.load(self.config.state_path)
-            active = bool(
-                state.active_task_id
-                or state.implementation_in_progress
-                or self._active_agent_worker_processes()
-                or self._active_validation_subprocess_exists()
-            )
-            if active:
-                deferred = {
+            with serialized_lock_update(
+                self._managed_daemon_launch_lock_path()
+            ):
+                quiescence = self._quiesce_supervised_child_for_control_gate(
+                    _child,
+                    reason="control_plane_source_changed",
+                    _launch_lock_held=True,
+                )
+                if quiescence.get("quiesced") is not True:
+                    deferred = {
+                        **control_plane_status,
+                        "control_plane_reload_deferred": True,
+                        "control_plane_reload_deferred_reason": (
+                            "managed_child_quiescence_unproven"
+                        ),
+                        "control_plane_reload_quiescence": quiescence,
+                    }
+                    self._set_loop_status_fields(_loop, deferred)
+                    return SupervisorLoopDecision.keep_running()
+
+                database_projection = (
+                    self._database_portal_reload_projection()
+                )
+                state = PortalTaskState.load(self.config.state_path)
+                residual_active_state = bool(
+                    state.active_task_id
+                    or state.implementation_in_progress
+                    or self._active_agent_worker_processes()
+                    or self._active_validation_subprocess_exists()
+                )
+                if (
+                    database_projection.get("defer_reload") is True
+                    or residual_active_state
+                ):
+                    reason = (
+                        str(database_projection.get("reason") or "")
+                        if database_projection.get("defer_reload") is True
+                        else "residual_active_task_or_phase"
+                    )
+                    deferred = {
+                        **control_plane_status,
+                        "control_plane_reload_deferred": True,
+                        "control_plane_reload_deferred_reason": reason,
+                        "control_plane_reload_deferred_task_id": (
+                            state.active_task_id
+                        ),
+                        "control_plane_reload_quiescence": quiescence,
+                        "database_portal_reload_projection": (
+                            database_projection
+                        ),
+                    }
+                    self._set_loop_status_fields(_loop, deferred)
+                    self._record_event(
+                        "supervisor_control_plane_reload_deferred",
+                        deferred,
+                    )
+                    # The exact child was already fenced.  Recycle resumes the
+                    # accepted control plane only for plan-bound dispatch,
+                    # whose child imports the sealed descriptor.  A normal
+                    # ``python -m`` recycle would import the changed checkout;
+                    # stop at a typed terminal instead of misrepresenting it
+                    # as the prior accepted generation.
+                    if self.config.plan_bound_dispatch:
+                        return SupervisorLoopDecision.recycle(
+                            "control_plane_reload_deferred",
+                            detail=deferred,
+                        )
+                    return SupervisorLoopDecision.stop(
+                        "control_plane_reload_deferred_unsealed",
+                        status=(
+                            CONTROL_PLANE_RELOAD_DEFERRED_UNSEALED_STATUS
+                        ),
+                    )
+                detail = {
                     **control_plane_status,
-                    "control_plane_reload_deferred": True,
-                    "control_plane_reload_deferred_reason": (
-                        "active_task_or_phase"
-                    ),
-                    "control_plane_reload_deferred_task_id": (
-                        state.active_task_id
-                    ),
+                    "control_plane_reload_deferred": False,
+                    "control_plane_reload_attempt_budget_consumed": False,
+                    "control_plane_reload_provider_invocation_consumed": False,
+                    "control_plane_reload_quiescence": quiescence,
+                    "database_portal_reload_projection": database_projection,
                 }
-                self._set_loop_status_fields(_loop, deferred)
-                return SupervisorLoopDecision.keep_running()
-            detail = {
-                **control_plane_status,
-                "control_plane_reload_deferred": False,
-                "control_plane_reload_attempt_budget_consumed": False,
-                "control_plane_reload_provider_invocation_consumed": False,
-            }
-            self._set_loop_status_fields(_loop, detail)
-            self._record_event(
-                "supervisor_control_plane_update_detected",
-                detail,
-            )
-            return SupervisorLoopDecision.stop(
-                "control_plane_source_changed",
-                status=CONTROL_PLANE_RELOAD_STATUS,
-            )
+                self._set_loop_status_fields(_loop, detail)
+                self._record_event(
+                    "supervisor_control_plane_update_detected",
+                    detail,
+                )
+                return SupervisorLoopDecision.stop(
+                    "control_plane_source_changed",
+                    status=CONTROL_PLANE_RELOAD_STATUS,
+                )
         now_monotonic = time.monotonic()
         min_interval = max(1.0, float(self.config.check_interval))
         if now_monotonic - self._last_supervisor_maintenance_at < min_interval:
@@ -8607,27 +9246,56 @@ class PortalImplementationSupervisor:
             "watchdog",
             daemon_pid=daemon_pid,
         )
-        failed = False
-        try:
-            result = self._run_once_with_maintenance(update_maintenance_phase)
-        except Exception as exc:
-            failed = True
-            message = f"{type(exc).__name__}: {exc}"
-            finish_maintenance("failed", message)
-            logger.warning("Supervisor maintenance hook failed; leaving child alive", exc_info=True)
-            self._record_event(
-                "supervisor_maintenance_failed",
-                {
-                    "phase": "watchdog",
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
-                },
+        with serialized_lock_update(
+            self._managed_daemon_launch_lock_path()
+        ):
+            quiescence = self._quiesce_supervised_child_for_control_gate(
+                _child,
+                reason="supervisor_watchdog_maintenance",
+                _launch_lock_held=True,
             )
-            return SupervisorLoopDecision.keep_running()
-        finally:
-            self._last_supervisor_maintenance_at = time.monotonic()
-            if not failed:
-                finish_maintenance("completed")
+            if quiescence.get("quiesced") is not True:
+                finish_maintenance(
+                    "deferred",
+                    "managed_child_quiescence_unproven",
+                )
+                self._last_supervisor_maintenance_at = time.monotonic()
+                return SupervisorLoopDecision.keep_running()
+            try:
+                result = self._run_once_with_maintenance(
+                    update_maintenance_phase,
+                    managed_daemon_launch_lock_held=True,
+                )
+            except Exception as exc:
+                message = f"{type(exc).__name__}: {exc}"
+                finish_maintenance("failed", message)
+                logger.warning(
+                    "Supervisor maintenance hook failed after child quiescence",
+                    exc_info=True,
+                )
+                self._record_event(
+                    "supervisor_maintenance_failed",
+                    {
+                        "phase": "watchdog",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                        "managed_child_quiescence": quiescence,
+                    },
+                )
+                return SupervisorLoopDecision.recycle(
+                    "supervisor_maintenance_failed_after_quiescence",
+                    detail={"managed_child_quiescence": quiescence},
+                )
+            finally:
+                self._last_supervisor_maintenance_at = time.monotonic()
+
+        if result.get("maintenance_blocked") is True:
+            finish_maintenance(
+                "deferred",
+                str(result.get("reason") or "maintenance_inconclusive"),
+            )
+        else:
+            finish_maintenance("completed")
 
         main_checkout_repair = dict(result.get("main_checkout_repair") or {})
         if main_checkout_repair.get("repaired"):
@@ -8640,9 +9308,24 @@ class PortalImplementationSupervisor:
                 str(result.get("reason") or "stuck_progress"),
                 detail={"active_task_id": result.get("active_task_id") or ""},
             )
-        return SupervisorLoopDecision.keep_running()
+        return SupervisorLoopDecision.recycle(
+            (
+                "supervisor_maintenance_deferred_after_quiescence"
+                if result.get("maintenance_blocked") is True
+                else "supervisor_maintenance_completed_after_quiescence"
+            ),
+            detail={
+                "managed_child_quiescence": quiescence,
+                "maintenance_blocked": bool(result.get("maintenance_blocked")),
+                "reason": str(result.get("reason") or ""),
+            },
+        )
 
-    def repair_main_checkout_merge_state(self) -> dict[str, Any]:
+    def repair_main_checkout_merge_state(
+        self,
+        *,
+        _checkout_lease_held: bool = False,
+    ) -> dict[str, Any]:
         """Resolve or abort an interrupted merge in the shared repository checkout."""
 
         repo_root = self.config.repo_root
@@ -8669,12 +9352,39 @@ class PortalImplementationSupervisor:
         lock_metadata = self._supervisor_checkout_lock_metadata(
             operation="repair_main_checkout_merge_state",
         )
-        lease, lock_reason, existing_lock = (
-            self._acquire_supervisor_checkout_lease(
-                lock_path,
-                lock_metadata,
+        lease_owned = False
+        if _checkout_lease_held:
+            lease = self._current_supervisor_checkout_lease()
+            if (
+                lease is None
+                or self._supervisor_checkout_transaction_depth() <= 0
+                or checkout_mutation_lease_state(lease) != "current"
+            ):
+                result = {
+                    "attempted": True,
+                    "repaired": False,
+                    "path": str(repo_root),
+                    "merge_in_progress": bool(merge_head),
+                    "merge_head": merge_head,
+                    "initial_unmerged_paths": unmerged_paths,
+                    "initial_merge_head_query": merge_head_query,
+                    "initial_unmerged_paths_query": unmerged_paths_query,
+                    "reason": "preacquired_checkout_lease_not_current",
+                    "lock_path": str(lock_path),
+                }
+                self._record_event(
+                    "main_checkout_merge_state_repair_deferred",
+                    result,
+                )
+                return result
+        else:
+            lease, lock_reason, existing_lock = (
+                self._acquire_supervisor_checkout_lease(
+                    lock_path,
+                    lock_metadata,
+                )
             )
-        )
+            lease_owned = lease is not None
         if lease is None:
             result: dict[str, Any] = {
                 "attempted": True,
@@ -8736,10 +9446,11 @@ class PortalImplementationSupervisor:
                 unmerged_paths=locked_unmerged_paths,
             )
         finally:
-            self._release_supervisor_checkout_lease(
-                lease,
-                operation="repair_main_checkout_merge_state",
-            )
+            if lease_owned:
+                self._release_supervisor_checkout_lease(
+                    lease,
+                    operation="repair_main_checkout_merge_state",
+                )
 
     def _repair_main_checkout_merge_state_locked(
         self,
@@ -8982,7 +9693,11 @@ class PortalImplementationSupervisor:
             for task in tasks
         )
 
-    def release_completed_leftover_execution(self) -> dict[str, Any]:
+    def release_completed_leftover_execution(
+        self,
+        *,
+        _launch_lock_held: bool = False,
+    ) -> dict[str, Any]:
         """Stop a live attempt whose board task has already completed."""
 
         state = PortalTaskState.load(self.config.state_path)
@@ -9001,46 +9716,52 @@ class PortalImplementationSupervisor:
                 "reason": "active_task_not_completed",
                 "active_task_id": task_id,
             }
-        with serialized_lock_update(self._managed_daemon_launch_lock_path()):
-            stop = self._terminate_managed_daemon_tree(
-                grace_seconds=2.0,
-                _launch_lock_held=True,
-            )
-            if stop.get("quiesced") is not True:
-                result = {
-                    "attempted": True,
-                    "released": False,
-                    "blocked": True,
-                    "reason": "completed_task_leftover_not_quiesced",
-                    "active_task_id": task_id,
-                    "stop": stop,
-                }
-                self._record_event(
-                    "completed_leftover_execution_release_blocked",
-                    result,
+        if not _launch_lock_held:
+            with serialized_lock_update(
+                self._managed_daemon_launch_lock_path()
+            ):
+                return self.release_completed_leftover_execution(
+                    _launch_lock_held=True,
                 )
-                return result
-            repaired_at = utc_now()
-            consume_stale_active_attempt(state)
-            state.active_attempt = 0
-            state.active_phase = ""
-            state.active_phase_started_at = ""
-            state.active_phase_detail = ""
-            state.active_log_path = ""
-            state.active_worktree_path = ""
-            state.active_branch = ""
-            state.implementation_in_progress = False
-            state.heartbeat_at = repaired_at
-            state.last_progress_at = repaired_at
-            state.save(self.config.state_path)
+        stop = self._terminate_managed_daemon_tree(
+            grace_seconds=2.0,
+            _launch_lock_held=True,
+        )
+        if stop.get("quiesced") is not True:
             result = {
                 "attempted": True,
-                "released": True,
-                "reason": "completed_task_leftover",
+                "released": False,
+                "blocked": True,
+                "reason": "completed_task_leftover_not_quiesced",
                 "active_task_id": task_id,
-                "repaired_at": repaired_at,
                 "stop": stop,
             }
+            self._record_event(
+                "completed_leftover_execution_release_blocked",
+                result,
+            )
+            return result
+        repaired_at = utc_now()
+        consume_stale_active_attempt(state)
+        state.active_attempt = 0
+        state.active_phase = ""
+        state.active_phase_started_at = ""
+        state.active_phase_detail = ""
+        state.active_log_path = ""
+        state.active_worktree_path = ""
+        state.active_branch = ""
+        state.implementation_in_progress = False
+        state.heartbeat_at = repaired_at
+        state.last_progress_at = repaired_at
+        state.save(self.config.state_path)
+        result = {
+            "attempted": True,
+            "released": True,
+            "reason": "completed_task_leftover",
+            "active_task_id": task_id,
+            "repaired_at": repaired_at,
+            "stop": stop,
+        }
         self._record_event("completed_leftover_execution_released", result)
         return result
 
@@ -11335,8 +12056,15 @@ class PortalImplementationSupervisor:
         self,
         *,
         preacquired_implementation_lock: Mapping[str, Any] | None = None,
+        rescue_dirty_only: bool = False,
+        allow_dirty_rescue: bool = True,
     ) -> dict[str, Any]:
         """Retry clean inactive implementation worktrees before cleanup."""
+
+        if rescue_dirty_only and not allow_dirty_rescue:
+            raise ValueError(
+                "rescue_dirty_only requires guarded dirty rescue authority"
+            )
 
         if not self.config.worktree_reconciliation_enabled:
             return {"attempted": False, "reason": "worktree_reconciliation_disabled"}
@@ -11500,13 +12228,17 @@ class PortalImplementationSupervisor:
             if any(str(path_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
                 continue
-            cached_entry = self._worktree_scan_cache_entry(
-                scan_cache,
-                phase="reconciliation",
-                path=path_resolved,
-                branch=branch,
-                head=head,
-                target_signature=target_signature,
+            cached_entry = (
+                None
+                if rescue_dirty_only
+                else self._worktree_scan_cache_entry(
+                    scan_cache,
+                    phase="reconciliation",
+                    path=path_resolved,
+                    branch=branch,
+                    head=head,
+                    target_signature=target_signature,
+                )
             )
             if cached_entry:
                 classification = str(cached_entry.get("classification") or "")
@@ -11606,6 +12338,15 @@ class PortalImplementationSupervisor:
                 continue
             dirty = self._git_status_short(path) if path.exists() else []
             if dirty:
+                if not allow_dirty_rescue:
+                    skipped.append(
+                        {
+                            **detail,
+                            "reason": "dirty_worktree_requires_guarded_rescue",
+                            "status_short": dirty[:20],
+                        }
+                    )
+                    continue
                 rescue_result = self._rescue_dirty_worktree(
                     path,
                     branch=branch,
@@ -11644,6 +12385,17 @@ class PortalImplementationSupervisor:
                         payload=skip,
                     )
                     continue
+                if rescue_dirty_only:
+                    processed.append(
+                        {
+                            **detail,
+                            "merged": False,
+                            "reason": "dirty_worktree_rescued_under_guard",
+                        }
+                    )
+                    continue
+            elif rescue_dirty_only:
+                continue
 
             candidate_blocking, candidate_nonblocking = (
                 candidate_main_status(branch, head)
@@ -11939,6 +12691,8 @@ class PortalImplementationSupervisor:
             "target_ref": target_ref,
             "target_signature": target_signature,
             "dry_run": dry_run,
+            "rescue_dirty_only": rescue_dirty_only,
+            "allow_dirty_rescue": allow_dirty_rescue,
             "max_merges": max_merges,
             "main_checkout_dirty": (
                 not main_status_available
@@ -13437,10 +14191,560 @@ class PortalImplementationSupervisor:
                 program
             )
 
+    @staticmethod
+    def _normalized_quack_owner_binding(
+        value: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Return one closed live Quack identity, or fail inconclusively."""
+
+        if not isinstance(value, Mapping):
+            raise RuntimeError("Quack owner identity is unavailable")
+        missing = set(_QUACK_OWNER_BINDING_FIELDS) - set(value)
+        if missing:
+            raise RuntimeError("Quack owner identity is incomplete")
+        result = {name: value[name] for name in _QUACK_OWNER_BINDING_FIELDS}
+        for name in (
+            "server_id",
+            "store_id",
+            "database_uuid",
+            "schema_fingerprint",
+            "process_birth_id",
+            "listen_uri",
+            "extension_fingerprint",
+        ):
+            observed = result[name]
+            if (
+                not isinstance(observed, str)
+                or not observed
+                or len(observed) > 4096
+                or any(character in observed for character in "\0\n\r")
+            ):
+                raise RuntimeError("Quack owner identity is malformed")
+        for name in ("schema_revision", "generation"):
+            observed = result[name]
+            if (
+                isinstance(observed, bool)
+                or not isinstance(observed, int)
+                or observed < 1
+            ):
+                raise RuntimeError("Quack owner generation is malformed")
+        return result
+
+    @staticmethod
+    def _database_claim_attempt(task: Any) -> Any:
+        """Validate the canonical claim receipt and return its exact attempt."""
+
+        from .implementation_daemon import (
+            ATTEMPT_PHASE_CLAIMED,
+            DATABASE_RETRY_BUDGET_SCHEMA,
+            DatabaseTaskAttempt,
+        )
+
+        body = getattr(task, "body", None)
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        if not isinstance(receipt, Mapping):
+            raise RuntimeError("in-progress database task lacks a claim receipt")
+        fields = frozenset(str(name) for name in receipt)
+        if not _DATABASE_CLAIM_REQUIRED_FIELDS.issubset(fields) or (
+            fields - _DATABASE_CLAIM_REQUIRED_FIELDS
+            - _DATABASE_CLAIM_OPTIONAL_FIELDS
+        ):
+            raise RuntimeError("database claim receipt is not a closed record")
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        if (
+            receipt.get("schema") != DATABASE_RETRY_BUDGET_SCHEMA
+            or receipt.get("operation") != "database_claim"
+            or receipt.get("task_cid") != task_cid
+            or not task_cid
+        ):
+            raise RuntimeError("database claim receipt authority is not exact")
+
+        def required_text(name: str) -> str:
+            observed = receipt.get(name)
+            if not isinstance(observed, str) or not observed or len(observed) > 1024:
+                raise RuntimeError("database claim receipt identity is malformed")
+            if any(character in observed for character in "\0\n\r"):
+                raise RuntimeError("database claim receipt identity is malformed")
+            return observed
+
+        def required_int(name: str, minimum: int) -> int:
+            observed = receipt.get(name)
+            if isinstance(observed, bool) or not isinstance(observed, int):
+                raise RuntimeError("database claim receipt fence is malformed")
+            if observed < minimum:
+                raise RuntimeError("database claim receipt fence is malformed")
+            return observed
+
+        text_fields = (
+            "validation_spec_cid",
+            "process_instance_id",
+            "owner_session_id",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+        )
+        text_values = {name: required_text(name) for name in text_fields}
+        int_fields = (
+            ("attempts_used", 1),
+            ("max_task_attempts", 0),
+            ("attempt_number", 1),
+            ("fencing_token", 1),
+            ("fence_epoch", 1),
+        )
+        int_values = {
+            name: required_int(name, minimum) for name, minimum in int_fields
+        }
+        if int_values["attempts_used"] != int_values["attempt_number"]:
+            raise RuntimeError("database claim receipt attempt is inconsistent")
+        if not isinstance(receipt.get("retry_exhausted"), bool):
+            raise RuntimeError("database claim retry state is malformed")
+        for name in _DATABASE_CLAIM_OPTIONAL_FIELDS:
+            if name not in receipt:
+                continue
+            observed = receipt[name]
+            valid = (
+                isinstance(observed, bool)
+                if name.endswith("_malformed")
+                else isinstance(observed, int)
+                and not isinstance(observed, bool)
+                and observed >= 0
+            )
+            if not valid:
+                raise RuntimeError("database claim optional state is malformed")
+        return DatabaseTaskAttempt(
+            attempt_id=text_values["attempt_id"],
+            claim_id=text_values["claim_id"],
+            task_cid=task_cid,
+            task_alias=str(getattr(task, "task_alias", "") or task_cid),
+            attempt_number=int_values["attempt_number"],
+            owner_session_id=text_values["owner_session_id"],
+            fencing_token=int_values["fencing_token"],
+            fence_epoch=int_values["fence_epoch"],
+            lease_id=text_values["lease_id"],
+            committed_phase=ATTEMPT_PHASE_CLAIMED,
+            status="running",
+            started_at_ms=0,
+        )
+
+    @staticmethod
+    def _nested_portal_lifecycle_attempt(
+        payload: Mapping[str, Any],
+        *,
+        task_alias: str,
+        canonical_task_cid: str,
+        active_attempt: int,
+    ) -> int:
+        """Select one exact Portal attempt without enumerating lifecycle state."""
+
+        candidates: list[int] = []
+        if active_attempt:
+            candidates.append(active_attempt)
+        for index_name, key in (
+            ("implementation_attempts", task_alias),
+            ("implementation_attempts_by_cid", canonical_task_cid),
+        ):
+            values = payload.get(index_name) or {}
+            if not isinstance(values, Mapping):
+                raise RuntimeError("nested Portal attempt index is malformed")
+            raw = values.get(key, 0)
+            if isinstance(raw, bool):
+                raise RuntimeError("nested Portal attempt index is malformed")
+            try:
+                observed = int(raw or 0)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "nested Portal attempt index is malformed"
+                ) from exc
+            if observed < 0:
+                raise RuntimeError("nested Portal attempt index is malformed")
+            if observed:
+                candidates.append(observed)
+        if not candidates or len(set(candidates)) != 1:
+            raise RuntimeError("nested Portal attempt identity is inconclusive")
+        return candidates[0]
+
+    def _database_portal_claim_lifecycle(
+        self,
+        task_source: Any,
+        task: Any,
+        attempt: Any,
+    ) -> dict[str, Any]:
+        """Validate one lane-local binding and exact lifecycle index entry."""
+
+        from ..merge.worktree_lifecycle import WorktreeLifecycleStore
+        from .database_portal_bridge import DatabasePortalExecutionBridge
+
+        attempt_root = self.config.state_dir / (
+            f"{self.config.state_prefix}_database_portal_attempts"
+        )
+        bridge = DatabasePortalExecutionBridge(
+            task_source=task_source,
+            attempt_root=attempt_root,
+            portal_factory=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("read-only reload projection cannot enter Portal")
+            ),
+        )
+        paths = bridge._paths(attempt)
+        try:
+            confined_root = paths.root.resolve()
+            authority_root = attempt_root.resolve()
+        except (OSError, RuntimeError) as exc:
+            raise RuntimeError(
+                "database attempt path confinement is unavailable"
+            ) from exc
+        if (
+            paths.root.is_symlink()
+            or not paths.root.is_dir()
+            or confined_root.parent != authority_root
+        ):
+            raise RuntimeError("database attempt root is not confined")
+        for artifact in (paths.binding, paths.task_projection, paths.state):
+            try:
+                regular = (
+                    not artifact.is_symlink()
+                    and artifact.is_file()
+                    and artifact.resolve().parent == confined_root
+                )
+            except (OSError, RuntimeError):
+                regular = False
+            if not regular:
+                raise RuntimeError(
+                    "database attempt artifact is not a confined regular file"
+                )
+        selected = bridge.validate_active_attempt_roots((attempt,))
+        if selected.get(str(attempt.attempt_id)) != str(paths.binding):
+            raise RuntimeError("current database claim lacks its exact binding")
+        binding = bridge._read_binding(paths.binding)
+        bridge._verify_binding_identity(binding)
+        record = bridge._record_for_attempt(task_source, attempt)
+        seed = bridge._render_projection(attempt, record)
+        expected = bridge._binding(attempt, record, seed)
+        if binding != expected:
+            raise RuntimeError("database attempt binding is not current")
+        if int(binding.get("task_revision") or -1) != int(
+            getattr(task, "revision", -2)
+        ):
+            raise RuntimeError("database attempt binding task revision is stale")
+        projection_text = bridge._verify_projection(paths, binding)
+        identity = bridge._projection_task_identity(
+            paths,
+            binding,
+            projection_text,
+        )
+        payload, state_digest = bridge._strict_state_record(paths.state)
+        if payload is None:
+            raise RuntimeError("database claim lacks exact nested Portal state")
+        nested = bridge._verify_nested_state_identity(
+            paths,
+            binding,
+            identity,
+            payload=payload,
+            state_digest=state_digest,
+        )
+        lifecycle_attempt = self._nested_portal_lifecycle_attempt(
+            payload,
+            task_alias=str(binding["task_alias"]),
+            canonical_task_cid=identity["canonical_task_cid"],
+            active_attempt=int(nested.get("active_attempt") or 0),
+        )
+        store = WorktreeLifecycleStore(repo_root=self.config.repo_root)
+        lifecycle = store.load_task_attempt(
+            canonical_task_cid=identity["canonical_task_cid"],
+            task_id=str(binding["task_alias"]),
+            attempt=lifecycle_attempt,
+        )
+        if lifecycle is None:
+            raise RuntimeError("database claim lacks exact lifecycle authority")
+        expected_repo = str(self.config.repo_root.resolve())
+        expected_state = str(paths.root.resolve())
+        if (
+            lifecycle.record_id != lifecycle.compute_record_id()
+            or lifecycle.task_id != str(binding["task_alias"])
+            or lifecycle.canonical_task_cid != identity["canonical_task_cid"]
+            or lifecycle.attempt != lifecycle_attempt
+            or str(Path(lifecycle.repo_root).resolve()) != expected_repo
+            or str(Path(lifecycle.state_dir).resolve()) != expected_state
+            or (
+                self.config.merge_target_branch
+                and lifecycle.merge_target != self.config.merge_target_branch
+            )
+        ):
+            raise RuntimeError("database claim lifecycle binding is not exact")
+        by_workspace = store.load_workspace(lifecycle.workspace_path)
+        if by_workspace != lifecycle:
+            raise RuntimeError("database claim lifecycle indexes disagree")
+        if nested.get("active") is True and (
+            str(Path(str(nested.get("active_worktree_path") or "")).resolve())
+            != str(Path(lifecycle.workspace_path).resolve())
+            or str(nested.get("active_branch") or "") != lifecycle.branch
+        ):
+            raise RuntimeError("active nested Portal lifecycle changed workspace")
+        return {
+            "task_id": str(binding["task_alias"]),
+            "task_cid": str(attempt.task_cid),
+            "task_revision": int(binding["task_revision"]),
+            "attempt_id": str(attempt.attempt_id),
+            "binding_id": str(binding["binding_id"]),
+            "lifecycle_record_id": lifecycle.record_id,
+            "lifecycle_state": lifecycle.state.value,
+            "workspace_path": lifecycle.workspace_path,
+            "active_phase": str(nested.get("active_phase") or ""),
+            "post_provider_recovery": bool(lifecycle.is_terminal),
+        }
+
+    def _database_portal_claim_projection(self, task_source: Any) -> dict[str, Any]:
+        """Read and validate the complete bounded in-progress population."""
+
+        tasks: list[Any] = []
+        cursor = ""
+        revision: int | None = None
+        seen: set[str] = set()
+        for _page_index in range(DATABASE_PORTAL_RELOAD_MAX_PAGES):
+            page = task_source.list_tasks(
+                status="in_progress",
+                cursor=cursor,
+                limit=DATABASE_PORTAL_RELOAD_PAGE_LIMIT,
+            )
+            page_revision = int(page.revision)
+            if revision is None:
+                revision = page_revision
+            elif revision != page_revision:
+                raise RuntimeError("database task projection revision changed")
+            for candidate in page.tasks:
+                task_cid = str(getattr(candidate, "task_cid", "") or "")
+                if not task_cid or task_cid in seen:
+                    raise RuntimeError("database task projection is ambiguous")
+                current = task_source.get_task(task_cid)
+                current_dict = getattr(current, "to_dict", None)
+                candidate_dict = getattr(candidate, "to_dict", None)
+                if (
+                    current is None
+                    or not callable(current_dict)
+                    or not callable(candidate_dict)
+                    or current_dict() != candidate_dict()
+                ):
+                    raise RuntimeError("database task projection changed in read")
+                seen.add(task_cid)
+                tasks.append(current)
+            cursor = str(page.next_cursor or "")
+            if not cursor:
+                break
+        else:
+            raise RuntimeError("database task projection exceeds its bound")
+
+        nominated: list[tuple[Any, Any]] = []
+        remote_claims: list[str] = []
+        for task in tasks:
+            attempt = self._database_claim_attempt(task)
+            nominated.append((task, attempt))
+            if attempt.owner_session_id != self.config.database_owner_session_id:
+                remote_claims.append(str(attempt.task_cid))
+        # A remote claim makes the population relevant but not lane-local.
+        # Detect it before reading any local attempt path: task-store authority
+        # may defer this lane, but may never nominate another lane's files.
+        if remote_claims:
+            raise RuntimeError(
+                "in-progress database claim belongs to another supervisor lane"
+            )
+
+        attempts: list[dict[str, Any]] = []
+        for task, attempt in nominated:
+            attempts.append(
+                self._database_portal_claim_lifecycle(
+                    task_source,
+                    task,
+                    attempt,
+                )
+            )
+        active_count = sum(
+            1 for item in attempts if not item["post_provider_recovery"]
+        )
+        recovery_count = len(attempts) - active_count
+        return {
+            "task_source_revision": int(revision or 0),
+            "task_ids": [item["task_id"] for item in attempts],
+            "attempts": attempts,
+            "nonterminal_attempt_count": active_count,
+            "post_provider_recovery_saga_count": recovery_count,
+            "activity_detected": bool(attempts),
+            "defer_reload": bool(tasks),
+            "defer_maintenance": bool(tasks),
+            "reason": (
+                "database_portal_claim_or_recovery_saga"
+                if tasks
+                else "database_portal_population_idle"
+            ),
+        }
+
+    def _database_portal_reload_projection(self) -> dict[str, Any]:
+        """Project reload safety from one authenticated Quack generation."""
+
+        base = {
+            "schema": DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA,
+            "applicable": False,
+            "authority_available": False,
+            "integrity_verified": False,
+            "activity_detected": False,
+            "defer_reload": False,
+            "defer_maintenance": False,
+            "reason": "database_portal_authority_not_configured",
+            "error_type": "",
+            "task_source_revision": 0,
+            "task_ids": [],
+            "attempts": [],
+            "nonterminal_attempt_count": 0,
+            "post_provider_recovery_saga_count": 0,
+            "quack_owner": {},
+        }
+        program = self.config.database_program
+        if (
+            program is None
+            or program.authority_mode != "quack"
+            or program.task_source_kind != "duckdb"
+        ):
+            return base
+        base.update(
+            {
+                "applicable": True,
+                "defer_reload": True,
+                "defer_maintenance": True,
+                "reason": "database_portal_projection_unavailable",
+            }
+        )
+        connection: Any | None = None
+        transaction_started = False
+        try:
+            from ..task_sources.database_task_source import DatabaseTaskSource
+            from ..task_sources.duckdb_state import (
+                _resolve_quack_token_handle,
+                exclusive_file_lock,
+                open_quack_transport_connection,
+                quack_owner_mutation_write_lock_path,
+            )
+
+            with self._database_reconciliation_program_environment(
+                program,
+                preserve_live_binding=True,
+            ):
+                lock_path = quack_owner_mutation_write_lock_path(program.store_id)
+                if lock_path is None:
+                    raise RuntimeError("Quack projection lacks its owner lock")
+                with exclusive_file_lock(lock_path, timeout_seconds=2.0):
+                    secret, raw_owner_before = _resolve_quack_token_handle(
+                        uri=program.quack_endpoint
+                    )
+                    owner_before = self._normalized_quack_owner_binding(
+                        raw_owner_before
+                    )
+                    connection = open_quack_transport_connection(
+                        program.quack_endpoint,
+                        token=secret,
+                    )
+                    try:
+                        connection_before = (
+                            self._normalized_quack_owner_binding(
+                                getattr(
+                                    connection,
+                                    "_quack_mutation_binding",
+                                    None,
+                                )
+                            )
+                        )
+                        if owner_before != connection_before:
+                            raise RuntimeError(
+                                "Quack connection differs from published owner"
+                            )
+                        connection.execute("BEGIN TRANSACTION")
+                        transaction_started = True
+                        intent = _PinnedReadIntentRepository(connection)
+                        task_source = DatabaseTaskSource(
+                            intent=intent,
+                            owner_id="database-portal-reload-projection",
+                        )
+                        projection = self._database_portal_claim_projection(
+                            task_source
+                        )
+                        connection.execute("COMMIT")
+                        transaction_started = False
+                        connection_after = (
+                            self._normalized_quack_owner_binding(
+                                getattr(
+                                    connection,
+                                    "_quack_mutation_binding",
+                                    None,
+                                )
+                            )
+                        )
+                        _secret, raw_owner_after = (
+                            _resolve_quack_token_handle(
+                                uri=program.quack_endpoint
+                            )
+                        )
+                        owner_after = self._normalized_quack_owner_binding(
+                            raw_owner_after
+                        )
+                        if not (
+                            dict(raw_owner_before) == dict(raw_owner_after)
+                            and owner_before
+                            == connection_before
+                            == connection_after
+                            == owner_after
+                        ):
+                            raise RuntimeError(
+                                "Quack owner generation changed during projection"
+                            )
+                        base.update(
+                            {
+                                **projection,
+                                "authority_available": True,
+                                "integrity_verified": True,
+                                "quack_owner": owner_after,
+                                "error_type": "",
+                            }
+                        )
+                    finally:
+                        if transaction_started:
+                            try:
+                                connection.execute("ROLLBACK")
+                            except Exception:
+                                pass
+                            transaction_started = False
+                        try:
+                            connection.close()
+                        finally:
+                            connection = None
+                    return base
+        except Exception as exc:
+            base.update(
+                {
+                    "authority_available": False,
+                    "integrity_verified": False,
+                    "activity_detected": False,
+                    "defer_reload": True,
+                    "defer_maintenance": True,
+                    "reason": "database_portal_projection_inconclusive",
+                    "error_type": type(exc).__name__,
+                }
+            )
+            return base
+        finally:
+            if connection is not None:
+                if transaction_started:
+                    try:
+                        connection.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
     @contextmanager
     def _database_reconciliation_program_environment(
         self,
         program: DatabaseProgramConfig,
+        *,
+        preserve_live_binding: bool = False,
     ) -> Any:
         """Adapt one accepted program to the legacy Quack environment API.
 
@@ -13462,12 +14766,13 @@ class PortalImplementationSupervisor:
         # pins and let the existing opaque-handle resolver admit one owner
         # status; the transport then compares its complete live binding to
         # that exact status before returning a connection.
-        removed_names.update(
-            {
-                "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION",
-                "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION",
-            }
-        )
+        if not preserve_live_binding:
+            removed_names.update(
+                {
+                    "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION",
+                    "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION",
+                }
+            )
         handle = str(program.endpoint_secret_handle or "").strip()
         if handle.startswith("env://"):
             raw_handle_target = handle[len("env://") :].strip()
