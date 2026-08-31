@@ -193,6 +193,7 @@ def _block_leftover_wait_exhausted(
     *,
     reason: str = "worktree_lifecycle_claim_exists",
     coordination: dict[str, object] | None = None,
+    extra_receipt_fields: dict[str, object] | None = None,
 ) -> tuple[TaskRecord, dict[str, object]]:
     task = _materialize(source, alias="VRIF-leftover-wait")
     running = source.compare_and_set_status(
@@ -264,6 +265,7 @@ def _block_leftover_wait_exhausted(
         ),
         "control_expected_status": "in_progress",
         "control_expected_revision": running.revision,
+        **dict(extra_receipt_fields or {}),
     }
     blocked = source.compare_and_set_status(
         running.task_cid,
@@ -1191,10 +1193,22 @@ def test_guarded_leftover_wait_recovery_accepts_empty_coordination(
             source,
             reason="portal_execution_incomplete",
             coordination={},
+            extra_receipt_fields={
+                "execution_route_binding": {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "task-execution-route-binding@1"
+                    ),
+                    "task_alias": "VRIF-leftover-wait",
+                },
+                "execution_route_origin_revision": 1,
+                "execution_route_policy_id": "policy:leftover-wait",
+            },
         )
         request = _leftover_wait_recovery_request(blocked, budget)
         blocked_receipt = dict(blocked.body["completion_receipt"])
         assert blocked_receipt["coordination"] == {}
+        assert "execution_route_binding" in blocked_receipt
 
         result = source.record_queue_backoff_and_cas_status(
             task_cid=blocked.task_cid,

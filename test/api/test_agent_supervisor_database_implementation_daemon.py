@@ -489,6 +489,7 @@ def _block_with_legacy_leftover_wait_budget(
     *,
     budget_override: dict[str, object] | None = None,
     coordination: dict[str, object] | None = None,
+    extra_receipt_fields: dict[str, object] | None = None,
 ) -> tuple[DatabaseTaskAttempt, dict[str, object]]:
     latest = max(attempts, key=lambda item: int(item.attempt_number))
     budget = budget_override or _legacy_leftover_wait_budget(daemon, attempts)
@@ -527,6 +528,7 @@ def _block_with_legacy_leftover_wait_budget(
             "coordination": dict(coordination),
             "control_expected_status": "retrying",
             "control_expected_revision": int(task.revision),
+            **dict(extra_receipt_fields or {}),
         },
     )
     return latest, budget

@@ -87741,6 +87741,46 @@ def _leftover_wait_blocked_coordination_matches(
     )
 
 
+_LEFTOVER_WAIT_BLOCKED_RECEIPT_OPTIONAL_FIELDS = frozenset(
+    {
+        "execution_route_binding",
+        "execution_route_origin_revision",
+        "execution_route_policy_id",
+    }
+)
+
+
+def _leftover_wait_blocked_receipt_fields_match(receipt: Mapping[str, Any]) -> bool:
+    """Closed leftover-wait receipt: required fields plus known route lineage."""
+
+    expected_fields = {
+        "operation",
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "execution_phase",
+        "execution_revision",
+        "execution_finished_at_ms",
+        "reason",
+        "retryable",
+        "attempt_consumed",
+        "typed_deferral_slot_consumed",
+        "retry_budget",
+        "prior_queue_entry_preserved_inactive",
+        "coordination",
+        "control_expected_status",
+        "control_expected_revision",
+    }
+    fields = set(receipt)
+    extra = fields - expected_fields
+    missing = expected_fields - fields
+    return not missing and extra <= _LEFTOVER_WAIT_BLOCKED_RECEIPT_OPTIONAL_FIELDS
+
+
 _DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-leftover-wait-deferral-budget-recovery@1"
@@ -112510,28 +112550,6 @@ class DatabaseImplementationDaemon:
             if isinstance(task_body, Mapping)
             else None
         )
-        expected_fields = {
-            "operation",
-            "attempt_id",
-            "attempt_number",
-            "claim_id",
-            "lease_id",
-            "owner_session_id",
-            "fencing_token",
-            "fence_epoch",
-            "execution_phase",
-            "execution_revision",
-            "execution_finished_at_ms",
-            "reason",
-            "retryable",
-            "attempt_consumed",
-            "typed_deferral_slot_consumed",
-            "retry_budget",
-            "prior_queue_entry_preserved_inactive",
-            "coordination",
-            "control_expected_status",
-            "control_expected_revision",
-        }
         task_revision = getattr(task, "revision", None)
         coordination = (
             receipt.get("coordination")
@@ -112543,7 +112561,7 @@ class DatabaseImplementationDaemon:
             != "blocked"
             or type(task_revision) is not int
             or not isinstance(receipt, Mapping)
-            or set(receipt) != expected_fields
+            or not _leftover_wait_blocked_receipt_fields_match(receipt)
             or receipt.get("operation")
             != "database_portal_typed_deferral_budget_exhausted"
             or receipt.get("reason")

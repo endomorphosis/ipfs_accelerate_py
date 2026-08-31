@@ -184,6 +184,15 @@ def _leftover_wait_blocked_coordination_matches(
     )
 
 
+def _leftover_wait_blocked_receipt_fields_match(receipt: Mapping[str, Any]) -> bool:
+    """Closed leftover-wait receipt: required fields plus known route lineage."""
+
+    fields = set(receipt)
+    extra = fields - _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS
+    missing = _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS - fields
+    return not missing and extra <= _LEFTOVER_WAIT_BLOCKED_RECEIPT_OPTIONAL_FIELDS
+
+
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW: Final[int] = 16
 _TYPED_DEFERRAL_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
 _TYPED_DEFERRAL_GIT_OBJECT_RE = re.compile(r"[0-9a-f]{40}")
@@ -260,6 +269,15 @@ _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS = frozenset(
         "control_expected_status",
         "control_expected_revision",
     }
+)
+_LEFTOVER_WAIT_BLOCKED_RECEIPT_OPTIONAL_FIELDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "execution_route_binding",
+            "execution_route_origin_revision",
+            "execution_route_policy_id",
+        }
+    )
 )
 _TYPED_DEFERRAL_BUDGET_FIELDS = frozenset(
     {
@@ -936,7 +954,7 @@ def _validated_leftover_wait_blocked_context(
     revision = _positive_integer(task_revision, noun="leftover-wait task revision")
     coordination = blocked_receipt.get("coordination")
     if (
-        set(blocked_receipt) != _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS
+        not _leftover_wait_blocked_receipt_fields_match(blocked_receipt)
         or blocked_receipt.get("operation")
         != TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
         or blocked_receipt.get("reason")
