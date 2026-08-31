@@ -109007,11 +109007,19 @@ class DatabaseImplementationDaemon:
                     f"retryable attempt {attempt.attempt_id} cannot move control "
                     f"task from {task_status!r} to 'retrying'"
                 )
-            control_receipt = self._require_control_attempt_receipt(
-                task,
-                attempt,
-                operations=control_operations,
-            )
+            try:
+                control_receipt = self._require_control_attempt_receipt(
+                    task,
+                    attempt,
+                    operations=control_operations,
+                )
+            except DatabaseImplementationAuthorityError:
+                if not landed_retrying_upgrade:
+                    raise
+                raw_receipt = self._raw_control_receipt(task)
+                if not isinstance(raw_receipt, Mapping):
+                    raise
+                control_receipt = dict(raw_receipt)
             transition_receipt = (
                 dict(control_receipt)
                 if task_status == "retrying" and not landed_retrying_upgrade
