@@ -17690,6 +17690,8 @@ def test_exact_callback_reconciliation_transport_is_closed_and_replayable() -> N
         request=request,
         binding=binding,
     )
+    assert not bridge._request_has_missing_output_recovery_lineage(request)
+    assert bridge._request_has_callback_reconciliation_transport_lineage(request)
 
     revival = {
         "at": 4.0,
@@ -17719,6 +17721,7 @@ def test_exact_callback_reconciliation_transport_is_closed_and_replayable() -> N
         request=pending,
         binding=binding,
     )
+    assert bridge._request_has_callback_reconciliation_transport_lineage(pending)
 
     recovered_pending = SimpleNamespace(
         **{
@@ -17734,6 +17737,9 @@ def test_exact_callback_reconciliation_transport_is_closed_and_replayable() -> N
         request=recovered_pending,
         binding=binding,
     )
+    assert bridge._request_has_callback_reconciliation_transport_lineage(
+        recovered_pending
+    )
 
     processing = SimpleNamespace(
         **{
@@ -17747,6 +17753,24 @@ def test_exact_callback_reconciliation_transport_is_closed_and_replayable() -> N
         events,
         terminal=events[-1],
         request=processing,
+        binding=binding,
+    )
+    assert bridge._request_has_callback_reconciliation_transport_lineage(processing)
+
+    completed = SimpleNamespace(
+        **{
+            **pending.__dict__,
+            "status": "completed",
+            "attempt": 1,
+            "failure_count": 0,
+            "failure_reason": "",
+        }
+    )
+    assert bridge._request_has_callback_reconciliation_transport_lineage(completed)
+    assert bridge._exact_terminal_callback_reconciliation_transport(
+        events,
+        terminal=events[-1],
+        request=completed,
         binding=binding,
     )
 
@@ -18519,6 +18543,193 @@ def test_completed_callback_transport_replay_is_idempotent_and_cas_bound(
         ) == first
     assert projection_statuses
     assert set(projection_statuses) == {frozenset({"quarantined"})}
+
+
+def test_recover_post_commit_candidate_settles_only_exact_quarantined_callback_transport(
+    tmp_path: Path,
+) -> None:
+    """Exercise the public recovery entry point for the live callback shape.
+
+    The quarantined row is deliberately *not* a generic declared-output
+    repair.  It may enter the callback recovery branch only through the
+    closed transport predicate, then the canonical consumer changes it to a
+    completed callback row before the DuckDB control CAS.
+    """
+
+    bridge, original, quarantined, binding = (
+        _exact_callback_reconciliation_transport_fixture()
+    )
+    revival = {
+        "at": 4.0,
+        "reason": (
+            "merge train proved quarantined candidate already integrated "
+            "into exact target"
+        ),
+        "previous_enqueued_at": 1.0,
+        "previous_failure_count": 2,
+        "previous_failure_reason": (
+            "merge_queue_reconciliation_projection_conflict"
+        ),
+    }
+    completed = SimpleNamespace(
+        **{
+            **quarantined.__dict__,
+            "status": "completed",
+            "attempt": 1,
+            "failure_count": 0,
+            "failure_reason": "",
+            "metadata": {**quarantined.metadata, "revivals": [revival]},
+        }
+    )
+    # A suffix of zero is the exact live crash prefix: reconciliation was
+    # queued, but the merge consumer has not yet projected its callback.
+    events = original
+    paths = SimpleNamespace(root=tmp_path, events=tmp_path / "portal-events.jsonl")
+    paths.events.write_text("sealed transport fixture\n", encoding="utf-8")
+    projection = SimpleNamespace(paths=paths, binding=binding)
+    attempt = SimpleNamespace(
+        attempt_id="attempt:transport-public",
+        claim_id="claim:transport-public",
+        lease_id="lease:transport-public",
+        fencing_token=11,
+        fence_epoch=5,
+    )
+    control_receipt = {
+        "operation": "database_portal_neutral_failure_quarantine",
+        "failure_kind": "provider_callback_outcome_unknown",
+        "retry_suppressed": True,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+    }
+    record = SimpleNamespace(
+        status="quarantined",
+        revision=19,
+        body={"completion_receipt": control_receipt},
+    )
+    calls: list[str] = []
+    factory_calls: list[object] = []
+    bridge.repository_root = tmp_path
+    bridge.task_source = object()
+    bridge.portal_factory = lambda *_args: factory_calls.append(_args)
+    bridge._record_for_attempt = lambda *_args: record
+    bridge._verified_recovery_binding = lambda **_kwargs: binding
+    bridge._paths = lambda _attempt: paths
+    bridge._verified_event_chain = lambda _paths: events
+    bridge._exact_callback_reconciliation_for_completion_source = (
+        lambda *_args, **_kwargs: True
+    )
+    current_request = {"value": quarantined}
+    bridge.merge_queue.get = (
+        lambda value: (
+            current_request["value"]
+            if value == quarantined.request_id
+            else None
+        )
+    )
+    # This is the fixed boundary: the historical quarantine is excluded by
+    # the generic declared-output helper and accepted only by the explicit,
+    # tightly closed callback transport predicate.
+    assert not bridge._request_has_missing_output_recovery_lineage(quarantined)
+    assert bridge._request_has_callback_reconciliation_transport_lineage(
+        quarantined
+    )
+    projection_opt_ins: list[tuple[object, bool]] = []
+
+    def owned_projection(
+        current: object,
+        *,
+        allow_callback_reconciliation_transport_lineage: bool = False,
+        **_kwargs: object,
+    ) -> object | None:
+        projection_opt_ins.append(
+            (current, allow_callback_reconciliation_transport_lineage)
+        )
+        return projection if current is quarantined or current is completed else None
+
+    bridge._owned_post_merge_recovery_projection = owned_projection
+    settlement_calls: list[object] = []
+
+    def settle(**kwargs: object) -> object:
+        settlement_calls.append(kwargs["request"])
+        assert kwargs["request"] is quarantined
+        current_request["value"] = completed
+        return completed
+
+    bridge._settle_exact_callback_reconciliation_transport = settle
+    bridge._post_commit_candidate_recovery_receipt = (
+        lambda **_kwargs: (_ for _ in ()).throw(
+            DatabasePortalBridgeError("not the retained-candidate shape")
+        )
+    )
+
+    def requalification(
+        current: object,
+        current_projection: object,
+        *,
+        revalidate_authority: object,
+        **_kwargs: object,
+    ) -> dict[str, object] | None:
+        calls.append("requalified")
+        assert current is completed
+        assert current_projection is projection
+        assert callable(revalidate_authority) and revalidate_authority()
+        return {"transport": "exact-completed"}
+
+    bridge._post_merge_callback_integration_evidence = requalification
+
+    assert bridge.recover_post_commit_candidate(attempt) == {
+        "transport": "exact-completed"
+    }
+    assert calls == ["requalified"]
+    assert settlement_calls == [quarantined]
+    assert projection_opt_ins == [
+        (quarantined, True),
+        (completed, True),
+        (completed, True),
+    ]
+    assert factory_calls == []
+
+
+def test_callback_transport_rejects_queue_toctou_and_generic_projection_conflict() -> None:
+    """The opt-in cannot turn a generic conflict or a replaced row into proof."""
+
+    bridge, original, quarantined, binding = (
+        _exact_callback_reconciliation_transport_fixture()
+    )
+    bridge._verified_event_chain = lambda _paths: original
+    bridge._exact_callback_reconciliation_for_completion_source = (
+        lambda *_args, **_kwargs: True
+    )
+    stale = SimpleNamespace(
+        **{
+            **quarantined.__dict__,
+            "status": "completed",
+            "attempt": 1,
+            "failure_count": 0,
+            "failure_reason": "",
+            "metadata": {**quarantined.metadata, "revivals": []},
+        }
+    )
+    queue_reads = iter((quarantined, stale))
+    bridge.merge_queue.get = lambda _request_id: next(queue_reads)
+
+    # The first row is a valid quarantine, but the second read replaces it
+    # before projection admission.  This must fail before any evidence or
+    # provider path is reached.
+    assert bridge._unknown_callback_landed_recovery_evidence(
+        attempt=SimpleNamespace(),
+        paths=SimpleNamespace(),
+        binding=binding,
+    ) is None
+
+    # A row with the same generic failure reason but no exact callback
+    # transport is never admitted through the new lineage opt-in.
+    assert not bridge._request_has_callback_reconciliation_transport_lineage(
+        stale
+    )
 
 
 @pytest.mark.parametrize("suffix_length", [0, 1, 2, 3])

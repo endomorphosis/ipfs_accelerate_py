@@ -4456,6 +4456,115 @@ class DatabasePortalExecutionBridge:
             )
         return True
 
+    @staticmethod
+    def _request_has_callback_reconciliation_transport_lineage(
+        request: Any,
+    ) -> bool:
+        """Recognize only the closed queue states of a verified callback transport.
+
+        This is deliberately separate from missing-output recovery.  The caller
+        may opt into it only after the immutable Portal event chain has passed
+        ``_exact_terminal_callback_reconciliation_transport``.  Keeping the
+        queue-state check here prevents the projection resolver from granting a
+        generic reconciliation failure the authority of that sealed transport.
+        """
+
+        status = str(getattr(request, "status", "") or "")
+        failure_reason = str(getattr(request, "failure_reason", "") or "")
+        metadata = getattr(request, "metadata", None)
+        if not isinstance(metadata, Mapping):
+            return False
+        expected_failure = "merge_queue_reconciliation_projection_conflict"
+        quarantine = metadata.get("quarantine")
+        quarantine_result = (
+            quarantine.get("merge_result")
+            if isinstance(quarantine, Mapping)
+            else None
+        )
+        if not (
+            isinstance(quarantine, Mapping)
+            and quarantine.get("status") == "quarantined"
+            and quarantine.get("reason") == expected_failure
+            and quarantine.get("failure_count") == 2
+            and quarantine.get("max_attempts") == 3
+            and quarantine.get("merged") is False
+            and quarantine.get("integrated") is False
+            and quarantine.get("accepted") is False
+            and isinstance(quarantine_result, Mapping)
+            and quarantine_result.get("reason") == expected_failure
+        ):
+            return False
+        if status == "quarantined":
+            return bool(
+                failure_reason == expected_failure
+                and getattr(request, "attempt", None) == 2
+                and getattr(request, "failure_count", None) == 2
+            )
+
+        revivals = metadata.get("revivals")
+        latest_revival = (
+            revivals[-1]
+            if isinstance(revivals, list) and revivals
+            else None
+        )
+        if not (
+            isinstance(latest_revival, Mapping)
+            and set(latest_revival)
+            == {
+                "at",
+                "reason",
+                "previous_enqueued_at",
+                "previous_failure_count",
+                "previous_failure_reason",
+            }
+            and latest_revival.get("reason")
+            == (
+                "merge train proved quarantined candidate already integrated "
+                "into exact target"
+            )
+            and latest_revival.get("previous_failure_reason") == expected_failure
+            and latest_revival.get("previous_failure_count") == 2
+            and isinstance(latest_revival.get("at"), (int, float))
+            and not isinstance(latest_revival.get("at"), bool)
+            and isinstance(
+                latest_revival.get("previous_enqueued_at"), (int, float)
+            )
+            and not isinstance(
+                latest_revival.get("previous_enqueued_at"), bool
+            )
+        ):
+            return False
+        if status == "pending":
+            return bool(
+                (
+                    failure_reason == ""
+                    and getattr(request, "attempt", None) == 1
+                    and getattr(request, "failure_count", None) == 0
+                )
+                or (
+                    failure_reason
+                    == "merge train consumer exited; claim recovered"
+                    and getattr(request, "attempt", None) == 2
+                    and getattr(request, "failure_count", None) == 1
+                )
+            )
+        if status == "completed":
+            return bool(
+                failure_reason == ""
+                and getattr(request, "attempt", None) == 1
+                and getattr(request, "failure_count", None) == 0
+            )
+        return bool(
+            status == "processing"
+            and failure_reason == ""
+            and getattr(request, "attempt", None) == 1
+            and getattr(request, "failure_count", None) == 0
+            and str(getattr(request, "consumer_id", "") or "").startswith(
+                "merge-train:"
+            )
+            and bool(str(getattr(request, "claim_token", "") or ""))
+        )
+
     def _current_recovery_task_status(
         self,
         *,
@@ -4675,11 +4784,15 @@ class DatabasePortalExecutionBridge:
             {"blocked", "retrying"}
         ),
         allow_shared_lane_source: bool = False,
+        allow_callback_reconciliation_transport_lineage: bool = False,
     ) -> _DatabasePortalRecoveryProjection | None:
         """Prove that one eligible request came from this lane's sealed attempt."""
 
-        if self.merge_queue is None or not self._request_has_missing_output_recovery_lineage(
-            request
+        if self.merge_queue is None:
+            return None
+        if not self._request_has_missing_output_recovery_lineage(request) and not (
+            allow_callback_reconciliation_transport_lineage
+            and self._request_has_callback_reconciliation_transport_lineage(request)
         ):
             return None
         metadata = getattr(request, "metadata", None)
@@ -21782,6 +21895,7 @@ class DatabasePortalExecutionBridge:
             ):
                 sources.append({"event": event, "request_id": request_id})
         transport_source: Mapping[str, Any] | None = None
+        transport_verified_request: Any | None = None
         if not sources and events:
             transport_candidates = [
                 (index, event)
@@ -21811,9 +21925,8 @@ class DatabasePortalExecutionBridge:
                         binding=binding,
                     )
                 )
-                exact_unsettled = bool(
-                    request_status in {"pending", "processing", "quarantined"}
-                    and suffix_valid
+                terminal_exact = bool(
+                    suffix_valid
                     and self._exact_terminal_callback_reconciliation_transport(
                         events[: terminal_index + 1],
                         terminal=terminal,
@@ -21821,13 +21934,18 @@ class DatabasePortalExecutionBridge:
                         binding=binding,
                     )
                 )
+                exact_unsettled = bool(
+                    request_status in {"pending", "processing", "quarantined"}
+                    and terminal_exact
+                )
                 completed_exact_suffix = bool(
                     request_status == "completed"
-                    and suffix_valid
+                    and terminal_exact
                     and suffix_length == 3
                 )
                 if exact_unsettled or completed_exact_suffix:
                     transport_mode = True
+                    transport_verified_request = candidate_request
                     transport_source = terminal if exact_unsettled else None
                     sources.append(
                         {
@@ -21839,6 +21957,8 @@ class DatabasePortalExecutionBridge:
             return None
         request_id = str(sources[0]["request_id"])
         request = self.merge_queue.get(request_id)
+        if transport_mode and request != transport_verified_request:
+            return None
         projection_statuses = frozenset(
             {"quarantined"}
             if transport_mode
@@ -21851,6 +21971,7 @@ class DatabasePortalExecutionBridge:
                 request,
                 allowed_task_statuses=projection_statuses,
                 allow_shared_lane_source=True,
+                allow_callback_reconciliation_transport_lineage=transport_mode,
             )
             if request is not None
             else None
@@ -21928,6 +22049,7 @@ class DatabasePortalExecutionBridge:
                     request,
                     allowed_task_statuses=frozenset({"quarantined"}),
                     allow_shared_lane_source=True,
+                    allow_callback_reconciliation_transport_lineage=True,
                 )
                 if request is not None
                 else None
@@ -21951,6 +22073,7 @@ class DatabasePortalExecutionBridge:
                     current_request,
                     allowed_task_statuses=projection_statuses,
                     allow_shared_lane_source=True,
+                    allow_callback_reconciliation_transport_lineage=transport_mode,
                 )
                 if current_request is not None
                 else None
@@ -22161,6 +22284,15 @@ class DatabasePortalExecutionBridge:
             == current_failure_reason_expected
             and latest_revival.get("previous_failure_count") == 2
         )
+        completed_exact_revival = bool(
+            request_status == "completed"
+            and current_failure == ""
+            and getattr(request, "attempt", None) == 1
+            and getattr(request, "failure_count", None) == 0
+            and self._request_has_callback_reconciliation_transport_lineage(
+                request
+            )
+        )
         quarantined_exact_failure = bool(
             request_status == "quarantined"
             and current_failure == current_failure_reason_expected
@@ -22282,6 +22414,7 @@ class DatabasePortalExecutionBridge:
                 or pending_exact_revival
                 or recovered_pending_revival
                 or processing_exact_revival
+                or completed_exact_revival
             )
             and isinstance(quarantine, Mapping)
             and quarantine.get("status") == "quarantined"
@@ -22690,6 +22823,7 @@ class DatabasePortalExecutionBridge:
                     current,
                     allowed_task_statuses=frozenset({"quarantined"}),
                     allow_shared_lane_source=True,
+                    allow_callback_reconciliation_transport_lineage=True,
                 )
                 if current is not None
                 else None
