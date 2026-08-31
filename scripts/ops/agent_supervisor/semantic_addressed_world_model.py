@@ -22,7 +22,7 @@ import stat
 import sys
 import tempfile
 import time
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from types import MappingProxyType
@@ -30,6 +30,25 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+_M31_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.duckdb"
+)
+_M31_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.coordination.duckdb"
+)
+_M31_WORKTREE_ROOT = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/worktrees"
+)
+_M31_GENERATION = 29
+_M31_TARGET_PLAN_REVISION = 28
+_M31_TARGET_EVENT_WATERMARK = 282
+_M31_TARGET_PROJECTION_CID = (
+    "baguqeerakjradc5sa5dmflygtfh2birrd5onygnt6q2pkvoomsxrspi22jaa"
+)
+_M31_TARGET_QUACK_PORT = 24_070
 _M30_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
     "run-r2-m27/control.duckdb"
@@ -768,6 +787,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m31_key = "detached_coordinator_pid_recovery_successor_materialization"
     m30_key = "stopped_owner_restart_source_seal_successor_materialization"
     m29_key = "committed_evidence_verification_successor_materialization"
     m28_key = "live_claim_admission_recovery_successor_materialization"
@@ -792,6 +812,51 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m31_key in config:
+        authority = config.get(m31_key)
+        try:
+            expected = (
+                _materializer()
+                ._expected_m31_detached_coordinator_pid_recovery_authority()
+            )
+        except Exception as exc:
+            raise OperatorError("active M31 authority is unavailable") from exc
+        target_root = str(Path(_M31_STORE_ID).parent)
+        expected_runtime = {
+            "root": target_root,
+            "state": f"{target_root}/state",
+            "worktrees": _M31_WORKTREE_ROOT,
+            "merge_queue": f"{target_root}/merge-queue",
+            "logs": f"{target_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        binding = authority.get("runtime_binding") if isinstance(authority, Mapping) else None
+        if (
+            not isinstance(authority, Mapping)
+            or dict(authority) != expected
+            or authority.get("migration_revision") != "SAWM-R2-M31"
+            or not isinstance(binding, Mapping)
+            or binding.get("store_id") != _M31_STORE_ID
+            or binding.get("store_generation") != _M31_GENERATION
+            or binding.get("target_event_watermark") != _M31_TARGET_EVENT_WATERMARK
+            or binding.get("quack_port") != _M31_TARGET_QUACK_PORT
+            or authority.get("target_projection_cid") != _M31_TARGET_PROJECTION_CID
+            or not isinstance(program, Mapping)
+            or program.get("store_id") != _M31_STORE_ID
+            or program.get("store_generation") != str(_M31_GENERATION)
+            or program.get("quack_endpoint") != "quack:127.0.0.1:24070"
+            or program.get("worktree_root") != _M31_WORKTREE_ROOT
+            or not isinstance(owner, Mapping)
+            or owner.get("database_path") != _M31_STORE_ID
+            or owner.get("store_id") != _M31_STORE_ID
+            or owner.get("port") != _M31_TARGET_QUACK_PORT
+            or owner.get("state_dir") != f"{target_root}/quack-owner"
+            or config.get("runtime_paths") != expected_runtime
+        ):
+            raise OperatorError("active M31 detached-coordinator authority is invalid")
+        return authority
     if m30_key in config:
         authority = config.get(m30_key)
         try:
@@ -2083,6 +2148,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            "detached_coordinator_pid_recovery_successor_materialization",
             "stopped_owner_restart_source_seal_successor_materialization",
             "committed_evidence_verification_successor_materialization",
             "live_claim_admission_recovery_successor_materialization",
@@ -4461,6 +4527,127 @@ def _require_m18_final_pair_marker(
     return MappingProxyType(dict(observed))
 
 
+def _require_m31_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M31's exact live generation-29/event-282 receipt."""
+
+    key = "detached_coordinator_pid_recovery_successor_materialization"
+    if key not in config:
+        return MappingProxyType({})
+    expected_authority = (
+        materializer._expected_m31_detached_coordinator_pid_recovery_authority()
+    )
+    if dict(authority) != expected_authority or config.get(key) != expected_authority:
+        raise OperatorError("M31 detached-coordinator authority differs")
+    if checked is None:
+        raise OperatorError("M31 marker requires exact live materializer verification")
+    m30_authority = (
+        materializer._expected_m30_stopped_owner_restart_source_seal_authority()
+    )
+    m30_path = (REPO_ROOT / _M31_STORE_ID).resolve().parent / (
+        "m30-source-successor-receipt.json"
+    )
+    try:
+        m30_observed, m30_sha256 = materializer._load_nofollow_json(
+            m30_path, root=REPO_ROOT, noun="M31 preserved M30 source receipt"
+        )
+    except Exception as exc:
+        raise OperatorError("M31 preserved M30 source receipt is unavailable") from exc
+    m30_unhashed = dict(m30_observed)
+    m30_claimed = str(m30_unhashed.pop("receipt_cid", ""))
+    m31_prior = expected_authority["prior_authority"]
+    if (
+        m30_sha256 != m31_prior["m30_receipt_sha256"]
+        or m30_claimed != m31_prior["m30_receipt_cid"]
+        or m30_claimed != materializer._identity(m30_unhashed)
+    ):
+        raise OperatorError("M31 preserved M30 source receipt differs")
+    m30_marker = _require_m30_source_successor_marker(
+        config,
+        m30_authority,
+        materializer,
+        checked={
+            "valid": True,
+            "event_watermark": m30_observed.get("target_event_watermark"),
+            "projection_cid": m30_observed.get("projection_cid"),
+            "generation_27_28_restart_rows_verified": m30_observed.get(
+                "generation_27_28_restart_rows_verified"
+            ),
+            # The M31 verifier rehashed the complete immutable prefix through
+            # event 281 before this historical receipt is admitted.
+            "prior_event_prefix_verified": checked.get(
+                "prior_event_prefix_verified"
+            ),
+            "full_event_and_evidence_body_verified": m30_observed.get(
+                "full_event_and_evidence_body_verified"
+            ),
+            "receipt": m30_observed,
+        },
+    )
+    path = (REPO_ROOT / _M31_STORE_ID).resolve().parent / (
+        "m31-source-successor-receipt.json"
+    )
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            path, root=REPO_ROOT, noun="M31 source successor receipt"
+        )
+    except Exception as exc:
+        raise OperatorError("M31 exact source successor receipt is unavailable") from exc
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        claimed != materializer._identity(unhashed)
+        or checked.get("valid") is not True
+        or checked.get("event_watermark") != _M31_TARGET_EVENT_WATERMARK
+        or checked.get("projection_cid") != _M31_TARGET_PROJECTION_CID
+        or checked.get("generation_28_29_restart_rows_verified") is not True
+        or checked.get("prior_event_prefix_verified") is not True
+        or checked.get("full_event_and_evidence_body_verified") is not True
+        or checked.get("receipt") != observed
+        or observed.get("migration_revision") != "SAWM-R2-M31"
+        or observed.get(f"{key}_cid") != materializer._identity(expected_authority)
+        or observed.get("target_generation") != _M31_GENERATION
+        or observed.get("target_event_watermark") != _M31_TARGET_EVENT_WATERMARK
+        or observed.get("projection_cid") != _M31_TARGET_PROJECTION_CID
+        or observed.get("queried_and_mutated_through_live_quack_only") is not True
+        or observed.get("direct_authoritative_file_opened") is not False
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M31 exact source successor receipt differs")
+    return MappingProxyType(
+        {
+            **dict(m30_marker),
+            **dict(observed),
+            "prior_final_pair_receipt_cid": m30_marker[
+                "prior_final_pair_receipt_cid"
+            ],
+            "m29_source_successor_receipt_cid": m30_marker[
+                "m29_source_successor_receipt_cid"
+            ],
+            "m30_source_successor_receipt_cid": m30_claimed,
+            "m31_source_successor_receipt_cid": claimed,
+            "source_successor_receipt_cid": claimed,
+            "source_successor_receipt_verified": True,
+            "source_successor_chain": {
+                "m27_final_pair_receipt_cid": m30_marker[
+                    "prior_final_pair_receipt_cid"
+                ],
+                "m29_source_successor_receipt_cid": m30_marker[
+                    "m29_source_successor_receipt_cid"
+                ],
+                "m30_source_successor_receipt_cid": m30_claimed,
+                "m31_source_successor_receipt_cid": claimed,
+            },
+            "final_pair_commit_marker_verified": False,
+        }
+    )
+
+
 def _require_m30_source_successor_marker(
     config: Mapping[str, Any],
     authority: Mapping[str, Any],
@@ -4480,6 +4667,40 @@ def _require_m30_source_successor_marker(
         raise OperatorError("M30 stopped-owner restart authority differs")
     if checked is None:
         raise OperatorError("M30 marker requires exact live materializer verification")
+    m29_authority = (
+        materializer._expected_m29_committed_evidence_verification_authority()
+    )
+    m29_path = (REPO_ROOT / _M30_STORE_ID).resolve().parent / (
+        "m29-source-successor-receipt.json"
+    )
+    try:
+        m29_observed, m29_sha256 = materializer._load_nofollow_json(
+            m29_path, root=REPO_ROOT, noun="M30 preserved M29 source receipt"
+        )
+    except Exception as exc:
+        raise OperatorError("M30 preserved M29 source receipt is unavailable") from exc
+    if m29_sha256 != expected_authority["prior_authority"]["m29_receipt_sha256"]:
+        raise OperatorError("M30 preserved M29 source receipt bytes differ")
+    m29_marker = _require_m29_source_successor_marker(
+        config,
+        m29_authority,
+        materializer,
+        checked={
+            "valid": True,
+            "event_watermark": m29_observed.get("target_event_watermark"),
+            "projection_cid": m29_observed.get("projection_cid"),
+            "failed_m28_post_append_attempt_verified": m29_observed.get(
+                "failed_m28_post_append_attempt_verified"
+            ),
+            "full_event_and_evidence_body_verified": m29_observed.get(
+                "full_event_and_evidence_body_verified"
+            ),
+            "generation_26_27_restart_rows_verified": m29_observed.get(
+                "generation_26_27_restart_rows_verified"
+            ),
+            "receipt": m29_observed,
+        },
+    )
     path = (REPO_ROOT / _M30_STORE_ID).resolve().parent / (
         "m30-source-successor-receipt.json"
     )
@@ -4505,9 +4726,6 @@ def _require_m30_source_successor_marker(
         or observed.get("target_generation") != _M30_GENERATION
         or observed.get("target_event_watermark") != _M30_TARGET_EVENT_WATERMARK
         or observed.get("projection_cid") != _M30_TARGET_PROJECTION_CID
-        or observed.get("prior_event_prefix_sha256")
-        != expected_authority["prior_authority"]["event_prefix_sha256"]
-        or observed.get("prior_event_prefix_verified") is not True
         or observed.get("queried_and_mutated_through_live_quack_only") is not True
         or observed.get("direct_authoritative_file_opened") is not False
         or observed.get("worker_self_approval") is not False
@@ -4515,9 +4733,26 @@ def _require_m30_source_successor_marker(
         raise OperatorError("M30 exact source successor receipt differs")
     return MappingProxyType(
         {
+            **dict(m29_marker),
             **dict(observed),
+            "prior_final_pair_receipt_cid": m29_marker[
+                "prior_final_pair_receipt_cid"
+            ],
+            "m29_source_successor_receipt_cid": m29_marker[
+                "source_successor_receipt_cid"
+            ],
+            "m30_source_successor_receipt_cid": claimed,
             "source_successor_receipt_cid": claimed,
             "source_successor_receipt_verified": True,
+            "source_successor_chain": {
+                "m27_final_pair_receipt_cid": m29_marker[
+                    "prior_final_pair_receipt_cid"
+                ],
+                "m29_source_successor_receipt_cid": m29_marker[
+                    "source_successor_receipt_cid"
+                ],
+                "m30_source_successor_receipt_cid": claimed,
+            },
             "final_pair_commit_marker_verified": False,
         }
     )
@@ -7692,6 +7927,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if "detached_coordinator_pid_recovery_successor_materialization" in config:
+        return _require_m31_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if "stopped_owner_restart_source_seal_successor_materialization" in config:
         return _require_m30_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -8687,6 +8926,31 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
+    if "detached_coordinator_pid_recovery_successor_materialization" in config:
+        active_materialization = _active_source_repair_materialization(config)
+        try:
+            admitted = materializer._check_m31_prestart_admission(REPO_ROOT, config)
+        except Exception as exc:
+            raise OperatorError(
+                "M31 stopped generation-28 restart is not admissible"
+            ) from exc
+        if (
+            admitted.get("valid") is not True
+            or admitted.get("prior_generation") != 28
+            or admitted.get("target_generation") != 29
+            or admitted.get("prior_event_watermark") != 281
+            or admitted.get("stale_pid_projection_verified") is not True
+            or admitted.get("stale_pid_projection_quarantined") is not False
+        ):
+            raise OperatorError("M31 prestart admission report differs")
+        return MappingProxyType(
+            {
+                "dependency_valid": True,
+                "board_valid": True,
+                "prior_authority": active_materialization,
+                "store": admitted,
+            }
+        )
     if "stopped_owner_restart_source_seal_successor_materialization" in config:
         active_materialization = _active_source_repair_materialization(config)
         try:
@@ -9420,6 +9684,45 @@ def _m23_portal_completion_is_compatible(
         is False
         and operational_validation_revision.get("worker_self_approval") is False
     )
+
+
+def _verify_m31_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M31's evidence-only target while preserving task heads."""
+
+    head = materializer._inspect_m31_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M31_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M31_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M31_TARGET_PROJECTION_CID
+        or head.get("projection_cid") != expected_projection_cid
+    ):
+        raise materializer.MigrationRequired("M31 live head projection differs")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        if observed is None:
+            raise materializer.MigrationRequired(f"M31 task is missing: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
 
 
 def _verify_m30_live_head_task_projection(
@@ -10709,10 +11012,18 @@ def _live_preflight(
     *,
     probe_provider: bool = False,
     retire_provider_token_handoff: bool = False,
+    before_token_handoff_retirement: Callable[[], Any] | None = None,
 ) -> dict[str, Any]:
     if probe_provider and not retire_provider_token_handoff:
         raise OperatorError(
             "provider probe requires prior retirement of the token handoff"
+        )
+    if (
+        before_token_handoff_retirement is not None
+        and not retire_provider_token_handoff
+    ):
+        raise OperatorError(
+            "pre-retirement coordinator reservation requires handoff retirement"
         )
     dependency = _validator("scripts/validate_semantic_addressed_world_model_dependencies.py", "validate_dependencies")
     board = _validator("scripts/validate_semantic_addressed_world_model_board.py", "validate_program")
@@ -10727,6 +11038,9 @@ def _live_preflight(
             "board": board,
             "program_definition_cid": population["program_definition_cid"],
         }
+    )
+    m31_active = (
+        "detached_coordinator_pid_recovery_successor_materialization" in config
     )
     m30_active = (
         "stopped_owner_restart_source_seal_successor_materialization" in config
@@ -10958,7 +11272,42 @@ def _live_preflight(
     except Exception:
         raise OperatorError("authenticated live Quack preflight open failed") from None
     try:
-        if m30_active:
+        if m31_active:
+            try:
+                m31_verified = materializer._verify_m31_live_materialization(
+                    live,
+                    live_identity,
+                    population,
+                    config,
+                    active_source_repair,
+                    validation_digest,
+                )
+                expected_m31_receipt = (
+                    materializer._expected_m31_source_successor_receipt(
+                        population,
+                        active_source_repair,
+                        validation_digest,
+                        m31_verified,
+                    )
+                )
+                final_pair_marker = _require_active_final_pair_marker(
+                    config,
+                    active_source_repair,
+                    materializer,
+                    checked={
+                        "valid": True,
+                        "receipt": expected_m31_receipt,
+                        **m31_verified,
+                    },
+                )
+            except (
+                materializer.MigrationRequired,
+                materializer.MaterializationError,
+            ) as exc:
+                raise OperatorError(
+                    f"M31 exact detached-coordinator source seal failed: {exc}"
+                ) from exc
+        elif m30_active:
             try:
                 m30_verified = materializer._verify_m30_live_materialization(
                     live,
@@ -11069,7 +11418,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if "stopped_owner_restart_source_seal_successor_materialization" in config:
+            if "detached_coordinator_pid_recovery_successor_materialization" in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m31_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif "stopped_owner_restart_source_seal_successor_materialization" in config:
                 statuses, _revisions, _receipts = (
                     _verify_m30_live_head_task_projection(
                         live,
@@ -11422,6 +11781,9 @@ def _live_preflight(
         prior_final_pair_receipt_cid = str(
             final_pair_marker.get("prior_final_pair_receipt_cid") or ""
         )
+        source_successor_chain = final_pair_marker.get(
+            "source_successor_chain"
+        )
         store_report.update(
             {
                 "coordination_path": str(
@@ -11457,6 +11819,11 @@ def _live_preflight(
                     )
                     is True
                 ),
+                "source_successor_chain": (
+                    dict(source_successor_chain)
+                    if isinstance(source_successor_chain, Mapping)
+                    else None
+                ),
             }
         )
 
@@ -11477,6 +11844,8 @@ def _live_preflight(
             raise OperatorError(
                 "live token handoff is outside the sealed owner state directory"
             )
+        if before_token_handoff_retirement is not None:
+            before_token_handoff_retirement()
         credential_report = retire_token_handoff(
             state_dir=expected_state_dir,
             secret_handle=str(live_identity["secret_handle"]),
@@ -11642,27 +12011,88 @@ def main(argv: Sequence[str] | None = None) -> int:
             return int(ops.main(_quack_args(config, args.command.removeprefix("quack-"))))
 
         real_launch = args.command == "launch"
-        live = _live_preflight(
-            config,
-            probe_provider=real_launch,
-            retire_provider_token_handoff=real_launch,
+        real_detached_launch = real_launch and not args.foreground
+        from ipfs_accelerate_py.agent_supervisor.runtime import (
+            configured_board_scheduler as scheduler_runtime,
         )
-        from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
-            main as scheduler_main,
+
+        scheduler_board = scheduler_runtime.load_configured_board(
+            config_path,
+            repo_root=REPO_ROOT,
         )
+        coordinator_pid_reservation: Any | None = None
+
+        def reserve_coordinator_pid_before_retirement() -> Any:
+            nonlocal coordinator_pid_reservation
+            if coordinator_pid_reservation is not None:
+                raise OperatorError(
+                    "detached coordinator PID reservation callback repeated"
+                )
+            coordinator_pid_reservation = (
+                scheduler_runtime._reserve_detached_coordinator_pid(
+                    scheduler_board
+                )
+            )
+            return coordinator_pid_reservation
+
+        live: dict[str, Any]
+        try:
+            live = _live_preflight(
+                config,
+                probe_provider=real_launch,
+                retire_provider_token_handoff=real_launch,
+                before_token_handoff_retirement=(
+                    reserve_coordinator_pid_before_retirement
+                    if real_detached_launch
+                    else None
+                ),
+            )
+        except BaseException:
+            if (
+                coordinator_pid_reservation is not None
+                and coordinator_pid_reservation.state == "reserved"
+            ):
+                scheduler_runtime._discard_coordinator_pid_reservation(
+                    coordinator_pid_reservation
+                )
+            raise
         scheduler_args = ["--repo-root", str(REPO_ROOT), "--config", str(config_path)]
-        if args.command == "preflight":
-            result = int(scheduler_main([*scheduler_args, "preflight"]))
-        else:
-            launch_args = [*scheduler_args, "launch", "--implement"]
-            if args.command == "dry-run":
-                launch_args.append("--dry-run")
+        try:
+            if args.command == "preflight":
+                result = int(
+                    scheduler_runtime.main([*scheduler_args, "preflight"])
+                )
             else:
-                if args.foreground:
-                    launch_args.append("--foreground")
-                if math.isfinite(args.duration_seconds):
-                    launch_args.extend(["--duration-seconds", str(args.duration_seconds)])
-            result = int(scheduler_main(launch_args))
+                launch_args = [*scheduler_args, "launch", "--implement"]
+                if args.command == "dry-run":
+                    launch_args.append("--dry-run")
+                else:
+                    if args.foreground:
+                        launch_args.append("--foreground")
+                    if math.isfinite(args.duration_seconds):
+                        launch_args.extend(
+                            ["--duration-seconds", str(args.duration_seconds)]
+                        )
+                result = int(
+                    scheduler_runtime.main(
+                        launch_args,
+                        coordinator_pid_reservation=(
+                            coordinator_pid_reservation
+                            if real_detached_launch
+                            else None
+                        ),
+                    )
+                )
+        finally:
+            # Once claimed, scheduler ownership is authoritative.  The facade
+            # only discards a reservation that never crossed that boundary.
+            if (
+                coordinator_pid_reservation is not None
+                and coordinator_pid_reservation.state == "reserved"
+            ):
+                scheduler_runtime._discard_coordinator_pid_reservation(
+                    coordinator_pid_reservation
+                )
         if result:
             return result
         # Only secret-free preflight facts are emitted by this facade.

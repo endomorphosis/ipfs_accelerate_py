@@ -388,6 +388,30 @@ def _m16_migration_errors(
         return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m31_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Reuse the exact M31 detached-coordinator PID recovery contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m31_detached_coordinator_pid_recovery_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
+            )
+        )
+    except Exception as exc:
+        return [f"M31 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _m30_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -731,12 +755,52 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M29 before every historical successor.  Consequently
+    Key presence selects M31 before every historical successor.  Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m31_key = "detached_coordinator_pid_recovery_successor_materialization"
+    m31_seal_key = f"{m31_key}_cid"
+    m31_presence = (
+        m31_key in scheduler,
+        m31_key in migration,
+        m31_seal_key in seal,
+    )
+    if any(m31_presence):
+        errors = _m31_migration_errors(scheduler, seal, migration)
+        if not all(m31_presence):
+            errors.append(
+                "M31 detached-coordinator authority is only partially declared"
+            )
+        for validator in (
+            _m30_migration_errors,
+            _m29_migration_errors,
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(
+                    scheduler,
+                    seal,
+                    migration,
+                    require_active_runtime=False,
+                )
+            )
+        return errors
 
     m30_key = "stopped_owner_restart_source_seal_successor_materialization"
     m30_seal_key = f"{m30_key}_cid"
@@ -3014,6 +3078,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m31_key = "detached_coordinator_pid_recovery_successor_materialization"
+    m31_selected = any(
+        (
+            m31_key in config,
+            m31_key in migration,
+            f"{m31_key}_cid" in seal,
+        )
+    )
     m30_key = "stopped_owner_restart_source_seal_successor_materialization"
     m30_selected = any(
         (
@@ -3079,7 +3151,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     multi_lane_selected = (
-        m29_selected
+        m31_selected
+        or m29_selected
         or m28_selected
         or m27_selected
         or m26_selected
@@ -3093,7 +3166,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or config.get("max_lanes") != expected_lane_count
     ):
         config_errors.append(
-            "four lanes are required for M29/M28/M27/M26/M25/M24/M23"
+            "four lanes are required for M31/M29/M28/M27/M26/M25/M24/M23"
             if multi_lane_selected
             else "one lane is required until sidecars are lane-scoped"
         )
@@ -3133,7 +3206,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     ):
         config_errors.append(
-            "M29/M28/M27/M26/M25/M24/M23 exact four-lane identity mismatch"
+            "M31/M29/M28/M27/M26/M25/M24/M23 exact four-lane identity mismatch"
         )
     provider = config.get("provider") if isinstance(config.get("provider"), Mapping) else {}
     expected_provider = {
@@ -3275,6 +3348,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m31_selected
+        else "run-r2-m27"
         if m30_selected
         else "run-r2-m27"
         if m29_selected
@@ -3322,7 +3397,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "28"
+        "29"
+        if m31_selected
+        else "28"
         if m30_selected
         else "27"
         if m29_selected
@@ -3371,6 +3448,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m31_selected
+        else 24070
         if m30_selected
         else 24070
         if m29_selected
@@ -3432,7 +3511,45 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m30_selected:
+    if m31_selected:
+        successor = config.get(m31_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m31_detached_coordinator_pid_recovery_authority()
+            )
+            if (
+                type(successor) is not dict
+                or materializer._identity(successor) != materializer._identity(expected)
+                or type(migration.get(m31_key)) is not dict
+                or materializer._identity(migration.get(m31_key))
+                != materializer._identity(expected)
+                or seal.get(f"{m31_key}_cid") != materializer._identity(expected)
+                or module._m31_detached_coordinator_pid_recovery_successor_errors(
+                    config, seal, migration, root=root
+                )
+            ):
+                config_errors.append(
+                    "M31 detached-coordinator authority/CID/source differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M31 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M31 active runtime paths are not exactly preserved")
+    elif m30_selected:
         successor = config.get(m30_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"

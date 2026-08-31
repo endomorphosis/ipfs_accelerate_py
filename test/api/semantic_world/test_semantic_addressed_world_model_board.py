@@ -25,6 +25,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "detached_coordinator_pid_recovery_successor_materialization",
     "stopped_owner_restart_source_seal_successor_materialization",
     "committed_evidence_verification_successor_materialization",
     "live_claim_admission_recovery_successor_materialization",
@@ -4599,6 +4600,167 @@ def test_m29_presence_masks_m28_and_keeps_every_predecessor_historical(
     errors = board._active_successor_migration_errors(partial, {}, {})
     assert "M29 active" in errors
     assert any("only partially declared" in error for error in errors)
+
+
+def test_m31_authority_pins_dead_pid_event_281_and_generation_29() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m31_authority_test",
+    )
+    key = "detached_coordinator_pid_recovery_successor_materialization"
+    authority = (
+        materializer._expected_m31_detached_coordinator_pid_recovery_authority()
+    )
+    scheduler = json.loads(
+        (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
+        .read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json")
+        .read_text(encoding="utf-8")
+    )
+    assert scheduler[key] == authority == migration[key]
+    assert seal[f"{key}_cid"] == materializer._identity(authority)
+    assert scheduler["database_program"]["store_generation"] == "29"
+    assert authority["migration_revision"] == "SAWM-R2-M31"
+    assert authority["prior_authority"]["event_watermark"] == 281
+    assert authority["target_event_watermark"] == 282
+    assert authority["target_generation"] == 29
+    assert authority["target_projection_cid"] == (
+        "baguqeerakjradc5sa5dmflygtfh2birrd5onygnt6q2pkvoomsxrspi22jaa"
+    )
+    assert authority["stopped_owner"]["generation"] == 28
+    assert authority["stopped_owner"]["stopped_at"] == "2026-08-31T16:38:00Z"
+    stale = authority["failed_launch_evidence"]["stale_pid_projection"]
+    assert stale == {
+        "path": (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/"
+            "state/configured-board-master.pid"
+        ),
+        "pid": 3_554_888,
+        "content_sha256": (
+            "592c926b10dfc688ab07af087bb761228c61a1f8f2829c7f577464322eacca46"
+        ),
+        "mode": 0o664,
+        "uid": 1000,
+        "gid": 1000,
+        "link_count": 1,
+        "inode": 97_255_434,
+        "pid_observed_dead": True,
+        "completion_authority": False,
+    }
+    assert authority["accepted_source_repair"]["changed_paths"] == sorted(
+        authority["accepted_source_repair"]["blob_oids"]
+    )
+    body = materializer._m31_migration_body(
+        materializer.build_population(REPO_ROOT),
+        scheduler,
+        "sha256:" + "1" * 64,
+    )
+    assert body["exact_changes"] == authority["exact_changes"]
+    assert body["preservation"] == authority["preservation"]
+
+
+def test_m31_presence_masks_m30_and_keeps_history_nonactive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m31_presence_test",
+    )
+    dependency = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m31_presence_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m31_presence_test",
+    )
+    key = "detached_coordinator_pid_recovery_successor_materialization"
+    authority = (
+        materializer._expected_m31_detached_coordinator_pid_recovery_authority()
+    )
+    scheduler = {key: authority}
+    migration = {key: authority}
+    seal = {f"{key}_cid": materializer._identity(authority)}
+    assert dependency._m31_successor_declared(scheduler, {}, {}) is True
+    assert dependency._m31_successor_declared({}, seal, {}) is True
+    assert dependency._m31_successor_declared({}, {}, migration) is True
+    monkeypatch.setattr(
+        board, "_m31_migration_errors", lambda *_args, **_kwargs: ["M31 active"]
+    )
+    historical_calls: list[bool] = []
+
+    def historical(*_args: object, **kwargs: object) -> list[str]:
+        historical_calls.append(kwargs.get("require_active_runtime") is False)
+        return []
+
+    for name in (
+        "_m30_migration_errors", "_m29_migration_errors", "_m28_migration_errors",
+        "_m27_migration_errors", "_m26_migration_errors", "_m25_migration_errors",
+        "_m24_migration_errors", "_m23_migration_errors", "_m22_migration_errors",
+        "_m21_migration_errors", "_m20_migration_errors", "_m19_migration_errors",
+        "_m18_migration_errors", "_m17_migration_errors", "_m16_migration_errors",
+    ):
+        monkeypatch.setattr(board, name, historical)
+    assert board._active_successor_migration_errors(
+        scheduler, seal, migration
+    ) == ["M31 active"]
+    assert historical_calls == [True] * 15
+    partial_errors = board._active_successor_migration_errors(scheduler, {}, {})
+    assert "M31 active" in partial_errors
+    assert any("partially declared" in error for error in partial_errors)
+
+
+def test_m31_pid_and_receipt_controls_are_stable_and_serializable() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m31_stable_pid_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m31_reservation_test",
+    )
+    prestart_source = inspect.getsource(materializer._check_m31_prestart_admission)
+    ensure_source = inspect.getsource(materializer._ensure_m31_source_successor_receipt)
+    live_source = inspect.getsource(operator._live_preflight)
+    main_source = inspect.getsource(operator.main)
+    assert "_read_stable_regular_bytes" in prestart_source
+    assert "with serialized_lock_update(pid_path):" in prestart_source
+    assert "pid_path.resolve().read_bytes" not in prestart_source
+    assert "return dict(observed)" in ensure_source
+    assert "return dict(expected)" in ensure_source
+    assert live_source.index("before_token_handoff_retirement()") < live_source.index(
+        "retire_token_handoff("
+    )
+    assert "_reserve_detached_coordinator_pid" in main_source
+    assert "coordinator_pid_reservation=(" in main_source
+    assert 'coordinator_pid_reservation.state == "reserved"' in main_source
+
+
+def test_m30_marker_uses_checked_prefix_and_m31_composes_receipt_chain() -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m30_m31_chain_test",
+    )
+    m30_source = inspect.getsource(operator._require_m30_source_successor_marker)
+    m31_source = inspect.getsource(operator._require_m31_source_successor_marker)
+    assert 'checked.get("prior_event_prefix_verified") is not True' in m30_source
+    assert 'observed.get("prior_event_prefix_sha256")' not in m30_source
+    assert 'observed.get("prior_event_prefix_verified")' not in m30_source
+    assert "_require_m29_source_successor_marker" in m30_source
+    assert "_require_m30_source_successor_marker" in m31_source
+    assert '"m27_final_pair_receipt_cid"' in m31_source
+    assert '"m29_source_successor_receipt_cid"' in m31_source
+    assert '"m30_source_successor_receipt_cid"' in m31_source
+    assert '"m31_source_successor_receipt_cid"' in m31_source
 
 
 def test_m30_authority_pins_stopped_event_280_and_generation_28() -> None:

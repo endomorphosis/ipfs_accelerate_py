@@ -1758,7 +1758,48 @@ closed on every validator, materializer, and operator selector. The adjacent
 M30 receipt is non-authoritative and binds the actual generation-28 identity
 plus the exact event-281 evidence bytes.
 
-## 39. Current limitations at seal time
+## 39. M31 detached-coordinator PID recovery successor
+
+`SAWM-R2-M31` preserves the clean generation-28 stop at
+`2026-08-31T16:38:00Z`, event 281, its M30 receipt, and every accepted task
+head. The failed detached launch retired the one-time provider-token handoff
+but spawned no coordinator and changed no task, attempt, provider, merge, or
+completion authority. Its only durable launch artifact is the exact dead PID
+3554888 projection at `state/configured-board-master.pid` (SHA-256
+`592c926b10dfc688ab07af087bb761228c61a1f8f2829c7f577464322eacca46`,
+mode 0664, uid/gid 1000, one link, inode 97255434).
+
+M31 authorizes one bounded runtime repair: under the landed stable no-follow
+read and lock discipline, the scheduler may quarantine only that exact
+single-link owned projection after re-proving that its PID is dead. A new
+coordinator marker is reserved with exclusive mode 0600 creation immediately
+before token retirement, then the same typed reservation is transferred to
+the scheduler. Live, substituted, linked, unstable, or ambiguous projections
+fail closed. The runtime marker remains operational evidence, never task or
+completion authority.
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m27
+worktrees     data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/worktrees (preserved)
+Quack port    24070
+generation    28 stopped -> 29 ready (one restart)
+plan revision 28 (unchanged)
+event cursor  281 -> 282 (one operator evidence event)
+pre-projection baguqeeragvf7yhfecuccjs3fqqg7azmwukg63sbgkbivnczfv6uljqd4js4q
+post-projection baguqeerakjradc5sa5dmflygtfh2birrd5onygnt6q2pkvoomsxrspi22jaa
+```
+
+The event-282 body seals the exact runtime repair, its bounded changed-path
+map, the nine protected controls, zero task/status/completion changes, and all
+preservation claims. Launch admission composes the immutable M27 final-pair
+receipt with the preserved M29, M30, and M31 source-successor receipts; none
+can authorize its own output. Runtime repair and initial-control commit/tree/
+blob placeholders must be replaced by exact landed OIDs and followed by one
+final protected-control reseal before materialization can pass.
+
+## 40. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

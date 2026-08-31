@@ -1273,6 +1273,143 @@ _M29_PRIOR_M28_VALIDATION_DIGEST = (
     "sha256:2599a864dcec5441a709ca2425af0954f937a39928646c73ad3941e0d7b84a8e"
 )
 
+# M31 recovers the failed detached launch that consumed generation 28's
+# one-time credential handoff before process creation.  The predecessor is the
+# exact cleanly stopped generation-28/event-281 authority.  The successor may
+# start generation 29 and append one source-seal evidence event (282); it may
+# not change any task, plan, goal, completion, or coordination authority.
+_M31_MIGRATION_REVISION = "SAWM-R2-M31"
+_M31_SUPERSESSION_MODE = (
+    "generation_bearing_detached_coordinator_pid_recovery_source_seal"
+)
+_M31_SUPERSESSION_REASON = (
+    "detached_coordinator_pid_recovery_successor_materialization"
+)
+_M31_CONTROL_RECORDED_AT = "2026-08-31T16:45:00Z"
+_M31_PRIOR_EVENT_WATERMARK = 281
+_M31_TARGET_EVENT_WATERMARK = 282
+_M31_TARGET_PLAN_REVISION = 28
+_M31_PRIOR_GENERATION = 28
+_M31_TARGET_GENERATION = 29
+_M31_TARGET_QUACK_PORT = 24_070
+_M31_PRIOR_EVENT_PREFIX_SHA256 = (
+    "0ab687fadaa7cdec4c68c69efb83a2a7be4653a6539c5dc73b5bfda6d8304009"
+)
+_M31_PRIOR_PROJECTION_CID = (
+    "baguqeeragvf7yhfecuccjs3fqqg7azmwukg63sbgkbivnczfv6uljqd4js4q"
+)
+_M31_TARGET_PROJECTION_CID = (
+    "baguqeerakjradc5sa5dmflygtfh2birrd5onygnt6q2pkvoomsxrspi22jaa"
+)
+_M31_PRIOR_SEMANTIC_AUTHORITY_DIGEST = (
+    "sha256:395168339f24de03f6d6f91cc0ca0365df2ffa8d71a80ac9fecab6e282817163"
+)
+_M31_PROGRAM_DEFINITION_CID = (
+    "sha256:f581af1f2234c127231b47bb1bb8d42910b984dcd1bece9a6303949ac1ba0b72"
+)
+_M31_PLAN_ROOT_CID = (
+    "sha256:d9481937430405ff6a512e779b14b7ce676de45d277c65d3763ebe49445ba914"
+)
+_M31_BASE_SOURCE_BINDING_CID = (
+    "sha256:113769b094992b51296fb80e810ca21d727efbff0ffede7026fd7930204d554a"
+)
+_M31_BASE_CONTROL_COMMIT = "9a45afcf51aebcd38e8c3e7d6883aa065f5eed2d"
+_M31_BASE_CONTROL_TREE = "0616f041d3654ec4420f17206442db513d04644d"
+# Filled after the bounded runtime repair is committed.  These
+# deliberately invalid sentinels make every materialization gate fail closed
+# until the exact repair commit/tree/blob identities have been resealed.
+_M31_RUNTIME_REPAIR_COMMIT = "f19f2c905a44a400e8924106c8f29f84ab97ccc4"
+_M31_RUNTIME_REPAIR_TREE = "cfe852a982d09ec7f349f69f3b195841363ed0b3"
+_M31_RUNTIME_REPAIR_BLOBS = MappingProxyType(
+    {
+        (
+            "ipfs_accelerate_py/agent_supervisor/runtime/"
+            "configured_board_scheduler.py"
+        ): "588bfdcb25fa9c2720bde744a4bc5473a61c9d58",
+        (
+            "ipfs_accelerate_py/agent_supervisor/runtime/"
+            "multi_supervisor_runner.py"
+        ): "433a19689b86879c192a90e18a885746e8e90c7c",
+        "test/api/test_agent_supervisor_configured_board_scheduler.py": (
+            "7c1dd158683c80d8b551290beda2e059895cc6d6"
+        ),
+    }
+)
+_M31_OPERATOR_CONTROL_PATHS = frozenset(
+    {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+        "config/semantic_addressed_world_model_dependencies.seal.json",
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+    }
+)
+# Filled after the first M31 nine-path control commit.  A final nine-path
+# reseal commit binds these values without attempting a cryptographic
+# self-reference to its own commit identity.
+_M31_INITIAL_CONTROL_COMMIT = "M31_INITIAL_CONTROL_COMMIT_PENDING"
+_M31_INITIAL_CONTROL_TREE = "M31_INITIAL_CONTROL_TREE_PENDING"
+_M31_INITIAL_CONTROL_BLOBS = MappingProxyType(
+    {
+        path: f"M31_INITIAL_CONTROL_BLOB_PENDING:{path}"
+        for path in _M31_OPERATOR_CONTROL_PATHS
+    }
+)
+_M31_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.duckdb"
+)
+_M31_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.coordination.duckdb"
+)
+_M31_RUNTIME_ROOT = (
+    "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+)
+_M31_WORKTREE_ROOT = f"{_M31_RUNTIME_ROOT}/worktrees"
+_M31_DATABASE_UUID = "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4"
+_M31_EXTENSION_FINGERPRINT = (
+    "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b"
+)
+_M31_PRIOR_SERVER_ID = "server:da8878a4-ae6d-462c-afed-d54040b2a362"
+_M31_PRIOR_PROCESS_BIRTH_ID = "birth:1ac8e14b2bfbc257d6a3b89aa960dfc3"
+_M31_PRIOR_STARTED_AT = "2026-08-31T15:45:38Z"
+_M31_PRIOR_STOPPED_AT = "2026-08-31T16:38:00Z"
+_M31_PRIOR_CONTROL_SHA256 = (
+    "61635480a00b83a459154752fc4cc795651a9c03c5c13a098217107c8769e1d1"
+)
+_M31_PRIOR_CONTROL_SIZE = 43_528_192
+_M31_PRIOR_COORDINATION_SHA256 = (
+    "0a93e9993e66b0671bc155a425f0536bb41a71affe2993d8128ba685bcba65cd"
+)
+_M31_PRIOR_COORDINATION_SIZE = 17_051_648
+_M31_STOPPED_STATUS_SHA256 = (
+    "c90f96a570a6f2af6b34455646ea5a3cf53ccf0a8a32913d32c2f715c0ca68df"
+)
+_M31_M30_RECEIPT_SHA256 = (
+    "3a7a9047ff2fedffe9e62f7682bbf00a88b30430411db6a5318b45e7a2cc36ec"
+)
+_M31_M30_RECEIPT_CID = (
+    "sha256:30e9b2f1ec51f569deda907872801dbd972e62a00f5b0c63a4bd3585aec84893"
+)
+_M31_STALE_PID = 3_554_888
+_M31_STALE_PID_RELATIVE_PATH = f"{_M31_RUNTIME_ROOT}/state/configured-board-master.pid"
+_M31_STALE_PID_SHA256 = (
+    "592c926b10dfc688ab07af087bb761228c61a1f8f2829c7f577464322eacca46"
+)
+_M31_STALE_PID_MODE = 0o664
+_M31_STALE_PID_UID = 1000
+_M31_STALE_PID_GID = 1000
+_M31_STALE_PID_NLINK = 1
+_M31_STALE_PID_INODE = 97_255_434
+
 # M30 authorizes exactly one generation-bearing restart of the cleanly stopped
 # generation-27 owner, then seals the new control source with one evidence event
 # through the live generation-28 Quack mutation route.  Future owner identities
@@ -6265,6 +6402,209 @@ def _m30_expected_task_heads() -> dict[str, dict[str, Any]]:
     return heads
 
 
+def _expected_m31_detached_coordinator_pid_recovery_authority() -> dict[str, Any]:
+    """Return the closed generation-29/event-282 M31 authorization."""
+
+    endpoint = "quack:127.0.0.1:24070"
+    return {
+        "schema": (
+            "sawm/detached-coordinator-pid-recovery-successor-"
+            "materialization-authorization@1"
+        ),
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": _M31_MIGRATION_REVISION,
+        "migration_kind": _M31_SUPERSESSION_REASON,
+        "supersession_mode": _M31_SUPERSESSION_MODE,
+        "control_recorded_at": _M31_CONTROL_RECORDED_AT,
+        "target_store_id": _M31_STORE_ID,
+        "target_coordination_store_id": _M31_COORDINATION_STORE_ID,
+        "target_runtime_root": _M31_RUNTIME_ROOT,
+        "target_generation": _M31_TARGET_GENERATION,
+        "target_quack_port": _M31_TARGET_QUACK_PORT,
+        "target_plan_revision": _M31_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M31_TARGET_EVENT_WATERMARK,
+        "target_projection_cid": _M31_TARGET_PROJECTION_CID,
+        "prior_database_uuid": _M31_DATABASE_UUID,
+        "runtime_binding": {
+            "run_id": "run-r2-m27",
+            "runtime_root": _M31_RUNTIME_ROOT,
+            "store_id": _M31_STORE_ID,
+            "coordination_store_id": _M31_COORDINATION_STORE_ID,
+            "worktree_root": _M31_WORKTREE_ROOT,
+            "store_generation": _M31_TARGET_GENERATION,
+            "quack_port": _M31_TARGET_QUACK_PORT,
+            "quack_endpoint": endpoint,
+            "plan_revision": _M31_TARGET_PLAN_REVISION,
+            "prior_event_watermark": _M31_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M31_TARGET_EVENT_WATERMARK,
+            "database_uuid": _M31_DATABASE_UUID,
+        },
+        "prior_authority": {
+            "event_watermark": _M31_PRIOR_EVENT_WATERMARK,
+            "event_prefix_sha256": _M31_PRIOR_EVENT_PREFIX_SHA256,
+            "projection_cid": _M31_PRIOR_PROJECTION_CID,
+            "semantic_authority_digest": _M31_PRIOR_SEMANTIC_AUTHORITY_DIGEST,
+            "program_definition_cid": _M31_PROGRAM_DEFINITION_CID,
+            "plan_root_cid": _M31_PLAN_ROOT_CID,
+            "source_binding_cid": _M31_BASE_SOURCE_BINDING_CID,
+            "source_head": _M31_BASE_CONTROL_COMMIT,
+            "source_tree": _M31_BASE_CONTROL_TREE,
+            "control_store_sha256": _M31_PRIOR_CONTROL_SHA256,
+            "control_store_size": _M31_PRIOR_CONTROL_SIZE,
+            "coordination_store_sha256": _M31_PRIOR_COORDINATION_SHA256,
+            "coordination_store_size": _M31_PRIOR_COORDINATION_SIZE,
+            "stopped_status_sha256": _M31_STOPPED_STATUS_SHA256,
+            "m30_receipt_path": f"{_M31_RUNTIME_ROOT}/m30-source-successor-receipt.json",
+            "m30_receipt_sha256": _M31_M30_RECEIPT_SHA256,
+            "m30_receipt_cid": _M31_M30_RECEIPT_CID,
+        },
+        "stopped_owner": {
+            "schema": "sawm/exact-stopped-owner-restart-authorization@1",
+            "server_id": _M31_PRIOR_SERVER_ID,
+            "process_birth_id": _M31_PRIOR_PROCESS_BIRTH_ID,
+            "generation": _M31_PRIOR_GENERATION,
+            "started_at": _M31_PRIOR_STARTED_AT,
+            "stopped_at": _M31_PRIOR_STOPPED_AT,
+            "status": "stopped",
+            "revision": 2,
+            "database_uuid": _M31_DATABASE_UUID,
+            "store_id": _M31_STORE_ID,
+            "listen_uri": endpoint,
+            "target_generation": _M31_TARGET_GENERATION,
+            "target_identity_is_runtime_generated": True,
+        },
+        "failed_launch_evidence": {
+            "schema": "sawm/detached-coordinator-pre-spawn-failure@1",
+            "phase": "detached_coordinator_pid_reservation",
+            "failure_kind": "unsafe_existing_owned_pid_projection",
+            "owner_generation": _M31_PRIOR_GENERATION,
+            "provider_token_handoff_retired": True,
+            "coordinator_process_spawned": False,
+            "task_claim_count": 0,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "provider_invocation_count": 0,
+            "implementation_commit_count": 0,
+            "merge_attempt_count": 0,
+            "accepted_completion_changes": 0,
+            "worker_self_approval": False,
+            "stale_pid_projection": {
+                "path": _M31_STALE_PID_RELATIVE_PATH,
+                "pid": _M31_STALE_PID,
+                "content_sha256": _M31_STALE_PID_SHA256,
+                "mode": _M31_STALE_PID_MODE,
+                "uid": _M31_STALE_PID_UID,
+                "gid": _M31_STALE_PID_GID,
+                "link_count": _M31_STALE_PID_NLINK,
+                "inode": _M31_STALE_PID_INODE,
+                "pid_observed_dead": True,
+                "completion_authority": False,
+            },
+        },
+        "pid_quarantine_authorization": {
+            "schema": "sawm/stale-pid-projection-quarantine-authorization@1",
+            "path": _M31_STALE_PID_RELATIVE_PATH,
+            "expected_content_sha256": _M31_STALE_PID_SHA256,
+            "expected_pid": _M31_STALE_PID,
+            "expected_mode": _M31_STALE_PID_MODE,
+            "expected_uid": _M31_STALE_PID_UID,
+            "expected_gid": _M31_STALE_PID_GID,
+            "expected_link_count": _M31_STALE_PID_NLINK,
+            "expected_inode": _M31_STALE_PID_INODE,
+            "dead_pid_must_be_reverified_under_lock": True,
+            "stable_inode_must_be_reverified": True,
+            "signal_process": False,
+            "quarantine_or_unlink_only_after_exact_match": True,
+            "new_projection_requires_exclusive_0600_create": True,
+            "runtime_projection_is_completion_authority": False,
+        },
+        "target_authority": {
+            "event_watermark": _M31_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M31_TARGET_PROJECTION_CID,
+            "plan_revision": _M31_TARGET_PLAN_REVISION,
+            "evidence_kind": (
+                "operator_control_plane_detached_coordinator_pid_recovery_successor"
+            ),
+            "operator_task_cid": (
+                "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6"
+            ),
+        },
+        "source_chain": {
+            "m30_control_commit": _M31_BASE_CONTROL_COMMIT,
+            "m30_control_tree": _M31_BASE_CONTROL_TREE,
+            "runtime_repair_commit": _M31_RUNTIME_REPAIR_COMMIT,
+            "runtime_repair_parent": _M31_BASE_CONTROL_COMMIT,
+            "runtime_repair_tree": _M31_RUNTIME_REPAIR_TREE,
+            "runtime_repair_blobs": dict(_M31_RUNTIME_REPAIR_BLOBS),
+            "initial_control_commit": _M31_INITIAL_CONTROL_COMMIT,
+            "initial_control_parent": _M31_RUNTIME_REPAIR_COMMIT,
+            "initial_control_tree": _M31_INITIAL_CONTROL_TREE,
+            "initial_control_blobs": dict(_M31_INITIAL_CONTROL_BLOBS),
+            "final_reseal_parent": _M31_INITIAL_CONTROL_COMMIT,
+            "final_control_commit_count": 2,
+            "runtime_repair_commit_count": 1,
+        },
+        "accepted_source_repair": {
+            "repair_commit": _M31_RUNTIME_REPAIR_COMMIT,
+            "repair_parent": _M31_BASE_CONTROL_COMMIT,
+            "repair_tree": _M31_RUNTIME_REPAIR_TREE,
+            "changed_paths": sorted(_M31_RUNTIME_REPAIR_BLOBS),
+            "blob_oids": dict(_M31_RUNTIME_REPAIR_BLOBS),
+            "scope": "detached_coordinator_stale_pid_recovery_control_plane",
+            "legacy_0664_projection_recovery_bounded": True,
+            "future_canonical_0600_projection_recovery_enabled": True,
+            "live_or_ambiguous_pid_rejected": True,
+            "linked_or_unstable_projection_rejected": True,
+            "repository_authority_weakened": False,
+            "worker_self_approval": False,
+        },
+        "expected_task_heads": _m30_expected_task_heads(),
+        "operator_control_paths": sorted(_M31_OPERATOR_CONTROL_PATHS),
+        "bounded_control_plane_repair_paths": sorted(
+            set(_M31_OPERATOR_CONTROL_PATHS) | set(_M31_RUNTIME_REPAIR_BLOBS)
+        ),
+        "current_datasets_gitlink": "b9f5b86199c03e427fd51fcea302479880421ff8",
+        "current_datasets_tree": "52c0c7be05a51956ba5aa2b6f85d38e03588f3b1",
+        "current_kit_gitlink": "fc9248073e9f67ac59ca607c7736746907b08037",
+        "current_kit_tree": "b26e05db1b199e7e491b45b686a0845fabbabadb",
+        "ordinary_source_changes": 0,
+        "exact_changes": {
+            "event_suffix_length": 1,
+            "evidence_node_changes": 1,
+            "store_generation_row_changes": 1,
+            "state_server_row_changes": 1,
+            "server_epoch_row_changes": 1,
+            "capability_snapshot_row_changes": 1,
+            "credential_row_changes": 1,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "plan_revision_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+            "coordination_semantic_changes": 0,
+            "sidecar_changes": 0,
+            "effect_claim_changes": 0,
+            "implementation_commit_changes": 0,
+            "implementation_provider_invocations": 0,
+            "merge_attempt_changes": 0,
+        },
+        "preservation": {
+            "event_281_and_m30_receipt_preserved": True,
+            "failed_detached_launch_preserved": True,
+            "clean_generation_28_stop_preserved": True,
+            "same_database_uuid": True,
+            "same_runtime_root": True,
+            "same_store_path": True,
+            "control_base_copied": False,
+            "coordination_base_copied": False,
+            "sidecars_preserved": True,
+            "worktrees_copied": False,
+            "worker_self_approval": False,
+        },
+    }
+
+
 def _expected_m30_stopped_owner_restart_source_seal_authority() -> dict[str, Any]:
     """Return the closed prestart and one-event M30 authorization."""
 
@@ -6683,6 +7023,40 @@ def _expected_m29_committed_evidence_verification_authority() -> dict[str, Any]:
             "worker_self_approval": False,
         },
     }
+
+
+def _m31_successor_configured(config: Mapping[str, Any]) -> bool:
+    key = _M31_SUPERSESSION_REASON
+    if key not in config:
+        return False
+    expected = _expected_m31_detached_coordinator_pid_recovery_authority()
+    observed = config.get(key)
+    if type(observed) is not dict or _identity(observed) != _identity(expected):
+        raise MaterializationError(
+            "M31 detached-coordinator PID recovery authority is invalid"
+        )
+    return True
+
+
+def _m31_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M31_SUPERSESSION_REASON
+    migration = _load_json(
+        root / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if not any(presence):
+        return False
+    if not all(presence):
+        raise MaterializationError(
+            "M31 detached-coordinator PID recovery authority is only partially declared"
+        )
+    return _m31_successor_configured(config)
 
 
 def _m30_successor_configured(config: Mapping[str, Any]) -> bool:
@@ -25082,6 +25456,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m31_successor_configured_on_any_surface(root, config):
+        return _check_m31_materialized(root, config_file)
     if _m30_successor_configured_on_any_surface(root, config):
         return _check_m30_materialized(root, config_file)
     if _m29_successor_configured_on_any_surface(root, config):
@@ -50529,6 +50905,209 @@ def _materialize_m26(
     }
 
 
+def _m31_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    expected = _expected_m31_detached_coordinator_pid_recovery_authority()
+    key = _M31_SUPERSESSION_REASON
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if (
+        config.get(key) != expected
+        or not isinstance(inventory, Mapping)
+        or inventory.get(key) != expected
+        or seal.get(f"{key}_cid") != _identity(expected)
+    ):
+        raise MaterializationError("M31 authority differs across protected controls")
+    return expected
+
+
+def _assert_m31_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Require M30 head -> bounded runtime repair -> control -> reseal."""
+
+    if any(
+        "PENDING" in value
+        for value in (
+            _M31_RUNTIME_REPAIR_COMMIT,
+            _M31_RUNTIME_REPAIR_TREE,
+            _M31_INITIAL_CONTROL_COMMIT,
+            _M31_INITIAL_CONTROL_TREE,
+            *tuple(_M31_RUNTIME_REPAIR_BLOBS.values()),
+            *tuple(_M31_INITIAL_CONTROL_BLOBS.values()),
+        )
+    ):
+        raise MaterializationError(
+            "M31 source identities are not resealed after the runtime/control commits"
+        )
+    current = str(population["source_binding"]["head"])
+    chain = authority.get("source_chain")
+    control_paths = set(authority.get("operator_control_paths") or ())
+    repair_paths = set(_M31_RUNTIME_REPAIR_BLOBS)
+    current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
+    control_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M31_INITIAL_CONTROL_COMMIT
+    ).split()
+    repair_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M31_RUNTIME_REPAIR_COMMIT
+    ).split()
+    if (
+        current in {_M31_BASE_CONTROL_COMMIT, _M31_RUNTIME_REPAIR_COMMIT,
+                    _M31_INITIAL_CONTROL_COMMIT}
+        or not isinstance(chain, Mapping)
+        or control_paths != set(_M31_OPERATOR_CONTROL_PATHS)
+        or _M31_OPERATOR_CONTROL_PATHS != _M18_OPERATOR_CONTROL_PATHS
+        or chain.get("m30_control_commit") != _M31_BASE_CONTROL_COMMIT
+        or chain.get("m30_control_tree") != _M31_BASE_CONTROL_TREE
+        or chain.get("runtime_repair_commit") != _M31_RUNTIME_REPAIR_COMMIT
+        or chain.get("runtime_repair_parent") != _M31_BASE_CONTROL_COMMIT
+        or chain.get("runtime_repair_tree") != _M31_RUNTIME_REPAIR_TREE
+        or chain.get("runtime_repair_blobs") != dict(_M31_RUNTIME_REPAIR_BLOBS)
+        or chain.get("initial_control_commit") != _M31_INITIAL_CONTROL_COMMIT
+        or chain.get("initial_control_parent") != _M31_RUNTIME_REPAIR_COMMIT
+        or chain.get("initial_control_tree") != _M31_INITIAL_CONTROL_TREE
+        or chain.get("initial_control_blobs") != dict(_M31_INITIAL_CONTROL_BLOBS)
+        or chain.get("final_reseal_parent") != _M31_INITIAL_CONTROL_COMMIT
+        or repair_parents
+        != [_M31_RUNTIME_REPAIR_COMMIT, _M31_BASE_CONTROL_COMMIT]
+        or control_parents
+        != [_M31_INITIAL_CONTROL_COMMIT, _M31_RUNTIME_REPAIR_COMMIT]
+        or current_parents != [current, _M31_INITIAL_CONTROL_COMMIT]
+        or _git(root, "rev-parse", f"{_M31_BASE_CONTROL_COMMIT}^{{tree}}")
+        != _M31_BASE_CONTROL_TREE
+        or _git(root, "rev-parse", f"{_M31_RUNTIME_REPAIR_COMMIT}^{{tree}}")
+        != _M31_RUNTIME_REPAIR_TREE
+        or _git(root, "rev-parse", f"{_M31_INITIAL_CONTROL_COMMIT}^{{tree}}")
+        != _M31_INITIAL_CONTROL_TREE
+        or _m27_name_status(root, _M31_BASE_CONTROL_COMMIT,
+                            _M31_RUNTIME_REPAIR_COMMIT)
+        != {path: "M" for path in repair_paths}
+        or _m27_name_status(root, _M31_RUNTIME_REPAIR_COMMIT,
+                            _M31_INITIAL_CONTROL_COMMIT)
+        != {path: "M" for path in control_paths}
+        or _m27_name_status(root, _M31_INITIAL_CONTROL_COMMIT, current)
+        != {path: "M" for path in control_paths}
+        or population["source_binding"].get("tree")
+        != _git(root, "rev-parse", f"{current}^{{tree}}")
+        or int(authority.get("ordinary_source_changes", -1)) != 0
+    ):
+        raise MaterializationError("M31 exact repair/control/reseal source chain differs")
+    for path, oid in _M31_RUNTIME_REPAIR_BLOBS.items():
+        if _git(root, "rev-parse", f"{_M31_RUNTIME_REPAIR_COMMIT}:{path}") != oid:
+            raise MaterializationError(f"M31 runtime-repair blob differs: {path}")
+    for path, oid in _M31_INITIAL_CONTROL_BLOBS.items():
+        if _git(root, "rev-parse", f"{_M31_INITIAL_CONTROL_COMMIT}:{path}") != oid:
+            raise MaterializationError(f"M31 initial-control blob differs: {path}")
+    for dependency, gitlink_key, tree_key, population_key in (
+        ("ipfs_datasets_py", "current_datasets_gitlink", "current_datasets_tree",
+         "datasets_gitlink"),
+        ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree", "kit_gitlink"),
+    ):
+        gitlink = str(authority[gitlink_key])
+        if (
+            any(
+                _git(root, "rev-parse", f"{head}:{dependency}") != gitlink
+                for head in (
+                    _M31_BASE_CONTROL_COMMIT, _M31_RUNTIME_REPAIR_COMMIT,
+                    _M31_INITIAL_CONTROL_COMMIT, current,
+                )
+            )
+            or population["source_binding"].get(population_key) != gitlink
+            or _git(root / dependency, "rev-parse", f"{gitlink}^{{tree}}")
+            != authority[tree_key]
+        ):
+            raise MaterializationError(f"M31 {dependency} authority differs")
+
+
+def _m31_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    runtime = authority["runtime_binding"]
+    program = config.get("database_program")
+    owner = config.get("quack_owner")
+    expected_runtime_paths = {
+        "root": _M31_RUNTIME_ROOT,
+        "state": f"{_M31_RUNTIME_ROOT}/state",
+        "worktrees": _M31_WORKTREE_ROOT,
+        "merge_queue": f"{_M31_RUNTIME_ROOT}/merge-queue",
+        "logs": f"{_M31_RUNTIME_ROOT}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+    if (
+        not isinstance(program, Mapping)
+        or not isinstance(owner, Mapping)
+        or program.get("store_id") != _M31_STORE_ID
+        or program.get("store_generation") != str(_M31_TARGET_GENERATION)
+        or program.get("quack_endpoint") != runtime["quack_endpoint"]
+        or program.get("worktree_root") != _M31_WORKTREE_ROOT
+        or owner.get("database_path") != _M31_STORE_ID
+        or owner.get("store_id") != _M31_STORE_ID
+        or owner.get("port") != _M31_TARGET_QUACK_PORT
+        or owner.get("state_dir") != f"{_M31_RUNTIME_ROOT}/quack-owner"
+        or config.get("runtime_paths") != expected_runtime_paths
+    ):
+        raise MaterializationError("scheduler M31 runtime binding differs")
+    control = (root / _M31_STORE_ID).resolve()
+    coordination = (root / _M31_COORDINATION_STORE_ID).resolve()
+    if not control.is_relative_to(root) or not coordination.is_relative_to(root):
+        raise MaterializationError("M31 runtime path escapes repository")
+    return control, coordination
+
+
+def _m31_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    authority = _expected_m31_detached_coordinator_pid_recovery_authority()
+    return {
+        "schema": "sawm/detached-coordinator-pid-recovery-source-seal@1",
+        "authority": "operator_control_plane",
+        "migration_revision": _M31_MIGRATION_REVISION,
+        "migration_kind": _M31_SUPERSESSION_REASON,
+        "supersession_mode": _M31_SUPERSESSION_MODE,
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "current_source_head": population["source_binding"]["head"],
+        "current_source_tree": population["source_binding"]["tree"],
+        "validation_digest": validation_digest,
+        "authorization_cid": _identity(authority),
+        "runtime_binding": authority["runtime_binding"],
+        "prior_authority": authority["prior_authority"],
+        "stopped_owner": authority["stopped_owner"],
+        "failed_launch_evidence": authority["failed_launch_evidence"],
+        "pid_quarantine_authorization": authority["pid_quarantine_authorization"],
+        "target_authority": authority["target_authority"],
+        "source_chain": authority["source_chain"],
+        "accepted_source_repair": authority["accepted_source_repair"],
+        "bounded_control_plane_repair_paths": authority[
+            "bounded_control_plane_repair_paths"
+        ],
+        "exact_changes": authority["exact_changes"],
+        "preservation": authority["preservation"],
+        "authenticated_mutation_route": {
+            "transport": "quack_proxy_only",
+            "endpoint_from_live_owner_discovery": True,
+            "token_from_secret_handoff_or_environment_only": True,
+            "token_in_argv": False,
+            "token_in_evidence": False,
+            "direct_authoritative_file_opened": False,
+        },
+        "scheduler_runtime_root": config["runtime_paths"]["root"],
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
 def _m30_source_binding_authority(
     root: Path,
     population: Mapping[str, Any],
@@ -50782,6 +51361,214 @@ def _m30_migration_body(
         "scheduler_runtime_root": config["runtime_paths"]["root"],
         "accepted_completion_changes": 0,
         "worker_self_approval": False,
+    }
+
+
+def _check_m31_prestart_admission(
+    root: Path,
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit the exact stopped generation-28/event-281 predecessor once."""
+
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m31_source_binding_authority(root, population, config)
+    _assert_m31_source_delta(root, population, authority)
+    control, coordination = _m31_target_paths(root, config, authority)
+    _assert_offline(control)
+    receipt_path = control.parent / "m31-source-successor-receipt.json"
+    if os.path.lexists(receipt_path):
+        raise MigrationRequired("M31 prestart admission is already consumed")
+    status_path = control.parent / "quack-owner/quack-state-server.status.json"
+    m30_receipt_path = control.parent / "m30-source-successor-receipt.json"
+    for path, expected_size, expected_sha, noun in (
+        (control, _M31_PRIOR_CONTROL_SIZE, _M31_PRIOR_CONTROL_SHA256,
+         "M31 stopped control store"),
+        (coordination, _M31_PRIOR_COORDINATION_SIZE,
+         _M31_PRIOR_COORDINATION_SHA256, "M31 coordination store"),
+        (status_path, None, _M31_STOPPED_STATUS_SHA256,
+         "M31 stopped status"),
+        (m30_receipt_path, None, _M31_M30_RECEIPT_SHA256,
+         "M31 M30 receipt"),
+    ):
+        try:
+            observed_sha, observed_size = _stable_regular_sha256(
+                path,
+                root=root,
+                noun=noun,
+                required_link_count=1,
+            )
+        except (OSError, MigrationRequired) as exc:
+            raise MigrationRequired(f"{noun} is unavailable") from exc
+        if (
+            (expected_size is not None and observed_size != expected_size)
+            or observed_sha != expected_sha
+        ):
+            raise MigrationRequired(f"{noun} bytes differ")
+    m30_receipt, _ = _load_nofollow_json(
+        m30_receipt_path, root=root, noun="M31 prior M30 receipt"
+    )
+    unhashed_m30 = dict(m30_receipt)
+    claimed_m30 = str(unhashed_m30.pop("receipt_cid", ""))
+    if (
+        claimed_m30 != _M31_M30_RECEIPT_CID
+        or claimed_m30 != _identity(unhashed_m30)
+        or m30_receipt.get("target_event_watermark")
+        != _M31_PRIOR_EVENT_WATERMARK
+        or m30_receipt.get("projection_cid") != _M31_PRIOR_PROJECTION_CID
+    ):
+        raise MigrationRequired("M31 prior M30 receipt differs")
+    status, _ = _load_nofollow_json(
+        status_path, root=root, noun="M31 stopped Quack status"
+    )
+    identity = status.get("identity")
+    stopped = authority["stopped_owner"]
+    marker_path = control.with_name(f".{control.name}.state-owner.json")
+    stop_path = status_path.with_name("quack-state-server.stop")
+    token_handoff_path = status_path.parent / "env___SAWM_QUACK_TOKEN.quack-token"
+    if (
+        status.get("lifecycle") != "stopped"
+        or not isinstance(identity, Mapping)
+        or identity.get("status") != "stopped"
+        or identity.get("server_id") != stopped["server_id"]
+        or identity.get("process_birth_id") != stopped["process_birth_id"]
+        or identity.get("database_uuid") != stopped["database_uuid"]
+        or identity.get("store_id") != stopped["store_id"]
+        or identity.get("listen_uri") != stopped["listen_uri"]
+        or identity.get("started_at") != stopped["started_at"]
+        or identity.get("stopped_at") != stopped["stopped_at"]
+        or int(identity.get("generation") or 0) != _M31_PRIOR_GENERATION
+        or os.path.lexists(marker_path)
+        or os.path.lexists(stop_path)
+        or os.path.lexists(token_handoff_path)
+    ):
+        raise MigrationRequired("M31 stopped owner status differs")
+    pid_path = root / _M31_STALE_PID_RELATIVE_PATH
+    if (
+        not pid_path.is_absolute()
+        or Path(os.path.abspath(pid_path)) != pid_path
+        or not pid_path.is_relative_to(root)
+    ):
+        raise MigrationRequired("M31 stale PID path escapes repository")
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        serialized_lock_update,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        _read_stable_regular_bytes,
+        _StableArtifactReadError,
+    )
+    try:
+        with serialized_lock_update(pid_path):
+            pid_payload, pid_evidence = _read_stable_regular_bytes(
+                pid_path, max_bytes=32
+            )
+            if (
+                pid_payload is None
+                or pid_evidence.get("state") != "present"
+                or int(pid_evidence.get("link_count", -1))
+                != _M31_STALE_PID_NLINK
+                or stat.S_IMODE(int(pid_evidence.get("mode", 0)))
+                != _M31_STALE_PID_MODE
+                or int(pid_evidence.get("uid", -1)) != _M31_STALE_PID_UID
+                or int(pid_evidence.get("gid", -1)) != _M31_STALE_PID_GID
+                or int(pid_evidence.get("inode", -1)) != _M31_STALE_PID_INODE
+                or pid_payload != f"{_M31_STALE_PID}\n".encode("ascii")
+                or hashlib.sha256(pid_payload).hexdigest()
+                != _M31_STALE_PID_SHA256
+            ):
+                raise MigrationRequired("M31 stale PID projection differs")
+            try:
+                os.kill(_M31_STALE_PID, 0)
+            except ProcessLookupError:
+                pass
+            except (PermissionError, OSError) as exc:
+                raise MigrationRequired(
+                    "M31 stale PID death is not provable"
+                ) from exc
+            else:
+                raise MigrationRequired(
+                    "M31 stale PID unexpectedly identifies a live process"
+                )
+    except (OSError, _StableArtifactReadError) as exc:
+        raise MigrationRequired("M31 stale PID projection is unavailable") from exc
+    import duckdb
+
+    connection = duckdb.connect(str(control), read_only=True)
+    try:
+        state_rows = connection.execute(
+            "SELECT server_id,store_id,database_uuid,process_birth_id,listen_uri,"
+            "generation,started_at,stopped_at,status,revision FROM state_servers "
+            "WHERE generation=28"
+        ).fetchall()
+        generation_rows = connection.execute(
+            "SELECT generation,database_uuid,birth_id,created_at FROM "
+            "store_generations WHERE generation=28"
+        ).fetchall()
+        credential_rows = connection.execute(
+            "SELECT generation,secret_handle,purpose FROM credentials "
+            "WHERE generation=28"
+        ).fetchall()
+        counts = {
+            table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+            for table in (
+                "state_servers", "store_generations", "credentials",
+                "server_epochs", "capability_snapshots",
+            )
+        }
+        prefix = _event_prefix_digest(connection, _M31_PRIOR_EVENT_WATERMARK)
+        semantic = _semantic_authority_digest_on(connection)
+        task_rows = connection.execute(
+            "SELECT task_alias,status,revision FROM tasks ORDER BY task_alias"
+        ).fetchall()
+        event_count = int(
+            connection.execute("SELECT COUNT(*) FROM domain_events").fetchone()[0]
+        )
+    finally:
+        connection.close()
+    expected_state = [
+        (
+            stopped["server_id"], stopped["store_id"], stopped["database_uuid"],
+            stopped["process_birth_id"], stopped["listen_uri"], 28,
+            stopped["started_at"], stopped["stopped_at"], "stopped", 2,
+        )
+    ]
+    observed_heads = {
+        str(alias): {"status": str(value), "revision": int(revision)}
+        for alias, value, revision in task_rows
+    }
+    if (
+        state_rows != expected_state
+        or generation_rows
+        != [(28, _M31_DATABASE_UUID, _M31_PRIOR_PROCESS_BIRTH_ID,
+             _M31_PRIOR_STARTED_AT)]
+        or credential_rows
+        != [(28, "env://SAWM_QUACK_TOKEN", "quack-auth")]
+        or counts != {
+            "state_servers": 28,
+            "store_generations": 28,
+            "credentials": 28,
+            "server_epochs": 28,
+            "capability_snapshots": 28,
+        }
+        or prefix != (_M31_PRIOR_EVENT_PREFIX_SHA256, _M31_PRIOR_EVENT_WATERMARK)
+        or event_count != _M31_PRIOR_EVENT_WATERMARK
+        or semantic != _M31_PRIOR_SEMANTIC_AUTHORITY_DIGEST
+        or observed_heads != authority["expected_task_heads"]
+    ):
+        raise MigrationRequired("M31 exact stopped predecessor projection differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "admitted_stopped_generation_28_restart_to_generation_29",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "prior_event_watermark": _M31_PRIOR_EVENT_WATERMARK,
+        "prior_projection_cid": _M31_PRIOR_PROJECTION_CID,
+        "prior_generation": _M31_PRIOR_GENERATION,
+        "target_generation": _M31_TARGET_GENERATION,
+        "stale_pid_projection_verified": True,
+        "stale_pid_projection_quarantined": False,
+        "prestart_authorization_consumed": False,
     }
 
 
@@ -53413,6 +54200,182 @@ def _verify_m28_live_materialization(
     }
 
 
+def _inspect_m31_live_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    *,
+    expected_event_watermark: int,
+    expected_projection_cid: str,
+) -> dict[str, Any]:
+    snapshot = source.snapshot()
+    plan = source.get_plan(str(population["plan_root_cid"]))
+    if (
+        snapshot.event_cursor != expected_event_watermark
+        or snapshot.projection_cid != expected_projection_cid
+        or snapshot.task_count != 45
+        or snapshot.goal_count != 29
+        or snapshot.dependency_count != 136
+        or snapshot.plan_count != 1
+        or snapshot.plan_root_cid != str(population["plan_root_cid"])
+        or plan is None
+        or int(plan.get("revision") or 0) != _M31_TARGET_PLAN_REVISION
+    ):
+        raise MigrationRequired("M31 live snapshot/plan projection differs")
+    for alias, expected in authority["expected_task_heads"].items():
+        task = source.get_task(alias)
+        if (
+            task is None
+            or task.status != expected["status"]
+            or int(task.revision) != int(expected["revision"])
+        ):
+            raise MigrationRequired(f"M31 live task head differs: {alias}")
+    return {
+        "event_watermark": snapshot.event_cursor,
+        "projection_cid": snapshot.projection_cid,
+        "plan_revision": int(plan["revision"]),
+    }
+
+
+def _inspect_m31_generation_restart_rows(
+    source: Any,
+    identity: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    stopped = authority["stopped_owner"]
+    server_id = str(identity.get("server_id") or "")
+    birth_id = str(identity.get("process_birth_id") or "")
+    started_at = str(identity.get("started_at") or "")
+    if (
+        not server_id
+        or not birth_id
+        or not started_at
+        or identity.get("status") != "ready"
+        or identity.get("store_id") != _M31_STORE_ID
+        or identity.get("database_uuid") != _M31_DATABASE_UUID
+        or identity.get("listen_uri") != "quack:127.0.0.1:24070"
+        or identity.get("extension_fingerprint") != _M31_EXTENSION_FINGERPRINT
+        or int(identity.get("generation") or 0) != _M31_TARGET_GENERATION
+    ):
+        raise MigrationRequired("M31 live generation-29 identity differs")
+    with source.intent._connection(write=False) as connection:
+        state_rows = _positional_rows(
+            connection.execute(
+                "SELECT server_id,store_id,database_uuid,process_birth_id,listen_uri,"
+                "extension_fingerprint,schema_revision,generation,started_at,"
+                "stopped_at,status,revision,extension_schema,extension_json "
+                "FROM state_servers WHERE generation>=28 ORDER BY generation"
+            ).fetchall(),
+            14,
+        )
+        generation_rows = _positional_rows(
+            connection.execute(
+                "SELECT generation,schema_revision,fence_epoch,revision,database_uuid,"
+                "birth_id,created_at,extension_schema,extension_json FROM "
+                "store_generations WHERE generation>=28 ORDER BY generation"
+            ).fetchall(),
+            9,
+        )
+        credential_rows = _positional_rows(
+            connection.execute(
+                "SELECT credential_id,secret_handle,generation,purpose,created_at,"
+                "rotated_at,revoked_at,revision FROM credentials "
+                "WHERE generation>=28 ORDER BY generation"
+            ).fetchall(),
+            8,
+        )
+        epoch_rows = _positional_rows(
+            connection.execute(
+                "SELECT server_id,epoch,fence_epoch,started_at,ended_at FROM "
+                "server_epochs WHERE server_id=?",
+                [server_id],
+            ).fetchall(),
+            5,
+        )
+        capability_rows = _positional_rows(
+            connection.execute(
+                "SELECT snapshot_id,server_id,profile_id,duckdb_version,extension_name,"
+                "extension_fingerprint,status,observed_at,body_json FROM "
+                "capability_snapshots WHERE server_id=?",
+                [server_id],
+            ).fetchall(),
+            9,
+        )
+        counts = {
+            table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+            for table in (
+                "state_servers", "store_generations", "credentials",
+                "server_epochs", "capability_snapshots",
+            )
+        }
+    capability_body = json.dumps(
+        {
+            "status": "compatible",
+            "profile_id": "agent-supervisor-duckdb-quack-1.5",
+            "extension_fingerprint": _M31_EXTENSION_FINGERPRINT,
+        },
+        sort_keys=True,
+    )
+    expected_states = [
+        (
+            stopped["server_id"], stopped["store_id"], stopped["database_uuid"],
+            stopped["process_birth_id"], stopped["listen_uri"],
+            _M31_EXTENSION_FINGERPRINT, 1, 28, stopped["started_at"],
+            stopped["stopped_at"], "stopped", 2, "", "{}",
+        ),
+        (
+            server_id, _M31_STORE_ID, _M31_DATABASE_UUID, birth_id,
+            "quack:127.0.0.1:24070", _M31_EXTENSION_FINGERPRINT,
+            int(identity.get("schema_revision") or 0), 29, started_at, None,
+            "ready", int(identity.get("revision") or 0) + 1, "", "{}",
+        ),
+    ]
+    if (
+        state_rows != expected_states
+        or generation_rows != [
+            (28, 1, 28, 0, _M31_DATABASE_UUID, _M31_PRIOR_PROCESS_BIRTH_ID,
+             _M31_PRIOR_STARTED_AT, "", "{}"),
+            (29, int(identity.get("schema_revision") or 0),
+             int(identity.get("fence_epoch") or 0), 0, _M31_DATABASE_UUID,
+             birth_id, started_at, "", "{}"),
+        ]
+        or credential_rows != [
+            (f"cred:{_M31_PRIOR_SERVER_ID}:28", "env://SAWM_QUACK_TOKEN", 28,
+             "quack-auth", _M31_PRIOR_STARTED_AT, None, None, 0),
+            (f"cred:{server_id}:29", "env://SAWM_QUACK_TOKEN", 29,
+             "quack-auth", started_at, None, None, 0),
+        ]
+        or epoch_rows != [
+            (server_id, int(identity.get("startup_epoch") or 0),
+             int(identity.get("fence_epoch") or 0), started_at, None)
+        ]
+        or capability_rows != [
+            (f"cap:{server_id}:29", server_id,
+             "agent-supervisor-duckdb-quack-1.5", "1.5.5", "quack",
+             _M31_EXTENSION_FINGERPRINT, "compatible", started_at,
+             capability_body)
+        ]
+        or counts != {
+            "state_servers": 29,
+            "store_generations": 29,
+            "credentials": 29,
+            "server_epochs": 29,
+            "capability_snapshots": 29,
+        }
+        or int(identity.get("schema_revision") or 0) != 1
+        or int(identity.get("fence_epoch") or 0) != 29
+        or int(identity.get("revision") or 0) != 0
+        or int(identity.get("credential_generation") or 0) != 29
+    ):
+        raise MigrationRequired("M31 exact generation-28/29 restart rows differ")
+    return {
+        "generation_28_29_restart_rows_verified": True,
+        "live_server_id": server_id,
+        "live_process_birth_id": birth_id,
+        "live_started_at": started_at,
+    }
+
+
 def _inspect_m30_live_projection(
     source: Any,
     population: Mapping[str, Any],
@@ -53613,6 +54576,231 @@ def _inspect_m30_generation_restart_rows(
         "live_process_birth_id": birth_id,
         "live_started_at": started_at,
     }
+
+
+def _m31_expected_event_body(
+    body: Mapping[str, Any],
+    *,
+    evidence_id: str,
+    digest: str,
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    target = authority["target_authority"]
+    inner = {
+        "evidence_id": evidence_id,
+        "parent_evidence_id": "",
+        "task_cid": target["operator_task_cid"],
+        "evidence_kind": target["evidence_kind"],
+        "digest": digest,
+        "body": dict(body),
+        "created_at": _M31_CONTROL_RECORDED_AT,
+        "revision": 0,
+    }
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": evidence_id,
+        "body": inner,
+        "recorded_at": _M31_CONTROL_RECORDED_AT,
+        "owner_id": "sawm-r2-m31-live-source-sealer",
+    }
+
+
+def _verify_m31_live_materialization(
+    source: Any,
+    identity: Mapping[str, Any],
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    body = _m31_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence_id = content_identity(
+        {
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": body,
+        }
+    )
+    event_body = _m31_expected_event_body(
+        body, evidence_id=evidence_id, digest=digest, authority=authority
+    )
+    expected_event_id = content_identity(
+        {
+            "stream_id": "stream:intent",
+            "sequence": _M31_TARGET_EVENT_WATERMARK,
+            "global_sequence": _M31_TARGET_EVENT_WATERMARK,
+            "event_type": "intent.evidence_recorded",
+            "body": event_body,
+        }
+    )
+    head = _inspect_m31_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M31_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=_M31_TARGET_PROJECTION_CID,
+    )
+    restart = _inspect_m31_generation_restart_rows(source, identity, authority)
+    with source.intent._connection(write=False) as connection:
+        evidence = connection.execute(
+            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+            "created_at,body_json FROM evidence_nodes WHERE evidence_id=?",
+            [evidence_id],
+        ).fetchone()
+        event = connection.execute(
+            "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+            "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+            "WHERE global_sequence=?",
+            [_M31_TARGET_EVENT_WATERMARK],
+        ).fetchone()
+        prior_prefix = _event_prefix_digest(connection, _M31_PRIOR_EVENT_WATERMARK)
+        prefix = _event_prefix_digest(connection, _M31_TARGET_EVENT_WATERMARK)
+        semantic = _semantic_authority_digest_on(connection)
+    expected_evidence = [
+        evidence_id, "", target["operator_task_cid"], target["evidence_kind"],
+        digest, _M31_CONTROL_RECORDED_AT, _canonical(body).decode("utf-8"),
+    ]
+    expected_event = [
+        expected_event_id, "stream:intent", _M31_TARGET_EVENT_WATERMARK,
+        _M31_TARGET_EVENT_WATERMARK, "intent.evidence_recorded",
+        target["operator_task_cid"], "", "session:intent",
+        _M31_CONTROL_RECORDED_AT, _canonical(event_body).decode("utf-8"),
+    ]
+    if (
+        evidence is None
+        or [evidence[index] for index in range(7)] != expected_evidence
+        or event is None
+        or [event[index] for index in range(10)] != expected_event
+        or prior_prefix
+        != (_M31_PRIOR_EVENT_PREFIX_SHA256, _M31_PRIOR_EVENT_WATERMARK)
+        or prefix[1] != _M31_TARGET_EVENT_WATERMARK
+        or semantic != _M31_PRIOR_SEMANTIC_AUTHORITY_DIGEST
+    ):
+        raise MigrationRequired("M31 exact target event/evidence authority differs")
+    return {
+        **head,
+        **restart,
+        "migration_digest": digest,
+        "migration_evidence_id": evidence_id,
+        "migration_evidence_event_id": expected_event_id,
+        "target_event_prefix_sha256": prefix[0],
+        "prior_event_prefix_verified": True,
+        "semantic_authority_digest": semantic,
+        "full_event_and_evidence_body_verified": True,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "plan_revision_changes": 0,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _expected_m31_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": "sawm/non-authoritative-detached-coordinator-source-successor-receipt@1",
+        "authoritative": False,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M31_MIGRATION_REVISION,
+        "migration_kind": _M31_SUPERSESSION_REASON,
+        "supersession_mode": _M31_SUPERSESSION_MODE,
+        f"{_M31_SUPERSESSION_REASON}_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "validation_digest": validation_digest,
+        "database_path": _M31_STORE_ID,
+        "coordination_path": _M31_COORDINATION_STORE_ID,
+        "target_generation": _M31_TARGET_GENERATION,
+        "target_plan_revision": _M31_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M31_TARGET_EVENT_WATERMARK,
+        "projection_cid": _M31_TARGET_PROJECTION_CID,
+        "migration_digest": verified["migration_digest"],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "migration_evidence_event_id": verified["migration_evidence_event_id"],
+        "target_event_prefix_sha256": verified["target_event_prefix_sha256"],
+        "semantic_authority_digest": verified["semantic_authority_digest"],
+        "generation_28_29_restart_rows_verified": True,
+        "live_server_id": verified["live_server_id"],
+        "live_process_birth_id": verified["live_process_birth_id"],
+        "live_started_at": verified["live_started_at"],
+        "failed_launch_evidence_preserved": True,
+        "stale_pid_quarantine_is_runtime_only": True,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "full_event_and_evidence_body_verified": True,
+        "plan_revision_changes": 0,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "coordination_semantic_changes": 0,
+        "sidecars_preserved": True,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _ensure_m31_source_successor_receipt(
+    root: Path, control: Path, expected: Mapping[str, Any]
+) -> Mapping[str, Any]:
+    path = control.parent / "m31-source-successor-receipt.json"
+    lock_path = control.parent / ".m31-source-successor-receipt.publish.lock"
+    descriptor = os.open(
+        lock_path,
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        if os.path.lexists(path):
+            observed, _ = _load_nofollow_json(
+                path, root=root, noun="M31 source successor receipt"
+            )
+            if observed != dict(expected):
+                raise MigrationRequired("M31 source successor receipt differs")
+            return dict(observed)
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        out = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            os.write(out, _canonical(expected) + b"\n")
+            os.fsync(out)
+        finally:
+            os.close(out)
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        return dict(expected)
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(descriptor)
 
 
 def _m30_expected_event_body(
@@ -53842,6 +55030,176 @@ def _ensure_m30_source_successor_receipt(
         except OSError:
             pass
         os.close(descriptor)
+
+
+def _check_m31_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m31_source_binding_authority(root, population, config)
+    _assert_m31_source_delta(root, population, authority)
+    control, coordination = _m31_target_paths(root, config, authority)
+    receipt_path = control.parent / "m31-source-successor-receipt.json"
+    if not os.path.lexists(receipt_path):
+        raise MigrationRequired("M31 source successor receipt is missing")
+    if (
+        _store_sha256(coordination) != _M31_PRIOR_COORDINATION_SHA256
+        or _store_sha256(control.parent / "m30-source-successor-receipt.json")
+        != _M31_M30_RECEIPT_SHA256
+    ):
+        raise MigrationRequired("M31 preserved predecessor files differ")
+    validation_digest = _m7_validation_digest(root, population)
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        authority,
+        owner_id="sawm-r2-m31-live-source-sealer",
+    ) as (source, identity):
+        verified = _verify_m31_live_materialization(
+            source, identity, population, config, authority, validation_digest
+        )
+    observed, _ = _load_nofollow_json(
+        receipt_path, root=root, noun="M31 source successor receipt"
+    )
+    expected = _expected_m31_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    if observed != expected:
+        raise MigrationRequired("M31 source successor receipt differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_detached_coordinator_pid_recovery_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "receipt": observed,
+        **verified,
+    }
+
+
+def _materialize_m31(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    del config_file
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m31_source_binding_authority(root, population, config)
+    _assert_m31_source_delta(root, population, authority)
+    control, coordination = _m31_target_paths(root, config, authority)
+    if (
+        _store_sha256(coordination) != _M31_PRIOR_COORDINATION_SHA256
+        or _store_sha256(control.parent / "m30-source-successor-receipt.json")
+        != _M31_M30_RECEIPT_SHA256
+    ):
+        raise MigrationRequired("M31 preserved predecessor files differ")
+    validation_digest = _m7_validation_digest(root, population)
+    body = _m31_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence_id = content_identity(
+        {
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": body,
+        }
+    )
+    appended = False
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        authority,
+        owner_id="sawm-r2-m31-live-source-sealer",
+    ) as (source, identity):
+        snapshot = source.snapshot()
+        if snapshot.event_cursor == _M31_PRIOR_EVENT_WATERMARK:
+            _inspect_m31_live_projection(
+                source,
+                population,
+                authority,
+                expected_event_watermark=_M31_PRIOR_EVENT_WATERMARK,
+                expected_projection_cid=_M31_PRIOR_PROJECTION_CID,
+            )
+            _inspect_m31_generation_restart_rows(source, identity, authority)
+            with source.intent._connection(write=False) as connection:
+                target_evidence_exists = connection.execute(
+                    "SELECT 1 FROM evidence_nodes WHERE evidence_id=?", [evidence_id]
+                ).fetchone()
+            if target_evidence_exists is not None:
+                raise MigrationRequired(
+                    "M31 target evidence predates its one authorized event append"
+                )
+            from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+            original_clock = intent_repository._utc_iso
+
+            def fixed_m31_utc_iso(_moment: Any = None) -> str:
+                return _M31_CONTROL_RECORDED_AT
+
+            intent_repository._utc_iso = fixed_m31_utc_iso
+            try:
+                try:
+                    receipt = source.record_evidence(
+                        task_cid=target["operator_task_cid"],
+                        evidence_kind=target["evidence_kind"],
+                        digest=digest,
+                        body=body,
+                    )
+                except Exception:
+                    raise MaterializationError(
+                        "authenticated M31 evidence append failed"
+                    ) from None
+            finally:
+                clock_interference = intent_repository._utc_iso is not fixed_m31_utc_iso
+                intent_repository._utc_iso = original_clock
+            if clock_interference or not receipt.changed:
+                raise MaterializationError("M31 evidence append clock/CAS differed")
+            appended = True
+        elif snapshot.event_cursor != _M31_TARGET_EVENT_WATERMARK:
+            raise MigrationRequired("M31 live event head is neither prior nor target")
+        verified = _verify_m31_live_materialization(
+            source, identity, population, config, authority, validation_digest
+        )
+        if verified["migration_evidence_id"] != evidence_id:
+            raise MaterializationError("M31 evidence identity differs")
+    if (
+        _store_sha256(coordination) != _M31_PRIOR_COORDINATION_SHA256
+        or _store_sha256(control.parent / "m30-source-successor-receipt.json")
+        != _M31_M30_RECEIPT_SHA256
+    ):
+        raise MigrationRequired("M31 predecessor files changed during append")
+    expected_receipt = _expected_m31_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    receipt = _ensure_m31_source_successor_receipt(root, control, expected_receipt)
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": (
+            "materialized_detached_coordinator_pid_recovery_successor"
+            if appended
+            else "checked_detached_coordinator_pid_recovery_successor"
+        ),
+        "migration_required": False,
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "receipt": receipt,
+        **verified,
+    }
 
 
 def _check_m30_materialized(root: Path, config_file: Path) -> dict[str, Any]:
@@ -54607,6 +55965,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m31_successor_configured_on_any_surface(root, config):
+        return _materialize_m31(root, config_file, config)
     if _m30_successor_configured_on_any_surface(root, config):
         return _materialize_m30(root, config_file, config)
     if _m29_successor_configured_on_any_surface(root, config):
@@ -54921,6 +56281,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 any(
                     key in config
                     for key in (
+                        "detached_coordinator_pid_recovery_successor_materialization",
                         "stopped_owner_restart_source_seal_successor_materialization",
                         "committed_evidence_verification_successor_materialization",
                         "live_claim_admission_recovery_successor_materialization",

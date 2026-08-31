@@ -3197,6 +3197,141 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m31_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Select M31 on any declaration surface, including partial state."""
+
+    key = "detached_coordinator_pid_recovery_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m31_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    try:
+        population = materializer.build_population(root)
+        materializer._assert_m31_source_delta(root, population, authority)
+        return []
+    except Exception as exc:
+        return [
+            "M31 exact runtime-repair/control/reseal chain differs: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m31_detached_coordinator_pid_recovery_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Check M31's exact stopped-owner/PID-recovery successor contract."""
+
+    key = "detached_coordinator_pid_recovery_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m31_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M31 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer._expected_m31_detached_coordinator_pid_recovery_authority()
+        )
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append("M31 detached-coordinator authority is only partially declared")
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append("M31 detached-coordinator authority differs across controls")
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append("M31 detached-coordinator authority CID differs")
+        binding = expected.get("runtime_binding", {})
+        stopped = expected.get("stopped_owner", {})
+        failure = expected.get("failed_launch_evidence", {})
+        stale = failure.get("stale_pid_projection", {})
+        quarantine = expected.get("pid_quarantine_authorization", {})
+        changes = expected.get("exact_changes", {})
+        preservation = expected.get("preservation", {})
+        if (
+            expected.get("schema")
+            != (
+                "sawm/detached-coordinator-pid-recovery-successor-"
+                "materialization-authorization@1"
+            )
+            or expected.get("migration_revision") != "SAWM-R2-M31"
+            or expected.get("target_generation") != 29
+            or expected.get("target_event_watermark") != 282
+            or expected.get("target_projection_cid")
+            != "baguqeerakjradc5sa5dmflygtfh2birrd5onygnt6q2pkvoomsxrspi22jaa"
+            or binding.get("prior_event_watermark") != 281
+            or binding.get("store_generation") != 29
+            or stopped.get("generation") != 28
+            or stopped.get("status") != "stopped"
+            or stopped.get("target_generation") != 29
+            or failure.get("coordinator_process_spawned") is not False
+            or failure.get("provider_token_handoff_retired") is not True
+            or stale.get("pid") != 3_554_888
+            or stale.get("content_sha256")
+            != "592c926b10dfc688ab07af087bb761228c61a1f8f2829c7f577464322eacca46"
+            or stale.get("mode") != 0o664
+            or stale.get("link_count") != 1
+            or stale.get("inode") != 97_255_434
+            or stale.get("pid_observed_dead") is not True
+            or quarantine.get("dead_pid_must_be_reverified_under_lock") is not True
+            or quarantine.get("stable_inode_must_be_reverified") is not True
+            or quarantine.get("new_projection_requires_exclusive_0600_create") is not True
+            or changes.get("event_suffix_length") != 1
+            or changes.get("task_revision_changes") != 0
+            or changes.get("task_status_changes") != 0
+            or changes.get("coordination_semantic_changes") != 0
+            or preservation.get("event_281_and_m30_receipt_preserved") is not True
+            or preservation.get("failed_detached_launch_preserved") is not True
+        ):
+            errors.append("M31 detached-coordinator recovery delta is not exact")
+        if require_active_runtime:
+            target_root = str(expected["target_runtime_root"])
+            program = scheduler.get("database_program")
+            owner = scheduler.get("quack_owner")
+            runtime = scheduler.get("runtime_paths")
+            if (
+                not isinstance(program, Mapping)
+                or program.get("store_id") != expected["target_store_id"]
+                or program.get("store_generation") != "29"
+                or program.get("quack_endpoint") != "quack:127.0.0.1:24070"
+                or not isinstance(owner, Mapping)
+                or owner.get("database_path") != expected["target_store_id"]
+                or owner.get("store_id") != expected["target_store_id"]
+                or owner.get("port") != 24_070
+                or runtime
+                != {
+                    "root": target_root,
+                    "state": f"{target_root}/state",
+                    "worktrees": f"{target_root}/worktrees",
+                    "merge_queue": f"{target_root}/merge-queue",
+                    "logs": f"{target_root}/logs",
+                    "generated_runtime_artifacts_are_completion_authority": False,
+                }
+            ):
+                errors.append("scheduler M31 target/runtime binding is not exact")
+        errors.extend(_m31_source_chain_errors(root, materializer, expected))
+        return errors
+    except Exception as exc:
+        return [
+            "M31 detached-coordinator authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m30_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -3212,9 +3347,26 @@ def _m30_source_chain_errors(
     root: Path,
     materializer: Any,
     authority: Mapping[str, Any],
+    *,
+    current_head: str | None = None,
 ) -> list[str]:
     try:
         population = materializer.build_population(root)
+        if current_head:
+            binding = dict(population["source_binding"])
+            binding.update(
+                {
+                    "head": current_head,
+                    "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                    "datasets_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                    ),
+                    "kit_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                    ),
+                }
+            )
+            population = {**population, "source_binding": binding}
         materializer._assert_m30_source_delta(root, population, authority)
         return []
     except Exception as exc:
@@ -3324,7 +3476,29 @@ def _m30_stopped_owner_restart_source_seal_successor_errors(
                 }
             ):
                 errors.append("scheduler M30 target/runtime binding is not exact")
-        errors.extend(_m30_source_chain_errors(root, materializer, expected))
+        historical_control_head = None
+        if not require_active_runtime and _m31_successor_declared(
+            scheduler, seal, migration
+        ):
+            m31 = (
+                materializer
+                ._expected_m31_detached_coordinator_pid_recovery_authority()
+            )
+            source_chain = m31.get("source_chain", {})
+            if isinstance(source_chain, Mapping):
+                historical_control_head = str(
+                    source_chain.get("m30_control_commit") or ""
+                ) or None
+            if historical_control_head is None:
+                errors.append("M31 prior M30 control source head is absent")
+        errors.extend(
+            _m30_source_chain_errors(
+                root,
+                materializer,
+                expected,
+                current_head=historical_control_head,
+            )
+        )
         return errors
     except Exception as exc:
         return [
@@ -8883,6 +9057,54 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m31_key = "detached_coordinator_pid_recovery_successor_materialization"
+    m31_presence = (
+        m31_key in scheduler,
+        m31_key in migration,
+        f"{m31_key}_cid" in seal,
+    )
+    if any(m31_presence):
+        if not all(m31_presence):
+            return effective, ["active M31 nested-source authority is partial"]
+        scheduled = scheduler.get(m31_key)
+        migrated = migration.get(m31_key)
+        if (
+            type(scheduled) is not dict
+            or type(migrated) is not dict
+            or _canonical_json(scheduled) != _canonical_json(migrated)
+        ):
+            return effective, ["active M31 nested-source authority differs"]
+        claimed_cid = "sha256:" + hashlib.sha256(
+            _canonical_json(scheduled)
+        ).hexdigest()
+        if seal.get(f"{m31_key}_cid") != claimed_cid:
+            return effective, ["active M31 nested-source authority CID differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(scheduled.get("current_datasets_gitlink") or ""),
+                str(scheduled.get("current_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(scheduled.get("current_kit_gitlink") or ""),
+                str(scheduled.get("current_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M31 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     m30_key = "stopped_owner_restart_source_seal_successor_materialization"
     m30_presence = (
         m30_key in scheduler,
@@ -9345,6 +9567,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m31_key = "detached_coordinator_pid_recovery_successor_materialization"
+        m31_presence = (
+            m31_key in scheduler_probe,
+            m31_key in migration_probe,
+            f"{m31_key}_cid" in seal,
+        )
         m30_key = "stopped_owner_restart_source_seal_successor_materialization"
         m30_presence = (
             m30_key in scheduler_probe,
@@ -9419,7 +9647,36 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m30_presence):
+        if any(m31_presence):
+            scheduled = scheduler_probe.get(m31_key)
+            migrated = migration_probe.get(m31_key)
+            if (
+                not all(m31_presence)
+                or type(scheduled) is not dict
+                or type(migrated) is not dict
+                or _canonical_json(scheduled) != _canonical_json(migrated)
+                or seal.get(f"{m31_key}_cid")
+                != "sha256:"
+                + hashlib.sha256(_canonical_json(scheduled)).hexdigest()
+            ):
+                unexpected = [
+                    "M31 authority is partial or differs across source controls"
+                ]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m31_source_status_materializer",
+                    root
+                    / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M31 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    unexpected = _m31_source_chain_errors(
+                        root, materializer, scheduled
+                    )
+        elif any(m30_presence):
             scheduled = scheduler_probe.get(m30_key)
             migrated = migration_probe.get(m30_key)
             if (
@@ -10259,23 +10516,35 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m31_declared = _m31_successor_declared(scheduler, seal, migration)
         m30_declared = _m30_successor_declared(scheduler, seal, migration)
         m29_declared = _m29_successor_declared(scheduler, seal, migration)
         m28_declared = _m28_successor_declared(scheduler, seal, migration)
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m30_declared
+            m31_declared
+            or m30_declared
             or m29_declared
             or m28_declared
             or m27_declared
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
+            if m31_declared:
+                protocol_errors.extend(
+                    _m31_detached_coordinator_pid_recovery_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
             if m30_declared:
                 protocol_errors.extend(
                     _m30_stopped_owner_restart_source_seal_successor_errors(
-                        scheduler, seal, migration, root=root
+                        scheduler,
+                        seal,
+                        migration,
+                        root=root,
+                        require_active_runtime=not m31_declared,
                     )
                 )
             if m29_declared:
@@ -10285,7 +10554,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not m30_declared,
+                        require_active_runtime=not (m31_declared or m30_declared),
                     )
                 )
             if m28_declared:
@@ -10295,7 +10564,9 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not (m30_declared or m29_declared),
+                        require_active_runtime=not (
+                            m31_declared or m30_declared or m29_declared
+                        ),
                     )
                 )
             if m27_declared:
@@ -10306,7 +10577,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         migration,
                         root=root,
                         require_active_runtime=not (
-                            m30_declared or m29_declared or m28_declared
+                            m31_declared
+                            or m30_declared or m29_declared or m28_declared
                         ),
                     )
                 )
@@ -10318,7 +10590,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         migration,
                         root=root,
                         require_active_runtime=not (
-                            m30_declared or m29_declared or m28_declared or m27_declared
+                            m31_declared or m30_declared or m29_declared
+                            or m28_declared or m27_declared
                         ),
                     )
                 )
@@ -10329,7 +10602,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                     migration,
                     root=root,
                     require_active_runtime=not (
-                        m30_declared
+                        m31_declared
+                        or m30_declared
                         or m29_declared
                         or m28_declared
                         or m27_declared
@@ -10853,6 +11127,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             protocol_errors.append("closed atomic mutation catalog is absent")
         if "read_only=True" not in operator_source or "canonical writer without loading or serving Quack" not in operator_source:
             protocol_errors.append("read-only Quack replica / sealed writer boundary is absent")
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "detached_coordinator_pid_recovery_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M31 authority by fail-closed key presence"
+            )
         if not _has_presence_based_key_selection(
             operator_source,
             "stopped_owner_restart_source_seal_successor_materialization",
