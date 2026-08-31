@@ -71695,6 +71695,9 @@ DATABASE_EXECUTION_STORAGE_PROJECTION_SCHEMA = (
 DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-execution-storage-repair@1"
 )
+DATABASE_EXECUTION_STORAGE_WAL_RECOVERY_PROFILE = (
+    "exact-private-main-plus-wal-recovery@1"
+)
 DATABASE_EXECUTION_STORAGE_REPAIR_BATCH_ROWS = 4_096
 
 # Ordered execution phases. Crash/restart resumes after the last committed phase.
@@ -72479,6 +72482,46 @@ def _exchange_database_execution_storage_names(
         ) from OSError(error_number, os.strerror(error_number))
 
 
+def _rename_database_execution_storage_name_noreplace(
+    source_name: str,
+    target_name: str,
+    *,
+    source_directory_fd: int,
+    target_directory_fd: int,
+) -> None:
+    """Atomically move one authority name without replacing a late target."""
+
+    import ctypes
+
+    renameat2 = getattr(ctypes.CDLL(None, use_errno=True), "renameat2", None)
+    if renameat2 is None:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair requires atomic no-replace rename support"
+        )
+    renameat2.argtypes = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    if (
+        renameat2(
+            int(source_directory_fd),
+            os.fsencode(source_name),
+            int(target_directory_fd),
+            os.fsencode(target_name),
+            1,  # RENAME_NOREPLACE
+        )
+        != 0
+    ):
+        error_number = ctypes.get_errno()
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair atomic no-replace rename failed"
+        ) from OSError(error_number, os.strerror(error_number))
+
+
 def _copy_database_execution_storage_file(source: Path, target: Path) -> None:
     source_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
         os, "O_NOFOLLOW", 0
@@ -72974,6 +73017,23 @@ class _DatabaseExecutionRepairCleanup:
         )
         return True
 
+    def preserve_parent_temporary(self, path: Path, *, kind: str) -> None:
+        """Keep one rollback asset when its authority state is uncertain.
+
+        Cleanup is safe only for files whose role is conclusively temporary.
+        Once an atomic install has happened, the displaced original and its
+        hard-link fence are recovery authority until exact rollback succeeds.
+        Removing either after a rollback exception would make the durable
+        prepared phase impossible to reconcile exactly on restart.
+        """
+
+        tracked = self._temporaries.get(path.name)
+        if tracked is None or tracked[0] != kind:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair cannot preserve an unbound rollback asset"
+            )
+        del self._temporaries[path.name]
+
     def _cleanup_temporaries(self) -> None:
         removed = False
         cleanup_failures: list[str] = []
@@ -73129,6 +73189,125 @@ def _revalidate_database_execution_storage_wal(
     ):
         raise DatabaseImplementationExecutionStorageRepairError(
             "execution storage WAL changed during physical repair"
+        )
+
+
+def _restore_database_execution_storage_wal_after_failed_install(
+    *,
+    path: Path,
+    wal_path: Path,
+    retired_live_wal: Path,
+    quarantined_wal: Path,
+    cleanup: _DatabaseExecutionRepairCleanup,
+    quarantine_fd: int,
+    source_descriptor: int,
+    source_digest: str,
+    source_size: int,
+    source_identity: tuple[int, int, int, int],
+    wal_descriptor: int,
+    wal_digest: str,
+    wal_size: int,
+    wal_identity: tuple[int, int, int, int],
+    wal_mode: int,
+    backup_wal_identity: tuple[int, int, int, int],
+) -> None:
+    """Restore one exact retired WAL only beside its exact original main.
+
+    The private byte-for-byte backup remains in quarantine as durable evidence.
+    Every authority name and inode is fenced before the rename, both directory
+    entries are synced, and the restored live pair is verified again afterward.
+    A new late WAL is never overwritten.
+    """
+
+    cleanup.verify_parent_path()
+    cleanup.verify_quarantine_path()
+    _revalidate_database_execution_storage_source(
+        path,
+        cleanup=cleanup,
+        source_descriptor=source_descriptor,
+        expected_digest=source_digest,
+        expected_size=source_size,
+        expected_identity=source_identity,
+    )
+    _revalidate_database_execution_storage_wal(
+        wal_path,
+        cleanup=cleanup,
+        expected_present=False,
+    )
+    backup_digest, backup_size, backup_identity = (
+        _database_execution_storage_named_identity_at(
+            quarantined_wal.name,
+            directory_fd=quarantine_fd,
+        )
+    )
+    retired_digest, retired_size, retired_identity = (
+        _database_execution_storage_named_identity_at(
+            retired_live_wal.name,
+            directory_fd=quarantine_fd,
+        )
+    )
+    if (
+        backup_digest != wal_digest
+        or backup_size != wal_size
+        or backup_identity != backup_wal_identity
+        or retired_digest != wal_digest
+        or retired_size != wal_size
+        or retired_identity[:2] != wal_identity[:2]
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair retired WAL rollback evidence changed"
+        )
+    os.fchmod(wal_descriptor, wal_mode)
+    os.fsync(wal_descriptor)
+    _rename_database_execution_storage_name_noreplace(
+        retired_live_wal.name,
+        wal_path.name,
+        source_directory_fd=quarantine_fd,
+        target_directory_fd=cleanup.parent_fd,
+    )
+    os.fsync(quarantine_fd)
+    os.fsync(cleanup.parent_fd)
+    _revalidate_database_execution_storage_source(
+        path,
+        cleanup=cleanup,
+        source_descriptor=source_descriptor,
+        expected_digest=source_digest,
+        expected_size=source_size,
+        expected_identity=source_identity,
+    )
+    _revalidate_database_execution_storage_wal(
+        wal_path,
+        cleanup=cleanup,
+        expected_present=True,
+        wal_descriptor=wal_descriptor,
+        expected_digest=wal_digest,
+        expected_size=wal_size,
+        expected_identity=wal_identity,
+    )
+    restored_mode = stat_module.S_IMODE(
+        os.stat(
+            wal_path.name,
+            dir_fd=cleanup.parent_fd,
+            follow_symlinks=False,
+        ).st_mode
+    )
+    if restored_mode != wal_mode:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair restored WAL mode is not exact"
+        )
+    final_backup_digest, final_backup_size, final_backup_identity = (
+        _database_execution_storage_named_identity_at(
+            quarantined_wal.name,
+            directory_fd=quarantine_fd,
+        )
+    )
+    if (
+        final_backup_digest != wal_digest
+        or final_backup_size != wal_size
+        or final_backup_identity != backup_wal_identity
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair WAL backup changed during exact restoration"
         )
 
 
@@ -73314,7 +73493,7 @@ def _database_execution_storage_projection_from_connection(
     return projection
 
 
-def _database_execution_nonempty_wal_redundancy_probe(
+def _database_execution_nonempty_wal_recovery_probe(
     *,
     path: Path,
     wal_path: Path,
@@ -73323,11 +73502,14 @@ def _database_execution_nonempty_wal_redundancy_probe(
     wal_digest: str,
     wal_size: int,
 ) -> tuple[Path, Path, dict[str, Any]]:
-    """Prove one observed WAL adds no logical execution-store state.
+    """Replay one exact main+WAL pair privately and classify its authority.
 
-    Two private same-filesystem copies are compared: main-only and the exact
-    main+WAL pair after DuckDB recovery. The live authority is never opened or
-    changed by this probe. This is deliberately not a general two-file repair.
+    The supplied paths are already private immutable evidence copies.  This
+    function copies them again into a private same-filesystem probe, opens only
+    the probe pair with DuckDB, checkpoints it, and proves a stable closed
+    execution-store schema/catalog/projection.  It returns the main-only copy
+    for a redundant WAL or the checkpointed recovered copy for a distinct WAL.
+    Neither supplied evidence file is opened by DuckDB or modified.
     """
 
     import duckdb  # type: ignore
@@ -73432,16 +73614,12 @@ def _database_execution_nonempty_wal_redundancy_probe(
                     "retry_permitted": False,
                 },
             )
-        if (
-            main_projection["projection_root"]
-            != stable_projection["projection_root"]
-            or main_catalog != stable_catalog
-        ):
+        if main_catalog != stable_catalog:
             raise DatabaseImplementationExecutionStorageRepairError(
-                "execution storage WAL contains distinct logical authority",
+                "execution storage WAL changes the closed execution catalog",
                 status={
                     "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
-                    "reason": "nonempty_wal_changes_logical_projection",
+                    "reason": "nonempty_wal_changes_execution_catalog",
                     "database_path": str(path),
                     "wal_path": str(wal_path),
                     "main_projection_root": main_projection["projection_root"],
@@ -73455,22 +73633,83 @@ def _database_execution_nonempty_wal_redundancy_probe(
                     "retry_permitted": False,
                 },
             )
+        if recovered_wal_path.exists() or recovered_wal_path.is_symlink():
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage private WAL recovery did not checkpoint cleanly",
+                status={
+                    "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                    "reason": "nonempty_wal_checkpoint_incomplete",
+                    "database_path": str(path),
+                    "wal_path": str(wal_path),
+                    "source_preserved": True,
+                    "wal_preserved": True,
+                    "repair_performed": False,
+                    "reconciliation_required": True,
+                    "retry_permitted": False,
+                },
+            )
+        _fsync_database_execution_storage_path(recovered_path)
+        _fsync_database_execution_storage_directory(recovered_dir)
+        original_main_digest, original_main_size, _ = (
+            _database_execution_storage_file_identity(path)
+        )
+        original_wal_digest, original_wal_size, _ = (
+            _database_execution_storage_file_identity(wal_path)
+        )
+        if (
+            original_main_digest != source_digest
+            or original_main_size != source_size
+            or original_wal_digest != wal_digest
+            or original_wal_size != wal_size
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution storage private recovery changed preserved evidence"
+            )
+        logical_projection_equal = (
+            main_projection["projection_root"]
+            == stable_projection["projection_root"]
+        )
+        disposition = (
+            "redundant" if logical_projection_equal else "distinct_recovered"
+        )
+        selected_path = main_only_path if logical_projection_equal else recovered_path
+        selected_digest, selected_size, selected_identity = (
+            _database_execution_storage_file_identity(selected_path)
+        )
         proof = {
-            "profile": "exact-main-plus-wal-redundancy@1",
+            "profile": DATABASE_EXECUTION_STORAGE_WAL_RECOVERY_PROFILE,
+            "disposition": disposition,
             "main_sha256": source_digest,
             "main_size_bytes": source_size,
             "wal_sha256": wal_digest,
             "wal_size_bytes": wal_size,
             "main_projection_root": main_projection["projection_root"],
             "recovered_projection_root": stable_projection["projection_root"],
+            "selected_projection_root": (
+                main_projection["projection_root"]
+                if logical_projection_equal
+                else stable_projection["projection_root"]
+            ),
             "catalog_root": _database_execution_storage_payload_root(
                 main_catalog
             ),
-            "logical_projection_equal": True,
+            "recovered_catalog_root": _database_execution_storage_payload_root(
+                stable_catalog
+            ),
+            "selected_source_sha256": selected_digest,
+            "selected_source_size_bytes": selected_size,
+            "selected_source_identity": (
+                _database_execution_storage_identity_payload(selected_identity)
+            ),
+            "logical_projection_equal": logical_projection_equal,
+            "recovered_state_selected": not logical_projection_equal,
+            "private_replay": True,
+            "original_main_preserved": True,
+            "original_wal_preserved": True,
             "live_authority_opened": False,
         }
         proof["proof_id"] = _database_execution_storage_payload_root(proof)
-        return main_only_path, probe_root, proof
+        return selected_path, probe_root, proof
     except DatabaseImplementationExecutionStorageRepairError:
         shutil.rmtree(probe_root, ignore_errors=True)
         raise
@@ -73499,12 +73738,1363 @@ def _database_execution_nonempty_wal_redundancy_probe(
         ) from exc
 
 
+_DATABASE_EXECUTION_PREPARED_PHASE_FIELDS = frozenset(
+    {
+        "schema",
+        "phase",
+        "reason",
+        "repair_id",
+        "database_path",
+        "source_sha256",
+        "source_size_bytes",
+        "source_identity",
+        "backup_sha256",
+        "backup_size_bytes",
+        "backup_identity",
+        "rollback_sha256",
+        "rollback_size_bytes",
+        "rollback_identity",
+        "rollback_path",
+        "wal_sha256",
+        "wal_size_bytes",
+        "wal_mode",
+        "wal_identity",
+        "wal_backup_sha256",
+        "wal_backup_size_bytes",
+        "wal_backup_identity",
+        "candidate_sha256",
+        "candidate_size_bytes",
+        "logical_projection_root",
+        "catalog_root",
+        "quarantined_source_path",
+        "quarantined_wal_path",
+        "wal_recovery_proof_id",
+        "wal_recovery_proof",
+        "wal_disposition",
+        "wal_redundancy_proof_id",
+        "wal_redundancy_proof",
+        "source_preserved",
+        "wal_preserved",
+        "authority_mutation_started",
+        "interrupted_transaction_outcome",
+    }
+)
+_DATABASE_EXECUTION_COMMITTED_PHASE_FIELDS = frozenset(
+    {
+        "schema",
+        "phase",
+        "reason",
+        "repair_id",
+        "database_path",
+        "prepared_phase_id",
+        "source_sha256",
+        "source_identity",
+        "backup_sha256",
+        "backup_size_bytes",
+        "backup_identity",
+        "rollback_sha256",
+        "rollback_size_bytes",
+        "rollback_identity",
+        "wal_backup_sha256",
+        "wal_backup_size_bytes",
+        "wal_mode",
+        "wal_backup_identity",
+        "replacement_sha256",
+        "logical_projection_root",
+        "quarantined_source_path",
+        "quarantined_wal_path",
+        "retired_live_wal_path",
+        "wal_recovery_proof_id",
+        "wal_recovery_proof",
+        "wal_disposition",
+        "wal_redundancy_proof_id",
+        "wal_redundancy_proof",
+        "wal_evidence_preserved",
+        "logical_projection_equal",
+        "interrupted_transaction_outcome",
+        "reconciliation_required",
+        "same_process_retry_permitted",
+    }
+)
+_DATABASE_EXECUTION_ROLLED_BACK_PHASE_FIELDS = frozenset(
+    {
+        "schema",
+        "phase",
+        "reason",
+        "repair_id",
+        "database_path",
+        "prepared_phase_id",
+        "source_sha256",
+        "source_size_bytes",
+        "source_identity",
+        "wal_sha256",
+        "wal_size_bytes",
+        "wal_identity",
+        "quarantined_source_path",
+        "quarantined_wal_path",
+        "rollback_mode",
+        "source_restored",
+        "wal_restored",
+        "source_preserved",
+        "wal_preserved",
+        "reconciliation_required",
+        "retry_permitted",
+    }
+)
+_DATABASE_EXECUTION_WAL_RECOVERY_PROOF_FIELDS = frozenset(
+    {
+        "profile",
+        "disposition",
+        "main_sha256",
+        "main_size_bytes",
+        "wal_sha256",
+        "wal_size_bytes",
+        "main_projection_root",
+        "recovered_projection_root",
+        "selected_projection_root",
+        "catalog_root",
+        "recovered_catalog_root",
+        "selected_source_sha256",
+        "selected_source_size_bytes",
+        "selected_source_identity",
+        "logical_projection_equal",
+        "recovered_state_selected",
+        "private_replay",
+        "original_main_preserved",
+        "original_wal_preserved",
+        "live_authority_opened",
+        "proof_id",
+    }
+)
+
+
+def _read_database_execution_repair_phase_at(
+    name: str,
+    *,
+    directory_fd: int,
+) -> tuple[dict[str, Any], str]:
+    """Read one small canonical phase record through a pinned directory."""
+
+    if Path(name).name != name or name in {"", ".", ".."}:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair phase name is outside the closed profile"
+        )
+    descriptor = os.open(
+        name,
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+        dir_fd=directory_fd,
+    )
+    try:
+        before = os.fstat(descriptor)
+        if not stat_module.S_ISREG(before.st_mode) or before.st_size > 1024 * 1024:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair phase is not bounded regular data"
+            )
+        body = bytearray()
+        while len(body) < int(before.st_size):
+            chunk = os.read(descriptor, int(before.st_size) - len(body))
+            if not chunk:
+                break
+            body.extend(chunk)
+        after = os.fstat(descriptor)
+        if (
+            len(body) != int(before.st_size)
+            or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair phase changed while it was read"
+            )
+    finally:
+        os.close(descriptor)
+    try:
+        text = bytes(body).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair phase is not UTF-8"
+        ) from exc
+    payload = _database_daemon_strict_mapping_json(
+        text,
+        authority=f"execution repair phase {name}",
+    )
+    canonical = canonical_json(payload).encode("utf-8") + b"\n"
+    if bytes(body) != canonical:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair phase is not canonical JSON"
+        )
+    return payload, _database_execution_storage_payload_root(payload)
+
+
+def _database_execution_repair_identity_from_payload(
+    value: Any,
+    *,
+    authority: str,
+) -> tuple[int, int, int, int]:
+    if not isinstance(value, Mapping) or set(value) != {
+        "device",
+        "inode",
+        "size_bytes",
+        "mtime_ns",
+    }:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            f"{authority} identity is outside the closed profile"
+        )
+    if any(type(value[key]) is not int for key in value):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            f"{authority} identity is invalid"
+        )
+    identity = (
+        value["device"],
+        value["inode"],
+        value["size_bytes"],
+        value["mtime_ns"],
+    )
+    if any(item < 0 for item in identity):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            f"{authority} identity is invalid"
+        )
+    return identity
+
+
+def _write_database_execution_repair_atomic_phase_at(
+    name: str,
+    payload: Mapping[str, Any],
+    *,
+    directory_fd: int,
+) -> str:
+    """Publish one canonical recovery marker only after durable preparation."""
+
+    temporary_name = f".{name}.pending-{uuid.uuid4().hex}"
+    try:
+        phase_id = _write_database_execution_repair_phase_receipt(
+            Path(temporary_name),
+            payload,
+            directory_fd=directory_fd,
+        )
+        os.fsync(directory_fd)
+        _rename_database_execution_storage_name_noreplace(
+            temporary_name,
+            name,
+            source_directory_fd=directory_fd,
+            target_directory_fd=directory_fd,
+        )
+        os.fsync(directory_fd)
+        return phase_id
+    except BaseException:
+        try:
+            os.unlink(temporary_name, dir_fd=directory_fd)
+            os.fsync(directory_fd)
+        except OSError:
+            pass
+        raise
+
+
+def _validate_database_execution_prepared_phase_types(
+    payload: Mapping[str, Any],
+    *,
+    path: Path,
+    prepared_name: str,
+) -> None:
+    """Reject coercible or open-world repair control data."""
+
+    string_fields = {
+        "schema",
+        "phase",
+        "reason",
+        "repair_id",
+        "database_path",
+        "source_sha256",
+        "backup_sha256",
+        "rollback_sha256",
+        "rollback_path",
+        "wal_sha256",
+        "wal_backup_sha256",
+        "candidate_sha256",
+        "logical_projection_root",
+        "catalog_root",
+        "quarantined_source_path",
+        "quarantined_wal_path",
+        "wal_recovery_proof_id",
+        "wal_disposition",
+        "wal_redundancy_proof_id",
+        "interrupted_transaction_outcome",
+    }
+    integer_fields = {
+        "source_size_bytes",
+        "backup_size_bytes",
+        "rollback_size_bytes",
+        "wal_size_bytes",
+        "wal_mode",
+        "wal_backup_size_bytes",
+        "candidate_size_bytes",
+    }
+    boolean_fields = {
+        "source_preserved",
+        "wal_preserved",
+        "authority_mutation_started",
+    }
+    if any(type(payload.get(field)) is not str for field in string_fields):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair prepared phase contains a non-string binding"
+        )
+    if any(type(payload.get(field)) is not int for field in integer_fields):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair prepared phase contains a non-integer size or mode"
+        )
+    if any(int(payload[field]) < 0 for field in integer_fields):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair prepared phase contains a negative size or mode"
+        )
+    if int(payload["wal_mode"]) > 0o7777:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair prepared phase WAL mode is invalid"
+        )
+    if any(type(payload.get(field)) is not bool for field in boolean_fields):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair prepared phase contains a non-boolean binding"
+        )
+    mapping_fields = {
+        "source_identity",
+        "backup_identity",
+        "rollback_identity",
+        "wal_identity",
+        "wal_backup_identity",
+        "wal_recovery_proof",
+        "wal_redundancy_proof",
+    }
+    if any(not isinstance(payload.get(field), Mapping) for field in mapping_fields):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair prepared phase contains a non-object binding"
+        )
+    digest_fields = {
+        "source_sha256",
+        "backup_sha256",
+        "rollback_sha256",
+        "candidate_sha256",
+        "logical_projection_root",
+        "catalog_root",
+    }
+    if any(
+        re.fullmatch(r"sha256:[0-9a-f]{64}", str(payload[field])) is None
+        for field in digest_fields
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair prepared phase contains an invalid digest"
+        )
+    wal_size = int(payload["wal_size_bytes"])
+    wal_digest = str(payload["wal_sha256"])
+    wal_backup_digest = str(payload["wal_backup_sha256"])
+    if wal_size == 0 and not payload["wal_identity"]:
+        if wal_digest or wal_backup_digest or payload["wal_backup_identity"]:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair absent WAL bindings are inconsistent"
+            )
+    else:
+        if (
+            re.fullmatch(r"sha256:[0-9a-f]{64}", wal_digest) is None
+            or wal_backup_digest != wal_digest
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair WAL digest bindings are invalid"
+            )
+        _database_execution_repair_identity_from_payload(
+            payload["wal_identity"],
+            authority="prepared WAL",
+        )
+        _database_execution_repair_identity_from_payload(
+            payload["wal_backup_identity"],
+            authority="prepared WAL backup",
+        )
+    prepared_identities: dict[str, tuple[int, int, int, int]] = {}
+    for identity_field in (
+        "source_identity",
+        "backup_identity",
+        "rollback_identity",
+    ):
+        prepared_identities[identity_field] = (
+            _database_execution_repair_identity_from_payload(
+                payload[identity_field],
+                authority=f"prepared {identity_field}",
+            )
+        )
+    if (
+        payload["schema"] != DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA
+        or payload["phase"] != "prepared"
+        or payload["reason"] != "duckdb_art_index_physical_rebuild"
+        or payload["database_path"] != str(path)
+        or payload["wal_disposition"]
+        not in {"absent", "empty", "redundant", "distinct_recovered"}
+        or payload["source_preserved"] is not True
+        or payload["wal_preserved"] is not True
+        or payload["authority_mutation_started"] is not False
+        or payload["interrupted_transaction_outcome"]
+        != "not_inferred_reconcile_exact_operation"
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair prepared phase binding is invalid"
+        )
+    if (
+        re.fullmatch(r"[0-9a-f]{32}", payload["repair_id"]) is None
+        or payload["backup_sha256"] != payload["source_sha256"]
+        or payload["rollback_sha256"] != payload["source_sha256"]
+        or payload["backup_size_bytes"] != payload["source_size_bytes"]
+        or payload["rollback_size_bytes"] != payload["source_size_bytes"]
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair prepared source bindings are inconsistent"
+        )
+    expected_backup_name = (
+        f"{path.name}.{payload['source_sha256'].removeprefix('sha256:')}."
+        f"{payload['repair_id']}.duckdb"
+    )
+    expected_quarantine = path.parent / ".execution-art-repair-quarantine"
+    expected_backup_path = expected_quarantine / expected_backup_name
+    expected_rollback_path = path.parent / (
+        f".{path.name}.art-repair-rollback-{payload['repair_id']}.duckdb"
+    )
+    if (
+        prepared_name != f"{expected_backup_name}.prepared.json"
+        or payload["quarantined_source_path"] != str(expected_backup_path)
+        or payload["rollback_path"] != str(expected_rollback_path)
+        or prepared_identities["source_identity"][2]
+        != payload["source_size_bytes"]
+        or prepared_identities["backup_identity"][2]
+        != payload["backup_size_bytes"]
+        or prepared_identities["rollback_identity"]
+        != prepared_identities["source_identity"]
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair prepared paths or identities are not canonical"
+        )
+    for proof_field, proof_id_field in (
+        ("wal_recovery_proof", "wal_recovery_proof_id"),
+        ("wal_redundancy_proof", "wal_redundancy_proof_id"),
+    ):
+        proof = payload[proof_field]
+        proof_id = payload[proof_id_field]
+        proof_without_id = dict(proof)
+        embedded_proof_id = proof_without_id.pop("proof_id", "")
+        if bool(proof) != bool(proof_id) or (
+            proof
+            and (
+                type(embedded_proof_id) is not str
+                or embedded_proof_id != proof_id
+                or _database_execution_storage_payload_root(proof_without_id)
+                != proof_id
+            )
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair prepared WAL proof binding is invalid"
+            )
+    wal_present = bool(payload["wal_identity"])
+    expected_wal_path = f"{expected_backup_path}.wal" if wal_present else ""
+    if (
+        payload["quarantined_wal_path"] != expected_wal_path
+        or payload["wal_backup_size_bytes"] != payload["wal_size_bytes"]
+        or (
+            wal_present
+            and _database_execution_repair_identity_from_payload(
+                payload["wal_identity"],
+                authority="prepared WAL",
+            )[2]
+            != payload["wal_size_bytes"]
+        )
+        or (
+            wal_present
+            and _database_execution_repair_identity_from_payload(
+                payload["wal_backup_identity"],
+                authority="prepared WAL backup",
+            )[2]
+            != payload["wal_backup_size_bytes"]
+        )
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair prepared WAL path or size is inconsistent"
+        )
+    disposition = payload["wal_disposition"]
+    recovery_proof = payload["wal_recovery_proof"]
+    redundancy_proof = payload["wal_redundancy_proof"]
+    if not wal_present:
+        if (
+            disposition != "absent"
+            or payload["wal_size_bytes"] != 0
+            or payload["wal_mode"] != 0
+            or recovery_proof
+            or redundancy_proof
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair absent WAL disposition is inconsistent"
+            )
+        return
+    if payload["wal_size_bytes"] == 0:
+        if disposition != "empty" or recovery_proof or redundancy_proof:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair empty WAL disposition is inconsistent"
+            )
+        return
+    if disposition not in {"redundant", "distinct_recovered"}:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair non-empty WAL disposition is inconsistent"
+        )
+    if set(recovery_proof) != _DATABASE_EXECUTION_WAL_RECOVERY_PROOF_FIELDS:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair WAL recovery proof is outside the closed profile"
+        )
+    proof_string_fields = {
+        "profile",
+        "disposition",
+        "main_sha256",
+        "wal_sha256",
+        "main_projection_root",
+        "recovered_projection_root",
+        "selected_projection_root",
+        "catalog_root",
+        "recovered_catalog_root",
+        "selected_source_sha256",
+        "proof_id",
+    }
+    proof_integer_fields = {
+        "main_size_bytes",
+        "wal_size_bytes",
+        "selected_source_size_bytes",
+    }
+    proof_boolean_fields = {
+        "logical_projection_equal",
+        "recovered_state_selected",
+        "private_replay",
+        "original_main_preserved",
+        "original_wal_preserved",
+        "live_authority_opened",
+    }
+    if (
+        any(
+            type(recovery_proof.get(field)) is not str
+            for field in proof_string_fields
+        )
+        or any(
+            type(recovery_proof.get(field)) is not int
+            for field in proof_integer_fields
+        )
+        or any(
+            type(recovery_proof.get(field)) is not bool
+            for field in proof_boolean_fields
+        )
+        or any(recovery_proof[field] < 0 for field in proof_integer_fields)
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair WAL recovery proof contains invalid control types"
+        )
+    selected_identity = _database_execution_repair_identity_from_payload(
+        recovery_proof["selected_source_identity"],
+        authority="prepared WAL selected source",
+    )
+    recovery_digest_fields = {
+        "main_sha256",
+        "wal_sha256",
+        "main_projection_root",
+        "recovered_projection_root",
+        "selected_projection_root",
+        "catalog_root",
+        "recovered_catalog_root",
+        "selected_source_sha256",
+        "proof_id",
+    }
+    if any(
+        re.fullmatch(r"sha256:[0-9a-f]{64}", recovery_proof[field]) is None
+        for field in recovery_digest_fields
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair WAL recovery proof contains an invalid digest"
+        )
+    logical_equal = disposition == "redundant"
+    if (
+        recovery_proof["profile"]
+        != DATABASE_EXECUTION_STORAGE_WAL_RECOVERY_PROFILE
+        or recovery_proof["disposition"] != disposition
+        or recovery_proof["main_sha256"] != payload["source_sha256"]
+        or recovery_proof["main_size_bytes"] != payload["source_size_bytes"]
+        or recovery_proof["wal_sha256"] != payload["wal_sha256"]
+        or recovery_proof["wal_size_bytes"] != payload["wal_size_bytes"]
+        or recovery_proof["selected_projection_root"]
+        != payload["logical_projection_root"]
+        or recovery_proof["catalog_root"] != payload["catalog_root"]
+        or recovery_proof["recovered_catalog_root"] != payload["catalog_root"]
+        or selected_identity[2] != recovery_proof["selected_source_size_bytes"]
+        or recovery_proof["logical_projection_equal"] is not logical_equal
+        or recovery_proof["recovered_state_selected"] is logical_equal
+        or (
+            recovery_proof["main_projection_root"]
+            == recovery_proof["recovered_projection_root"]
+        )
+        is not logical_equal
+        or recovery_proof["private_replay"] is not True
+        or recovery_proof["original_main_preserved"] is not True
+        or recovery_proof["original_wal_preserved"] is not True
+        or recovery_proof["live_authority_opened"] is not False
+        or (
+            logical_equal
+            and recovery_proof["selected_projection_root"]
+            != recovery_proof["main_projection_root"]
+        )
+        or (
+            not logical_equal
+            and recovery_proof["selected_projection_root"]
+            != recovery_proof["recovered_projection_root"]
+        )
+        or (
+            logical_equal
+            and (
+                redundancy_proof != recovery_proof
+                or payload["wal_redundancy_proof_id"]
+                != payload["wal_recovery_proof_id"]
+            )
+        )
+        or (
+            not logical_equal
+            and (redundancy_proof or payload["wal_redundancy_proof_id"])
+        )
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair WAL recovery proof does not bind its disposition"
+        )
+
+
+def _validate_database_execution_terminal_phase(
+    payload: Mapping[str, Any],
+    *,
+    phase: str,
+    path: Path,
+    prepared: Mapping[str, Any],
+    prepared_phase_id: str,
+) -> None:
+    expected_fields = (
+        _DATABASE_EXECUTION_COMMITTED_PHASE_FIELDS
+        if phase == "committed"
+        else _DATABASE_EXECUTION_ROLLED_BACK_PHASE_FIELDS
+    )
+    if set(payload) != expected_fields:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair terminal phase has unknown or missing fields",
+            status={
+                "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                "reason": "orphan_repair_terminal_schema_invalid",
+                "database_path": str(path),
+                "repair_performed": None,
+                "retry_permitted": False,
+            },
+        )
+    if (
+        payload.get("schema") != DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA
+        or payload.get("phase") != phase
+        or payload.get("database_path") != str(path)
+        or payload.get("repair_id") != prepared.get("repair_id")
+        or payload.get("prepared_phase_id") != prepared_phase_id
+        or payload.get("source_sha256") != prepared.get("source_sha256")
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair terminal phase does not bind its prepared phase",
+            status={
+                "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                "reason": "orphan_repair_terminal_binding_invalid",
+                "database_path": str(path),
+                "repair_performed": None,
+                "retry_permitted": False,
+            },
+        )
+    if phase == "committed":
+        string_fields = {
+            "schema",
+            "phase",
+            "reason",
+            "repair_id",
+            "database_path",
+            "prepared_phase_id",
+            "source_sha256",
+            "backup_sha256",
+            "rollback_sha256",
+            "wal_backup_sha256",
+            "replacement_sha256",
+            "logical_projection_root",
+            "quarantined_source_path",
+            "quarantined_wal_path",
+            "retired_live_wal_path",
+            "wal_recovery_proof_id",
+            "wal_disposition",
+            "wal_redundancy_proof_id",
+            "interrupted_transaction_outcome",
+        }
+        integer_fields = {
+            "backup_size_bytes",
+            "rollback_size_bytes",
+            "wal_backup_size_bytes",
+            "wal_mode",
+        }
+        boolean_fields = {
+            "wal_evidence_preserved",
+            "logical_projection_equal",
+            "reconciliation_required",
+            "same_process_retry_permitted",
+        }
+        mapping_fields = {
+            "source_identity",
+            "backup_identity",
+            "rollback_identity",
+            "wal_backup_identity",
+            "wal_recovery_proof",
+            "wal_redundancy_proof",
+        }
+        if any(type(payload.get(field)) is not str for field in string_fields):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair committed phase contains a non-string binding"
+            )
+        if any(type(payload.get(field)) is not int for field in integer_fields):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair committed phase contains a non-integer binding"
+            )
+        if any(int(payload[field]) < 0 for field in integer_fields) or int(
+            payload["wal_mode"]
+        ) > 0o7777:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair committed phase contains an invalid size or mode"
+            )
+        if any(type(payload.get(field)) is not bool for field in boolean_fields):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair committed phase contains a non-boolean binding"
+            )
+        if any(not isinstance(payload.get(field), Mapping) for field in mapping_fields):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair committed phase contains a non-object binding"
+            )
+        for field in ("source_identity", "backup_identity", "rollback_identity"):
+            _database_execution_repair_identity_from_payload(
+                payload[field],
+                authority=f"committed {field}",
+            )
+        if prepared["wal_backup_identity"]:
+            _database_execution_repair_identity_from_payload(
+                payload["wal_backup_identity"],
+                authority="committed WAL backup",
+            )
+        elif payload["wal_backup_identity"]:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair committed phase invents a WAL identity"
+            )
+        digest_fields = {
+            "source_sha256",
+            "backup_sha256",
+            "rollback_sha256",
+            "replacement_sha256",
+            "logical_projection_root",
+        }
+        if any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", payload[field]) is None
+            for field in digest_fields
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair committed phase contains an invalid digest"
+            )
+        if payload["wal_backup_sha256"] and re.fullmatch(
+            r"sha256:[0-9a-f]{64}", payload["wal_backup_sha256"]
+        ) is None:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair committed phase contains an invalid WAL digest"
+            )
+        for proof_field, proof_id_field in (
+            ("wal_recovery_proof", "wal_recovery_proof_id"),
+            ("wal_redundancy_proof", "wal_redundancy_proof_id"),
+        ):
+            proof = dict(payload[proof_field])
+            proof_id = payload[proof_id_field]
+            embedded_id = proof.pop("proof_id", "")
+            if bool(payload[proof_field]) != bool(proof_id) or (
+                payload[proof_field]
+                and (
+                    embedded_id != proof_id
+                    or _database_execution_storage_payload_root(proof) != proof_id
+                )
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair committed WAL proof binding is invalid"
+                )
+        expected_retired_path = (
+            f"{prepared['quarantined_source_path']}.retired-live-wal"
+            if prepared["wal_identity"]
+            else ""
+        )
+        if (
+            payload["reason"] != "duckdb_art_index_physical_rebuild"
+            or payload["source_identity"] != prepared["source_identity"]
+            or payload["backup_sha256"] != prepared["backup_sha256"]
+            or payload["backup_size_bytes"] != prepared["backup_size_bytes"]
+            or payload["backup_identity"] != prepared["backup_identity"]
+            or payload["rollback_sha256"] != prepared["rollback_sha256"]
+            or payload["rollback_size_bytes"] != prepared["rollback_size_bytes"]
+            or payload["rollback_identity"] != prepared["rollback_identity"]
+            or payload["wal_backup_sha256"] != prepared["wal_backup_sha256"]
+            or payload["wal_backup_size_bytes"]
+            != prepared["wal_backup_size_bytes"]
+            or payload["wal_mode"] != prepared["wal_mode"]
+            or payload["wal_backup_identity"] != prepared["wal_backup_identity"]
+            or payload["replacement_sha256"] != prepared["candidate_sha256"]
+            or payload["logical_projection_root"]
+            != prepared["logical_projection_root"]
+            or payload["quarantined_source_path"]
+            != prepared["quarantined_source_path"]
+            or payload["quarantined_wal_path"]
+            != prepared["quarantined_wal_path"]
+            or payload["retired_live_wal_path"] != expected_retired_path
+            or payload["wal_recovery_proof_id"]
+            != prepared["wal_recovery_proof_id"]
+            or payload["wal_recovery_proof"] != prepared["wal_recovery_proof"]
+            or payload["wal_disposition"] != prepared["wal_disposition"]
+            or payload["wal_redundancy_proof_id"]
+            != prepared["wal_redundancy_proof_id"]
+            or payload["wal_redundancy_proof"]
+            != prepared["wal_redundancy_proof"]
+            or payload["wal_evidence_preserved"] is not True
+            or payload["logical_projection_equal"] is not True
+            or payload["interrupted_transaction_outcome"]
+            != "not_inferred_reconcile_exact_operation"
+            or payload["reconciliation_required"] is not True
+            or payload["same_process_retry_permitted"] is not False
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair committed phase binding is invalid"
+            )
+        return
+
+    string_fields = {
+        "schema",
+        "phase",
+        "reason",
+        "repair_id",
+        "database_path",
+        "prepared_phase_id",
+        "source_sha256",
+        "wal_sha256",
+        "quarantined_source_path",
+        "quarantined_wal_path",
+        "rollback_mode",
+    }
+    integer_fields = {"source_size_bytes", "wal_size_bytes"}
+    boolean_fields = {
+        "source_restored",
+        "wal_restored",
+        "source_preserved",
+        "wal_preserved",
+        "reconciliation_required",
+        "retry_permitted",
+    }
+    if any(type(payload.get(field)) is not str for field in string_fields):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair rolled-back phase contains a non-string binding"
+        )
+    if any(type(payload.get(field)) is not int for field in integer_fields):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair rolled-back phase contains a non-integer binding"
+        )
+    if any(int(payload[field]) < 0 for field in integer_fields):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair rolled-back phase contains a negative size"
+        )
+    if any(type(payload.get(field)) is not bool for field in boolean_fields):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair rolled-back phase contains a non-boolean binding"
+        )
+    source_identity = _database_execution_repair_identity_from_payload(
+        payload["source_identity"],
+        authority="rolled-back source",
+    )
+    if prepared["wal_identity"]:
+        _database_execution_repair_identity_from_payload(
+            payload["wal_identity"],
+            authority="rolled-back WAL",
+        )
+    elif payload["wal_identity"]:
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair rolled-back phase invents a WAL identity"
+        )
+    if (
+        re.fullmatch(r"sha256:[0-9a-f]{64}", payload["source_sha256"])
+        is None
+        or (
+            payload["wal_sha256"]
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", payload["wal_sha256"])
+            is None
+        )
+        or source_identity
+        != _database_execution_repair_identity_from_payload(
+            prepared["source_identity"],
+            authority="prepared source",
+        )
+        or payload["reason"] != "orphan_preopen_exact_rollback"
+        or payload["source_size_bytes"] != prepared["source_size_bytes"]
+        or payload["wal_sha256"] != prepared["wal_sha256"]
+        or payload["wal_size_bytes"] != prepared["wal_size_bytes"]
+        or payload["wal_identity"] != prepared["wal_identity"]
+        or payload["quarantined_source_path"]
+        != prepared["quarantined_source_path"]
+        or payload["quarantined_wal_path"] != prepared["quarantined_wal_path"]
+        or payload["rollback_mode"] not in {"pre_exchange", "post_exchange"}
+        or payload["source_restored"] is not True
+        or payload["wal_restored"] is not True
+        or payload["source_preserved"] is not True
+        or payload["wal_preserved"] is not True
+        or payload["reconciliation_required"] is not True
+        or payload["retry_permitted"] is not False
+    ):
+        raise DatabaseImplementationExecutionStorageRepairError(
+            "execution repair rolled-back phase binding is invalid"
+        )
+
+
+def _reconcile_database_execution_storage_repair_under_database_lock(
+    path: Path,
+) -> dict[str, Any] | None:
+    """Recover exactly one orphan repair before DuckDB can open the store.
+
+    The caller owns the daemon writer fence.  This routine performs only
+    descriptor-bound filesystem operations and canonical JSON validation; it
+    never opens the database through DuckDB.
+    """
+
+    path = Path(os.path.abspath(os.fspath(path)))
+    if not path.exists():
+        return None
+    quarantine_path = path.parent / ".execution-art-repair-quarantine"
+    if not quarantine_path.exists() and not quarantine_path.is_symlink():
+        return None
+    cleanup = _DatabaseExecutionRepairCleanup(path)
+    try:
+        source_metadata = os.stat(
+            path.name,
+            dir_fd=cleanup.parent_fd,
+            follow_symlinks=False,
+        )
+        if not stat_module.S_ISREG(source_metadata.st_mode):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair recovery requires a regular source"
+            )
+        quarantine = cleanup.open_quarantine(
+            source_device=int(source_metadata.st_dev),
+        )
+        quarantine_fd = cleanup.quarantine_fd
+        prefix = f"{path.name}."
+        suffix = ".duckdb.prepared.json"
+        prepared_names = sorted(
+            name
+            for name in os.listdir(quarantine_fd)
+            if name.startswith(prefix) and name.endswith(suffix)
+        )
+        orphans: list[tuple[str, dict[str, Any], str]] = []
+        for prepared_name in prepared_names:
+            prepared, prepared_phase_id = (
+                _read_database_execution_repair_phase_at(
+                    prepared_name,
+                    directory_fd=quarantine_fd,
+                )
+            )
+            if set(prepared) != _DATABASE_EXECUTION_PREPARED_PHASE_FIELDS:
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair prepared phase has unknown or missing fields",
+                    status={
+                        "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                        "reason": "orphan_repair_prepared_schema_invalid",
+                        "database_path": str(path),
+                        "repair_performed": None,
+                        "retry_permitted": False,
+                    },
+                )
+            _validate_database_execution_prepared_phase_types(
+                prepared,
+                path=path,
+                prepared_name=prepared_name,
+            )
+            backup_name = prepared_name[: -len(".prepared.json")]
+            committed_name = f"{backup_name}.committed.json"
+            rolled_back_name = f"{backup_name}.rolled-back.json"
+            committed_exists = committed_name in os.listdir(quarantine_fd)
+            rolled_back_exists = rolled_back_name in os.listdir(quarantine_fd)
+            if committed_exists and rolled_back_exists:
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair has ambiguous terminal phases",
+                    status={
+                        "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                        "reason": "orphan_repair_terminal_ambiguity",
+                        "database_path": str(path),
+                        "repair_performed": None,
+                        "retry_permitted": False,
+                    },
+                )
+            terminal_name = committed_name if committed_exists else rolled_back_name
+            if committed_exists or rolled_back_exists:
+                terminal, _terminal_id = _read_database_execution_repair_phase_at(
+                    terminal_name,
+                    directory_fd=quarantine_fd,
+                )
+                _validate_database_execution_terminal_phase(
+                    terminal,
+                    phase="committed" if committed_exists else "rolled_back",
+                    path=path,
+                    prepared=prepared,
+                    prepared_phase_id=prepared_phase_id,
+                )
+                continue
+            orphans.append((prepared_name, prepared, prepared_phase_id))
+        if not orphans:
+            return None
+        if len(orphans) != 1:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair has ambiguous orphan prepared phases",
+                status={
+                    "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                    "reason": "orphan_repair_prepared_ambiguity",
+                    "database_path": str(path),
+                    "orphan_count": len(orphans),
+                    "repair_performed": None,
+                    "retry_permitted": False,
+                },
+            )
+
+        prepared_name, prepared, prepared_phase_id = orphans[0]
+        backup_name = prepared_name[: -len(".prepared.json")]
+        expected_backup_path = quarantine / backup_name
+        if Path(str(prepared["quarantined_source_path"])) != expected_backup_path:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair orphan source path escaped quarantine"
+            )
+        source_digest = str(prepared["source_sha256"])
+        source_size = int(prepared["source_size_bytes"])
+        source_identity = _database_execution_repair_identity_from_payload(
+            prepared["source_identity"],
+            authority="orphan source",
+        )
+        backup_identity = _database_execution_repair_identity_from_payload(
+            prepared["backup_identity"],
+            authority="orphan backup",
+        )
+        backup_digest, backup_size, observed_backup_identity = (
+            _database_execution_storage_named_identity_at(
+                backup_name,
+                directory_fd=quarantine_fd,
+            )
+        )
+        if (
+            backup_digest != source_digest
+            or backup_size != source_size
+            or observed_backup_identity != backup_identity
+        ):
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair orphan source evidence changed"
+            )
+        live_digest, live_size, live_identity = (
+            _database_execution_storage_named_identity_at(
+                path.name,
+                directory_fd=cleanup.parent_fd,
+            )
+        )
+        rollback_mode = "pre_exchange"
+        if (
+            live_digest == source_digest
+            and live_size == source_size
+            and live_identity == source_identity
+        ):
+            pass
+        elif (
+            live_digest == prepared.get("candidate_sha256")
+            and live_size == int(prepared["candidate_size_bytes"])
+        ):
+            rollback_path = Path(str(prepared["rollback_path"]))
+            if (
+                rollback_path.parent != path.parent
+                or not rollback_path.name.startswith(
+                    f".{path.name}.art-repair-rollback-"
+                )
+                or not rollback_path.name.endswith(".duckdb")
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair orphan rollback path is invalid"
+                )
+            rollback_digest, rollback_size, rollback_identity = (
+                _database_execution_storage_named_identity_at(
+                    rollback_path.name,
+                    directory_fd=cleanup.parent_fd,
+                )
+            )
+            if (
+                rollback_digest != source_digest
+                or rollback_size != source_size
+                or rollback_identity != source_identity
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair orphan rollback evidence changed"
+                )
+            _exchange_database_execution_storage_names(
+                rollback_path.name,
+                path.name,
+                source_directory_fd=cleanup.parent_fd,
+                target_directory_fd=cleanup.parent_fd,
+            )
+            os.fsync(cleanup.parent_fd)
+            live_digest, live_size, live_identity = (
+                _database_execution_storage_named_identity_at(
+                    path.name,
+                    directory_fd=cleanup.parent_fd,
+                )
+            )
+            if (
+                live_digest != source_digest
+                or live_size != source_size
+                or live_identity != source_identity
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair orphan main rollback was not exact"
+                )
+            rollback_mode = "post_exchange"
+        else:
+            raise DatabaseImplementationExecutionStorageRepairError(
+                "execution repair orphan live source is ambiguous",
+                status={
+                    "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                    "reason": "orphan_repair_live_source_ambiguous",
+                    "database_path": str(path),
+                    "repair_performed": None,
+                    "retry_permitted": False,
+                },
+            )
+
+        wal_identity_payload = prepared.get("wal_identity")
+        wal_present = bool(wal_identity_payload)
+        wal_restored = not wal_present
+        if wal_present:
+            wal_digest = str(prepared["wal_sha256"])
+            wal_size = int(prepared["wal_size_bytes"])
+            wal_mode = int(prepared["wal_mode"])
+            if wal_mode < 0 or wal_mode > 0o7777:
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair orphan WAL mode is invalid"
+                )
+            wal_identity = _database_execution_repair_identity_from_payload(
+                wal_identity_payload,
+                authority="orphan WAL",
+            )
+            backup_wal_identity = _database_execution_repair_identity_from_payload(
+                prepared["wal_backup_identity"],
+                authority="orphan WAL backup",
+            )
+            quarantined_wal = Path(str(prepared["quarantined_wal_path"]))
+            if quarantined_wal != expected_backup_path.with_name(
+                expected_backup_path.name + ".wal"
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair orphan WAL path escaped quarantine"
+                )
+            backup_wal_digest, backup_wal_size, observed_backup_wal_identity = (
+                _database_execution_storage_named_identity_at(
+                    quarantined_wal.name,
+                    directory_fd=quarantine_fd,
+                )
+            )
+            if (
+                backup_wal_digest != wal_digest
+                or backup_wal_size != wal_size
+                or observed_backup_wal_identity != backup_wal_identity
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair orphan WAL backup changed"
+                )
+            wal_path = path.with_name(path.name + ".wal")
+            retired_name = f"{backup_name}.retired-live-wal"
+            names = set(os.listdir(quarantine_fd))
+            try:
+                live_wal_digest, live_wal_size, live_wal_identity = (
+                    _database_execution_storage_named_identity_at(
+                        wal_path.name,
+                        directory_fd=cleanup.parent_fd,
+                    )
+                )
+                live_wal_exists = True
+            except FileNotFoundError:
+                live_wal_digest = ""
+                live_wal_size = 0
+                live_wal_identity = (0, 0, 0, 0)
+                live_wal_exists = False
+            retired_exists = retired_name in names
+            if live_wal_exists and retired_exists:
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair orphan WAL authority is ambiguous"
+                )
+            if live_wal_exists:
+                if (
+                    rollback_mode != "pre_exchange"
+                    or live_wal_digest != wal_digest
+                    or live_wal_size != wal_size
+                    or live_wal_identity != wal_identity
+                ):
+                    raise DatabaseImplementationExecutionStorageRepairError(
+                        "execution repair orphan live WAL is not exact"
+                    )
+                wal_restored = True
+            elif retired_exists:
+                retired_descriptor = os.open(
+                    retired_name,
+                    os.O_RDONLY
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                    dir_fd=quarantine_fd,
+                )
+                try:
+                    retired_digest, retired_size, retired_identity = (
+                        _database_execution_storage_descriptor_identity(
+                            retired_descriptor
+                        )
+                    )
+                    if (
+                        retired_digest != wal_digest
+                        or retired_size != wal_size
+                        or retired_identity[:2] != wal_identity[:2]
+                    ):
+                        raise DatabaseImplementationExecutionStorageRepairError(
+                            "execution repair orphan retired WAL changed"
+                        )
+                    os.fchmod(retired_descriptor, wal_mode)
+                    os.fsync(retired_descriptor)
+                    _rename_database_execution_storage_name_noreplace(
+                        retired_name,
+                        wal_path.name,
+                        source_directory_fd=quarantine_fd,
+                        target_directory_fd=cleanup.parent_fd,
+                    )
+                    os.fsync(quarantine_fd)
+                    os.fsync(cleanup.parent_fd)
+                    restored_digest, restored_size, restored_identity = (
+                        _database_execution_storage_named_identity_at(
+                            wal_path.name,
+                            directory_fd=cleanup.parent_fd,
+                        )
+                    )
+                    restored_mode = stat_module.S_IMODE(
+                        os.stat(
+                            wal_path.name,
+                            dir_fd=cleanup.parent_fd,
+                            follow_symlinks=False,
+                        ).st_mode
+                    )
+                    if (
+                        restored_digest != wal_digest
+                        or restored_size != wal_size
+                        or restored_identity != wal_identity
+                        or restored_mode != wal_mode
+                    ):
+                        raise DatabaseImplementationExecutionStorageRepairError(
+                            "execution repair orphan WAL restoration was not exact"
+                        )
+                    wal_restored = True
+                finally:
+                    os.close(retired_descriptor)
+            else:
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair orphan WAL evidence is incomplete"
+                )
+        else:
+            unexpected_wal = path.with_name(path.name + ".wal")
+            try:
+                os.stat(
+                    unexpected_wal.name,
+                    dir_fd=cleanup.parent_fd,
+                    follow_symlinks=False,
+                )
+                live_unexpected_wal = True
+            except FileNotFoundError:
+                live_unexpected_wal = False
+            retired_name = f"{backup_name}.retired-live-wal"
+            retired_unexpected_wal = retired_name in set(os.listdir(quarantine_fd))
+            if live_unexpected_wal or retired_unexpected_wal:
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair orphan has an unexpected WAL authority",
+                    status={
+                        "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+                        "reason": "orphan_repair_unexpected_wal",
+                        "database_path": str(path),
+                        "live_wal_present": live_unexpected_wal,
+                        "retired_wal_present": retired_unexpected_wal,
+                        "repair_performed": None,
+                        "retry_permitted": False,
+                    },
+                )
+
+        rolled_back = {
+            "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+            "phase": "rolled_back",
+            "reason": "orphan_preopen_exact_rollback",
+            "repair_id": str(prepared["repair_id"]),
+            "database_path": str(path),
+            "prepared_phase_id": prepared_phase_id,
+            "source_sha256": source_digest,
+            "source_size_bytes": source_size,
+            "source_identity": dict(prepared["source_identity"]),
+            "wal_sha256": str(prepared["wal_sha256"]),
+            "wal_size_bytes": int(prepared["wal_size_bytes"]),
+            "wal_identity": dict(prepared["wal_identity"]),
+            "quarantined_source_path": str(expected_backup_path),
+            "quarantined_wal_path": str(prepared["quarantined_wal_path"]),
+            "rollback_mode": rollback_mode,
+            "source_restored": True,
+            "wal_restored": wal_restored,
+            "source_preserved": True,
+            "wal_preserved": True,
+            "reconciliation_required": True,
+            "retry_permitted": False,
+        }
+        marker_name = f"{backup_name}.rolled-back.json"
+        marker_id = _write_database_execution_repair_atomic_phase_at(
+            marker_name,
+            rolled_back,
+            directory_fd=quarantine_fd,
+        )
+        cleanup.verify_parent_path()
+        cleanup.verify_quarantine_path()
+        return {
+            "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
+            "phase": "rolled_back",
+            "prepared_phase_id": prepared_phase_id,
+            "rolled_back_phase_id": marker_id,
+            "rollback_mode": rollback_mode,
+            "source_restored": True,
+            "wal_restored": wal_restored,
+        }
+    finally:
+        cleanup.close()
+
+
+def _reconcile_database_execution_storage_repair_before_open(
+    path: Path,
+) -> dict[str, Any] | None:
+    """Serialize pre-open recovery with every manual ART repair attempt."""
+
+    from ..task_sources.duckdb_state import exclusive_file_lock
+
+    path = Path(os.path.abspath(os.fspath(path)))
+    database_lock_path = path.with_name(f".{path.name}.lock")
+    with exclusive_file_lock(database_lock_path):
+        return _reconcile_database_execution_storage_repair_under_database_lock(
+            path
+        )
+
+
 def _repair_database_execution_art_index_storage_under_writer_lock(
     database_path: Path,
 ) -> dict[str, Any]:
     """Run one exact rebuild with bounded cleanup around every exit."""
 
     path = Path(os.path.abspath(os.fspath(database_path)))
+    # Direct/manual repair shares the daemon writer fence but can be invoked
+    # without DatabaseImplementationDaemon.open().  Reconcile any durable
+    # prepared phase first, or a crash-retired distinct WAL could be eclipsed
+    # by a new main-only repair attempt.
+    _reconcile_database_execution_storage_repair_before_open(path)
     cleanup = _DatabaseExecutionRepairCleanup(path)
     try:
         return _repair_database_execution_art_index_storage_impl(
@@ -73579,6 +75169,7 @@ def _repair_database_execution_art_index_storage_impl(
         wal_digest = ""
         wal_size = 0
         wal_identity: tuple[int, int, int, int] | None = None
+        wal_mode = 0
         wal_descriptor: int | None = None
         if wal_present:
             assert wal_metadata is not None
@@ -73601,6 +75192,7 @@ def _repair_database_execution_art_index_storage_impl(
             wal_digest, wal_size, wal_identity = (
                 _database_execution_storage_descriptor_identity(wal_descriptor)
             )
+            wal_mode = stat_module.S_IMODE(os.fstat(wal_descriptor).st_mode)
         import duckdb  # type: ignore
 
         quarantine = cleanup.open_quarantine(
@@ -73617,6 +75209,7 @@ def _repair_database_execution_art_index_storage_impl(
         )
         quarantined_wal: Path | None = None
         retired_live_wal: Path | None = None
+        retired_wal_identity: tuple[int, int, int, int] | None = None
         prepared_phase_path = quarantine / f"{backup.name}.prepared.json"
         prepared_phase_id = ""
         try:
@@ -73712,14 +75305,15 @@ def _repair_database_execution_art_index_storage_impl(
 
         logical_source_path = backup
         wal_probe_root: Path | None = None
+        wal_recovery_proof: dict[str, Any] = {}
         wal_redundancy_proof: dict[str, Any] = {}
         if wal_size > 0:
             assert quarantined_wal is not None
             (
                 logical_source_path,
                 wal_probe_root,
-                wal_redundancy_proof,
-            ) = _database_execution_nonempty_wal_redundancy_probe(
+                wal_recovery_proof,
+            ) = _database_execution_nonempty_wal_recovery_probe(
                 path=backup,
                 wal_path=quarantined_wal,
                 source_digest=source_digest,
@@ -73727,6 +75321,8 @@ def _repair_database_execution_art_index_storage_impl(
                 wal_digest=wal_digest,
                 wal_size=wal_size,
             )
+            if wal_recovery_proof.get("disposition") == "redundant":
+                wal_redundancy_proof = dict(wal_recovery_proof)
         try:
             source = connect_duckdb_with_policy(
                 duckdb,
@@ -73743,6 +75339,15 @@ def _repair_database_execution_art_index_storage_impl(
                 _database_execution_storage_projection_from_connection(source)
             )
             source_catalog = _database_execution_storage_catalog(source)
+            if wal_recovery_proof and (
+                before_projection["projection_root"]
+                != wal_recovery_proof.get("selected_projection_root")
+                or _database_execution_storage_payload_root(source_catalog)
+                != wal_recovery_proof.get("recovered_catalog_root")
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution storage selected private recovery changed"
+                )
             descriptor, candidate_name = tempfile.mkstemp(
                 prefix=f".{path.name}.art-repair-",
                 suffix=".duckdb",
@@ -73865,8 +75470,31 @@ def _repair_database_execution_art_index_storage_impl(
                     )
         finally:
             source.close()
-            if wal_probe_root is not None:
-                shutil.rmtree(wal_probe_root, ignore_errors=True)
+            try:
+                if wal_recovery_proof:
+                    (
+                        selected_digest,
+                        selected_size,
+                        selected_identity,
+                    ) = _database_execution_storage_file_identity(
+                        logical_source_path
+                    )
+                    if (
+                        selected_digest
+                        != wal_recovery_proof.get("selected_source_sha256")
+                        or selected_size
+                        != wal_recovery_proof.get("selected_source_size_bytes")
+                        or _database_execution_storage_identity_payload(
+                            selected_identity
+                        )
+                        != wal_recovery_proof.get("selected_source_identity")
+                    ):
+                        raise DatabaseImplementationExecutionStorageRepairError(
+                            "execution storage selected private recovery changed"
+                        )
+            finally:
+                if wal_probe_root is not None:
+                    shutil.rmtree(wal_probe_root, ignore_errors=True)
 
         cleanup.verify_parent_path()
         _revalidate_database_execution_storage_source(
@@ -73990,6 +75618,7 @@ def _repair_database_execution_art_index_storage_impl(
             "rollback_path": str(rollback_link),
             "wal_sha256": wal_digest,
             "wal_size_bytes": wal_size,
+            "wal_mode": wal_mode,
             "wal_identity": (
                 _database_execution_storage_identity_payload(wal_identity)
                 if wal_identity is not None
@@ -74012,6 +75641,15 @@ def _repair_database_execution_art_index_storage_impl(
             "quarantined_wal_path": (
                 str(quarantined_wal) if quarantined_wal is not None else ""
             ),
+            "wal_recovery_proof_id": str(
+                wal_recovery_proof.get("proof_id") or ""
+            ),
+            "wal_recovery_proof": dict(wal_recovery_proof),
+            "wal_disposition": str(
+                wal_recovery_proof.get("disposition") or (
+                    "empty" if wal_present else "absent"
+                )
+            ),
             "wal_redundancy_proof_id": str(
                 wal_redundancy_proof.get("proof_id") or ""
             ),
@@ -74024,8 +75662,8 @@ def _repair_database_execution_art_index_storage_impl(
             ),
         }
         try:
-            prepared_phase_id = _write_database_execution_repair_phase_receipt(
-                prepared_phase_path,
+            prepared_phase_id = _write_database_execution_repair_atomic_phase_at(
+                prepared_phase_path.name,
                 prepared_phase,
                 directory_fd=quarantine_fd,
             )
@@ -74036,30 +75674,41 @@ def _repair_database_execution_art_index_storage_impl(
                 "execution repair could not persist its prepared phase"
             ) from exc
 
-        if wal_present:
-            assert wal_identity is not None
-            assert wal_descriptor is not None
-            _revalidate_database_execution_storage_wal(
-                wal_path,
-                cleanup=cleanup,
-                expected_present=True,
-                wal_descriptor=wal_descriptor,
-                expected_digest=wal_digest,
-                expected_size=wal_size,
-                expected_identity=wal_identity,
-            )
-            retired_live_wal = quarantine / (
-                f"{backup.name}.retired-live-wal"
-            )
-            try:
+        exchange_performed = False
+        wal_retired = False
+        displaced_digest = ""
+        displaced_size = 0
+        displaced_identity: tuple[int, int, int, int] | None = None
+        verified_projection: dict[str, Any] | None = None
+        failed_replacement: Path | None = None
+        wal_evidence_preserved = not wal_present
+        try:
+            if wal_present:
+                assert wal_identity is not None
+                assert wal_descriptor is not None
+                assert quarantined_wal is not None
+                assert backup_wal_identity is not None
+                _revalidate_database_execution_storage_wal(
+                    wal_path,
+                    cleanup=cleanup,
+                    expected_present=True,
+                    wal_descriptor=wal_descriptor,
+                    expected_digest=wal_digest,
+                    expected_size=wal_size,
+                    expected_identity=wal_identity,
+                )
+                retired_live_wal = quarantine / (
+                    f"{backup.name}.retired-live-wal"
+                )
                 cleanup.verify_parent_path()
                 cleanup.verify_quarantine_path()
-                os.replace(
+                _rename_database_execution_storage_name_noreplace(
                     wal_path.name,
                     retired_live_wal.name,
-                    src_dir_fd=cleanup.parent_fd,
-                    dst_dir_fd=quarantine_fd,
+                    source_directory_fd=cleanup.parent_fd,
+                    target_directory_fd=quarantine_fd,
                 )
+                wal_retired = True
                 _make_database_execution_storage_private_at(
                     directory_fd=quarantine_fd,
                     name=retired_live_wal.name,
@@ -74080,54 +75729,44 @@ def _repair_database_execution_art_index_storage_impl(
                     raise DatabaseImplementationExecutionStorageRepairError(
                         "retired execution storage WAL differs from captured WAL"
                     )
-            except BaseException as exc:
-                raise DatabaseImplementationExecutionStorageRepairError(
-                    "execution storage redundant WAL retirement failed"
-                ) from exc
+                retired_wal_identity = retired_identity
 
-        _revalidate_database_execution_storage_source(
-            path,
-            cleanup=cleanup,
-            source_descriptor=source_descriptor,
-            expected_digest=source_digest,
-            expected_size=source_size,
-            expected_identity=source_identity,
-        )
-        _revalidate_database_execution_storage_wal(
-            wal_path,
-            cleanup=cleanup,
-            expected_present=False,
-        )
-        backup_digest, backup_size, backup_identity = (
-            _database_execution_storage_named_identity_at(
-                backup.name,
-                directory_fd=quarantine_fd,
+            _revalidate_database_execution_storage_source(
+                path,
+                cleanup=cleanup,
+                source_descriptor=source_descriptor,
+                expected_digest=source_digest,
+                expected_size=source_size,
+                expected_identity=source_identity,
             )
-        )
-        assert rollback_link is not None
-        rollback_digest, rollback_size, rollback_identity = (
-            _database_execution_storage_named_identity_at(
-                rollback_link.name,
-                directory_fd=cleanup.parent_fd,
+            _revalidate_database_execution_storage_wal(
+                wal_path,
+                cleanup=cleanup,
+                expected_present=False,
             )
-        )
-        if (
-            backup_digest != source_digest
-            or backup_size != source_size
-            or rollback_digest != source_digest
-            or rollback_size != source_size
-            or rollback_identity[:2] != source_identity[:2]
-        ):
-            raise DatabaseImplementationExecutionStorageRepairError(
-                "execution repair captured-source evidence changed before install"
+            backup_digest, backup_size, backup_identity = (
+                _database_execution_storage_named_identity_at(
+                    backup.name,
+                    directory_fd=quarantine_fd,
+                )
             )
-        exchange_performed = False
-        displaced_digest = ""
-        displaced_size = 0
-        displaced_identity: tuple[int, int, int, int] | None = None
-        verified_projection: dict[str, Any] | None = None
-        failed_replacement: Path | None = None
-        try:
+            assert rollback_link is not None
+            rollback_digest, rollback_size, rollback_identity = (
+                _database_execution_storage_named_identity_at(
+                    rollback_link.name,
+                    directory_fd=cleanup.parent_fd,
+                )
+            )
+            if (
+                backup_digest != source_digest
+                or backup_size != source_size
+                or rollback_digest != source_digest
+                or rollback_size != source_size
+                or rollback_identity[:2] != source_identity[:2]
+            ):
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair captured-source evidence changed before install"
+                )
             cleanup.verify_parent_path()
             _revalidate_database_execution_storage_source(
                 path,
@@ -74255,6 +75894,37 @@ def _repair_database_execution_art_index_storage_impl(
                     directory_fd=cleanup.parent_fd,
                 )
             )
+            if wal_present:
+                assert quarantined_wal is not None
+                assert retired_live_wal is not None
+                assert backup_wal_identity is not None
+                assert wal_identity is not None
+                assert retired_wal_identity is not None
+                (
+                    final_backup_wal_digest,
+                    final_backup_wal_size,
+                    final_backup_wal_identity,
+                ) = _database_execution_storage_named_identity_at(
+                    quarantined_wal.name,
+                    directory_fd=quarantine_fd,
+                )
+                (
+                    final_retired_wal_digest,
+                    final_retired_wal_size,
+                    final_retired_wal_identity,
+                ) = _database_execution_storage_named_identity_at(
+                    retired_live_wal.name,
+                    directory_fd=quarantine_fd,
+                )
+                wal_evidence_preserved = (
+                    final_backup_wal_digest == wal_digest
+                    and final_backup_wal_size == wal_size
+                    and final_backup_wal_identity == backup_wal_identity
+                    and final_retired_wal_digest == wal_digest
+                    and final_retired_wal_size == wal_size
+                    and final_retired_wal_identity == retired_wal_identity
+                    and final_retired_wal_identity[:2] == wal_identity[:2]
+                )
             source_preserved = (
                 installed_digest == candidate_digest
                 and installed_size == candidate_size
@@ -74267,6 +75937,7 @@ def _repair_database_execution_art_index_storage_impl(
                 and rollback_digest == source_digest
                 and rollback_size == source_size
                 and rollback_identity[:2] == source_identity[:2]
+                and wal_evidence_preserved
             )
             if not source_preserved:
                 raise DatabaseImplementationExecutionStorageRepairError(
@@ -74284,6 +75955,7 @@ def _repair_database_execution_art_index_storage_impl(
                 expected_present=False,
             )
         except BaseException as install_exc:
+            rollback_exc: BaseException | None = None
             if exchange_performed:
                 failed_replacement = quarantine / (
                     f"{path.name}.{candidate_digest.removeprefix('sha256:')}."
@@ -74391,25 +76063,67 @@ def _repair_database_execution_art_index_storage_impl(
                         raise DatabaseImplementationExecutionStorageRepairError(
                             "execution repair rollback lost the rebuilt candidate"
                         )
-                except BaseException as rollback_exc:
-                    raise DatabaseImplementationExecutionStorageRepairError(
-                        "execution repair install failed and exact rollback "
-                        f"failed; preserved source remains at {backup}"
-                    ) from rollback_exc
+                except BaseException as exc:
+                    rollback_exc = exc
+                    # The exchange may have failed before or after changing
+                    # names.  Keep both exact original-inode paths for the
+                    # durable pre-open reconciler; outer cleanup must not turn
+                    # a recoverable prepared phase into permanent ambiguity.
+                    assert candidate is not None
+                    assert rollback_link is not None
+                    cleanup.preserve_parent_temporary(
+                        candidate,
+                        kind="candidate",
+                    )
+                    cleanup.preserve_parent_temporary(
+                        rollback_link,
+                        kind="rollback",
+                    )
+            wal_rollback_exc: BaseException | None = None
+            if wal_retired:
+                if rollback_exc is not None:
+                    wal_rollback_exc = DatabaseImplementationExecutionStorageRepairError(
+                        "execution repair cannot restore WAL before exact main rollback"
+                    )
+                else:
+                    try:
+                        assert retired_live_wal is not None
+                        assert quarantined_wal is not None
+                        assert wal_descriptor is not None
+                        assert wal_identity is not None
+                        assert backup_wal_identity is not None
+                        _restore_database_execution_storage_wal_after_failed_install(
+                            path=path,
+                            wal_path=wal_path,
+                            retired_live_wal=retired_live_wal,
+                            quarantined_wal=quarantined_wal,
+                            cleanup=cleanup,
+                            quarantine_fd=quarantine_fd,
+                            source_descriptor=source_descriptor,
+                            source_digest=source_digest,
+                            source_size=source_size,
+                            source_identity=source_identity,
+                            wal_descriptor=wal_descriptor,
+                            wal_digest=wal_digest,
+                            wal_size=wal_size,
+                            wal_identity=wal_identity,
+                            wal_mode=wal_mode,
+                            backup_wal_identity=backup_wal_identity,
+                        )
+                        wal_retired = False
+                    except BaseException as exc:
+                        wal_rollback_exc = exc
+            if rollback_exc is not None or wal_rollback_exc is not None:
+                exact_rollback_exc = wal_rollback_exc or rollback_exc
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair install failed and exact main+WAL rollback "
+                    f"failed; preserved evidence remains at {backup}"
+                ) from exact_rollback_exc
             raise DatabaseImplementationExecutionStorageRepairError(
                 "execution repair candidate was not installed"
             ) from install_exc
 
         assert verified_projection is not None
-        os.unlink(candidate.name, dir_fd=cleanup.parent_fd)
-        candidate = None
-        os.fsync(cleanup.parent_fd)
-        if rollback_link is not None:
-            try:
-                os.unlink(rollback_link.name, dir_fd=cleanup.parent_fd)
-            except FileNotFoundError:
-                pass
-            rollback_link = None
         committed_phase_path = quarantine / f"{backup.name}.committed.json"
         committed_phase = {
             "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
@@ -74434,6 +76148,7 @@ def _repair_database_execution_art_index_storage_impl(
             ),
             "wal_backup_sha256": backup_wal_digest,
             "wal_backup_size_bytes": backup_wal_size,
+            "wal_mode": wal_mode,
             "wal_backup_identity": (
                 _database_execution_storage_identity_payload(backup_wal_identity)
                 if backup_wal_identity is not None
@@ -74448,10 +76163,20 @@ def _repair_database_execution_art_index_storage_impl(
             "retired_live_wal_path": (
                 str(retired_live_wal) if retired_live_wal is not None else ""
             ),
+            "wal_recovery_proof_id": str(
+                wal_recovery_proof.get("proof_id") or ""
+            ),
+            "wal_recovery_proof": dict(wal_recovery_proof),
+            "wal_disposition": str(
+                wal_recovery_proof.get("disposition") or (
+                    "empty" if wal_present else "absent"
+                )
+            ),
             "wal_redundancy_proof_id": str(
                 wal_redundancy_proof.get("proof_id") or ""
             ),
             "wal_redundancy_proof": dict(wal_redundancy_proof),
+            "wal_evidence_preserved": wal_evidence_preserved,
             "logical_projection_equal": True,
             "interrupted_transaction_outcome": (
                 "not_inferred_reconcile_exact_operation"
@@ -74460,14 +76185,27 @@ def _repair_database_execution_art_index_storage_impl(
             "same_process_retry_permitted": False,
         }
         try:
-            committed_phase_id = _write_database_execution_repair_phase_receipt(
-                committed_phase_path,
+            committed_phase_id = _write_database_execution_repair_atomic_phase_at(
+                committed_phase_path.name,
                 committed_phase,
                 directory_fd=quarantine_fd,
             )
             cleanup.verify_quarantine_path()
             os.fsync(quarantine_fd)
         except BaseException as exc:
+            # The new main is already visible but the terminal marker is not.
+            # Retain both original-inode recovery names so the durable prepared
+            # phase can roll the exact main+WAL pair back before the next open.
+            assert candidate is not None
+            assert rollback_link is not None
+            cleanup.preserve_parent_temporary(
+                candidate,
+                kind="candidate",
+            )
+            cleanup.preserve_parent_temporary(
+                rollback_link,
+                kind="rollback",
+            )
             raise DatabaseImplementationExecutionStorageRepairError(
                 "execution repair installed but commit evidence is unavailable",
                 status={
@@ -74481,6 +76219,19 @@ def _repair_database_execution_art_index_storage_impl(
                     "retry_permitted": False,
                 },
             ) from exc
+        # The committed marker is durable before either exact rollback asset
+        # is removed.  A process death before this point is recovered from the
+        # prepared record; a process death after it leaves an installed state
+        # whose commit marker is independently classifiable at next startup.
+        os.unlink(candidate.name, dir_fd=cleanup.parent_fd)
+        candidate = None
+        os.fsync(cleanup.parent_fd)
+        if rollback_link is not None:
+            try:
+                os.unlink(rollback_link.name, dir_fd=cleanup.parent_fd)
+            except FileNotFoundError:
+                pass
+            rollback_link = None
         receipt: dict[str, Any] = {
             "schema": DATABASE_EXECUTION_STORAGE_REPAIR_SCHEMA,
             "reason": "duckdb_art_index_physical_rebuild",
@@ -74515,6 +76266,7 @@ def _repair_database_execution_art_index_storage_impl(
             ),
             "wal_backup_sha256": backup_wal_digest,
             "wal_backup_size_bytes": backup_wal_size,
+            "wal_mode": wal_mode,
             "wal_backup_identity": (
                 _database_execution_storage_identity_payload(backup_wal_identity)
                 if backup_wal_identity is not None
@@ -74536,6 +76288,16 @@ def _repair_database_execution_art_index_storage_impl(
                 or (wal_size == 0 and quarantined_wal is not None)
             ),
             "wal_preserved": not wal_present or quarantined_wal is not None,
+            "wal_evidence_preserved": wal_evidence_preserved,
+            "wal_recovery_proof_id": str(
+                wal_recovery_proof.get("proof_id") or ""
+            ),
+            "wal_recovery_proof": dict(wal_recovery_proof),
+            "wal_disposition": str(
+                wal_recovery_proof.get("disposition") or (
+                    "empty" if wal_present else "absent"
+                )
+            ),
             "wal_redundancy_proof": dict(wal_redundancy_proof),
             "prepared_phase_path": str(prepared_phase_path),
             "prepared_phase_id": prepared_phase_id,
@@ -75053,6 +76815,13 @@ class DatabaseImplementationDaemon:
             self._acquire_embedded_writer_lock()
             try:
                 self.execution_path.parent.mkdir(parents=True, exist_ok=True)
+                # A repair process can die after retiring a WAL but before its
+                # atomic main-file exchange.  Reconcile the canonical prepared
+                # phase under this writer fence before *any* DuckDB open, so a
+                # main-only file can never silently eclipse distinct WAL state.
+                _reconcile_database_execution_storage_repair_before_open(
+                    self.execution_path
+                )
                 try:
                     raw_execution_connection = open_duckdb_connection(
                         self.execution_path
