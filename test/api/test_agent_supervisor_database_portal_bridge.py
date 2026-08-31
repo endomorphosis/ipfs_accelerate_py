@@ -17391,6 +17391,1285 @@ def test_outer_rejects_malformed_checkout_deferral_vectors() -> None:
         assert rejected["write_count"] == 1
 
 
+def _exact_callback_reconciliation_transport_fixture() -> tuple[
+    DatabasePortalExecutionBridge,
+    list[dict[str, object]],
+    SimpleNamespace,
+    dict[str, object],
+]:
+    task_alias = "DOEP-011"
+    task_cid = "task:cid:doep-011"
+    task_key = "task/v1/doep-011"
+    request_id = "1788144237560718268-3936159-014428967ae2"
+    baseline = "b" * 40
+    candidate = "c" * 40
+    candidate_tree = "d" * 40
+    branch = "implementation/doep-011"
+    proposal = {"accepted": True, "proposal_id": "proposal:doep-011"}
+    validation_proof = {
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "target_commit": candidate,
+        "target_tree": candidate_tree,
+        "repository_tree_id": f"git-tree:{candidate_tree}",
+        "proposal_gate": proposal,
+    }
+    queue_repository_id = "repository:doep"
+    train_result = {
+        "status": "retrying",
+        "merged": False,
+        "integrated": False,
+        "accepted": False,
+        "retryable": True,
+        "failure_count": 1,
+        "max_attempts": 3,
+        "request_id": request_id,
+        "task_id": task_alias,
+        "commit_sha": candidate,
+        "reason": "merge_callback_exception",
+    }
+    quarantine = {
+        "status": "quarantined",
+        "merged": False,
+        "integrated": False,
+        "accepted": False,
+        "failure_count": 2,
+        "max_attempts": 3,
+        "request_id": request_id,
+        "task_id": task_alias,
+        "canonical_task_id": task_key,
+        "commit_sha": candidate,
+        "target_branch": "main",
+        "reason": "merge_queue_reconciliation_projection_conflict",
+        "merge_result": {
+            "reason": "merge_queue_reconciliation_projection_conflict"
+        },
+    }
+    enqueue = {
+        "type": "merge_candidate_enqueued",
+        "event_id": "sha256:" + "1" * 64,
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "attempt": 1,
+        "attempted": False,
+        "queued": True,
+        "merged": False,
+        "reason": "merge_queued",
+        "request_id": request_id,
+        "branch": branch,
+        "baseline_ref": baseline,
+        "implementation_commit": candidate,
+        "completion_task_cids": {task_alias: task_cid},
+        "target_repository_id": queue_repository_id,
+        "target_branch": "main",
+    }
+    terminal = {
+        "type": "worktree_reconciliation_candidate_queued",
+        "event_id": "sha256:" + "2" * 64,
+        "task_id": task_alias,
+        "task_cid": task_cid,
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "attempt": 1,
+        "returncode": 1,
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "protected_path_violation": {},
+        "branch": branch,
+        "baseline_ref": baseline,
+        "implementation_commit": candidate,
+        "worktree_path": "/workspace/doep-011",
+        "commit_result": {
+            "committed": True,
+            "commit": candidate,
+            "baseline_ref": baseline,
+            "reason": "existing_commit",
+        },
+        "validation_result": {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "target_commit": baseline,
+            "proposal_gate": proposal,
+            "candidate_binding": {
+                "verified": True,
+                "proposal_id": proposal["proposal_id"],
+                "validated_workspace": {
+                    "verified": True,
+                    "head": candidate,
+                    "tree": candidate_tree,
+                    "branch": branch,
+                    "status_clean": True,
+                },
+            },
+        },
+        "merge_result": {
+            "attempted": False,
+            "queued": True,
+            "merged": False,
+            "reason": "reconciled_candidate_queued_pending_merge",
+            "request_id": request_id,
+            "branch": branch,
+            "implementation_commit": candidate,
+            "canonical_task_key": task_key,
+            "canonical_task_cid": task_cid,
+            "completion_task_cids": {task_alias: task_cid},
+            "target_repository_id": queue_repository_id,
+            "target_branch": "main",
+            "train_result": train_result,
+        },
+    }
+    request = SimpleNamespace(
+        request_id=request_id,
+        task_id=task_alias,
+        canonical_task_id=task_cid,
+        canonical_task_key=task_key,
+        canonical_identity=task_key,
+        commit_sha=candidate,
+        branch_name=branch,
+        status="quarantined",
+        attempt=2,
+        failure_count=2,
+        failure_reason="merge_queue_reconciliation_projection_conflict",
+        metadata={
+            "baseline_ref": baseline,
+            "candidate_tree": candidate_tree,
+            "worktree_path": terminal["worktree_path"],
+            "validation_proof": validation_proof,
+            "quarantine": quarantine,
+        },
+    )
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.merge_queue = SimpleNamespace(
+        target_repository_id=queue_repository_id
+    )
+    bridge.merge_target_branch = "main"
+    return bridge, [enqueue, terminal], request, {"task_alias": task_alias}
+
+
+def _exact_callback_reconciliation_suffix_fixture(
+    bridge: DatabasePortalExecutionBridge,
+    events: list[dict[str, object]],
+    request: SimpleNamespace,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    enqueue, transport = events
+    task_alias = request.task_id
+    task_cid = request.canonical_task_id
+    task_key = request.canonical_task_key
+    request_id = request.request_id
+    candidate = request.commit_sha
+    candidate_tree = request.metadata["candidate_tree"]
+    baseline = request.metadata["baseline_ref"]
+    provenance = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "merge-queue-synchronous-source@1"
+        ),
+        "request_id": request_id,
+        "task_id": task_alias,
+        "task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "merge_candidate_enqueued_event_id": enqueue["event_id"],
+        "portal_attempt": 1,
+        "branch": request.branch_name,
+        "baseline_ref": baseline,
+        "implementation_commit": candidate,
+        "validation_target_commit": candidate,
+        "validation_target_tree": candidate_tree,
+        "validation_repository_tree_id": f"git-tree:{candidate_tree}",
+    }
+    provenance["source_projection_id"] = content_identity(provenance)
+    envelope = {
+        "timestamp": "2026-08-31T00:00:00+00:00",
+        "stream_id": "event-log:test",
+        "snapshot_id": "event-log-snapshot:test",
+    }
+    source = {
+        **envelope,
+        "type": "worktree_reconciliation_candidate_queued",
+        "sequence": 3,
+        "previous_event_id": transport["event_id"],
+        "event_id": "sha256:" + "3" * 64,
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "attempt": 1,
+        "returncode": 0,
+        "attempt_consumed": False,
+        "provider_dispatched": False,
+        "branch": request.branch_name,
+        "baseline_ref": baseline,
+        "implementation_commit": candidate,
+        "validation_result": {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+        },
+        "merge_result": {
+            "attempted": False,
+            "queued": True,
+            "merged": False,
+            "reason": "merge_queued",
+            "request_id": request_id,
+            "branch": request.branch_name,
+            "implementation_commit": candidate,
+            "canonical_task_key": task_key,
+            "canonical_task_cid": task_cid,
+            "completion_task_cids": {task_alias: task_cid},
+            "target_repository_id": bridge.merge_queue.target_repository_id,
+            "target_branch": bridge.merge_target_branch,
+        },
+        "board_completion": {
+            "complete": False,
+            "pending_merge": True,
+            "reason": "merge_queued_awaiting_integration",
+        },
+        "reason": "merge_queue_synchronous_source_projected",
+        "merge_queue_synchronous_source": provenance,
+    }
+    member = {
+        "board_namespace": "campaign",
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
+        ),
+        "status": "succeeded",
+        "task_id": task_alias,
+    }
+    reconciliation = {
+        **envelope,
+        "type": "merge_reconciled",
+        "sequence": 4,
+        "previous_event_id": source["event_id"],
+        "event_id": "sha256:" + "4" * 64,
+        "reason": "merge_queue_callback_completed",
+        "request_id": request_id,
+        "task_id": task_alias,
+        "completion_receipt_evidence": {
+            "completion_receipts": [member],
+        },
+    }
+    todo = {
+        "already_completed_task_ids": [],
+        "commit_result": {
+            "committed": False,
+            "path": "/attempt/task-projection.md",
+            "reason": "not_in_git_repo",
+        },
+        "completion_reason": "single_task",
+        "completion_receipts": [member],
+        "inserted_status_task_ids": [],
+        "missing_status_task_ids": [],
+        "missing_task_ids": [],
+        "path": "/attempt/task-projection.md",
+        "task_id": task_alias,
+        "updated": True,
+        "updated_checkbox_task_ids": [],
+        "updated_task_ids": [task_alias],
+    }
+    status = {
+        **todo,
+        **envelope,
+        "type": "todo_status_updated",
+        "sequence": 5,
+        "previous_event_id": reconciliation["event_id"],
+        "event_id": "sha256:" + "5" * 64,
+    }
+    return [source, reconciliation, status], todo
+
+
+def test_exact_callback_reconciliation_transport_is_closed_and_replayable() -> None:
+    bridge, events, request, binding = (
+        _exact_callback_reconciliation_transport_fixture()
+    )
+    assert bridge._exact_terminal_callback_reconciliation_transport(
+        events,
+        terminal=events[-1],
+        request=request,
+        binding=binding,
+    )
+
+    revival = {
+        "at": 4.0,
+        "reason": (
+            "merge train proved quarantined candidate already integrated "
+            "into exact target"
+        ),
+        "previous_enqueued_at": 1.0,
+        "previous_failure_count": 2,
+        "previous_failure_reason": (
+            "merge_queue_reconciliation_projection_conflict"
+        ),
+    }
+    pending = SimpleNamespace(
+        **{
+            **request.__dict__,
+            "status": "pending",
+            "attempt": 1,
+            "failure_count": 0,
+            "failure_reason": "",
+            "metadata": {**request.metadata, "revivals": [revival]},
+        }
+    )
+    assert bridge._exact_terminal_callback_reconciliation_transport(
+        events,
+        terminal=events[-1],
+        request=pending,
+        binding=binding,
+    )
+
+    recovered_pending = SimpleNamespace(
+        **{
+            **pending.__dict__,
+            "attempt": 2,
+            "failure_count": 1,
+            "failure_reason": "merge train consumer exited; claim recovered",
+        }
+    )
+    assert bridge._exact_terminal_callback_reconciliation_transport(
+        events,
+        terminal=events[-1],
+        request=recovered_pending,
+        binding=binding,
+    )
+
+    processing = SimpleNamespace(
+        **{
+            **pending.__dict__,
+            "status": "processing",
+            "consumer_id": "merge-train:test-owner",
+            "claim_token": "claim:test-owner",
+        }
+    )
+    assert bridge._exact_terminal_callback_reconciliation_transport(
+        events,
+        terminal=events[-1],
+        request=processing,
+        binding=binding,
+    )
+
+
+@pytest.mark.parametrize("suffix_length", [0, 1, 2, 3])
+def test_exact_callback_reconciliation_transport_accepts_only_closed_crash_prefixes(
+    suffix_length: int,
+) -> None:
+    bridge, events, request, binding = (
+        _exact_callback_reconciliation_transport_fixture()
+    )
+    revival = {
+        "at": 4.0,
+        "reason": (
+            "merge train proved quarantined candidate already integrated "
+            "into exact target"
+        ),
+        "previous_enqueued_at": 1.0,
+        "previous_failure_count": 2,
+        "previous_failure_reason": (
+            "merge_queue_reconciliation_projection_conflict"
+        ),
+    }
+    pending = SimpleNamespace(
+        **{
+            **request.__dict__,
+            "status": "pending",
+            "attempt": 1,
+            "failure_count": 0,
+            "failure_reason": "",
+            "metadata": {**request.metadata, "revivals": [revival]},
+        }
+    )
+    suffix, todo = _exact_callback_reconciliation_suffix_fixture(
+        bridge,
+        events,
+        pending,
+    )
+    bridge.repository_root = Path("/repository")
+    bridge._exact_callback_reconciliation_for_completion_source = (
+        lambda *_args, **_kwargs: True
+    )
+    candidate_events = [*events, *suffix[:suffix_length]]
+
+    assert bridge._exact_callback_reconciliation_transport_suffix(
+        candidate_events,
+        transport_index=1,
+        request=pending,
+        binding=binding,
+        expected_todo=todo if suffix_length == 3 else None,
+    ) == (True, suffix_length)
+
+    if suffix_length:
+        tampered = json.loads(json.dumps(candidate_events))
+        tampered[-1]["previous_event_id"] = "sha256:" + "9" * 64
+        assert not bridge._exact_callback_reconciliation_transport_suffix(
+            tampered,
+            transport_index=1,
+            request=pending,
+            binding=binding,
+            expected_todo=todo if suffix_length == 3 else None,
+        )[0]
+
+    extra = [*candidate_events, {"type": "daemon_pass"}]
+    assert not bridge._exact_callback_reconciliation_transport_suffix(
+        extra,
+        transport_index=1,
+        request=pending,
+        binding=binding,
+        expected_todo=todo if suffix_length == 3 else None,
+    )[0]
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "request",
+        "task",
+        "binding",
+        "event",
+        "event_attempt",
+        "counter",
+        "proof",
+    ],
+)
+def test_exact_callback_reconciliation_transport_rejects_tampering(
+    tamper: str,
+) -> None:
+    bridge, events, request, binding = (
+        _exact_callback_reconciliation_transport_fixture()
+    )
+    events = json.loads(json.dumps(events))
+    request = SimpleNamespace(**request.__dict__)
+    request.metadata = json.loads(json.dumps(request.metadata))
+    binding = dict(binding)
+    if tamper == "request":
+        events[-1]["merge_result"]["request_id"] = "request:foreign"
+    elif tamper == "task":
+        events[-1]["task_id"] = "DOEP-012"
+    elif tamper == "binding":
+        binding["task_alias"] = "DOEP-012"
+    elif tamper == "event":
+        events.append({"type": "daemon_pass", "event_id": "sha256:" + "3" * 64})
+    elif tamper == "event_attempt":
+        events[-1]["attempt"] = 2
+    elif tamper == "counter":
+        request.failure_count = 3
+    else:
+        events[-1]["validation_result"]["candidate_binding"][
+            "validated_workspace"
+        ]["tree"] = "e" * 40
+    assert not bridge._exact_terminal_callback_reconciliation_transport(
+        events,
+        terminal=events[-1] if tamper == "event" else events[-1],
+        request=request,
+        binding=binding,
+    )
+
+
+def test_reconciled_callback_transport_requires_new_semantic_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, initial_events, quarantined, binding = (
+        _exact_callback_reconciliation_transport_fixture()
+    )
+    enqueue, transport = initial_events
+    request_id = quarantined.request_id
+    task_alias = quarantined.task_id
+    task_cid = quarantined.canonical_task_id
+    task_key = quarantined.canonical_task_key
+    candidate = quarantined.commit_sha
+    baseline = quarantined.metadata["baseline_ref"]
+    candidate_tree = quarantined.metadata["candidate_tree"]
+    integration = "e" * 40
+    current_tree = "f" * 40
+    blob = "a" * 40
+    nested_candidate = "1" * 40
+    nested_integration = "2" * 40
+    repository = "external/ipfs_datasets"
+    tracked_output = "inventory/result.json"
+    output = f"{repository}/{tracked_output}"
+    events_path = tmp_path / "portal-events.jsonl"
+    events_path.write_text("", encoding="utf-8")
+    proposal = quarantined.metadata["validation_proof"]["proposal_gate"]
+    invariant = {
+        "checks": [
+            {
+                "exists": True,
+                "path": output,
+                "reason": "declared_output_tracked",
+                "repository": repository,
+                "repository_ref": nested_integration,
+                "task_id": task_alias,
+                "tracked": True,
+                "tracked_path": tracked_output,
+            }
+        ],
+        "missing_outputs": [],
+        "mode": "repository_tree",
+        "passed": True,
+        "reason": "declared_outputs_tracked",
+        "repository_ref": integration,
+        "task_ids": [task_alias],
+        "unsafe_outputs": [],
+        "untracked_outputs": [],
+    }
+    proof = {
+        "implementation_commit": candidate,
+        "integration_commit": integration,
+        "integration_ref": integration,
+        "passed": True,
+        "reasons": [],
+        "target_branch": "main",
+    }
+    provenance = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "merge-queue-synchronous-source@1"
+        ),
+        "request_id": request_id,
+        "task_id": task_alias,
+        "task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "merge_candidate_enqueued_event_id": enqueue["event_id"],
+        "portal_attempt": 1,
+        "branch": quarantined.branch_name,
+        "baseline_ref": baseline,
+        "implementation_commit": candidate,
+        "validation_target_commit": candidate,
+        "validation_target_tree": candidate_tree,
+        "validation_repository_tree_id": f"git-tree:{candidate_tree}",
+    }
+    provenance["source_projection_id"] = content_identity(provenance)
+    semantic_source = {
+        "type": "worktree_reconciliation_candidate_queued",
+        "timestamp": "2026-08-31T00:00:00+00:00",
+        "stream_id": "event-log:test",
+        "snapshot_id": "event-log-snapshot:test",
+        "sequence": 3,
+        "previous_event_id": transport["event_id"],
+        "event_id": "sha256:" + "3" * 64,
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "attempt": 1,
+        "returncode": 0,
+        "attempt_consumed": False,
+        "provider_dispatched": False,
+        "branch": quarantined.branch_name,
+        "baseline_ref": baseline,
+        "implementation_commit": candidate,
+        "validation_result": {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+        },
+        "merge_result": {
+            "attempted": False,
+            "queued": True,
+            "merged": False,
+            "reason": "merge_queued",
+            "request_id": request_id,
+            "branch": quarantined.branch_name,
+            "implementation_commit": candidate,
+            "canonical_task_key": task_key,
+            "canonical_task_cid": task_cid,
+            "completion_task_cids": {task_alias: task_cid},
+            "target_repository_id": bridge.merge_queue.target_repository_id,
+            "target_branch": "main",
+        },
+        "board_completion": {
+            "complete": False,
+            "pending_merge": True,
+            "reason": "merge_queued_awaiting_integration",
+        },
+        "reason": "merge_queue_synchronous_source_projected",
+        "merge_queue_synchronous_source": provenance,
+    }
+    reconciliation = {
+        "type": "merge_reconciled",
+        "timestamp": "2026-08-31T00:00:01+00:00",
+        "stream_id": "event-log:test",
+        "snapshot_id": "event-log-snapshot:test",
+        "sequence": 4,
+        "previous_event_id": semantic_source["event_id"],
+        "event_id": "sha256:" + "4" * 64,
+        "request_id": request_id,
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "implementation_commit": candidate,
+        "integration_commit_proof": proof,
+        "post_merge_declared_output_invariant": invariant,
+    }
+    member = {
+        "board_namespace": "task-projection.md",
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": task_key,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
+        ),
+        "status": "succeeded",
+        "task_id": task_alias,
+    }
+    todo = {
+        "already_completed_task_ids": [],
+        "commit_result": {
+            "committed": False,
+            "path": str(tmp_path / "task-projection.md"),
+            "reason": "not_in_git_repo",
+        },
+        "task_id": task_alias,
+        "updated": True,
+        "completion_reason": "single_task",
+        "updated_task_ids": [task_alias],
+        "updated_checkbox_task_ids": [],
+        "inserted_status_task_ids": [],
+        "missing_task_ids": [],
+        "missing_status_task_ids": [],
+        "path": str(tmp_path / "task-projection.md"),
+        "completion_receipts": [member],
+    }
+    status_event = {
+        **todo,
+        "type": "todo_status_updated",
+        "timestamp": "2026-08-31T00:00:02+00:00",
+        "stream_id": "event-log:test",
+        "snapshot_id": "event-log-snapshot:test",
+        "sequence": 5,
+        "previous_event_id": reconciliation["event_id"],
+        "event_id": "sha256:" + "5" * 64,
+    }
+    events = [enqueue, transport, semantic_source, reconciliation, status_event]
+    handoff = {
+        "passed": True,
+        "reason": "candidate_handoff_integrated",
+        "candidate_commit": candidate,
+        "target_commit": integration,
+        "paths": [
+            {
+                "path": repository,
+                "passed": True,
+                "chain": [
+                    {
+                        "repository_path": str(tmp_path / repository),
+                        "relative": repository,
+                        "candidate_gitlink": nested_candidate,
+                        "target_gitlink": nested_integration,
+                        "relationship": "ancestor",
+                    }
+                ],
+            }
+        ],
+    }
+    nested_merge = {
+        "already_merged": True,
+        "attempted": False,
+        "cleanup_result": {},
+        "integrated_handoff_proof": handoff,
+        "integration_commit_proof": proof,
+        "merge_commit": integration,
+        "merge_reconciliation_receipt": {
+            "recorded": True,
+            "replayed": False,
+            "event_id": reconciliation["event_id"],
+        },
+        "merged": True,
+        "mutation_short_circuited": True,
+        "post_merge_declared_output_invariant": invariant,
+        "post_merge_submodule_invariant": {
+            "passed": True,
+            "candidate_commit": candidate,
+            "target_commit": integration,
+            "integrated_handoff_proof": handoff,
+        },
+        "reason": "implementation_commit_already_merged",
+        "returncode": 0,
+        "submodule_merge_results": [
+            {
+                "merged": True,
+                "path": repository,
+                "reason": "gitlink_handoff_proved_integrated",
+            }
+        ],
+        "target_branch": "main",
+        "target_commit": integration,
+        "todo_update_result": todo,
+    }
+    settlement = {
+        "acceptance_pending": False,
+        "accepted": True,
+        "callback_owned_integration": True,
+        "canonical_task_id": task_key,
+        "commit_sha": candidate,
+        "distributed_publication_admission": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "distributed-lane-admission@1"
+            ),
+            "admitted": True,
+            "distributed": False,
+            "request_id": request_id,
+            "status": "local",
+        },
+        "finished_at": 5.0,
+        "integrated": True,
+        "merge_commit": integration,
+        "merge_result": nested_merge,
+        "merged": False,
+        "request_id": request_id,
+        "started_at": 4.0,
+        "status": "already_merged",
+        "target_branch": "main",
+        "target_commit": integration,
+        "task_id": task_alias,
+    }
+    revival = {
+        "at": 3.0,
+        "reason": (
+            "merge train proved quarantined candidate already integrated "
+            "into exact target"
+        ),
+        "previous_enqueued_at": 1.0,
+        "previous_failure_count": 2,
+        "previous_failure_reason": (
+            "merge_queue_reconciliation_projection_conflict"
+        ),
+    }
+    metadata = {
+        **quarantined.metadata,
+        "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+        "implementation_commit": candidate,
+        "events_path": str(events_path),
+        "completion_task_cids": {task_alias: task_cid},
+        "changed_submodule_paths": [repository],
+        "revivals": [revival],
+        "task": {
+            "task_id": task_alias,
+            "canonical_task_cid": task_cid,
+            "canonical_task_key": task_key,
+            "outputs": [output],
+        },
+    }
+    dedupe_key = "6" * 64
+    request = SimpleNamespace(
+        **{
+            **quarantined.__dict__,
+            "status": "completed",
+            "attempt": 1,
+            "failure_count": 0,
+            "failure_reason": "",
+            "enqueued_at": revival["at"],
+            "metadata": metadata,
+            "dedupe_key": dedupe_key,
+        }
+    )
+    receipt_dir = tmp_path / "receipts"
+    receipt_dir.mkdir()
+
+    def receipt_path(key: str) -> Path:
+        return receipt_dir / f"{key}.json"
+
+    receipt_path(dedupe_key).write_text(json.dumps(settlement), encoding="utf-8")
+    receipt_path(f"quarantine-{request_id}").write_text(
+        json.dumps(metadata["quarantine"]),
+        encoding="utf-8",
+    )
+    train = SimpleNamespace(
+        receipt_dir=receipt_dir,
+        _dedupe_key=lambda _canonical, _candidate: dedupe_key,
+        _read_receipt=lambda key: json.loads(
+            receipt_path(key).read_text(encoding="utf-8")
+        ),
+        _receipt_path=receipt_path,
+    )
+    bridge.repository_root = tmp_path
+    (tmp_path / repository).mkdir(parents=True)
+    bridge.worktree_submodule_paths = (repository,)
+    bridge._verified_event_chain = lambda _paths: events
+    bridge._exact_callback_reconciliation_for_completion_source = (
+        lambda *_args, **_kwargs: True
+    )
+    projection = SimpleNamespace(
+        paths=SimpleNamespace(events=events_path),
+        binding={**binding, "task_cid": "task:database:doep-011"},
+        task_status="completed",
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.merge.merge_train."
+        "integrated_candidate_handoff_proof",
+        lambda *_args, **_kwargs: dict(handoff),
+    )
+
+    candidate_blob = {"value": blob}
+
+    def fake_git(
+        argv: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[bytes]:
+        arguments = argv[1:]
+        cwd = Path(str(kwargs.get("cwd") or tmp_path))
+        if arguments[:2] == ["rev-parse", "--verify"]:
+            ref = arguments[2]
+            observed = (
+                integration
+                if ref.startswith("refs/heads/main")
+                else current_tree
+                if ref == f"{integration}^{{tree}}"
+                else candidate_tree
+            )
+            return subprocess.CompletedProcess(
+                argv, 0, observed.encode() + b"\n", b""
+            )
+        if arguments[:3] == ["rev-list", "--parents", "-n"]:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                f"{candidate} {baseline}\n".encode(),
+                b"",
+            )
+        if arguments[0] == "merge-base":
+            return subprocess.CompletedProcess(argv, 0, b"", b"")
+        if arguments[0] == "ls-tree":
+            commit = arguments[2]
+            path = arguments[-1]
+            if cwd == tmp_path and path == repository:
+                nested = (
+                    nested_candidate if commit == candidate else nested_integration
+                )
+                return subprocess.CompletedProcess(
+                    argv,
+                    0,
+                    f"160000 commit {nested}\t{repository}\0".encode(),
+                    b"",
+                )
+            observed_blob = (
+                candidate_blob["value"] if commit == nested_candidate else blob
+            )
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                f"100644 blob {observed_blob}\t{tracked_output}\0".encode(),
+                b"",
+            )
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(subprocess, "run", fake_git)
+    source = bridge._callback_integration_source_evidence(
+        request,
+        projection,
+        train=train,
+    )
+    assert source is not None
+    assert source["source_event_id"] == semantic_source["event_id"]
+    assert source["settled_integration_source"]["transport_event_id"] == (
+        transport["event_id"]
+    )
+    assert source["settled_integration_source"]["status_event_id"] == (
+        status_event["event_id"]
+    )
+    qualification = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "post-merge-callback-integration-requalification@2"
+        ),
+        **source,
+        "validation": [
+            {
+                "task_id": task_alias,
+                "passed": True,
+                "returncode": 0,
+                "validation_result_digests": ["7" * 64],
+                "command_count": 1,
+                "log_sha256": "8" * 64,
+            }
+        ],
+    }
+    qualification["receipt_id"] = content_identity(qualification)
+    assert bridge._verified_post_merge_callback_integration_receipt(
+        qualification,
+        source=source,
+    ) == qualification
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon._verified_post_merge_callback_integration_source_authority = (
+        lambda _qualification, _evidence: dict(source)
+    )
+    assert daemon._verified_post_merge_callback_integration_receipt(
+        qualification,
+        recovery_evidence={"source": "test"},
+    ) == qualification
+
+    provenance["source_projection_id"] = "sha256:" + "9" * 64
+    assert bridge._callback_integration_source_evidence(
+        request,
+        projection,
+        train=train,
+    ) is None
+
+    provenance_body = dict(provenance)
+    provenance_body.pop("source_projection_id")
+    provenance["source_projection_id"] = content_identity(provenance_body)
+    candidate_blob["value"] = "9" * 40
+    assert bridge._callback_integration_source_evidence(
+        request,
+        projection,
+        train=train,
+    ) is None
+
+
+def test_unknown_callback_ordinary_implementation_source_regression() -> None:
+    alias = "DOEP-012"
+    request_id = "request:ordinary-callback"
+    paths = SimpleNamespace(root=Path("/attempt/ordinary"))
+    binding = {"task_alias": alias}
+    request = SimpleNamespace(request_id=request_id, status="completed")
+    projection = SimpleNamespace(paths=paths, binding=binding)
+    attempt = SimpleNamespace(
+        attempt_id="attempt:ordinary",
+        claim_id="claim:ordinary",
+        lease_id="lease:ordinary",
+        fencing_token=7,
+        fence_epoch=3,
+    )
+    control_receipt = {
+        "operation": "database_portal_neutral_failure_quarantine",
+        "failure_kind": "provider_callback_outcome_unknown",
+        "retry_suppressed": True,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+    }
+    record = SimpleNamespace(
+        status="quarantined",
+        revision=19,
+        body={"completion_receipt": control_receipt},
+    )
+    projection_calls: list[frozenset[str]] = []
+
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.merge_queue = SimpleNamespace(
+        get=lambda value: request if value == request_id else None
+    )
+    bridge._verified_event_chain = lambda _paths: [
+        {
+            "type": "implementation_finished",
+            "task_id": alias,
+            "merge_result": {"request_id": request_id},
+        }
+    ]
+
+    def owned_projection(
+        current: object,
+        *,
+        allowed_task_statuses: frozenset[str],
+        **_kwargs: object,
+    ) -> object | None:
+        projection_calls.append(allowed_task_statuses)
+        return projection if current is request else None
+
+    bridge._owned_post_merge_recovery_projection = owned_projection
+    bridge._record_for_attempt = lambda *_args: record
+    bridge.task_source = object()
+
+    def evidence(
+        current: object,
+        current_projection: object,
+        *,
+        revalidate_authority: object,
+        **_kwargs: object,
+    ) -> dict[str, object] | None:
+        assert current is request
+        assert current_projection is projection
+        assert callable(revalidate_authority) and revalidate_authority()
+        return {"ordinary": True}
+
+    bridge._post_merge_callback_integration_evidence = evidence
+
+    assert bridge._unknown_callback_landed_recovery_evidence(
+        attempt=attempt,
+        paths=paths,
+        binding=binding,
+    ) == {"ordinary": True}
+    assert projection_calls == [
+        frozenset({"completed"}),
+        frozenset({"completed"}),
+    ]
+
+
+@pytest.mark.parametrize("stale_control_revision", [False, True])
+def test_completed_callback_transport_replay_is_idempotent_and_cas_bound(
+    stale_control_revision: bool,
+) -> None:
+    bridge, original, quarantined, binding = (
+        _exact_callback_reconciliation_transport_fixture()
+    )
+    revival = {
+        "at": 4.0,
+        "reason": (
+            "merge train proved quarantined candidate already integrated "
+            "into exact target"
+        ),
+        "previous_enqueued_at": 1.0,
+        "previous_failure_count": 2,
+        "previous_failure_reason": (
+            "merge_queue_reconciliation_projection_conflict"
+        ),
+    }
+    completed = SimpleNamespace(
+        **{
+            **quarantined.__dict__,
+            "status": "completed",
+            "attempt": 1,
+            "failure_count": 0,
+            "failure_reason": "",
+            "metadata": {**quarantined.metadata, "revivals": [revival]},
+        }
+    )
+    suffix, _todo = _exact_callback_reconciliation_suffix_fixture(
+        bridge,
+        original,
+        completed,
+    )
+    events = [*original, *suffix]
+    paths = SimpleNamespace(root=Path("/attempt/transport"))
+    projection = SimpleNamespace(paths=paths, binding=binding)
+    attempt = SimpleNamespace(
+        attempt_id="attempt:transport",
+        claim_id="claim:transport",
+        lease_id="lease:transport",
+        fencing_token=11,
+        fence_epoch=5,
+    )
+    control_receipt = {
+        "operation": "database_portal_neutral_failure_quarantine",
+        "failure_kind": "provider_callback_outcome_unknown",
+        "retry_suppressed": True,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+    }
+    current_record = {
+        "value": SimpleNamespace(
+            status="quarantined",
+            revision=19,
+            body={"completion_receipt": control_receipt},
+        )
+    }
+    bridge.repository_root = Path("/repository")
+    bridge._verified_event_chain = lambda _paths: events
+    bridge._exact_callback_reconciliation_for_completion_source = (
+        lambda *_args, **_kwargs: True
+    )
+    bridge.merge_queue.get = (
+        lambda value: completed if value == completed.request_id else None
+    )
+    projection_statuses: list[frozenset[str]] = []
+
+    def owned_projection(
+        current: object,
+        *,
+        allowed_task_statuses: frozenset[str],
+        **_kwargs: object,
+    ) -> object | None:
+        projection_statuses.append(allowed_task_statuses)
+        return projection if current is completed else None
+
+    bridge._owned_post_merge_recovery_projection = owned_projection
+    bridge.task_source = object()
+    bridge._record_for_attempt = lambda *_args: current_record["value"]
+    bridge._settle_exact_callback_reconciliation_transport = (
+        lambda **_kwargs: pytest.fail("completed transport replayed its provider")
+    )
+
+    def requalification(
+        _request: object,
+        _projection: object,
+        *,
+        revalidate_authority: object,
+        **_kwargs: object,
+    ) -> dict[str, object] | None:
+        assert callable(revalidate_authority)
+        if stale_control_revision:
+            current_record["value"] = SimpleNamespace(
+                status="quarantined",
+                revision=20,
+                body={"completion_receipt": control_receipt},
+            )
+        return {"transport": "qualified"} if revalidate_authority() else None
+
+    bridge._post_merge_callback_integration_evidence = requalification
+
+    first = bridge._unknown_callback_landed_recovery_evidence(
+        attempt=attempt,
+        paths=paths,
+        binding=binding,
+    )
+    if stale_control_revision:
+        assert first is None
+    else:
+        assert first == {"transport": "qualified"}
+        assert bridge._unknown_callback_landed_recovery_evidence(
+            attempt=attempt,
+            paths=paths,
+            binding=binding,
+        ) == first
+    assert projection_statuses
+    assert set(projection_statuses) == {frozenset({"quarantined"})}
+
+
+@pytest.mark.parametrize("suffix_length", [0, 1, 2, 3])
+def test_processing_callback_transport_accepts_only_canonical_recovered_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    suffix_length: int,
+) -> None:
+    bridge, original, quarantined, binding = (
+        _exact_callback_reconciliation_transport_fixture()
+    )
+    revival = {
+        "at": 4.0,
+        "reason": (
+            "merge train proved quarantined candidate already integrated "
+            "into exact target"
+        ),
+        "previous_enqueued_at": 1.0,
+        "previous_failure_count": 2,
+        "previous_failure_reason": (
+            "merge_queue_reconciliation_projection_conflict"
+        ),
+    }
+    revived = SimpleNamespace(
+        **{
+            **quarantined.__dict__,
+            "status": "processing",
+            "attempt": 1,
+            "failure_count": 0,
+            "failure_reason": "",
+            "consumer_id": "merge-train:orphaned-owner",
+            "claim_token": "claim:orphaned-owner",
+            "metadata": {**quarantined.metadata, "revivals": [revival]},
+        }
+    )
+    recovered = SimpleNamespace(
+        **{
+            **revived.__dict__,
+            "status": "pending",
+            "attempt": 2,
+            "failure_count": 1,
+            "failure_reason": "merge train consumer exited; claim recovered",
+        }
+    )
+    completed = SimpleNamespace(**{**revived.__dict__, "status": "completed"})
+    suffix, todo = _exact_callback_reconciliation_suffix_fixture(
+        bridge,
+        original,
+        revived,
+    )
+    events = [*original, *suffix[:suffix_length]]
+    projection = SimpleNamespace(
+        paths=SimpleNamespace(events=tmp_path / "events.jsonl"),
+        binding=binding,
+    )
+    current = {"value": revived}
+    bridge.repository_root = tmp_path
+    bridge._verified_event_chain = lambda _paths: events
+    bridge._exact_callback_reconciliation_for_completion_source = (
+        lambda *_args, **_kwargs: True
+    )
+    bridge.merge_queue.max_attempts = 3
+    bridge.merge_queue.get = lambda _request_id: current["value"]
+    bridge._callback_integration_source_evidence = (
+        lambda *_args, **_kwargs: {"source": "qualified"}
+    )
+
+    settlement = {
+        "status": "already_merged",
+        "request_id": revived.request_id,
+        "canonical_task_id": revived.canonical_identity,
+        "commit_sha": revived.commit_sha,
+        "integrated": True,
+        "accepted": True,
+        "callback_owned_integration": True,
+        "merge_result": {
+            "attempted": False,
+            "merged": True,
+            "already_merged": True,
+            "returncode": 0,
+            "reason": "implementation_commit_already_merged",
+            "todo_update_result": todo,
+        },
+    }
+
+    class RecoveryTrain:
+        def __init__(self, **_kwargs: object) -> None:
+            self.queue = bridge.merge_queue
+
+        @staticmethod
+        def _dedupe_key(_canonical: str, _candidate: str) -> str:
+            return "dedupe:recovered"
+
+        @staticmethod
+        def _read_receipt(_key: str) -> dict[str, object]:
+            return settlement
+
+        @staticmethod
+        def recover_one_integrated_quarantine(
+            *,
+            request_filter: object,
+            request_id: str,
+            processor_context: object,
+            allow_post_merge_declared_output_recovery: bool,
+        ) -> dict[str, object] | None:
+            assert request_id == revived.request_id
+            assert callable(processor_context)
+            assert allow_post_merge_declared_output_recovery is True
+            assert callable(request_filter)
+            assert request_filter(recovered) is True
+            current["value"] = completed
+            return settlement
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.merge.merge_train.MergeTrain",
+        RecoveryTrain,
+    )
+
+    assert bridge._settle_exact_callback_reconciliation_transport(
+        request=revived,
+        projection=projection,
+        terminal=original[-1],
+        control_authority_is_current=lambda: True,
+    ) is completed
+
+    wrong_recovery = SimpleNamespace(
+        **{**recovered.__dict__, "failure_count": 2}
+    )
+    current["value"] = revived
+
+    class WrongRecoveryTrain(RecoveryTrain):
+        @staticmethod
+        def recover_one_integrated_quarantine(
+            *, request_filter: object, **_kwargs: object
+        ) -> None:
+            assert callable(request_filter)
+            assert request_filter(wrong_recovery) is False
+            return None
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.merge.merge_train.MergeTrain",
+        WrongRecoveryTrain,
+    )
+    assert bridge._settle_exact_callback_reconciliation_transport(
+        request=revived,
+        projection=projection,
+        terminal=original[-1],
+        control_authority_is_current=lambda: True,
+    ) is None
+
+
 def test_post_settlement_checkout_deferral_never_reaches_database_recovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

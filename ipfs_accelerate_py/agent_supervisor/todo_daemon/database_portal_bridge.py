@@ -935,6 +935,34 @@ _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS: Final[frozenset[str]] = 
         }
     )
 )
+_POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-reconciled-callback-transport-source@1"
+)
+_POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "schema",
+        "source_shape",
+        "settlement_receipt_id",
+        "quarantine_receipt_id",
+        "quarantine_receipt",
+        "revival_id",
+        "revival",
+        "enqueue_event_id",
+        "enqueue_event_digest",
+        "transport_event_id",
+        "transport_event_digest",
+        "projected_source_event_id",
+        "projected_source_event_digest",
+        "reconciliation_event_id",
+        "reconciliation_event_digest",
+        "status_event_id",
+        "status_event_digest",
+        "source_id",
+    }
+)
 _POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_FIELDS: Final[
     frozenset[str]
 ] = frozenset(
@@ -5809,6 +5837,835 @@ class DatabasePortalExecutionBridge:
             current_tree=current_tree,
         )
 
+    def _reconciled_callback_transport_source_evidence(
+        self,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        *,
+        train: Any,
+        receipt_key: str,
+        settlement_receipt: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Verify an exact callback settlement reached from a transport failure.
+
+        The historical ``worktree_reconciliation_candidate_queued`` failure is
+        only revival authority.  Completion authority comes from the distinct
+        semantic projection and reconciliation which the ordinary Portal
+        callback appends while the canonical merge consumer owns the revived
+        row.  Both lineages, the original quarantine, the one exact revival,
+        the final train receipt, and current Git/blob identities must agree.
+        """
+
+        if self.repository_root is None or self.merge_queue is None:
+            return None
+        from ..merge.merge_train import integrated_candidate_handoff_proof
+        from ..proof.formal_verification_contracts import content_identity
+
+        metadata = getattr(request, "metadata", None)
+        task_alias = str(getattr(request, "task_id", "") or "")
+        portal_task_cid = str(
+            getattr(request, "canonical_task_id", "") or ""
+        )
+        portal_task_key = str(
+            getattr(request, "canonical_task_key", "") or ""
+        )
+        database_task_cid = str(projection.binding.get("task_cid") or "")
+        canonical = str(getattr(request, "canonical_identity", "") or "")
+        request_id = str(getattr(request, "request_id", "") or "")
+        candidate = str(getattr(request, "commit_sha", "") or "")
+        branch = str(getattr(request, "branch_name", "") or "")
+        task_payload = (
+            metadata.get("task") if isinstance(metadata, Mapping) else None
+        )
+        outputs = (
+            task_payload.get("outputs")
+            if isinstance(task_payload, Mapping)
+            else None
+        )
+        validation_proof = (
+            metadata.get("validation_proof")
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        baseline = (
+            str(metadata.get("baseline_ref") or "")
+            if isinstance(metadata, Mapping)
+            else ""
+        )
+        candidate_tree = (
+            str(metadata.get("candidate_tree") or "")
+            if isinstance(metadata, Mapping)
+            else ""
+        )
+        completion_task_cids = (
+            metadata.get("completion_task_cids")
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        changed_submodule_paths = (
+            metadata.get("changed_submodule_paths")
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        if (
+            str(getattr(request, "status", "") or "") != "completed"
+            or not isinstance(metadata, Mapping)
+            or metadata.get("schema") != _MERGE_CANDIDATE_SCHEMA
+            or "completion" in metadata
+            or not all(
+                (
+                    task_alias,
+                    portal_task_cid,
+                    portal_task_key,
+                    database_task_cid,
+                    request_id,
+                    branch,
+                )
+            )
+            or canonical != portal_task_key
+            or re.fullmatch(r"[0-9a-f]{40}", candidate) is None
+            or re.fullmatch(r"[0-9a-f]{40}", baseline) is None
+            or re.fullmatch(
+                r"[0-9a-f]{40}(?:[0-9a-f]{24})?", candidate_tree
+            )
+            is None
+            or metadata.get("implementation_commit") != candidate
+            or completion_task_cids != {task_alias: portal_task_cid}
+            or not isinstance(task_payload, Mapping)
+            or task_payload.get("task_id") != task_alias
+            or not isinstance(outputs, list)
+            or not outputs
+            or len(outputs) > 4096
+            or len(set(outputs)) != len(outputs)
+            or any(not isinstance(item, str) or not item for item in outputs)
+            or not isinstance(changed_submodule_paths, list)
+            or len(changed_submodule_paths) > 256
+            or any(
+                not isinstance(item, str) or not item
+                for item in changed_submodule_paths
+            )
+            or not isinstance(validation_proof, Mapping)
+            or validation_proof.get("attempted") is not True
+            or validation_proof.get("passed") is not True
+            or validation_proof.get("returncode") != 0
+            or validation_proof.get("target_commit") != candidate
+            or validation_proof.get("target_tree") != candidate_tree
+            or validation_proof.get("repository_tree_id")
+            != f"git-tree:{candidate_tree}"
+        ):
+            return None
+
+        settlement = dict(settlement_receipt)
+        settlement_fields = {
+            "acceptance_pending",
+            "accepted",
+            "callback_owned_integration",
+            "canonical_task_id",
+            "commit_sha",
+            "distributed_publication_admission",
+            "finished_at",
+            "integrated",
+            "merge_commit",
+            "merge_result",
+            "merged",
+            "request_id",
+            "started_at",
+            "status",
+            "target_branch",
+            "target_commit",
+            "task_id",
+        }
+        integration = str(settlement.get("target_commit") or "")
+        started_at = settlement.get("started_at")
+        finished_at = settlement.get("finished_at")
+        admission = settlement.get("distributed_publication_admission")
+        merge_result = settlement.get("merge_result")
+        if (
+            set(settlement) != settlement_fields
+            or settlement.get("status") != "already_merged"
+            or settlement.get("merged") is not False
+            or settlement.get("integrated") is not True
+            or settlement.get("accepted") is not True
+            or settlement.get("acceptance_pending") is not False
+            or settlement.get("callback_owned_integration") is not True
+            or settlement.get("request_id") != request_id
+            or settlement.get("task_id") != task_alias
+            or settlement.get("canonical_task_id") != canonical
+            or settlement.get("commit_sha") != candidate
+            or settlement.get("target_branch") != self.merge_target_branch
+            or settlement.get("merge_commit") != integration
+            or re.fullmatch(r"[0-9a-f]{40}", integration) is None
+            or isinstance(started_at, bool)
+            or not isinstance(started_at, (int, float))
+            or isinstance(finished_at, bool)
+            or not isinstance(finished_at, (int, float))
+            or not math.isfinite(float(started_at))
+            or not math.isfinite(float(finished_at))
+            or float(started_at) > float(finished_at)
+            or not isinstance(admission, Mapping)
+            or set(admission)
+            != {"schema", "admitted", "distributed", "request_id", "status"}
+            or admission.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/distributed-lane-admission@1"
+            or admission.get("admitted") is not True
+            or admission.get("distributed") is not False
+            or admission.get("request_id") != request_id
+            or admission.get("status") != "local"
+            or not isinstance(merge_result, Mapping)
+        ):
+            return None
+
+        required_merge_fields = {
+            "already_merged",
+            "attempted",
+            "cleanup_result",
+            "integrated_handoff_proof",
+            "integration_commit_proof",
+            "merge_commit",
+            "merge_reconciliation_receipt",
+            "merged",
+            "mutation_short_circuited",
+            "post_merge_declared_output_invariant",
+            "reason",
+            "returncode",
+            "submodule_merge_results",
+            "target_branch",
+            "target_commit",
+            "todo_update_result",
+        }
+        optional_merge_fields = {
+            "database_portal_merge_continuation",
+            "post_merge_submodule_invariant",
+        }
+        proof = merge_result.get("integration_commit_proof")
+        invariant = merge_result.get("post_merge_declared_output_invariant")
+        reconciliation_receipt = merge_result.get(
+            "merge_reconciliation_receipt"
+        )
+        todo = merge_result.get("todo_update_result")
+        completion_receipts = (
+            todo.get("completion_receipts")
+            if isinstance(todo, Mapping)
+            else None
+        )
+        member = (
+            completion_receipts[0]
+            if isinstance(completion_receipts, list)
+            and len(completion_receipts) == 1
+            else None
+        )
+        checks = invariant.get("checks") if isinstance(invariant, Mapping) else None
+        check_by_path = {
+            str(item.get("path") or ""): item
+            for item in (checks or ())
+            if isinstance(item, Mapping)
+        }
+        expected_handoff = integrated_candidate_handoff_proof(
+            self.repository_root,
+            candidate_commit=candidate,
+            target_commit=integration,
+            changed_submodule_paths=changed_submodule_paths,
+        )
+        submodule_invariant = merge_result.get(
+            "post_merge_submodule_invariant"
+        )
+        if (
+            not required_merge_fields <= set(merge_result)
+            or not set(merge_result) <= required_merge_fields | optional_merge_fields
+            or merge_result.get("attempted") is not False
+            or merge_result.get("merged") is not True
+            or merge_result.get("already_merged") is not True
+            or merge_result.get("returncode") != 0
+            or merge_result.get("reason")
+            != "implementation_commit_already_merged"
+            or merge_result.get("mutation_short_circuited") is not True
+            or merge_result.get("merge_commit") != integration
+            or merge_result.get("target_commit") != integration
+            or merge_result.get("target_branch") != self.merge_target_branch
+            or expected_handoff.get("passed") is not True
+            or merge_result.get("integrated_handoff_proof") != expected_handoff
+            or (
+                bool(changed_submodule_paths)
+                and (
+                    not isinstance(submodule_invariant, Mapping)
+                    or submodule_invariant.get("passed") is not True
+                    or submodule_invariant.get("candidate_commit") != candidate
+                    or submodule_invariant.get("target_commit") != integration
+                    or submodule_invariant.get("integrated_handoff_proof")
+                    != expected_handoff
+                )
+            )
+            or (
+                not changed_submodule_paths
+                and "post_merge_submodule_invariant" in merge_result
+            )
+            or not isinstance(proof, Mapping)
+            or set(proof)
+            != {
+                "implementation_commit",
+                "integration_commit",
+                "integration_ref",
+                "passed",
+                "reasons",
+                "target_branch",
+            }
+            or proof.get("implementation_commit") != candidate
+            or proof.get("integration_commit") != integration
+            or proof.get("integration_ref") != integration
+            or proof.get("passed") is not True
+            or proof.get("reasons") != []
+            or proof.get("target_branch") != self.merge_target_branch
+            or not isinstance(invariant, Mapping)
+            or invariant.get("passed") is not True
+            or invariant.get("reason") != "declared_outputs_tracked"
+            or invariant.get("mode") != "repository_tree"
+            or invariant.get("repository_ref") != integration
+            or invariant.get("task_ids") != [task_alias]
+            or invariant.get("missing_outputs") != []
+            or invariant.get("unsafe_outputs") != []
+            or invariant.get("untracked_outputs") != []
+            or not isinstance(checks, list)
+            or len(checks) != len(outputs)
+            or list(check_by_path) != outputs
+            or not isinstance(reconciliation_receipt, Mapping)
+            or set(reconciliation_receipt) != {"recorded", "replayed", "event_id"}
+            or reconciliation_receipt.get("recorded") is not True
+            or type(reconciliation_receipt.get("replayed")) is not bool
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(reconciliation_receipt.get("event_id") or ""),
+            )
+            is None
+            or not isinstance(todo, Mapping)
+            or todo.get("task_id") != task_alias
+            or todo.get("updated") is not True
+            or todo.get("completion_reason") != "single_task"
+            or todo.get("updated_task_ids") != [task_alias]
+            or todo.get("missing_task_ids") != []
+            or todo.get("missing_status_task_ids") != []
+            or not isinstance(member, Mapping)
+            or member.get("schema")
+            != "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
+            or member.get("status") != "succeeded"
+            or member.get("task_id") != task_alias
+            or member.get("canonical_task_cid") != portal_task_cid
+            or member.get("canonical_task_key") != portal_task_key
+        ):
+            return None
+
+        revivals = metadata.get("revivals")
+        revival = (
+            revivals[-1]
+            if isinstance(revivals, list) and revivals
+            else None
+        )
+        revival_at = revival.get("at") if isinstance(revival, Mapping) else None
+        previous_enqueued_at = (
+            revival.get("previous_enqueued_at")
+            if isinstance(revival, Mapping)
+            else None
+        )
+        if (
+            not isinstance(revival, Mapping)
+            or set(revival)
+            != {
+                "at",
+                "reason",
+                "previous_enqueued_at",
+                "previous_failure_count",
+                "previous_failure_reason",
+            }
+            or revival.get("reason")
+            != (
+                "merge train proved quarantined candidate already integrated "
+                "into exact target"
+            )
+            or revival.get("previous_failure_reason")
+            != "merge_queue_reconciliation_projection_conflict"
+            or type(revival.get("previous_failure_count")) is not int
+            or revival.get("previous_failure_count") != 2
+            or isinstance(revival_at, bool)
+            or not isinstance(revival_at, (int, float))
+            or isinstance(previous_enqueued_at, bool)
+            or not isinstance(previous_enqueued_at, (int, float))
+            or not math.isfinite(float(revival_at))
+            or not math.isfinite(float(previous_enqueued_at))
+            or float(previous_enqueued_at) > float(revival_at)
+            or getattr(request, "failure_count", None) != 0
+            or getattr(request, "attempt", None) != 1
+            or str(getattr(request, "failure_reason", "") or "")
+            or float(getattr(request, "enqueued_at", -1.0)) != float(revival_at)
+        ):
+            return None
+
+        read_receipt = getattr(train, "_read_receipt", None)
+        receipt_path = getattr(train, "_receipt_path", None)
+        if not callable(read_receipt) or not callable(receipt_path):
+            return None
+        quarantine_key = f"quarantine-{request_id}"
+        try:
+            receipt_dir = getattr(train, "receipt_dir", None)
+            settlement_path = Path(receipt_path(receipt_key))
+            quarantine_path = Path(receipt_path(quarantine_key))
+            if (
+                not isinstance(receipt_dir, Path)
+                or receipt_dir.is_symlink()
+                or not receipt_dir.is_dir()
+                or settlement_path.is_symlink()
+                or quarantine_path.is_symlink()
+                or not settlement_path.is_file()
+                or not quarantine_path.is_file()
+                or settlement_path.resolve(strict=True).parent
+                != quarantine_path.resolve(strict=True).parent
+                or settlement_path.resolve(strict=True).parent
+                != receipt_dir.resolve(strict=True)
+                or settlement_path.stat().st_size <= 0
+                or quarantine_path.stat().st_size <= 0
+                or settlement_path.stat().st_size
+                > _MAX_DATABASE_PORTAL_PROJECTION_BYTES
+                or quarantine_path.stat().st_size
+                > _MAX_DATABASE_PORTAL_PROJECTION_BYTES
+            ):
+                return None
+        except (OSError, RuntimeError, ValueError):
+            return None
+        quarantine_raw = read_receipt(quarantine_key)
+        quarantine = (
+            dict(quarantine_raw)
+            if isinstance(quarantine_raw, Mapping)
+            else {}
+        )
+        if (
+            not quarantine
+            or metadata.get("quarantine") != quarantine
+            or quarantine.get("status") != "quarantined"
+            or quarantine.get("reason")
+            != "merge_queue_reconciliation_projection_conflict"
+            or quarantine.get("request_id") != request_id
+            or quarantine.get("task_id") != task_alias
+            or quarantine.get("canonical_task_id") != canonical
+            or quarantine.get("commit_sha") != candidate
+            or quarantine.get("target_branch") != self.merge_target_branch
+            or quarantine.get("merged") is not False
+            or quarantine.get("integrated") is not False
+            or quarantine.get("accepted") is not False
+            or quarantine.get("failure_count")
+            != revival.get("previous_failure_count")
+        ):
+            return None
+
+        try:
+            events = self._verified_event_chain(projection.paths)
+        except DatabasePortalBridgeError:
+            return None
+
+        def event_request_id(event: Mapping[str, Any]) -> str:
+            nested = event.get("merge_result")
+            return str(event.get("request_id") or "") or (
+                str(nested.get("request_id") or "")
+                if isinstance(nested, Mapping)
+                else ""
+            )
+
+        indexed = list(enumerate(events))
+        enqueues = [
+            (index, event)
+            for index, event in indexed
+            if event.get("type") == "merge_candidate_enqueued"
+            and event_request_id(event) == request_id
+        ]
+        transports = [
+            (index, event)
+            for index, event in indexed
+            if event.get("type")
+            == "worktree_reconciliation_candidate_queued"
+            and event_request_id(event) == request_id
+            and isinstance(event.get("merge_result"), Mapping)
+            and event["merge_result"].get("reason")
+            == "reconciled_candidate_queued_pending_merge"
+        ]
+        projected = [
+            (index, event)
+            for index, event in indexed
+            if event.get("type")
+            == "worktree_reconciliation_candidate_queued"
+            and event_request_id(event) == request_id
+            and event.get("reason")
+            == "merge_queue_synchronous_source_projected"
+            and isinstance(event.get("merge_queue_synchronous_source"), Mapping)
+            and not isinstance(
+                event.get("database_portal_merge_continuation_source"),
+                Mapping,
+            )
+        ]
+        reconciliations = [
+            (index, event)
+            for index, event in indexed
+            if event.get("type") == "merge_reconciled"
+            and event_request_id(event) == request_id
+        ]
+        status_events = [
+            (index, event)
+            for index, event in indexed
+            if event.get("type") == "todo_status_updated"
+        ]
+        if not all(
+            len(items) == 1
+            for items in (
+                enqueues,
+                transports,
+                projected,
+                reconciliations,
+                status_events,
+            )
+        ):
+            return None
+        enqueue_index, enqueue = enqueues[0]
+        transport_index, transport = transports[0]
+        projected_index, source_event = projected[0]
+        reconciliation_index, reconciliation = reconciliations[0]
+        status_index, status_event = status_events[0]
+        synchronous_source = source_event.get("merge_queue_synchronous_source")
+        source_provenance = synchronous_source
+        provenance_body = (
+            dict(source_provenance)
+            if isinstance(source_provenance, Mapping)
+            else {}
+        )
+        source_projection_id = str(
+            provenance_body.pop("source_projection_id", "") or ""
+        )
+        source_for_verification = dict(source_event)
+        reconciliation_for_verification = dict(reconciliation)
+        if source_for_verification.get("canonical_task_key") is None:
+            source_for_verification["canonical_task_key"] = portal_task_key
+        if reconciliation_for_verification.get("canonical_task_key") is None:
+            reconciliation_for_verification["canonical_task_key"] = (
+                portal_task_key
+            )
+        if (
+            not enqueue_index
+            < transport_index
+            < projected_index
+            < reconciliation_index
+            < status_index
+            or status_index != len(events) - 1
+            or reconciliation_receipt.get("event_id")
+            != reconciliation.get("event_id")
+            or not provenance_body
+            or source_projection_id != content_identity(provenance_body)
+            or provenance_body.get("request_id") != request_id
+            or provenance_body.get("task_id") != task_alias
+            or provenance_body.get("task_cid") != portal_task_cid
+            or provenance_body.get("canonical_task_key") != portal_task_key
+            or provenance_body.get("merge_candidate_enqueued_event_id")
+            != enqueue.get("event_id")
+            or merge_result.get("integration_commit_proof")
+            != reconciliation.get("integration_commit_proof")
+            or merge_result.get("post_merge_declared_output_invariant")
+            != reconciliation.get("post_merge_declared_output_invariant")
+            or set(status_event) != set(todo) | _PORTAL_EVENT_ENVELOPE_FIELDS
+            or any(status_event.get(key) != value for key, value in todo.items())
+            or status_event.get("previous_event_id")
+            != reconciliation.get("event_id")
+            or not self._exact_callback_reconciliation_for_completion_source(
+                reconciliation_for_verification,
+                source_for_verification,
+                alias=task_alias,
+                task_cid=portal_task_cid,
+                task_key=portal_task_key,
+                repository_root=self.repository_root,
+            )
+        ):
+            return None
+
+        historical_request = SimpleNamespace(
+            request_id=request_id,
+            canonical_task_id=portal_task_cid,
+            canonical_task_key=portal_task_key,
+            commit_sha=candidate,
+            branch_name=branch,
+            metadata=metadata,
+            status="quarantined",
+            failure_reason="merge_queue_reconciliation_projection_conflict",
+            attempt=2,
+            failure_count=2,
+        )
+        if not self._exact_terminal_callback_reconciliation_transport(
+            events[: transport_index + 1],
+            terminal=transport,
+            request=historical_request,
+            binding=projection.binding,
+        ):
+            return None
+
+        def git(*arguments: str) -> subprocess.CompletedProcess[Any]:
+            return subprocess.run(
+                ["git", *arguments],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+
+        try:
+            head = git(
+                "rev-parse",
+                "--verify",
+                f"refs/heads/{self.merge_target_branch}^{{commit}}",
+            )
+            head_text = (
+                head.stdout.decode().strip()
+                if isinstance(head.stdout, bytes)
+                else str(head.stdout).strip()
+            )
+            tree_result = git("rev-parse", "--verify", f"{head_text}^{{tree}}")
+            current_tree = (
+                tree_result.stdout.decode().strip()
+                if isinstance(tree_result.stdout, bytes)
+                else str(tree_result.stdout).strip()
+            )
+            candidate_tree_result = git(
+                "rev-parse", "--verify", f"{candidate}^{{tree}}"
+            )
+            observed_candidate_tree = (
+                candidate_tree_result.stdout.decode().strip()
+                if isinstance(candidate_tree_result.stdout, bytes)
+                else str(candidate_tree_result.stdout).strip()
+            )
+            parents = git("rev-list", "--parents", "-n", "1", candidate)
+            parent_text = (
+                parents.stdout.decode().strip()
+                if isinstance(parents.stdout, bytes)
+                else str(parents.stdout).strip()
+            )
+            candidate_integration = git(
+                "merge-base", "--is-ancestor", candidate, integration
+            )
+            integration_current = git(
+                "merge-base", "--is-ancestor", integration, head_text
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if (
+            head.returncode != 0
+            or re.fullmatch(r"[0-9a-f]{40}", head_text) is None
+            or tree_result.returncode != 0
+            or re.fullmatch(
+                r"[0-9a-f]{40}(?:[0-9a-f]{24})?", current_tree
+            )
+            is None
+            or candidate_tree_result.returncode != 0
+            or observed_candidate_tree != candidate_tree
+            or parents.returncode != 0
+            or parent_text.split() != [candidate, baseline]
+            or candidate_integration.returncode != 0
+            or integration_current.returncode != 0
+        ):
+            return None
+
+        entries: list[dict[str, Any]] = []
+        for output in outputs:
+            check = check_by_path.get(output)
+            if not isinstance(check, Mapping):
+                return None
+            repository = str(check.get("repository") or "")
+            repository_ref = str(check.get("repository_ref") or "")
+            tracked_path = str(check.get("tracked_path") or "")
+            try:
+                safe_path = _safe_output_path(output)
+                if repository == ".":
+                    observed = [
+                        git("ls-tree", "-z", commit, "--", safe_path)
+                        for commit in (candidate, integration, head_text)
+                    ]
+                else:
+                    safe_repository = _safe_repository_path(repository)
+                    safe_tracked = _safe_output_path(tracked_path)
+                    if (
+                        safe_repository not in self.worktree_submodule_paths
+                        or safe_path != f"{safe_repository}/{safe_tracked}"
+                    ):
+                        return None
+                    gitlinks = [
+                        git("ls-tree", "-z", commit, "--", safe_repository)
+                        for commit in (candidate, integration, head_text)
+                    ]
+                    if any(item.returncode != 0 for item in gitlinks):
+                        return None
+                    gitlink_pattern = (
+                        rb"160000 commit ([0-9a-f]{40}(?:[0-9a-f]{24})?)\t"
+                        + re.escape(safe_repository.encode("utf-8"))
+                        + rb"\0"
+                    )
+                    gitlink_matches = [
+                        re.fullmatch(gitlink_pattern, bytes(item.stdout or b""))
+                        for item in gitlinks
+                    ]
+                    if any(item is None for item in gitlink_matches):
+                        return None
+                    candidate_repository_ref = gitlink_matches[0].group(1).decode(
+                        "ascii"
+                    )
+                    integration_repository_ref = gitlink_matches[1].group(1).decode(
+                        "ascii"
+                    )
+                    current_repository_ref = gitlink_matches[2].group(1).decode(
+                        "ascii"
+                    )
+                    handoff_paths = expected_handoff.get("paths")
+                    path_handoffs = [
+                        item
+                        for item in (handoff_paths or ())
+                        if isinstance(item, Mapping)
+                        and item.get("path") == safe_repository
+                    ]
+                    chain_matches = [
+                        item
+                        for item in (
+                            path_handoffs[0].get("chain")
+                            if len(path_handoffs) == 1
+                            and isinstance(path_handoffs[0].get("chain"), list)
+                            else ()
+                        )
+                        if isinstance(item, Mapping)
+                        and item.get("relative") == safe_repository
+                    ]
+                    if (
+                        len(path_handoffs) != 1
+                        or path_handoffs[0].get("passed") is not True
+                        or len(chain_matches) != 1
+                        or chain_matches[0].get("relationship") != "ancestor"
+                        or chain_matches[0].get("candidate_gitlink")
+                        != candidate_repository_ref
+                        or chain_matches[0].get("target_gitlink")
+                        != integration_repository_ref
+                        or repository_ref != integration_repository_ref
+                    ):
+                        return None
+                    nested_root = (self.repository_root / safe_repository).resolve(
+                        strict=True
+                    )
+                    nested_root.relative_to(self.repository_root.resolve(strict=True))
+                    ancestry = [
+                        subprocess.run(
+                            ["git", "merge-base", "--is-ancestor", older, newer],
+                            cwd=nested_root,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        for older, newer in (
+                            (candidate_repository_ref, repository_ref),
+                            (repository_ref, current_repository_ref),
+                        )
+                    ]
+                    if any(item.returncode != 0 for item in ancestry):
+                        return None
+                    observed = [
+                        subprocess.run(
+                            ["git", "ls-tree", "-z", commit, "--", safe_tracked],
+                            cwd=nested_root,
+                            capture_output=True,
+                            check=False,
+                            timeout=10,
+                        )
+                        for commit in (
+                            candidate_repository_ref,
+                            repository_ref,
+                            current_repository_ref,
+                        )
+                    ]
+            except (DatabasePortalBridgeError, OSError, subprocess.SubprocessError):
+                return None
+            if any(item.returncode != 0 for item in observed):
+                return None
+            raw_entry = observed[0].stdout
+            if not isinstance(raw_entry, bytes):
+                raw_entry = str(raw_entry).encode("utf-8")
+            if not raw_entry or any(
+                item.stdout != observed[0].stdout for item in observed[1:]
+            ):
+                return None
+            match = re.fullmatch(
+                rb"([0-9]{6}) (blob) ([0-9a-f]{40}(?:[0-9a-f]{24})?)\t([^\0]+)\0",
+                raw_entry,
+            )
+            expected_path = safe_path if repository == "." else tracked_path
+            if match is None or match.group(4).decode("utf-8") != expected_path:
+                return None
+            entries.append(
+                {
+                    "path": safe_path,
+                    "mode": match.group(1).decode("ascii"),
+                    "object_type": "blob",
+                    "object_id": match.group(3).decode("ascii"),
+                }
+            )
+
+        canonical_settlement = _canonical_json(settlement)
+        canonical_quarantine = _canonical_json(quarantine)
+        canonical_revival = _canonical_json(revival)
+        if any(
+            len(item) > _MAX_DATABASE_PORTAL_PROJECTION_BYTES
+            for item in (
+                canonical_settlement,
+                canonical_quarantine,
+                canonical_revival,
+            )
+        ):
+            return None
+        settlement_id = _sha256_bytes(canonical_settlement)
+        settled_source: dict[str, Any] = {
+            "schema": _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA,
+            "source_shape": "settled_reconciled_candidate_transport",
+            "settlement_receipt_id": settlement_id,
+            "quarantine_receipt_id": _sha256_bytes(canonical_quarantine),
+            "quarantine_receipt": canonical_quarantine.decode("utf-8"),
+            "revival_id": _sha256_bytes(canonical_revival),
+            "revival": canonical_revival.decode("utf-8"),
+            "enqueue_event_id": str(enqueue.get("event_id") or ""),
+            "enqueue_event_digest": _sha256_bytes(_canonical_json(enqueue)),
+            "transport_event_id": str(transport.get("event_id") or ""),
+            "transport_event_digest": _sha256_bytes(_canonical_json(transport)),
+            "projected_source_event_id": str(source_event.get("event_id") or ""),
+            "projected_source_event_digest": _sha256_bytes(
+                _canonical_json(source_event)
+            ),
+            "reconciliation_event_id": str(reconciliation.get("event_id") or ""),
+            "reconciliation_event_digest": _sha256_bytes(
+                _canonical_json(reconciliation)
+            ),
+            "status_event_id": str(status_event.get("event_id") or ""),
+            "status_event_digest": _sha256_bytes(
+                _canonical_json(status_event)
+            ),
+        }
+        settled_source["source_id"] = content_identity(settled_source)
+        return {
+            "task_ids": [task_alias],
+            "task_cid": database_task_cid,
+            "request_id": request_id,
+            "candidate_commit": candidate,
+            "baseline_commit": baseline,
+            "integration_commit": integration,
+            "source_event_id": str(source_event.get("event_id") or ""),
+            "source_event_digest": _sha256_bytes(_canonical_json(source_event)),
+            "source_validation_result_digest": _sha256_bytes(
+                _canonical_json(source_event.get("validation_result"))
+            ),
+            "queue_validation_proof_digest": _sha256_bytes(
+                _canonical_json(validation_proof)
+            ),
+            "train_dedupe_key": receipt_key,
+            "train_receipt_id": settlement_id,
+            "train_receipt": canonical_settlement.decode("utf-8"),
+            "current_target_commit": head_text,
+            "current_target_tree": current_tree,
+            "entries": entries,
+            "settled_integration_source": settled_source,
+        }
+
     def _settled_callback_integration_source_evidence(
         self,
         request: Any,
@@ -5829,6 +6686,15 @@ class DatabasePortalExecutionBridge:
         both immutable receipts, their two-hop Portal event linkage, the one
         exact queue revival, and fresh Git/blob identity at the current target.
         """
+
+        if settlement_receipt.get("callback_owned_integration") is True:
+            return self._reconciled_callback_transport_source_evidence(
+                request,
+                projection,
+                train=train,
+                receipt_key=receipt_key,
+                settlement_receipt=settlement_receipt,
+            )
 
         if self.repository_root is None or self.merge_queue is None:
             return None
@@ -7755,16 +8621,62 @@ class DatabasePortalExecutionBridge:
         if is_settled:
             settled_value = dict(settled_source)
             source_id = str(settled_value.pop("source_id", "") or "")
+            reconciled_transport = bool(
+                settled_value.get("schema")
+                == _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
+            )
+            settled_fields = (
+                _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS
+                if reconciled_transport
+                else _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS
+            )
+            settled_schema = (
+                _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
+                if reconciled_transport
+                else _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA
+            )
+            settled_shape = (
+                "settled_reconciled_candidate_transport"
+                if reconciled_transport
+                else "settled_integrated_quarantine"
+            )
+            event_identity_fields = (
+                (
+                    "enqueue_event_id",
+                    "enqueue_event_digest",
+                    "transport_event_id",
+                    "transport_event_digest",
+                    "projected_source_event_id",
+                    "projected_source_event_digest",
+                    "reconciliation_event_id",
+                    "reconciliation_event_digest",
+                    "status_event_id",
+                    "status_event_digest",
+                )
+                if reconciled_transport
+                else (
+                    "enqueue_event_id",
+                    "enqueue_event_digest",
+                    "projected_source_event_id",
+                    "projected_source_event_digest",
+                    "reconciliation_event_id",
+                    "reconciliation_event_digest",
+                    "terminal_event_id",
+                    "terminal_event_digest",
+                    "status_event_id",
+                    "status_event_digest",
+                    "completion_event_id",
+                    "completion_event_digest",
+                )
+            )
             canonical_strings: list[tuple[str, str]] = [
                 ("quarantine_receipt", "quarantine_receipt_id"),
                 ("revival", "revival_id"),
             ]
             if (
-                set(settled_source)
-                != _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS
-                or settled_value.get("schema")
-                != _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA
-                or settled_value.get("source_shape") != "settled_integrated_quarantine"
+                set(settled_source) != settled_fields
+                or settled_value.get("schema") != settled_schema
+                or settled_value.get("source_shape") != settled_shape
                 or settled_value.get("settlement_receipt_id")
                 != value.get("train_receipt_id")
                 or settled_value.get("projected_source_event_id")
@@ -7780,18 +8692,7 @@ class DatabasePortalExecutionBridge:
                         "settlement_receipt_id",
                         "quarantine_receipt_id",
                         "revival_id",
-                        "enqueue_event_id",
-                        "enqueue_event_digest",
-                        "projected_source_event_id",
-                        "projected_source_event_digest",
-                        "reconciliation_event_id",
-                        "reconciliation_event_digest",
-                        "terminal_event_id",
-                        "terminal_event_digest",
-                        "status_event_id",
-                        "status_event_digest",
-                        "completion_event_id",
-                        "completion_event_digest",
+                        *event_identity_fields,
                     )
                 )
             ):
@@ -20866,6 +21767,7 @@ class DatabasePortalExecutionBridge:
         except DatabasePortalBridgeError:
             return None
         sources: list[Mapping[str, Any]] = []
+        transport_mode = False
         for event in events:
             merge_result = event.get("merge_result")
             request_id = str(event.get("request_id") or "") or (
@@ -20879,14 +21781,75 @@ class DatabasePortalExecutionBridge:
                 and request_id
             ):
                 sources.append({"event": event, "request_id": request_id})
+        transport_source: Mapping[str, Any] | None = None
+        if not sources and events:
+            transport_candidates = [
+                (index, event)
+                for index, event in enumerate(events)
+                if event.get("type")
+                == "worktree_reconciliation_candidate_queued"
+                and isinstance(event.get("merge_result"), Mapping)
+                and event["merge_result"].get("reason")
+                == "reconciled_candidate_queued_pending_merge"
+                and str(event["merge_result"].get("request_id") or "")
+            ]
+            if len(transport_candidates) == 1:
+                terminal_index, terminal = transport_candidates[0]
+                terminal_merge = terminal["merge_result"]
+                terminal_request_id = str(
+                    terminal_merge.get("request_id") or ""
+                )
+                candidate_request = self.merge_queue.get(terminal_request_id)
+                request_status = str(
+                    getattr(candidate_request, "status", "") or ""
+                )
+                suffix_valid, suffix_length = (
+                    self._exact_callback_reconciliation_transport_suffix(
+                        events,
+                        transport_index=terminal_index,
+                        request=candidate_request,
+                        binding=binding,
+                    )
+                )
+                exact_unsettled = bool(
+                    request_status in {"pending", "processing", "quarantined"}
+                    and suffix_valid
+                    and self._exact_terminal_callback_reconciliation_transport(
+                        events[: terminal_index + 1],
+                        terminal=terminal,
+                        request=candidate_request,
+                        binding=binding,
+                    )
+                )
+                completed_exact_suffix = bool(
+                    request_status == "completed"
+                    and suffix_valid
+                    and suffix_length == 3
+                )
+                if exact_unsettled or completed_exact_suffix:
+                    transport_mode = True
+                    transport_source = terminal if exact_unsettled else None
+                    sources.append(
+                        {
+                            "event": terminal,
+                            "request_id": terminal_request_id,
+                        }
+                    )
         if len(sources) != 1:
             return None
         request_id = str(sources[0]["request_id"])
         request = self.merge_queue.get(request_id)
+        projection_statuses = frozenset(
+            {"quarantined"}
+            if transport_mode
+            else {"completed"}
+            if str(getattr(request, "status", "") or "") == "completed"
+            else {"quarantined"}
+        )
         projection = (
             self._owned_post_merge_recovery_projection(
                 request,
-                allowed_task_statuses=frozenset({"quarantined"}),
+                allowed_task_statuses=projection_statuses,
                 allow_shared_lane_source=True,
             )
             if request is not None
@@ -20932,7 +21895,7 @@ class DatabasePortalExecutionBridge:
             return None
         sealed_receipt = dict(control_receipt)
 
-        def authority_is_current() -> bool:
+        def control_authority_is_current() -> bool:
             try:
                 current = self._record_for_attempt(self.task_source, attempt)
             except DatabasePortalBridgeError:
@@ -20943,16 +21906,6 @@ class DatabasePortalExecutionBridge:
                 if isinstance(current_body, Mapping)
                 else None
             )
-            current_request = self.merge_queue.get(request_id)
-            current_projection = (
-                self._owned_post_merge_recovery_projection(
-                    current_request,
-                    allowed_task_statuses=frozenset({"quarantined"}),
-                    allow_shared_lane_source=True,
-                )
-                if current_request is not None
-                else None
-            )
             return bool(
                 str(getattr(current, "status", "") or "")
                 .strip()
@@ -20961,7 +21914,49 @@ class DatabasePortalExecutionBridge:
                 and getattr(current, "revision", None) == record_revision
                 and isinstance(current_receipt, Mapping)
                 and dict(current_receipt) == sealed_receipt
-                and current_request == request
+            )
+
+        if transport_source is not None:
+            request = self._settle_exact_callback_reconciliation_transport(
+                request=request,
+                projection=projection,
+                terminal=transport_source,
+                control_authority_is_current=control_authority_is_current,
+            )
+            projection = (
+                self._owned_post_merge_recovery_projection(
+                    request,
+                    allowed_task_statuses=frozenset({"quarantined"}),
+                    allow_shared_lane_source=True,
+                )
+                if request is not None
+                else None
+            )
+            if (
+                request is None
+                or str(getattr(request, "status", "") or "") != "completed"
+                or projection is None
+                or projection.paths != paths
+                or dict(projection.binding) != dict(binding)
+            ):
+                return None
+            projection_statuses = frozenset({"quarantined"})
+
+        def authority_is_current() -> bool:
+            if not control_authority_is_current():
+                return False
+            current_request = self.merge_queue.get(request_id)
+            current_projection = (
+                self._owned_post_merge_recovery_projection(
+                    current_request,
+                    allowed_task_statuses=projection_statuses,
+                    allow_shared_lane_source=True,
+                )
+                if current_request is not None
+                else None
+            )
+            return bool(
+                current_request == request
                 and current_projection == projection
             )
 
@@ -20976,6 +21971,882 @@ class DatabasePortalExecutionBridge:
         if isinstance(evidence, _PostMergeRecoveryDisposition):
             return dict(evidence.result)
         return dict(evidence) if isinstance(evidence, Mapping) else None
+
+    def _exact_terminal_callback_reconciliation_transport(
+        self,
+        events: Sequence[Mapping[str, Any]],
+        *,
+        terminal: Mapping[str, Any],
+        request: Any,
+        binding: Mapping[str, Any],
+    ) -> bool:
+        """Verify the one crash transport envelope that may trigger settlement.
+
+        The queued event is never completion evidence.  It is only a pointer to
+        an exact queue row which the canonical merge consumer must settle again.
+        Keeping this predicate closed prevents an arbitrary missing-output,
+        validation-failure, or stale task event from acquiring queue-revival
+        authority.
+        """
+
+        if request is None or not events or events[-1] != terminal:
+            return False
+        metadata = getattr(request, "metadata", None)
+        merge_result = terminal.get("merge_result")
+        train_result = (
+            merge_result.get("train_result")
+            if isinstance(merge_result, Mapping)
+            else None
+        )
+        validation = terminal.get("validation_result")
+        validation_proof = (
+            metadata.get("validation_proof")
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        proposal = (
+            validation.get("proposal_gate")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        proof_proposal = (
+            validation_proof.get("proposal_gate")
+            if isinstance(validation_proof, Mapping)
+            else None
+        )
+        request_id = str(getattr(request, "request_id", "") or "")
+        alias = str(binding.get("task_alias") or "")
+        task_cid = str(getattr(request, "canonical_task_id", "") or "")
+        task_key = str(getattr(request, "canonical_task_key", "") or "")
+        candidate = str(getattr(request, "commit_sha", "") or "")
+        candidate_tree = (
+            str(metadata.get("candidate_tree") or "")
+            if isinstance(metadata, Mapping)
+            else ""
+        )
+        baseline = (
+            str(metadata.get("baseline_ref") or "")
+            if isinstance(metadata, Mapping)
+            else ""
+        )
+        branch = str(getattr(request, "branch_name", "") or "")
+        queue_repository_id = str(
+            getattr(self.merge_queue, "target_repository_id", "") or ""
+        )
+        event_id = str(terminal.get("event_id") or "")
+        terminal_attempt = terminal.get("attempt")
+        transport_failure_reason = "merge_callback_exception"
+        current_failure_reason_expected = (
+            "merge_queue_reconciliation_projection_conflict"
+        )
+
+        def event_request_id(event: Mapping[str, Any]) -> str:
+            nested = event.get("merge_result")
+            return str(event.get("request_id") or "") or (
+                str(nested.get("request_id") or "")
+                if isinstance(nested, Mapping)
+                else ""
+            )
+
+        matching_transports = [
+            event
+            for event in events
+            if event.get("type")
+            == "worktree_reconciliation_candidate_queued"
+            and event_request_id(event) == request_id
+        ]
+        enqueue_matches = [
+            event
+            for event in events[:-1]
+            if event.get("type") == "merge_candidate_enqueued"
+            and event_request_id(event) == request_id
+        ]
+        if len(matching_transports) != 1 or len(enqueue_matches) != 1:
+            return False
+        enqueue = enqueue_matches[0]
+        enqueue_index = next(
+            (index for index, event in enumerate(events) if event is enqueue),
+            -1,
+        )
+        terminal_index = len(events) - 1
+        quarantine = (
+            metadata.get("quarantine")
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        current_failure = str(getattr(request, "failure_reason", "") or "")
+        current_failure_result = (
+            quarantine.get("merge_result")
+            if isinstance(quarantine, Mapping)
+            else None
+        )
+        current_failure_reason = (
+            str(current_failure_result.get("reason") or "")
+            if isinstance(current_failure_result, Mapping)
+            else ""
+        )
+        request_status = str(getattr(request, "status", "") or "")
+        revivals = (
+            metadata.get("revivals") if isinstance(metadata, Mapping) else None
+        )
+        latest_revival = (
+            revivals[-1]
+            if isinstance(revivals, list) and revivals
+            else None
+        )
+        pending_exact_revival = bool(
+            request_status == "pending"
+            and current_failure == ""
+            and getattr(request, "attempt", None) == 1
+            and getattr(request, "failure_count", None) == 0
+            and isinstance(latest_revival, Mapping)
+            and set(latest_revival)
+            == {
+                "at",
+                "reason",
+                "previous_enqueued_at",
+                "previous_failure_count",
+                "previous_failure_reason",
+            }
+            and latest_revival.get("reason")
+            == (
+                "merge train proved quarantined candidate already integrated "
+                "into exact target"
+            )
+            and latest_revival.get("previous_failure_reason")
+            == current_failure_reason_expected
+            and type(latest_revival.get("previous_failure_count")) is int
+            and latest_revival.get("previous_failure_count") == 2
+            and isinstance(latest_revival.get("at"), (int, float))
+            and not isinstance(latest_revival.get("at"), bool)
+            and isinstance(
+                latest_revival.get("previous_enqueued_at"), (int, float)
+            )
+            and not isinstance(
+                latest_revival.get("previous_enqueued_at"), bool
+            )
+        )
+        recovered_pending_revival = bool(
+            request_status == "pending"
+            and current_failure
+            == "merge train consumer exited; claim recovered"
+            and getattr(request, "attempt", None) == 2
+            and getattr(request, "failure_count", None) == 1
+            and isinstance(latest_revival, Mapping)
+            and latest_revival.get("reason")
+            == (
+                "merge train proved quarantined candidate already integrated "
+                "into exact target"
+            )
+            and latest_revival.get("previous_failure_reason")
+            == current_failure_reason_expected
+            and latest_revival.get("previous_failure_count") == 2
+        )
+        processing_exact_revival = bool(
+            request_status == "processing"
+            and current_failure == ""
+            and getattr(request, "attempt", None) == 1
+            and getattr(request, "failure_count", None) == 0
+            and str(getattr(request, "consumer_id", "") or "").startswith(
+                "merge-train:"
+            )
+            and bool(str(getattr(request, "claim_token", "") or ""))
+            and isinstance(latest_revival, Mapping)
+            and latest_revival.get("reason")
+            == (
+                "merge train proved quarantined candidate already integrated "
+                "into exact target"
+            )
+            and latest_revival.get("previous_failure_reason")
+            == current_failure_reason_expected
+            and latest_revival.get("previous_failure_count") == 2
+        )
+        quarantined_exact_failure = bool(
+            request_status == "quarantined"
+            and current_failure == current_failure_reason_expected
+            and getattr(request, "attempt", None) == 2
+            and getattr(request, "failure_count", None) == 2
+        )
+        candidate_binding = (
+            validation.get("candidate_binding")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        validated_workspace = (
+            candidate_binding.get("validated_workspace")
+            if isinstance(candidate_binding, Mapping)
+            else None
+        )
+        commit_result = terminal.get("commit_result")
+        worktree_path = (
+            str(metadata.get("worktree_path") or "")
+            if isinstance(metadata, Mapping)
+            else ""
+        )
+        superseding_task_events = [
+            event
+            for event in events
+            if event.get("type") in {"implementation_finished", "task_completed"}
+            and str(event.get("task_id") or "") == alias
+            and str(event.get("canonical_task_cid") or "") == task_cid
+        ]
+        return bool(
+            terminal.get("type")
+            == "worktree_reconciliation_candidate_queued"
+            and enqueue_index >= 0
+            and enqueue_index < terminal_index
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", event_id)
+            is not None
+            and type(terminal_attempt) is int
+            and terminal_attempt == 1
+            and str(terminal.get("task_id") or "") == alias
+            and task_cid
+            and str(terminal.get("task_cid") or "") == task_cid
+            and str(terminal.get("canonical_task_cid") or "") == task_cid
+            and task_key
+            and str(terminal.get("canonical_task_key") or "") == task_key
+            and terminal.get("returncode") == 1
+            and terminal.get("provider_dispatched") is False
+            and terminal.get("attempt_consumed") is False
+            and terminal.get("protected_path_violation") == {}
+            and str(terminal.get("branch") or "") == branch
+            and re.fullmatch(r"[0-9a-f]{40}", baseline) is not None
+            and str(terminal.get("baseline_ref") or "") == baseline
+            and re.fullmatch(r"[0-9a-f]{40}", candidate) is not None
+            and str(terminal.get("implementation_commit") or "") == candidate
+            and str(terminal.get("worktree_path") or "") == worktree_path
+            and not superseding_task_events
+            and isinstance(validation, Mapping)
+            and validation.get("attempted") is True
+            and validation.get("passed") is True
+            and validation.get("returncode") == 0
+            and isinstance(validation_proof, Mapping)
+            and validation_proof.get("attempted") is True
+            and validation_proof.get("passed") is True
+            and validation_proof.get("returncode") == 0
+            and validation_proof.get("target_commit") == candidate
+            and re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", candidate_tree)
+            is not None
+            and validation_proof.get("target_tree") == candidate_tree
+            and validation_proof.get("repository_tree_id")
+            == f"git-tree:{candidate_tree}"
+            and isinstance(proposal, Mapping)
+            and proposal.get("accepted") is True
+            and proposal == proof_proposal
+            and isinstance(candidate_binding, Mapping)
+            and candidate_binding.get("verified") is True
+            and candidate_binding.get("proposal_id")
+            == proposal.get("proposal_id")
+            and isinstance(validated_workspace, Mapping)
+            and validated_workspace.get("verified") is True
+            and validated_workspace.get("head") == candidate
+            and validated_workspace.get("tree") == candidate_tree
+            and validated_workspace.get("branch") == branch
+            and validated_workspace.get("status_clean") is True
+            and isinstance(commit_result, Mapping)
+            and commit_result
+            == {
+                "committed": True,
+                "commit": candidate,
+                "baseline_ref": baseline,
+                "reason": "existing_commit",
+            }
+            and isinstance(merge_result, Mapping)
+            and merge_result.get("attempted") is False
+            and merge_result.get("queued") is True
+            and merge_result.get("merged") is False
+            and merge_result.get("reason")
+            == "reconciled_candidate_queued_pending_merge"
+            and merge_result.get("request_id") == request_id
+            and merge_result.get("branch") == branch
+            and merge_result.get("implementation_commit") == candidate
+            and merge_result.get("canonical_task_key") == task_key
+            and merge_result.get("canonical_task_cid") == task_cid
+            and merge_result.get("completion_task_cids") == {alias: task_cid}
+            and merge_result.get("target_repository_id") == queue_repository_id
+            and merge_result.get("target_branch") == self.merge_target_branch
+            and isinstance(train_result, Mapping)
+            and train_result.get("status") == "retrying"
+            and train_result.get("merged") is False
+            and train_result.get("integrated") is False
+            and train_result.get("accepted") is False
+            and train_result.get("retryable") is True
+            and train_result.get("failure_count") == 1
+            and train_result.get("max_attempts") == 3
+            and train_result.get("request_id") == request_id
+            and train_result.get("task_id") == alias
+            and train_result.get("commit_sha") == candidate
+            and train_result.get("reason") == transport_failure_reason
+            and (
+                quarantined_exact_failure
+                or pending_exact_revival
+                or recovered_pending_revival
+                or processing_exact_revival
+            )
+            and isinstance(quarantine, Mapping)
+            and quarantine.get("status") == "quarantined"
+            and quarantine.get("request_id") == request_id
+            and quarantine.get("task_id") == alias
+            and quarantine.get("commit_sha") == candidate
+            and quarantine.get("merged") is False
+            and quarantine.get("integrated") is False
+            and quarantine.get("accepted") is False
+            and quarantine.get("failure_count") == 2
+            and quarantine.get("max_attempts") == 3
+            and quarantine.get("reason") == current_failure_reason_expected
+            and current_failure_reason == current_failure_reason_expected
+            and enqueue.get("task_id") == alias
+            and enqueue.get("canonical_task_cid") == task_cid
+            and enqueue.get("canonical_task_key") == task_key
+            and enqueue.get("attempt") == terminal_attempt
+            and enqueue.get("attempted") is False
+            and enqueue.get("queued") is True
+            and enqueue.get("merged") is False
+            and enqueue.get("reason") == "merge_queued"
+            and enqueue.get("branch") == branch
+            and enqueue.get("baseline_ref") == baseline
+            and enqueue.get("implementation_commit") == candidate
+            and enqueue.get("completion_task_cids") == {alias: task_cid}
+            and enqueue.get("target_repository_id") == queue_repository_id
+            and enqueue.get("target_branch") == self.merge_target_branch
+        )
+
+    def _exact_callback_reconciliation_transport_suffix(
+        self,
+        events: Sequence[Mapping[str, Any]],
+        *,
+        transport_index: int,
+        request: Any,
+        binding: Mapping[str, Any],
+        expected_todo: Mapping[str, Any] | None = None,
+    ) -> tuple[bool, int]:
+        """Verify the only event suffix an interrupted callback may leave.
+
+        An empty suffix means the queue consumer had not yet invoked the
+        callback.  Once callback effects exist, the suffix is closed to the
+        ordinary synchronous projection, its exact reconciliation, and the
+        exact status projection emitted from the callback's returned
+        ``todo_update_result``.  The tuple reports ``(valid, suffix_length)``
+        so receipt authority is required only after the full suffix exists.
+        """
+
+        from ..proof.formal_verification_contracts import content_identity
+
+        if transport_index < 0 or transport_index >= len(events):
+            return False, 0
+        suffix = list(events[transport_index + 1 :])
+        if not suffix:
+            return True, 0
+        if len(suffix) > 3:
+            return False, len(suffix)
+        source = suffix[0]
+        reconciliation = suffix[1] if len(suffix) >= 2 else None
+        status_event = suffix[2] if len(suffix) >= 3 else None
+        alias = str(binding.get("task_alias") or "")
+        task_cid = str(getattr(request, "canonical_task_id", "") or "")
+        task_key = str(getattr(request, "canonical_task_key", "") or "")
+        request_id = str(getattr(request, "request_id", "") or "")
+        metadata = getattr(request, "metadata", None)
+        candidate = str(getattr(request, "commit_sha", "") or "")
+        branch = str(getattr(request, "branch_name", "") or "")
+        baseline = (
+            str(metadata.get("baseline_ref") or "")
+            if isinstance(metadata, Mapping)
+            else ""
+        )
+        candidate_tree = (
+            str(metadata.get("candidate_tree") or "")
+            if isinstance(metadata, Mapping)
+            else ""
+        )
+        source_merge = source.get("merge_result")
+        provenance = source.get("merge_queue_synchronous_source")
+        provenance_body = dict(provenance) if isinstance(provenance, Mapping) else {}
+        source_projection_id = str(
+            provenance_body.pop("source_projection_id", "") or ""
+        )
+        enqueue_ids = [
+            str(event.get("event_id") or "")
+            for event in events[:transport_index]
+            if event.get("type") == "merge_candidate_enqueued"
+            and (
+                str(event.get("request_id") or "") == request_id
+                or (
+                    isinstance(event.get("merge_result"), Mapping)
+                    and event["merge_result"].get("request_id") == request_id
+                )
+            )
+        ]
+        source_required_fields = {
+            "attempt",
+            "attempt_consumed",
+            "baseline_ref",
+            "board_completion",
+            "branch",
+            "canonical_task_cid",
+            "implementation_commit",
+            "merge_queue_synchronous_source",
+            "merge_result",
+            "provider_dispatched",
+            "reason",
+            "returncode",
+            "task_id",
+            "validation_result",
+        } | set(_PORTAL_EVENT_ENVELOPE_FIELDS)
+        source_allowed_fields = source_required_fields | {
+            "board_namespace",
+            "canonical_task_key",
+            "task_source_identity",
+        }
+        merge_required_fields = {
+            "attempted",
+            "branch",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "completion_task_cids",
+            "implementation_commit",
+            "merged",
+            "queued",
+            "reason",
+            "request_id",
+            "target_branch",
+            "target_repository_id",
+        }
+        merge_allowed_fields = merge_required_fields | {"queue_dir"}
+        provenance_fields = {
+            "baseline_ref",
+            "branch",
+            "canonical_task_key",
+            "implementation_commit",
+            "merge_candidate_enqueued_event_id",
+            "portal_attempt",
+            "request_id",
+            "schema",
+            "task_cid",
+            "task_id",
+            "validation_repository_tree_id",
+            "validation_target_commit",
+            "validation_target_tree",
+        }
+        source_valid = bool(
+            source.get("type") == "worktree_reconciliation_candidate_queued"
+            and source.get("reason")
+            == "merge_queue_synchronous_source_projected"
+            and source_required_fields <= set(source) <= source_allowed_fields
+            and source.get("previous_event_id")
+            == events[transport_index].get("event_id")
+            and source.get("task_id") == alias
+            and source.get("canonical_task_cid") == task_cid
+            and source.get("canonical_task_key") in (None, task_key)
+            and source.get("attempt") == 1
+            and source.get("attempt_consumed") is False
+            and source.get("provider_dispatched") is False
+            and source.get("returncode") == 0
+            and source.get("branch") == branch
+            and source.get("baseline_ref") == baseline
+            and source.get("implementation_commit") == candidate
+            and source.get("validation_result")
+            == {"attempted": True, "passed": True, "returncode": 0}
+            and source.get("board_completion")
+            == {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            }
+            and isinstance(source_merge, Mapping)
+            and merge_required_fields <= set(source_merge) <= merge_allowed_fields
+            and source_merge.get("attempted") is False
+            and source_merge.get("queued") is True
+            and source_merge.get("merged") is False
+            and source_merge.get("reason") == "merge_queued"
+            and source_merge.get("request_id") == request_id
+            and source_merge.get("branch") == branch
+            and source_merge.get("implementation_commit") == candidate
+            and source_merge.get("canonical_task_key") == task_key
+            and source_merge.get("canonical_task_cid") == task_cid
+            and source_merge.get("completion_task_cids") == {alias: task_cid}
+            and source_merge.get("target_repository_id")
+            == str(getattr(self.merge_queue, "target_repository_id", "") or "")
+            and source_merge.get("target_branch") == self.merge_target_branch
+            and not isinstance(
+                source.get("database_portal_merge_continuation_source"),
+                Mapping,
+            )
+            and set(provenance_body) == provenance_fields
+            and provenance_body.get("schema")
+            == (
+                "ipfs_accelerate_py.agent_supervisor."
+                "merge-queue-synchronous-source@1"
+            )
+            and provenance_body.get("request_id") == request_id
+            and provenance_body.get("task_id") == alias
+            and provenance_body.get("task_cid") == task_cid
+            and provenance_body.get("canonical_task_key") == task_key
+            and provenance_body.get("portal_attempt") == 1
+            and provenance_body.get("branch") == branch
+            and provenance_body.get("baseline_ref") == baseline
+            and provenance_body.get("implementation_commit") == candidate
+            and provenance_body.get("validation_target_commit") == candidate
+            and provenance_body.get("validation_target_tree") == candidate_tree
+            and provenance_body.get("validation_repository_tree_id")
+            == f"git-tree:{candidate_tree}"
+            and len(enqueue_ids) == 1
+            and provenance_body.get("merge_candidate_enqueued_event_id")
+            == enqueue_ids[0]
+            and source_projection_id == content_identity(provenance_body)
+        )
+        if not source_valid:
+            return False, len(suffix)
+        if len(suffix) == 1:
+            return True, 1
+
+        assert reconciliation is not None
+        source_for_verification = dict(source)
+        reconciliation_for_verification = dict(reconciliation)
+        if source_for_verification.get("canonical_task_key") is None:
+            source_for_verification["canonical_task_key"] = task_key
+        if reconciliation_for_verification.get("canonical_task_key") is None:
+            reconciliation_for_verification["canonical_task_key"] = task_key
+        reconciliation_valid = bool(
+            reconciliation.get("type") == "merge_reconciled"
+            and reconciliation.get("reason") == "merge_queue_callback_completed"
+            and reconciliation.get("request_id") == request_id
+            and reconciliation.get("previous_event_id") == source.get("event_id")
+            and self._exact_callback_reconciliation_for_completion_source(
+                reconciliation_for_verification,
+                source_for_verification,
+                alias=alias,
+                task_cid=task_cid,
+                task_key=task_key,
+                repository_root=self.repository_root,
+            )
+        )
+        if not reconciliation_valid:
+            return False, len(suffix)
+        if len(suffix) == 2:
+            return True, 2
+
+        assert status_event is not None
+        receipt_evidence = reconciliation.get("completion_receipt_evidence")
+        completion_receipts = (
+            receipt_evidence.get("completion_receipts")
+            if isinstance(receipt_evidence, Mapping)
+            else None
+        )
+        status_payload = {
+            key: value
+            for key, value in status_event.items()
+            if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+        }
+        status_fields = {
+            "already_completed_task_ids",
+            "commit_result",
+            "completion_reason",
+            "completion_receipts",
+            "inserted_status_task_ids",
+            "missing_status_task_ids",
+            "missing_task_ids",
+            "path",
+            "task_id",
+            "updated",
+            "updated_checkbox_task_ids",
+            "updated_task_ids",
+        }
+        return (
+            bool(
+                status_event.get("type") == "todo_status_updated"
+                and status_event.get("previous_event_id")
+                == reconciliation.get("event_id")
+                and set(status_payload) == status_fields
+                and status_payload.get("updated") is True
+                and status_payload.get("task_id") == alias
+                and status_payload.get("completion_reason") == "single_task"
+                and status_payload.get("updated_task_ids") == [alias]
+                and status_payload.get("already_completed_task_ids") == []
+                and status_payload.get("inserted_status_task_ids") == []
+                and status_payload.get("missing_status_task_ids") == []
+                and status_payload.get("missing_task_ids") == []
+                and status_payload.get("updated_checkbox_task_ids") == []
+                and isinstance(status_payload.get("commit_result"), Mapping)
+                and status_payload.get("completion_receipts")
+                == completion_receipts
+                and (
+                    expected_todo is None
+                    or status_payload == dict(expected_todo)
+                )
+            ),
+            3,
+        )
+
+    def _settle_exact_callback_reconciliation_transport(
+        self,
+        *,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        terminal: Mapping[str, Any],
+        control_authority_is_current: Callable[[], bool],
+    ) -> Any | None:
+        """Settle one exact transport pointer through the canonical consumer."""
+
+        if (
+            self.repository_root is None
+            or self.merge_queue is None
+            or not control_authority_is_current()
+        ):
+            return None
+        from ..merge.merge_train import MergeTrain
+
+        request_id = str(getattr(request, "request_id", "") or "")
+        terminal_event_id = str(terminal.get("event_id") or "")
+        terminal_digest = _sha256_bytes(_canonical_json(terminal))
+        train = MergeTrain(
+            repo_root=self.repository_root,
+            queue=self.merge_queue,
+            target_branch=self.merge_target_branch,
+            max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
+        )
+
+        def settlement_todo(current: Any) -> Mapping[str, Any] | None:
+            canonical = str(getattr(current, "canonical_identity", "") or "")
+            candidate = str(getattr(current, "commit_sha", "") or "")
+            try:
+                receipt_key = train._dedupe_key(canonical, candidate)
+                receipt = train._read_receipt(receipt_key)
+            except (OSError, RuntimeError, TypeError, ValueError):
+                return None
+            merge_result = (
+                receipt.get("merge_result")
+                if isinstance(receipt, Mapping)
+                else None
+            )
+            todo = (
+                merge_result.get("todo_update_result")
+                if isinstance(merge_result, Mapping)
+                else None
+            )
+            return (
+                dict(todo)
+                if (
+                    isinstance(receipt, Mapping)
+                    and receipt.get("status") == "already_merged"
+                    and receipt.get("request_id") == request_id
+                    and receipt.get("canonical_task_id") == canonical
+                    and receipt.get("commit_sha") == candidate
+                    and receipt.get("integrated") is True
+                    and receipt.get("accepted") is True
+                    and receipt.get("callback_owned_integration") is True
+                    and isinstance(merge_result, Mapping)
+                    and merge_result.get("attempted") is False
+                    and merge_result.get("merged") is True
+                    and merge_result.get("already_merged") is True
+                    and merge_result.get("returncode") == 0
+                    and merge_result.get("reason")
+                    == "implementation_commit_already_merged"
+                    and isinstance(todo, Mapping)
+                )
+                else None
+            )
+
+        def exact_request(current: Any) -> bool:
+            current_events = self._verified_event_chain(projection.paths)
+            if not current_events:
+                return False
+            matching = [
+                (index, event)
+                for index, event in enumerate(current_events)
+                if event.get("event_id") == terminal_event_id
+                and _sha256_bytes(_canonical_json(event)) == terminal_digest
+            ]
+            if len(matching) != 1:
+                return False
+            terminal_index, current_terminal = matching[0]
+            expected_todo = settlement_todo(current)
+            suffix_valid, suffix_length = (
+                self._exact_callback_reconciliation_transport_suffix(
+                    current_events,
+                    transport_index=terminal_index,
+                    request=current,
+                    binding=projection.binding,
+                    expected_todo=expected_todo,
+                )
+            )
+            return bool(
+                control_authority_is_current()
+                and suffix_valid
+                and (suffix_length < 3 or expected_todo is not None)
+                and self._exact_terminal_callback_reconciliation_transport(
+                    current_events[: terminal_index + 1],
+                    terminal=current_terminal,
+                    request=current,
+                    binding=projection.binding,
+                )
+            )
+
+        @contextmanager
+        def configured_processor(recovery_train: Any) -> Any:
+            current = self.merge_queue.get(request_id)
+            current_projection = (
+                self._owned_post_merge_recovery_projection(
+                    current,
+                    allowed_task_statuses=frozenset({"quarantined"}),
+                    allow_shared_lane_source=True,
+                )
+                if current is not None
+                else None
+            )
+            if (
+                current is None
+                or str(getattr(current, "status", "") or "")
+                != "processing"
+                or current_projection is None
+                or current_projection.paths != projection.paths
+                or dict(current_projection.binding) != dict(projection.binding)
+            ):
+                raise DatabasePortalBridgeError(
+                    "callback reconciliation recovery lost its exact queue claim"
+                )
+            portal = self.portal_factory(
+                current_projection.paths,
+                str(getattr(current, "task_id", "") or ""),
+            )
+            if portal is None:
+                raise DatabasePortalBridgeError(
+                    "portal_factory did not return a Portal-compatible daemon"
+                )
+            close = getattr(portal, "close_event_runtime", None) or getattr(
+                portal, "close", None
+            )
+            shortcut = getattr(
+                recovery_train,
+                "_portal_projection_invalid_metadata_already_on_target",
+                None,
+            )
+            shortcut_overridden = False
+            try:
+                merge_callback = getattr(portal, "_merge_train_callback", None)
+                if (
+                    not callable(merge_callback)
+                    or getattr(portal, "merge_queue", None) is not self.merge_queue
+                    or self.repository_root is None
+                    or Path(getattr(portal, "repo_root", "")).absolute()
+                    != self.repository_root
+                    or str(
+                        getattr(portal, "resolved_merge_target_branch", "")
+                        or ""
+                    )
+                    != self.merge_target_branch
+                    or not callable(shortcut)
+                ):
+                    raise DatabasePortalBridgeError(
+                        "Portal callback recovery is not bound to the selected target"
+                    )
+                recovery_train.merge_callback = merge_callback
+                from ..proof.formal_verification_policy import (
+                    FormalVerificationPolicy,
+                    default_formal_verification_policy,
+                )
+
+                proof_gate = getattr(portal, "proof_gate", None)
+                raw_policy = getattr(
+                    portal, "formal_verification_policy", None
+                )
+                if raw_policy is None:
+                    policy = (
+                        default_formal_verification_policy()
+                        if proof_gate is not None
+                        else None
+                    )
+                elif isinstance(raw_policy, FormalVerificationPolicy):
+                    policy = raw_policy
+                elif isinstance(raw_policy, Mapping):
+                    policy = FormalVerificationPolicy.from_dict(raw_policy)
+                else:
+                    raise TypeError(
+                        "Portal formal_verification_policy is invalid"
+                    )
+                recovery_train.formal_verification_policy = policy
+                recovery_train.proof_gate = proof_gate
+                recovery_train.proof_gate_callback = recovery_train.proof_gate
+                portal_proof_cache = getattr(portal, "proof_cache_dir", None)
+                if portal_proof_cache is not None:
+                    recovery_train.proof_cache_dir = Path(portal_proof_cache)
+                if policy is not None:
+                    recovery_train.proof_cache_dir.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+                    recovery_train.proof_gate_pin_dir.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+                    recovery_train.proof_gate_attempt_dir.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+                recovery_train.decision_runtime = getattr(
+                    portal, "decision_runtime", None
+                )
+                recovery_train.decision_runtime_cancellation = getattr(
+                    portal, "implementation_cancelled", None
+                )
+
+                def require_semantic_callback(candidate: Any) -> bool:
+                    if (
+                        str(getattr(candidate, "request_id", "") or "")
+                        == request_id
+                    ):
+                        return False
+                    return bool(shortcut(candidate))
+
+                setattr(
+                    recovery_train,
+                    "_portal_projection_invalid_metadata_already_on_target",
+                    require_semantic_callback,
+                )
+                shortcut_overridden = True
+                yield
+            finally:
+                if shortcut_overridden:
+                    setattr(
+                        recovery_train,
+                        "_portal_projection_invalid_metadata_already_on_target",
+                        shortcut,
+                    )
+                if callable(close):
+                    close()
+
+        try:
+            result = train.recover_one_integrated_quarantine(
+                request_filter=exact_request,
+                request_id=request_id,
+                processor_context=configured_processor,
+                allow_post_merge_declared_output_recovery=True,
+            )
+        except (DatabasePortalBridgeError, OSError, RuntimeError, ValueError):
+            return None
+        if (
+            not isinstance(result, Mapping)
+            or result.get("request_id") != request_id
+            or result.get("status") != "already_merged"
+            or result.get("integrated") is not True
+            or result.get("accepted") is not True
+            or result.get("callback_owned_integration") is not True
+        ):
+            return None
+        completed = self.merge_queue.get(request_id)
+        if (
+            completed is None
+            or str(getattr(completed, "request_id", "") or "") != request_id
+            or str(getattr(completed, "status", "") or "") != "completed"
+            or self._callback_integration_source_evidence(
+                completed,
+                projection,
+                train=train,
+            )
+            is None
+        ):
+            return None
+        return completed
 
     def _post_commit_candidate_seed_from_record(
         self,

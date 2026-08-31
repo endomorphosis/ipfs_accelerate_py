@@ -5958,6 +5958,32 @@ _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS = frozenset(
         "source_id",
     }
 )
+POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "post-merge-reconciled-callback-transport-source@1"
+)
+_POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS = frozenset(
+    {
+        "schema",
+        "source_shape",
+        "settlement_receipt_id",
+        "quarantine_receipt_id",
+        "quarantine_receipt",
+        "revival_id",
+        "revival",
+        "enqueue_event_id",
+        "enqueue_event_digest",
+        "transport_event_id",
+        "transport_event_digest",
+        "projected_source_event_id",
+        "projected_source_event_digest",
+        "reconciliation_event_id",
+        "reconciliation_event_digest",
+        "status_event_id",
+        "status_event_digest",
+        "source_id",
+    }
+)
 POST_MERGE_DECLARED_OUTPUT_REPAIR_TERMINAL_REASONS = frozenset(
     {
         "repair_declared_output_paths_invalid",
@@ -111541,6 +111567,7 @@ class DatabaseImplementationDaemon:
                 DatabasePortalBridgeError,
                 DatabasePortalExecutionBridge,
                 _DatabasePortalRecoveryProjection,
+                _safe_repository_path,
                 verify_database_portal_attempt_projection,
             )
 
@@ -111783,9 +111810,34 @@ class DatabaseImplementationDaemon:
             train = object.__new__(MergeTrain)
             train.queue = queue
             train.receipt_dir = receipt_dir_resolved
+            settled_source = qualification.get("settled_integration_source")
+            reconciled_transport = bool(
+                isinstance(settled_source, Mapping)
+                and settled_source.get("schema")
+                == POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
+            )
+            changed_submodule_paths = metadata.get("changed_submodule_paths")
+            if changed_submodule_paths is None and not reconciled_transport:
+                changed_submodule_paths = []
+            if (
+                not isinstance(changed_submodule_paths, list)
+                or len(changed_submodule_paths) > 256
+                or len(set(changed_submodule_paths))
+                != len(changed_submodule_paths)
+            ):
+                raise DatabasePortalBridgeError(
+                    "callback recovery submodule scope is invalid"
+                )
+            safe_submodule_paths = tuple(
+                _safe_repository_path(path) for path in changed_submodule_paths
+            )
             verifier.repository_root = repo
             verifier.merge_queue = queue
             verifier.merge_target_branch = branch
+            # This is only a read allowlist.  The bridge independently binds
+            # every member to the exact candidate/target Gitlinks and the
+            # callback's admitted handoff proof before it can qualify bytes.
+            verifier.worktree_submodule_paths = safe_submodule_paths
             projection = _DatabasePortalRecoveryProjection(
                 paths=paths,
                 binding=binding,
@@ -112168,11 +112220,133 @@ class DatabaseImplementationDaemon:
             and admission.get("request_id") == value.get("request_id")
             and admission.get("status") == "local"
         )
+        callback_settlement_fields = {
+            "acceptance_pending",
+            "accepted",
+            "callback_owned_integration",
+            "canonical_task_id",
+            "commit_sha",
+            "distributed_publication_admission",
+            "finished_at",
+            "integrated",
+            "merge_commit",
+            "merge_result",
+            "merged",
+            "request_id",
+            "started_at",
+            "status",
+            "target_branch",
+            "target_commit",
+            "task_id",
+        }
+        callback_transport_train_receipt_valid = bool(
+            isinstance(train_receipt, Mapping)
+            and set(train_receipt) == callback_settlement_fields
+            and train_receipt.get("status") == "already_merged"
+            and train_receipt.get("accepted") is True
+            and train_receipt.get("integrated") is True
+            and train_receipt.get("merged") is False
+            and train_receipt.get("callback_owned_integration") is True
+            and train_receipt.get("acceptance_pending") is False
+            and train_receipt.get("request_id") == value.get("request_id")
+            and one_task_id
+            and train_receipt.get("task_id") == task_ids[0]
+            and train_receipt.get("commit_sha")
+            == value.get("candidate_commit")
+            and train_receipt.get("target_commit")
+            == value.get("integration_commit")
+            and train_receipt.get("merge_commit")
+            == value.get("integration_commit")
+            and isinstance(settlement_started, (int, float))
+            and not isinstance(settlement_started, bool)
+            and isinstance(settlement_finished, (int, float))
+            and not isinstance(settlement_finished, bool)
+            and math.isfinite(float(settlement_started))
+            and math.isfinite(float(settlement_finished))
+            and float(settlement_started) <= float(settlement_finished)
+            and isinstance(admission, Mapping)
+            and set(admission)
+            == {"schema", "admitted", "distributed", "request_id", "status"}
+            and admission.get("schema")
+            == (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "distributed-lane-admission@1"
+            )
+            and admission.get("admitted") is True
+            and admission.get("distributed") is False
+            and admission.get("request_id") == value.get("request_id")
+            and admission.get("status") == "local"
+            and isinstance(merge_result, Mapping)
+            and merge_result.get("attempted") is False
+            and merge_result.get("merged") is True
+            and merge_result.get("already_merged") is True
+            and merge_result.get("returncode") == 0
+            and merge_result.get("reason")
+            == "implementation_commit_already_merged"
+            and merge_result.get("mutation_short_circuited") is True
+            and merge_result.get("merge_commit")
+            == value.get("integration_commit")
+            and merge_result.get("target_commit")
+            == value.get("integration_commit")
+            and isinstance(member, Mapping)
+            and member.get("task_id") == task_ids[0]
+            and member.get("canonical_task_key")
+            == train_receipt.get("canonical_task_id")
+        )
 
         settled_source_valid = False
+        reconciled_transport = False
         if is_settled and isinstance(settled_source, Mapping):
             settled_value = dict(settled_source)
             source_id = str(settled_value.pop("source_id", "") or "")
+            reconciled_transport = bool(
+                settled_value.get("schema")
+                == POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
+            )
+            settled_fields = (
+                _POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_FIELDS
+                if reconciled_transport
+                else _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS
+            )
+            settled_schema = (
+                POST_MERGE_RECONCILED_CALLBACK_TRANSPORT_SOURCE_SCHEMA
+                if reconciled_transport
+                else POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA
+            )
+            settled_shape = (
+                "settled_reconciled_candidate_transport"
+                if reconciled_transport
+                else "settled_integrated_quarantine"
+            )
+            event_identity_fields = (
+                (
+                    "enqueue_event_id",
+                    "enqueue_event_digest",
+                    "transport_event_id",
+                    "transport_event_digest",
+                    "projected_source_event_id",
+                    "projected_source_event_digest",
+                    "reconciliation_event_id",
+                    "reconciliation_event_digest",
+                    "status_event_id",
+                    "status_event_digest",
+                )
+                if reconciled_transport
+                else (
+                    "enqueue_event_id",
+                    "enqueue_event_digest",
+                    "projected_source_event_id",
+                    "projected_source_event_digest",
+                    "reconciliation_event_id",
+                    "reconciliation_event_digest",
+                    "terminal_event_id",
+                    "terminal_event_digest",
+                    "status_event_id",
+                    "status_event_digest",
+                    "completion_event_id",
+                    "completion_event_digest",
+                )
+            )
             canonical_embedded: dict[str, Mapping[str, Any]] = {}
             embedded_valid = True
             for json_field, identity_field in (
@@ -112225,12 +112399,9 @@ class DatabaseImplementationDaemon:
             settled_source_valid = bool(
                 one_task_id
                 and embedded_valid
-                and set(settled_source)
-                == _POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_FIELDS
-                and settled_value.get("schema")
-                == POST_MERGE_SETTLED_CALLBACK_INTEGRATION_SOURCE_SCHEMA
-                and settled_value.get("source_shape")
-                == "settled_integrated_quarantine"
+                and set(settled_source) == settled_fields
+                and settled_value.get("schema") == settled_schema
+                and settled_value.get("source_shape") == settled_shape
                 and settled_value.get("settlement_receipt_id")
                 == train_identity
                 and settled_value.get("projected_source_event_id")
@@ -112246,32 +112417,30 @@ class DatabaseImplementationDaemon:
                         "settlement_receipt_id",
                         "quarantine_receipt_id",
                         "revival_id",
-                        "enqueue_event_id",
-                        "enqueue_event_digest",
-                        "projected_source_event_id",
-                        "projected_source_event_digest",
-                        "reconciliation_event_id",
-                        "reconciliation_event_digest",
-                        "terminal_event_id",
-                        "terminal_event_digest",
-                        "status_event_id",
-                        "status_event_digest",
-                        "completion_event_id",
-                        "completion_event_digest",
+                        *event_identity_fields,
                     )
                 )
                 and isinstance(quarantine, Mapping)
                 and quarantine.get("status") == "quarantined"
                 and quarantine.get("reason")
-                == "merge_completion_receipt_invalid"
+                == (
+                    "merge_queue_reconciliation_projection_conflict"
+                    if reconciled_transport
+                    else "merge_completion_receipt_invalid"
+                )
                 and quarantine.get("request_id") == value.get("request_id")
                 and quarantine.get("task_id") == task_ids[0]
                 and quarantine.get("commit_sha")
                 == value.get("candidate_commit")
                 and isinstance(revival, Mapping)
-                and revival.get("previous_failure_count") == 1
+                and revival.get("previous_failure_count")
+                == (2 if reconciled_transport else 1)
                 and revival.get("previous_failure_reason")
-                == "merge_completion_receipt_invalid"
+                == (
+                    "merge_queue_reconciliation_projection_conflict"
+                    if reconciled_transport
+                    else "merge_completion_receipt_invalid"
+                )
             )
         git_id = r"[0-9a-f]{40}(?:[0-9a-f]{24})?"
         if (
@@ -112311,7 +112480,15 @@ class DatabaseImplementationDaemon:
             or value.get("train_receipt_id") != train_identity
             or train_receipt is None
             or not (
-                (is_settled and v2_train_receipt_valid and settled_source_valid)
+                (
+                    is_settled
+                    and settled_source_valid
+                    and (
+                        callback_transport_train_receipt_valid
+                        if reconciled_transport
+                        else v2_train_receipt_valid
+                    )
+                )
                 or (not is_settled and v1_train_receipt_valid)
             )
             or not isinstance(entries, list)
