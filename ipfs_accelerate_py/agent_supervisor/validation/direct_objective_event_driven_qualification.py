@@ -140,7 +140,8 @@ CASE_UNAVAILABLE_REASONS: Final[Mapping[str, str]] = MappingProxyType(
         ),
         "stale_task_recovery": (
             "No live stale-task recovery campaign ran. Gitlink landed-merge, "
-            "admitted-claim landed completion, pending-merge dummy-consumer, and "
+            "admitted-claim landed completion, landed recovery seed binding, "
+            "leftover-retrying landed recovery, pending-merge dummy-consumer, and "
             "stale index.lock recovery tests are hermetic candidates only."
         ),
         "provider_outcome_unknown_reconciliation": (
@@ -152,7 +153,8 @@ CASE_UNAVAILABLE_REASONS: Final[Mapping[str, str]] = MappingProxyType(
         ),
         "automatic_task_frontier_refill": (
             "No live automatic task-frontier refill campaign ran. Post-merge auto-start, "
-            "portal-idle, gitlink landed-merge, admitted-claim landed completion, and "
+            "portal-idle, gitlink landed-merge, admitted-claim landed completion, "
+            "landed recovery seed binding, leftover-retrying landed recovery, and "
             "pending-merge recovery tests are hermetic candidates only."
         ),
         "incremental_plan_reassessment": (
@@ -240,6 +242,14 @@ ADMITTED_CLAIM_LANDED_COMPLETION_HERMETIC_SUITES: Final[tuple[str, ...]] = (
     "test/api/test_agent_supervisor_landed_completion_recovery.py",
 )
 
+# Binding landed recovery seeds onto admitted claims and blocked leftovers,
+# leftover-retrying landed recovery, and Quack-bootstrap landed completion.
+# Hermetic candidate coverage only; not a live stale-recovery campaign.
+LANDED_RECOVERY_SEED_HERMETIC_SUITES: Final[tuple[str, ...]] = (
+    "test/api/test_agent_supervisor_landed_completion_recovery.py",
+    "test/api/test_agent_supervisor_database_implementation_daemon.py",
+)
+
 # Pending-merge dummy-consumer reconstruction and stale index.lock retry
 # after a Portal attempt exits.  Hermetic candidate coverage only.
 PENDING_MERGE_RECOVERY_HERMETIC_SUITES: Final[tuple[str, ...]] = (
@@ -248,7 +258,8 @@ PENDING_MERGE_RECOVERY_HERMETIC_SUITES: Final[tuple[str, ...]] = (
 
 # Combined post-landing hermetic coverage.  Presence is not live
 # qualification.  The daemon suite already listed under gitlink landed-merge
-# also contains admitted-claim and stale-index.lock cases.
+# also contains admitted-claim, landed recovery-seed, leftover-retrying,
+# and stale-index.lock cases.
 POST_LANDING_HERMETIC_SUITES: Final[tuple[str, ...]] = (
     *GITLINK_LANDED_MERGE_HERMETIC_SUITES,
     *ADMITTED_CLAIM_LANDED_COMPLETION_HERMETIC_SUITES,
@@ -825,7 +836,7 @@ def qualify_current_head_without_live_campaign() -> QualificationVerdict:
 # means the default unavailable payload changed and the outer receipt must be
 # regenerated from this evaluator rather than transcribed.
 CURRENT_HEAD_UNAVAILABLE_VERDICT_CID: Final = (
-    "baguqeerag4cel2phid6p46yyw7awv2q2s2uzwph4uqff2dr63ophj6xjeshq"
+    "baguqeeraxlb3hefssfyy3ecfnwm6nv2i2argjihfq43ovubv5mbjkbl3oiva"
 )
 
 PCPR_PHASE0_TASK_ID: Final = "PCPR-001"
