@@ -51324,9 +51324,12 @@ def _inspect_m28_owner_restart(
         ),
     ]
     if (
-        [tuple(row) for row in state_rows] != expected_states
-        or [tuple(row) for row in generation_rows] != expected_generations
-        or [tuple(row) for row in credential_rows] != expected_credentials
+        [tuple(row[index] for index in range(7)) for row in state_rows]
+        != expected_states
+        or [tuple(row[index] for index in range(4)) for row in generation_rows]
+        != expected_generations
+        or [tuple(row[index] for index in range(8)) for row in credential_rows]
+        != expected_credentials
         or counts != (27, 27, 27)
     ):
         raise MigrationRequired("M28 generation-bearing owner restart differs")

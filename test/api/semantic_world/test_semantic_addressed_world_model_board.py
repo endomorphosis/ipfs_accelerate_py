@@ -4623,6 +4623,91 @@ def test_m28_presence_masks_m27_and_keeps_every_predecessor_historical(
     assert any("only partially declared" in error for error in errors)
 
 
+def test_m28_marker_keeps_prior_final_pair_and_source_receipts_distinct(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m28_marker_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m28_marker_test",
+    )
+    authority = materializer._expected_m28_live_claim_admission_recovery_authority()
+    key = "live_claim_admission_recovery_successor_materialization"
+    prior_receipt_cid = authority["prior_authority"]["migration_receipt_cid"]
+    observed = {
+        "schema": "sawm/non-authoritative-live-source-successor-receipt@1",
+        "authoritative": False,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": "SAWM-R2-M28",
+        f"{key}_cid": materializer._identity(authority),
+        "database_path": operator._M28_STORE_ID,
+        "coordination_path": operator._M28_COORDINATION_STORE_ID,
+        "target_generation": 27,
+        "target_plan_revision": 28,
+        "target_event_watermark": 273,
+        "projection_cid": operator._M28_TARGET_PROJECTION_CID,
+        "coordination_projection_digest": authority["prior_authority"][
+            "coordination_projection_digest"
+        ],
+        "coordination_event_count": authority["prior_authority"][
+            "coordination_event_count"
+        ],
+        "generation_bearing_owner_restart_verified": True,
+        "prior_owner_generation": 26,
+        "live_owner_generation": 27,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "plan_revision_changes": 0,
+        "evidence_node_changes": 1,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "coordination_semantic_changes": 0,
+        "sidecars_preserved": True,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    observed["receipt_cid"] = materializer._identity(observed)
+    receipt_path = (
+        tmp_path / operator._M28_STORE_ID
+    ).resolve().parent / "m28-source-successor-receipt.json"
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_text(
+        json.dumps(observed, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(operator, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        operator,
+        "_require_m27_final_pair_marker",
+        lambda *_args, **_kwargs: {"receipt_cid": prior_receipt_cid},
+    )
+    marker = operator._require_m28_source_successor_marker(
+        {key: authority}, authority, materializer
+    )
+    assert marker["prior_final_pair_receipt_cid"] == prior_receipt_cid
+    assert marker["source_successor_receipt_cid"] == observed["receipt_cid"]
+    assert marker["receipt_is_final_pair_commit_marker"] is False
+
+    monkeypatch.setattr(
+        operator,
+        "_require_m27_final_pair_marker",
+        lambda *_args, **_kwargs: {"receipt_cid": "sha256:" + "0" * 64},
+    )
+    with pytest.raises(
+        operator.OperatorError,
+        match="M28 prior M27 final-pair receipt differs",
+    ):
+        operator._require_m28_source_successor_marker(
+            {key: authority}, authority, materializer
+        )
+
+
 def test_m27_dead_owner_resume_authority_runtime_and_source_chain_are_exact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

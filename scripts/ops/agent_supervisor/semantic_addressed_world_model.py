@@ -4294,6 +4294,11 @@ def _require_m28_source_successor_marker(
         materializer,
         require_current_coordination_store=False,
     )
+    if (
+        m27_marker.get("receipt_cid")
+        != expected_authority["prior_authority"]["migration_receipt_cid"]
+    ):
+        raise OperatorError("M28 prior M27 final-pair receipt differs")
     path = (REPO_ROOT / _M28_STORE_ID).resolve().parent / (
         "m28-source-successor-receipt.json"
     )
@@ -4364,6 +4369,8 @@ def _require_m28_source_successor_marker(
         {
             **dict(m27_marker),
             **dict(observed),
+            "prior_final_pair_receipt_cid": m27_marker["receipt_cid"],
+            "source_successor_receipt_cid": observed["receipt_cid"],
         }
     )
 
@@ -10818,6 +10825,12 @@ def _live_preflight(
         "statuses": statuses,
     }
     if final_pair_marker:
+        source_successor_receipt_cid = str(
+            final_pair_marker.get("source_successor_receipt_cid") or ""
+        )
+        prior_final_pair_receipt_cid = str(
+            final_pair_marker.get("prior_final_pair_receipt_cid") or ""
+        )
         store_report.update(
             {
                 "coordination_path": str(
@@ -10832,8 +10845,27 @@ def _live_preflight(
                 "coordination_event_count": final_pair_marker[
                     "coordination_event_count"
                 ],
-                "materialization_receipt_cid": final_pair_marker["receipt_cid"],
-                "final_pair_commit_marker_verified": True,
+                "materialization_receipt_cid": (
+                    prior_final_pair_receipt_cid
+                    or str(final_pair_marker["receipt_cid"])
+                ),
+                "final_pair_commit_marker_verified": bool(
+                    prior_final_pair_receipt_cid
+                    or final_pair_marker.get(
+                        "receipt_is_final_pair_commit_marker"
+                    )
+                    is True
+                ),
+                "source_successor_receipt_cid": (
+                    source_successor_receipt_cid or None
+                ),
+                "source_successor_receipt_verified": bool(
+                    source_successor_receipt_cid
+                    and final_pair_marker.get(
+                        "receipt_is_evidence_source_seal_marker"
+                    )
+                    is True
+                ),
             }
         )
 
