@@ -1738,10 +1738,20 @@ Before the restart, M30 also seals the bounded supervisor recovery commit
 `b1c0226a5e95c36656b300034cd9f78b8a70201e`: eight exact runtime/test blobs
 repair cross-attempt lifecycle recovery, crash-safe Portal receipts, managed
 daemon authority matching, and stalled-run resumption. That commit is a child
-of the stopped event-280 source head and is followed by exactly one commit over
-the nine operator-owned controls. The repair changes no task definition, task
-revision, task status, plan, accepted completion, coordination fact, worktree,
-sidecar, provider invocation, effect, merge, or implementation result.
+of the stopped event-280 source head. Initial M30 controls were preserved at
+`8233b47ba4c05470235ec832e95a70fdce13316d` with authorization CID
+`sha256:ef37e79ce07cbb18d16259feeb85c3176661ebc64ec3cb108c3d7b5624e294fe`.
+Their first live verification exposed a representation-only defect before any
+event-281 evidence or receipt was written: Quack returns mapping-backed
+`DuckDBRow` records while the new lifecycle verifier compared them directly to
+tuples. The bounded child repair
+`95505a7eec81a5eedd859e7efb97539d759c918f` converts the five closed row sets
+to positional tuples at widths 14, 9, 8, 5, and 9 without changing expected
+values or weakening any lifecycle check. A final seven-control reseal records
+that predecessor and repair explicitly. Neither repair changes a task
+definition, task revision, task status, plan, accepted completion,
+coordination fact, worktree, sidecar, provider invocation, effect, merge, or
+implementation result.
 
 A malformed or partial M30 declaration takes precedence over M29 and fails
 closed on every validator, materializer, and operator selector. The adjacent

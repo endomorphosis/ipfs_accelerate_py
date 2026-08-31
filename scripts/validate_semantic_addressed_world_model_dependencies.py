@@ -3219,7 +3219,7 @@ def _m30_source_chain_errors(
         return []
     except Exception as exc:
         return [
-            "M30 exact merge/watchdog/supervisor-repair/nine-control chain differs: "
+            "M30 exact recovery/initial-seal/cursor-repair/reseal chain differs: "
             f"{type(exc).__name__}: {exc}"
         ]
 
@@ -3258,8 +3258,18 @@ def _m30_stopped_owner_restart_source_seal_successor_errors(
         binding = expected.get("runtime_binding", {})
         stopped = expected.get("stopped_owner", {})
         changes = expected.get("exact_changes", {})
+        cursor_repair = expected.get("bounded_materializer_repair", {})
+        prior_control = expected.get("prior_control_authorization", {})
         if (
-            expected.get("migration_revision") != "SAWM-R2-M30"
+            expected.get("schema")
+            != (
+                "sawm/stopped-owner-restart-source-seal-successor-"
+                "materialization-authorization@2"
+            )
+            or expected.get("authorization_revision") != 2
+            or expected.get("prior_authorization_cid")
+            != "sha256:ef37e79ce07cbb18d16259feeb85c3176661ebc64ec3cb108c3d7b5624e294fe"
+            or expected.get("migration_revision") != "SAWM-R2-M30"
             or expected.get("target_generation") != 28
             or expected.get("target_event_watermark") != 281
             or binding.get("prior_event_watermark") != 280
@@ -3275,6 +3285,18 @@ def _m30_stopped_owner_restart_source_seal_successor_errors(
             or changes.get("task_revision_changes") != 0
             or changes.get("task_status_changes") != 0
             or changes.get("coordination_semantic_changes") != 0
+            or cursor_repair.get("schema")
+            != "sawm/bounded-live-row-normalization-repair@1"
+            or cursor_repair.get("repair_commit")
+            != "95505a7eec81a5eedd859e7efb97539d759c918f"
+            or cursor_repair.get("database_mutations") != 0
+            or cursor_repair.get("event_append_changes") != 0
+            or cursor_repair.get("lifecycle_checks_weakened") is not False
+            or prior_control.get("control_commit")
+            != "8233b47ba4c05470235ec832e95a70fdce13316d"
+            or prior_control.get("superseded_before_event_281") is not True
+            or prior_control.get("event_281_appended") is not False
+            or prior_control.get("receipt_published") is not False
         ):
             errors.append("M30 stopped-owner restart delta is not exact")
         if require_active_runtime:

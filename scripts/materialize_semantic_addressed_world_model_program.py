@@ -1283,7 +1283,9 @@ _M30_SUPERSESSION_MODE = "generation_bearing_stopped_owner_restart_source_seal"
 _M30_SUPERSESSION_REASON = (
     "stopped_owner_restart_source_seal_successor_materialization"
 )
-_M30_CONTROL_RECORDED_AT = "2026-08-31T05:05:00Z"
+_M30_INITIAL_CONTROL_RECORDED_AT = "2026-08-31T05:05:00Z"
+_M30_CONTROL_RECORDED_AT = "2026-08-31T15:59:48Z"
+_M30_AUTHORIZATION_AMENDED_AT = "2026-08-31T15:59:48Z"
 _M30_PRIOR_EVENT_WATERMARK = 280
 _M30_TARGET_EVENT_WATERMARK = 281
 _M30_TARGET_PLAN_REVISION = 28
@@ -1347,6 +1349,69 @@ _M30_SUPERVISOR_REPAIR_BLOBS = MappingProxyType(
         "test/api/test_agent_supervisor_worktree_lifecycle.py": (
             "44b07820e9bd1ed612fdf95e547d23ff10c5c735"
         ),
+    }
+)
+_M30_INITIAL_CONTROL_COMMIT = "8233b47ba4c05470235ec832e95a70fdce13316d"
+_M30_INITIAL_CONTROL_TREE = "e7b322fa25b22369f17748417cea100a624fb000"
+_M30_INITIAL_AUTHORIZATION_CID = (
+    "sha256:ef37e79ce07cbb18d16259feeb85c3176661ebc64ec3cb108c3d7b5624e294fe"
+)
+_M30_INITIAL_CONTROL_BLOBS = MappingProxyType(
+    {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "8515b15a5516d16c82813fe4fff594f0978a4bcf"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "8e811bc43fa729ae8a199f03d9e57d4f07d81a45"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "edd8cfec60ef9187f7408ff49a2c9eafb7046d37"
+        ),
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ): "401625dff681a6095d4b9bf33d81d57c6ec37424",
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "d702dfdc60b37b315129d1236c4b04797f1770de"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "aa1b4928a15f0133086b39fb64cd44a174df675f"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "f13bacbda864e530fae2795d766c6c06d67cb075"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "0c8716cb460d4093e4a12ccd5b26bfdecaa6d7ff"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "0b73b46e8cff7109d7b72b16a64902835ae16e30"
+        ),
+    }
+)
+_M30_CURSOR_REPAIR_COMMIT = "95505a7eec81a5eedd859e7efb97539d759c918f"
+_M30_CURSOR_REPAIR_TREE = "1c1d7a9920bbbdb16bb08c05c2cb7fd1c11c0ffa"
+_M30_CURSOR_REPAIR_BLOBS = MappingProxyType(
+    {
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "7b8611474be3bf2e33af49e72f6c32e293e77e6d"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "66bacb067fa6032c1a5ac4fa3aa3bc0fbc8a5169"
+        ),
+    }
+)
+_M30_AMENDMENT_PATHS = frozenset(
+    {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+        "config/semantic_addressed_world_model_dependencies.seal.json",
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
     }
 )
 _M30_PRIOR_SERVER_ID = "server:ff5834df-4af2-4cb0-a4a4-7dbc4f258457"
@@ -6207,14 +6272,17 @@ def _expected_m30_stopped_owner_restart_source_seal_authority() -> dict[str, Any
     return {
         "schema": (
             "sawm/stopped-owner-restart-source-seal-successor-"
-            "materialization-authorization@1"
+            "materialization-authorization@2"
         ),
+        "authorization_revision": 2,
         "authorized": True,
         "authority": "operator_control_plane",
         "migration_revision": _M30_MIGRATION_REVISION,
         "migration_kind": _M30_SUPERSESSION_REASON,
         "supersession_mode": _M30_SUPERSESSION_MODE,
         "control_recorded_at": _M30_CONTROL_RECORDED_AT,
+        "authorization_amended_at": _M30_AUTHORIZATION_AMENDED_AT,
+        "prior_authorization_cid": _M30_INITIAL_AUTHORIZATION_CID,
         "target_store_id": _M30_STORE_ID,
         "target_coordination_store_id": _M30_COORDINATION_STORE_ID,
         "target_runtime_root": _M30_RUNTIME_ROOT,
@@ -6296,7 +6364,19 @@ def _expected_m30_stopped_owner_restart_source_seal_authority() -> dict[str, Any
             "supervisor_repair_parent": _M30_WATCHDOG_COMMIT,
             "supervisor_repair_tree": _M30_SUPERVISOR_REPAIR_TREE,
             "supervisor_repair_blobs": dict(_M30_SUPERVISOR_REPAIR_BLOBS),
-            "final_control_commit_count": 1,
+            "initial_control_commit": _M30_INITIAL_CONTROL_COMMIT,
+            "initial_control_tree": _M30_INITIAL_CONTROL_TREE,
+            "initial_control_blobs": dict(_M30_INITIAL_CONTROL_BLOBS),
+            "initial_authorization_cid": _M30_INITIAL_AUTHORIZATION_CID,
+            "cursor_normalization_repair_commit": _M30_CURSOR_REPAIR_COMMIT,
+            "cursor_normalization_repair_parent": _M30_INITIAL_CONTROL_COMMIT,
+            "cursor_normalization_repair_tree": _M30_CURSOR_REPAIR_TREE,
+            "cursor_normalization_repair_blobs": dict(
+                _M30_CURSOR_REPAIR_BLOBS
+            ),
+            "final_control_commit_count": 2,
+            "intermediary_repair_commit_count": 1,
+            "final_reseal_commit_count": 1,
         },
         "expected_task_heads": _m30_expected_task_heads(),
         "operator_control_paths": sorted(_M18_OPERATOR_CONTROL_PATHS),
@@ -6314,6 +6394,41 @@ def _expected_m30_stopped_owner_restart_source_seal_authority() -> dict[str, Any
             "repository_authority_weakened": False,
             "worker_self_approval": False,
         },
+        "bounded_materializer_repair": {
+            "schema": "sawm/bounded-live-row-normalization-repair@1",
+            "repair_commit": _M30_CURSOR_REPAIR_COMMIT,
+            "repair_parent": _M30_INITIAL_CONTROL_COMMIT,
+            "repair_tree": _M30_CURSOR_REPAIR_TREE,
+            "changed_paths": sorted(_M30_CURSOR_REPAIR_BLOBS),
+            "blob_oids": dict(_M30_CURSOR_REPAIR_BLOBS),
+            "failure_kind": "quack_duckdb_row_wrapper_tuple_comparison",
+            "normalization": "integer_index_to_tuple",
+            "row_widths": {
+                "state_servers": 14,
+                "store_generations": 9,
+                "credentials": 8,
+                "server_epochs": 5,
+                "capability_snapshots": 9,
+            },
+            "expected_values_changed": False,
+            "lifecycle_checks_weakened": False,
+            "database_mutations": 0,
+            "event_append_changes": 0,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "accepted_completion_changes": 0,
+            "worker_self_approval": False,
+        },
+        "prior_control_authorization": {
+            "authorization_cid": _M30_INITIAL_AUTHORIZATION_CID,
+            "control_commit": _M30_INITIAL_CONTROL_COMMIT,
+            "control_tree": _M30_INITIAL_CONTROL_TREE,
+            "control_recorded_at": _M30_INITIAL_CONTROL_RECORDED_AT,
+            "superseded_before_event_281": True,
+            "event_281_appended": False,
+            "receipt_published": False,
+        },
+        "authorization_amendment_paths": sorted(_M30_AMENDMENT_PATHS),
         "current_datasets_gitlink": "b9f5b86199c03e427fd51fcea302479880421ff8",
         "current_datasets_tree": "52c0c7be05a51956ba5aa2b6f85d38e03588f3b1",
         "current_kit_gitlink": "fc9248073e9f67ac59ca607c7736746907b08037",
@@ -50443,16 +50558,24 @@ def _assert_m30_source_delta(
     population: Mapping[str, Any],
     authority: Mapping[str, Any],
 ) -> None:
-    """Require the exact merge/watchdog/repair prefix and one control child."""
+    """Require the exact recovery, initial seal, cursor repair and reseal."""
 
     current = str(population["source_binding"]["head"])
     repair = _M30_SUPERVISOR_REPAIR_COMMIT
+    initial = _M30_INITIAL_CONTROL_COMMIT
+    cursor_repair = _M30_CURSOR_REPAIR_COMMIT
     control_paths = set(authority.get("operator_control_paths") or ())
     bounded_paths = set(
         authority.get("bounded_control_plane_repair_paths") or ()
     )
     chain = authority.get("source_chain")
     current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
+    cursor_repair_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", cursor_repair
+    ).split()
+    initial_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", initial
+    ).split()
     repair_parents = _git(
         root, "rev-list", "--parents", "-n", "1", repair
     ).split()
@@ -50466,7 +50589,13 @@ def _assert_m30_source_delta(
         root, "rev-list", "--parents", "-n", "1", _M30_WATCHDOG_COMMIT
     ).split()
     if (
-        current in {_M30_WATCHDOG_COMMIT, repair}
+        current
+        in {
+            _M30_WATCHDOG_COMMIT,
+            repair,
+            initial,
+            cursor_repair,
+        }
         or not isinstance(chain, Mapping)
         or chain.get("m29_control_commit") != _M30_BASE_CONTROL_COMMIT
         or chain.get("sawm_015_worker_commit") != _M30_WORKER_COMMIT
@@ -50481,33 +50610,65 @@ def _assert_m30_source_delta(
         or chain.get("supervisor_repair_tree") != _M30_SUPERVISOR_REPAIR_TREE
         or chain.get("supervisor_repair_blobs")
         != dict(_M30_SUPERVISOR_REPAIR_BLOBS)
-        or int(chain.get("final_control_commit_count") or 0) != 1
+        or chain.get("initial_control_commit") != initial
+        or chain.get("initial_control_tree") != _M30_INITIAL_CONTROL_TREE
+        or chain.get("initial_control_blobs")
+        != dict(_M30_INITIAL_CONTROL_BLOBS)
+        or chain.get("initial_authorization_cid")
+        != _M30_INITIAL_AUTHORIZATION_CID
+        or chain.get("cursor_normalization_repair_commit") != cursor_repair
+        or chain.get("cursor_normalization_repair_parent") != initial
+        or chain.get("cursor_normalization_repair_tree")
+        != _M30_CURSOR_REPAIR_TREE
+        or chain.get("cursor_normalization_repair_blobs")
+        != dict(_M30_CURSOR_REPAIR_BLOBS)
+        or int(chain.get("final_control_commit_count") or 0) != 2
+        or int(chain.get("intermediary_repair_commit_count") or 0) != 1
+        or int(chain.get("final_reseal_commit_count") or 0) != 1
         or worker_parents != [_M30_WORKER_COMMIT, _M30_BASE_CONTROL_COMMIT]
         or merge_parents
         != [_M30_MERGE_COMMIT, _M30_BASE_CONTROL_COMMIT, _M30_WORKER_COMMIT]
         or watchdog_parents != [_M30_WATCHDOG_COMMIT, _M30_MERGE_COMMIT]
         or repair_parents != [repair, _M30_WATCHDOG_COMMIT]
-        or current_parents != [current, repair]
+        or initial_parents != [initial, repair]
+        or cursor_repair_parents != [cursor_repair, initial]
+        or current_parents != [current, cursor_repair]
         or control_paths != set(_M18_OPERATOR_CONTROL_PATHS)
         or bounded_paths
         != set(_M18_OPERATOR_CONTROL_PATHS) | set(_M30_SUPERVISOR_REPAIR_BLOBS)
         or _m27_name_status(root, _M30_WATCHDOG_COMMIT, repair)
         != {path: "M" for path in _M30_SUPERVISOR_REPAIR_BLOBS}
-        or _m27_name_status(root, repair, current)
+        or _m27_name_status(root, repair, initial)
         != {path: "M" for path in control_paths}
+        or _m27_name_status(root, initial, cursor_repair)
+        != {path: "M" for path in _M30_CURSOR_REPAIR_BLOBS}
+        or _m27_name_status(root, cursor_repair, current)
+        != {path: "M" for path in _M30_AMENDMENT_PATHS}
         or _git(root, "rev-parse", f"{repair}^{{tree}}")
         != _M30_SUPERVISOR_REPAIR_TREE
+        or _git(root, "rev-parse", f"{initial}^{{tree}}")
+        != _M30_INITIAL_CONTROL_TREE
+        or _git(root, "rev-parse", f"{cursor_repair}^{{tree}}")
+        != _M30_CURSOR_REPAIR_TREE
+        or set(authority.get("authorization_amendment_paths") or ())
+        != set(_M30_AMENDMENT_PATHS)
         or population["source_binding"].get("tree")
         != _git(root, "rev-parse", f"{current}^{{tree}}")
         or int(authority.get("ordinary_source_changes", -1)) != 0
     ):
         raise MaterializationError(
             "M30 source transition is not the exact merge/watchdog/supervisor-"
-            "repair chain plus one nine-control commit"
+            "repair, initial-control, cursor-normalization and final-reseal chain"
         )
     for path, blob_oid in _M30_SUPERVISOR_REPAIR_BLOBS.items():
         if _git(root, "rev-parse", f"{repair}:{path}") != blob_oid:
             raise MaterializationError(f"M30 supervisor-repair blob differs: {path}")
+    for path, blob_oid in _M30_INITIAL_CONTROL_BLOBS.items():
+        if _git(root, "rev-parse", f"{initial}:{path}") != blob_oid:
+            raise MaterializationError(f"M30 initial-control blob differs: {path}")
+    for path, blob_oid in _M30_CURSOR_REPAIR_BLOBS.items():
+        if _git(root, "rev-parse", f"{cursor_repair}:{path}") != blob_oid:
+            raise MaterializationError(f"M30 cursor-repair blob differs: {path}")
     for dependency, gitlink_key, tree_key, population_key in (
         (
             "ipfs_datasets_py", "current_datasets_gitlink",
@@ -50521,7 +50682,8 @@ def _assert_m30_source_delta(
                 _git(root, "rev-parse", f"{head}:{dependency}") != gitlink
                 for head in (
                     _M30_BASE_CONTROL_COMMIT, _M30_WORKER_COMMIT,
-                    _M30_MERGE_COMMIT, _M30_WATCHDOG_COMMIT, repair, current,
+                    _M30_MERGE_COMMIT, _M30_WATCHDOG_COMMIT, repair, initial,
+                    cursor_repair, current,
                 )
             )
             or population["source_binding"].get(population_key) != gitlink
@@ -50576,8 +50738,11 @@ def _m30_migration_body(
 ) -> dict[str, Any]:
     authority = _expected_m30_stopped_owner_restart_source_seal_authority()
     return {
-        "schema": "sawm/stopped-owner-restart-source-seal@1",
+        "schema": "sawm/stopped-owner-restart-source-seal@2",
         "authority": "operator_control_plane",
+        "authorization_revision": authority["authorization_revision"],
+        "authorization_amended_at": authority["authorization_amended_at"],
+        "prior_authorization_cid": authority["prior_authorization_cid"],
         "migration_revision": _M30_MIGRATION_REVISION,
         "migration_kind": _M30_SUPERSESSION_REASON,
         "supersession_mode": _M30_SUPERSESSION_MODE,
@@ -50595,6 +50760,15 @@ def _m30_migration_body(
         "target_authority": authority["target_authority"],
         "source_chain": authority["source_chain"],
         "accepted_source_repair": authority["accepted_source_repair"],
+        "bounded_materializer_repair": authority[
+            "bounded_materializer_repair"
+        ],
+        "prior_control_authorization": authority[
+            "prior_control_authorization"
+        ],
+        "authorization_amendment_paths": authority[
+            "authorization_amendment_paths"
+        ],
         "exact_changes": authority["exact_changes"],
         "preservation": authority["preservation"],
         "authenticated_mutation_route": {

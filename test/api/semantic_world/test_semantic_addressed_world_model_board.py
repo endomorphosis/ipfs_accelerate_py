@@ -4628,7 +4628,13 @@ def test_m30_authority_pins_stopped_event_280_and_generation_28() -> None:
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
     assert scheduler["database_program"]["store_generation"] == "28"
-    assert authority["control_recorded_at"] == "2026-08-31T05:05:00Z"
+    assert authority["schema"].endswith("authorization@2")
+    assert authority["authorization_revision"] == 2
+    assert authority["control_recorded_at"] == "2026-08-31T15:59:48Z"
+    assert authority["authorization_amended_at"] == "2026-08-31T15:59:48Z"
+    assert authority["prior_authorization_cid"] == (
+        "sha256:ef37e79ce07cbb18d16259feeb85c3176661ebc64ec3cb108c3d7b5624e294fe"
+    )
     assert authority["prior_authority"]["event_watermark"] == 280
     assert authority["prior_authority"]["event_prefix_sha256"] == (
         "633332aa54c610819c55ba0bcd9c4fa4b745bb5c4414e063a009a084df73d909"
@@ -4688,6 +4694,52 @@ def test_m30_authority_pins_stopped_event_280_and_generation_28() -> None:
         "69cdfa11e4ec5ffee6040cef582b7c006865ec5b"
     )
     assert repair["changed_paths"] == sorted(repair["blob_oids"])
+    chain = authority["source_chain"]
+    assert chain["initial_control_commit"] == (
+        "8233b47ba4c05470235ec832e95a70fdce13316d"
+    )
+    assert chain["initial_control_tree"] == (
+        "e7b322fa25b22369f17748417cea100a624fb000"
+    )
+    assert chain["initial_authorization_cid"] == (
+        "sha256:ef37e79ce07cbb18d16259feeb85c3176661ebc64ec3cb108c3d7b5624e294fe"
+    )
+    assert chain["cursor_normalization_repair_commit"] == (
+        "95505a7eec81a5eedd859e7efb97539d759c918f"
+    )
+    assert chain["cursor_normalization_repair_parent"] == (
+        "8233b47ba4c05470235ec832e95a70fdce13316d"
+    )
+    assert chain["cursor_normalization_repair_tree"] == (
+        "1c1d7a9920bbbdb16bb08c05c2cb7fd1c11c0ffa"
+    )
+    assert chain["final_control_commit_count"] == 2
+    assert chain["intermediary_repair_commit_count"] == 1
+    assert chain["final_reseal_commit_count"] == 1
+    cursor_repair = authority["bounded_materializer_repair"]
+    assert cursor_repair["normalization"] == "integer_index_to_tuple"
+    assert cursor_repair["row_widths"] == {
+        "state_servers": 14,
+        "store_generations": 9,
+        "credentials": 8,
+        "server_epochs": 5,
+        "capability_snapshots": 9,
+    }
+    assert cursor_repair["event_append_changes"] == 0
+    assert cursor_repair["lifecycle_checks_weakened"] is False
+    prior_control = authority["prior_control_authorization"]
+    assert prior_control == {
+        "authorization_cid": authority["prior_authorization_cid"],
+        "control_commit": chain["initial_control_commit"],
+        "control_tree": chain["initial_control_tree"],
+        "control_recorded_at": "2026-08-31T05:05:00Z",
+        "superseded_before_event_281": True,
+        "event_281_appended": False,
+        "receipt_published": False,
+    }
+    assert authority["authorization_amendment_paths"] == sorted(
+        materializer._M30_AMENDMENT_PATHS
+    )
     assert set(authority["bounded_control_plane_repair_paths"]) == (
         set(authority["operator_control_paths"])
         | set(repair["changed_paths"])
