@@ -1590,7 +1590,71 @@ not a restriction to one implementation worker.  Worktree, lease, fence,
 resource, merge, and completion authorities keep the four ordinary workers
 isolated and concurrent.
 
-## 36. Current limitations at seal time
+## 36. M28 live claim/admission recovery source successor
+
+M27 completed SAWM-012 and preserved its accepted task revision and all
+completion evidence, but the accepted-source transition embedded an empty
+`configured_board_admission_cid`.  The correct verified live-capsule admission
+was
+`baguqeeraelsagoqf62zk3etgymookxuzxrn763rwbo7i6iqpqte6ehj7giuq`.
+Every other source-transition predicate passed, so M28 records this as one
+scoped historical inconsistency; it does not rewrite SAWM-012 revision 9, its
+transition `sha256:97b5896f0e2f32fbdddc0a904a57ff0d5ddc11abbe1ecf3a9aad73178d77cd1f`,
+or any validation, completion, coordination, portal, merge, or task receipt.
+The old transition remains immutable evidence and is not used as the launch
+anchor for the repaired source.
+
+The bounded repair commit
+`cb6b3e951eac7862ff4d9965c067cf057ee73b41` forwards the already verified
+admission object through the private sealed-child boundary; no ordinary CLI or
+environment input can mint it.  It also recovers an exact lane-owned claim
+after death before canonical CAS or before execution-sidecar admission,
+requeues expired unadmitted claims only after their fences close, and replays
+the exact failed-attempt/canonical-control crash boundary without reusing old
+provider or effect evidence.  Recovery requires matching task, claim,
+attempt, lease, owner, fence, canonical receipt, and durable reconciliation
+identities.  Full focused suites cover the new crash boundaries and the
+sealed admission path.
+
+M28 preserves the M27 store, runtime root, coordination authority, worktrees,
+and every lane-local execution sidecar.  The earlier real launch had correctly
+retired its one-time credential handoff, but no surviving SAWM coordinator
+retained the in-memory token.  The exact generation-26 owner therefore stopped
+cleanly and a generation-bearing owner restart created generation 27 on the
+same store.  The task/event head remained unchanged across that restart.  This
+retains SAWM-006's real in-progress provider and validation cursor and the exact
+pre-attempt claims for SAWM-008 and SAWM-015.
+It appends only one operator evidence node and its domain event to SAWM-000;
+the plan stays at revision 28 and every task definition, task revision, task
+status, accepted completion, coordination claim, implementation attempt,
+provider invocation, effect claim, worktree, log, and merge record remains
+unchanged.  The immutable M27 migration marker remains in place; M28 publishes
+an adjacent receipt after the live evidence mutation verifies.
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m27
+worktrees     data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/worktrees (preserved)
+Quack port    24070
+generation    26 -> 27 (one verified owner restart; task/event state unchanged)
+plan revision 28 (unchanged)
+event cursor  272 -> 273 (one operator evidence event)
+coord events  3019 (unchanged; exact projection sha256:7abbd22e48ed99b31fb02190c6406b631f3341de22c9904af3d2b5b10d9509c0)
+pre-projection baguqeeraibbcifj3pphsn2ibjugp27edn767n54c5higfeuey3nc2vywjtba
+post-projection baguqeerazyzybkjnlihpazozv7xjiign23bfius47mpb3iol6fciuonvzd7a
+lanes         0, 1, 2, 3 (strict; no idle stealing)
+```
+
+The subsequent protected-control commit is the sole child of the repair
+commit and may modify only the nine established operator controls.  Its exact
+committed source becomes the new configured-board launch pin.  Future worker
+merges again require canonical current-tree completion transitions carrying
+that verified admission CID.  M28 authorizes no task completion, worker
+self-approval, similarity reuse, validation reduction, source-history rewrite,
+or ordinary implementation change.
+
+## 37. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

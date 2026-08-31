@@ -3197,6 +3197,323 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m28_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Select M28 on any declaration surface, including partial state."""
+
+    key = "live_claim_admission_recovery_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m28_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    """Bind the bounded supervisor repair and protected control seal."""
+
+    try:
+        population = materializer.build_population(root)
+        materializer._assert_m28_source_delta(root, population, authority)
+        return []
+    except Exception as exc:
+        return [
+            "M28 exact supervisor-repair and nine-control seal chain differs: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m28_live_claim_admission_recovery_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Check M28's evidence-only repair of live-claim/admission plumbing."""
+
+    key = "live_claim_admission_recovery_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m28_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M28 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = materializer._expected_m28_live_claim_admission_recovery_authority()
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append(
+                "M28 live-claim/admission-recovery authority is only partially "
+                "declared"
+            )
+        if scheduler.get(key) != expected or migration.get(key) != expected:
+            errors.append(
+                "M28 live-claim/admission-recovery authority differs across controls"
+            )
+        if seal.get(f"{key}_cid") != materializer._identity(expected):
+            errors.append(
+                "M28 live-claim/admission-recovery authority CID is not exact"
+            )
+
+        if expected.get("schema") != (
+            "sawm/live-claim-admission-recovery-successor-materialization-"
+            "authorization@1"
+        ):
+            errors.append("M28 authority schema differs")
+        if expected.get("migration_revision") != "SAWM-R2-M28":
+            errors.append("M28 migration revision differs")
+        if expected.get("migration_kind") != key or expected.get(
+            "supersession_mode"
+        ) != "append_only_live_owner_evidence_source_seal":
+            errors.append("M28 successor kind/mode differs")
+        if expected.get("authorized") is not True:
+            errors.append("M28 operator authorization is absent")
+        if expected.get("authority") != "operator_control_plane":
+            errors.append("M28 operator authority class differs")
+
+        runtime = expected.get("runtime_binding")
+        target_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        if not isinstance(runtime, Mapping) or (
+            runtime.get("run_id"),
+            runtime.get("runtime_root"),
+            runtime.get("store_id"),
+            runtime.get("coordination_store_id"),
+            runtime.get("worktree_root"),
+            runtime.get("store_generation"),
+            runtime.get("quack_port"),
+            runtime.get("quack_endpoint"),
+            runtime.get("database_uuid"),
+            runtime.get("server_id"),
+            runtime.get("process_birth_id"),
+            runtime.get("plan_revision"),
+            runtime.get("prior_event_watermark"),
+            runtime.get("target_event_watermark"),
+        ) != (
+            "run-r2-m27",
+            target_root,
+            f"{target_root}/control.duckdb",
+            f"{target_root}/control.coordination.duckdb",
+            f"{target_root}/worktrees",
+            27,
+            24_070,
+            "quack:127.0.0.1:24070",
+            "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4",
+            "server:ff5834df-4af2-4cb0-a4a4-7dbc4f258457",
+            "birth:7157839e6e5bc6ce351f41c7d9cd6c94",
+            28,
+            272,
+            273,
+        ):
+            errors.append("M28 evidence-only runtime/event binding differs")
+
+        prior = expected.get("prior_authority")
+        target = expected.get("target_authority")
+        if (
+            not isinstance(prior, Mapping)
+            or prior.get("migration_revision") != "SAWM-R2-M27"
+            or prior.get("event_watermark") != 272
+            or prior.get("coordination_event_count") != 3_019
+            or prior.get("coordination_projection_digest")
+            != "sha256:7abbd22e48ed99b31fb02190c6406b631f3341de22c9904af3d2b5b10d9509c0"
+            or not isinstance(target, Mapping)
+            or target.get("event_watermark") != 273
+            or target.get("plan_revision") != 28
+            or target.get("projection_cid")
+            != "baguqeerazyzybkjnlihpazozv7xjiign23bfius47mpb3iol6fciuonvzd7a"
+        ):
+            errors.append("M28 prior/target authority binding differs")
+
+        restart = expected.get("credential_handoff_recovery")
+        if not isinstance(restart, Mapping) or (
+            restart.get("schema"),
+            restart.get("prior_server_id"),
+            restart.get("prior_generation"),
+            restart.get("prior_resulting_status"),
+            restart.get("target_server_id"),
+            restart.get("target_generation"),
+            restart.get("target_status"),
+            restart.get("store_generation_row_changes"),
+            restart.get("state_server_row_changes"),
+            restart.get("credential_row_changes"),
+            restart.get("domain_event_changes"),
+            restart.get("worker_self_approval"),
+        ) != (
+            "sawm/generation-bearing-owner-restart@1",
+            "server:f0e56096-6fe5-4fdb-ba58-d1cb16cb7f2e",
+            26,
+            "stopped",
+            "server:ff5834df-4af2-4cb0-a4a4-7dbc4f258457",
+            27,
+            "ready",
+            1,
+            2,
+            1,
+            0,
+            False,
+        ):
+            errors.append("M28 generation-bearing owner restart differs")
+
+        exact_changes = expected.get("exact_changes")
+        zero_change_fields = (
+            "task_revision_changes",
+            "task_status_changes",
+            "plan_revision_changes",
+            "accepted_definition_changes",
+            "accepted_completion_changes",
+            "coordination_semantic_changes",
+            "sidecar_changes",
+            "implementation_provider_invocations",
+            "effect_claim_changes",
+            "implementation_commit_changes",
+            "merge_attempt_changes",
+        )
+        if (
+            not isinstance(exact_changes, Mapping)
+            or any(exact_changes.get(field) != 0 for field in zero_change_fields)
+            or exact_changes.get("evidence_node_changes") != 1
+            or exact_changes.get("event_suffix_length") != 1
+            or exact_changes.get("store_generation_row_changes") != 1
+            or exact_changes.get("state_server_row_changes") != 2
+            or exact_changes.get("credential_row_changes") != 1
+            or expected.get("ordinary_source_changes") != 0
+        ):
+            errors.append("M28 evidence-only change inventory differs")
+
+        preservation = expected.get("preservation")
+        if (
+            not isinstance(preservation, Mapping)
+            or preservation.get("sidecars_preserved") is not True
+            or preservation.get("same_live_owner") is not False
+            or preservation.get("same_store_generation") is not False
+            or preservation.get("generation_bearing_owner_restart") is not True
+            or preservation.get("worker_self_approval") is not False
+        ):
+            errors.append("M28 sidecar/self-approval preservation differs")
+
+        repair = expected.get("historical_transition_repair")
+        if not isinstance(repair, Mapping):
+            errors.append("M28 historical SAWM-012 transition repair is absent")
+        else:
+            required_repair = {
+                "schema": "sawm/historical-transition-admission-mismatch@1",
+                "task_alias": "SAWM-012",
+                "task_cid": (
+                    "sha256:7b3443e7a80b5b81aed08f89733253d7145d3e2553e2c466"
+                    "77566075fe08ac99"
+                ),
+                "task_revision": 9,
+                "accepted_transition_cid": (
+                    "sha256:97b5896f0e2f32fbdddc0a904a57ff0d5ddc11abbe1ecf3a9"
+                    "aad73178d77cd1f"
+                ),
+                "actual_configured_board_admission_cid": "",
+                "expected_configured_board_admission_cid": (
+                    "baguqeeraelsagoqf62zk3etgymookxuzxrn763rwbo7i6iqpqte6ehj7giuq"
+                ),
+                "implementation_commit": (
+                    "e9d03bff8b527e2b6c1a216cffb60a52a037c581"
+                ),
+                "merge_commit": "8d2acae71f4d8caaceaf2677d4f0ca87d15e606e",
+                "validation_event_id": (
+                    "baguqeerabqgo366z7qgn2e2c6uzunbgdkllptgk6fg2pbdya57apck6tr4fq"
+                ),
+                "completion_event_id": (
+                    "baguqeeraemvqjbjurp7qa6szkuyhvwuy3jzwjaqhsfvhq3iwyf67aruatj3a"
+                ),
+                "portal_event_log_sha256": (
+                    "sha256:3721dc40482fa85c4abc3a5496c64f24d7c4c37a73762a8f8774"
+                    "fe46fb77d777"
+                ),
+                "accepted_completion_changed": False,
+                "historical_completion_rewritten": False,
+                "task_completion_authority": False,
+                "worker_self_approval": False,
+            }
+            if any(repair.get(field) != value for field, value in required_repair.items()):
+                errors.append(
+                    "M28 historical SAWM-012 admission mismatch receipt differs"
+                )
+
+        control_paths = expected.get("operator_control_paths")
+        required_control_paths = {
+            "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+            "config/semantic_addressed_world_model_dependencies.seal.json",
+            "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+            (
+                "docs/architecture/semantic_addressed_world_model_inventory/"
+                "prior_materialization_migration.json"
+            ),
+            "scripts/materialize_semantic_addressed_world_model_program.py",
+            "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+            "scripts/validate_semantic_addressed_world_model_board.py",
+            "scripts/validate_semantic_addressed_world_model_dependencies.py",
+            "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+        }
+        if (
+            not isinstance(control_paths, list)
+            or set(control_paths) != required_control_paths
+            or control_paths != sorted(control_paths)
+        ):
+            errors.append("M28 protected nine-control path inventory differs")
+
+        if require_active_runtime:
+            target_store = f"{target_root}/control.duckdb"
+            program = scheduler.get("database_program", {})
+            owner = scheduler.get("quack_owner", {})
+            runtime_paths = scheduler.get("runtime_paths", {})
+            observed = (
+                program.get("store_id"),
+                program.get("store_generation"),
+                program.get("quack_endpoint"),
+                program.get("event_store_path"),
+                program.get("runtime_registry_path"),
+                program.get("worktree_root"),
+                owner.get("database_path"),
+                owner.get("store_id"),
+                owner.get("state_dir"),
+                owner.get("port"),
+            )
+            wanted = (
+                target_store,
+                "27",
+                "quack:127.0.0.1:24070",
+                f"{target_root}/events",
+                f"{target_root}/registry",
+                f"{target_root}/worktrees",
+                target_store,
+                target_store,
+                f"{target_root}/quack-owner",
+                24_070,
+            )
+            expected_runtime_paths = {
+                "root": target_root,
+                "state": f"{target_root}/state",
+                "worktrees": f"{target_root}/worktrees",
+                "merge_queue": f"{target_root}/merge-queue",
+                "logs": f"{target_root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+            if observed != wanted or runtime_paths != expected_runtime_paths:
+                errors.append("scheduler M28 target/runtime binding is not exact")
+        errors.extend(_m28_source_chain_errors(root, materializer, expected))
+        return errors
+    except Exception as exc:
+        return [
+            "M28 live-claim/admission-recovery authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m27_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -3212,11 +3529,28 @@ def _m27_source_chain_errors(
     root: Path,
     materializer: Any,
     authority: Mapping[str, Any],
+    *,
+    current_head: str | None = None,
 ) -> list[str]:
     """Bind the landed worker merge, watchdog repair, and control seal."""
 
     try:
         population = materializer.build_population(root)
+        if current_head:
+            binding = dict(population["source_binding"])
+            binding.update(
+                {
+                    "head": current_head,
+                    "tree": _git(root, "rev-parse", f"{current_head}^{{tree}}"),
+                    "datasets_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_datasets_py"
+                    ),
+                    "kit_gitlink": _git(
+                        root, "rev-parse", f"{current_head}:ipfs_kit_py"
+                    ),
+                }
+            )
+            population = {**population, "source_binding": binding}
         materializer._assert_m27_source_delta(root, population, authority)
         return []
     except Exception as exc:
@@ -3345,7 +3679,40 @@ def _m27_dead_owner_parallel_resume_successor_errors(
             }
             if observed != wanted or runtime != expected_runtime:
                 errors.append("scheduler M27 target/runtime binding is not exact")
-        errors.extend(_m27_source_chain_errors(root, materializer, expected))
+        historical_control_head = None
+        if not require_active_runtime and _m28_successor_declared(
+            scheduler, seal, migration
+        ):
+            m28 = (
+                materializer
+                ._expected_m28_live_claim_admission_recovery_authority()
+            )
+            source_chain = m28.get("source_chain", {})
+            if isinstance(source_chain, Mapping):
+                historical_control_head = str(
+                    source_chain.get("prior_control_source_head")
+                    or source_chain.get("m27_control_source_head")
+                    or source_chain.get("m27_control_commit")
+                    or ""
+                ) or None
+            if historical_control_head is None:
+                source_authority = m28.get("source_authority", {})
+                if isinstance(source_authority, Mapping):
+                    historical_control_head = str(
+                        source_authority.get("prior_control_source_head")
+                        or source_authority.get("prior_source_head")
+                        or ""
+                    ) or None
+            if historical_control_head is None:
+                errors.append("M28 prior M27 control source head is absent")
+        errors.extend(
+            _m27_source_chain_errors(
+                root,
+                materializer,
+                expected,
+                current_head=historical_control_head,
+            )
+        )
         return errors
     except Exception as exc:
         return [
@@ -7903,6 +8270,55 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m28_key = "live_claim_admission_recovery_successor_materialization"
+    m28_presence = (
+        m28_key in scheduler,
+        m28_key in migration,
+        f"{m28_key}_cid" in seal,
+    )
+    if any(m28_presence):
+        if not all(m28_presence):
+            return effective, ["active M28 nested-source authority is partial"]
+        scheduled = scheduler.get(m28_key)
+        migrated = migration.get(m28_key)
+        if (
+            type(scheduled) is not dict
+            or type(migrated) is not dict
+            or _canonical_json(scheduled) != _canonical_json(migrated)
+        ):
+            return effective, ["active M28 nested-source authority differs"]
+        claimed_cid = "sha256:" + hashlib.sha256(
+            _canonical_json(scheduled)
+        ).hexdigest()
+        if seal.get(f"{m28_key}_cid") != claimed_cid:
+            return effective, ["active M28 nested-source authority CID differs"]
+
+        identities = {
+            "ipfs_datasets_py": (
+                str(scheduled.get("current_datasets_gitlink") or ""),
+                str(scheduled.get("current_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(scheduled.get("current_kit_gitlink") or ""),
+                str(scheduled.get("current_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M28 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     m27_key = "dead_owner_parallel_resume_successor_materialization"
     m27_presence = (
         m27_key in scheduler,
@@ -8219,6 +8635,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m28_key = "live_claim_admission_recovery_successor_materialization"
+        m28_presence = (
+            m28_key in scheduler_probe,
+            m28_key in migration_probe,
+            f"{m28_key}_cid" in seal,
+        )
         m27_key = "dead_owner_parallel_resume_successor_materialization"
         m27_presence = (
             m27_key in scheduler_probe,
@@ -8275,7 +8697,38 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m27_presence):
+        if any(m28_presence):
+            scheduled = scheduler_probe.get(m28_key)
+            migrated = migration_probe.get(m28_key)
+            if (
+                not all(m28_presence)
+                or type(scheduled) is not dict
+                or type(migrated) is not dict
+                or _canonical_json(scheduled) != _canonical_json(migrated)
+                or seal.get(f"{m28_key}_cid")
+                != "sha256:"
+                + hashlib.sha256(_canonical_json(scheduled)).hexdigest()
+            ):
+                unexpected = [
+                    "M28 authority is partial or differs across source controls"
+                ]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m28_source_status_materializer",
+                    root
+                    / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M28 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    unexpected = _m28_source_chain_errors(
+                        root,
+                        materializer,
+                        scheduled,
+                    )
+        elif any(m27_presence):
             scheduled = scheduler_probe.get(m27_key)
             migrated = migration_probe.get(m27_key)
             if (
@@ -9024,17 +9477,29 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m28_declared = _m28_successor_declared(scheduler, seal, migration)
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m27_declared
+            m28_declared
+            or m27_declared
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
+            if m28_declared:
+                protocol_errors.extend(
+                    _m28_live_claim_admission_recovery_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
             if m27_declared:
                 protocol_errors.extend(
                     _m27_dead_owner_parallel_resume_successor_errors(
-                        scheduler, seal, migration, root=root
+                        scheduler,
+                        seal,
+                        migration,
+                        root=root,
+                        require_active_runtime=not m28_declared,
                     )
                 )
             if m26_declared:
@@ -9044,7 +9509,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not m27_declared,
+                        require_active_runtime=not (m28_declared or m27_declared),
                     )
                 )
             protocol_errors.extend(
@@ -9053,7 +9518,9 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                     seal,
                     migration,
                     root=root,
-                    require_active_runtime=not (m27_declared or m26_declared),
+                    require_active_runtime=not (
+                        m28_declared or m27_declared or m26_declared
+                    ),
                 )
             )
             protocol_errors.extend(
@@ -9572,6 +10039,14 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             protocol_errors.append("closed atomic mutation catalog is absent")
         if "read_only=True" not in operator_source or "canonical writer without loading or serving Quack" not in operator_source:
             protocol_errors.append("read-only Quack replica / sealed writer boundary is absent")
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "live_claim_admission_recovery_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M28 authority by fail-closed key "
+                "presence"
+            )
         if not _has_presence_based_key_selection(
             operator_source,
             "native_duckdb_preload_successor_materialization",
