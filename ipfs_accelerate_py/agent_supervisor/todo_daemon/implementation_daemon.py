@@ -72443,6 +72443,8 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "Portal terminal replay lacks a task-bound implementation event",
         "Portal terminal implementation summary is empty",
         "[Errno 28] No space left on device",
+        "bwrap: setting up uid map: Permission denied",
+        "bwrap: setting up gid map: Permission denied",
     }
 )
 # Grok/wrapper deaths and Quack attach races are retryable, but they are not
@@ -72459,6 +72461,8 @@ _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
         "Portal terminal replay lacks a task-bound implementation event",
         "Portal terminal implementation summary is empty",
         "[Errno 28] No space left on device",
+        "bwrap: setting up uid map: Permission denied",
+        "bwrap: setting up gid map: Permission denied",
     }
 )
 _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
@@ -72468,6 +72472,19 @@ _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
         "Portal terminal replay lacks a task-bound implementation event",
         "Portal terminal implementation summary is empty",
         "[Errno 28] No space left on device",
+        "bwrap: setting up uid map: Permission denied",
+        "bwrap: setting up gid map: Permission denied",
+    }
+)
+_SANDBOX_HOST_FAILURE_REOPEN_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-sandbox-host-failure-reopen@1"
+)
+_SANDBOX_HOST_FAILURE_QUARANTINE_OPERATIONS = frozenset(
+    {
+        "database_strict_resume_quarantine",
+        "database_portal_neutral_failure_quarantine",
+        "database_portal_terminal_failure",
     }
 )
 _MERGE_QUEUE_LANDED_COMPLETION_SCHEMA = (
@@ -79846,6 +79863,10 @@ class DatabaseImplementationDaemon:
             return DATABASE_PORTAL_EMPTY_IMPLEMENTATION_SUMMARY_REASON
         if "No space left on device" in reason or "[Errno 28]" in reason:
             return "[Errno 28] No space left on device"
+        if "bwrap: setting up uid map" in reason.lower():
+            return "bwrap: setting up uid map: Permission denied"
+        if "bwrap: setting up gid map" in reason.lower():
+            return "bwrap: setting up gid map: Permission denied"
         return (reason or "portal_execution_deferred")[:1024]
 
     @staticmethod
@@ -87274,77 +87295,95 @@ class DatabaseImplementationDaemon:
         """
 
         self._require_execution_authority("terminal retry reconciliation")
+        from ..merge.database_coordination import (
+            DatabaseCoordinationStaleFenceError,
+        )
+
         outcomes: list[dict[str, Any]] = []
         for attempt in self._latest_failed_attempts():
-            evidence = self._terminal_retry_evidence(attempt)
-            if evidence is None:
-                continue
-            task = self.task_source.get(attempt.task_cid)
-            if task is None:
-                raise DatabaseImplementationAuthorityError(
-                    f"failed attempt {attempt.attempt_id} has no control task"
-                )
-            status = str(task.status or "").strip().lower()
-            if self._automatic_claim_forbidden(task):
-                raise DatabaseImplementationAuthorityError(
-                    "automatic retry reconciliation rejected a manual/review-only task"
-                )
-            budget = evidence.get("typed_deferral_budget")
-            if isinstance(budget, Mapping) and budget.get("exhausted") is True:
-                if status == "blocked":
+            try:
+                evidence = self._terminal_retry_evidence(attempt)
+                if evidence is None:
                     continue
-                if status not in {"in_progress", "retrying"}:
-                    raise DatabaseImplementationConflictError(
-                        "exhausted typed deferral cannot reconcile control "
-                        f"status {status!r}"
-                    )
-                coordination = self._reconcile_failed_attempt_coordination(
-                    attempt
-                )
-                outcome = self._persist_typed_deferral_budget_exhausted(
-                    attempt,
-                    budget=budget,
-                    coordination_evidence=coordination,
-                )
-                outcome["coordination"] = coordination
-                outcomes.append(outcome)
-                continue
-            if status == "retrying":
-                get_queue_entry = getattr(
-                    self.task_source,
-                    "get_queue_entry",
-                    None,
-                )
-                if not callable(get_queue_entry):
+                task = self.task_source.get(attempt.task_cid)
+                if task is None:
                     raise DatabaseImplementationAuthorityError(
-                        "task source cannot verify retry queue state"
+                        f"failed attempt {attempt.attempt_id} has no control task"
                     )
-                if get_queue_entry(attempt.task_cid) is None:
+                status = str(task.status or "").strip().lower()
+                if self._automatic_claim_forbidden(task):
+                    raise DatabaseImplementationAuthorityError(
+                        "automatic retry reconciliation rejected a manual/review-only task"
+                    )
+                budget = evidence.get("typed_deferral_budget")
+                if isinstance(budget, Mapping) and budget.get("exhausted") is True:
+                    if status == "blocked":
+                        continue
+                    if status not in {"in_progress", "retrying"}:
+                        raise DatabaseImplementationConflictError(
+                            "exhausted typed deferral cannot reconcile control "
+                            f"status {status!r}"
+                        )
                     coordination = self._reconcile_failed_attempt_coordination(
                         attempt
                     )
-                    outcome = self._persist_task_retry_state(
+                    outcome = self._persist_typed_deferral_budget_exhausted(
                         attempt,
-                        reason=str(evidence["reason"]),
-                        backoff_ms=int(evidence["backoff_ms"]),
-                        evidence_source=str(evidence["evidence_source"]),
+                        budget=budget,
                         coordination_evidence=coordination,
                     )
                     outcome["coordination"] = coordination
                     outcomes.append(outcome)
+                    continue
+                if status == "retrying":
+                    get_queue_entry = getattr(
+                        self.task_source,
+                        "get_queue_entry",
+                        None,
+                    )
+                    if not callable(get_queue_entry):
+                        raise DatabaseImplementationAuthorityError(
+                            "task source cannot verify retry queue state"
+                        )
+                    if get_queue_entry(attempt.task_cid) is None:
+                        coordination = self._reconcile_failed_attempt_coordination(
+                            attempt
+                        )
+                        outcome = self._persist_task_retry_state(
+                            attempt,
+                            reason=str(evidence["reason"]),
+                            backoff_ms=int(evidence["backoff_ms"]),
+                            evidence_source=str(evidence["evidence_source"]),
+                            coordination_evidence=coordination,
+                        )
+                        outcome["coordination"] = coordination
+                        outcomes.append(outcome)
+                    continue
+                if status != "in_progress":
+                    continue
+                coordination = self._reconcile_failed_attempt_coordination(attempt)
+                outcome = self._persist_task_retry_state(
+                    attempt,
+                    reason=str(evidence["reason"]),
+                    backoff_ms=int(evidence["backoff_ms"]),
+                    evidence_source=str(evidence["evidence_source"]),
+                    coordination_evidence=coordination,
+                )
+                outcome["coordination"] = coordination
+                outcomes.append(outcome)
+            except DatabaseCoordinationStaleFenceError as exc:
+                outcomes.append(
+                    {
+                        "task_cid": str(getattr(attempt, "task_cid", "") or ""),
+                        "attempt_id": str(
+                            getattr(attempt, "attempt_id", "") or ""
+                        ),
+                        "changed": False,
+                        "reason": "stale_retry_fence_skipped",
+                        "error": str(exc),
+                    }
+                )
                 continue
-            if status != "in_progress":
-                continue
-            coordination = self._reconcile_failed_attempt_coordination(attempt)
-            outcome = self._persist_task_retry_state(
-                attempt,
-                reason=str(evidence["reason"]),
-                backoff_ms=int(evidence["backoff_ms"]),
-                evidence_source=str(evidence["evidence_source"]),
-                coordination_evidence=coordination,
-            )
-            outcome["coordination"] = coordination
-            outcomes.append(outcome)
         return outcomes
 
     def reconcile_terminal_portal_failures(self) -> list[dict[str, Any]]:
@@ -90041,6 +90080,103 @@ class DatabaseImplementationDaemon:
                 outcomes.append(outcome)
         return outcomes
 
+    def _receipt_is_sandbox_host_failure(self, receipt: Mapping[str, Any]) -> bool:
+        from ..runtime.grok_cli_runner import grok_stderr_is_sandbox_host_failure
+
+        try:
+            blob = json.dumps(dict(receipt), default=str)
+        except (TypeError, ValueError):
+            blob = str(receipt)
+        return grok_stderr_is_sandbox_host_failure(blob)
+
+    def _reopen_sandbox_host_failure_task(
+        self,
+        task: Any,
+    ) -> dict[str, Any] | None:
+        """Requeue quarantines that died because this host cannot run bwrap."""
+
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        if status not in {"quarantined", "blocked"}:
+            return None
+        body = task.body if isinstance(getattr(task, "body", None), Mapping) else {}
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return None
+        operation = str(receipt.get("operation") or "")
+        if operation not in _SANDBOX_HOST_FAILURE_QUARANTINE_OPERATIONS:
+            return None
+        if receipt.get("provider_phase_committed") is True:
+            return None
+        if not self._receipt_is_sandbox_host_failure(receipt):
+            return None
+        if self.repo_root is not None and self._task_outputs_landed_on_target(
+            task
+        ):
+            return None
+        reopen_receipt = {
+            "schema": _SANDBOX_HOST_FAILURE_REOPEN_SCHEMA,
+            "operation": "reopen_sandbox_host_failure",
+            "reason": "grok_sandbox_host_bwrap_unavailable",
+            "previous_operation": operation,
+            "previous_attempt_id": str(receipt.get("attempt_id") or ""),
+        }
+        self._cas_task_status_database(
+            str(task.task_cid),
+            expected_revision=int(task.revision),
+            new_status="todo",
+            receipt=reopen_receipt,
+        )
+        self._record_event(
+            "sandbox_host_failure_reopened",
+            task_cid=str(task.task_cid),
+            body={
+                "previous_operation": operation,
+                "previous_attempt_id": reopen_receipt["previous_attempt_id"],
+            },
+        )
+        return {
+            "task_cid": str(task.task_cid),
+            "task_alias": str(getattr(task, "task_alias", "") or ""),
+            "reopened": True,
+            "reason": "sandbox_host_failure_reopen",
+            "previous_attempt_id": reopen_receipt["previous_attempt_id"],
+        }
+
+    def reconcile_sandbox_host_failure_quarantines(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Reopen host-sandbox failures that never produced a candidate."""
+
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        outcomes: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for status in ("quarantined", "blocked"):
+            page = list_tasks(status=status, limit=TASK_SOURCE_QUERY_LIMIT)
+            for task in tuple(getattr(page, "tasks", ()) or ()):
+                task_cid = str(getattr(task, "task_cid", "") or "")
+                if not task_cid or task_cid in seen:
+                    continue
+                seen.add(task_cid)
+                loaded = self.task_source.get(task_cid)
+                try:
+                    outcome = self._reopen_sandbox_host_failure_task(
+                        loaded if loaded is not None else task
+                    )
+                except Exception as exc:
+                    outcomes.append(
+                        {
+                            "task_cid": task_cid,
+                            "reopened": False,
+                            "reason": str(exc),
+                        }
+                    )
+                    continue
+                if outcome is not None:
+                    outcomes.append(outcome)
+        return outcomes
+
     def reconcile_unimplemented_unknown_callback_quarantines(
         self,
     ) -> list[dict[str, Any]]:
@@ -90269,6 +90405,9 @@ class DatabaseImplementationDaemon:
         consumed_no_progress_reopens = self._run_reconciliation_step(
             self.reconcile_consumed_no_progress_without_effect_quarantines
         )
+        sandbox_host_failure_reopens = self._run_reconciliation_step(
+            self.reconcile_sandbox_host_failure_quarantines
+        )
         terminal_portal_reconciliations = self._run_reconciliation_step(
             self.reconcile_terminal_portal_failures
         )
@@ -90310,6 +90449,7 @@ class DatabaseImplementationDaemon:
             + len(landed_merge_reconciliations)
             + len(unknown_callback_reopens)
             + len(consumed_no_progress_reopens)
+            + len(sandbox_host_failure_reopens)
             + len(terminal_portal_reconciliations)
             + len(terminal_retry_reconciliations)
             + sum(
@@ -90418,6 +90558,7 @@ class DatabaseImplementationDaemon:
                     "landed_merge_reconciliations": landed_merge_reconciliations,
                     "unknown_callback_reopens": unknown_callback_reopens,
                     "consumed_no_progress_reopens": consumed_no_progress_reopens,
+                    "sandbox_host_failure_reopens": sandbox_host_failure_reopens,
                     "terminal_retry_reconciliations": (
                         terminal_retry_reconciliations
                     ),
@@ -90483,6 +90624,7 @@ class DatabaseImplementationDaemon:
                 "landed_merge_reconciliations": landed_merge_reconciliations,
                 "unknown_callback_reopens": unknown_callback_reopens,
                 "consumed_no_progress_reopens": consumed_no_progress_reopens,
+                "sandbox_host_failure_reopens": sandbox_host_failure_reopens,
                 "terminal_retry_reconciliations": (
                     terminal_retry_reconciliations
                 ),
@@ -90532,6 +90674,7 @@ class DatabaseImplementationDaemon:
             "landed_merge_reconciliations": landed_merge_reconciliations,
             "unknown_callback_reopens": unknown_callback_reopens,
             "consumed_no_progress_reopens": consumed_no_progress_reopens,
+            "sandbox_host_failure_reopens": sandbox_host_failure_reopens,
             "terminal_retry_reconciliations": terminal_retry_reconciliations,
             "terminal_portal_reconciliations": terminal_portal_reconciliations,
             "protected_path_recovery_reconciliations": (
