@@ -789,6 +789,12 @@ def test_crash_reconciler_preserves_dispatch_process_for_automatic_rearm(
         )
 
         assert failed.status == "failed"
+        failed_phase = next(
+            phase
+            for phase in successor.phase_history(failed.attempt_id)
+            if phase["phase"] == "failed"
+        )
+        assert "terminal_reconciliation" not in failed_phase["body"]
         assert receipt["process_instance_id"] == dispatch_process
         assert receipt["reconciled_by_process_instance_id"] == (
             successor.process_instance_id

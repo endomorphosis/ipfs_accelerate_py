@@ -1109,6 +1109,88 @@ def test_round_robin_audit_detects_post_high_water_saga_corruption(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    ("terminal_link", "delete_saga", "expected_error"),
+    (
+        ({}, True, ""),
+        (
+            {"schema": "unknown-terminal-reconciliation-link@1"},
+            True,
+            "terminal phase has an unknown reconciliation link",
+        ),
+        ({}, False, "terminal reconciliation saga lacks its phase link"),
+    ),
+)
+def test_terminal_repair_accepts_only_empty_legacy_link_without_saga(
+    tmp_path: Path,
+    terminal_link: dict[str, object],
+    delete_saga: bool,
+    expected_error: str,
+) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:terminal-empty-legacy-link",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=False,
+    )
+    try:
+        receipts = _seed_terminal_repair_history(daemon, count=1)
+        attempt_id = "attempt:terminal-history:0000"
+        if delete_saga:
+            daemon._require_connection().execute(
+                """
+                DELETE FROM database_portal_terminal_reconciliations
+                WHERE attempt_id = ?
+                """,
+                [attempt_id],
+            )
+        daemon._require_connection().execute(
+            """
+            UPDATE attempt_phases SET body_json = ?
+            WHERE attempt_id = ? AND phase = 'failed'
+            """,
+            [
+                json.dumps(
+                    {
+                        "database_disposition": "terminalized_for_retry",
+                        "terminal_reconciliation": terminal_link,
+                    },
+                    sort_keys=True,
+                ),
+                attempt_id,
+            ],
+        )
+        attempt = daemon.get_attempt(attempt_id)
+        assert attempt is not None
+
+        repairs = daemon._repair_database_portal_terminal_receipts(
+            bridge=_TerminalRepairReceiptAuthority(receipts),
+            trigger="legacy_empty_link_restart",
+            exact_attempt=attempt,
+        )
+
+        if expected_error:
+            assert len(repairs) == 1
+            assert repairs[0]["blocked"] is True
+            assert repairs[0]["reason"] == (
+                "terminal_reconciliation_receipt_repair_failed"
+            )
+            assert repairs[0]["error"] == expected_error
+        else:
+            assert repairs == []
+            assert delete_saga is True
+            assert (
+                daemon._database_portal_terminal_reconciliation_saga(attempt)
+                is None
+            )
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_exact_pre_provider_terminal_link_restores_missing_saga_barrier(
     tmp_path: Path,
 ) -> None:

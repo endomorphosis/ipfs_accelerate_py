@@ -70149,18 +70149,20 @@ class DatabaseImplementationDaemon:
                     else "terminalized_for_retry"
                 )
             )
+            failed_phase_body: dict[str, Any] = {
+                "reason": str(reason)[:512],
+                "retry_exhausted": retry_exhausted,
+                "unknown_authority": unknown_authority,
+                "database_disposition": actual_database_disposition,
+            }
+            if reconciliation_evidence:
+                failed_phase_body["terminal_reconciliation"] = dict(
+                    reconciliation_evidence
+                )
             current = self.commit_phase(
                 current,
                 ATTEMPT_PHASE_FAILED,
-                body={
-                    "reason": str(reason)[:512],
-                    "retry_exhausted": retry_exhausted,
-                    "unknown_authority": unknown_authority,
-                    "terminal_reconciliation": dict(
-                        reconciliation_evidence or {}
-                    ),
-                    "database_disposition": actual_database_disposition,
-                },
+                body=failed_phase_body,
                 require_live_claim=False,
             )
         return current, receipt
@@ -74611,14 +74613,20 @@ class DatabaseImplementationDaemon:
                 saga = self._database_portal_terminal_reconciliation_saga(
                     attempt
                 )
-                if raw_link is None:
+                if raw_link is None or (
+                    type(raw_link) is dict and not raw_link
+                ):
                     if saga is not None:
                         raise DatabaseImplementationConflictError(
                             "terminal reconciliation saga lacks its phase link"
                         )
                     # An admitted Portal attempt can also fail through an
                     # ordinary, fully-settled daemon path.  Its valid FAILED
-                    # phase is not a terminal-reconciliation candidate.
+                    # phase is not a terminal-reconciliation candidate.  Old
+                    # versions wrote an empty object when no reconciliation
+                    # evidence existed; accept only that exact empty legacy
+                    # placeholder.  Any nonempty or non-object value remains
+                    # an authority-bearing link and is validated fail closed.
                     continue
                 if not isinstance(raw_link, Mapping):
                     raise DatabaseImplementationConflictError(
