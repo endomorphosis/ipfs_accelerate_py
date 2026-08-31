@@ -1454,6 +1454,15 @@ def test_idle_daemon_pass_logging_is_compact_and_throttled(caplog):
         "merge_reconciliation": [],
         "completion_receipt_writes": [],
         "retry_budget_resets": [],
+        "unknown_callback_reopens": [
+            {
+                "task_cid": "sha256:blocked-task",
+                "reopened": False,
+                "changed": False,
+                "reason": "post_commit_recovery_evidence_rejected",
+                "error_type": "DatabaseImplementationAuthorityError",
+            }
+        ],
         "large_diagnostic": "x" * 10_000,
     }
     logger = logging.getLogger("test-idle-daemon-pass-logging")
@@ -1473,6 +1482,8 @@ def test_idle_daemon_pass_logging_is_compact_and_throttled(caplog):
 
     assert caplog.text.count("pass complete:") == 1
     assert "no_shard_selectable_ready_tasks" in caplog.text
+    assert "post_commit_recovery_evidence_rejected" in caplog.text
+    assert "DatabaseImplementationAuthorityError" in caplog.text
     assert "large_diagnostic" not in caplog.text
 
 

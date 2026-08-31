@@ -694,6 +694,11 @@ def compact_daemon_pass_result(result: Mapping[str, Any]) -> dict[str, Any]:
         "declared_output_rearm",
         "merge_quarantine_settlement",
         "post_merge_recovery",
+        # A rejected automatic recovery is observation-only, so the pass is
+        # correctly idle and throttled.  Keep its bounded typed reason in the
+        # operator heartbeat; otherwise an exact recovery mismatch can look
+        # identical to an ordinary empty frontier and remain invisible.
+        "unknown_callback_reopens",
         "write_count",
         "backoff_seconds",
     )
