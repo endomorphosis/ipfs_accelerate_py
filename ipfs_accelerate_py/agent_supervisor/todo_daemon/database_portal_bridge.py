@@ -30,6 +30,10 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Final
 
+from ..runtime.event_log import (
+    event_log_manifest,
+    event_log_sources,
+)
 from ..task_sources.intent_repository import (
     VALIDATION_ARGV_REPRESENTATION,
     VALIDATION_REPRESENTATION_POLICY_KEY,
@@ -46,6 +50,10 @@ DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA: Final[str] = (
 DATABASE_PORTAL_ATTEMPT_RECONCILIATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-attempt-reconciliation@1"
+)
+DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-no-provider-rearm-evidence@1"
 )
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {"completed", "complete", "done"}
@@ -1156,7 +1164,13 @@ class DatabasePortalExecutionBridge:
                     )
                 ),
             )
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except (
+            OSError,
+            TypeError,
+            ValueError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ) as exc:
             raise DatabasePortalBridgeError(
                 "database Portal nested task state is unreadable"
             ) from exc
@@ -1977,6 +1991,880 @@ class DatabasePortalExecutionBridge:
             binding=expected,
             summaries=(),
         )
+
+    @staticmethod
+    def _read_exact_owner_bytes(
+        path: Path,
+        *,
+        maximum_bytes: int = 2 * 1024 * 1024,
+    ) -> bytes:
+        """Read one exact owner-group file through a no-follow descriptor.
+
+        Portal attempt artifacts are created under the daemon owner's primary
+        private group.  Group readability/writability is therefore accepted,
+        but a different group or any world-writable authority is not.  The
+        descriptor and directory entry must name the same stable inode before
+        the bytes are returned.
+        """
+
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        try:
+            descriptor = os.open(path, flags)
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "database Portal recovery authority is unreadable"
+            ) from exc
+        try:
+            before = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != os.geteuid()
+                or before.st_gid != os.getegid()
+                or int(before.st_nlink) != 1
+                or bool(before.st_mode & stat.S_IWOTH)
+                or int(before.st_size) > maximum_bytes
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal recovery authority is not an exact private file"
+                )
+            chunks: list[bytes] = []
+            remaining = maximum_bytes + 1
+            while remaining > 0:
+                chunk = os.read(descriptor, min(128 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+
+        def fingerprint(item: os.stat_result) -> tuple[
+            int,
+            int,
+            int,
+            int,
+            int,
+            int,
+            int,
+            int,
+            int,
+        ]:
+            return (
+                int(item.st_dev),
+                int(item.st_ino),
+                int(item.st_mode),
+                int(item.st_uid),
+                int(item.st_gid),
+                int(item.st_nlink),
+                int(item.st_size),
+                int(item.st_mtime_ns),
+                int(item.st_ctime_ns),
+            )
+        try:
+            published = path.lstat()
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "database Portal recovery authority changed during read"
+            ) from exc
+        if (
+            len(raw) > maximum_bytes
+            or len(raw) != int(before.st_size)
+            or fingerprint(before) != fingerprint(after)
+            or fingerprint(before) != fingerprint(published)
+            or stat.S_ISLNK(published.st_mode)
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal recovery authority changed during read"
+            )
+        return raw
+
+    @classmethod
+    def _strict_private_json_object_with_digest(
+        cls,
+        path: Path,
+        *,
+        maximum_bytes: int = 2 * 1024 * 1024,
+    ) -> tuple[dict[str, Any], str]:
+        """Read one owner-private regular JSON object without normalization."""
+
+        def closed_object(
+            pairs: Sequence[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            result: dict[str, Any] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise DatabasePortalBridgeError(
+                        "database Portal recovery authority contains duplicate keys"
+                    )
+                result[key] = value
+            return result
+
+        raw = cls._read_exact_owner_bytes(
+            path,
+            maximum_bytes=maximum_bytes,
+        )
+        try:
+            value = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=closed_object,
+                parse_constant=lambda _value: (_ for _ in ()).throw(
+                    DatabasePortalBridgeError(
+                        "database Portal recovery authority contains a nonfinite value"
+                    )
+                ),
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeError(
+                "database Portal recovery authority is malformed"
+            ) from exc
+        if not isinstance(value, Mapping):
+            raise DatabasePortalBridgeError(
+                "database Portal recovery authority is not an object"
+            )
+        return dict(value), _sha256_bytes(raw)
+
+    @classmethod
+    def _strict_private_json_object(
+        cls,
+        path: Path,
+        *,
+        maximum_bytes: int = 2 * 1024 * 1024,
+    ) -> dict[str, Any]:
+        value, _digest = cls._strict_private_json_object_with_digest(
+            path,
+            maximum_bytes=maximum_bytes,
+        )
+        return value
+
+    @classmethod
+    def _strict_private_projection(
+        cls,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> str:
+        try:
+            text = cls._read_exact_owner_bytes(
+                paths.task_projection,
+                maximum_bytes=2 * 1024 * 1024,
+            ).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise DatabasePortalBridgeError(
+                "Portal task projection is unreadable"
+            ) from exc
+        if _projection_immutable_digest(text) != str(
+            binding.get("projection_immutable_digest") or ""
+        ):
+            raise DatabasePortalBridgeError(
+                "Portal task projection changed outside its mutable status field"
+            )
+        if _HEADER.findall(text) != [str(binding.get("task_alias") or "")]:
+            raise DatabasePortalBridgeError(
+                "Portal task projection no longer contains exactly the claimed task"
+            )
+        return text
+
+    def _complete_attempt_event_chain(
+        self,
+        paths: DatabasePortalAttemptPaths,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Strictly replay one complete, unrotated-from-genesis event chain."""
+
+        manifest_path = paths.events.with_name(
+            f"{paths.events.name}.manifest.json"
+        )
+        if (
+            paths.root.is_symlink()
+            or paths.events.is_symlink()
+            or manifest_path.is_symlink()
+            or not paths.events.is_file()
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal no-provider event authority is not exact"
+            )
+        try:
+            root = paths.root.resolve(strict=True)
+            authority_root = self.attempt_root.resolve(strict=True)
+            if root.parent != authority_root:
+                raise DatabasePortalBridgeError(
+                    "database Portal no-provider event authority escapes its root"
+                )
+            sealed_manifest = self._strict_private_json_object(
+                manifest_path,
+                maximum_bytes=2 * 1024 * 1024,
+            )
+            before = event_log_manifest(paths.events)
+            sources = event_log_sources((paths.events,), include_rotated=True)
+        except (OSError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "database Portal no-provider event manifest is unavailable"
+            ) from exc
+        if (
+            int(before.get("earliest_sequence") or 0) != 1
+            or int(before.get("latest_sequence") or 0) < 1
+            or not str(before.get("stream_id") or "")
+            or not str(before.get("snapshot_id") or "")
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(before.get("last_event_id") or ""),
+            )
+            or sealed_manifest != before
+            or not sources
+            or len(sources) > 64
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal no-provider event history is incomplete"
+            )
+        source_stats: dict[
+            Path,
+            tuple[int, int, int, int, int, int, int, int, int],
+        ] = {}
+        source_payloads: dict[Path, bytes] = {}
+        total_source_bytes = 0
+
+        def file_fingerprint(item: os.stat_result) -> tuple[
+            int,
+            int,
+            int,
+            int,
+            int,
+            int,
+            int,
+            int,
+            int,
+        ]:
+            return (
+                int(item.st_dev),
+                int(item.st_ino),
+                int(item.st_mode),
+                int(item.st_uid),
+                int(item.st_gid),
+                int(item.st_nlink),
+                int(item.st_size),
+                int(item.st_mtime_ns),
+                int(item.st_ctime_ns),
+            )
+
+        for source in sources:
+            try:
+                source_parent = source.parent.resolve(strict=True)
+                raw_source = self._read_exact_owner_bytes(
+                    source,
+                    maximum_bytes=16 * 1024 * 1024,
+                )
+                source_stat = source.lstat()
+            except OSError as exc:
+                raise DatabasePortalBridgeError(
+                    "database Portal no-provider event source is unavailable"
+                ) from exc
+            if (
+                source_parent != root
+                or source.is_symlink()
+                or not stat.S_ISREG(source_stat.st_mode)
+                or source_stat.st_uid != os.geteuid()
+                or source_stat.st_gid != os.getegid()
+                or int(source_stat.st_nlink) != 1
+                or bool(source_stat.st_mode & stat.S_IWOTH)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal no-provider event source is not exact"
+                )
+            source_stats[source] = file_fingerprint(source_stat)
+            total_source_bytes += len(raw_source)
+            if total_source_bytes > 16 * 1024 * 1024:
+                raise DatabasePortalBridgeError(
+                    "database Portal no-provider event history is oversized"
+                )
+            source_payloads[source] = raw_source
+
+        manifest_records = {
+            str(record.get("path") or ""): record
+            for record in before.get("files", ())
+            if isinstance(record, Mapping)
+            and str(record.get("path") or "")
+        }
+        if set(manifest_records) != {source.name for source in sources}:
+            raise DatabasePortalBridgeError(
+                "database Portal no-provider event manifest population is not exact"
+            )
+        events_by_sequence: dict[int, dict[str, Any]] = {}
+        latest_sequence = 0
+        latest_event_id = ""
+
+        def closed_event_object(
+            pairs: Sequence[tuple[str, Any]],
+        ) -> dict[str, Any]:
+            value: dict[str, Any] = {}
+            for key, item in pairs:
+                if key in value:
+                    raise DatabasePortalBridgeError(
+                        "database Portal no-provider event contains duplicate keys"
+                    )
+                value[key] = item
+            return value
+
+        try:
+            for source in sources:
+                record = manifest_records.get(source.name)
+                if record is None:
+                    raise DatabasePortalBridgeError(
+                        "database Portal no-provider event source is unmanifested"
+                    )
+                source_stat = source_stats[source]
+                source_bytes = source_payloads[source]
+                source_digest = str(record.get("sha256") or "")
+                if (
+                    len(source_bytes) != int(record.get("size_bytes") or 0)
+                    or (
+                        source_digest
+                        and hashlib.sha256(source_bytes).hexdigest()
+                        != source_digest
+                    )
+                    or source_stat[0] != int(record.get("device") or -1)
+                    or source_stat[1] != int(record.get("inode") or -1)
+                    or source_stat[7] != int(record.get("mtime_ns") or -1)
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal no-provider event source digest "
+                        "disagrees with its manifest"
+                    )
+                source_count = 0
+                source_first = 0
+                source_last = 0
+                for raw_line in source_bytes.splitlines():
+                    if not raw_line.strip():
+                        continue
+                    if len(raw_line) > 2 * 1024 * 1024:
+                        raise DatabasePortalBridgeError(
+                            "database Portal no-provider event is oversized"
+                        )
+                    source_count += 1
+                    raw_event = json.loads(
+                        raw_line.decode("utf-8"),
+                        object_pairs_hook=closed_event_object,
+                        parse_constant=lambda _value: (_ for _ in ()).throw(
+                            DatabasePortalBridgeError(
+                                "database Portal no-provider event contains "
+                                "a nonfinite value"
+                            )
+                        ),
+                    )
+                    if not isinstance(raw_event, Mapping):
+                        raise DatabasePortalBridgeError(
+                            "database Portal no-provider event is not an object"
+                        )
+                    event = dict(raw_event)
+                    sequence = event.get("sequence")
+                    if (
+                        isinstance(sequence, bool)
+                        or not isinstance(sequence, int)
+                        or sequence < 1
+                        or event.get("stream_id") != before["stream_id"]
+                        or event.get("snapshot_id") != before["snapshot_id"]
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "database Portal no-provider event identity is malformed"
+                        )
+                    unsigned = dict(event)
+                    event_id = str(unsigned.pop("event_id", "") or "")
+                    expected_id = _sha256_bytes(_canonical_json(unsigned))
+                    if event_id != expected_id:
+                        raise DatabasePortalBridgeError(
+                            "database Portal no-provider event identity does not verify"
+                        )
+                    source_first = source_first or sequence
+                    source_last = sequence
+                    known = events_by_sequence.get(sequence)
+                    if known is not None:
+                        if known != event:
+                            raise DatabasePortalBridgeError(
+                                "database Portal no-provider event sequence conflicts"
+                            )
+                        continue
+                    if sequence != latest_sequence + 1 or str(
+                        event.get("previous_event_id") or ""
+                    ) != latest_event_id:
+                        raise DatabasePortalBridgeError(
+                            "database Portal no-provider event chain is broken"
+                        )
+                    events_by_sequence[sequence] = event
+                    latest_sequence = sequence
+                    latest_event_id = event_id
+                    if latest_sequence > 4096:
+                        raise DatabasePortalBridgeError(
+                            "database Portal no-provider event history is oversized"
+                        )
+                if (
+                    source_count != int(record.get("event_count") or 0)
+                    or source_first != int(record.get("first_sequence") or 0)
+                    or source_last != int(record.get("last_sequence") or 0)
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal no-provider event source disagrees "
+                        "with its manifest"
+                    )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeError(
+                "database Portal no-provider event chain does not verify"
+            ) from exc
+        after = event_log_manifest(paths.events)
+        sealed_after = self._strict_private_json_object(
+            manifest_path,
+            maximum_bytes=2 * 1024 * 1024,
+        )
+        if before != after or sealed_manifest != sealed_after:
+            raise DatabasePortalBridgeError(
+                "database Portal no-provider event authority changed during replay"
+            )
+        for source, expected_stat in source_stats.items():
+            try:
+                observed = source.lstat()
+            except OSError as exc:
+                raise DatabasePortalBridgeError(
+                    "database Portal no-provider event source changed during replay"
+                ) from exc
+            if expected_stat != file_fingerprint(observed):
+                raise DatabasePortalBridgeError(
+                    "database Portal no-provider event source changed during replay"
+                )
+        expected_latest_sequence = int(before["latest_sequence"])
+        events = [
+            events_by_sequence[sequence]
+            for sequence in sorted(events_by_sequence)
+        ]
+        if (
+            len(events) != expected_latest_sequence
+            or [int(event.get("sequence") or 0) for event in events]
+            != list(range(1, expected_latest_sequence + 1))
+            or latest_sequence != expected_latest_sequence
+            or latest_event_id != str(before["last_event_id"])
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal no-provider event population is incomplete"
+            )
+        return events, before
+
+    def no_provider_dispatch_rearm_evidence(
+        self,
+        attempt: Any,
+        *,
+        outer_block_receipt: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Prove one nested setup failure ended before provider entry.
+
+        This is deliberately narrower than provider-result recovery.  It does
+        not infer safety from a missing receipt or an empty directory.  The
+        exact outer attempt, admitted projection binding, terminal nested
+        state, cleanup receipts, and complete content-addressed Portal event
+        chain must all agree that worktree setup failed before any provider,
+        validation, commit, or merge boundary was crossed.
+        """
+
+        receipt = dict(outer_block_receipt)
+        expected_receipt = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-retry-budget@1"
+            ),
+            "operation": "database_unknown_outcome_blocked",
+            "reason": "callback_authority_incomplete_blocked",
+            "task_cid": str(attempt.task_cid),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(attempt.lease_id),
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "retry_exhausted": True,
+            "forced_block": True,
+            "authority_outcome": "unknown",
+        }
+        if (
+            str(getattr(attempt, "status", "") or "") != "failed"
+            or str(getattr(attempt, "committed_phase", "") or "") != "failed"
+            or any(receipt.get(key) != value for key, value in expected_receipt.items())
+            or not str(receipt.get("process_instance_id") or "").strip()
+        ):
+            return None
+
+        paths = self._paths(attempt)
+        try:
+            authority_root = self.attempt_root.resolve(strict=True)
+            selected_root = paths.root.resolve(strict=True)
+            authority_metadata = self.attempt_root.lstat()
+            selected_metadata = paths.root.lstat()
+        except OSError:
+            return None
+        expected_root = self.attempt_root / hashlib.sha256(
+            str(attempt.attempt_id).encode("utf-8")
+        ).hexdigest()[:24]
+        if (
+            self.attempt_root.is_symlink()
+            or paths.root.is_symlink()
+            or paths.binding.is_symlink()
+            or paths.task_projection.is_symlink()
+            or paths.state.is_symlink()
+            or paths.events.is_symlink()
+            or paths.root != expected_root
+            or selected_root.parent != authority_root
+            or any(
+                not stat.S_ISDIR(metadata.st_mode)
+                or metadata.st_uid != os.geteuid()
+                or metadata.st_gid != os.getegid()
+                or bool(metadata.st_mode & stat.S_IWOTH)
+                for metadata in (authority_metadata, selected_metadata)
+            )
+        ):
+            return None
+        try:
+            binding = self._strict_private_json_object(
+                paths.binding,
+                maximum_bytes=256 * 1024,
+            )
+            self._verify_binding_identity(binding)
+            durable_binding = (
+                self._binding_lookup(attempt)
+                if self._binding_lookup is not None
+                else None
+            )
+            projection = self._strict_private_projection(paths, binding)
+            identity = self._projection_task_identity(
+                paths,
+                binding,
+                projection,
+            )
+            state, state_digest = self._strict_private_json_object_with_digest(
+                paths.state
+            )
+            events, manifest = self._complete_attempt_event_chain(paths)
+        except DatabasePortalBridgeError:
+            return None
+        if not isinstance(durable_binding, Mapping):
+            return None
+        durable_expected = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "binding_id": str(binding.get("binding_id") or ""),
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "stage": "portal_entered",
+        }
+        binding_expected = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if (
+            any(durable_binding.get(key) != value for key, value in durable_expected.items())
+            or any(binding.get(key) != value for key, value in binding_expected.items())
+        ):
+            return None
+
+        task_alias = str(binding["task_alias"])
+        nested_task_cid = str(identity.get("canonical_task_cid") or "")
+        selected = [
+            event
+            for event in events
+            if event.get("type") == "task_selected"
+            and event.get("task_id") == task_alias
+            and event.get("canonical_task_cid") == nested_task_cid
+        ]
+        cleanup = [
+            event
+            for event in events
+            if event.get("type") == "failed_setup_worktree_cleanup"
+            and event.get("task_id") == task_alias
+        ]
+        exceptions = [
+            event
+            for event in events
+            if event.get("type") == "implementation_exception"
+            and event.get("task_id") == task_alias
+        ]
+        finished = [
+            event
+            for event in events
+            if event.get("type") == "implementation_finished"
+            and event.get("task_id") == task_alias
+        ]
+        if not (
+            len(selected) == len(cleanup) == len(exceptions) == len(finished) == 1
+        ):
+            return None
+        selected_event = selected[0]
+        cleanup_event = cleanup[0]
+        exception_event = exceptions[0]
+        finished_event = finished[0]
+        nested_attempt = finished_event.get("attempt")
+        if (
+            isinstance(nested_attempt, bool)
+            or not isinstance(nested_attempt, int)
+            or nested_attempt < 1
+            or cleanup_event.get("attempt") != nested_attempt
+            or exception_event.get("attempt") != nested_attempt
+        ):
+            return None
+        exact_attempt_events = [
+            event
+            for event in events
+            if event.get("task_id") == task_alias
+            and event.get("attempt") == nested_attempt
+        ]
+        if {str(event.get("type") or "") for event in exact_attempt_events} != {
+            "failed_setup_worktree_cleanup",
+            "implementation_exception",
+            "implementation_finished",
+        }:
+            return None
+        try:
+            selected_sequence = int(selected_event["sequence"])
+            cleanup_sequence = int(cleanup_event["sequence"])
+            exception_sequence = int(exception_event["sequence"])
+            finished_sequence = int(finished_event["sequence"])
+            adjacent_cleanup_event = events[cleanup_sequence - 2]
+            daemon_pass = events[finished_sequence]
+        except (IndexError, KeyError, TypeError, ValueError):
+            return None
+        setup_events = events[selected_sequence: cleanup_sequence - 2]
+        # These are the only diagnostics emitted by the exact PCTDD-034
+        # worktree-setup route before its terminal cleanup receipt.  They do
+        # not cross a callback boundary.  Keeping this vocabulary closed is
+        # important: a merely unfamiliar event is not negative evidence for
+        # provider dispatch.
+        allowed_setup_event_types = {
+            "nested_submodule_initialization_guarded",
+            "submodule_worktree_base_ref_retried",
+        }
+        if not (
+            selected_sequence == 1
+            and cleanup_sequence > selected_sequence
+            and all(
+                str(event.get("type") or "") in allowed_setup_event_types
+                and not str(event.get("task_id") or "")
+                and event.get("provider_dispatched") is not True
+                and not str(event.get("implementation_commit") or "")
+                and not isinstance(event.get("validation_result"), Mapping)
+                and not isinstance(event.get("commit_result"), Mapping)
+                and not isinstance(event.get("merge_result"), Mapping)
+                for event in setup_events
+            )
+            and exception_sequence == cleanup_sequence + 1
+            and finished_sequence == exception_sequence + 1
+            and adjacent_cleanup_event.get("type") == "cleanup_finished"
+            and not str(adjacent_cleanup_event.get("task_id") or "")
+            and cleanup_event.get("previous_event_id")
+            == adjacent_cleanup_event.get("event_id")
+            and exception_event.get("previous_event_id")
+            == cleanup_event.get("event_id")
+            and finished_event.get("previous_event_id")
+            == exception_event.get("event_id")
+            and daemon_pass.get("type") == "daemon_pass"
+            and daemon_pass.get("sequence") == finished_sequence + 1
+            and daemon_pass.get("previous_event_id")
+            == finished_event.get("event_id")
+            and daemon_pass.get("event_id") == manifest.get("last_event_id")
+            and not str(daemon_pass.get("task_id") or "")
+        ):
+            return None
+
+        cleanup_result = cleanup_event.get("cleanup_result")
+        exception_cleanup = exception_event.get("cleanup_result")
+        finished_cleanup = finished_event.get("cleanup_result")
+        lifecycle = (
+            cleanup_result.get("lifecycle_finalize")
+            if isinstance(cleanup_result, Mapping)
+            else None
+        )
+        finished_lifecycle = finished_event.get("lifecycle_finalize")
+        exception_result = finished_event.get("exception_result")
+        validation = finished_event.get("validation_result")
+        commit = finished_event.get("commit_result")
+        merge = finished_event.get("merge_result")
+        board = finished_event.get("board_completion")
+        worktree_path = str(finished_event.get("worktree_path") or "")
+        branch = str(finished_event.get("branch") or "")
+        if not (
+            isinstance(cleanup_result, Mapping)
+            and cleanup_result.get("cleaned") is True
+            and cleanup_result == exception_cleanup == finished_cleanup
+            and cleanup_result.get("worktree_path") == worktree_path
+            and cleanup_result.get("branch") == branch
+            and all(
+                adjacent_cleanup_event.get(field) == value
+                for field, value in cleanup_result.items()
+            )
+            and isinstance(lifecycle, Mapping)
+            and lifecycle.get("finalized") is True
+            and lifecycle.get("state") == "terminal"
+            and isinstance(finished_lifecycle, Mapping)
+            and finished_lifecycle.get("finalized") is True
+            and finished_lifecycle.get("state") == "terminal"
+            and exception_event.get("phase") == "worktree_setup"
+            and exception_event.get("worktree_path") == worktree_path
+            and exception_event.get("branch") == branch
+            and isinstance(exception_result, Mapping)
+            and exception_result.get("phase") == "worktree_setup"
+            and exception_result.get("worktree_path") == worktree_path
+            and exception_result.get("branch") == branch
+            and exception_result.get("exception_type")
+            == exception_event.get("exception_type")
+            and exception_result.get("message") == exception_event.get("message")
+            and finished_event.get("provider_dispatched") is False
+            and finished_event.get("attempt_consumed") is True
+            and isinstance(finished_event.get("returncode"), int)
+            and not isinstance(finished_event.get("returncode"), bool)
+            and int(finished_event["returncode"]) != 0
+            and str(finished_event.get("implementation_commit") or "") == ""
+            and isinstance(commit, Mapping)
+            and commit.get("committed") is False
+            and not str(commit.get("commit") or "")
+            and isinstance(validation, Mapping)
+            and validation.get("attempted") is False
+            and validation.get("reason") == "not_run"
+            and list(validation.get("results") or ()) == []
+            and isinstance(merge, Mapping)
+            and merge.get("merged") is False
+            and merge.get("attempted") is not True
+            and merge.get("queued") is not True
+            and merge.get("reason") == "not_attempted"
+            and not str(merge.get("merge_commit") or "")
+            and isinstance(board, Mapping)
+            and board.get("complete") is False
+            and board.get("pending_merge") is False
+        ):
+            return None
+        if any(
+            event.get("provider_dispatched") is True
+            or bool(str(event.get("implementation_commit") or ""))
+            or (
+                isinstance(event.get("validation_result"), Mapping)
+                and event["validation_result"].get("attempted") is True
+            )
+            or (
+                isinstance(event.get("commit_result"), Mapping)
+                and event["commit_result"].get("committed") is True
+            )
+            or (
+                isinstance(event.get("merge_result"), Mapping)
+                and any(
+                    event["merge_result"].get(field) is True
+                    for field in ("attempted", "queued", "merged")
+                )
+            )
+            for event in events
+        ):
+            return None
+
+        state_identity = state.get("task_identities")
+        state_attempts = state.get("implementation_attempts")
+        state_attempts_by_cid = state.get(
+            "implementation_attempts_by_cid"
+        )
+        state_statuses = state.get("task_statuses")
+        if not (
+            state.get("implementation_in_progress") is False
+            and state.get("active_task_id") == ""
+            and state.get("active_task_cid") == ""
+            and state.get("active_attempt") == 0
+            and state.get("active_phase") == ""
+            and state.get("active_worktree_path") == ""
+            and state.get("active_branch") == ""
+            and state.get("active_provider_runner") == {}
+            and state.get("last_implementation_task_id") == task_alias
+            and state.get("last_implementation_task_cid") == nested_task_cid
+            and state.get("last_implementation_returncode")
+            == finished_event.get("returncode")
+            and state.get("last_implementation_worktree_path") == worktree_path
+            and state.get("last_implementation_branch") == branch
+            and state.get("last_implementation_commit") == ""
+            and state.get("last_merge_commit") == ""
+            and state.get("last_merge_error") == "not_attempted"
+            and isinstance(state_identity, Mapping)
+            and isinstance(state_identity.get(task_alias), Mapping)
+            and state_identity[task_alias].get("canonical_task_cid")
+            == nested_task_cid
+            and isinstance(state_attempts, Mapping)
+            and state_attempts.get(task_alias) == nested_attempt
+            and isinstance(state_attempts_by_cid, Mapping)
+            and state_attempts_by_cid.get(nested_task_cid) == nested_attempt
+            and isinstance(state_statuses, Mapping)
+            and state_statuses.get(task_alias) == "ready"
+        ):
+            return None
+
+        evidence: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA,
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "task_alias": task_alias,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "attempt_root_key": paths.root.name,
+            "attempt_authority_root_digest": _sha256_bytes(
+                str(authority_root).encode("utf-8")
+            ),
+            "attempt_root_digest": _sha256_bytes(
+                str(selected_root).encode("utf-8")
+            ),
+            "binding_id": str(binding["binding_id"]),
+            "binding_admission_id": str(durable_binding.get("record_id") or ""),
+            "binding_admission_digest": _sha256_bytes(
+                _canonical_json(dict(durable_binding))
+            ),
+            "projection_immutable_digest": str(
+                binding["projection_immutable_digest"]
+            ),
+            "nested_task_cid": nested_task_cid,
+            "nested_attempt": nested_attempt,
+            "event_stream_id": str(manifest["stream_id"]),
+            "event_snapshot_id": str(manifest["snapshot_id"]),
+            "event_manifest_digest": str(manifest.get("manifest_digest") or ""),
+            "event_count": len(events),
+            "event_head_sequence": int(manifest["latest_sequence"]),
+            "event_head_id": str(manifest["last_event_id"]),
+            "task_selected_event_id": str(selected_event["event_id"]),
+            "setup_event_count": len(setup_events),
+            "setup_event_ids_digest": _sha256_bytes(
+                _canonical_json(
+                    [str(event["event_id"]) for event in setup_events]
+                )
+            ),
+            "cleanup_event_id": str(cleanup_event["event_id"]),
+            "exception_event_id": str(exception_event["event_id"]),
+            "finished_event_id": str(finished_event["event_id"]),
+            "state_digest": state_digest,
+            "outer_block_receipt_digest": _sha256_bytes(
+                _canonical_json(receipt)
+            ),
+            "provider_dispatched": False,
+            "validation_attempted": False,
+            "commit_created": False,
+            "merge_attempted": False,
+            "cleanup_terminal": True,
+        }
+        evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
+        return evidence
 
     def reconcile_quiesced_attempt(self, attempt: Any) -> dict[str, Any]:
         """Reconcile the exact nested Portal state for one active DB attempt.

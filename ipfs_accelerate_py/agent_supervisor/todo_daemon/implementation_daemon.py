@@ -76493,6 +76493,200 @@ class DatabaseImplementationDaemon:
                 break
         return exhausted
 
+    def _database_portal_no_provider_rearm_evidence(
+        self,
+        task: Any,
+        receipt: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Admit only an exact nested pre-provider terminal proof."""
+
+        bridge = self._database_portal_bridge
+        verifier = getattr(
+            bridge,
+            "no_provider_dispatch_rearm_evidence",
+            None,
+        )
+        if bridge is None or not callable(verifier):
+            return None
+        attempt_id = str(receipt.get("attempt_id") or "")
+        if not attempt_id:
+            return None
+        attempt = self.get_attempt(attempt_id)
+        if attempt is None:
+            return None
+        control_claim = dict(attempt.body.get("control_claim") or {})
+        expected_receipt = {
+            "task_cid": str(attempt.task_cid),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(attempt.lease_id),
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "validation_spec_cid": str(
+                control_claim.get("validation_spec_cid") or ""
+            ),
+        }
+        try:
+            budget_state = self._retry_budget_state(task)
+            exact_task = bool(
+                str(getattr(task, "status", "") or "").strip().lower()
+                == "blocked"
+                and str(getattr(task, "task_cid", "") or "")
+                == attempt.task_cid
+                and str(getattr(task, "task_alias", "") or "")
+                == attempt.task_alias
+                and int(getattr(task, "revision", 0) or 0)
+                == int(control_claim.get("revision") or 0) + 1
+                and str(control_claim.get("task_cid") or "")
+                == attempt.task_cid
+                and str(control_claim.get("execution_spec_cid") or "")
+                == self._task_execution_spec_cid(task)
+                and str(control_claim.get("validation_spec_cid") or "")
+                == self._retry_budget_validation_spec_cid(task)
+                and receipt.get("attempts_used")
+                == int(attempt.attempt_number)
+                and not isinstance(receipt.get("attempts_used"), bool)
+                and receipt.get("max_task_attempts")
+                == int(budget_state["max_task_attempts"])
+                and not isinstance(
+                    receipt.get("max_task_attempts"), bool
+                )
+                and budget_state.get("malformed") is False
+                and budget_state.get("policy_mismatch") is False
+                and all(
+                    receipt.get(name) == expected
+                    for name, expected in expected_receipt.items()
+                )
+            )
+        except (TypeError, ValueError):
+            return None
+        if not exact_task:
+            return None
+        phases = self.phase_history(attempt.attempt_id)
+        if (
+            [str(item.get("phase") or "") for item in phases]
+            != [
+                ATTEMPT_PHASE_CLAIMED,
+                ATTEMPT_PHASE_CONTEXT,
+                ATTEMPT_PHASE_FAILED,
+            ]
+            or dict(phases[-1].get("body") or {})
+            != {
+                "database_disposition": "blocked_unknown_outcome",
+                "reason": "callback_authority_incomplete_blocked",
+                "retry_exhausted": True,
+                "unknown_authority": True,
+            }
+        ):
+            return None
+        try:
+            if (
+                self.provider_invocation_recorded(
+                    attempt.attempt_id,
+                    idempotency_key=f"provider:{attempt.attempt_id}",
+                )
+                is not None
+                or self.effect_claim_recorded(
+                    attempt.attempt_id,
+                    idempotency_key=f"effect:{attempt.attempt_id}",
+                )
+                is not None
+                or self._dispatch_journal_entry(
+                    attempt,
+                    dispatch_kind="effect",
+                    idempotency_key=f"effect:{attempt.attempt_id}",
+                )
+                is not None
+            ):
+                return None
+            provider_dispatch = self._dispatch_journal_entry(
+                attempt,
+                dispatch_kind="provider",
+                idempotency_key=f"provider:{attempt.attempt_id}",
+            )
+        except Exception:
+            return None
+        if (
+            provider_dispatch is None
+            or provider_dispatch.get("outcome") != "raised"
+            or dict(provider_dispatch.get("body") or {}).get("exception_type")
+            != "DatabasePortalBridgeError"
+        ):
+            return None
+        completion = self.coordinator.get_prepared_task_completion(
+            attempt.task_cid
+        )
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        if completion is not None or claim is None:
+            return None
+        claim_identity = claim.to_dict()
+        expected_claim = {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        claim_state = str(
+            getattr(getattr(claim, "state", ""), "value", claim.state)
+            or ""
+        )
+        if (
+            claim_state not in {"released", "expired"}
+            or any(
+                claim_identity.get(name) != expected
+                for name, expected in expected_claim.items()
+            )
+        ):
+            return None
+        task_before = task.to_dict()
+        attempt_before = attempt.to_dict()
+        try:
+            evidence = verifier(
+                attempt,
+                outer_block_receipt=receipt,
+            )
+        except Exception:
+            return None
+        if not isinstance(evidence, Mapping):
+            return None
+        evidence = dict(evidence)
+        unsigned_evidence = dict(evidence)
+        evidence_id = str(unsigned_evidence.pop("evidence_id", "") or "")
+        expected_evidence_id = "sha256:" + hashlib.sha256(
+            json.dumps(
+                unsigned_evidence,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            evidence.get("provider_dispatched") is not False
+            or evidence.get("validation_attempted") is not False
+            or evidence.get("commit_created") is not False
+            or evidence.get("merge_attempted") is not False
+            or evidence.get("cleanup_terminal") is not True
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id)
+            or expected_evidence_id != evidence_id
+        ):
+            return None
+        current_task = self.task_source.get(attempt.task_cid)
+        current_attempt = self.get_attempt(attempt.attempt_id)
+        if (
+            current_task is None
+            or current_attempt is None
+            or current_task.to_dict() != task_before
+            or current_attempt.to_dict() != attempt_before
+        ):
+            return None
+        return MappingProxyType(evidence)
+
     def reconcile_blocked_unknown_outcome_tasks(self) -> list[dict[str, Any]]:
         """Rearm dead unknown-outcome blocks after the blocking session ends.
 
@@ -76530,12 +76724,25 @@ class DatabaseImplementationDaemon:
                 continue
             reason = str(receipt.get("reason") or "")
             operation = str(receipt.get("operation") or "")
+            no_provider_evidence = (
+                self._database_portal_no_provider_rearm_evidence(
+                    task,
+                    receipt,
+                )
+                if (
+                    operation == "database_unknown_outcome_blocked"
+                    and reason == "callback_authority_incomplete_blocked"
+                    and receipt.get("forced_block") is True
+                    and receipt.get("authority_outcome") == "unknown"
+                )
+                else None
+            )
             if reason in {
                 "elapsed_claim_after_durable_callback_blocked",
                 "claim_authority_lost_after_durable_callback_blocked",
                 "completed_claim_without_promoted_completion_blocked",
                 "callback_authority_incomplete_blocked",
-            }:
+            } and no_provider_evidence is None:
                 # The callback row proves that an external provider/effect
                 # returned, but the elapsed lease prevents projecting the
                 # missing phase under its old authority.  A later process is
@@ -76556,7 +76763,11 @@ class DatabaseImplementationDaemon:
                 continue
             blocking_session = str(receipt.get("owner_session_id") or "")
             blocking_process = str(receipt.get("process_instance_id") or "")
-            if blocking_process and blocking_process == self.process_instance_id:
+            if (
+                blocking_process
+                and blocking_process == self.process_instance_id
+                and no_provider_evidence is None
+            ):
                 continue
             if str(task.task_cid) in running_cids:
                 continue
@@ -76609,6 +76820,13 @@ class DatabaseImplementationDaemon:
                     "owner_session_id": self.owner_session_id,
                 }
             )
+            if no_provider_evidence is not None:
+                rearm_receipt["no_provider_rearm_evidence"] = dict(
+                    no_provider_evidence
+                )
+                rearm_receipt["no_provider_rearm_evidence_id"] = str(
+                    no_provider_evidence.get("evidence_id") or ""
+                )
             self._cas_task_status_database(
                 task.task_cid,
                 expected_revision=int(task.revision),
@@ -76622,6 +76840,22 @@ class DatabaseImplementationDaemon:
                 "previous_owner_session_id": blocking_session,
                 "unknown_outcome_rearm_count": prior_rearms + 1,
             }
+            if no_provider_evidence is not None:
+                outcome.update(
+                    {
+                        "previous_attempt_id": str(
+                            receipt.get("attempt_id") or ""
+                        ),
+                        "previous_claim_id": claim_id,
+                        "no_provider_rearm_evidence_id": str(
+                            no_provider_evidence.get("evidence_id") or ""
+                        ),
+                        "nested_event_head_id": str(
+                            no_provider_evidence.get("event_head_id") or ""
+                        ),
+                        "provider_dispatched": False,
+                    }
+                )
             outcomes.append(outcome)
             self._record_event(
                 DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
@@ -83155,6 +83389,35 @@ class DatabaseImplementationDaemon:
 
         unknown_outcome_rearms = self.reconcile_blocked_unknown_outcome_tasks()
         reconciliation_write_count += len(unknown_outcome_rearms)
+        if unknown_outcome_rearms:
+            # Rearm and provider/effect dispatch are separate durable passes.
+            # This is mandatory even when an exact nested no-provider proof
+            # resolves the prior ambiguity: the control receipt must be
+            # independently observable before a fresh fenced claim exists.
+            return {
+                "unchanged": False,
+                "write_count": reconciliation_write_count,
+                "active_task_id": "",
+                "selection_idle_reason": (
+                    "database_unknown_outcomes_rearmed"
+                ),
+                "implementation_result": None,
+                "authority_mode": self.authority_mode,
+                "task_source_kind": self.task_source_kind,
+                "markdown_status_writes": self._markdown_status_writes,
+                "projections_required": False,
+                "control_schema_evidence": dict(
+                    self.control_schema_evidence
+                ),
+                "completion_reconciliations": completion_reconciliations,
+                "expired_attempt_reconciliations": (
+                    expired_attempt_reconciliations
+                ),
+                "unknown_outcome_rearms": unknown_outcome_rearms,
+                "database_portal_reconciliation": dict(
+                    portal_startup_reconciliation
+                ),
+            }
         attempt = self.claim_next()
         if attempt is None:
             retry_exhausted_tasks = self._retry_exhausted_tasks()
