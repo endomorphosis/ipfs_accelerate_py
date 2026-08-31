@@ -72443,6 +72443,7 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "inflight_process",
         "validation_command_failed",
         "declared_validation_failed",
+        "validation_project_dependency_preflight_failed",
         "quack_attach_contended",
         "quack_transport_unavailable",
         "authentication_failed",
@@ -72461,6 +72462,7 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
 _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
     {
         "inflight_process",
+        "validation_project_dependency_preflight_failed",
         "quack_attach_contended",
         "quack_transport_unavailable",
         "authentication_failed",
@@ -72484,6 +72486,8 @@ _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
         "bwrap: setting up gid map: Permission denied",
         "quack_transport_unavailable",
         "implementation_protected_path_mutated",
+        "validation_project_dependency_preflight_failed",
+        "typed_portal_deferral_budget_exhausted",
     }
 )
 _SANDBOX_HOST_FAILURE_REOPEN_SCHEMA = (
@@ -72614,6 +72618,7 @@ _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS = frozenset(
         "inflight_process",
         "external_protected_checkout_recovery_required",
         "deterministic_reconciliation_checkout_contended",
+        "validation_project_dependency_preflight_failed",
     }
 )
 _DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA = (
