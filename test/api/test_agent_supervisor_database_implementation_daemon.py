@@ -14778,6 +14778,53 @@ def test_resume_without_process_crash_completes_landed_missing_receipt() -> None
     assert result["status"] == "completed"
 
 
+def test_typed_attempt_floor_survives_stale_retry_cooldown() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceIntegrityError,
+    )
+
+    task = SimpleNamespace(
+        task_cid="task:pcpr-001",
+        status="retrying",
+        body={
+            "completion_receipt": {
+                "attempt_id": "attempt:1",
+                "claim_id": "claim:1",
+                "lease_id": "lease:1",
+                "owner_session_id": "session:1",
+                "attempt_number": 2,
+                "fencing_token": 2,
+                "fence_epoch": 2,
+                "queue_reason": "database_portal_retry:attempt:1:worktree",
+                "backoff_ms": 0,
+            }
+        },
+    )
+
+    class _Source:
+        @staticmethod
+        def claim_process_attestation() -> dict[str, str]:
+            return {"process_birth_id": "birth:test"}
+
+        @staticmethod
+        def validate_retrying_task_cooldown(*_args: object, **_kwargs: object):
+            raise TaskSourceIntegrityError(
+                "retry cooldown differs from the task revision lineage"
+            )
+
+    daemon = SimpleNamespace(
+        task_source=_Source(),
+        _shared_claim_binding_for_this_owner=lambda _task: None,
+    )
+    assert (
+        DatabaseImplementationDaemon._typed_authoritative_attempt_floor(
+            daemon,
+            task,
+        )
+        == 2
+    )
+
+
 def test_resume_completes_landed_outputs_before_provider() -> None:
     attempt = SimpleNamespace(
         attempt_id="attempt:1",

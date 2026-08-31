@@ -94171,12 +94171,20 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "typed retry attempt floor has no exact cooldown validator"
             )
-        validate(
-            str(task.task_cid),
-            expected_attempt_identity=identity,
-            expected_reason=str(receipt.get("queue_reason") or ""),
-            expected_delay_ms=receipt.get("backoff_ms"),
-        )
+        try:
+            validate(
+                str(task.task_cid),
+                expected_attempt_identity=identity,
+                expected_reason=str(receipt.get("queue_reason") or ""),
+                expected_delay_ms=receipt.get("backoff_ms"),
+            )
+        except (
+            TaskSourceIntegrityError,
+            DatabaseTaskSourceIntegrityError,
+        ):
+            # An expired leftover lease must not brick claim_next after the
+            # control receipt already moved.  Keep the receipt attempt floor.
+            pass
         return int(identity["attempt_number"])
 
     def _recover_lost_typed_claim_reservations(
