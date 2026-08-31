@@ -4704,6 +4704,9 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "portal_factory does not expose quiesced-attempt reconciliation"
             )
+        terminal_provider = (
+            None if historical_binding else self.recover_provider_result(attempt)
+        )
         interrupted_validation_evidence = (
             self._interrupted_validation_recovery_evidence(
                 attempt,
@@ -4715,6 +4718,19 @@ class DatabasePortalExecutionBridge:
             "reconcile_interrupted_database_validation_attempt",
             None,
         )
+        interrupted_implementation_evidence = (
+            None
+            if terminal_provider or interrupted_validation_evidence is not None
+            else self._interrupted_implementation_retry_evidence(
+                attempt,
+                expected,
+            )
+        )
+        reconcile_interrupted_implementation = getattr(
+            daemon,
+            "reconcile_interrupted_database_implementation_attempt",
+            None,
+        )
         try:
             if (
                 interrupted_validation_evidence is not None
@@ -4722,6 +4738,13 @@ class DatabasePortalExecutionBridge:
             ):
                 raw_reconciliation = reconcile_interrupted_validation(
                     interrupted_validation_evidence
+                )
+            elif (
+                interrupted_implementation_evidence is not None
+                and callable(reconcile_interrupted_implementation)
+            ):
+                raw_reconciliation = reconcile_interrupted_implementation(
+                    interrupted_implementation_evidence
                 )
             else:
                 raw_reconciliation = reconcile()
@@ -4791,7 +4814,9 @@ class DatabasePortalExecutionBridge:
                 "terminal_provider_evidence": False,
             }
         terminal_provider_evidence = (
-            None if historical_binding else self.recover_provider_result(attempt)
+            None
+            if historical_binding
+            else terminal_provider or self.recover_provider_result(attempt)
         )
         return {
             "reconciled": True,
@@ -5218,6 +5243,108 @@ class DatabasePortalExecutionBridge:
                 for item in equivalent_receipts
             ),
             "reconciliation_receipt": selected,
+        }
+        evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
+        return evidence
+
+    def _interrupted_implementation_retry_evidence(
+        self,
+        attempt: Any,
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Nominate one immutable implementing first-clear receipt."""
+
+        paths = self._paths(attempt)
+        if not paths.reconciliation.exists():
+            return None
+        if paths.reconciliation.is_symlink() or not paths.reconciliation.is_dir():
+            raise DatabasePortalBridgeError(
+                "database Portal reconciliation evidence store is not exact"
+            )
+        matches: list[dict[str, Any]] = []
+        for path in sorted(paths.reconciliation.iterdir()):
+            match = re.fullmatch(r"([0-9a-f]{64})\.json", path.name)
+            if match is None:
+                raise DatabasePortalBridgeError(
+                    "database Portal reconciliation evidence name is malformed"
+                )
+            receipt = self.load_reconciliation_receipt(
+                attempt,
+                "sha256:" + match.group(1),
+            )
+            nested = receipt.get("nested_state")
+            portal = receipt.get("portal_reconciliation")
+            fence = receipt.get("provider_runner_fence")
+            if not (
+                receipt.get("stage") == "blocked"
+                and receipt.get("binding_id") == binding.get("binding_id")
+                and receipt.get("reason")
+                == "nested_portal_attempt_reconciliation_blocked"
+                and receipt.get("terminal_provider_evidence") is False
+                and receipt.get("provider_runner_reconciliation_authority")
+                == "ordinary_provider_runner_fence"
+                and isinstance(nested, Mapping)
+                and nested.get("active") is True
+                and nested.get("active_phase") == "implementing"
+                and nested.get("active_task_id") == binding.get("task_alias")
+                and isinstance(nested.get("active_attempt"), int)
+                and not isinstance(nested.get("active_attempt"), bool)
+                and int(nested.get("active_attempt") or 0) > 0
+                and nested.get("state_path") == str(paths.state)
+                and isinstance(fence, Mapping)
+                and fence.get("applicable") is True
+                and fence.get("fenced") is True
+                and fence.get("safe_to_restart") is True
+                and isinstance(fence.get("pid"), int)
+                and not isinstance(fence.get("pid"), bool)
+                and int(fence.get("pid") or 0) > 0
+                and fence.get("reason")
+                == "ordinary_provider_runner_exact_birth_fenced"
+                and isinstance(portal, Mapping)
+                and portal.get("reason")
+                == "task_claim_reconciliation_blocked"
+            ):
+                continue
+            protected = portal.get("protected_path_reconciliation")
+            lifecycle = portal.get("worktree_lifecycle_reconciliation")
+            claim = portal.get("task_claim_reconciliation")
+            recovery = portal.get("attempt_recovery")
+            if not (
+                isinstance(protected, Mapping)
+                and protected.get("reason") == "crash_reconciliation_unchanged"
+                and isinstance(lifecycle, Mapping)
+                and lifecycle.get("state") == "terminal"
+                and lifecycle.get("record_id")
+                and isinstance(lifecycle.get("fence"), int)
+                and not isinstance(lifecycle.get("fence"), bool)
+                and int(lifecycle.get("fence") or 0) > 0
+                and isinstance(claim, Mapping)
+                and claim.get("reason") == "canonical_task_not_terminal"
+                and claim.get("observed_task_status") == "todo"
+                and claim.get("canonical_task_cid")
+                and isinstance(recovery, Mapping)
+                and recovery.get("consumed") is False
+                and recovery.get("previous_display_count")
+                == nested.get("active_attempt")
+                and recovery.get("previous_cid_count")
+                == nested.get("active_attempt")
+            ):
+                continue
+            matches.append(receipt)
+        if len(matches) > 1:
+            raise DatabasePortalBridgeError(
+                "database Portal interrupted implementation evidence is ambiguous"
+            )
+        if not matches:
+            return None
+        receipt = matches[0]
+        evidence = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-interrupted-implementation-retry@1"
+            ),
+            "binding_id": str(binding.get("binding_id") or ""),
+            "reconciliation_receipt": receipt,
         }
         evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
         return evidence

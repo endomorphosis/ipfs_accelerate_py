@@ -22,6 +22,7 @@ import tempfile
 import threading
 import time
 import uuid
+from contextlib import ExitStack, nullcontext
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
@@ -12424,7 +12425,7 @@ class PortalImplementationDaemon:
             return None
 
         if (
-            attempt <= 1
+            attempt <= 0
             or display_attempt != attempt - 1
             or canonical_attempt != display_attempt
             or exact_int(claim.get("attempt")) != attempt
@@ -12440,12 +12441,25 @@ class PortalImplementationDaemon:
         )
         if (
             not isinstance(raw_display_attempts, dict)
-            or task_id not in raw_display_attempts
-            or exact_int(raw_display_attempts[task_id]) != display_attempt
+            or (
+                display_attempt == 0
+                and task_id in raw_display_attempts
+            )
+            or (
+                display_attempt > 0
+                and exact_int(raw_display_attempts.get(task_id))
+                != display_attempt
+            )
             or not isinstance(raw_canonical_attempts, dict)
-            or canonical_task_cid not in raw_canonical_attempts
-            or exact_int(raw_canonical_attempts[canonical_task_cid])
-            != canonical_attempt
+            or (
+                canonical_attempt == 0
+                and canonical_task_cid in raw_canonical_attempts
+            )
+            or (
+                canonical_attempt > 0
+                and exact_int(raw_canonical_attempts.get(canonical_task_cid))
+                != canonical_attempt
+            )
         ):
             return None
 
@@ -12653,6 +12667,8 @@ class PortalImplementationDaemon:
         state: PortalTaskState,
         *,
         unfinished_candidate: Mapping[str, Any] | None = None,
+        released_unfinished_retry_id: str = "",
+        claim_guard_held: bool = False,
     ) -> dict[str, Any]:
         """Release one exact dead claim after terminal or staged-retry proof."""
 
@@ -12682,7 +12698,12 @@ class PortalImplementationDaemon:
                 **extra,
             }
 
-        with serialized_lock_update(claim_path):
+        claim_guard = (
+            nullcontext()
+            if claim_guard_held
+            else serialized_lock_update(claim_path)
+        )
+        with claim_guard:
             claim = self._load_exact_json_object(claim_path)
             if claim is None:
                 if claim_path.exists() or claim_path.is_symlink():
@@ -12862,6 +12883,78 @@ class PortalImplementationDaemon:
                 )
             )
             unfinished_candidate_authority: dict[str, Any] | None = None
+            released_at_override = ""
+            retry_authority_events = self._iter_merge_lifecycle_events()
+            retry_recovery_events = [
+                event
+                for event in retry_authority_events
+                if event.get("type") == "implementation_state_recovered"
+                and event.get("event_id")
+                == (released_attempt_evidence or {}).get("event_id")
+                and event.get("interrupted_retry_id")
+                == released_unfinished_retry_id
+            ]
+            retry_preparations = [
+                event
+                for event in retry_authority_events
+                if event.get("type")
+                == "interrupted_implementation_retry_prepared"
+                and event.get("interrupted_retry_id")
+                == released_unfinished_retry_id
+                and event.get("task_id") == task_id
+                and event.get("canonical_task_cid")
+                == canonical_task_cid
+                and event.get("attempt") == attempt
+            ]
+            retry_terminal_conflicts = [
+                event
+                for event in retry_authority_events
+                if event.get("task_id") == task_id
+                and event.get("canonical_task_cid")
+                == canonical_task_cid
+                and (
+                    event.get("type") == "task_completed"
+                    or (
+                        event.get("attempt") == attempt
+                        and event.get("type")
+                        in {
+                            "implementation_finished",
+                            "implementation_provider_exhausted",
+                            "implementation_skipped",
+                            "implementation_terminated",
+                            "implementation_timeout",
+                        }
+                    )
+                )
+            ]
+            if (
+                record is not None
+                and authority_reason == "canonical_task_not_terminal"
+                and task_status == "todo"
+                and released_attempt_evidence is not None
+                and bool(released_unfinished_retry_id)
+                and len(retry_recovery_events) == 1
+                and len(retry_preparations) == 1
+                and not retry_terminal_conflicts
+                and retry_preparations[0].get("claim_id")
+                == content_identity(claim)
+                and retry_preparations[0].get("claim_lease_id")
+                == lease_id
+                and isinstance(
+                    retry_preparations[0].get("release_epoch"), str
+                )
+                and parse_timestamp(
+                    retry_preparations[0]["release_epoch"]
+                )
+                is not None
+            ):
+                # A strictly bound unfinished-attempt recovery is retry
+                # authority, not completion authority.  Keep the task todo
+                # while releasing only its exact dead attempt claim.
+                released_at_override = retry_preparations[0][
+                    "release_epoch"
+                ]
+                authority_reason = ""
             if (
                 record is not None
                 and authority_reason == "canonical_task_not_terminal"
@@ -12966,6 +13059,10 @@ class PortalImplementationDaemon:
                 basis["released_unfinished_attempt"] = (
                     released_attempt_evidence
                 )
+            if released_unfinished_retry_id:
+                basis["released_unfinished_retry_id"] = (
+                    released_unfinished_retry_id
+                )
             if unfinished_candidate_authority is not None:
                 basis["unfinished_validation_candidate"] = (
                     unfinished_candidate_authority
@@ -13007,6 +13104,29 @@ class PortalImplementationDaemon:
                     "prepared_at": prepared_at,
                 },
             )
+            if released_unfinished_retry_id:
+                fresh_retry_events = self._iter_merge_lifecycle_events()
+                if any(
+                    event.get("task_id") == task_id
+                    and event.get("canonical_task_cid")
+                    == canonical_task_cid
+                    and (
+                        event.get("type") == "task_completed"
+                        or (
+                            event.get("attempt") == attempt
+                            and event.get("type")
+                            in {
+                                "implementation_finished",
+                                "implementation_provider_exhausted",
+                                "implementation_skipped",
+                                "implementation_terminated",
+                                "implementation_timeout",
+                            }
+                        )
+                    )
+                    for event in fresh_retry_events
+                ):
+                    return blocked("interrupted_retry_terminal_conflict")
             current = self._load_exact_json_object(claim_path)
             if (
                 current is None
@@ -13023,7 +13143,7 @@ class PortalImplementationDaemon:
                 )
             claim_path.unlink()
 
-        released_at = utc_now()
+        released_at = released_at_override or utc_now()
         receipt_body = {
             **basis,
             "operation_id": operation_id,
@@ -13059,6 +13179,10 @@ class PortalImplementationDaemon:
         if released_attempt_evidence is not None:
             result["released_unfinished_attempt"] = (
                 released_attempt_evidence
+            )
+        if released_unfinished_retry_id:
+            result["released_unfinished_retry_id"] = (
+                released_unfinished_retry_id
             )
         if unfinished_candidate_authority is not None:
             result["unfinished_validation_candidate"] = (
@@ -13223,7 +13347,15 @@ class PortalImplementationDaemon:
             state.last_progress_at = reconciled_at
             state.save(self.state_path)
         else:
-            reconciled_at = utc_now()
+            persisted_clear_epoch = str(state.last_progress_at or "")
+            reconciled_at = (
+                persisted_clear_epoch
+                if (
+                    persisted_clear_epoch == state.heartbeat_at
+                    and parse_timestamp(persisted_clear_epoch) is not None
+                )
+                else utc_now()
+            )
 
         task_claim_reconciliation = (
             self._reconcile_quiesced_implementation_task_claim(state)
@@ -14537,6 +14669,680 @@ class PortalImplementationDaemon:
             or "provider_forbidden_terminal_receipt_publication_failed",
             terminal_receipt_publication=publication,
         )
+
+    def reconcile_interrupted_database_implementation_attempt(
+        self,
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm one exact already-cleared implementing crash, never complete it."""
+
+        def blocked(reason: str, **extra: Any) -> dict[str, Any]:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": reason,
+                "provider_dispatched": False,
+                "implementation_dispatched": False,
+                "acceptance_inferred": False,
+                **extra,
+            }
+
+        if not isinstance(evidence, Mapping):
+            return blocked("interrupted_implementation_evidence_invalid")
+        evidence = dict(evidence)
+        evidence_id = evidence.pop("evidence_id", None)
+        receipt = evidence.get("reconciliation_receipt")
+        if (
+            set(evidence)
+            != {"schema", "binding_id", "reconciliation_receipt"}
+            or evidence.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-interrupted-implementation-retry@1"
+            )
+            or not isinstance(evidence_id, str)
+            or self._database_recovery_sha256(evidence) != evidence_id
+            or not isinstance(receipt, Mapping)
+        ):
+            return blocked("interrupted_implementation_evidence_invalid")
+        unsigned_receipt = dict(receipt)
+        receipt_id = unsigned_receipt.pop("receipt_id", None)
+        nested = receipt.get("nested_state")
+        portal = receipt.get("portal_reconciliation")
+        fence = receipt.get("provider_runner_fence")
+        if (
+            not isinstance(receipt_id, str)
+            or self._database_recovery_sha256(unsigned_receipt) != receipt_id
+            or receipt.get("binding_id") != evidence.get("binding_id")
+            or receipt.get("stage") != "blocked"
+            or receipt.get("reason")
+            != "nested_portal_attempt_reconciliation_blocked"
+            or receipt.get("terminal_provider_evidence") is not False
+            or receipt.get("provider_runner_reconciliation_authority")
+            != "ordinary_provider_runner_fence"
+            or not isinstance(nested, Mapping)
+            or nested.get("active") is not True
+            or nested.get("active_phase") != "implementing"
+            or nested.get("state_path") != str(self.state_path)
+            or not isinstance(fence, Mapping)
+            or fence.get("applicable") is not True
+            or fence.get("fenced") is not True
+            or fence.get("safe_to_restart") is not True
+            or not isinstance(fence.get("pid"), int)
+            or isinstance(fence.get("pid"), bool)
+            or fence.get("pid") <= 0
+            or fence.get("reason")
+            != "ordinary_provider_runner_exact_birth_fenced"
+            or not isinstance(portal, Mapping)
+            or portal.get("reason") != "task_claim_reconciliation_blocked"
+        ):
+            return blocked("interrupted_implementation_receipt_invalid")
+        protected = portal.get("protected_path_reconciliation")
+        lifecycle = portal.get("worktree_lifecycle_reconciliation")
+        claim_summary = portal.get("task_claim_reconciliation")
+        prior_recovery = portal.get("attempt_recovery")
+        task_id = str(nested.get("active_task_id") or "")
+        task_cid = str((claim_summary or {}).get("canonical_task_cid") or "")
+        workspace = str(nested.get("active_worktree_path") or "")
+        branch = str(nested.get("active_branch") or "")
+        attempt = nested.get("active_attempt")
+        if (
+            not task_id
+            or not task_cid
+            or not workspace
+            or not branch
+            or not isinstance(attempt, int)
+            or isinstance(attempt, bool)
+            or attempt <= 0
+            or not isinstance(protected, Mapping)
+            or protected.get("reason") != "crash_reconciliation_unchanged"
+            or protected.get("task_id") != task_id
+            or protected.get("attempt") != attempt
+            or protected.get("workspace_path") != workspace
+            or not isinstance(lifecycle, Mapping)
+            or lifecycle.get("state") != "terminal"
+            or lifecycle.get("task_id") != task_id
+            or lifecycle.get("attempt") != attempt
+            or lifecycle.get("workspace_path") != workspace
+            or not lifecycle.get("record_id")
+            or not isinstance(lifecycle.get("fence"), int)
+            or isinstance(lifecycle.get("fence"), bool)
+            or lifecycle.get("fence") <= 0
+            or not isinstance(claim_summary, Mapping)
+            or claim_summary.get("reason") != "canonical_task_not_terminal"
+            or claim_summary.get("observed_task_status") != "todo"
+            or not isinstance(prior_recovery, Mapping)
+            or prior_recovery.get("consumed") is not False
+            or prior_recovery.get("attempt") != attempt
+            or prior_recovery.get("task_id") != task_id
+            or prior_recovery.get("canonical_task_cid") != task_cid
+            or prior_recovery.get("previous_display_count") != attempt
+            or prior_recovery.get("previous_cid_count") != attempt
+            or parse_timestamp(str(portal.get("reconciled_at") or ""))
+            is None
+        ):
+            return blocked("interrupted_implementation_receipt_authority_invalid")
+
+        def terminal_events(events: Sequence[Mapping[str, Any]]) -> list[str]:
+            return [
+                str(event.get("event_id") or "")
+                for event in events
+                if event.get("task_id") == task_id
+                and event.get("canonical_task_cid") == task_cid
+                and (
+                    event.get("type") == "task_completed"
+                    or (
+                        event.get("attempt") == attempt
+                        and event.get("type")
+                        in {
+                            "implementation_finished",
+                            "implementation_provider_exhausted",
+                            "implementation_skipped",
+                            "implementation_terminated",
+                            "implementation_timeout",
+                        }
+                    )
+                )
+            ]
+
+        try:
+            implementation_lock_path = self._implementation_lock_path()
+            with ExitStack() as recovery_guards:
+                recovery_guards.enter_context(
+                    serialized_lock_update(implementation_lock_path)
+                )
+                if implementation_lock_path.is_symlink():
+                    return blocked("interrupted_implementation_lock_malformed")
+                implementation_lock = load_json_dict(
+                    implementation_lock_path
+                )
+                if (
+                    implementation_lock_path.exists()
+                    and implementation_lock is None
+                ):
+                    return blocked("interrupted_implementation_lock_malformed")
+                if implementation_lock is not None:
+                    if self._implementation_lock_owner_is_active(
+                        implementation_lock
+                    ):
+                        return blocked(
+                            "interrupted_implementation_lock_owner_active"
+                        )
+                    if (
+                        implementation_lock.get("kind") != "implementation"
+                        or normalize_workspace_path(
+                            str(implementation_lock.get("repo_root") or "")
+                        )
+                        != normalize_workspace_path(self.repo_root)
+                        or normalize_workspace_path(
+                            str(implementation_lock.get("state_dir") or "")
+                        )
+                        != normalize_workspace_path(
+                            self.state_path.parent.resolve()
+                        )
+                        or implementation_lock.get("task_id") != task_id
+                        or implementation_lock.get("canonical_task_cid")
+                        != task_cid
+                        or not isinstance(
+                            implementation_lock.get("attempt"), int
+                        )
+                        or isinstance(
+                            implementation_lock.get("attempt"), bool
+                        )
+                        or implementation_lock.get("attempt") != attempt
+                    ):
+                        return blocked(
+                            "interrupted_implementation_lock_changed"
+                        )
+                state = PortalTaskState.load(self.state_path)
+                if implementation_lock is not None:
+                    task_identity = state.task_identities.get(task_id) or {}
+                    if (
+                        implementation_lock.get("canonical_task_key")
+                        != state.last_implementation_task_key
+                        or implementation_lock.get("board_namespace")
+                        != task_identity.get("board_namespace")
+                        or implementation_lock.get("started_at")
+                        != state.last_implementation_started_at
+                    ):
+                        return blocked(
+                            "interrupted_implementation_lock_changed"
+                        )
+                if any(
+                    (
+                        state.implementation_in_progress,
+                        state.active_task_id,
+                        state.active_task_cid,
+                        state.active_attempt,
+                        state.active_phase,
+                        state.active_worktree_path,
+                        state.active_branch,
+                        state.active_provider_runner,
+                    )
+                ):
+                    return blocked("interrupted_implementation_lane_not_quiesced")
+                if (
+                    state.last_implementation_task_id != task_id
+                    or state.last_implementation_task_cid != task_cid
+                    or state.last_implementation_worktree_path != workspace
+                    or state.last_implementation_branch != branch
+                    or state.last_implementation_finished_at
+                    or state.last_implementation_returncode is not None
+                    or state.last_implementation_commit
+                    or state.heartbeat_at != portal.get("reconciled_at")
+                    or state.last_progress_at != portal.get("reconciled_at")
+                ):
+                    return blocked("interrupted_implementation_state_changed")
+                tasks = [
+                    task
+                    for task in self._load_tasks()
+                    if task.task_id == task_id
+                    and self._canonical_ref(task) == task_cid
+                ]
+                if len(tasks) != 1 or normalize_status(tasks[0].status) != "todo":
+                    return blocked("interrupted_implementation_task_changed")
+                current_task_identity = self._identity_for_task(tasks[0])
+                if (
+                    state.task_identities.get(task_id)
+                    != current_task_identity.to_dict()
+                    or state.last_implementation_task_key
+                    != current_task_identity.canonical_task_key
+                ):
+                    return blocked(
+                        "interrupted_implementation_task_identity_changed"
+                    )
+                record = self.worktree_lifecycle.load_workspace(Path(workspace))
+                if (
+                    record is None
+                    or not record.is_terminal
+                    or record.record_id != lifecycle.get("record_id")
+                    or record.fence != lifecycle.get("fence")
+                    or record.task_id != task_id
+                    or record.canonical_task_cid != task_cid
+                    or record.attempt != attempt
+                    or record.branch.removeprefix("refs/heads/")
+                    != branch.removeprefix("refs/heads/")
+                ):
+                    return blocked("interrupted_implementation_lifecycle_changed")
+                current_fence = self._reconcile_implementation_protected_path_fence()
+                if current_fence.get("reason") != "no_active_snapshot":
+                    return blocked("interrupted_implementation_protected_fence_changed")
+
+                claim_path = self._implementation_task_claim_path(
+                    task_id,
+                    canonical_task_cid=task_cid,
+                )
+                recovery_guards.enter_context(
+                    serialized_lock_update(claim_path)
+                )
+                claim = self._load_exact_json_object(claim_path)
+                if claim is None and (
+                    claim_path.exists() or claim_path.is_symlink()
+                ):
+                    return blocked("interrupted_implementation_claim_changed")
+                if claim is not None and (
+                    claim.get("canonical_task_key")
+                    != current_task_identity.canonical_task_key
+                    or claim.get("canonical_task_cid")
+                    != current_task_identity.canonical_task_cid
+                    or claim.get("board_namespace")
+                    != current_task_identity.board_namespace
+                ):
+                    return blocked("interrupted_implementation_claim_changed")
+                display = int(
+                    state.implementation_attempts.get(task_id, 0) or 0
+                )
+                canonical = int(
+                    state.implementation_attempts_by_cid.get(task_cid, 0)
+                    or 0
+                )
+                raw_state = self._load_exact_json_object(self.state_path)
+                raw_display = (raw_state or {}).get(
+                    "implementation_attempts"
+                )
+                raw_canonical = (raw_state or {}).get(
+                    "implementation_attempts_by_cid"
+                )
+                if (
+                    not isinstance(raw_display, dict)
+                    or not isinstance(raw_canonical, dict)
+                    or (display == 0 and task_id in raw_display)
+                    or (
+                        display > 0
+                        and (
+                            not isinstance(raw_display.get(task_id), int)
+                            or isinstance(raw_display.get(task_id), bool)
+                            or raw_display.get(task_id) != display
+                        )
+                    )
+                    or (canonical == 0 and task_cid in raw_canonical)
+                    or (
+                        canonical > 0
+                        and (
+                            not isinstance(raw_canonical.get(task_cid), int)
+                            or isinstance(raw_canonical.get(task_cid), bool)
+                            or raw_canonical.get(task_cid) != canonical
+                        )
+                    )
+                ):
+                    return blocked(
+                        "interrupted_implementation_attempt_count_invalid"
+                    )
+                events = self._iter_merge_lifecycle_events()
+                if terminal_events(events):
+                    return blocked("interrupted_implementation_terminal_present")
+                preparations = [
+                    event
+                    for event in events
+                    if event.get("type")
+                    == "interrupted_implementation_retry_prepared"
+                    and event.get("database_evidence_id") == evidence_id
+                    and event.get("task_id") == task_id
+                    and event.get("canonical_task_cid") == task_cid
+                    and event.get("attempt") == attempt
+                ]
+                if len(preparations) > 1:
+                    return blocked("interrupted_implementation_preparation_ambiguous")
+                if not preparations:
+                    if claim is None:
+                        return blocked("interrupted_implementation_claim_missing")
+                    preflight = self._reconcile_quiesced_implementation_task_claim(
+                        state,
+                        claim_guard_held=True,
+                    )
+                    if not (
+                        preflight.get("reason") == "canonical_task_not_terminal"
+                        and preflight.get("observed_task_status") == "todo"
+                    ):
+                        return blocked("interrupted_implementation_claim_changed")
+                    preparation_body = {
+                        "database_evidence_id": evidence_id,
+                        "database_receipt_id": receipt_id,
+                        "task_id": task_id,
+                        "canonical_task_cid": task_cid,
+                        "attempt": attempt,
+                        "workspace_path": workspace,
+                        "branch": branch,
+                        "claim_id": content_identity(claim),
+                        "claim_lease_id": str(claim.get("lease_id") or ""),
+                        "lifecycle_record_id": record.record_id,
+                        "lifecycle_fence": record.fence,
+                        "release_epoch": utc_now(),
+                    }
+                    retry_id = content_identity(preparation_body)
+                    self._record_event(
+                        "interrupted_implementation_retry_prepared",
+                        {**preparation_body, "interrupted_retry_id": retry_id},
+                    )
+                    preparations = [
+                        event
+                        for event in self._iter_merge_lifecycle_events()
+                        if event.get("type")
+                        == "interrupted_implementation_retry_prepared"
+                        and event.get("interrupted_retry_id") == retry_id
+                    ]
+                    if len(preparations) != 1:
+                        return blocked("interrupted_implementation_preparation_not_durable")
+                preparation = preparations[0]
+                retry_id = str(preparation.get("interrupted_retry_id") or "")
+                if not retry_id or content_identity(
+                    {
+                        key: preparation.get(key)
+                        for key in (
+                            "database_evidence_id",
+                            "database_receipt_id",
+                            "task_id",
+                            "canonical_task_cid",
+                            "attempt",
+                            "workspace_path",
+                            "branch",
+                            "claim_id",
+                            "claim_lease_id",
+                            "lifecycle_record_id",
+                            "lifecycle_fence",
+                            "release_epoch",
+                        )
+                    }
+                ) != retry_id or any(
+                    (
+                        preparation.get("database_evidence_id") != evidence_id,
+                        preparation.get("database_receipt_id") != receipt_id,
+                        preparation.get("workspace_path") != workspace,
+                        preparation.get("branch") != branch,
+                        preparation.get("lifecycle_record_id")
+                        != record.record_id,
+                        preparation.get("lifecycle_fence") != record.fence,
+                    )
+                ):
+                    return blocked("interrupted_implementation_preparation_invalid")
+                if claim is not None and (
+                    content_identity(claim) != preparation.get("claim_id")
+                    or str(claim.get("lease_id") or "")
+                    != preparation.get("claim_lease_id")
+                ):
+                    return blocked("interrupted_implementation_claim_changed")
+
+                if claim is None and (display, canonical) != (
+                    attempt - 1,
+                    attempt - 1,
+                ):
+                    return blocked(
+                        "interrupted_implementation_absent_claim_state_changed"
+                    )
+                if (display, canonical) == (attempt, attempt):
+                    recovered = self._release_unfinished_active_attempt(
+                        state,
+                        task_id=task_id,
+                        attempt=attempt,
+                    )
+                    if recovered.get("released") is not True:
+                        return blocked("interrupted_implementation_attempt_not_released")
+                    state.save(self.state_path)
+                    state = PortalTaskState.load(self.state_path)
+                    if (
+                        int(state.implementation_attempts.get(task_id, 0) or 0)
+                        != attempt - 1
+                        or int(
+                            state.implementation_attempts_by_cid.get(task_cid, 0)
+                            or 0
+                        )
+                        != attempt - 1
+                    ):
+                        return blocked("interrupted_implementation_state_not_durable")
+                elif (display, canonical) != (attempt - 1, attempt - 1):
+                    return blocked("interrupted_implementation_attempt_count_changed")
+                recovery_events = [
+                    event
+                    for event in self._iter_merge_lifecycle_events()
+                    if event.get("type") == "implementation_state_recovered"
+                    and event.get("interrupted_retry_id") == retry_id
+                ]
+                if len(recovery_events) > 1:
+                    return blocked("interrupted_implementation_recovery_ambiguous")
+                if not recovery_events:
+                    if claim is None:
+                        return blocked(
+                            "interrupted_implementation_recovery_missing"
+                        )
+                    self._record_event(
+                        "implementation_state_recovered",
+                        {
+                            "task_id": task_id,
+                            "canonical_task_key": state.last_implementation_task_key,
+                            "canonical_task_cid": task_cid,
+                            "board_namespace": (
+                                state.task_identities.get(task_id) or {}
+                            ).get("board_namespace", ""),
+                            "attempt": attempt,
+                            "reason": "inflight_process_missing",
+                            "worktree_path": workspace,
+                            "branch": branch,
+                            "attempt_recovery": {
+                                "consumed": False,
+                                "released": True,
+                                "attempt": attempt,
+                                "released_to": attempt - 1,
+                                "task_id": task_id,
+                                "canonical_task_cid": task_cid,
+                                "previous_display_count": attempt,
+                                "previous_cid_count": attempt,
+                            },
+                            "finished_attempt": False,
+                            "interrupted_retry_id": retry_id,
+                        },
+                    )
+                    recovery_events = [
+                        event
+                        for event in self._iter_merge_lifecycle_events()
+                        if event.get("type") == "implementation_state_recovered"
+                        and event.get("interrupted_retry_id") == retry_id
+                    ]
+                if len(recovery_events) != 1:
+                    return blocked("interrupted_implementation_recovery_not_durable")
+                durable = PortalTaskState.load(self.state_path)
+                final_fence = self._reconcile_implementation_protected_path_fence()
+                if final_fence.get("reason") != "no_active_snapshot":
+                    return blocked("interrupted_implementation_protected_fence_changed")
+                if terminal_events(self._iter_merge_lifecycle_events()):
+                    return blocked("interrupted_implementation_terminal_present")
+                if claim_path.exists() or claim_path.is_symlink():
+                    claim_reconciliation = (
+                        self._reconcile_quiesced_implementation_task_claim(
+                            durable,
+                            released_unfinished_retry_id=retry_id,
+                            claim_guard_held=True,
+                        )
+                    )
+                else:
+                    claim_reconciliation = (
+                        self._replay_interrupted_implementation_claim_release(
+                            preparation=preparation,
+                            recovery_event=recovery_events[0],
+                        )
+                    )
+                if claim_reconciliation.get("reconciled") is not True:
+                    return blocked(
+                        "interrupted_implementation_claim_release_failed",
+                        task_claim_reconciliation=claim_reconciliation,
+                    )
+                stale_lock_cleared = False
+                if implementation_lock_path.exists():
+                    stale_lock_cleared = self._clear_stale_lock(
+                        implementation_lock_path,
+                        lock_kind="implementation",
+                        metadata=implementation_lock,
+                    )
+                    if not stale_lock_cleared:
+                        return blocked(
+                            "interrupted_implementation_lock_clear_failed"
+                        )
+        except (CursorReplayError, TimeoutError):
+            return blocked("interrupted_implementation_recovery_serialization_failed")
+        return {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "interrupted_implementation_recovered_for_retry",
+            "task_id": task_id,
+            "canonical_task_cid": task_cid,
+            "attempt": attempt,
+            "task_claim_reconciliation": claim_reconciliation,
+            "provider_dispatched": False,
+            "implementation_dispatched": False,
+            "acceptance_inferred": False,
+            "retained_candidate_disposition": "preserved_unvalidated",
+            "stale_lock_cleared": stale_lock_cleared,
+        }
+
+    def _replay_interrupted_implementation_claim_release(
+        self,
+        *,
+        preparation: Mapping[str, Any],
+        recovery_event: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Finish an exact prepared claim-release suffix after claim unlink."""
+
+        task_id = str(preparation.get("task_id") or "")
+        task_cid = str(preparation.get("canonical_task_cid") or "")
+        attempt = int(preparation.get("attempt") or 0)
+        lease_id = str(preparation.get("claim_lease_id") or "")
+        retry_id = str(preparation.get("interrupted_retry_id") or "")
+        receipt_path = self._task_claim_release_receipt_path(
+            canonical_task_cid=task_cid,
+            attempt=attempt,
+            lease_id=lease_id,
+        )
+        receipt = self._load_exact_json_object(receipt_path)
+        if receipt is None or receipt.get("phase") not in {"prepared", "released"}:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "interrupted_claim_release_receipt_missing",
+            }
+        basis = {
+            key: value
+            for key, value in receipt.items()
+            if key
+            not in {
+                "operation_id",
+                "phase",
+                "prepared_at",
+                "released_at",
+                "receipt_id",
+            }
+        }
+        claim = basis.get("claim")
+        lifecycle = basis.get("worktree_lifecycle")
+        released = basis.get("released_unfinished_attempt")
+        if (
+            basis.get("schema") != IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA
+            or basis.get("task_id") != task_id
+            or basis.get("canonical_task_cid") != task_cid
+            or basis.get("attempt") != attempt
+            or basis.get("task_status") != "todo"
+            or basis.get("released_unfinished_retry_id") != retry_id
+            or content_identity(basis) != receipt.get("operation_id")
+            or not isinstance(claim, Mapping)
+            or claim.get("claim_id") != preparation.get("claim_id")
+            or claim.get("lease_id") != lease_id
+            or not isinstance(lifecycle, Mapping)
+            or lifecycle.get("record_id")
+            != preparation.get("lifecycle_record_id")
+            or lifecycle.get("fence") != preparation.get("lifecycle_fence")
+            or not isinstance(released, Mapping)
+            or released.get("event_id") != recovery_event.get("event_id")
+        ):
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "interrupted_claim_release_receipt_invalid",
+            }
+        released_at = str(preparation.get("release_epoch") or "")
+        if parse_timestamp(released_at) is None:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "interrupted_claim_release_epoch_invalid",
+            }
+        body = {
+            **basis,
+            "operation_id": receipt["operation_id"],
+            "phase": "released",
+            "prepared_at": receipt.get("prepared_at"),
+            "released_at": released_at,
+        }
+        receipt_id = content_identity(body)
+        expected = {**body, "receipt_id": receipt_id}
+        if receipt.get("phase") == "prepared":
+            write_json_atomic(receipt_path, expected)
+            if self._load_exact_json_object(receipt_path) != expected:
+                return {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "interrupted_claim_release_not_durable",
+                }
+        elif receipt != expected:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "interrupted_claim_release_receipt_conflict",
+            }
+        result = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_task_claim_released",
+            "task_id": task_id,
+            "canonical_task_cid": task_cid,
+            "attempt": attempt,
+            "task_status": "todo",
+            "claim_path": str(claim.get("path") or ""),
+            "claim_id": claim.get("claim_id"),
+            "claim_lease_id": lease_id,
+            "owner_pid": claim.get("owner_pid"),
+            "state_dir": claim.get("state_dir"),
+            "lifecycle_record_id": lifecycle.get("record_id"),
+            "lifecycle_fence": lifecycle.get("fence"),
+            "operation_id": receipt["operation_id"],
+            "released_at": released_at,
+            "receipt_id": receipt_id,
+            "receipt_path": str(receipt_path),
+            "released_unfinished_attempt": dict(released),
+            "released_unfinished_retry_id": retry_id,
+        }
+        events = [
+            event
+            for event in self._iter_merge_lifecycle_events()
+            if event.get("type") == "implementation_task_claim_released"
+            and event.get("receipt_id") == receipt_id
+        ]
+        if len(events) > 1:
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "interrupted_claim_release_event_ambiguous",
+            }
+        if not events:
+            self._record_event("implementation_task_claim_released", result)
+        return result
 
     def reconcile_interrupted_database_validation_attempt(
         self,
