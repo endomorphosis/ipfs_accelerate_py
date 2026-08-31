@@ -103832,6 +103832,18 @@ class DatabaseImplementationDaemon:
         expected_lease_state = (
             "expired" if claim_state == "expired" else "accepted"
         )
+        if (
+            evidence.get("historical_released") is True
+            or claim_state == "released"
+        ):
+            # The Portal fence is already released after a validated effect.
+            # Landed leftover rearm still has to project retrying/cooldown
+            # through Quack without that old exclusive lease.
+            if post_merge_queue_admission_spec is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "released retry transition cannot mint post-merge admission"
+                )
+            return callback()
         if claim_state not in {"accepted", "expired"}:
             raise DatabaseImplementationAuthorityError(
                 "retry transition has no accepted or expired coordination proof"

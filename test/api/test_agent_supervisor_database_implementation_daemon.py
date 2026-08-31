@@ -14778,6 +14778,20 @@ def test_resume_without_process_crash_completes_landed_missing_receipt() -> None
     assert result["status"] == "completed"
 
 
+def test_execute_retry_transition_runs_callback_for_released_claim() -> None:
+    calls: list[str] = []
+    daemon = SimpleNamespace()
+    attempt = SimpleNamespace(attempt_id="attempt:1")
+    result = DatabaseImplementationDaemon._execute_with_retry_transition_authority(
+        daemon,
+        attempt,
+        {"claim_state": "released", "historical_released": True},
+        lambda: calls.append("ran") or "ok",
+    )
+    assert calls == ["ran"]
+    assert result == "ok"
+
+
 def test_reconcile_failed_attempt_observes_released_claim() -> None:
     attempt = SimpleNamespace(
         task_cid="task:pcpr-002",
