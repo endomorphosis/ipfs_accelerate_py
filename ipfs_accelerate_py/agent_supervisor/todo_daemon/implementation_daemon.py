@@ -106414,7 +106414,7 @@ class DatabaseImplementationDaemon:
                 == attempt.finished_at_ms
             )
             retrying_landed = bool(
-                task_status in {"retrying", "quarantined"}
+                task_status in {"retrying", "quarantined", "blocked"}
                 and (
                     identity_matches
                     or not isinstance(control_receipt, Mapping)

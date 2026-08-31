@@ -8259,7 +8259,7 @@ class DatabasePortalExecutionBridge:
             == getattr(attempt, "finished_at_ms", None)
         )
         retrying_landed = bool(
-            record_status in {"retrying", "quarantined"}
+            record_status in {"retrying", "quarantined", "blocked"}
             and (
                 identity_matches
                 or not isinstance(control_receipt, Mapping)
@@ -8328,9 +8328,11 @@ class DatabasePortalExecutionBridge:
         raw_recovery = status_receipt.get("landed_completion_recovery_seed")
         if raw_recovery is None:
             return None
+        operation = str(status_receipt.get("operation") or "")
+        if operation not in {"database_claim", "database_attempt_admitted"}:
+            return None
         if (
-            status_receipt.get("operation") != "database_claim"
-            or status_receipt.get("attempt_id")
+            status_receipt.get("attempt_id")
             != str(getattr(attempt, "attempt_id", "") or "")
             or status_receipt.get("claim_id")
             != str(getattr(attempt, "claim_id", "") or "")
