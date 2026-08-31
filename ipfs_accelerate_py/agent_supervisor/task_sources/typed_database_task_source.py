@@ -1350,14 +1350,17 @@ class TypedDatabaseTaskSource:
             )
         for task in tasks:
             entry = entries[task.task_cid]
-            if (
-                task.task_alias != entry.task_alias
-                or task.revision < entry.task_revision
-                or task_execution_contract_cid(task) != entry.task_contract_cid
-            ):
+            if task.task_alias != entry.task_alias:
                 raise TaskSourceIntegrityError(
                     "typed task changed after launch execution-route admission"
                 )
+            if task.revision < entry.task_revision:
+                raise TaskSourceIntegrityError(
+                    "typed task revision receded after launch execution-route admission"
+                )
+            # Idle repair CAS (requeue, validation evidence) advances operational
+            # body without changing identity.  Contract CID includes those
+            # receipts and must not crash later lane attaches.
 
     def _require_execution_route_plan_root(self) -> TaskExecutionRoutePolicy:
         policy = self._execution_route_policy
