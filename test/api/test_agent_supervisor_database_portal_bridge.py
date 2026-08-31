@@ -352,6 +352,26 @@ def _database_portal_successor(
     return successor
 
 
+def _database_rearm_recovery_lane(
+    repo: Path,
+    *,
+    lane: str,
+) -> DatabaseImplementationDaemon:
+    """Open one independent lane over the same canonical control store."""
+
+    return DatabaseImplementationDaemon(
+        database_path=repo / "control.duckdb",
+        coordination_path=repo / f"{lane}.coordination.duckdb",
+        execution_path=repo / f"{lane}.execution.duckdb",
+        max_task_attempts=3,
+        owner_session_id=f"session:{lane}",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        task_prefix="PCTDD-",
+        require_real_execution=False,
+    )
+
+
 def _seed_blocked_pre_provider_setup_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1066,6 +1086,101 @@ def test_nested_setup_failure_rearm_rejects_nonexact_portal_state(
         daemon.close()
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("ready_count", 37),
+        ("completed_count", 29),
+        ("max_task_attempts", 37),
+        ("projection_delta_keys", []),
+    ),
+)
+def test_nested_setup_failure_rearm_rejects_daemon_pass_state_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: int,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+
+    def mutate(events: list[dict[str, object]]) -> None:
+        daemon_pass = next(
+            event for event in events if event.get("type") == "daemon_pass"
+        )
+        daemon_pass[field] = value
+
+    _rewrite_active_event_chain(paths, mutate)
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is None
+        result = daemon.run_once()
+        assert result["unknown_outcome_rearms"] == []
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_rearm_requires_exact_private_modes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    rotation = rotate_event_log_if_needed(
+        Path(paths.events),
+        max_bytes=1,
+        retain_recent=1,
+        max_archives=2,
+    )
+    assert rotation["rotated"] is True
+    manifest = Path(paths.events).with_name(
+        Path(paths.events).name + ".manifest.json"
+    )
+    lock = Path(paths.events).with_name("." + Path(paths.events).name + ".lock")
+    targets = (
+        Path(bridge.attempt_root).parent,
+        Path(bridge.attempt_root),
+        Path(paths.root),
+        Path(paths.binding),
+        Path(paths.task_projection),
+        Path(paths.state),
+        Path(paths.events),
+        manifest,
+        lock,
+        Path(str(rotation["archive_path"])),
+    )
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is not None
+        for target in targets:
+            safe_mode = 0o700 if target.is_dir() else 0o600
+            unsafe_mode = 0o755 if target.is_dir() else 0o644
+            os.chmod(target, unsafe_mode)
+            try:
+                assert bridge.no_provider_dispatch_rearm_evidence(
+                    terminal,
+                    outer_block_receipt=task.body["completion_receipt"],
+                ) is None
+            finally:
+                os.chmod(target, safe_mode)
+    finally:
+        daemon.close()
+
+
 def test_nested_setup_failure_rearm_blocks_coordinator_reentry_race(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1084,7 +1199,12 @@ def test_nested_setup_failure_rearm_blocks_coordinator_reentry_race(
     try:
         result = daemon.run_once()
         assert raced is True
-        assert result["unknown_outcome_rearms"] == []
+        assert result["selection_idle_reason"] == (
+            "database_no_provider_rearm_recovery_fenced"
+        )
+        assert len(result["unknown_outcome_rearms"]) == 1
+        assert result["unknown_outcome_rearms"][0]["rearmed"] is False
+        assert result["implementation_result"] is None
         task = daemon.task_source.get(attempt.task_cid)
         assert task is not None and task.status == "blocked"
         assert task.body["completion_receipt"]["operation"] == (
@@ -1113,7 +1233,7 @@ def test_nested_setup_failure_rearm_rechecks_prepared_completion_at_barrier(
     ) -> object:
         nonlocal lookup_count
         lookup_count += 1
-        if lookup_count >= 2:
+        if lookup_count >= 3:
             return {"status": "prepared", "task_cid": task_cid}
         return original_lookup(
             connection,
@@ -1129,13 +1249,586 @@ def test_nested_setup_failure_rearm_rechecks_prepared_completion_at_barrier(
     )
     try:
         result = daemon.run_once()
-        assert lookup_count >= 2
-        assert result["unknown_outcome_rearms"] == []
+        assert lookup_count >= 3
+        assert result["selection_idle_reason"] == (
+            "database_no_provider_rearm_recovery_fenced"
+        )
+        assert len(result["unknown_outcome_rearms"]) == 1
+        recovery = result["unknown_outcome_rearms"][0]
+        assert recovery["rearmed"] is False
+        assert recovery["control_compensated"] is True
+        assert result["implementation_result"] is None
         task = daemon.task_source.get(attempt.task_cid)
         assert task is not None and task.status == "blocked"
         assert task.body["completion_receipt"]["operation"] == (
             "database_unknown_outcome_blocked"
         )
+        assert task.body["completion_receipt"][
+            "no_provider_rearm_compensation"
+        ]["saga_id"] == recovery["saga_id"]
+        assert daemon._unresolved_database_no_provider_rearm_sagas() == ()
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "crash_cut",
+    ("prepared_before_barrier", "control_before_coordinator_commit"),
+)
+def test_nested_setup_failure_rearm_recovers_durable_crash_fence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    crash_cut: str,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    real_barrier = daemon.coordinator.execute_with_terminal_task_claim_barrier
+    coordinator_connection = daemon.coordinator._connection
+    real_commit = coordinator_connection.commit
+
+    if crash_cut == "prepared_before_barrier":
+
+        def crash_before_barrier(*_args: object, **_kwargs: object) -> None:
+            raise SystemExit("injected crash after durable PREPARED fence")
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "execute_with_terminal_task_claim_barrier",
+            crash_before_barrier,
+        )
+    else:
+
+        def crash_coordinator_commit() -> object:
+            current = daemon.task_source.get(attempt.task_cid)
+            if current is not None and current.status == "retrying":
+                raise SystemExit("injected crash after control CAS")
+            return real_commit()
+
+        monkeypatch.setattr(
+            coordinator_connection,
+            "commit",
+            crash_coordinator_commit,
+        )
+
+    try:
+        with pytest.raises(SystemExit, match="injected crash"):
+            daemon.run_once()
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "execute_with_terminal_task_claim_barrier",
+            real_barrier,
+        )
+        monkeypatch.setattr(coordinator_connection, "commit", real_commit)
+        crashed = daemon.task_source.get(attempt.task_cid)
+        expected_status = (
+            "blocked"
+            if crash_cut == "prepared_before_barrier"
+            else "retrying"
+        )
+        assert crashed is not None and crashed.status == expected_status
+        assert daemon._unresolved_database_no_provider_rearm_sagas()
+        assert daemon.claim_next() is None
+        assert not daemon.list_running_attempts()
+
+        recovery = daemon.run_once()
+        assert recovery["selection_idle_reason"] == (
+            "database_no_provider_rearm_recovery_fenced"
+        )
+        assert recovery["implementation_result"] is None
+        assert recovery["unknown_outcome_rearms"][0]["rearmed"] is False
+        restored = daemon.task_source.get(attempt.task_cid)
+        assert restored is not None and restored.status == "blocked"
+        assert daemon._unresolved_database_no_provider_rearm_sagas() == ()
+        assert not daemon.list_running_attempts()
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("crash_cut", ("pending", "admitting"))
+def test_nested_setup_failure_shared_fence_recovers_after_origin_lane_loss(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    crash_cut: str,
+) -> None:
+    repo, origin, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    origin_execution_path = origin.execution_path
+    real_cas = origin._cas_task_status_database
+    cas_calls = 0
+
+    if crash_cut == "pending":
+
+        def crash_after_shared_pending(
+            _claim: object,
+            callback: Callable[[], object],
+        ) -> None:
+            callback()
+            raise SystemExit("injected origin loss after shared pending CAS")
+
+        monkeypatch.setattr(
+            origin.coordinator,
+            "execute_with_terminal_task_claim_barrier",
+            crash_after_shared_pending,
+        )
+    else:
+
+        def crash_after_shared_admitting(
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            nonlocal cas_calls
+            cas_calls += 1
+            result = real_cas(*args, **kwargs)
+            if cas_calls == 2:
+                raise SystemExit(
+                    "injected origin loss after shared admitting CAS"
+                )
+            return result
+
+        monkeypatch.setattr(
+            origin,
+            "_cas_task_status_database",
+            crash_after_shared_admitting,
+        )
+
+    successor: DatabaseImplementationDaemon | None = None
+    origin_closed = False
+    try:
+        with pytest.raises(SystemExit, match="injected origin loss"):
+            origin.run_once()
+        crashed = origin.task_source.get(attempt.task_cid)
+        assert crashed is not None
+        assert crashed.status == ("retrying" if crash_cut == "pending" else "blocked")
+        assert origin._no_provider_rearm_fence_state(crashed) == crash_cut
+
+        # The origin lane-local audit store is intentionally unavailable.  A
+        # different lane must recover solely from the closed canonical control
+        # receipt; the origin journal is never the liveness authority.
+        origin.close()
+        origin_closed = True
+        if origin_execution_path.exists():
+            origin_execution_path.replace(
+                repo / "lost-origin-execution.duckdb"
+            )
+        successor = _database_rearm_recovery_lane(repo, lane="recovery-lane")
+        callbacks: list[str] = []
+
+        def forbidden(*_args: object, **_kwargs: object) -> Mapping[str, object]:
+            callbacks.append("dispatched")
+            raise AssertionError("shared fence recovery dispatched a provider")
+
+        successor.bind_execution_callbacks(
+            provider_fn=forbidden,
+            effect_fn=forbidden,
+            validation_fn=forbidden,
+        )
+        assert successor.claim_next() is None
+        recovery = successor.run_once()
+        assert recovery["selection_idle_reason"] == (
+            "database_no_provider_rearm_recovery_fenced"
+        )
+        assert recovery["implementation_result"] is None
+        assert recovery["unknown_outcome_rearms"][0][
+            "control_compensated"
+        ] is True
+        restored = successor.task_source.get(attempt.task_cid)
+        assert restored is not None and restored.status == "blocked"
+        compensation = restored.body["completion_receipt"][
+            "no_provider_rearm_compensation"
+        ]
+        assert compensation["compensated_revision"] == restored.revision
+        assert callbacks == []
+        assert successor.list_running_attempts() == []
+    finally:
+        if successor is not None:
+            successor.close()
+        if not origin_closed:
+            origin.close()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "value"),
+    (
+        ("remove_evidence", None),
+        ("unknown_outcome_rearm_count", 0),
+        ("forced_block", True),
+        ("authority_outcome", "unknown"),
+    ),
+)
+def test_nested_setup_failure_weakened_admitted_payload_remains_fenced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    value: object,
+) -> None:
+    repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    real_cas = daemon._cas_task_status_database
+    cas_calls = 0
+
+    def weaken_final_admission(
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        nonlocal cas_calls
+        cas_calls += 1
+        if cas_calls == 3:
+            changed = dict(kwargs)
+            receipt = dict(changed["receipt"])
+            if mutation == "remove_evidence":
+                receipt.pop("no_provider_rearm_evidence", None)
+            else:
+                receipt[mutation] = value
+            changed["receipt"] = receipt
+            return real_cas(*args, **changed)
+        return real_cas(*args, **kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_cas_task_status_database",
+        weaken_final_admission,
+    )
+    successor: DatabaseImplementationDaemon | None = None
+    try:
+        result = daemon.run_once()
+        assert result["selection_idle_reason"] == (
+            "database_no_provider_rearm_recovery_fenced"
+        )
+        assert result["implementation_result"] is None
+        recovery = result["unknown_outcome_rearms"][0]
+        assert recovery["rearmed"] is False
+        assert recovery["recovery_required"] is True
+        corrupted = daemon.task_source.get(attempt.task_cid)
+        assert corrupted is not None and corrupted.status == "retrying"
+        assert daemon._no_provider_rearm_fence_state(corrupted) == "invalid"
+        assert daemon.claim_next() is None
+
+        successor = _database_rearm_recovery_lane(repo, lane="payload-audit")
+        assert successor.claim_next() is None
+        cross_lane = successor.run_once()
+        assert cross_lane["implementation_result"] is None
+        assert cross_lane["unknown_outcome_rearms"][0][
+            "recovery_required"
+        ] is True
+        assert successor.task_source.get(attempt.task_cid).status == "retrying"
+    finally:
+        if successor is not None:
+            successor.close()
+        daemon.close()
+
+
+def test_nested_setup_failure_barrier_terminal_response_loss_is_single_terminal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    real_record = daemon._record_database_no_provider_rearm_saga
+    lost_response = False
+
+    def record_then_lose_response(**kwargs: object) -> None:
+        nonlocal lost_response
+        real_record(**kwargs)
+        if (
+            not lost_response
+            and kwargs.get("state") == "resolved"
+            and kwargs.get("reason") == "barrier_committed"
+        ):
+            lost_response = True
+            raise RuntimeError("injected barrier terminal response loss")
+
+    monkeypatch.setattr(
+        daemon,
+        "_record_database_no_provider_rearm_saga",
+        record_then_lose_response,
+    )
+    try:
+        result = daemon.run_once()
+        assert lost_response is True
+        assert result["selection_idle_reason"] == (
+            "database_no_provider_rearm_recovery_fenced"
+        )
+        assert result["implementation_result"] is None
+        assert result["unknown_outcome_rearms"][0][
+            "control_compensated"
+        ] is True
+        restored = daemon.task_source.get(attempt.task_cid)
+        assert restored is not None and restored.status == "blocked"
+        assert daemon._unresolved_database_no_provider_rearm_sagas() == ()
+        rows = daemon._require_connection().execute(
+            """
+            SELECT body_json
+            FROM daemon_execution_events
+            WHERE event_type = ?
+            """,
+            ["database_no_provider_rearm_saga"],
+        ).fetchall()
+        terminal_rows = [
+            json.loads(row[0])
+            for row in rows
+            if json.loads(row[0]).get("state") == "resolved"
+        ]
+        assert len(terminal_rows) == 1
+        assert terminal_rows[0]["reason"] == "barrier_committed"
+        assert daemon.claim_next() is None
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_saga_duplicate_is_idempotent_conflict_fences(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    try:
+        assert daemon.run_once()["implementation_result"] is None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        receipt = dict(task.body["completion_receipt"])
+        fence = dict(receipt["no_provider_rearm_fence"])
+        original = dict(receipt["no_provider_rearm_original_block_receipt"])
+        common = {
+            "saga_id": str(fence["saga_id"]),
+            "saga_nonce": str(fence["saga_nonce"]),
+            "task_cid": str(task.task_cid),
+            "attempt_id": str(original["attempt_id"]),
+            "claim_id": str(original["claim_id"]),
+            "evidence_id": str(fence["evidence_id"]),
+            "blocked_receipt_digest": str(fence["blocked_receipt_digest"]),
+            "blocked_revision": int(fence["blocked_revision"]),
+        }
+        # An identical terminal append is idempotent at authoritative replay.
+        daemon._record_database_no_provider_rearm_saga(
+            **common,
+            state="resolved",
+            retrying_revision=int(fence["retrying_revision"]),
+            reason="barrier_committed",
+        )
+        assert daemon._unresolved_database_no_provider_rearm_sagas() == ()
+
+        # A second, contradictory terminal assertion is never ordered by
+        # timestamp.  Replay exposes a typed malformed fence and claim is
+        # disabled even though the canonical shared state is admitted.
+        daemon._record_database_no_provider_rearm_saga(
+            **common,
+            state="resolved",
+            retrying_revision=int(fence["retrying_revision"]),
+            compensated_revision=int(fence["retrying_revision"]) + 1,
+            reason="control_compensated",
+        )
+        unresolved = daemon._unresolved_database_no_provider_rearm_sagas()
+        assert len(unresolved) == 1
+        assert unresolved[0]["task_cid"] == attempt.task_cid
+        assert unresolved[0]["reason"] == "malformed_recovery_fence"
+        assert daemon.claim_next() is None
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "failure_site",
+    ("control_before_commit", "control_after_commit", "coordinator_commit"),
+)
+def test_nested_setup_failure_rearm_failure_saga_never_partially_claims(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_site: str,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    before_count = int(
+        daemon._require_connection()
+        .execute("SELECT COUNT(*) FROM database_task_attempts")
+        .fetchone()[0]
+    )
+    real_cas = daemon._cas_task_status_database
+    cas_calls = 0
+
+    def failing_control_cas(*args: object, **kwargs: object) -> object:
+        nonlocal cas_calls
+        cas_calls += 1
+        if cas_calls == 1 and failure_site == "control_before_commit":
+            raise RuntimeError("injected control commit failure")
+        result = real_cas(*args, **kwargs)
+        if cas_calls == 1 and failure_site == "control_after_commit":
+            raise RuntimeError("injected control post-commit response loss")
+        return result
+
+    if failure_site.startswith("control_"):
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            failing_control_cas,
+        )
+    else:
+        connection = daemon.coordinator._connection
+        real_commit = connection.commit
+        commit_calls = 0
+
+        def failing_coordinator_commit() -> object:
+            nonlocal commit_calls
+            commit_calls += 1
+            current = daemon.task_source.get(attempt.task_cid)
+            if (
+                current is not None
+                and current.status == "retrying"
+                and commit_calls > 0
+            ):
+                raise RuntimeError("injected coordinator commit failure")
+            return real_commit()
+
+        monkeypatch.setattr(connection, "commit", failing_coordinator_commit)
+    try:
+        result = daemon.run_once()
+        assert result["selection_idle_reason"] == (
+            "database_no_provider_rearm_recovery_fenced"
+        )
+        assert result["implementation_result"] is None
+        assert len(result["unknown_outcome_rearms"]) == 1
+        recovery = result["unknown_outcome_rearms"][0]
+        assert recovery["rearmed"] is False
+        assert recovery.get("recovery_required") is not True
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+        assert task.body["completion_receipt"]["operation"] == (
+            "database_unknown_outcome_blocked"
+        )
+        after_count = int(
+            daemon._require_connection()
+            .execute("SELECT COUNT(*) FROM database_task_attempts")
+            .fetchone()[0]
+        )
+        assert after_count == before_count
+        assert daemon._unresolved_database_no_provider_rearm_sagas() == ()
+        assert daemon.claim_next() is None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_rearm_recovers_compensation_before_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    real_record = daemon._record_database_no_provider_rearm_saga
+
+    def crash_before_resolution(**kwargs: object) -> None:
+        if kwargs.get("state") == "resolved":
+            raise RuntimeError("injected crash before saga resolution")
+        real_record(**kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_record_database_no_provider_rearm_saga",
+        crash_before_resolution,
+    )
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="injected crash before saga resolution",
+        ):
+            daemon.run_once()
+
+        compensated = daemon.task_source.get(attempt.task_cid)
+        assert compensated is not None and compensated.status == "blocked"
+        compensation = compensated.body["completion_receipt"][
+            "no_provider_rearm_compensation"
+        ]
+        assert compensation["compensated_revision"] == compensated.revision
+        assert daemon._unresolved_database_no_provider_rearm_sagas()
+        assert daemon.claim_next() is None
+        assert not daemon.list_running_attempts()
+
+        monkeypatch.setattr(
+            daemon,
+            "_record_database_no_provider_rearm_saga",
+            real_record,
+        )
+        recovery = daemon.run_once()
+        assert recovery["selection_idle_reason"] == (
+            "database_no_provider_rearm_recovery_fenced"
+        )
+        assert recovery["implementation_result"] is None
+        assert recovery["unknown_outcome_rearms"][0][
+            "control_compensated"
+        ] is True
+        assert daemon._unresolved_database_no_provider_rearm_sagas() == ()
+        assert not daemon.list_running_attempts()
+    finally:
+        daemon.close()
+
+
+def test_nested_setup_failure_rearm_inconclusive_compensation_stays_fenced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    real_cas = daemon._cas_task_status_database
+    cas_calls = 0
+
+    def lose_rearm_then_fail_compensation(
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        nonlocal cas_calls
+        cas_calls += 1
+        if cas_calls == 1:
+            real_cas(*args, **kwargs)
+            raise RuntimeError("injected rearm response loss")
+        raise RuntimeError("injected compensation outage")
+
+    monkeypatch.setattr(
+        daemon,
+        "_cas_task_status_database",
+        lose_rearm_then_fail_compensation,
+    )
+    try:
+        first = daemon.run_once()
+        assert first["selection_idle_reason"] == (
+            "database_no_provider_rearm_recovery_fenced"
+        )
+        recovery = first["unknown_outcome_rearms"][0]
+        assert recovery["recovery_required"] is True
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        assert daemon._unresolved_database_no_provider_rearm_sagas()
+        assert daemon.claim_next() is None
+        assert not daemon.list_running_attempts()
+
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            real_cas,
+        )
+        second = daemon.run_once()
+        assert second["selection_idle_reason"] == (
+            "database_no_provider_rearm_recovery_fenced"
+        )
+        assert second["unknown_outcome_rearms"][0][
+            "control_compensated"
+        ] is True
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+        assert daemon._unresolved_database_no_provider_rearm_sagas() == ()
+
+        third = daemon.run_once()
+        assert third["selection_idle_reason"] == (
+            "database_unknown_outcomes_rearmed"
+        )
+        assert third["implementation_result"] is None
+        assert not daemon.list_running_attempts()
     finally:
         daemon.close()
 

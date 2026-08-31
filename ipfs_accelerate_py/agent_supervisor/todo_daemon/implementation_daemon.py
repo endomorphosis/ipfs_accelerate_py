@@ -71655,6 +71655,22 @@ DATABASE_UNKNOWN_OUTCOME_BLOCK_REASONS = frozenset(
 )
 DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION = "database_unknown_outcome_rearmed"
 DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT = 3
+DATABASE_NO_PROVIDER_REARM_SAGA_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-no-provider-rearm-saga@1"
+)
+DATABASE_NO_PROVIDER_REARM_COMPENSATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-no-provider-rearm-compensation@1"
+)
+DATABASE_NO_PROVIDER_REARM_FENCE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-no-provider-rearm-fence@1"
+)
+DATABASE_NO_PROVIDER_REARM_SAGA_EVENT = (
+    "database_no_provider_rearm_saga"
+)
+DATABASE_NO_PROVIDER_REARM_RECEIPT_MAX_BYTES = 64 * 1024
 DATABASE_PORTAL_TERMINAL_REPAIR_CURSOR_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-terminal-repair-cursor@1"
@@ -75953,6 +75969,340 @@ class DatabaseImplementationDaemon:
         return registered
 
     @staticmethod
+    def _valid_no_provider_rearm_evidence(
+        evidence: Any,
+        *,
+        task: Any,
+        original: Mapping[str, Any],
+        expected_evidence_id: str,
+    ) -> bool:
+        """Validate the complete closed Portal no-provider evidence payload."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_FIELDS,
+            DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA,
+        )
+
+        if not isinstance(evidence, Mapping):
+            return False
+        record = dict(evidence)
+        unsigned = dict(record)
+        evidence_id = str(unsigned.pop("evidence_id", "") or "")
+        try:
+            calculated_id = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    unsigned,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+        except (TypeError, ValueError):
+            return False
+        digest_fields = {
+            "attempt_authority_root_digest",
+            "attempt_root_digest",
+            "binding_admission_digest",
+            "projection_immutable_digest",
+            "event_manifest_digest",
+            "event_head_id",
+            "task_selected_event_id",
+            "setup_event_ids_digest",
+            "cleanup_event_id",
+            "exception_event_id",
+            "finished_event_id",
+            "state_digest",
+            "outer_block_receipt_digest",
+        }
+        integer_fields = {
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "nested_attempt",
+            "event_count",
+            "event_head_sequence",
+            "setup_event_count",
+        }
+        return bool(
+            set(record) == set(DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_FIELDS)
+            and record.get("schema")
+            == DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id)
+            and evidence_id == expected_evidence_id
+            and calculated_id == evidence_id
+            and all(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(record.get(name) or ""))
+                for name in digest_fields
+            )
+            and all(
+                type(record.get(name)) is int and int(record[name]) >= 0
+                for name in integer_fields
+            )
+            and record.get("provider_dispatched") is False
+            and record.get("validation_attempted") is False
+            and record.get("commit_created") is False
+            and record.get("merge_attempted") is False
+            and record.get("cleanup_terminal") is True
+            and record.get("task_cid")
+            == str(getattr(task, "task_cid", "") or "")
+            and record.get("task_alias")
+            == str(getattr(task, "task_alias", "") or "")
+            and record.get("attempt_id") == original.get("attempt_id")
+            and record.get("claim_id") == original.get("claim_id")
+            and record.get("attempt_number") == original.get("attempt_number")
+            and record.get("owner_session_id")
+            == original.get("owner_session_id")
+            and record.get("lease_id") == original.get("lease_id")
+            and record.get("fencing_token") == original.get("fencing_token")
+            and record.get("fence_epoch") == original.get("fence_epoch")
+            and record.get("outer_block_receipt_digest")
+            == DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                original
+            )
+        )
+
+    @staticmethod
+    def _no_provider_rearm_fence_state(task: Any) -> str:
+        """Return one closed shared no-provider rearm fence state."""
+
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return "not_applicable"
+        receipt = body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            return "not_applicable"
+        is_no_provider_rearm = bool(
+            receipt.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
+            and receipt.get("operation")
+            == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+            and any(
+                field in receipt
+                for field in (
+                    "no_provider_rearm_evidence_id",
+                    "no_provider_rearm_saga_id",
+                    "no_provider_rearm_fence",
+                    "no_provider_rearm_original_block_receipt",
+                )
+            )
+        )
+        if not is_no_provider_rearm:
+            return "not_applicable"
+        fence = receipt.get("no_provider_rearm_fence")
+        original = receipt.get("no_provider_rearm_original_block_receipt")
+        if not isinstance(fence, Mapping) or not isinstance(original, Mapping):
+            return "invalid"
+        blocked_revision = fence.get("blocked_revision")
+        retrying_revision = fence.get("retrying_revision")
+        admitted_revision = fence.get("admitted_revision")
+        immutable_receipt_digest = str(
+            fence.get("immutable_receipt_digest") or ""
+        )
+        state = str(fence.get("state") or "")
+        try:
+            original_bytes = canonical_json(dict(original)).encode("utf-8")
+            original_digest = (
+                "sha256:" + hashlib.sha256(original_bytes).hexdigest()
+            )
+            immutable_receipt = dict(receipt)
+            immutable_receipt.pop("no_provider_rearm_fence", None)
+            receipt_bytes = canonical_json(dict(receipt)).encode("utf-8")
+            calculated_immutable_receipt_digest = (
+                DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                    immutable_receipt
+                )
+            )
+            raw_prior_rearms = original.get("unknown_outcome_rearm_count", 0)
+            if isinstance(raw_prior_rearms, bool):
+                return "invalid"
+            prior_rearms = int(raw_prior_rearms)
+        except (TypeError, ValueError):
+            return "invalid"
+        expected_saga_id = (
+            DatabaseImplementationDaemon._database_no_provider_rearm_saga_id(
+                saga_nonce=str(fence.get("saga_nonce") or ""),
+                task_cid=str(getattr(task, "task_cid", "") or ""),
+                attempt_id=str(original.get("attempt_id") or ""),
+                claim_id=str(original.get("claim_id") or ""),
+                evidence_id=str(fence.get("evidence_id") or ""),
+                blocked_receipt_digest=str(
+                    fence.get("blocked_receipt_digest") or ""
+                ),
+                blocked_revision=(
+                    int(blocked_revision)
+                    if type(blocked_revision) is int
+                    else 0
+                ),
+            )
+        )
+        valid = bool(
+            set(receipt)
+            == {
+                "schema",
+                "operation",
+                "task_cid",
+                "validation_spec_cid",
+                "attempts_used",
+                "max_task_attempts",
+                "retry_exhausted",
+                "process_instance_id",
+                "owner_session_id",
+                "reason",
+                "unknown_outcome_rearm_count",
+                "forced_block",
+                "authority_outcome",
+                "previous_operation",
+                "previous_owner_session_id",
+                "previous_attempt_id",
+                "previous_claim_id",
+                "no_provider_rearm_evidence",
+                "no_provider_rearm_evidence_id",
+                "previous_block_process_instance_id",
+                "no_provider_rearm_saga_id",
+                "no_provider_rearm_original_block_receipt",
+                "no_provider_rearm_fence",
+            }
+            and set(fence)
+            == {
+                "schema",
+                "saga_id",
+                "saga_nonce",
+                "state",
+                "evidence_id",
+                "blocked_receipt_digest",
+                "blocked_revision",
+                "retrying_revision",
+                "admitted_revision",
+                "immutable_receipt_digest",
+            }
+            and fence.get("schema")
+            == DATABASE_NO_PROVIDER_REARM_FENCE_SCHEMA
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(fence.get("saga_id") or ""),
+            )
+            and re.fullmatch(
+                r"no-provider-rearm:[0-9a-f]{24}",
+                str(fence.get("saga_nonce") or ""),
+            )
+            and fence.get("saga_id")
+            == receipt.get("no_provider_rearm_saga_id")
+            and fence.get("saga_id") == expected_saga_id
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(fence.get("evidence_id") or ""),
+            )
+            and fence.get("evidence_id")
+            == receipt.get("no_provider_rearm_evidence_id")
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(fence.get("blocked_receipt_digest") or ""),
+            )
+            and fence.get("blocked_receipt_digest") == original_digest
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}", immutable_receipt_digest
+            )
+            and immutable_receipt_digest
+            == calculated_immutable_receipt_digest
+            and len(original_bytes)
+            <= DATABASE_NO_PROVIDER_REARM_RECEIPT_MAX_BYTES
+            and len(receipt_bytes)
+            <= DATABASE_NO_PROVIDER_REARM_RECEIPT_MAX_BYTES
+            and original.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
+            and original.get("operation")
+            == "database_unknown_outcome_blocked"
+            and original.get("reason")
+            == "callback_authority_incomplete_blocked"
+            and original.get("forced_block") is True
+            and original.get("authority_outcome") == "unknown"
+            and original.get("retry_exhausted") is True
+            and type(original.get("attempts_used")) is int
+            and original.get("attempts_used") >= 1
+            and type(original.get("max_task_attempts")) is int
+            and original.get("max_task_attempts") >= 1
+            and type(original.get("attempt_number")) is int
+            and original.get("attempt_number")
+            == original.get("attempts_used")
+            and type(original.get("fencing_token")) is int
+            and type(original.get("fence_epoch")) is int
+            and bool(str(original.get("attempt_id") or ""))
+            and bool(str(original.get("claim_id") or ""))
+            and bool(str(original.get("lease_id") or ""))
+            and bool(str(original.get("owner_session_id") or ""))
+            and bool(str(original.get("process_instance_id") or ""))
+            and original.get("task_cid")
+            == str(getattr(task, "task_cid", "") or "")
+            and original.get("attempt_id")
+            == receipt.get("previous_attempt_id")
+            and original.get("claim_id")
+            == receipt.get("previous_claim_id")
+            and receipt.get("task_cid")
+            == str(getattr(task, "task_cid", "") or "")
+            and receipt.get("validation_spec_cid")
+            == original.get("validation_spec_cid")
+            and type(receipt.get("attempts_used")) is int
+            and receipt.get("attempts_used") == 0
+            and type(receipt.get("max_task_attempts")) is int
+            and receipt.get("max_task_attempts")
+            == original.get("max_task_attempts")
+            and receipt.get("retry_exhausted") is False
+            and receipt.get("forced_block") is False
+            and receipt.get("authority_outcome") == "rearmed"
+            and receipt.get("previous_operation")
+            == original.get("operation")
+            and receipt.get("previous_owner_session_id")
+            == original.get("owner_session_id")
+            and receipt.get("previous_block_process_instance_id")
+            == original.get("process_instance_id")
+            and receipt.get("reason") == original.get("reason")
+            and type(receipt.get("unknown_outcome_rearm_count")) is int
+            and receipt.get("unknown_outcome_rearm_count")
+            == prior_rearms + 1
+            and 1
+            <= int(receipt.get("unknown_outcome_rearm_count") or 0)
+            <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+            and bool(str(receipt.get("process_instance_id") or ""))
+            and bool(str(receipt.get("owner_session_id") or ""))
+            and DatabaseImplementationDaemon._valid_no_provider_rearm_evidence(
+                receipt.get("no_provider_rearm_evidence"),
+                task=task,
+                original=original,
+                expected_evidence_id=str(fence.get("evidence_id") or ""),
+            )
+            and type(blocked_revision) is int
+            and blocked_revision >= 1
+            and type(retrying_revision) is int
+            and retrying_revision == blocked_revision + 1
+            and type(admitted_revision) is int
+            and state in {
+                "pending",
+                "admitting",
+                "compensating",
+                "admitted",
+            }
+            and (
+                (state == "pending" and admitted_revision == 0)
+                or (
+                    state in {"admitting", "compensating", "admitted"}
+                    and admitted_revision == retrying_revision + 2
+                )
+            )
+            and int(getattr(task, "revision", 0) or 0)
+            == (
+                retrying_revision
+                if state == "pending"
+                else (
+                    retrying_revision + 1
+                    if state == "admitting"
+                    else admitted_revision
+                )
+            )
+            and str(getattr(task, "status", "") or "").strip().lower()
+            == ("blocked" if state == "admitting" else "retrying")
+        )
+        return state if valid else "invalid"
+
+    @staticmethod
     def _automatic_claim_forbidden(task: Any) -> bool:
         """Return whether a canonical task requires trusted manual sealing."""
 
@@ -75969,7 +76319,15 @@ class DatabaseImplementationDaemon:
             "true",
             "yes",
         }
-        return manual_completion or review_only
+        fence_state = DatabaseImplementationDaemon._no_provider_rearm_fence_state(
+            task
+        )
+        return manual_completion or review_only or fence_state in {
+            "pending",
+            "admitting",
+            "compensating",
+            "invalid",
+        }
 
     def _automatic_claim_exclusions(self) -> set[str]:
         ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
@@ -76528,6 +76886,56 @@ class DatabaseImplementationDaemon:
                 control_claim.get("validation_spec_cid") or ""
             ),
         }
+        compensation = receipt.get("no_provider_rearm_compensation")
+        compensation_revision_valid = False
+        if isinstance(compensation, Mapping):
+            compensation = dict(compensation)
+            compensation_fields = {
+                "schema",
+                "saga_id",
+                "evidence_id",
+                "original_blocked_revision",
+                "prior_blocked_revision",
+                "retrying_revision",
+                "compensated_revision",
+                "compensation_count",
+            }
+            original_blocked_revision = compensation.get(
+                "original_blocked_revision"
+            )
+            prior_blocked_revision = compensation.get(
+                "prior_blocked_revision"
+            )
+            retrying_revision = compensation.get("retrying_revision")
+            compensated_revision = compensation.get(
+                "compensated_revision"
+            )
+            compensation_count = compensation.get("compensation_count")
+            compensation_revision_valid = bool(
+                set(compensation) == compensation_fields
+                and compensation.get("schema")
+                == DATABASE_NO_PROVIDER_REARM_COMPENSATION_SCHEMA
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(compensation.get("saga_id") or ""),
+                )
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(compensation.get("evidence_id") or ""),
+                )
+                and type(original_blocked_revision) is int
+                and original_blocked_revision
+                == int(control_claim.get("revision") or 0) + 1
+                and type(prior_blocked_revision) is int
+                and prior_blocked_revision >= original_blocked_revision
+                and type(retrying_revision) is int
+                and retrying_revision == prior_blocked_revision + 1
+                and type(compensated_revision) is int
+                and compensated_revision == retrying_revision + 1
+                and compensated_revision == int(getattr(task, "revision", 0) or 0)
+                and type(compensation_count) is int
+                and 1 <= compensation_count <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+            )
         try:
             budget_state = self._retry_budget_state(task)
             exact_task = bool(
@@ -76537,8 +76945,11 @@ class DatabaseImplementationDaemon:
                 == attempt.task_cid
                 and str(getattr(task, "task_alias", "") or "")
                 == attempt.task_alias
-                and int(getattr(task, "revision", 0) or 0)
-                == int(control_claim.get("revision") or 0) + 1
+                and (
+                    int(getattr(task, "revision", 0) or 0)
+                    == int(control_claim.get("revision") or 0) + 1
+                    or compensation_revision_valid
+                )
                 and str(control_claim.get("task_cid") or "")
                 == attempt.task_cid
                 and str(control_claim.get("execution_spec_cid") or "")
@@ -76687,6 +77098,853 @@ class DatabaseImplementationDaemon:
             return None
         return MappingProxyType(evidence)
 
+    @staticmethod
+    def _database_no_provider_rearm_digest(value: Mapping[str, Any]) -> str:
+        return "sha256:" + hashlib.sha256(
+            canonical_json(dict(value)).encode("utf-8")
+        ).hexdigest()
+
+    @staticmethod
+    def _database_no_provider_rearm_saga_id(
+        *,
+        saga_nonce: str,
+        task_cid: str,
+        attempt_id: str,
+        claim_id: str,
+        evidence_id: str,
+        blocked_receipt_digest: str,
+        blocked_revision: int,
+    ) -> str:
+        return DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+            {
+                "schema": DATABASE_NO_PROVIDER_REARM_SAGA_SCHEMA,
+                "saga_nonce": str(saga_nonce),
+                "task_cid": str(task_cid),
+                "attempt_id": str(attempt_id),
+                "claim_id": str(claim_id),
+                "evidence_id": str(evidence_id),
+                "blocked_receipt_digest": str(blocked_receipt_digest),
+                "blocked_revision": int(blocked_revision),
+            }
+        )
+
+    def _record_database_no_provider_rearm_saga(
+        self,
+        *,
+        saga_id: str,
+        saga_nonce: str,
+        state: str,
+        task_cid: str,
+        attempt_id: str,
+        claim_id: str,
+        evidence_id: str,
+        blocked_receipt_digest: str,
+        blocked_revision: int,
+        retrying_revision: int = 0,
+        compensated_revision: int = 0,
+        reason: str,
+    ) -> None:
+        """Append one closed execution-store fence transition.
+
+        The control and coordinator stores cannot commit atomically.  This
+        execution-store record is therefore a saga fence, not an assertion of
+        cross-store atomicity.  ``resolved/barrier_committed`` is the single
+        terminal handoff from this lane-local journal to the canonical shared
+        control fence; it does not claim that rearm admission completed.  A
+        claimant cannot write a resolution itself.
+        """
+
+        normalized_state = str(state)
+        normalized_reason = str(reason)
+        allowed = {
+            "prepared": {"terminal_claim_barrier_pending"},
+            "resolved": {
+                "barrier_committed",
+                "control_unchanged",
+                "control_compensated",
+            },
+            "recovery_required": {
+                "control_outcome_inconclusive",
+                "compensation_failed",
+            },
+        }
+        if normalized_reason not in allowed.get(normalized_state, set()):
+            raise DatabaseImplementationConflictError(
+                "no-provider rearm saga transition is outside its closed profile"
+            )
+        valid_revisions = bool(
+            (
+                normalized_state == "prepared"
+                and retrying_revision == 0
+                and compensated_revision == 0
+            )
+            or (
+                normalized_state == "resolved"
+                and normalized_reason == "control_unchanged"
+                and retrying_revision == 0
+                and compensated_revision == 0
+            )
+            or (
+                normalized_state == "resolved"
+                and normalized_reason == "barrier_committed"
+                and retrying_revision == blocked_revision + 1
+                and compensated_revision == 0
+            )
+            or (
+                normalized_state == "resolved"
+                and normalized_reason == "control_compensated"
+                and retrying_revision == blocked_revision + 1
+                and compensated_revision == blocked_revision + 2
+            )
+            or (
+                normalized_state == "recovery_required"
+                and normalized_reason == "control_outcome_inconclusive"
+                and retrying_revision in {0, blocked_revision + 1}
+                and compensated_revision == 0
+            )
+            or (
+                normalized_state == "recovery_required"
+                and normalized_reason == "compensation_failed"
+                and retrying_revision == blocked_revision + 1
+                and compensated_revision == 0
+            )
+        )
+        if not valid_revisions:
+            raise DatabaseImplementationConflictError(
+                "no-provider rearm saga revisions are contradictory"
+            )
+        expected_saga_id = self._database_no_provider_rearm_saga_id(
+            saga_nonce=saga_nonce,
+            task_cid=task_cid,
+            attempt_id=attempt_id,
+            claim_id=claim_id,
+            evidence_id=evidence_id,
+            blocked_receipt_digest=blocked_receipt_digest,
+            blocked_revision=blocked_revision,
+        )
+        if saga_id != expected_saga_id:
+            raise DatabaseImplementationConflictError(
+                "no-provider rearm saga identity changed"
+            )
+        body = {
+            "schema": DATABASE_NO_PROVIDER_REARM_SAGA_SCHEMA,
+            "saga_id": saga_id,
+            "saga_nonce": str(saga_nonce),
+            "state": normalized_state,
+            "task_cid": str(task_cid),
+            "attempt_id": str(attempt_id),
+            "claim_id": str(claim_id),
+            "evidence_id": str(evidence_id),
+            "blocked_receipt_digest": str(blocked_receipt_digest),
+            "blocked_revision": int(blocked_revision),
+            "retrying_revision": int(retrying_revision),
+            "compensated_revision": int(compensated_revision),
+            "reason": normalized_reason,
+        }
+        self._record_event(
+            DATABASE_NO_PROVIDER_REARM_SAGA_EVENT,
+            attempt_id=str(attempt_id),
+            task_cid=str(task_cid),
+            body=body,
+        )
+
+    def _unresolved_database_no_provider_rearm_sagas(
+        self,
+    ) -> tuple[dict[str, Any], ...]:
+        """Return exact unresolved saga fences; malformed rows fail closed."""
+
+        rows = self._require_connection().execute(
+            """
+            SELECT task_cid, body_json
+            FROM daemon_execution_events
+            WHERE event_type = ?
+            """,
+            [DATABASE_NO_PROVIDER_REARM_SAGA_EVENT],
+        ).fetchall()
+        prepared_records: dict[str, dict[str, Any]] = {}
+        recovery_records: dict[str, dict[str, Any]] = {}
+        resolved_records: dict[str, dict[str, Any]] = {}
+        malformed_task_cids: set[str] = set()
+        fields = {
+            "schema",
+            "saga_id",
+            "saga_nonce",
+            "state",
+            "task_cid",
+            "attempt_id",
+            "claim_id",
+            "evidence_id",
+            "blocked_receipt_digest",
+            "blocked_revision",
+            "retrying_revision",
+            "compensated_revision",
+            "reason",
+        }
+        for row in rows:
+            row_task = str(row[0] or "")
+            raw = row[1]
+            try:
+                body = _database_daemon_strict_mapping_json(
+                    raw,
+                    authority="no-provider rearm saga",
+                )
+                blocked_revision = body.get("blocked_revision")
+                retrying_revision = body.get("retrying_revision")
+                compensated_revision = body.get("compensated_revision")
+                if (
+                    set(body) != fields
+                    or body.get("schema")
+                    != DATABASE_NO_PROVIDER_REARM_SAGA_SCHEMA
+                    or body.get("task_cid") != row_task
+                    or not re.fullmatch(
+                        r"no-provider-rearm:[0-9a-f]{24}",
+                        str(body.get("saga_nonce") or ""),
+                    )
+                    or not row_task
+                    or not str(body.get("attempt_id") or "")
+                    or not str(body.get("claim_id") or "")
+                    or not re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(body.get("evidence_id") or ""),
+                    )
+                    or not re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(body.get("blocked_receipt_digest") or ""),
+                    )
+                    or type(blocked_revision) is not int
+                    or blocked_revision < 1
+                    or type(retrying_revision) is not int
+                    or retrying_revision < 0
+                    or type(compensated_revision) is not int
+                    or compensated_revision < 0
+                    or body.get("saga_id")
+                    != self._database_no_provider_rearm_saga_id(
+                        saga_nonce=str(body.get("saga_nonce") or ""),
+                        task_cid=row_task,
+                        attempt_id=str(body.get("attempt_id") or ""),
+                        claim_id=str(body.get("claim_id") or ""),
+                        evidence_id=str(body.get("evidence_id") or ""),
+                        blocked_receipt_digest=str(
+                            body.get("blocked_receipt_digest") or ""
+                        ),
+                        blocked_revision=blocked_revision,
+                    )
+                ):
+                    raise ValueError("invalid saga record")
+                state = str(body.get("state") or "")
+                reason = str(body.get("reason") or "")
+                if state == "prepared" and (
+                    reason != "terminal_claim_barrier_pending"
+                    or retrying_revision != 0
+                    or compensated_revision != 0
+                ):
+                    raise ValueError("invalid prepared saga")
+                if state == "resolved" and not (
+                    (
+                        reason == "control_unchanged"
+                        and retrying_revision == 0
+                        and compensated_revision == 0
+                    )
+                    or (
+                        reason == "barrier_committed"
+                        and retrying_revision == blocked_revision + 1
+                        and compensated_revision == 0
+                    )
+                    or (
+                        reason == "control_compensated"
+                        and retrying_revision == blocked_revision + 1
+                        and compensated_revision == blocked_revision + 2
+                    )
+                ):
+                    raise ValueError("invalid resolved saga")
+                if state == "recovery_required" and not (
+                    (
+                        reason == "control_outcome_inconclusive"
+                        and retrying_revision in {0, blocked_revision + 1}
+                        and compensated_revision == 0
+                    )
+                    or (
+                        reason == "compensation_failed"
+                        and retrying_revision == blocked_revision + 1
+                        and compensated_revision == 0
+                    )
+                ):
+                    raise ValueError("invalid recovery saga")
+                if state not in {"prepared", "resolved", "recovery_required"}:
+                    raise ValueError("invalid saga state")
+            except (DatabaseImplementationConflictError, TypeError, ValueError):
+                if row_task:
+                    malformed_task_cids.add(row_task)
+                continue
+            saga_id = str(body["saga_id"])
+            population = (
+                resolved_records
+                if state == "resolved"
+                else (
+                    recovery_records
+                    if state == "recovery_required"
+                    else prepared_records
+                )
+            )
+            previous = population.get(saga_id)
+            if previous is not None and previous != dict(body):
+                # One saga has one exact row per phase class.  Repeated
+                # byte-identical writes are idempotent; conflicting duplicate
+                # terminal or recovery assertions are never ordered by query
+                # timing and therefore fail closed.
+                malformed_task_cids.add(row_task)
+            else:
+                population[saga_id] = dict(body)
+        resolved: set[str] = set()
+        for saga_id, resolution in resolved_records.items():
+            predecessor = prepared_records.get(saga_id)
+            if predecessor is None:
+                malformed_task_cids.add(str(resolution["task_cid"]))
+                continue
+            resolved.add(saga_id)
+        for saga_id, recovery in recovery_records.items():
+            if saga_id not in prepared_records:
+                malformed_task_cids.add(str(recovery["task_cid"]))
+        unresolved = [
+            recovery_records.get(saga_id, body)
+            for saga_id, body in prepared_records.items()
+            if saga_id not in resolved
+        ]
+        unresolved.extend(
+            {
+                "schema": DATABASE_NO_PROVIDER_REARM_SAGA_SCHEMA,
+                "saga_id": "",
+                "saga_nonce": "",
+                "state": "recovery_required",
+                "task_cid": task_cid,
+                "attempt_id": "",
+                "claim_id": "",
+                "evidence_id": "",
+                "blocked_receipt_digest": "",
+                "blocked_revision": 0,
+                "retrying_revision": 0,
+                "compensated_revision": 0,
+                "reason": "malformed_recovery_fence",
+            }
+            for task_cid in sorted(malformed_task_cids)
+        )
+        return tuple(sorted(unresolved, key=lambda item: str(item["task_cid"])))
+
+    def _database_no_provider_rearm_fenced_task_cids(self) -> set[str]:
+        return {
+            str(item.get("task_cid") or "")
+            for item in self._unresolved_database_no_provider_rearm_sagas()
+            if str(item.get("task_cid") or "")
+        }
+
+    @staticmethod
+    def _shared_no_provider_rearm_compensation_receipt(
+        task: Any,
+        *,
+        retrying_revision: int,
+    ) -> dict[str, Any] | None:
+        """Build one exact bounded compensation from shared control bytes."""
+
+        pending_receipt = dict(
+            getattr(task, "body", {}).get("completion_receipt") or {}
+        )
+        fence = dict(pending_receipt.get("no_provider_rearm_fence") or {})
+        original = pending_receipt.get(
+            "no_provider_rearm_original_block_receipt"
+        )
+        if not isinstance(original, Mapping):
+            return None
+        block_receipt = dict(original)
+        try:
+            if (
+                DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                    block_receipt
+                )
+                != fence.get("blocked_receipt_digest")
+                or len(canonical_json(block_receipt).encode("utf-8"))
+                > DATABASE_NO_PROVIDER_REARM_RECEIPT_MAX_BYTES
+            ):
+                return None
+            raw_rearm_count = pending_receipt.get(
+                "unknown_outcome_rearm_count"
+            )
+            if isinstance(raw_rearm_count, bool):
+                return None
+            rearm_count = int(raw_rearm_count)
+            if not 1 <= rearm_count <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT:
+                return None
+        except (TypeError, ValueError):
+            return None
+        prior = block_receipt.get("no_provider_rearm_compensation")
+        if prior is None:
+            prior_count = 0
+            original_blocked_revision = int(fence["blocked_revision"])
+        elif isinstance(prior, Mapping):
+            required = {
+                "schema",
+                "saga_id",
+                "evidence_id",
+                "original_blocked_revision",
+                "prior_blocked_revision",
+                "retrying_revision",
+                "compensated_revision",
+                "compensation_count",
+            }
+            if (
+                set(prior) != required
+                or prior.get("schema")
+                != DATABASE_NO_PROVIDER_REARM_COMPENSATION_SCHEMA
+                or type(prior.get("original_blocked_revision")) is not int
+                or type(prior.get("prior_blocked_revision")) is not int
+                or type(prior.get("retrying_revision")) is not int
+                or type(prior.get("compensated_revision")) is not int
+                or type(prior.get("compensation_count")) is not int
+                or prior.get("retrying_revision")
+                != prior.get("prior_blocked_revision") + 1
+                or prior.get("compensated_revision")
+                != prior.get("retrying_revision") + 1
+                or prior.get("compensated_revision")
+                != int(fence["blocked_revision"])
+            ):
+                return None
+            prior_count = int(prior["compensation_count"])
+            original_blocked_revision = int(
+                prior["original_blocked_revision"]
+            )
+        else:
+            return None
+        if not 0 <= prior_count < DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT:
+            return None
+        compensated_revision = int(retrying_revision) + 1
+        block_receipt["unknown_outcome_rearm_count"] = rearm_count
+        block_receipt["no_provider_rearm_compensation"] = {
+            "schema": DATABASE_NO_PROVIDER_REARM_COMPENSATION_SCHEMA,
+            "saga_id": str(fence["saga_id"]),
+            "evidence_id": str(fence["evidence_id"]),
+            "original_blocked_revision": original_blocked_revision,
+            "prior_blocked_revision": int(retrying_revision) - 1,
+            "retrying_revision": int(retrying_revision),
+            "compensated_revision": compensated_revision,
+            "compensation_count": prior_count + 1,
+        }
+        return block_receipt
+
+    def _reconcile_shared_no_provider_rearm_fences(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Recover canonical pending fences even when the origin lane is gone."""
+
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks):
+            return []
+        try:
+            page = list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        except Exception:
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for task in getattr(page, "tasks", ()):
+            if len(outcomes) >= 128:
+                break
+            receipt = dict(task.body.get("completion_receipt") or {})
+            profile_present = bool(
+                receipt.get("operation")
+                == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+                and any(
+                    field in receipt
+                    for field in (
+                        "no_provider_rearm_evidence_id",
+                        "no_provider_rearm_saga_id",
+                        "no_provider_rearm_fence",
+                        "no_provider_rearm_original_block_receipt",
+                    )
+                )
+            )
+            if not profile_present:
+                continue
+            fence_state = self._no_provider_rearm_fence_state(task)
+            if fence_state in {"not_applicable", "admitted"}:
+                continue
+            fence = dict(receipt.get("no_provider_rearm_fence") or {})
+            outcome = {
+                "task_cid": str(task.task_cid),
+                "task_alias": str(task.task_alias or ""),
+                "operation": "database_no_provider_rearm_shared_fence_recovery",
+                "rearmed": False,
+                "saga_id": str(fence.get("saga_id") or ""),
+                "prior_fence_state": fence_state,
+            }
+            if fence_state == "invalid":
+                outcomes.append({**outcome, "recovery_required": True})
+                continue
+            current = task
+            if fence_state == "admitting":
+                compensating_receipt = dict(receipt)
+                compensating_receipt["no_provider_rearm_fence"] = {
+                    **fence,
+                    "state": "compensating",
+                }
+                try:
+                    result = self._cas_task_status_database(
+                        task.task_cid,
+                        expected_revision=int(task.revision),
+                        new_status="retrying",
+                        receipt=compensating_receipt,
+                    )
+                    current = (
+                        getattr(result, "task", None)
+                        or self.task_source.get(task.task_cid)
+                    )
+                except Exception:
+                    current = self.task_source.get(task.task_cid)
+                if (
+                    current is None
+                    or self._no_provider_rearm_fence_state(current)
+                    != "compensating"
+                    or dict(current.body.get("completion_receipt") or {})
+                    != compensating_receipt
+                ):
+                    outcomes.append({**outcome, "recovery_required": True})
+                    continue
+            compensation = self._shared_no_provider_rearm_compensation_receipt(
+                current,
+                retrying_revision=int(current.revision),
+            )
+            if compensation is None:
+                outcomes.append({**outcome, "recovery_required": True})
+                continue
+            try:
+                result = self._cas_task_status_database(
+                    current.task_cid,
+                    expected_revision=int(current.revision),
+                    new_status="blocked",
+                    receipt=compensation,
+                )
+                compensated = (
+                    getattr(result, "task", None)
+                    or self.task_source.get(current.task_cid)
+                )
+            except Exception:
+                compensated = self.task_source.get(current.task_cid)
+            if (
+                compensated is None
+                or str(compensated.status or "").strip().lower()
+                != "blocked"
+                or int(compensated.revision) != int(current.revision) + 1
+                or dict(compensated.body.get("completion_receipt") or {})
+                != compensation
+            ):
+                outcomes.append({**outcome, "recovery_required": True})
+                continue
+            outcomes.append(
+                {
+                    **outcome,
+                    "control_compensated": True,
+                    "compensated_revision": int(compensated.revision),
+                }
+            )
+        return outcomes
+
+    def _compensate_database_no_provider_rearm_saga(
+        self,
+        saga: Mapping[str, Any],
+        *,
+        original_block_receipt: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Restore exact blocked control truth or retain the durable fence."""
+
+        record = dict(saga)
+        task_cid = str(record.get("task_cid") or "")
+        saga_id = str(record.get("saga_id") or "")
+        saga_nonce = str(record.get("saga_nonce") or "")
+        attempt_id = str(record.get("attempt_id") or "")
+        claim_id = str(record.get("claim_id") or "")
+        evidence_id = str(record.get("evidence_id") or "")
+        blocked_receipt_digest = str(
+            record.get("blocked_receipt_digest") or ""
+        )
+        blocked_revision = int(record.get("blocked_revision") or 0)
+        common = {
+            "saga_id": saga_id,
+            "saga_nonce": saga_nonce,
+            "task_cid": task_cid,
+            "attempt_id": attempt_id,
+            "claim_id": claim_id,
+            "evidence_id": evidence_id,
+            "blocked_receipt_digest": blocked_receipt_digest,
+            "blocked_revision": blocked_revision,
+        }
+        latest = self.task_source.get(task_cid)
+        if latest is None:
+            self._record_database_no_provider_rearm_saga(
+                **common,
+                state="recovery_required",
+                reason="control_outcome_inconclusive",
+            )
+            return {**common, "rearmed": False, "recovery_required": True}
+        latest_status = str(latest.status or "").strip().lower()
+        latest_receipt = dict(latest.body.get("completion_receipt") or {})
+        if (
+            latest_status == "blocked"
+            and int(latest.revision) == blocked_revision
+            and self._database_no_provider_rearm_digest(latest_receipt)
+            == blocked_receipt_digest
+        ):
+            self._record_database_no_provider_rearm_saga(
+                **common,
+                state="resolved",
+                reason="control_unchanged",
+            )
+            return {**common, "rearmed": False, "control_unchanged": True}
+        attempt = self.get_attempt(attempt_id)
+        prior_compensation = latest_receipt.get(
+            "no_provider_rearm_compensation"
+        )
+        exact_compensated = bool(
+            latest_status == "blocked"
+            and isinstance(prior_compensation, Mapping)
+            and set(prior_compensation)
+            == {
+                "schema",
+                "saga_id",
+                "evidence_id",
+                "original_blocked_revision",
+                "prior_blocked_revision",
+                "retrying_revision",
+                "compensated_revision",
+                "compensation_count",
+            }
+            and prior_compensation.get("schema")
+            == DATABASE_NO_PROVIDER_REARM_COMPENSATION_SCHEMA
+            and prior_compensation.get("saga_id") == saga_id
+            and prior_compensation.get("evidence_id") == evidence_id
+            and attempt is not None
+            and type(prior_compensation.get("original_blocked_revision"))
+            is int
+            and prior_compensation.get("original_blocked_revision")
+            == int(dict(attempt.body.get("control_claim") or {}).get("revision") or 0)
+            + 1
+            and type(prior_compensation.get("prior_blocked_revision")) is int
+            and prior_compensation.get("prior_blocked_revision")
+            == blocked_revision
+            and type(prior_compensation.get("retrying_revision")) is int
+            and prior_compensation.get("retrying_revision")
+            == blocked_revision + 1
+            and type(prior_compensation.get("compensated_revision")) is int
+            and prior_compensation.get("compensated_revision")
+            == blocked_revision + 2
+            and int(latest.revision) == blocked_revision + 2
+            and type(prior_compensation.get("compensation_count")) is int
+            and 1
+            <= int(prior_compensation.get("compensation_count") or 0)
+            <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+        )
+        if exact_compensated:
+            self._record_database_no_provider_rearm_saga(
+                **common,
+                state="resolved",
+                retrying_revision=blocked_revision + 1,
+                compensated_revision=blocked_revision + 2,
+                reason="control_compensated",
+            )
+            return {
+                **common,
+                "rearmed": False,
+                "control_compensated": True,
+                "compensated_revision": blocked_revision + 2,
+            }
+        fence_state = self._no_provider_rearm_fence_state(latest)
+        if (
+            fence_state == "admitting"
+            and latest_receipt.get("no_provider_rearm_saga_id") == saga_id
+            and latest_receipt.get("no_provider_rearm_evidence_id")
+            == evidence_id
+            and dict(latest_receipt.get("no_provider_rearm_fence") or {}).get(
+                "saga_nonce"
+            )
+            == saga_nonce
+        ):
+            admitted_receipt = dict(latest_receipt)
+            admitted_receipt["no_provider_rearm_fence"] = {
+                **dict(latest_receipt["no_provider_rearm_fence"]),
+                "state": "admitted",
+            }
+            try:
+                admitted_result = self._cas_task_status_database(
+                    task_cid,
+                    expected_revision=int(latest.revision),
+                    new_status="retrying",
+                    receipt=admitted_receipt,
+                )
+                admitted = (
+                    getattr(admitted_result, "task", None)
+                    or (
+                        admitted_result
+                        if getattr(admitted_result, "task_cid", None)
+                        else None
+                    )
+                    or self.task_source.get(task_cid)
+                )
+            except Exception:
+                admitted = self.task_source.get(task_cid)
+            if (
+                admitted is None
+                or self._no_provider_rearm_fence_state(admitted)
+                != "admitted"
+                or int(admitted.revision) != blocked_revision + 3
+                or dict(admitted.body.get("completion_receipt") or {})
+                != admitted_receipt
+            ):
+                self._record_database_no_provider_rearm_saga(
+                    **common,
+                    state="recovery_required",
+                    retrying_revision=0,
+                    reason="control_outcome_inconclusive",
+                )
+                return {**common, "rearmed": False, "recovery_required": True}
+            latest = admitted
+            latest_status = str(admitted.status or "").strip().lower()
+            latest_receipt = admitted_receipt
+            fence_state = "admitted"
+        exact_retrying = bool(
+            latest_status == "retrying"
+            and int(latest.revision) == blocked_revision + 1
+            and fence_state == "pending"
+            and latest_receipt.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
+            and latest_receipt.get("operation")
+            == DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION
+            and latest_receipt.get("no_provider_rearm_saga_id") == saga_id
+            and latest_receipt.get("no_provider_rearm_evidence_id")
+            == evidence_id
+        )
+        if not exact_retrying:
+            self._record_database_no_provider_rearm_saga(
+                **common,
+                state="recovery_required",
+                retrying_revision=0,
+                reason="control_outcome_inconclusive",
+            )
+            return {**common, "rearmed": False, "recovery_required": True}
+
+        evidence = latest_receipt.get("no_provider_rearm_evidence")
+        if attempt is None or not isinstance(evidence, Mapping):
+            self._record_database_no_provider_rearm_saga(
+                **common,
+                state="recovery_required",
+                retrying_revision=int(latest.revision),
+                reason="control_outcome_inconclusive",
+            )
+            return {**common, "rearmed": False, "recovery_required": True}
+        block_receipt = dict(
+            original_block_receipt
+            or latest_receipt.get(
+                "no_provider_rearm_original_block_receipt"
+            )
+            or {}
+        )
+        if (
+            block_receipt.get("schema") != DATABASE_RETRY_BUDGET_SCHEMA
+            or block_receipt.get("operation")
+            != "database_unknown_outcome_blocked"
+            or self._database_no_provider_rearm_digest(block_receipt)
+            != blocked_receipt_digest
+        ):
+            self._record_database_no_provider_rearm_saga(
+                **common,
+                state="recovery_required",
+                retrying_revision=int(latest.revision),
+                reason="control_outcome_inconclusive",
+            )
+            return {**common, "rearmed": False, "recovery_required": True}
+        previous_compensation = block_receipt.get(
+            "no_provider_rearm_compensation"
+        )
+        block_receipt["unknown_outcome_rearm_count"] = int(
+            latest_receipt.get("unknown_outcome_rearm_count") or 0
+        )
+        prior_count = (
+            int(previous_compensation.get("compensation_count") or 0)
+            if isinstance(previous_compensation, Mapping)
+            else 0
+        )
+        compensated_revision = int(latest.revision) + 1
+        block_receipt["no_provider_rearm_compensation"] = {
+            "schema": DATABASE_NO_PROVIDER_REARM_COMPENSATION_SCHEMA,
+            "saga_id": saga_id,
+            "evidence_id": evidence_id,
+            "original_blocked_revision": int(
+                dict(attempt.body.get("control_claim") or {}).get("revision")
+                or 0
+            )
+            + 1,
+            "prior_blocked_revision": blocked_revision,
+            "retrying_revision": int(latest.revision),
+            "compensated_revision": compensated_revision,
+            "compensation_count": prior_count + 1,
+        }
+        try:
+            self._cas_task_status_database(
+                task_cid,
+                expected_revision=int(latest.revision),
+                new_status="blocked",
+                receipt=block_receipt,
+            )
+            compensated = self.task_source.get(task_cid)
+            if (
+                compensated is None
+                or str(compensated.status or "").strip().lower() != "blocked"
+                or int(compensated.revision) != compensated_revision
+                or dict(compensated.body.get("completion_receipt") or {})
+                != block_receipt
+            ):
+                raise DatabaseImplementationConflictError(
+                    "no-provider rearm compensation did not commit exactly"
+                )
+        except Exception:
+            self._record_database_no_provider_rearm_saga(
+                **common,
+                state="recovery_required",
+                retrying_revision=int(latest.revision),
+                reason="compensation_failed",
+            )
+            return {**common, "rearmed": False, "recovery_required": True}
+        self._record_database_no_provider_rearm_saga(
+            **common,
+            state="resolved",
+            retrying_revision=int(latest.revision),
+            compensated_revision=compensated_revision,
+            reason="control_compensated",
+        )
+        return {
+            **common,
+            "rearmed": False,
+            "control_compensated": True,
+            "compensated_revision": compensated_revision,
+        }
+
+    def _reconcile_database_no_provider_rearm_sagas(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Recover bounded open sagas before any new claim is eligible."""
+
+        outcomes: list[dict[str, Any]] = []
+        for saga in self._unresolved_database_no_provider_rearm_sagas():
+            if not str(saga.get("saga_id") or ""):
+                outcomes.append(
+                    {
+                        "task_cid": str(saga.get("task_cid") or ""),
+                        "operation": "database_no_provider_rearm_recovery_fenced",
+                        "rearmed": False,
+                        "recovery_required": True,
+                    }
+                )
+                continue
+            outcome = self._compensate_database_no_provider_rearm_saga(saga)
+            outcome["operation"] = (
+                "database_no_provider_rearm_recovery_fenced"
+            )
+            outcomes.append(outcome)
+        return outcomes
+
     def reconcile_blocked_unknown_outcome_tasks(self) -> list[dict[str, Any]]:
         """Rearm dead unknown-outcome blocks after the blocking session ends.
 
@@ -76696,6 +77954,22 @@ class DatabaseImplementationDaemon:
         projection, so control-plane loss cannot permanently stall the board.
         """
 
+        shared_recoveries = self._reconcile_shared_no_provider_rearm_fences()
+        if shared_recoveries:
+            # Canonical control fences outrank lane-local audit recovery.  A
+            # repair/finalization pass never continues into claim dispatch.
+            # Once the shared fence is compensated, close any exact origin-
+            # lane PREPARED audit record in this same bounded pass.  That
+            # journal is not required for cross-lane liveness, but leaving a
+            # provably closed local saga open would create needless recovery
+            # work on the following pass.
+            saga_recoveries = self._reconcile_database_no_provider_rearm_sagas()
+            return [*shared_recoveries, *saga_recoveries]
+        saga_recoveries = self._reconcile_database_no_provider_rearm_sagas()
+        if saga_recoveries:
+            # Recovery and eligibility are different durable passes.  Even a
+            # successful compensation cannot be followed by a claim here.
+            return saga_recoveries
         list_tasks = getattr(self.task_source, "list_tasks", None)
         if not callable(list_tasks):
             return []
@@ -76829,6 +78103,9 @@ class DatabaseImplementationDaemon:
                 rearm_receipt["no_provider_rearm_evidence_id"] = str(
                     no_provider_evidence.get("evidence_id") or ""
                 )
+                rearm_receipt["previous_block_process_instance_id"] = str(
+                    receipt.get("process_instance_id") or ""
+                )
             if no_provider_evidence is not None:
                 barrier = getattr(
                     self.coordinator,
@@ -76864,19 +78141,262 @@ class DatabaseImplementationDaemon:
                 ):
                     continue
 
-                def rearm_control_task() -> Any:
+                evidence_id = str(
+                    no_provider_evidence.get("evidence_id") or ""
+                )
+                blocked_receipt_digest = (
+                    self._database_no_provider_rearm_digest(receipt)
+                )
+                if (
+                    len(canonical_json(receipt).encode("utf-8"))
+                    > DATABASE_NO_PROVIDER_REARM_RECEIPT_MAX_BYTES
+                ):
+                    continue
+                saga_nonce = _database_daemon_new_id(
+                    "no-provider-rearm"
+                )
+                saga_id = self._database_no_provider_rearm_saga_id(
+                    saga_nonce=saga_nonce,
+                    task_cid=str(task.task_cid),
+                    attempt_id=str(receipt.get("attempt_id") or ""),
+                    claim_id=claim_id,
+                    evidence_id=evidence_id,
+                    blocked_receipt_digest=blocked_receipt_digest,
+                    blocked_revision=int(task.revision),
+                )
+                saga = {
+                    "schema": DATABASE_NO_PROVIDER_REARM_SAGA_SCHEMA,
+                    "saga_id": saga_id,
+                    "saga_nonce": saga_nonce,
+                    "state": "prepared",
+                    "task_cid": str(task.task_cid),
+                    "attempt_id": str(receipt.get("attempt_id") or ""),
+                    "claim_id": claim_id,
+                    "evidence_id": evidence_id,
+                    "blocked_receipt_digest": blocked_receipt_digest,
+                    "blocked_revision": int(task.revision),
+                    "retrying_revision": 0,
+                    "compensated_revision": 0,
+                    "reason": "terminal_claim_barrier_pending",
+                }
+                rearm_receipt["no_provider_rearm_saga_id"] = saga_id
+                rearm_receipt["no_provider_rearm_original_block_receipt"] = (
+                    dict(receipt)
+                )
+                immutable_receipt_digest = (
+                    self._database_no_provider_rearm_digest(rearm_receipt)
+                )
+                rearm_receipt["no_provider_rearm_fence"] = {
+                    "schema": DATABASE_NO_PROVIDER_REARM_FENCE_SCHEMA,
+                    "saga_id": saga_id,
+                    "saga_nonce": saga_nonce,
+                    "state": "pending",
+                    "evidence_id": evidence_id,
+                    "blocked_receipt_digest": blocked_receipt_digest,
+                    "blocked_revision": int(task.revision),
+                    "retrying_revision": int(task.revision) + 1,
+                    "admitted_revision": 0,
+                    "immutable_receipt_digest": immutable_receipt_digest,
+                }
+                if (
+                    len(canonical_json(rearm_receipt).encode("utf-8"))
+                    > DATABASE_NO_PROVIDER_REARM_RECEIPT_MAX_BYTES
+                ):
+                    continue
+                self._record_database_no_provider_rearm_saga(
+                    saga_id=saga_id,
+                    saga_nonce=saga_nonce,
+                    state="prepared",
+                    task_cid=str(task.task_cid),
+                    attempt_id=str(receipt.get("attempt_id") or ""),
+                    claim_id=claim_id,
+                    evidence_id=evidence_id,
+                    blocked_receipt_digest=blocked_receipt_digest,
+                    blocked_revision=int(task.revision),
+                    reason="terminal_claim_barrier_pending",
+                )
+
+                def rearm_control_task(
+                    task_cid: str = str(task.task_cid),
+                    expected_revision: int = int(task.revision),
+                    receipt: Mapping[str, Any] = MappingProxyType(
+                        dict(rearm_receipt)
+                    ),
+                ) -> Any:
                     return self._cas_task_status_database(
-                        task.task_cid,
-                        expected_revision=int(task.revision),
+                        task_cid,
+                        expected_revision=expected_revision,
                         new_status="retrying",
-                        receipt=rearm_receipt,
+                        receipt=receipt,
                     )
 
+                barrier_committed = False
                 try:
-                    barrier(terminal_claim, rearm_control_task)
+                    rearmed_task = barrier(terminal_claim, rearm_control_task)
+                    resulting_task = (
+                        getattr(rearmed_task, "task", None)
+                        or (
+                            rearmed_task
+                            if getattr(rearmed_task, "task_cid", None)
+                            else None
+                        )
+                        or self.task_source.get(task.task_cid)
+                    )
+                    if (
+                        resulting_task is None
+                        or str(resulting_task.status or "").strip().lower()
+                        != "retrying"
+                        or int(resulting_task.revision)
+                        != int(task.revision) + 1
+                        or dict(
+                            resulting_task.body.get("completion_receipt") or {}
+                        )
+                        != rearm_receipt
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "no-provider rearm control CAS did not commit exactly"
+                        )
+                    # The coordinator barrier and exact pending control CAS
+                    # are now committed.  From this point the shared control
+                    # marker, not this lane-local journal, is the liveness
+                    # authority.  Set the handoff flag before appending its
+                    # audit terminal so a write-response loss still takes the
+                    # shared compensation route.
+                    barrier_committed = True
+                    self._record_database_no_provider_rearm_saga(
+                        saga_id=saga_id,
+                        saga_nonce=saga_nonce,
+                        state="resolved",
+                        task_cid=str(task.task_cid),
+                        attempt_id=str(receipt.get("attempt_id") or ""),
+                        claim_id=claim_id,
+                        evidence_id=evidence_id,
+                        blocked_receipt_digest=blocked_receipt_digest,
+                        blocked_revision=int(task.revision),
+                        retrying_revision=int(resulting_task.revision),
+                        reason="barrier_committed",
+                    )
+                    admitting_receipt = dict(rearm_receipt)
+                    admitting_receipt["no_provider_rearm_fence"] = {
+                        **dict(rearm_receipt["no_provider_rearm_fence"]),
+                        "state": "admitting",
+                        "admitted_revision": int(resulting_task.revision) + 2,
+                    }
+                    admitting_result = self._cas_task_status_database(
+                        task.task_cid,
+                        expected_revision=int(resulting_task.revision),
+                        new_status="blocked",
+                        receipt=admitting_receipt,
+                    )
+                    admitting_task = (
+                        getattr(admitting_result, "task", None)
+                        or (
+                            admitting_result
+                            if getattr(admitting_result, "task_cid", None)
+                            else None
+                        )
+                        or self.task_source.get(task.task_cid)
+                    )
+                    if (
+                        admitting_task is None
+                        or str(admitting_task.status or "").strip().lower()
+                        != "blocked"
+                        or int(admitting_task.revision)
+                        != int(task.revision) + 2
+                        or dict(
+                            admitting_task.body.get("completion_receipt") or {}
+                        )
+                        != admitting_receipt
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "no-provider rearm admission staging did not commit exactly"
+                        )
+                    admitted_receipt = dict(admitting_receipt)
+                    admitted_receipt["no_provider_rearm_fence"] = {
+                        **dict(admitting_receipt["no_provider_rearm_fence"]),
+                        "state": "admitted",
+                    }
+                    admitted_result = self._cas_task_status_database(
+                        task.task_cid,
+                        expected_revision=int(admitting_task.revision),
+                        new_status="retrying",
+                        receipt=admitted_receipt,
+                    )
+                    admitted_task = (
+                        getattr(admitted_result, "task", None)
+                        or (
+                            admitted_result
+                            if getattr(admitted_result, "task_cid", None)
+                            else None
+                        )
+                        or self.task_source.get(task.task_cid)
+                    )
+                    if (
+                        admitted_task is None
+                        or str(admitted_task.status or "").strip().lower()
+                        != "retrying"
+                        or int(admitted_task.revision)
+                        != int(task.revision) + 3
+                        or dict(
+                            admitted_task.body.get("completion_receipt") or {}
+                        )
+                        != admitted_receipt
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "no-provider rearm admission did not commit exactly"
+                        )
+                    rearm_receipt = admitted_receipt
                 except Exception:
-                    # A prepared completion, claim rewrite, control CAS race,
-                    # or coordinator re-entry preserves the original block.
+                    # The control CAS may already have committed even though
+                    # the coordinator postcheck/commit failed.  Compensate
+                    # only an exact retrying receipt; otherwise retain the
+                    # durable fence.  Either outcome forces this pass to stop
+                    # before claim/dispatch.
+                    if barrier_committed:
+                        shared = (
+                            self._reconcile_shared_no_provider_rearm_fences()
+                        )
+                        local = (
+                            self._reconcile_database_no_provider_rearm_sagas()
+                        )
+                        shared = [*shared, *local]
+                        current_fence_state = (
+                            self._no_provider_rearm_fence_state(
+                                self.task_source.get(task.task_cid)
+                            )
+                        )
+                        recovery = next(
+                            (
+                                item
+                                for item in shared
+                                if item.get("task_cid") == str(task.task_cid)
+                            ),
+                            {
+                                "task_cid": str(task.task_cid),
+                                "saga_id": saga_id,
+                                "rearmed": False,
+                                "rearm_committed": current_fence_state
+                                == "admitted",
+                                "recovery_required": current_fence_state
+                                != "admitted",
+                            },
+                        )
+                    else:
+                        recovery = (
+                            self._compensate_database_no_provider_rearm_saga(
+                                saga,
+                                original_block_receipt=receipt,
+                            )
+                        )
+                    recovery.update(
+                        {
+                            "task_alias": alias,
+                            "operation": (
+                                "database_no_provider_rearm_recovery_fenced"
+                            ),
+                        }
+                    )
+                    outcomes.append(recovery)
                     continue
             else:
                 self._cas_task_status_database(
@@ -76889,6 +78409,7 @@ class DatabaseImplementationDaemon:
                 "task_cid": str(task.task_cid),
                 "task_alias": alias,
                 "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                "rearmed": True,
                 "previous_owner_session_id": blocking_session,
                 "unknown_outcome_rearm_count": prior_rearms + 1,
             }
@@ -76923,6 +78444,7 @@ class DatabaseImplementationDaemon:
             page = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
         except Exception:
             return []
+        fenced = self._database_no_provider_rearm_fenced_task_cids()
         eligible: list[str] = []
         for task in getattr(page, "tasks", ()):
             alias = str(getattr(task, "task_alias", "") or "")
@@ -76936,6 +78458,8 @@ class DatabaseImplementationDaemon:
                 ):
                     continue
             if self._retry_budget_state(task)["retry_exhausted"]:
+                continue
+            if str(task.task_cid) in fenced:
                 continue
             eligible.append(str(task.task_cid))
         return eligible
@@ -77044,6 +78568,7 @@ class DatabaseImplementationDaemon:
             for task_cid in exclude_task_cids
             if str(task_cid)
         }
+        excluded.update(self._database_no_provider_rearm_fenced_task_cids())
         excluded.update(
             task_cid
             for task_cid, task in ready_by_cid.items()
@@ -83452,6 +84977,11 @@ class DatabaseImplementationDaemon:
                 "active_task_id": "",
                 "selection_idle_reason": (
                     "database_unknown_outcomes_rearmed"
+                    if any(
+                        item.get("rearmed") is True
+                        for item in unknown_outcome_rearms
+                    )
+                    else "database_no_provider_rearm_recovery_fenced"
                 ),
                 "implementation_result": None,
                 "authority_mode": self.authority_mode,

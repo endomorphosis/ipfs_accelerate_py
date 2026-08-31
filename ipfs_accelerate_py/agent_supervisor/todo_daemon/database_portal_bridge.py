@@ -52,6 +52,51 @@ DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-no-provider-rearm-evidence@1"
 )
+DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_FIELDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "schema",
+            "attempt_id",
+            "claim_id",
+            "task_cid",
+            "task_alias",
+            "attempt_number",
+            "owner_session_id",
+            "lease_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_root_key",
+            "attempt_authority_root_digest",
+            "attempt_root_digest",
+            "binding_id",
+            "binding_admission_id",
+            "binding_admission_digest",
+            "projection_immutable_digest",
+            "nested_task_cid",
+            "nested_attempt",
+            "event_stream_id",
+            "event_snapshot_id",
+            "event_manifest_digest",
+            "event_count",
+            "event_head_sequence",
+            "event_head_id",
+            "task_selected_event_id",
+            "setup_event_count",
+            "setup_event_ids_digest",
+            "cleanup_event_id",
+            "exception_event_id",
+            "finished_event_id",
+            "state_digest",
+            "outer_block_receipt_digest",
+            "provider_dispatched",
+            "validation_attempted",
+            "commit_created",
+            "merge_attempted",
+            "cleanup_terminal",
+            "evidence_id",
+        }
+    )
+)
 _EVENT_MANIFEST_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "schema",
@@ -2109,10 +2154,7 @@ class DatabasePortalExecutionBridge:
                     or observed.st_uid != os.geteuid()
                     or observed.st_gid != os.getegid()
                     or int(observed.st_nlink) != 1
-                    or bool(
-                        observed.st_mode
-                        & (stat.S_IWGRP | stat.S_IWOTH)
-                    )
+                    or stat.S_IMODE(observed.st_mode) != 0o600
                 ):
                     raise DatabasePortalBridgeError(
                         "database Portal event journal is not owner-private"
@@ -2298,7 +2340,7 @@ class DatabasePortalExecutionBridge:
             not stat.S_ISDIR(item.st_mode)
             or item.st_uid != os.geteuid()
             or item.st_gid != os.getegid()
-            or bool(item.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+            or stat.S_IMODE(item.st_mode) != 0o700
         ):
             raise DatabasePortalBridgeError(
                 f"database Portal {authority} is not an owner-private directory"
@@ -2463,7 +2505,7 @@ class DatabasePortalExecutionBridge:
                 or before.st_uid != os.geteuid()
                 or before.st_gid != os.getegid()
                 or int(before.st_nlink) != 1
-                or bool(before.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+                or stat.S_IMODE(before.st_mode) != 0o600
                 or int(before.st_size) > maximum_bytes
                 or cls._authority_fingerprint(before)
                 != cls._authority_fingerprint(published_before)
@@ -3036,7 +3078,7 @@ class DatabasePortalExecutionBridge:
                     or identity.st_uid != os.geteuid()
                     or identity.st_gid != os.getegid()
                     or int(identity.st_nlink) != 1
-                    or bool(identity.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+                    or stat.S_IMODE(identity.st_mode) != 0o600
                     or cls._authority_fingerprint(identity)
                     != cls._authority_fingerprint(published)
                 ):
@@ -3655,6 +3697,7 @@ class DatabasePortalExecutionBridge:
             and daemon_pass.get("active_task_id") == ""
             and daemon_pass.get("selection_idle_reason") == ""
             and daemon_pass.get("ordinary_provider_dispatch_allowed") is True
+            and daemon_pass.get("max_task_attempts") == 1
             and daemon_pass.get("execution_slice_task_statuses")
             == {task_alias: "ready"}
             and daemon_pass.get("execution_slice_task_cids_by_id")
@@ -3809,6 +3852,78 @@ class DatabasePortalExecutionBridge:
             and state.get("validation_obsolescence_rearm_receipts") == {}
             and state.get("strategy_generation") == 0
             and state.get("selection_idle_reason") == ""
+            and all(
+                daemon_pass.get(field) == state.get(field)
+                for field in (
+                    "completed_count",
+                    "ready_count",
+                    "selectable_ready_count",
+                    "eligible_ready_count",
+                    "strict_deprioritized_ready_count",
+                    "waiting_count",
+                    "blocked_count",
+                    "active_task_id",
+                    "selection_idle_reason",
+                )
+            )
+            and daemon_pass.get("shared_completed_task_ids")
+            == state.get("completed_task_ids")
+            and all(
+                daemon_pass.get(field) == []
+                for field in (
+                    "attempt_limited_task_ids",
+                    "completion_receipt_task_ids",
+                    "manual_completion_authority_affected_goal_ids",
+                    "manual_completion_authority_dependency_task_ids",
+                    "manual_completion_authority_required_task_ids",
+                    "manual_completion_authority_task_ids",
+                    "manual_completion_renewal_quarantined_task_ids",
+                    "manual_completion_revalidation_only_task_ids",
+                    "manual_completion_revalidation_task_ids",
+                    "quarantined_manual_completion_status_task_ids",
+                    "released_retry_budget_strategy_block_task_ids",
+                    "retry_budget_rearmed_task_ids",
+                    "retry_budget_reset_deferred_task_ids",
+                    "retry_budget_reset_task_ids",
+                    "shared_active_merge_task_ids",
+                )
+            )
+            and daemon_pass.get(
+                "manual_completion_authority_revalidation_only"
+            )
+            is False
+            and daemon_pass.get("virgin_task_transfer")
+            == {
+                "granted_away_task_ids": [],
+                "granted_to_lane_task_ids": [],
+                "mode": "",
+                "request_task_id": "",
+            }
+            and daemon_pass.get("projection_delta_keys")
+            == [
+                "active_task_cid",
+                "active_task_id",
+                "active_task_key",
+                "active_task_started_at",
+                "active_task_title",
+                "active_task_track",
+                "eligible_ready_count",
+                "eligible_ready_task_ids",
+                "heartbeat_at",
+                "last_progress_at",
+                "ready_count",
+                "ready_task_ids",
+                "recommended_actions",
+                "recommended_task_id",
+                "selectable_ready_count",
+                "selectable_ready_task_ids",
+                "task_artifacts",
+                "task_count",
+                "task_identities",
+                "task_statuses",
+                "task_validation",
+            ]
+            and daemon_pass.get("protected_path_conflicts") == {}
         ):
             return None
 
