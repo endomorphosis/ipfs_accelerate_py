@@ -69,6 +69,10 @@ DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE: Final[str] = "DatabasePortalExecutio
 DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-execution-receipt@1"
 )
+DATABASE_PORTAL_POST_COMMIT_RECOVERY_DIAGNOSTIC_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-post-commit-recovery-diagnostic@1"
+)
 DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-completion-binding@1"
@@ -796,14 +800,19 @@ _POST_MERGE_RECOVERY_LOG_STAGES: Final[frozenset[str]] = frozenset(
         "callback_cached_receipt_rejected",
         "callback_checkout_contention",
         "callback_checkout_deferral_rejected",
+        "callback_control_authority_rejected",
         "callback_identity_rejected",
+        "callback_integration_evidence_rejected",
+        "callback_integration_source_rejected",
         "callback_loaded_task_rejected",
+        "callback_owned_projection_rejected",
         "callback_projection_rejected",
         "callback_submodule_cleanup_failed",
         "callback_submodule_identity_rejected",
         "callback_submodule_initialization_failed",
         "callback_target_changed_after_checkout",
         "callback_target_changed_before_receipt",
+        "callback_transport_rejected",
         "callback_transaction_rejected",
         "callback_validation_exception",
         "callback_worktree_add_failed",
@@ -821,6 +830,209 @@ _POST_MERGE_RECOVERY_LOG_STAGES: Final[frozenset[str]] = frozenset(
 _POST_MERGE_RECOVERY_DEBUG_STAGES: Final[frozenset[str]] = frozenset(
     _POST_MERGE_RECOVERY_LOG_STAGES - {"callback_checkout_contention"}
 )
+_POST_MERGE_RECOVERY_REJECTION_STAGES: Final[frozenset[str]] = frozenset(
+    {
+        "callback_authority_rejected_after_checkout",
+        "callback_authority_rejected_before_receipt",
+        "callback_cached_receipt_rejected",
+        "callback_checkout_deferral_rejected",
+        "callback_control_authority_rejected",
+        "callback_identity_rejected",
+        "callback_integration_evidence_rejected",
+        "callback_integration_source_rejected",
+        "callback_loaded_task_rejected",
+        "callback_owned_projection_rejected",
+        "callback_projection_rejected",
+        "callback_submodule_cleanup_failed",
+        "callback_submodule_identity_rejected",
+        "callback_submodule_initialization_failed",
+        "callback_target_changed_after_checkout",
+        "callback_target_changed_before_receipt",
+        "callback_transaction_rejected",
+        "callback_transport_rejected",
+        "callback_validation_exception",
+        "callback_worktree_add_failed",
+    }
+)
+_POST_MERGE_RECOVERY_REASON_CODES_BY_STAGE: Final[
+    Mapping[str, frozenset[str]]
+] = {
+    **{
+        stage: frozenset({stage})
+        for stage in _POST_MERGE_RECOVERY_REJECTION_STAGES
+    },
+    "callback_transport_rejected": frozenset(
+        {
+            "callback_transport_rejected",
+            "event_chain_rejected",
+            "queue_row_changed",
+            "source_count_rejected",
+        }
+    ),
+    "callback_owned_projection_rejected": frozenset(
+        {
+            "attempt_binding_changed",
+            "attempt_paths_changed",
+            "callback_owned_projection_rejected",
+            "post_settlement_projection_rejected",
+            "projection_absent",
+        }
+    ),
+    "callback_control_authority_rejected": frozenset(
+        {
+            "callback_control_authority_rejected",
+            "quarantine_receipt_or_attempt_binding_changed",
+        }
+    ),
+    "callback_integration_source_rejected": frozenset(
+        {
+            "callback_integration_source_rejected",
+            "train_or_current_target_evidence_rejected",
+        }
+    ),
+    "callback_integration_evidence_rejected": frozenset(
+        {
+            "callback_integration_evidence_rejected",
+            "no_typed_nested_rejection",
+        }
+    ),
+    "callback_transaction_rejected": frozenset(
+        {
+            "callback_transaction_rejected",
+            "transaction_rejected",
+        }
+    ),
+}
+_OWNED_POST_MERGE_ADMISSION_GATES: Final[frozenset[str]] = frozenset(
+    {
+        "admitted",
+        "canonical_task_identity_rejected",
+        "canonical_task_missing",
+        "canonical_task_read_rejected",
+        "lineage_rejected",
+        "merge_queue_unavailable",
+        "metadata_rejected",
+        "not_evaluated",
+        "projection_path_rejected",
+        "projection_paths_rejected",
+        "projection_verification_rejected",
+        "request_binding_rejected",
+        "request_identity_rejected",
+        "shared_lane_scope_rejected",
+        "task_payload_rejected",
+        "task_source_unavailable",
+        "task_status_rejected",
+    }
+)
+_OWNED_POST_MERGE_ADMISSION_PHASES: Final[frozenset[str]] = frozenset(
+    {"initial", "post_settlement", "revalidate", "unspecified"}
+)
+_POST_COMMIT_RECOVERY_DIAGNOSTIC_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "disposition",
+        "reason",
+        "stage",
+        "reason_code",
+        "diagnostic_signature",
+        "request_id",
+        "task_cid",
+        "task_alias",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "task_authority_changed",
+        "provider_dispatched",
+        "attempt_consumed",
+        "mutation_provenance",
+        "admission",
+    }
+)
+_POST_COMMIT_RECOVERY_DISPOSITIONS: Final[frozenset[str]] = frozenset(
+    {
+        "rejected_after_observed_effect",
+        "rejected_effect_unknown",
+        "rejected_no_observed_effect",
+    }
+)
+_POST_COMMIT_RECOVERY_MUTATION_OBSERVATIONS: Final[frozenset[str]] = (
+    frozenset({"changed", "not_attempted", "unchanged", "unknown"})
+)
+_POST_COMMIT_RECOVERY_MUTATION_FIELDS: Final[frozenset[str]] = frozenset(
+    {"queue_observation", "event_stream_observation"}
+)
+_OWNED_POST_MERGE_ADMISSION_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "phase",
+        "gate",
+        "allowed_task_statuses",
+        "allow_shared_lane_source",
+        "allow_callback_reconciliation_transport_lineage",
+        "request_present",
+        "request_status",
+        "missing_output_lineage",
+        "callback_transport_lineage",
+        "projection_scope",
+        "task_source_getter",
+        "canonical_task_present",
+        "canonical_task_identity_matches",
+        "canonical_task_status",
+    }
+)
+
+
+def _empty_owned_post_merge_admission_trace(
+    *,
+    phase: str = "unspecified",
+) -> dict[str, Any]:
+    """Return the exact bounded shape used by observation-only diagnostics."""
+
+    bounded_phase = phase if phase in _OWNED_POST_MERGE_ADMISSION_PHASES else "unspecified"
+    return {
+        "phase": bounded_phase,
+        "gate": "not_evaluated",
+        "allowed_task_statuses": [],
+        "allow_shared_lane_source": False,
+        "allow_callback_reconciliation_transport_lineage": False,
+        "request_present": False,
+        "request_status": "",
+        "missing_output_lineage": False,
+        "callback_transport_lineage": False,
+        "projection_scope": "unresolved",
+        "task_source_getter": "unavailable",
+        "canonical_task_present": False,
+        "canonical_task_identity_matches": False,
+        "canonical_task_status": "",
+    }
+
+
+def _empty_post_commit_recovery_mutation_provenance() -> dict[str, str]:
+    """Return the closed effect-observation shape for one recovery attempt."""
+
+    return {
+        "queue_observation": "not_attempted",
+        "event_stream_observation": "not_attempted",
+    }
+
+
+def _post_commit_recovery_disposition(
+    provenance: Mapping[str, Any],
+) -> str:
+    """Classify observed recovery effects without inventing write counts."""
+
+    observations = {
+        str(provenance.get("queue_observation") or ""),
+        str(provenance.get("event_stream_observation") or ""),
+    }
+    if "changed" in observations:
+        return "rejected_after_observed_effect"
+    if "unknown" in observations:
+        return "rejected_effect_unknown"
+    return "rejected_no_observed_effect"
+
+
 _MAX_DATABASE_PORTAL_BINDING_BYTES: Final[int] = 64 * 1024
 _MAX_DATABASE_PORTAL_PROJECTION_BYTES: Final[int] = 1024 * 1024
 _POST_MERGE_RECOVERY_SCAN_LIMIT: Final[int] = 256
@@ -1171,6 +1383,183 @@ def _sleep_seconds(seconds: float) -> None:
 
 class DatabasePortalBridgeError(RuntimeError):
     """A database claim could not obtain trustworthy Portal evidence."""
+
+
+class DatabasePortalPostCommitRecoveryRejected(DatabasePortalBridgeError):
+    """Carry one exact observation-only post-commit recovery rejection.
+
+    This exception is deliberately not a recovery receipt.  It cannot grant a
+    retry, complete a task, or authorize a state transition.  The outer
+    database daemon may verify and log it, but must retain the canonical task
+    row unchanged.
+    """
+
+    def __init__(self, diagnostic: Mapping[str, Any]) -> None:
+        value = dict(diagnostic)
+        admission = value.get("admission")
+        mutation_provenance = value.get("mutation_provenance")
+        if (
+            set(value) != _POST_COMMIT_RECOVERY_DIAGNOSTIC_FIELDS
+            or value.get("schema")
+            != DATABASE_PORTAL_POST_COMMIT_RECOVERY_DIAGNOSTIC_SCHEMA
+            or value.get("disposition")
+            not in _POST_COMMIT_RECOVERY_DISPOSITIONS
+            or value.get("reason")
+            != "post_commit_recovery_evidence_rejected"
+            or value.get("stage")
+            not in _POST_MERGE_RECOVERY_REJECTION_STAGES
+            or value.get("reason_code")
+            not in _POST_MERGE_RECOVERY_REASON_CODES_BY_STAGE.get(
+                str(value.get("stage") or ""),
+                frozenset(),
+            )
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(value.get("diagnostic_signature") or ""),
+            )
+            is None
+            or any(
+                not isinstance(value.get(field), str)
+                or (field != "request_id" and not value.get(field))
+                or len(str(value.get(field) or "").encode("utf-8")) > 512
+                for field in (
+                    "request_id",
+                    "task_cid",
+                    "task_alias",
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                )
+            )
+            or type(value.get("fencing_token")) is not int
+            or int(value["fencing_token"]) < 0
+            or type(value.get("fence_epoch")) is not int
+            or int(value["fence_epoch"]) < 0
+            or value.get("task_authority_changed") is not False
+            or value.get("provider_dispatched") is not False
+            or value.get("attempt_consumed") is not False
+            or not isinstance(admission, Mapping)
+            or set(admission) != _OWNED_POST_MERGE_ADMISSION_FIELDS
+            or not isinstance(mutation_provenance, Mapping)
+            or set(mutation_provenance)
+            != _POST_COMMIT_RECOVERY_MUTATION_FIELDS
+            or any(
+                mutation_provenance.get(field)
+                not in _POST_COMMIT_RECOVERY_MUTATION_OBSERVATIONS
+                for field in _POST_COMMIT_RECOVERY_MUTATION_FIELDS
+            )
+            or value.get("disposition")
+            != _post_commit_recovery_disposition(mutation_provenance)
+        ):
+            raise ValueError("post-commit recovery diagnostic is malformed")
+        allowed_statuses = admission.get("allowed_task_statuses")
+        string_fields = (
+            "request_status",
+            "canonical_task_status",
+        )
+        if (
+            admission.get("phase") not in _OWNED_POST_MERGE_ADMISSION_PHASES
+            or admission.get("gate") not in _OWNED_POST_MERGE_ADMISSION_GATES
+            or admission.get("projection_scope")
+            not in {"same_lane", "shared_lane", "rejected", "unresolved"}
+            or admission.get("task_source_getter")
+            not in {"get", "get_task", "unavailable"}
+            or not isinstance(allowed_statuses, list)
+            or len(allowed_statuses) > 32
+            or allowed_statuses
+            != sorted(set(str(item) for item in allowed_statuses))
+            or any(
+                re.fullmatch(r"[a-z][a-z0-9_]{0,63}", item) is None
+                for item in allowed_statuses
+            )
+            or any(
+                type(admission.get(field)) is not bool
+                for field in (
+                    "allow_shared_lane_source",
+                    "allow_callback_reconciliation_transport_lineage",
+                    "request_present",
+                    "missing_output_lineage",
+                    "callback_transport_lineage",
+                    "canonical_task_present",
+                    "canonical_task_identity_matches",
+                )
+            )
+            or any(
+                not isinstance(admission.get(field), str)
+                or len(str(admission.get(field) or "").encode("utf-8"))
+                > 128
+                for field in string_fields
+            )
+        ):
+            raise ValueError(
+                "post-commit recovery diagnostic admission is malformed"
+            )
+        gate = str(admission.get("gate") or "")
+        getter = str(admission.get("task_source_getter") or "")
+        task_present = admission.get("canonical_task_present") is True
+        identity_matches = (
+            admission.get("canonical_task_identity_matches") is True
+        )
+        task_status = str(admission.get("canonical_task_status") or "")
+        if (
+            (identity_matches and not task_present)
+            or (task_status and not task_present)
+            or (
+                gate == "task_source_unavailable"
+                and getter != "unavailable"
+            )
+            or (
+                gate == "canonical_task_read_rejected"
+                and (
+                    getter == "unavailable"
+                    or task_present
+                    or identity_matches
+                    or bool(task_status)
+                )
+            )
+            or (
+                gate == "canonical_task_missing"
+                and (getter == "unavailable" or task_present)
+            )
+            or (
+                gate == "canonical_task_identity_rejected"
+                and (not task_present or identity_matches)
+            )
+            or (
+                gate == "task_status_rejected"
+                and (
+                    not task_present
+                    or not identity_matches
+                    or not task_status
+                    or task_status in allowed_statuses
+                )
+            )
+            or (
+                gate == "admitted"
+                and (
+                    not task_present
+                    or not identity_matches
+                    or task_status not in allowed_statuses
+                )
+            )
+        ):
+            raise ValueError(
+                "post-commit recovery diagnostic admission is inconsistent"
+            )
+        signature_body = dict(value)
+        signature_body.pop("diagnostic_signature", None)
+        expected_signature = _sha256_bytes(_canonical_json(signature_body))
+        if value.get("diagnostic_signature") != expected_signature:
+            raise ValueError("post-commit recovery diagnostic identity is forged")
+        normalized = dict(value)
+        normalized["admission"] = dict(admission)
+        normalized["mutation_provenance"] = dict(mutation_provenance)
+        super().__init__("post_commit_recovery_evidence_rejected")
+        self.reason = "post_commit_recovery_evidence_rejected"
+        self.attempt_consumed = False
+        self.provider_dispatched = False
+        self.task_authority_changed = False
+        self.diagnostic = normalized
 
 
 class DatabasePortalBridgeDeferred(DatabasePortalBridgeError):
@@ -3758,6 +4147,10 @@ class DatabasePortalExecutionBridge:
         *,
         request: Any | None = None,
         reason: str = "",
+        reason_code: str = "",
+        rejection_sink: list[dict[str, Any]] | None = None,
+        admission: Mapping[str, Any] | None = None,
+        mutation_provenance: Mapping[str, Any] | None = None,
     ) -> None:
         """Expose one bounded recovery gate without granting authority.
 
@@ -3792,6 +4185,39 @@ class DatabasePortalExecutionBridge:
             "_",
             raw_task_id,
         )[:128]
+        if (
+            rejection_sink is not None
+            and not rejection_sink
+            and bounded_stage in _POST_MERGE_RECOVERY_REJECTION_STAGES
+        ):
+            allowed_codes = _POST_MERGE_RECOVERY_REASON_CODES_BY_STAGE[
+                bounded_stage
+            ]
+            stable_reason_code = str(reason_code or bounded_stage)
+            if stable_reason_code not in allowed_codes:
+                stable_reason_code = bounded_stage
+            diagnostic_admission = (
+                dict(admission)
+                if isinstance(admission, Mapping)
+                else _empty_owned_post_merge_admission_trace()
+            )
+            diagnostic_mutation_provenance = (
+                dict(mutation_provenance)
+                if isinstance(mutation_provenance, Mapping)
+                else _empty_post_commit_recovery_mutation_provenance()
+            )
+            rejection_sink.append(
+                {
+                    "stage": bounded_stage,
+                    "reason_code": stable_reason_code,
+                    "request_id": raw_request_id,
+                    "task_alias": raw_task_id,
+                    "admission": diagnostic_admission,
+                    "mutation_provenance": (
+                        diagnostic_mutation_provenance
+                    ),
+                }
+            )
         log = (
             _LOG.debug
             if unknown_stage
@@ -3805,6 +4231,79 @@ class DatabasePortalExecutionBridge:
             task_id,
             bounded_reason,
         )
+
+    @staticmethod
+    def _reject_owned_post_merge_projection(
+        admission_trace: dict[str, Any] | None,
+        gate: str,
+    ) -> None:
+        """Record the actual failing admission predicate and reject."""
+
+        if gate not in _OWNED_POST_MERGE_ADMISSION_GATES:
+            raise ValueError("owned post-merge admission gate is unknown")
+        if admission_trace is not None and admission_trace.get("gate") in {
+            None,
+            "not_evaluated",
+        }:
+            admission_trace["gate"] = gate
+        return None
+
+    @staticmethod
+    def _post_commit_recovery_rejection(
+        *,
+        attempt: Any,
+        binding: Mapping[str, Any],
+        rejection: Mapping[str, Any],
+    ) -> DatabasePortalPostCommitRecoveryRejected:
+        """Seal one bounded rejection without creating transition authority."""
+
+        admission = rejection.get("admission")
+        mutation_provenance = rejection.get("mutation_provenance")
+        sealed_mutation_provenance = (
+            dict(mutation_provenance)
+            if isinstance(mutation_provenance, Mapping)
+            else _empty_post_commit_recovery_mutation_provenance()
+        )
+        diagnostic: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_POST_COMMIT_RECOVERY_DIAGNOSTIC_SCHEMA,
+            "disposition": _post_commit_recovery_disposition(
+                sealed_mutation_provenance
+            ),
+            "reason": "post_commit_recovery_evidence_rejected",
+            "stage": str(rejection.get("stage") or ""),
+            "reason_code": str(rejection.get("reason_code") or ""),
+            "request_id": str(rejection.get("request_id") or ""),
+            "task_cid": str(
+                binding.get("task_cid")
+                or getattr(attempt, "task_cid", "")
+                or ""
+            ),
+            "task_alias": str(
+                binding.get("task_alias")
+                or rejection.get("task_alias")
+                or getattr(attempt, "task_alias", "")
+                or ""
+            ),
+            "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+            "claim_id": str(getattr(attempt, "claim_id", "") or ""),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "fencing_token": getattr(attempt, "fencing_token", None),
+            "fence_epoch": getattr(attempt, "fence_epoch", None),
+            "task_authority_changed": False,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "mutation_provenance": sealed_mutation_provenance,
+            "admission": (
+                dict(admission)
+                if isinstance(admission, Mapping)
+                else _empty_owned_post_merge_admission_trace()
+            ),
+        }
+        signature_body = dict(diagnostic)
+        diagnostic["diagnostic_signature"] = _sha256_bytes(
+            _canonical_json(signature_body)
+        )
+        return DatabasePortalPostCommitRecoveryRejected(diagnostic)
 
     @classmethod
     def _post_merge_checkout_deferral_result(
@@ -4571,15 +5070,26 @@ class DatabasePortalExecutionBridge:
         task_cid: str,
         task_alias: str,
         allowed_statuses: frozenset[str] = frozenset({"blocked", "retrying"}),
+        admission_trace: dict[str, Any] | None = None,
     ) -> str:
         """Return an eligible canonical database status or an empty value."""
 
-        getter = getattr(self.task_source, "get_task", None) or getattr(
-            self.task_source,
-            "get",
-            None,
-        )
+        get_task = getattr(self.task_source, "get_task", None)
+        get_record = getattr(self.task_source, "get", None)
+        getter = get_task if callable(get_task) else get_record
+        if admission_trace is not None:
+            admission_trace["task_source_getter"] = (
+                "get_task"
+                if callable(get_task)
+                else "get"
+                if callable(get_record)
+                else "unavailable"
+            )
         if not callable(getter):
+            self._reject_owned_post_merge_projection(
+                admission_trace,
+                "task_source_unavailable",
+            )
             return ""
         try:
             record = getter(task_cid)
@@ -4601,19 +5111,52 @@ class DatabasePortalExecutionBridge:
                 or "quack attach" in detail.lower()
             ):
                 raise
+            self._reject_owned_post_merge_projection(
+                admission_trace,
+                "canonical_task_read_rejected",
+            )
             return ""
-        if (
-            record is None
-            or str(getattr(record, "task_cid", "") or "") != task_cid
-            or str(getattr(record, "task_alias", "") or "") != task_alias
-        ):
+        record_present = record is not None
+        identity_matches = bool(
+            record_present
+            and str(getattr(record, "task_cid", "") or "") == task_cid
+            and str(getattr(record, "task_alias", "") or "") == task_alias
+        )
+        observed_status = (
+            str(getattr(record, "status", "") or "").strip().lower()
+            if record_present
+            else ""
+        )
+        if admission_trace is not None:
+            admission_trace["canonical_task_present"] = record_present
+            admission_trace["canonical_task_identity_matches"] = (
+                identity_matches
+            )
+            admission_trace["canonical_task_status"] = observed_status[:128]
+        if not record_present:
+            self._reject_owned_post_merge_projection(
+                admission_trace,
+                "canonical_task_missing",
+            )
             return ""
-        status = str(getattr(record, "status", "") or "").strip().lower()
+        if not identity_matches:
+            self._reject_owned_post_merge_projection(
+                admission_trace,
+                "canonical_task_identity_rejected",
+            )
+            return ""
+        status = observed_status
         # Ordinary recovery stops once a fresh claim advances.  The dedicated
         # completion-recovery seed passes ``in_progress`` explicitly so the
         # successor can reproduce its queue evidence without widening the
         # maintenance scanner's authority.
-        return status if status in allowed_statuses else ""
+        if status not in allowed_statuses:
+            self._reject_owned_post_merge_projection(
+                admission_trace,
+                "task_status_rejected",
+            )
+            return ""
+        return status
 
     def _portal_projection_request_binding(
         self,
@@ -4785,19 +5328,69 @@ class DatabasePortalExecutionBridge:
         ),
         allow_shared_lane_source: bool = False,
         allow_callback_reconciliation_transport_lineage: bool = False,
+        admission_trace: dict[str, Any] | None = None,
     ) -> _DatabasePortalRecoveryProjection | None:
         """Prove that one eligible request came from this lane's sealed attempt."""
 
+        phase = (
+            str(admission_trace.get("phase") or "unspecified")
+            if admission_trace is not None
+            else "unspecified"
+        )
+        if admission_trace is not None:
+            admission_trace.clear()
+            admission_trace.update(
+                _empty_owned_post_merge_admission_trace(phase=phase)
+            )
+            admission_trace.update(
+                {
+                    "allowed_task_statuses": sorted(allowed_task_statuses),
+                    "allow_shared_lane_source": bool(
+                        allow_shared_lane_source
+                    ),
+                    "allow_callback_reconciliation_transport_lineage": bool(
+                        allow_callback_reconciliation_transport_lineage
+                    ),
+                    "request_present": request is not None,
+                    "request_status": str(
+                        getattr(request, "status", "") or ""
+                    )[:128],
+                }
+            )
         if self.merge_queue is None:
-            return None
-        if not self._request_has_missing_output_recovery_lineage(request) and not (
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "merge_queue_unavailable",
+            )
+        missing_output_lineage = (
+            self._request_has_missing_output_recovery_lineage(request)
+        )
+        callback_transport_lineage = (
+            self._request_has_callback_reconciliation_transport_lineage(
+                request
+            )
+        )
+        if admission_trace is not None:
+            admission_trace["missing_output_lineage"] = bool(
+                missing_output_lineage
+            )
+            admission_trace["callback_transport_lineage"] = bool(
+                callback_transport_lineage
+            )
+        if not missing_output_lineage and not (
             allow_callback_reconciliation_transport_lineage
-            and self._request_has_callback_reconciliation_transport_lineage(request)
+            and callback_transport_lineage
         ):
-            return None
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "lineage_rejected",
+            )
         metadata = getattr(request, "metadata", None)
         if not isinstance(metadata, Mapping):
-            return None
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "metadata_rejected",
+            )
         task_alias = str(getattr(request, "task_id", "") or "")
         portal_task_cid = str(
             getattr(request, "canonical_task_id", "") or ""
@@ -4826,34 +5419,54 @@ class DatabasePortalExecutionBridge:
             or metadata.get("completion_task_cids")
             != {task_alias: portal_task_cid}
         ):
-            return None
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "request_identity_rejected",
+            )
 
         task_payload = metadata.get("task")
         if not isinstance(task_payload, Mapping):
-            return None
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "task_payload_rejected",
+            )
         task_metadata = task_payload.get("metadata")
         if (
             not isinstance(task_metadata, Mapping)
             or task_payload.get("task_id") != task_alias
             or task_metadata.get("projection authority") != "false"
         ):
-            return None
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "task_payload_rejected",
+            )
 
         raw_projection = metadata.get("todo_path")
         if type(raw_projection) is not str or not raw_projection:
-            return None
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "projection_path_rejected",
+            )
         projection = Path(raw_projection)
         if (
             not projection.is_absolute()
             or str(projection) != raw_projection
             or any(part in {"", ".", ".."} for part in projection.parts[1:])
         ):
-            return None
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "projection_path_rejected",
+            )
         source_attempt_root = projection.parent.parent
         verification_root = self.attempt_root
         if source_attempt_root != self.attempt_root:
+            if admission_trace is not None:
+                admission_trace["projection_scope"] = "rejected"
             if not allow_shared_lane_source:
-                return None
+                return self._reject_owned_post_merge_projection(
+                    admission_trace,
+                    "shared_lane_scope_rejected",
+                )
             try:
                 raw_shared_state_root = self.attempt_root.parent.parent
                 if (
@@ -4861,7 +5474,10 @@ class DatabasePortalExecutionBridge:
                     or source_attempt_root.parent.parent
                     != raw_shared_state_root
                 ):
-                    return None
+                    return self._reject_owned_post_merge_projection(
+                        admission_trace,
+                        "shared_lane_scope_rejected",
+                    )
                 shared_state_root = raw_shared_state_root.resolve(strict=True)
                 current_attempt_root = self.attempt_root.resolve(strict=True)
                 source_attempt_root_resolved = source_attempt_root.resolve(
@@ -4874,7 +5490,10 @@ class DatabasePortalExecutionBridge:
                     shared_state_root
                 )
             except (OSError, RuntimeError, ValueError):
-                return None
+                return self._reject_owned_post_merge_projection(
+                    admission_trace,
+                    "shared_lane_scope_rejected",
+                )
             current_lane_match = re.fullmatch(
                 r"lane-([0-9]+)",
                 current_relative.parts[0] if current_relative.parts else "",
@@ -4917,8 +5536,15 @@ class DatabasePortalExecutionBridge:
                 or re.fullmatch(r"[0-9a-f]{24}", projection.parent.name)
                 is None
             ):
-                return None
+                return self._reject_owned_post_merge_projection(
+                    admission_trace,
+                    "shared_lane_scope_rejected",
+                )
             verification_root = source_attempt_root_resolved
+            if admission_trace is not None:
+                admission_trace["projection_scope"] = "shared_lane"
+        elif admission_trace is not None:
+            admission_trace["projection_scope"] = "same_lane"
         root = projection.parent
         paths = DatabasePortalAttemptPaths(
             root=root,
@@ -4937,7 +5563,10 @@ class DatabasePortalExecutionBridge:
                 ("events_path", paths.events),
             )
         ):
-            return None
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "projection_paths_rejected",
+            )
         try:
             verify_database_portal_attempt_projection(
                 projection,
@@ -4946,7 +5575,10 @@ class DatabasePortalExecutionBridge:
             )
             binding = dict(self._read_binding(paths.binding))
         except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
-            return None
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "projection_verification_rejected",
+            )
         request_binding = self._portal_projection_request_binding(
             request,
             paths=paths,
@@ -4954,15 +5586,24 @@ class DatabasePortalExecutionBridge:
             allowed_root=verification_root,
         )
         if request_binding is None:
-            return None
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "request_binding_rejected",
+            )
         database_task_cid = str(binding.get("task_cid") or "")
         task_status = self._current_recovery_task_status(
             task_cid=database_task_cid,
             task_alias=task_alias,
             allowed_statuses=allowed_task_statuses,
+            admission_trace=admission_trace,
         )
         if not task_status:
-            return None
+            return self._reject_owned_post_merge_projection(
+                admission_trace,
+                "task_status_rejected",
+            )
+        if admission_trace is not None:
+            admission_trace["gate"] = "admitted"
         return _DatabasePortalRecoveryProjection(
             paths=paths,
             binding=binding,
@@ -8890,6 +9531,7 @@ class DatabasePortalExecutionBridge:
         request: Any,
         projection: _DatabasePortalRecoveryProjection,
         revalidate_authority: Callable[[], bool] | None = None,
+        rejection_sink: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | _PostMergeRecoveryDisposition | None:
         """Run one fresh uncached declared validation at the bound target."""
 
@@ -8930,6 +9572,7 @@ class DatabasePortalExecutionBridge:
                 "callback_projection_rejected",
                 request=request,
                 reason=type(exc).__name__,
+                rejection_sink=rejection_sink,
             )
             return None
         if (
@@ -8941,6 +9584,7 @@ class DatabasePortalExecutionBridge:
             self._record_post_merge_recovery_stage(
                 "callback_identity_rejected",
                 request=request,
+                rejection_sink=rejection_sink,
             )
             return None
         path = self._post_merge_callback_integration_receipt_path(
@@ -9008,6 +9652,7 @@ class DatabasePortalExecutionBridge:
                 self._record_post_merge_recovery_stage(
                     "callback_loaded_task_rejected",
                     request=request,
+                    rejection_sink=rejection_sink,
                 )
                 return None
 
@@ -9058,6 +9703,7 @@ class DatabasePortalExecutionBridge:
                     self._record_post_merge_recovery_stage(
                         "callback_cached_receipt_rejected",
                         request=request,
+                        rejection_sink=rejection_sink,
                     )
                     return result
                 qualified: dict[str, Any]
@@ -9108,6 +9754,7 @@ class DatabasePortalExecutionBridge:
                     self._record_post_merge_recovery_stage(
                         "callback_authority_rejected_before_receipt",
                         request=request,
+                        rejection_sink=rejection_sink,
                     )
                     return result
                 if not target_generation_is_current():
@@ -9118,6 +9765,7 @@ class DatabasePortalExecutionBridge:
                     self._record_post_merge_recovery_stage(
                         "callback_target_changed_before_receipt",
                         request=request,
+                        rejection_sink=rejection_sink,
                     )
                     return result
                 if cached is None:
@@ -9142,6 +9790,7 @@ class DatabasePortalExecutionBridge:
                         self._record_post_merge_recovery_stage(
                             "callback_cached_receipt_rejected",
                             request=request,
+                            rejection_sink=rejection_sink,
                         )
                         return result
                     qualified = dict(admitted)
@@ -9170,6 +9819,7 @@ class DatabasePortalExecutionBridge:
                     self._record_post_merge_recovery_stage(
                         "callback_authority_rejected_after_checkout",
                         request=request,
+                        rejection_sink=rejection_sink,
                     )
                     return result
                 if not target_generation_is_current():
@@ -9179,6 +9829,7 @@ class DatabasePortalExecutionBridge:
                     self._record_post_merge_recovery_stage(
                         "callback_target_changed_after_checkout",
                         request=request,
+                        rejection_sink=rejection_sink,
                     )
                     return result
                 if path.exists():
@@ -9205,6 +9856,7 @@ class DatabasePortalExecutionBridge:
                         self._record_post_merge_recovery_stage(
                             "callback_target_changed_after_checkout",
                             request=request,
+                            rejection_sink=rejection_sink,
                         )
                         return result
                     worktree = subprocess.run(
@@ -9221,6 +9873,7 @@ class DatabasePortalExecutionBridge:
                             "callback_worktree_add_failed",
                             request=request,
                             reason=f"returncode={worktree.returncode}",
+                            rejection_sink=rejection_sink,
                         )
                         return result
                     added = True
@@ -9245,6 +9898,7 @@ class DatabasePortalExecutionBridge:
                                 "callback_submodule_initialization_failed",
                                 request=request,
                                 reason=type(exc).__name__,
+                                rejection_sink=rejection_sink,
                             )
                             return result
                         for relative in callback_submodule_paths:
@@ -9289,6 +9943,7 @@ class DatabasePortalExecutionBridge:
                                     "callback_submodule_identity_rejected",
                                     request=request,
                                     reason=relative,
+                                    rejection_sink=rejection_sink,
                                 )
                                 return result
                     pre_identities: list[dict[str, str]] | None = None
@@ -9598,6 +10253,7 @@ class DatabasePortalExecutionBridge:
                     self._record_post_merge_recovery_stage(
                         "callback_validation_exception",
                         request=request,
+                        rejection_sink=rejection_sink,
                     )
                     return result
                 finally:
@@ -9632,6 +10288,7 @@ class DatabasePortalExecutionBridge:
                                 self._record_post_merge_recovery_stage(
                                     "callback_submodule_cleanup_failed",
                                     request=request,
+                                    rejection_sink=rejection_sink,
                                 )
                         cleanup = cleanup_workspace(temporary, ephemeral=True)
                         if (
@@ -9703,19 +10360,6 @@ class DatabasePortalExecutionBridge:
                         f"{transaction.get('checkout_mutation_timeout_seconds')}"
                     )
                 transaction_code = transaction_reason.split(" ", 1)[0]
-                if transaction_code not in {
-                    "callback_authority_rejected_after_checkout",
-                    "callback_authority_rejected_before_receipt",
-                    "callback_target_changed_after_checkout",
-                    "callback_target_changed_before_receipt",
-                    "callback_validation_exception",
-                    "callback_worktree_add_failed",
-                }:
-                    self._record_post_merge_recovery_stage(
-                        "callback_transaction_rejected",
-                        request=request,
-                        reason=transaction_reason,
-                    )
                 if (
                     transaction_code == "checkout_mutation_lock_exists"
                     and isinstance(transaction, Mapping)
@@ -9729,6 +10373,7 @@ class DatabasePortalExecutionBridge:
                         self._record_post_merge_recovery_stage(
                             "callback_checkout_deferral_rejected",
                             request=request,
+                            rejection_sink=rejection_sink,
                         )
                         return None
                     self._record_post_merge_recovery_stage(
@@ -9739,12 +10384,28 @@ class DatabasePortalExecutionBridge:
                     return _PostMergeRecoveryDisposition(
                         result=deferral
                     )
+                if transaction_code not in {
+                    "callback_authority_rejected_after_checkout",
+                    "callback_authority_rejected_before_receipt",
+                    "callback_target_changed_after_checkout",
+                    "callback_target_changed_before_receipt",
+                    "callback_validation_exception",
+                    "callback_worktree_add_failed",
+                }:
+                    self._record_post_merge_recovery_stage(
+                        "callback_transaction_rejected",
+                        request=request,
+                        reason=transaction_reason,
+                        reason_code="transaction_rejected",
+                        rejection_sink=rejection_sink,
+                    )
                 return None
             qualification = transaction.get("qualification")
             if not isinstance(qualification, Mapping):
                 self._record_post_merge_recovery_stage(
                     "callback_cached_receipt_rejected",
                     request=request,
+                    rejection_sink=rejection_sink,
                 )
                 return None
             # The transaction callback obtains this value only from the
@@ -9764,9 +10425,18 @@ class DatabasePortalExecutionBridge:
         evidence_digest: Callable[[Mapping[str, Any]], str],
         train: Any | None = None,
         revalidate_authority: Callable[[], bool] | None = None,
+        rejection_sink: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | _PostMergeRecoveryDisposition | None:
         if train is None:
             if self.repository_root is None or self.merge_queue is None:
+                self._record_post_merge_recovery_stage(
+                    "callback_integration_source_rejected",
+                    request=request,
+                    reason_code=(
+                        "train_or_current_target_evidence_rejected"
+                    ),
+                    rejection_sink=rejection_sink,
+                )
                 return None
             from ..merge.merge_train import MergeTrain
 
@@ -9782,12 +10452,19 @@ class DatabasePortalExecutionBridge:
             train=train,
         )
         if source is None:
+            self._record_post_merge_recovery_stage(
+                "callback_integration_source_rejected",
+                request=request,
+                reason_code="train_or_current_target_evidence_rejected",
+                rejection_sink=rejection_sink,
+            )
             return None
         qualification = self._requalify_callback_integration(
             source,
             request=request,
             projection=projection,
             revalidate_authority=revalidate_authority,
+            rejection_sink=rejection_sink,
         )
         if isinstance(qualification, _PostMergeRecoveryDisposition):
             return qualification
@@ -21840,11 +22517,18 @@ class DatabasePortalExecutionBridge:
                 binding=binding,
             )
         except DatabasePortalBridgeError as retained_error:
-            landed = self._unknown_callback_landed_recovery_evidence(
-                attempt=attempt,
-                paths=paths,
-                binding=binding,
-            )
+            recovery_rejection: (
+                DatabasePortalPostCommitRecoveryRejected | None
+            ) = None
+            try:
+                landed = self._unknown_callback_landed_recovery_evidence(
+                    attempt=attempt,
+                    paths=paths,
+                    binding=binding,
+                )
+            except DatabasePortalPostCommitRecoveryRejected as exc:
+                recovery_rejection = exc
+                landed = None
             if landed is None:
                 try:
                     return self._recover_callback_no_effect(
@@ -21852,8 +22536,10 @@ class DatabasePortalExecutionBridge:
                         paths=paths,
                         binding=binding,
                     )
-                except DatabasePortalBridgeError:
-                    raise retained_error
+                except DatabasePortalBridgeError as fallback_error:
+                    if recovery_rejection is not None:
+                        raise recovery_rejection from retained_error
+                    raise retained_error from fallback_error
             return landed
 
     def _unknown_callback_landed_recovery_evidence(
@@ -21862,7 +22548,7 @@ class DatabasePortalExecutionBridge:
         attempt: Any,
         paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any],
-    ) -> Mapping[str, Any] | None:
+    ) -> Mapping[str, Any]:
         """Requalify an exact landed callback whose control CAS was lost.
 
         Queue completion and Portal lifecycle events are evidence, not task
@@ -21872,13 +22558,51 @@ class DatabasePortalExecutionBridge:
         revision CAS checks before it may rearm the task.
         """
 
+        rejections: list[dict[str, Any]] = []
+        mutation_provenance = (
+            _empty_post_commit_recovery_mutation_provenance()
+        )
+
+        def rejected(
+            stage: str,
+            *,
+            request: Any | None = None,
+            reason: str = "",
+            reason_code: str = "",
+            admission: Mapping[str, Any] | None = None,
+        ) -> DatabasePortalPostCommitRecoveryRejected:
+            self._record_post_merge_recovery_stage(
+                stage,
+                request=request,
+                reason=reason,
+                reason_code=reason_code,
+                rejection_sink=rejections,
+                admission=admission,
+                mutation_provenance=mutation_provenance,
+            )
+            if not rejections:
+                raise DatabasePortalBridgeError(
+                    "post-commit recovery rejection was not classified"
+                )
+            return self._post_commit_recovery_rejection(
+                attempt=attempt,
+                binding=binding,
+                rejection=rejections[0],
+            )
+
         if self.merge_queue is None:
-            return None
+            raise rejected(
+                "callback_transport_rejected",
+                reason_code="source_count_rejected",
+            )
         alias = str(binding.get("task_alias") or "")
         try:
             events = self._verified_event_chain(paths)
-        except DatabasePortalBridgeError:
-            return None
+        except DatabasePortalBridgeError as event_error:
+            raise rejected(
+                "callback_transport_rejected",
+                reason_code="event_chain_rejected",
+            ) from event_error
         sources: list[Mapping[str, Any]] = []
         transport_mode = False
         for event in events:
@@ -21954,11 +22678,22 @@ class DatabasePortalExecutionBridge:
                         }
                     )
         if len(sources) != 1:
-            return None
+            raise rejected(
+                "callback_transport_rejected",
+                reason=(
+                    f"source_count={len(sources)} "
+                    f"transport_mode={int(transport_mode)}"
+                ),
+                reason_code="source_count_rejected",
+            )
         request_id = str(sources[0]["request_id"])
         request = self.merge_queue.get(request_id)
         if transport_mode and request != transport_verified_request:
-            return None
+            raise rejected(
+                "callback_transport_rejected",
+                request=request,
+                reason_code="queue_row_changed",
+            )
         projection_statuses = frozenset(
             {"quarantined"}
             if transport_mode
@@ -21966,12 +22701,16 @@ class DatabasePortalExecutionBridge:
             if str(getattr(request, "status", "") or "") == "completed"
             else {"quarantined"}
         )
+        admission_trace = _empty_owned_post_merge_admission_trace(
+            phase="initial"
+        )
         projection = (
             self._owned_post_merge_recovery_projection(
                 request,
                 allowed_task_statuses=projection_statuses,
                 allow_shared_lane_source=True,
                 allow_callback_reconciliation_transport_lineage=transport_mode,
+                admission_trace=admission_trace,
             )
             if request is not None
             else None
@@ -21981,7 +22720,18 @@ class DatabasePortalExecutionBridge:
             or projection.paths != paths
             or dict(projection.binding) != dict(binding)
         ):
-            return None
+            raise rejected(
+                "callback_owned_projection_rejected",
+                request=request,
+                reason_code=(
+                    "projection_absent"
+                    if projection is None
+                    else "attempt_paths_changed"
+                    if projection.paths != paths
+                    else "attempt_binding_changed"
+                ),
+                admission=admission_trace,
+            )
 
         record = self._record_for_attempt(self.task_source, attempt)
         body = getattr(record, "body", None)
@@ -22013,7 +22763,14 @@ class DatabasePortalExecutionBridge:
             or control_receipt.get("fence_epoch")
             != int(getattr(attempt, "fence_epoch", -1))
         ):
-            return None
+            raise rejected(
+                "callback_control_authority_rejected",
+                request=request,
+                reason_code=(
+                    "quarantine_receipt_or_attempt_binding_changed"
+                ),
+                admission=admission_trace,
+            )
         sealed_receipt = dict(control_receipt)
 
         def control_authority_is_current() -> bool:
@@ -22038,11 +22795,85 @@ class DatabasePortalExecutionBridge:
             )
 
         if transport_source is not None:
-            request = self._settle_exact_callback_reconciliation_transport(
-                request=request,
-                projection=projection,
-                terminal=transport_source,
-                control_authority_is_current=control_authority_is_current,
+            if not control_authority_is_current():
+                raise rejected(
+                    "callback_control_authority_rejected",
+                    request=request,
+                    reason_code=(
+                        "quarantine_receipt_or_attempt_binding_changed"
+                    ),
+                    admission=admission_trace,
+                )
+            before_transport_request = request
+            try:
+                before_event_bytes = paths.events.read_bytes()
+            except OSError:
+                before_event_bytes = None
+            mutation_provenance.update(
+                {
+                    "queue_observation": "unknown",
+                    "event_stream_observation": "unknown",
+                }
+            )
+            settlement_error: Exception | None = None
+            try:
+                settled_request = (
+                    self._settle_exact_callback_reconciliation_transport(
+                        request=request,
+                        projection=projection,
+                        terminal=transport_source,
+                        control_authority_is_current=(
+                            control_authority_is_current
+                        ),
+                    )
+                )
+            except Exception as exc:
+                settlement_error = exc
+                settled_request = None
+            try:
+                observed_request = self.merge_queue.get(request_id)
+            except Exception:
+                observed_request = None
+                mutation_provenance["queue_observation"] = "unknown"
+            else:
+                mutation_provenance["queue_observation"] = (
+                    "unchanged"
+                    if observed_request == before_transport_request
+                    else "changed"
+                )
+            try:
+                after_event_bytes = paths.events.read_bytes()
+            except OSError:
+                mutation_provenance["event_stream_observation"] = "unknown"
+            else:
+                mutation_provenance["event_stream_observation"] = (
+                    "unknown"
+                    if before_event_bytes is None
+                    else "unchanged"
+                    if after_event_bytes == before_event_bytes
+                    else "changed"
+                )
+            if settlement_error is not None:
+                raise rejected(
+                    "callback_transaction_rejected",
+                    request=observed_request,
+                    reason_code="transaction_rejected",
+                    admission=admission_trace,
+                ) from settlement_error
+            request = settled_request
+            if request is None and not control_authority_is_current():
+                raise rejected(
+                    "callback_control_authority_rejected",
+                    request=observed_request,
+                    reason_code=(
+                        "quarantine_receipt_or_attempt_binding_changed"
+                    ),
+                    admission=admission_trace,
+                )
+            post_settlement_admission = (
+                _empty_owned_post_merge_admission_trace(
+                    phase="post_settlement"
+                )
             )
             projection = (
                 self._owned_post_merge_recovery_projection(
@@ -22050,6 +22881,7 @@ class DatabasePortalExecutionBridge:
                     allowed_task_statuses=frozenset({"quarantined"}),
                     allow_shared_lane_source=True,
                     allow_callback_reconciliation_transport_lineage=True,
+                    admission_trace=post_settlement_admission,
                 )
                 if request is not None
                 else None
@@ -22061,23 +22893,51 @@ class DatabasePortalExecutionBridge:
                 or projection.paths != paths
                 or dict(projection.binding) != dict(binding)
             ):
-                return None
+                raise rejected(
+                    "callback_owned_projection_rejected",
+                    request=request,
+                    reason_code="post_settlement_projection_rejected",
+                    admission=post_settlement_admission,
+                )
             projection_statuses = frozenset({"quarantined"})
 
         def authority_is_current() -> bool:
             if not control_authority_is_current():
                 return False
             current_request = self.merge_queue.get(request_id)
+            revalidation_admission = (
+                _empty_owned_post_merge_admission_trace(
+                    phase="revalidate"
+                )
+            )
             current_projection = (
                 self._owned_post_merge_recovery_projection(
                     current_request,
                     allowed_task_statuses=projection_statuses,
                     allow_shared_lane_source=True,
                     allow_callback_reconciliation_transport_lineage=transport_mode,
+                    admission_trace=revalidation_admission,
                 )
                 if current_request is not None
                 else None
             )
+            if (
+                current_request != request
+                or current_projection != projection
+            ):
+                self._record_post_merge_recovery_stage(
+                    "callback_owned_projection_rejected",
+                    request=current_request,
+                    reason_code=(
+                        "projection_absent"
+                        if current_projection is None
+                        else "attempt_binding_changed"
+                    ),
+                    rejection_sink=rejections,
+                    admission=revalidation_admission,
+                    mutation_provenance=mutation_provenance,
+                )
+                return False
             return bool(
                 current_request == request
                 and current_projection == projection
@@ -22090,10 +22950,26 @@ class DatabasePortalExecutionBridge:
                 _canonical_json(item)
             ),
             revalidate_authority=authority_is_current,
+            rejection_sink=rejections,
         )
         if isinstance(evidence, _PostMergeRecoveryDisposition):
             return dict(evidence.result)
-        return dict(evidence) if isinstance(evidence, Mapping) else None
+        if isinstance(evidence, Mapping):
+            return dict(evidence)
+        if not rejections:
+            self._record_post_merge_recovery_stage(
+                "callback_integration_evidence_rejected",
+                request=request,
+                reason_code="no_typed_nested_rejection",
+                rejection_sink=rejections,
+                mutation_provenance=mutation_provenance,
+            )
+        rejections[0]["mutation_provenance"] = dict(mutation_provenance)
+        raise self._post_commit_recovery_rejection(
+            attempt=attempt,
+            binding=binding,
+            rejection=rejections[0],
+        )
 
     def _exact_terminal_callback_reconciliation_transport(
         self,

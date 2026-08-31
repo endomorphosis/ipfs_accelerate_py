@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -126,6 +127,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalConsumedAttemptTerminal,
     DatabasePortalExecutionBridge,
     DatabasePortalHistoricalFingerprintUnavailable,
+    DatabasePortalPostCommitRecoveryRejected,
     DatabasePortalProtectedPathPreserved,
     DatabasePortalValidationRetry,
     database_portal_consumed_no_progress_fingerprint,
@@ -144,6 +146,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
     DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS,
+    DATABASE_PORTAL_POST_COMMIT_RECOVERY_DIAGNOSTIC_SCHEMA,
     DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA,
     DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
     DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
@@ -5510,6 +5513,472 @@ def test_unknown_callback_reconciliation_paginates_and_counts_only_changes(
             "cursor": "page:2",
         },
     ]
+
+
+def _sealed_post_commit_recovery_diagnostic(
+    *,
+    task: object,
+    attempt: object,
+    admission: Mapping[str, object],
+    mutation_provenance: Mapping[str, str] | None = None,
+    request_id: str = "request:post-commit-diagnostic",
+    stage: str = "callback_owned_projection_rejected",
+    reason_code: str = "projection_absent",
+) -> DatabasePortalPostCommitRecoveryRejected:
+    return DatabasePortalExecutionBridge._post_commit_recovery_rejection(
+        attempt=attempt,
+        binding={
+            "task_cid": str(getattr(task, "task_cid", "") or ""),
+            "task_alias": str(getattr(task, "task_alias", "") or ""),
+        },
+        rejection={
+            "stage": stage,
+            "reason_code": reason_code,
+            "request_id": request_id,
+            "task_alias": str(getattr(task, "task_alias", "") or ""),
+            "admission": dict(admission),
+            "mutation_provenance": dict(
+                mutation_provenance
+                or {
+                    "queue_observation": "not_attempted",
+                    "event_stream_observation": "not_attempted",
+                }
+            ),
+        },
+    )
+
+
+def _post_commit_recovery_admission(
+    **overrides: object,
+) -> dict[str, object]:
+    admission: dict[str, object] = {
+        "phase": "initial",
+        "gate": "task_status_rejected",
+        "allowed_task_statuses": ["blocked", "retrying"],
+        "allow_shared_lane_source": True,
+        "allow_callback_reconciliation_transport_lineage": True,
+        "request_present": True,
+        "request_status": "completed",
+        "missing_output_lineage": False,
+        "callback_transport_lineage": True,
+        "projection_scope": "shared_lane",
+        "task_source_getter": "get_task",
+        "canonical_task_present": True,
+        "canonical_task_identity_matches": True,
+        "canonical_task_status": "quarantined",
+    }
+    admission.update(overrides)
+    return admission
+
+
+def test_post_commit_recovery_diagnostic_unicode_signature_matches_bridge(
+) -> None:
+    task = SimpleNamespace(task_cid="task:cid:unicode", task_alias="DOEP-011")
+    attempt = SimpleNamespace(
+        task_cid=task.task_cid,
+        task_alias=task.task_alias,
+        attempt_id="attempt:unicode",
+        claim_id="claim:unicode",
+        lease_id="lease:unicode",
+        fencing_token=7,
+        fence_epoch=3,
+    )
+    rejection = _sealed_post_commit_recovery_diagnostic(
+        task=task,
+        attempt=attempt,
+        admission=_post_commit_recovery_admission(),
+        request_id="requête:回復",
+    )
+
+    verified = (
+        DatabaseImplementationDaemon._verified_post_commit_recovery_diagnostic(
+            rejection.diagnostic,
+            task=task,
+            attempt=attempt,
+        )
+    )
+
+    assert verified == rejection.diagnostic
+    assert verified["request_id"] == "requête:回復"
+
+
+@pytest.mark.parametrize(
+    ("gate", "task_observation"),
+    (
+        (
+            "task_source_unavailable",
+            {
+                "task_source_getter": "unavailable",
+                "canonical_task_present": False,
+                "canonical_task_identity_matches": False,
+                "canonical_task_status": "",
+            },
+        ),
+        (
+            "canonical_task_read_rejected",
+            {
+                "task_source_getter": "get_task",
+                "canonical_task_present": False,
+                "canonical_task_identity_matches": False,
+                "canonical_task_status": "",
+            },
+        ),
+        (
+            "canonical_task_missing",
+            {
+                "task_source_getter": "get_task",
+                "canonical_task_present": False,
+                "canonical_task_identity_matches": False,
+                "canonical_task_status": "",
+            },
+        ),
+        (
+            "canonical_task_identity_rejected",
+            {
+                "task_source_getter": "get_task",
+                "canonical_task_present": True,
+                "canonical_task_identity_matches": False,
+                "canonical_task_status": "quarantined",
+            },
+        ),
+        (
+            "task_status_rejected",
+            {
+                "task_source_getter": "get_task",
+                "canonical_task_present": True,
+                "canonical_task_identity_matches": True,
+                "canonical_task_status": "quarantined",
+            },
+        ),
+    ),
+)
+def test_post_commit_recovery_diagnostic_accepts_closed_task_admission_subtypes(
+    gate: str,
+    task_observation: Mapping[str, object],
+) -> None:
+    task = SimpleNamespace(task_cid="task:cid:subtype", task_alias="DOEP-011")
+    attempt = SimpleNamespace(
+        task_cid=task.task_cid,
+        task_alias=task.task_alias,
+        attempt_id="attempt:subtype",
+        claim_id="claim:subtype",
+        lease_id="lease:subtype",
+        fencing_token=11,
+        fence_epoch=5,
+    )
+    rejection = _sealed_post_commit_recovery_diagnostic(
+        task=task,
+        attempt=attempt,
+        admission=_post_commit_recovery_admission(
+            gate=gate,
+            **dict(task_observation),
+        ),
+    )
+
+    verified = (
+        DatabaseImplementationDaemon._verified_post_commit_recovery_diagnostic(
+            rejection.diagnostic,
+            task=task,
+            attempt=attempt,
+        )
+    )
+
+    assert verified["admission"]["gate"] == gate
+
+
+def test_post_commit_recovery_diagnostic_accepts_admitted_transaction_failure(
+) -> None:
+    task = SimpleNamespace(
+        task_cid="task:cid:transaction-failure",
+        task_alias="DOEP-011",
+    )
+    attempt = SimpleNamespace(
+        task_cid=task.task_cid,
+        task_alias=task.task_alias,
+        attempt_id="attempt:transaction-failure",
+        claim_id="claim:transaction-failure",
+        lease_id="lease:transaction-failure",
+        fencing_token=12,
+        fence_epoch=6,
+    )
+    rejection = _sealed_post_commit_recovery_diagnostic(
+        task=task,
+        attempt=attempt,
+        admission=_post_commit_recovery_admission(
+            gate="admitted",
+            canonical_task_status="blocked",
+        ),
+        stage="callback_transaction_rejected",
+        reason_code="transaction_rejected",
+    )
+
+    verified = (
+        DatabaseImplementationDaemon._verified_post_commit_recovery_diagnostic(
+            rejection.diagnostic,
+            task=task,
+            attempt=attempt,
+        )
+    )
+
+    assert verified["stage"] == "callback_transaction_rejected"
+    assert verified["reason_code"] == "transaction_rejected"
+    assert verified["admission"]["gate"] == "admitted"
+
+
+def test_post_commit_recovery_diagnostic_accepts_unobserved_transaction_failure(
+) -> None:
+    task = SimpleNamespace(
+        task_cid="task:cid:unobserved-transaction-failure",
+        task_alias="DOEP-011",
+    )
+    attempt = SimpleNamespace(
+        task_cid=task.task_cid,
+        task_alias=task.task_alias,
+        attempt_id="attempt:unobserved-transaction-failure",
+        claim_id="claim:unobserved-transaction-failure",
+        lease_id="lease:unobserved-transaction-failure",
+        fencing_token=13,
+        fence_epoch=6,
+    )
+    rejection = _sealed_post_commit_recovery_diagnostic(
+        task=task,
+        attempt=attempt,
+        admission={
+            "phase": "unspecified",
+            "gate": "not_evaluated",
+            "allowed_task_statuses": [],
+            "allow_shared_lane_source": False,
+            "allow_callback_reconciliation_transport_lineage": False,
+            "request_present": False,
+            "request_status": "",
+            "missing_output_lineage": False,
+            "callback_transport_lineage": False,
+            "projection_scope": "unresolved",
+            "task_source_getter": "unavailable",
+            "canonical_task_present": False,
+            "canonical_task_identity_matches": False,
+            "canonical_task_status": "",
+        },
+        stage="callback_transaction_rejected",
+        reason_code="transaction_rejected",
+    )
+
+    verified = (
+        DatabaseImplementationDaemon._verified_post_commit_recovery_diagnostic(
+            rejection.diagnostic,
+            task=task,
+            attempt=attempt,
+        )
+    )
+
+    assert verified["stage"] == "callback_transaction_rejected"
+    assert verified["reason_code"] == "transaction_rejected"
+    assert verified["admission"]["gate"] == "not_evaluated"
+
+
+def test_post_commit_recovery_diagnostic_reports_post_settlement_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-settlement-diagnostic",
+    )
+    task = SimpleNamespace(
+        task_cid="task:cid:post-settlement",
+        task_alias="DOEP-011",
+        status="quarantined",
+        body={
+            "completion_receipt": {
+                "operation": "database_portal_neutral_failure_quarantine",
+                "failure_kind": "provider_callback_outcome_unknown",
+                "retry_suppressed": True,
+                "attempt_id": "attempt:post-settlement",
+            }
+        },
+    )
+    attempt = SimpleNamespace(
+        task_cid=task.task_cid,
+        task_alias=task.task_alias,
+        status="failed",
+        attempt_id="attempt:post-settlement",
+        claim_id="claim:post-settlement",
+        lease_id="lease:post-settlement",
+        fencing_token=13,
+        fence_epoch=8,
+    )
+    mutation_provenance = {
+        "queue_observation": "changed",
+        "event_stream_observation": "unknown",
+    }
+    rejection = _sealed_post_commit_recovery_diagnostic(
+        task=task,
+        attempt=attempt,
+        admission=_post_commit_recovery_admission(phase="post_settlement"),
+        mutation_provenance=mutation_provenance,
+        reason_code="post_settlement_projection_rejected",
+    )
+    event_calls: list[str] = []
+    monkeypatch.setattr(daemon, "get_attempt", lambda _attempt_id: attempt)
+    monkeypatch.setattr(
+        daemon,
+        "_strict_resume_rejection_receipt_matches",
+        lambda *_args: True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_event",
+        lambda event_type, **_kwargs: event_calls.append(event_type),
+    )
+
+    def reject_recovery(_attempt: object) -> object:
+        raise rejection
+
+    daemon._post_commit_candidate_recovery_fn = reject_recovery
+    try:
+        outcome = daemon._reopen_unimplemented_unknown_callback_task(task)
+    finally:
+        daemon.close()
+
+    assert outcome is not None
+    assert outcome["changed"] is True
+    assert outcome["write_count"] == 1
+    assert outcome["effect_disposition"] == (
+        "rejected_after_observed_effect"
+    )
+    assert outcome["mutation_provenance"] == mutation_provenance
+    assert outcome["effect_observation_unknown"] is True
+    assert outcome["provider_dispatched"] is False
+    assert outcome["attempt_consumed"] is False
+    assert event_calls == []
+
+
+def test_post_commit_recovery_diagnostic_is_typed_deduplicated_and_no_write(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-commit-diagnostic",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        starting_revision = int(task.revision)
+        attempt = SimpleNamespace(
+            task_cid=task.task_cid,
+            task_alias=task.task_alias,
+            attempt_id="attempt:post-commit-diagnostic",
+            claim_id="claim:post-commit-diagnostic",
+            lease_id="lease:post-commit-diagnostic",
+            fencing_token=7,
+            fence_epoch=3,
+        )
+        admission = {
+            "phase": "initial",
+            "gate": "task_status_rejected",
+            "allowed_task_statuses": ["blocked", "retrying"],
+            "allow_shared_lane_source": False,
+            "allow_callback_reconciliation_transport_lineage": False,
+            "request_present": True,
+            "request_status": "completed",
+            "missing_output_lineage": True,
+            "callback_transport_lineage": False,
+            "projection_scope": "same_lane",
+            "task_source_getter": "get",
+            "canonical_task_present": True,
+            "canonical_task_identity_matches": True,
+            "canonical_task_status": "quarantined",
+        }
+
+        def diagnostic(*, request_status: str) -> dict[str, object]:
+            body: dict[str, object] = {
+                "schema": (
+                    DATABASE_PORTAL_POST_COMMIT_RECOVERY_DIAGNOSTIC_SCHEMA
+                ),
+                "disposition": "rejected_no_observed_effect",
+                "reason": "post_commit_recovery_evidence_rejected",
+                "stage": "callback_owned_projection_rejected",
+                "reason_code": "projection_absent",
+                "request_id": "request:post-commit-diagnostic",
+                "task_cid": task.task_cid,
+                "task_alias": task.task_alias,
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "fencing_token": attempt.fencing_token,
+                "fence_epoch": attempt.fence_epoch,
+                "task_authority_changed": False,
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                "mutation_provenance": {
+                    "queue_observation": "not_attempted",
+                    "event_stream_observation": "not_attempted",
+                },
+                "admission": {
+                    **admission,
+                    "request_status": request_status,
+                },
+            }
+            body["diagnostic_signature"] = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    body,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+            return body
+
+        caplog.set_level(
+            "INFO",
+            logger=(
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_daemon"
+            ),
+        )
+        first = daemon._verified_post_commit_recovery_diagnostic(
+            diagnostic(request_status="completed"),
+            task=task,
+            attempt=attempt,
+        )
+        daemon._observe_post_commit_recovery_diagnostic(first)
+        daemon._observe_post_commit_recovery_diagnostic(first)
+        changed = daemon._verified_post_commit_recovery_diagnostic(
+            diagnostic(request_status="processing"),
+            task=task,
+            attempt=attempt,
+        )
+        daemon._observe_post_commit_recovery_diagnostic(changed)
+
+        info_records = [
+            record
+            for record in caplog.records
+            if record.levelno == logging.INFO
+            and "Database post-commit recovery rejected"
+            in record.getMessage()
+        ]
+        assert len(info_records) == 2
+        assert len(daemon._post_commit_recovery_diagnostic_signatures) == 1
+        tampered = dict(changed)
+        tampered["diagnostic_signature"] = "sha256:" + "0" * 64
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="diagnostic identity is invalid",
+        ):
+            daemon._verified_post_commit_recovery_diagnostic(
+                tampered,
+                task=task,
+                attempt=attempt,
+            )
+        current = daemon.task_source.get(task.task_cid)
+        assert current is not None
+        assert int(current.revision) == starting_revision
+        assert daemon.task_source.get_queue_entry(task.task_cid) is None
+    finally:
+        daemon.close()
 
 
 def _exact_callback_no_effect_receipt(

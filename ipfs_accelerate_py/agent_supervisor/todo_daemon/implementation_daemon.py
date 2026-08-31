@@ -88413,6 +88413,343 @@ DATABASE_POST_MERGE_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-recovery@1"
 )
+DATABASE_PORTAL_POST_COMMIT_RECOVERY_DIAGNOSTIC_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-post-commit-recovery-diagnostic@1"
+)
+_POST_COMMIT_RECOVERY_DIAGNOSTIC_STAGES = frozenset(
+    {
+        "callback_authority_rejected_after_checkout",
+        "callback_authority_rejected_before_receipt",
+        "callback_cached_receipt_rejected",
+        "callback_checkout_deferral_rejected",
+        "callback_control_authority_rejected",
+        "callback_identity_rejected",
+        "callback_integration_evidence_rejected",
+        "callback_integration_source_rejected",
+        "callback_loaded_task_rejected",
+        "callback_owned_projection_rejected",
+        "callback_projection_rejected",
+        "callback_submodule_cleanup_failed",
+        "callback_submodule_identity_rejected",
+        "callback_submodule_initialization_failed",
+        "callback_target_changed_after_checkout",
+        "callback_target_changed_before_receipt",
+        "callback_transaction_rejected",
+        "callback_transport_rejected",
+        "callback_validation_exception",
+        "callback_worktree_add_failed",
+    }
+)
+_POST_COMMIT_RECOVERY_DIAGNOSTIC_REASON_CODES = {
+    **{
+        stage: frozenset({stage})
+        for stage in _POST_COMMIT_RECOVERY_DIAGNOSTIC_STAGES
+    },
+    "callback_transport_rejected": frozenset(
+        {
+            "callback_transport_rejected",
+            "event_chain_rejected",
+            "queue_row_changed",
+            "source_count_rejected",
+        }
+    ),
+    "callback_owned_projection_rejected": frozenset(
+        {
+            "attempt_binding_changed",
+            "attempt_paths_changed",
+            "callback_owned_projection_rejected",
+            "post_settlement_projection_rejected",
+            "projection_absent",
+        }
+    ),
+    "callback_control_authority_rejected": frozenset(
+        {
+            "callback_control_authority_rejected",
+            "quarantine_receipt_or_attempt_binding_changed",
+        }
+    ),
+    "callback_integration_source_rejected": frozenset(
+        {
+            "callback_integration_source_rejected",
+            "train_or_current_target_evidence_rejected",
+        }
+    ),
+    "callback_integration_evidence_rejected": frozenset(
+        {
+            "callback_integration_evidence_rejected",
+            "no_typed_nested_rejection",
+        }
+    ),
+    "callback_transaction_rejected": frozenset(
+        {
+            "callback_transaction_rejected",
+            "transaction_rejected",
+        }
+    ),
+}
+_POST_COMMIT_RECOVERY_DIAGNOSTIC_FIELDS = frozenset(
+    {
+        "schema",
+        "disposition",
+        "reason",
+        "stage",
+        "reason_code",
+        "diagnostic_signature",
+        "request_id",
+        "task_cid",
+        "task_alias",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "task_authority_changed",
+        "provider_dispatched",
+        "attempt_consumed",
+        "admission",
+        "mutation_provenance",
+    }
+)
+_POST_COMMIT_RECOVERY_DIAGNOSTIC_DISPOSITIONS = frozenset(
+    {
+        "rejected_no_observed_effect",
+        "rejected_after_observed_effect",
+        "rejected_effect_unknown",
+    }
+)
+_POST_COMMIT_RECOVERY_MUTATION_PROVENANCE_FIELDS = frozenset(
+    {"queue_observation", "event_stream_observation"}
+)
+_POST_COMMIT_RECOVERY_MUTATION_OBSERVATIONS = frozenset(
+    {"not_attempted", "unchanged", "changed", "unknown"}
+)
+_POST_COMMIT_RECOVERY_ADMISSION_FIELDS = frozenset(
+    {
+        "phase",
+        "gate",
+        "allowed_task_statuses",
+        "allow_shared_lane_source",
+        "allow_callback_reconciliation_transport_lineage",
+        "request_present",
+        "request_status",
+        "missing_output_lineage",
+        "callback_transport_lineage",
+        "projection_scope",
+        "task_source_getter",
+        "canonical_task_present",
+        "canonical_task_identity_matches",
+        "canonical_task_status",
+    }
+)
+_POST_COMMIT_RECOVERY_ADMISSION_GATES = frozenset(
+    {
+        "admitted",
+        "canonical_task_identity_rejected",
+        "canonical_task_missing",
+        "canonical_task_read_rejected",
+        "lineage_rejected",
+        "merge_queue_unavailable",
+        "metadata_rejected",
+        "not_evaluated",
+        "projection_path_rejected",
+        "projection_paths_rejected",
+        "projection_verification_rejected",
+        "request_binding_rejected",
+        "request_identity_rejected",
+        "shared_lane_scope_rejected",
+        "task_payload_rejected",
+        "task_source_unavailable",
+        "task_status_rejected",
+    }
+)
+
+
+def _post_commit_recovery_expected_disposition(
+    mutation_provenance: Mapping[str, Any],
+) -> str:
+    """Classify the two closed mutation observations without guessing."""
+
+    observations = tuple(
+        mutation_provenance.get(field)
+        for field in sorted(
+            _POST_COMMIT_RECOVERY_MUTATION_PROVENANCE_FIELDS
+        )
+    )
+    if "changed" in observations:
+        return "rejected_after_observed_effect"
+    if "unknown" in observations:
+        return "rejected_effect_unknown"
+    return "rejected_no_observed_effect"
+
+
+def _post_commit_recovery_admission_is_consistent(
+    admission: Mapping[str, Any],
+) -> bool:
+    """Accept only admission traces that one ordered bridge gate can emit."""
+
+    gate = str(admission.get("gate") or "")
+    allowed_statuses = admission.get("allowed_task_statuses")
+    request_present = admission.get("request_present") is True
+    missing_output_lineage = (
+        admission.get("missing_output_lineage") is True
+    )
+    callback_transport_lineage = (
+        admission.get("callback_transport_lineage") is True
+    )
+    allow_callback_transport = (
+        admission.get(
+            "allow_callback_reconciliation_transport_lineage"
+        )
+        is True
+    )
+    allow_shared_lane = admission.get("allow_shared_lane_source") is True
+    projection_scope = str(admission.get("projection_scope") or "")
+    task_source_getter = str(admission.get("task_source_getter") or "")
+    task_present = admission.get("canonical_task_present") is True
+    task_identity_matches = (
+        admission.get("canonical_task_identity_matches") is True
+    )
+    task_status = str(admission.get("canonical_task_status") or "")
+    lineage_admitted = bool(
+        missing_output_lineage
+        or (allow_callback_transport and callback_transport_lineage)
+    )
+    default_task_observation = bool(
+        task_source_getter == "unavailable"
+        and not task_present
+        and not task_identity_matches
+        and not task_status
+    )
+    if not isinstance(allowed_statuses, list):
+        return False
+    if task_identity_matches and not task_present:
+        return False
+    if not task_present and task_status:
+        return False
+    if task_source_getter == "unavailable" and not default_task_observation:
+        return False
+    if projection_scope == "shared_lane" and not allow_shared_lane:
+        return False
+
+    if gate == "not_evaluated":
+        return bool(
+            not allowed_statuses
+            and not request_present
+            and not admission.get("request_status")
+            and not missing_output_lineage
+            and not callback_transport_lineage
+            and projection_scope == "unresolved"
+            and default_task_observation
+        )
+    if gate == "merge_queue_unavailable":
+        return bool(
+            not missing_output_lineage
+            and not callback_transport_lineage
+            and projection_scope == "unresolved"
+            and default_task_observation
+        )
+    if gate == "lineage_rejected":
+        return bool(
+            not lineage_admitted
+            and projection_scope == "unresolved"
+            and default_task_observation
+        )
+    if not request_present or not lineage_admitted:
+        return False
+
+    unresolved_projection_gates = {
+        "metadata_rejected",
+        "projection_path_rejected",
+        "request_identity_rejected",
+        "task_payload_rejected",
+    }
+    if gate in unresolved_projection_gates:
+        return bool(
+            projection_scope == "unresolved"
+            and default_task_observation
+        )
+    if gate == "shared_lane_scope_rejected":
+        return bool(
+            projection_scope == "rejected"
+            and default_task_observation
+        )
+    if gate in {
+        "projection_paths_rejected",
+        "projection_verification_rejected",
+        "request_binding_rejected",
+    }:
+        return bool(
+            projection_scope in {"same_lane", "shared_lane"}
+            and default_task_observation
+        )
+    if gate == "task_source_unavailable":
+        return bool(
+            projection_scope in {"same_lane", "shared_lane"}
+            and default_task_observation
+        )
+    if gate in {"canonical_task_read_rejected", "canonical_task_missing"}:
+        return bool(
+            projection_scope in {"same_lane", "shared_lane"}
+            and task_source_getter in {"get", "get_task"}
+            and not task_present
+            and not task_identity_matches
+            and not task_status
+        )
+    if gate == "canonical_task_identity_rejected":
+        return bool(
+            projection_scope in {"same_lane", "shared_lane"}
+            and task_source_getter in {"get", "get_task"}
+            and task_present
+            and not task_identity_matches
+        )
+    if gate == "task_status_rejected":
+        return bool(
+            projection_scope in {"same_lane", "shared_lane"}
+            and task_source_getter in {"get", "get_task"}
+            and task_present
+            and task_identity_matches
+            and task_status
+            and task_status not in allowed_statuses
+        )
+    if gate == "admitted":
+        return bool(
+            projection_scope in {"same_lane", "shared_lane"}
+            and task_source_getter in {"get", "get_task"}
+            and task_present
+            and task_identity_matches
+            and task_status
+            and task_status in allowed_statuses
+        )
+    return False
+
+
+def _post_commit_recovery_stage_admission_is_consistent(
+    *,
+    stage: str,
+    reason_code: str,
+    admission: Mapping[str, Any],
+) -> bool:
+    """Bind projection rejection reasons to the gate that was observed."""
+
+    gate = str(admission.get("gate") or "")
+    phase = str(admission.get("phase") or "")
+    if stage == "callback_owned_projection_rejected":
+        if reason_code == "projection_absent":
+            return gate != "admitted"
+        if reason_code in {"attempt_binding_changed", "attempt_paths_changed"}:
+            return gate == "admitted"
+        if reason_code == "post_settlement_projection_rejected":
+            return phase == "post_settlement"
+        return False
+    if stage == "callback_control_authority_rejected":
+        return gate == "admitted"
+    if (
+        stage == "callback_transaction_rejected"
+        and reason_code == "transaction_rejected"
+    ):
+        return gate in {"admitted", "not_evaluated"}
+    return gate == "not_evaluated"
 DATABASE_POST_MERGE_CHECKOUT_DEFERRAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-callback-checkout-deferral@1"
@@ -90374,6 +90711,12 @@ class DatabaseImplementationDaemon:
         self._landed_recovery_denials: dict[
             tuple[str, int, str, str],
             tuple[int, float],
+        ] = {}
+        # Observation-only rejection signatures.  A stable rejected candidate
+        # is logged once per daemon process; a changed gate is surfaced once
+        # more.  This cache never grants task, queue, or recovery authority.
+        self._post_commit_recovery_diagnostic_signatures: dict[
+            tuple[str, str, str], str
         ] = {}
         # Renew long-running provider/effect/validation calls well before the
         # task lease expires.  Tests may shorten this private interval without
@@ -120169,7 +120512,7 @@ class DatabaseImplementationDaemon:
 
     def _resume_attempt_without_process_crash(
         self,
-        attempt: "DatabaseTaskAttempt",
+        attempt: DatabaseTaskAttempt,
     ) -> dict[str, Any]:
         """Resume one attempt; keep the process alive on retryable Portal misses.
 
@@ -123172,6 +123515,209 @@ class DatabaseImplementationDaemon:
         receipt["receipt_id"] = receipt_id
         return receipt
 
+    @staticmethod
+    def _verified_post_commit_recovery_diagnostic(
+        diagnostic: Mapping[str, Any],
+        *,
+        task: Any,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        """Independently verify one observation-only Portal rejection."""
+
+        value = dict(diagnostic)
+        admission = value.get("admission")
+        mutation_provenance = value.get("mutation_provenance")
+        stage = str(value.get("stage") or "")
+        reason_code = str(value.get("reason_code") or "")
+        if (
+            set(value) != _POST_COMMIT_RECOVERY_DIAGNOSTIC_FIELDS
+            or value.get("schema")
+            != DATABASE_PORTAL_POST_COMMIT_RECOVERY_DIAGNOSTIC_SCHEMA
+            or value.get("disposition")
+            not in _POST_COMMIT_RECOVERY_DIAGNOSTIC_DISPOSITIONS
+            or value.get("reason")
+            != "post_commit_recovery_evidence_rejected"
+            or stage not in _POST_COMMIT_RECOVERY_DIAGNOSTIC_STAGES
+            or reason_code
+            not in _POST_COMMIT_RECOVERY_DIAGNOSTIC_REASON_CODES.get(
+                stage,
+                frozenset(),
+            )
+            or value.get("task_cid")
+            != str(getattr(task, "task_cid", "") or "")
+            or value.get("task_cid") != str(attempt.task_cid)
+            or value.get("task_alias")
+            != str(getattr(task, "task_alias", "") or "")
+            or value.get("task_alias") != str(attempt.task_alias)
+            or value.get("attempt_id") != str(attempt.attempt_id)
+            or value.get("claim_id") != str(attempt.claim_id)
+            or value.get("lease_id") != str(attempt.lease_id)
+            or value.get("fencing_token") != int(attempt.fencing_token)
+            or value.get("fence_epoch") != int(attempt.fence_epoch)
+            or value.get("task_authority_changed") is not False
+            or value.get("provider_dispatched") is not False
+            or value.get("attempt_consumed") is not False
+            or not isinstance(value.get("request_id"), str)
+            or len(value["request_id"].encode("utf-8")) > 512
+            or not isinstance(admission, Mapping)
+            or set(admission) != _POST_COMMIT_RECOVERY_ADMISSION_FIELDS
+            or not isinstance(mutation_provenance, Mapping)
+            or set(mutation_provenance)
+            != _POST_COMMIT_RECOVERY_MUTATION_PROVENANCE_FIELDS
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-commit recovery diagnostic envelope is invalid"
+            )
+        allowed_statuses = admission.get("allowed_task_statuses")
+        if (
+            admission.get("phase")
+            not in {"initial", "post_settlement", "revalidate", "unspecified"}
+            or admission.get("gate")
+            not in _POST_COMMIT_RECOVERY_ADMISSION_GATES
+            or admission.get("projection_scope")
+            not in {"same_lane", "shared_lane", "rejected", "unresolved"}
+            or admission.get("task_source_getter")
+            not in {"get", "get_task", "unavailable"}
+            or not isinstance(allowed_statuses, list)
+            or len(allowed_statuses) > 32
+            or allowed_statuses
+            != sorted(set(str(item) for item in allowed_statuses))
+            or any(
+                re.fullmatch(r"[a-z][a-z0-9_]{0,63}", item) is None
+                for item in allowed_statuses
+            )
+            or any(
+                type(admission.get(field)) is not bool
+                for field in (
+                    "allow_shared_lane_source",
+                    "allow_callback_reconciliation_transport_lineage",
+                    "request_present",
+                    "missing_output_lineage",
+                    "callback_transport_lineage",
+                    "canonical_task_present",
+                    "canonical_task_identity_matches",
+                )
+            )
+            or any(
+                not isinstance(admission.get(field), str)
+                or len(admission[field].encode("utf-8")) > 128
+                for field in ("request_status", "canonical_task_status")
+            )
+            or not _post_commit_recovery_admission_is_consistent(admission)
+            or not _post_commit_recovery_stage_admission_is_consistent(
+                stage=stage,
+                reason_code=reason_code,
+                admission=admission,
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-commit recovery diagnostic admission is invalid"
+            )
+        if (
+            any(
+                mutation_provenance.get(field)
+                not in _POST_COMMIT_RECOVERY_MUTATION_OBSERVATIONS
+                for field in _POST_COMMIT_RECOVERY_MUTATION_PROVENANCE_FIELDS
+            )
+            or value.get("disposition")
+            != _post_commit_recovery_expected_disposition(
+                mutation_provenance
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-commit recovery diagnostic mutation provenance is invalid"
+            )
+        signature_body = dict(value)
+        signature_body.pop("diagnostic_signature", None)
+        expected_signature = "sha256:" + hashlib.sha256(
+            json.dumps(
+                signature_body,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            value.get("diagnostic_signature") != expected_signature
+            or len(
+                json.dumps(
+                    value,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            )
+            > 16 * 1024
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-commit recovery diagnostic identity is invalid"
+            )
+        value["admission"] = dict(admission)
+        value["mutation_provenance"] = dict(mutation_provenance)
+        return value
+
+    def _observe_post_commit_recovery_diagnostic(
+        self,
+        diagnostic: Mapping[str, Any],
+    ) -> None:
+        """Log one stable rejection once, without changing authority state."""
+
+        key = (
+            str(diagnostic.get("task_cid") or ""),
+            str(diagnostic.get("attempt_id") or ""),
+            str(diagnostic.get("request_id") or ""),
+        )
+        signature = str(diagnostic.get("diagnostic_signature") or "")
+        previous = self._post_commit_recovery_diagnostic_signatures.get(key)
+        log = logger.info if previous != signature else logger.debug
+        admission = diagnostic.get("admission")
+        log(
+            "Database post-commit recovery rejected task_cid=%s "
+            "task_alias=%s attempt_id=%s request_id=%s stage=%s "
+            "reason_code=%s admission_gate=%s disposition=%s "
+            "queue_observation=%s event_stream_observation=%s signature=%s",
+            key[0],
+            str(diagnostic.get("task_alias") or ""),
+            key[1],
+            key[2],
+            str(diagnostic.get("stage") or ""),
+            str(diagnostic.get("reason_code") or ""),
+            str(admission.get("gate") or "")
+            if isinstance(admission, Mapping)
+            else "",
+            str(diagnostic.get("disposition") or ""),
+            str(
+                (diagnostic.get("mutation_provenance") or {}).get(
+                    "queue_observation"
+                )
+            ),
+            str(
+                (diagnostic.get("mutation_provenance") or {}).get(
+                    "event_stream_observation"
+                )
+            ),
+            signature,
+        )
+        if previous == signature:
+            return
+        if (
+            key not in self._post_commit_recovery_diagnostic_signatures
+            and len(self._post_commit_recovery_diagnostic_signatures)
+            >= TASK_SOURCE_QUERY_LIMIT
+        ):
+            oldest = next(
+                iter(self._post_commit_recovery_diagnostic_signatures),
+                None,
+            )
+            if oldest is not None:
+                self._post_commit_recovery_diagnostic_signatures.pop(
+                    oldest,
+                    None,
+                )
+        self._post_commit_recovery_diagnostic_signatures[key] = signature
+
     def _reopen_unimplemented_unknown_callback_task(
         self,
         task: Any,
@@ -123191,6 +123737,7 @@ class DatabaseImplementationDaemon:
             return None
         from .database_portal_bridge import (
             DATABASE_PORTAL_PROTECTED_PRESERVATION_PROJECTION_MISMATCH_REASON,
+            DatabasePortalPostCommitRecoveryRejected,
         )
 
         neutral_source = bool(
@@ -123399,6 +123946,50 @@ class DatabaseImplementationDaemon:
                     attempt,
                     recovered,
                 )
+        except DatabasePortalPostCommitRecoveryRejected as exc:
+            try:
+                diagnostic = self._verified_post_commit_recovery_diagnostic(
+                    exc.diagnostic,
+                    task=task,
+                    attempt=attempt,
+                )
+            except Exception as diagnostic_error:
+                return {
+                    "task_cid": str(task.task_cid),
+                    "reopened": False,
+                    "changed": False,
+                    "provider_dispatched": False,
+                    "attempt_consumed": False,
+                    "reason": "post_commit_recovery_evidence_rejected",
+                    "error_type": type(diagnostic_error).__name__,
+                    "error": str(diagnostic_error)[-1000:],
+                    "effect_observation_unknown": True,
+                    "operator_review_required": True,
+                }
+            self._observe_post_commit_recovery_diagnostic(diagnostic)
+            mutation_provenance = dict(diagnostic["mutation_provenance"])
+            effect_changed = "changed" in mutation_provenance.values()
+            effect_unknown = "unknown" in mutation_provenance.values()
+            return {
+                "task_cid": str(task.task_cid),
+                "reopened": False,
+                "changed": effect_changed,
+                "write_count": 1 if effect_changed else 0,
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                "reason": "post_commit_recovery_evidence_rejected",
+                "effect_disposition": str(diagnostic["disposition"]),
+                "mutation_provenance": mutation_provenance,
+                "effect_observation_unknown": effect_unknown,
+                "diagnostic_stage": str(diagnostic["stage"]),
+                "diagnostic_reason_code": str(diagnostic["reason_code"]),
+                "diagnostic_signature": str(
+                    diagnostic["diagnostic_signature"]
+                ),
+                "request_id": str(diagnostic["request_id"]),
+                "admission": dict(diagnostic["admission"]),
+                "operator_review_required": True,
+            }
         except Exception as exc:
             return {
                 "task_cid": str(task.task_cid),
