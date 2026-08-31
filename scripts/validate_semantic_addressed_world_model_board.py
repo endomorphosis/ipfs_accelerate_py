@@ -3939,6 +3939,10 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 != "5bbf2dec97458585ee95034c986057a1552b805d"
                 or source_chain.get("base_control_tree")
                 != "954736c103dd644d7896e032c9676ed38d989831"
+                or source_chain.get("initial_control_commit")
+                != "e208bc490b8d12f6d86b286d98d1ac63bb4e62be"
+                or source_chain.get("initial_control_tree")
+                != "53fb95b9fd8e4f6f776c0380b0f1f959ddd58326"
                 or target.get("operator_task_alias") != "SAWM-000"
                 or target.get("operator_task_cid")
                 != "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6"

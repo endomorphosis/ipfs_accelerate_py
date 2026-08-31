@@ -3414,7 +3414,11 @@ def _m36_operator_task_binding_correction_successor_errors(
             != "5bbf2dec97458585ee95034c986057a1552b805d"
             or source_chain.get("base_control_tree")
             != "954736c103dd644d7896e032c9676ed38d989831"
-            or identity_state not in {"placeholder", "sealed"}
+            or source_chain.get("initial_control_commit")
+            != "e208bc490b8d12f6d86b286d98d1ac63bb4e62be"
+            or source_chain.get("initial_control_tree")
+            != "53fb95b9fd8e4f6f776c0380b0f1f959ddd58326"
+            or identity_state != "sealed"
         ):
             errors.append("M36 operator-task binding correction delta is not exact")
         if require_active_runtime:

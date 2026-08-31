@@ -1428,12 +1428,19 @@ _M36_BASE_SOURCE_BINDING_CID = (
 _M36_BASE_CONTROL_COMMIT = "5bbf2dec97458585ee95034c986057a1552b805d"
 _M36_BASE_CONTROL_TREE = "954736c103dd644d7896e032c9676ed38d989831"
 _M36_OPERATOR_CONTROL_PATHS = frozenset(_M33_OPERATOR_CONTROL_PATHS)
-_M36_INITIAL_CONTROL_COMMIT = "0000000000000000000000000000000000000000"
-_M36_INITIAL_CONTROL_TREE = "0000000000000000000000000000000000000000"
+_M36_INITIAL_CONTROL_COMMIT = "e208bc490b8d12f6d86b286d98d1ac63bb4e62be"
+_M36_INITIAL_CONTROL_TREE = "53fb95b9fd8e4f6f776c0380b0f1f959ddd58326"
 _M36_INITIAL_CONTROL_BLOBS = MappingProxyType(
     {
-        path: "0000000000000000000000000000000000000000"
-        for path in _M36_OPERATOR_CONTROL_PATHS
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": "ef87cc2eca909c0067ddb3367db3a94f90772c73",
+        "config/semantic_addressed_world_model_dependencies.seal.json": "085a698e10b7f81f7c3f03fb8ebfc55177ca1b88",
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": "f6be8bee8e7675437c9ab67bdbe8d3a44c2470bf",
+        "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json": "af7deb1f4f3a004eab59a4a55109a7ad175ff33e",
+        "scripts/materialize_semantic_addressed_world_model_program.py": "2c10c15764112afbc2f7e286f753386b13c7e06c",
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": "7f9cfa6c757f9f91c57db1129b293fa8f048b79b",
+        "scripts/validate_semantic_addressed_world_model_board.py": "8bdeb08a0f7bb059bc9b6f18363d3b2d4076d916",
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": "1f36af05e5d5bfc25b607551e406907d8e2b5953",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": "5e067d5ea1ee48a0ddbcb8e6eb0896c53c33be55",
     }
 )
 _M36_STORE_ID = _M33_STORE_ID

@@ -1941,9 +1941,11 @@ commit/tree are `5bbf2dec97458585ee95034c986057a1552b805d` and
 `954736c103dd644d7896e032c9676ed38d989831`; historical M35 validation is
 pinned to that exact final M35 source head while explicitly requiring no live
 M35 receipt or event. The same nine protected operator-control paths apply.
-The initial repair identities are placeholders until the first control commit;
-one child commit reseals the exact commit, tree, blobs, and authority CID.
-Partial or mixed identity states fail closed.
+The initial repair commit/tree are
+`e208bc490b8d12f6d86b286d98d1ac63bb4e62be` and
+`53fb95b9fd8e4f6f776c0380b0f1f959ddd58326`; one direct child commit reseals
+their exact nine blob identities and the resulting authority CID. Partial or
+mixed identity states fail closed.
 
 M36 keeps the same live `run-r2-m27` generation-29 owner on port 24070. It
 changes no task definition, task status, accepted completion, goal, plan,
