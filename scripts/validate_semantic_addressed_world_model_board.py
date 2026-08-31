@@ -3855,10 +3855,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 != "894d9a4d206faf4e59328111023ec44fcf26f96e"
                 or source_chain.get("initial_control_commit")
                 != materializer._M35_INITIAL_CONTROL_COMMIT
+                or source_chain.get("initial_control_commit")
+                != "27c5e1e5925228757fc02378eb9d3b2a8addc60e"
                 or source_chain.get("initial_control_tree")
                 != materializer._M35_INITIAL_CONTROL_TREE
+                or source_chain.get("initial_control_tree")
+                != "75f9c888b22911d47e941fb03b771c8d8f92dd99"
                 or source_chain.get("final_reseal_parent")
                 != materializer._M35_INITIAL_CONTROL_COMMIT
+                or source_chain.get("final_reseal_parent")
+                != "27c5e1e5925228757fc02378eb9d3b2a8addc60e"
                 or source_chain.get("initial_control_blobs")
                 != dict(materializer._M35_INITIAL_CONTROL_BLOBS)
                 or module._m35_immutable_authority_identity_normalization_successor_errors(

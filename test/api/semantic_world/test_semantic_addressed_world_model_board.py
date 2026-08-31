@@ -4661,7 +4661,24 @@ def test_m35_authority_and_placeholder_or_sealed_chain_are_exact() -> None:
     assert len(authority["operator_control_paths"]) == 9
     assert dependencies._m35_source_chain_identity_state(
         materializer, authority
-    ) == "placeholder"
+    ) == "sealed"
+    assert chain["initial_control_commit"] == (
+        "27c5e1e5925228757fc02378eb9d3b2a8addc60e"
+    )
+    assert chain["initial_control_tree"] == (
+        "75f9c888b22911d47e941fb03b771c8d8f92dd99"
+    )
+    assert chain["initial_control_blobs"] == {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": "21ab73ae195f9514a713d83e8442d29db9c27547",
+        "config/semantic_addressed_world_model_dependencies.seal.json": "f30dee923eeeba60b391c1af0982b525055fa441",
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": "da11d8b4d5f5eed7e5d955b51deded59abc34059",
+        "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json": "560f6f039b8934ef6b25d32758db5f7374b5d872",
+        "scripts/materialize_semantic_addressed_world_model_program.py": "159db3cdedb34b0d406b8c1d9b7bd8b71eb3b83f",
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": "99129c72bb1ffc63e5624649e64982dfcb46c5f9",
+        "scripts/validate_semantic_addressed_world_model_board.py": "41ad96cb9a5cb9ae412f3124c6f4a3e6aeaf19d6",
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": "b33b9a61c7f930154d65f7b97cf6b73e0855bc4c",
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": "345f964cdb11e80e9840a0d779aea345c3746fd9",
+    }
     assert dict(materializer._validated_m35_live_preflight_contract(authority)) == (
         authority["live_preflight_contract"]
     )

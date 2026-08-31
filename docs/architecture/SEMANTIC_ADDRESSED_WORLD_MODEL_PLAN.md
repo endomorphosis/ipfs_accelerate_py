@@ -1906,10 +1906,11 @@ M35 is selected by key presence before M34 and every older successor. Historical
 M34 source-chain validation is pinned to M35's accepted base commit/tree
 `4dfe1c4c81ffd65f6a2d5c5cdc38b1cd33f1f443` and
 `894d9a4d206faf4e59328111023ec44fcf26f96e`. The same nine protected control
-paths apply. Initial control commit, tree, and blob identities are zero
-placeholders until the bounded repair is sealed; validators accept either the
-complete placeholder set or one complete nonzero reseal and reject mixed or
-partial identity states.
+paths apply. The sealed initial control commit/tree are
+`27c5e1e5925228757fc02378eb9d3b2a8addc60e` and
+`75f9c888b22911d47e941fb03b771c8d8f92dd99`; all nine initial blobs are pinned
+independently. The one permitted child only reseals these identities and the
+resulting authority CID, and mixed or partial identity states fail closed.
 
 M35 changes no task, goal, plan, accepted completion, coordination state,
 provider invocation, implementation commit, merge attempt, owner identity, or
