@@ -74209,6 +74209,11 @@ def _repair_database_execution_art_index_storage_impl(
                 raise DatabaseImplementationExecutionStorageRepairError(
                     "installed execution repair failed independent verification"
                 )
+            _revalidate_database_execution_storage_wal(
+                wal_path,
+                cleanup=cleanup,
+                expected_present=False,
+            )
         except BaseException as install_exc:
             if exchange_performed:
                 failed_replacement = quarantine / (

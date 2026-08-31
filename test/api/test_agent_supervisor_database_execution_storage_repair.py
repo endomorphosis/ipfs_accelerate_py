@@ -1405,6 +1405,82 @@ def test_initially_absent_wal_appearance_blocks_install_and_preserves_bytes(
     assert not _repair_temporaries(path)
 
 
+@pytest.mark.parametrize("initial_wal", ["absent", "empty", "redundant_nonempty"])
+def test_late_wal_after_verifier_rolls_back_without_committed_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    initial_wal: str,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    _seed_execution_store(path)
+    wal_path = path.with_name(path.name + ".wal")
+    if initial_wal == "empty":
+        wal_path.touch()
+    elif initial_wal == "redundant_nonempty":
+        _leave_wal(
+            path,
+            [
+                "BEGIN",
+                "UPDATE daemon_execution_metadata SET value='temporary' "
+                "WHERE key='execution_store_identity'",
+                "UPDATE daemon_execution_metadata "
+                "SET value='execution-store:seed' "
+                "WHERE key='execution_store_identity'",
+                "COMMIT",
+            ],
+        )
+    initial_wal_digest = _sha256(wal_path) if wal_path.exists() else ""
+    source_digest = _sha256(path)
+    source_inode = path.stat().st_ino
+    late_wal = f"late-writer-wal:{initial_wal}".encode()
+    real_identity = daemon_module._database_execution_storage_named_identity_at
+    installed_identity_reads = 0
+
+    def create_wal_after_final_installed_identity(
+        name: str,
+        *,
+        directory_fd: int,
+    ) -> Any:
+        nonlocal installed_identity_reads
+        identity = real_identity(name, directory_fd=directory_fd)
+        if name == path.name and identity[2][1] != source_inode:
+            installed_identity_reads += 1
+            if installed_identity_reads == 2:
+                wal_path.write_bytes(late_wal)
+        return identity
+
+    monkeypatch.setattr(
+        daemon_module,
+        "_database_execution_storage_named_identity_at",
+        create_wal_after_final_installed_identity,
+    )
+    with pytest.raises(
+        DatabaseImplementationExecutionStorageRepairError,
+        match="candidate was not installed",
+    ) as captured:
+        repair_database_execution_art_index_storage(path)
+
+    assert "WAL appeared" in str(captured.value.__cause__)
+    assert installed_identity_reads >= 2
+    assert _sha256(path) == source_digest
+    assert path.stat().st_ino == source_inode
+    assert wal_path.read_bytes() == late_wal
+    assert not _repair_temporaries(path)
+    quarantine = path.parent / ".execution-art-repair-quarantine"
+    assert len(tuple(quarantine.glob("*.prepared.json"))) == 1
+    assert not tuple(quarantine.glob("*.committed.json"))
+    wal_backups = tuple(quarantine.glob(f"{path.name}.*.duckdb.wal"))
+    retired_wals = tuple(quarantine.glob("*.retired-live-wal"))
+    if initial_wal == "absent":
+        assert not wal_backups
+        assert not retired_wals
+    else:
+        assert len(wal_backups) == 1
+        assert len(retired_wals) == 1
+        assert _sha256(wal_backups[0]) == initial_wal_digest
+        assert _sha256(retired_wals[0]) == initial_wal_digest
+
+
 def test_redundant_wal_retirement_has_durable_full_proof_before_install(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
