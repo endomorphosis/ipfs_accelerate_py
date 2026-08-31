@@ -13723,6 +13723,7 @@ def test_merge_train_recovery_binds_canonical_portal_attempt_root_shapes(
     daemon._merge_repo_root = None
     daemon._merge_target_branch = ""
     daemon._merge_portal_attempt_root = None
+    daemon._callback_requalification_setup_audit_paths = ()
     attempt_root = tmp_path.joinpath(*parts)
 
     if not accepted:
@@ -13745,9 +13746,19 @@ def test_merge_train_recovery_binds_canonical_portal_attempt_root_shapes(
         repo_root=tmp_path,
         merge_target_branch="main",
         portal_attempt_root=attempt_root,
+        callback_requalification_setup_audit_paths=(
+            "external/ipfs_accelerate",
+            "external/ipfs_datasets",
+            "external/ipfs_kit",
+        ),
     )
     assert daemon._merge_queue is queue
     assert daemon._merge_portal_attempt_root == attempt_root
+    assert daemon._callback_requalification_setup_audit_paths == (
+        "external/ipfs_accelerate",
+        "external/ipfs_datasets",
+        "external/ipfs_kit",
+    )
 
 
 def _callback_integration_authority_fixture(
@@ -14170,7 +14181,7 @@ def test_callback_integration_authority_separates_changed_and_audit_scopes(
         json.dumps(request.to_dict(), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    daemon.worktree_submodule_paths = audit_paths
+    daemon._callback_requalification_setup_audit_paths = audit_paths
     observed: dict[str, tuple[str, ...]] = {}
 
     def source_authority(

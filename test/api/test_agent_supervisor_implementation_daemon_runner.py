@@ -1266,6 +1266,12 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             str(tmp_path / "merge-queue"),
             "--merge-target-branch",
             "main",
+            "--worktree-submodule-path",
+            "external/ipfs_accelerate",
+            "--worktree-submodule-path",
+            "external/ipfs_datasets",
+            "--worktree-submodule-path",
+            "external/ipfs_kit",
             "--implement",
             "--once",
         ]
@@ -1301,6 +1307,11 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
         "repo_root": repo,
         "merge_target_branch": "main",
         "portal_attempt_root": bridge.attempt_root,
+        "callback_requalification_setup_audit_paths": (
+            "external/ipfs_accelerate",
+            "external/ipfs_datasets",
+            "external/ipfs_kit",
+        ),
     }
     portal = bridge.portal_factory(
         argparse.Namespace(
