@@ -5906,9 +5906,68 @@ class TypedStateOwnerGateway:
                     and prior_receipt.get("operation")
                     == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
                 ):
-                    raise TypedStateOwnerAuthorizationError(
-                        "protected typed-deferral task cannot be reopened by generic CAS"
+                    new_receipt = None
+                    body_json = command.parameters.get("body_json")
+                    if isinstance(body_json, str) and body_json:
+                        try:
+                            next_body = json.loads(body_json)
+                        except (TypeError, ValueError, json.JSONDecodeError):
+                            next_body = None
+                        if isinstance(next_body, Mapping):
+                            candidate = next_body.get("completion_receipt")
+                            if isinstance(candidate, Mapping):
+                                new_receipt = candidate
+                    if (
+                        new_receipt is None
+                        or new_receipt.get("operation")
+                        != "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "protected typed-deferral task cannot be reopened by generic CAS"
+                        )
+                    from .database_task_source import (
+                        TypedDeferralRecoveryError,
+                        admit_leftover_wait_deferral_budget_recovery,
                     )
+
+                    recovery_seed = new_receipt.get(
+                        "leftover_wait_deferral_budget_recovery_seed"
+                    )
+                    seed_receipt_id = (
+                        recovery_seed.get("receipt_id")
+                        if isinstance(recovery_seed, Mapping)
+                        else ""
+                    )
+                    expected_receipt = prior_receipt
+                    if expected_control_receipt_json is not None:
+                        expected_receipt = expected_control_receipt
+                    seed_task_alias = (
+                        str(recovery_seed.get("task_alias") or "")
+                        if isinstance(recovery_seed, Mapping)
+                        else ""
+                    )
+                    try:
+                        admit_leftover_wait_deferral_budget_recovery(
+                            task_cid=task_cid,
+                            task_alias=seed_task_alias,
+                            task_revision=int(
+                                command.parameters.get("expected_task_revision")
+                                or 0
+                            ),
+                            task_body=(
+                                prior_body
+                                if isinstance(prior_body, Mapping)
+                                else {}
+                            ),
+                            request=new_receipt,
+                            expected_control_receipt=expected_receipt,
+                            evidence_digests=[str(seed_receipt_id or "")],
+                        )
+                    except TypedDeferralRecoveryError as exc:
+                        raise TypedStateOwnerAuthorizationError(
+                            "leftover-wait recovery failed closed admission: "
+                            + str(exc)
+                        ) from exc
         if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
             recovery = _validated_dead_claim_recovery_parameters(
                 command.parameters

@@ -36,13 +36,6 @@ from .database_task_source import (
     TaskSourceConflictError,
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
-    _cas_result_from_dict,
-    _raise_typed_owner_error,
-)
-from .duckdb_state import (
-    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
-    QuackOwnerCommandRemoteError,
-    submit_quack_owner_command,
 )
 from .database_task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_MAX_QUERY_LIMIT,
@@ -1571,6 +1564,11 @@ class TypedDatabaseTaskSource:
             and isinstance(prior_receipt, Mapping)
             and prior_receipt.get("operation")
             == TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+            and not (
+                isinstance(receipt, Mapping)
+                and receipt.get("operation")
+                == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+            )
         ):
             raise TaskSourceConflictError(
                 "protected typed-deferral task cannot be reopened by generic CAS"
@@ -2028,55 +2026,6 @@ class TypedDatabaseTaskSource:
             )
         requested_status = str(status or "").strip().lower()
         receipt_map = dict(receipt)
-        if (
-            requested_status in _PROTECTED_REOPENED_TASK_STATUSES
-            and receipt_map.get("operation")
-            == "database_portal_leftover_wait_deferral_budget_retry_recovery"
-        ):
-            # Leftover-wait must not use generic typed CAS.  Submit the
-            # coupled owner command so the exclusive owner can run closed
-            # leftover-wait admission against the exact blocked receipt.
-            try:
-                result = submit_quack_owner_command(
-                    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
-                    {
-                        "task_cid": task_cid,
-                        "expected_revision": expected_revision,
-                        "expected_control_receipt": dict(
-                            expected_control_receipt
-                        ),
-                        "status": status,
-                        "receipt": dict(receipt),
-                        "delay_ms": delay_ms,
-                        "reason": reason,
-                        "selection_penalty": selection_penalty,
-                        **(
-                            {
-                                "exact_retry_not_before_ms": (
-                                    exact_retry_not_before_ms
-                                )
-                            }
-                            if exact_retry_not_before_ms is not None
-                            else {}
-                        ),
-                    },
-                )
-            except QuackOwnerCommandRemoteError as exc:
-                _raise_typed_owner_error(exc)
-            if not isinstance(result, Mapping) or "cas_result" not in result:
-                raise TaskSourceIntegrityError(
-                    "guarded queue/status owner response is malformed"
-                )
-            result_map = dict(result)
-            cas_payload = result_map.pop("cas_result")
-            if not isinstance(cas_payload, Mapping):
-                raise TaskSourceIntegrityError(
-                    "guarded queue/status owner CAS response is malformed"
-                )
-            return self._guarded_queue_status_result(
-                result_map,
-                cas_result=_cas_result_from_dict(cas_payload),
-            )
         if (
             isinstance(delay_ms, bool)
             or not isinstance(delay_ms, int)
