@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import os
+import stat
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +41,27 @@ pytestmark = pytest.mark.skipif(
 
 def _sha256(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _mode(path: Path) -> int:
+    return stat.S_IMODE(path.lstat().st_mode)
+
+
+def _repair_temporaries(path: Path) -> tuple[Path, ...]:
+    return tuple(sorted(path.parent.glob(f".{path.name}.art-repair-*.duckdb*")))
+
+
+def _execution_art_failure(
+    daemon: DatabaseImplementationDaemon,
+) -> BaseException:
+    cause = RuntimeError(
+        "FATAL Error: Failed to delete all rows from index. Only deleted 0 out of 1 rows."
+    )
+    return daemon_module._DatabaseImplementationExecutionStorageArtFatal(
+        database_path=daemon.execution_path,
+        connection=daemon._connection,
+        cause=cause,
+    )
 
 
 def _seed_execution_store(path: Path) -> dict[str, Any]:
@@ -214,7 +239,10 @@ def test_rebuild_preserves_complete_execution_projection_and_catalog(
 ) -> None:
     path = tmp_path / "execution.duckdb"
     before = _seed_execution_store(path)
-    path.with_name(path.name + ".wal").touch()
+    os.chmod(path, 0o664)
+    wal_path = path.with_name(path.name + ".wal")
+    wal_path.touch()
+    os.chmod(wal_path, 0o664)
 
     receipt = repair_database_execution_art_index_storage(path)
 
@@ -234,6 +262,16 @@ def test_rebuild_preserves_complete_execution_projection_and_catalog(
     assert Path(receipt["quarantined_empty_wal_path"]).is_file()
     assert Path(receipt["prepared_phase_path"]).is_file()
     assert Path(receipt["committed_phase_path"]).is_file()
+    quarantine = Path(receipt["quarantined_source_path"]).parent
+    assert _mode(quarantine) == 0o700
+    for evidence_path in (
+        Path(receipt["quarantined_source_path"]),
+        Path(receipt["quarantined_empty_wal_path"]),
+        Path(receipt["prepared_phase_path"]),
+        Path(receipt["committed_phase_path"]),
+    ):
+        assert _mode(evidence_path) == 0o600
+    assert not _repair_temporaries(path)
 
     connection = open_duckdb_connection(path)
     try:
@@ -300,23 +338,37 @@ def test_run_once_repairs_exact_post_open_art_fatal_and_never_retries(
     before = _seed_execution_store(path)
     daemon = _open_minimal_daemon(path)
     actual = daemon._connection
-    calls = 0
+    execute_calls = 0
+    fetch_calls = 0
 
     class FatalException(RuntimeError):
         pass
 
+    class FatalFetchResult:
+        def __init__(self, result: Any) -> None:
+            self._result = result
+
+        def fetchall(self) -> Any:
+            nonlocal fetch_calls
+            fetch_calls += 1
+            raise FatalException(
+                "FATAL Error: Failed to delete all rows from index. Only deleted 0 out of 1 rows."
+            )
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._result, name)
+
     class FatalAttemptRead:
         def execute(self, sql: str, parameters: Any = None) -> Any:
-            nonlocal calls
-            calls += 1
-            if "FROM database_task_attempts" in str(sql):
-                raise FatalException(
-                    "FATAL Error: Failed to delete all rows from index. "
-                    "Only deleted 0 out of 1 rows."
-                )
+            nonlocal execute_calls
+            execute_calls += 1
             if parameters is None:
-                return actual.execute(sql)
-            return actual.execute(sql, parameters)
+                result = actual.execute(sql)
+            else:
+                result = actual.execute(sql, parameters)
+            if "FROM database_task_attempts" in str(sql):
+                return FatalFetchResult(result)
+            return result
 
         def __getattr__(self, name: str) -> Any:
             return getattr(actual, name)
@@ -331,7 +383,8 @@ def test_run_once_repairs_exact_post_open_art_fatal_and_never_retries(
     with pytest.raises(DatabaseImplementationExecutionStorageRepairedError) as captured:
         daemon.run_once()
 
-    assert calls == 1
+    assert execute_calls == 1
+    assert fetch_calls == 1
     assert daemon._connection is None
     assert captured.value.receipt["logical_projection_equal"] is True
     assert captured.value.receipt["same_process_retry_permitted"] is False
@@ -353,6 +406,283 @@ def test_run_once_repairs_exact_post_open_art_fatal_and_never_retries(
         if table != "daemon_execution_metadata":
             assert after_tables[table] == before_tables[table]
     assert [attempt.attempt_id for attempt in attempts] == ["attempt:1"]
+
+
+def test_resume_path_art_fatal_repairs_without_failure_terminalization(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    _seed_execution_store(path)
+    daemon = _open_minimal_daemon(path)
+    attempt = daemon.list_running_attempts(
+        owner_session_id="owner:1",
+        apply_selection=False,
+    )[0]
+    failure = _execution_art_failure(daemon)
+    terminalizations = 0
+
+    def fail_resume(_attempt: Any) -> Any:
+        raise failure
+
+    def forbidden_terminalization(*_args: Any, **_kwargs: Any) -> Any:
+        nonlocal terminalizations
+        terminalizations += 1
+        raise AssertionError("execution ART must not terminalize a task")
+
+    daemon.resume_attempt = fail_resume  # type: ignore[method-assign]
+    daemon._finalize_failed_attempt = (  # type: ignore[method-assign]
+        forbidden_terminalization
+    )
+    daemon._run_once_database_authoritative = (  # type: ignore[method-assign]
+        lambda: daemon._resume_attempt_without_process_crash(attempt)
+    )
+    with pytest.raises(DatabaseImplementationExecutionStorageRepairedError):
+        daemon.run_once()
+
+    assert terminalizations == 0
+
+
+def test_provider_commit_art_fatal_repairs_without_callback_redispatch(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    _seed_execution_store(path)
+    daemon = _open_minimal_daemon(path)
+    attempt = daemon.list_running_attempts(
+        owner_session_id="owner:1",
+        apply_selection=False,
+    )[0]
+    attempt = replace(attempt, committed_phase="context")
+    failure = _execution_art_failure(daemon)
+    provider_calls = 0
+
+    def provider(_attempt: Any) -> dict[str, Any]:
+        nonlocal provider_calls
+        provider_calls += 1
+        return {"status": "ok", "accepted": True}
+
+    def fail_commit(*_args: Any, **_kwargs: Any) -> Any:
+        raise failure
+
+    daemon._provider_fn = provider
+    daemon._protect_attempt_write = lambda _attempt: None  # type: ignore[method-assign]
+    daemon._protect_attempt_control_binding = (  # type: ignore[method-assign]
+        lambda _attempt: None
+    )
+    daemon.provider_invocation_recorded = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: None
+    )
+    daemon._dispatch_journal_entry = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: None
+    )
+    daemon._begin_callback_dispatch = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: None
+    )
+    daemon._record_callback_dispatch_outcome = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: None
+    )
+    daemon._run_with_attempt_heartbeat = (  # type: ignore[method-assign]
+        lambda _attempt, callback: callback()
+    )
+    daemon.commit_phase = fail_commit  # type: ignore[method-assign]
+    daemon._run_once_database_authoritative = (  # type: ignore[method-assign]
+        lambda: daemon.run_provider(attempt)
+    )
+    with pytest.raises(DatabaseImplementationExecutionStorageRepairedError):
+        daemon.run_once()
+
+    assert provider_calls == 1
+
+
+def test_portal_startup_art_fatal_repairs_before_claim_or_continuation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    _seed_execution_store(path)
+    daemon = _open_minimal_daemon(path)
+    failure = _execution_art_failure(daemon)
+    claims = 0
+
+    def fail_startup(*_args: Any, **_kwargs: Any) -> Any:
+        raise failure
+
+    def forbidden_claim(*_args: Any, **_kwargs: Any) -> Any:
+        nonlocal claims
+        claims += 1
+        raise AssertionError("execution ART must stop before claiming")
+
+    daemon._database_portal_bridge = object()
+    daemon._database_portal_reconciliation_checked = False
+    daemon.reconcile_quiesced_database_portal_attempts = (  # type: ignore[method-assign]
+        fail_startup
+    )
+    daemon.claim_next = forbidden_claim  # type: ignore[method-assign]
+    with pytest.raises(DatabaseImplementationExecutionStorageRepairedError):
+        daemon.run_once()
+
+    assert claims == 0
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["fetchone", "fetchmany", "fetchall", "iteration"],
+)
+def test_execution_result_adapter_preserves_art_failure_provenance(
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+
+    class FatalException(RuntimeError):
+        pass
+
+    failure = FatalException(
+        "FATAL Error: Failed to delete all rows from index. Only deleted 0 out of 1 rows."
+    )
+
+    class FatalResult:
+        def _outcome(self, candidate: str, default: Any) -> Any:
+            if operation == candidate:
+                raise failure
+            return default
+
+        def fetchone(self) -> Any:
+            return self._outcome("fetchone", None)
+
+        def fetchmany(self, size: int = 1) -> Any:
+            return self._outcome("fetchmany", [(size,)])
+
+        def fetchall(self) -> Any:
+            return self._outcome("fetchall", [])
+
+        def __iter__(self) -> FatalResult:
+            return self
+
+        def __next__(self) -> Any:
+            if operation == "iteration":
+                raise failure
+            raise StopIteration
+
+    class RawConnection:
+        def execute(self, _sql: str, _parameters: Any = None) -> FatalResult:
+            return FatalResult()
+
+    connection = daemon_module._DatabaseExecutionStoreConnection(
+        RawConnection(),
+        database_path=path,
+    )
+    result = connection.execute("SELECT 1")
+    with pytest.raises(daemon_module._DatabaseImplementationExecutionStorageArtFatal) as captured:
+        if operation == "fetchone":
+            result.fetchone()
+        elif operation == "fetchmany":
+            result.fetchmany(7)
+        elif operation == "fetchall":
+            result.fetchall()
+        else:
+            next(iter(result))
+
+    assert captured.value.database_path == path
+    assert captured.value.connection is connection
+    assert captured.value.cause is failure
+
+
+def test_eager_duckdb_cursor_identity_and_capabilities_are_unchanged(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "cursor.duckdb"
+    raw = open_duckdb_connection(path)
+    connection = daemon_module._DatabaseExecutionStoreConnection(
+        raw,
+        database_path=path,
+    )
+    try:
+        result = connection.execute("SELECT 1 AS value")
+        assert type(result).__name__ == "DuckDBCursor"
+        assert type(result).__module__.endswith("task_sources.duckdb_state")
+        assert hasattr(result, "fetchone")
+        assert not hasattr(result, "fetchmany")
+        assert hasattr(result, "fetchall")
+        assert hasattr(result, "__iter__")
+        assert not hasattr(result, "__next__")
+        assert [row[0] for row in result] == [1]
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("transaction_site", ["commit_phase", "reconciliation"])
+def test_transaction_art_fatal_is_not_masked_by_invalidated_rollback(
+    tmp_path: Path,
+    transaction_site: str,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    _seed_execution_store(path)
+    daemon = _open_minimal_daemon(path)
+    attempt = daemon.list_running_attempts(
+        owner_session_id="owner:1",
+        apply_selection=False,
+    )[0]
+    real_connection = daemon._connection
+    assert real_connection is not None
+    real_connection.close()
+    commands: list[str] = []
+    failure: BaseException | None = None
+
+    class FatalFetch:
+        def fetchone(self) -> Any:
+            assert failure is not None
+            raise failure
+
+    class InvalidatedTransactionConnection:
+        def execute(self, sql: str, _parameters: Any = None) -> Any:
+            normalized = " ".join(str(sql).upper().split())
+            commands.append(normalized)
+            if normalized == "ROLLBACK":
+                raise RuntimeError("connection invalidated")
+            if normalized.startswith("UPDATE DATABASE_TASK_ATTEMPTS"):
+                return FatalFetch()
+            return object()
+
+        def close(self) -> None:
+            return None
+
+    daemon._connection = daemon_module._DatabaseExecutionStoreConnection(
+        InvalidatedTransactionConnection(),
+        database_path=path,
+    )
+    failure = _execution_art_failure(daemon)
+    try:
+        with pytest.raises(
+            daemon_module._DatabaseImplementationExecutionStorageArtFatal
+        ) as captured:
+            if transaction_site == "commit_phase":
+                daemon.commit_phase(
+                    attempt,
+                    "provider",
+                    require_live_claim=False,
+                )
+            else:
+                prepared = {
+                    "attempt_id": attempt.attempt_id,
+                    "claim_id": attempt.claim_id,
+                    "task_cid": attempt.task_cid,
+                    "attempt_number": attempt.attempt_number,
+                    "owner_session_id": attempt.owner_session_id,
+                    "fencing_token": attempt.fencing_token,
+                    "fence_epoch": attempt.fence_epoch,
+                    "lease_id": attempt.lease_id,
+                    "preparation_digest": "sha256:prepared",
+                }
+                daemon.get_attempt = lambda _attempt_id: attempt  # type: ignore[method-assign]
+                daemon._commit_reconciled_attempt_terminal(
+                    prepared,
+                    succeeded=True,
+                    reconciliation={"receipt_id": "receipt:1"},
+                )
+        assert captured.value is failure
+        assert "ROLLBACK" not in commands
+    finally:
+        daemon.close()
 
 
 def test_non_execution_art_fatal_never_repairs_execution_store(
@@ -454,6 +784,335 @@ def test_distinct_nonempty_wal_is_typed_refusal_and_preserved(
     assert _sha256(wal_path) == before_wal
 
 
+def test_catalog_mismatch_removes_owned_candidate_without_touching_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    _seed_execution_store(path)
+    wal_path = path.with_name(path.name + ".wal")
+    wal_path.touch()
+    source_digest = _sha256(path)
+    wal_digest = _sha256(wal_path)
+    real_catalog = daemon_module._database_execution_storage_catalog
+    catalog_calls = 0
+
+    def mismatched_catalog(connection: Any) -> dict[str, Any]:
+        nonlocal catalog_calls
+        catalog_calls += 1
+        catalog = real_catalog(connection)
+        if catalog_calls == 2:
+            catalog = {**catalog, "indexes": []}
+        return catalog
+
+    monkeypatch.setattr(
+        daemon_module,
+        "_database_execution_storage_catalog",
+        mismatched_catalog,
+    )
+    with pytest.raises(
+        DatabaseImplementationExecutionStorageRepairError,
+        match="catalog differs",
+    ):
+        repair_database_execution_art_index_storage(path)
+
+    assert _sha256(path) == source_digest
+    assert _sha256(wal_path) == wal_digest
+    assert not _repair_temporaries(path)
+    assert not (path.parent / ".execution-art-repair-quarantine").exists()
+
+
+def test_prepared_receipt_failure_cleans_candidate_and_rollback_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    _seed_execution_store(path)
+    wal_path = path.with_name(path.name + ".wal")
+    wal_path.touch()
+    source_digest = _sha256(path)
+    wal_digest = _sha256(wal_path)
+
+    def fail_prepared_receipt(
+        _path: Path,
+        _payload: Any,
+        **_kwargs: Any,
+    ) -> str:
+        raise OSError("injected prepared receipt failure")
+
+    monkeypatch.setattr(
+        daemon_module,
+        "_write_database_execution_repair_phase_receipt",
+        fail_prepared_receipt,
+    )
+    for _ in range(2):
+        with pytest.raises(
+            DatabaseImplementationExecutionStorageRepairError,
+            match="prepared phase",
+        ):
+            repair_database_execution_art_index_storage(path)
+        assert not _repair_temporaries(path)
+
+    assert _sha256(path) == source_digest
+    assert _sha256(wal_path) == wal_digest
+    quarantine = path.parent / ".execution-art-repair-quarantine"
+    assert _mode(quarantine) == 0o700
+    backups = tuple(quarantine.glob(f"{path.name}.*.duckdb"))
+    backup_wals = tuple(quarantine.glob(f"{path.name}.*.duckdb.wal"))
+    assert len(backups) == 2
+    assert len(backup_wals) == 2
+    assert all(_mode(candidate) == 0o600 for candidate in backups + backup_wals)
+
+
+@pytest.mark.parametrize(
+    "ddl",
+    [
+        "CREATE SCHEMA hidden; CREATE TABLE hidden.secret(value BIGINT)",
+        "CREATE MACRO hidden_macro(value) AS value + 1",
+        "CREATE TYPE hidden_kind AS ENUM ('secret')",
+    ],
+)
+def test_unknown_catalog_objects_are_typed_refusal_and_untouched(
+    tmp_path: Path,
+    ddl: str,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    _seed_execution_store(path)
+    connection = open_duckdb_connection(path)
+    try:
+        for statement in ddl.split(";"):
+            connection.execute(statement)
+        connection.execute("CHECKPOINT")
+    finally:
+        connection.close()
+    source_digest = _sha256(path)
+
+    with pytest.raises(DatabaseImplementationExecutionStorageRepairError):
+        repair_database_execution_art_index_storage(path)
+
+    assert _sha256(path) == source_digest
+    assert not _repair_temporaries(path)
+    assert not (path.parent / ".execution-art-repair-quarantine").exists()
+
+
+@pytest.mark.parametrize("unsafe_kind", ["world_writable", "foreign_owner"])
+def test_unsafe_quarantine_is_refused_without_evidence_leak(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_kind: str,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    _seed_execution_store(path)
+    source_digest = _sha256(path)
+    quarantine = path.parent / ".execution-art-repair-quarantine"
+    quarantine.mkdir(mode=0o700)
+    if unsafe_kind == "world_writable":
+        os.chmod(quarantine, 0o777)
+    else:
+        current_euid = os.geteuid()
+        monkeypatch.setattr(
+            daemon_module.os,
+            "geteuid",
+            lambda: current_euid + 1,
+        )
+
+    with pytest.raises(DatabaseImplementationExecutionStorageRepairError) as captured:
+        repair_database_execution_art_index_storage(path)
+
+    assert captured.value.status["reason"] == "unsafe_execution_repair_quarantine"
+    assert _sha256(path) == source_digest
+    assert not tuple(quarantine.iterdir())
+    assert not _repair_temporaries(path)
+
+
+@pytest.mark.parametrize("symlink_kind", ["database", "wal", "quarantine"])
+def test_repair_refuses_symlinked_authority_components(
+    tmp_path: Path,
+    symlink_kind: str,
+) -> None:
+    real_path = tmp_path / "real.duckdb"
+    _seed_execution_store(real_path)
+    real_digest = _sha256(real_path)
+    path = real_path
+    evidence_target = tmp_path / "evidence-target"
+    if symlink_kind == "database":
+        path = tmp_path / "execution.duckdb"
+        path.symlink_to(real_path.name)
+    elif symlink_kind == "wal":
+        evidence_target.write_bytes(b"not-a-wal")
+        path.with_name(path.name + ".wal").symlink_to(evidence_target.name)
+    else:
+        evidence_target.mkdir()
+        (path.parent / ".execution-art-repair-quarantine").symlink_to(evidence_target.name)
+
+    with pytest.raises(DatabaseImplementationExecutionStorageRepairError):
+        repair_database_execution_art_index_storage(path)
+
+    assert _sha256(real_path) == real_digest
+    assert not _repair_temporaries(path)
+
+
+def test_pinned_parent_refuses_path_retarget(tmp_path: Path) -> None:
+    parent = tmp_path / "authority"
+    parent.mkdir()
+    path = parent / "execution.duckdb"
+    _seed_execution_store(path)
+    cleanup = daemon_module._DatabaseExecutionRepairCleanup(path)
+    moved = tmp_path / "moved-authority"
+    parent.rename(moved)
+    parent.mkdir()
+    try:
+        with pytest.raises(
+            DatabaseImplementationExecutionStorageRepairError,
+            match="parent path changed",
+        ):
+            cleanup.verify_parent_path()
+    finally:
+        cleanup.close()
+
+
+def test_relative_quack_execution_path_is_frozen_across_cwd_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    (first / "lane").mkdir(parents=True)
+    (second / "lane").mkdir(parents=True)
+    original = first / "lane" / "execution.duckdb"
+    decoy = second / "lane" / "execution.duckdb"
+    _seed_execution_store(original)
+    _seed_execution_store(decoy)
+    connection = open_duckdb_connection(decoy)
+    try:
+        connection.execute(
+            "UPDATE daemon_execution_metadata SET value='decoy' "
+            "WHERE key='execution_store_identity'"
+        )
+        connection.execute("CHECKPOINT")
+    finally:
+        connection.close()
+    decoy_digest = _sha256(decoy)
+    monkeypatch.chdir(first)
+    daemon = DatabaseImplementationDaemon(
+        database_path="control.duckdb",
+        coordination_path="lane/coordination.duckdb",
+        execution_path="lane/execution.duckdb",
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        quack_uri="quack:127.0.0.1:45671",
+        control_store_id="store:cwd-freeze",
+        control_store_generation="generation:cwd-freeze",
+        task_source=object(),
+        coordinator=object(),
+    )
+    assert daemon.execution_path == original
+    daemon.close()
+    monkeypatch.chdir(second)
+
+    receipt = repair_database_execution_art_index_storage(daemon.execution_path)
+
+    assert Path(receipt["database_path"]) == original
+    assert _sha256(decoy) == decoy_digest
+
+
+def test_initially_absent_wal_appearance_blocks_install_and_preserves_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    _seed_execution_store(path)
+    source_digest = _sha256(path)
+    wal_path = path.with_name(path.name + ".wal")
+    real_revalidate = daemon_module._revalidate_database_execution_storage_wal
+    revalidations = 0
+    raced_wal = b"legacy-writer-wal"
+
+    def race_wal(*args: Any, **kwargs: Any) -> None:
+        nonlocal revalidations
+        real_revalidate(*args, **kwargs)
+        revalidations += 1
+        if revalidations == 2:
+            wal_path.write_bytes(raced_wal)
+
+    monkeypatch.setattr(
+        daemon_module,
+        "_revalidate_database_execution_storage_wal",
+        race_wal,
+    )
+    with pytest.raises(
+        DatabaseImplementationExecutionStorageRepairError,
+        match="WAL appeared",
+    ):
+        repair_database_execution_art_index_storage(path)
+
+    assert _sha256(path) == source_digest
+    assert wal_path.read_bytes() == raced_wal
+    assert not _repair_temporaries(path)
+
+
+def test_redundant_wal_retirement_has_durable_full_proof_before_install(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "execution.duckdb"
+    _seed_execution_store(path)
+    source_digest = _sha256(path)
+    wal_path = _leave_wal(
+        path,
+        [
+            "BEGIN",
+            "UPDATE daemon_execution_metadata SET value='temporary' "
+            "WHERE key='execution_store_identity'",
+            "UPDATE daemon_execution_metadata SET value='execution-store:seed' "
+            "WHERE key='execution_store_identity'",
+            "COMMIT",
+        ],
+    )
+    wal_digest = _sha256(wal_path)
+    real_replace = daemon_module.os.replace
+
+    def fail_candidate_install(
+        source: Any,
+        target: Any,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        source_name = os.fspath(source)
+        target_name = os.fspath(target)
+        if (
+            source_name.startswith(f".{path.name}.art-repair-")
+            and "rollback" not in source_name
+            and target_name == path.name
+        ):
+            raise OSError("injected crash after WAL retirement")
+        real_replace(source, target, *args, **kwargs)
+
+    monkeypatch.setattr(daemon_module.os, "replace", fail_candidate_install)
+    with pytest.raises(
+        DatabaseImplementationExecutionStorageRepairError,
+        match="candidate was not installed",
+    ):
+        repair_database_execution_art_index_storage(path)
+
+    assert _sha256(path) == source_digest
+    assert not wal_path.exists()
+    assert not _repair_temporaries(path)
+    quarantine = path.parent / ".execution-art-repair-quarantine"
+    prepared_paths = tuple(quarantine.glob("*.prepared.json"))
+    assert len(prepared_paths) == 1
+    prepared = json.loads(prepared_paths[0].read_text(encoding="utf-8"))
+    proof = prepared["wal_redundancy_proof"]
+    assert proof["proof_id"] == prepared["wal_redundancy_proof_id"]
+    assert proof["wal_sha256"] == wal_digest
+    assert proof["main_projection_root"] == proof["recovered_projection_root"]
+    assert proof["catalog_root"]
+    retired = tuple(quarantine.glob("*.retired-live-wal"))
+    assert len(retired) == 1
+    assert _sha256(retired[0]) == wal_digest
+    assert _mode(retired[0]) == 0o600
+
+
 def test_post_install_crash_rolls_back_exact_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -461,21 +1120,22 @@ def test_post_install_crash_rolls_back_exact_source(
     path = tmp_path / "execution.duckdb"
     before = _seed_execution_store(path)
     source_digest = _sha256(path)
-    real_fsync = daemon_module._fsync_database_execution_storage_directory
-    parent_calls = 0
+    source_inode = path.stat().st_ino
+    real_identity = daemon_module._database_execution_storage_file_identity
+    injected = False
 
-    def fail_first_post_install_fsync(candidate: Path) -> None:
-        nonlocal parent_calls
-        if candidate == path.parent:
-            parent_calls += 1
-            if parent_calls == 2:
-                raise OSError("injected post-install crash")
-        real_fsync(candidate)
+    def fail_first_installed_identity(candidate: Path) -> Any:
+        nonlocal injected
+        identity = real_identity(candidate)
+        if candidate == path and identity[2][1] != source_inode and not injected:
+            injected = True
+            raise OSError("injected post-install crash")
+        return identity
 
     monkeypatch.setattr(
         daemon_module,
-        "_fsync_database_execution_storage_directory",
-        fail_first_post_install_fsync,
+        "_database_execution_storage_file_identity",
+        fail_first_installed_identity,
     )
     with pytest.raises(
         DatabaseImplementationExecutionStorageRepairError,
@@ -490,6 +1150,7 @@ def test_post_install_crash_rolls_back_exact_source(
     finally:
         connection.close()
     assert after == before
+    assert not _repair_temporaries(path)
     assert tuple(
         (path.parent / ".execution-art-repair-quarantine").glob("*.failed-replacement.duckdb")
     )
