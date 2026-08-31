@@ -864,6 +864,8 @@ class TypedDatabaseTaskSource:
         ):
             raise TaskSourceIntegrityError("typed task-source clock is invalid")
         owner_poisoned = False
+        leftover_skipped = False
+        accepted = False
         for record, receipt in candidates:
             try:
                 result = self._client.recover_legacy_unstalled_claim(
@@ -896,13 +898,33 @@ class TypedDatabaseTaskSource:
                     == TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
                 ):
                     return True
+                cooldown = cooldowns.get(record.task_cid)
+                if cooldown is None:
+                    self._raise_unrepaired_retrying_integrity_error(
+                        record,
+                        cooldowns,
+                    )
+                try:
+                    self._validate_retrying_cooldown_binding(
+                        record,
+                        cooldown,
+                    )
+                except TaskSourceIntegrityError:
+                    # Board-unstall leftover: retrying with a claim receipt
+                    # but no admitted cooldown. Skip rather than fail the
+                    # whole ready set (SPAR-018 blocked SPAR-036).
+                    leftover_skipped = True
+                    continue
                 self._raise_unrepaired_retrying_integrity_error(
                     record,
                     cooldowns,
                 )
             if not result.accepted:
                 return True
-        if owner_poisoned:
+            accepted = True
+        if accepted:
+            return True
+        if owner_poisoned or leftover_skipped:
             return False
         return True
 
