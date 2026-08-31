@@ -1849,9 +1849,9 @@ an older compatibility path.
 
 The bounded repair uses exactly the nine protected operator-control paths.
 Its base commit/tree are `0de00631fa0fdd2195dc6d532050887b83ce72f7` and
-`c624481b51808d6e5f7fc0e801328592b210aeb3`; the initial control commit/tree
-are `0000000000000000000000000000000000000000` and
-`0000000000000000000000000000000000000000` until the final reseal. No task
+`c624481b51808d6e5f7fc0e801328592b210aeb3`; the sealed initial control
+commit/tree are `b0526d4085b231f1eca0cf638743e8d455debc08` and
+`61054b8cdf793a6c9ed4f326215e60b9799a4a6d`. No task
 definition, status, accepted completion, plan, goal, owner generation,
 coordination record, provider invocation, implementation commit, or merge
 attempt changes. M33 requires the exact live generation-29 owner and does not

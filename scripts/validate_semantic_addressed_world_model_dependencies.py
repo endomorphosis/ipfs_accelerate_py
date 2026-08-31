@@ -3286,9 +3286,9 @@ def _m33_live_preflight_contract_successor_errors(
             or preservation.get("generation_restart") is not False
             or preservation.get("m32_receipt_preserved") is not True
             or source_chain.get("initial_control_commit")
-            != "0000000000000000000000000000000000000000"
+            != "b0526d4085b231f1eca0cf638743e8d455debc08"
             or source_chain.get("initial_control_tree")
-            != "0000000000000000000000000000000000000000"
+            != "61054b8cdf793a6c9ed4f326215e60b9799a4a6d"
         ):
             errors.append("M33 live-preflight contract repair delta is not exact")
         if require_active_runtime:

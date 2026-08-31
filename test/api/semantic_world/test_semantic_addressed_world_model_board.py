@@ -4649,10 +4649,10 @@ def test_m33_authority_and_normalized_preflight_contract_are_exact() -> None:
         "c624481b51808d6e5f7fc0e801328592b210aeb3"
     )
     assert authority["source_chain"]["initial_control_commit"] == (
-        "0000000000000000000000000000000000000000"
+        "b0526d4085b231f1eca0cf638743e8d455debc08"
     )
     assert authority["source_chain"]["initial_control_tree"] == (
-        "0000000000000000000000000000000000000000"
+        "61054b8cdf793a6c9ed4f326215e60b9799a4a6d"
     )
     assert set(authority["source_chain"]["initial_control_blobs"]) == set(
         authority["operator_control_paths"]

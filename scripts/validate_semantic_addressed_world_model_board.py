@@ -3685,7 +3685,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 or source_chain.get("initial_control_commit")
                 != materializer._M33_INITIAL_CONTROL_COMMIT
                 or source_chain.get("initial_control_commit")
-                != "0000000000000000000000000000000000000000"
+                != "b0526d4085b231f1eca0cf638743e8d455debc08"
                 or source_chain.get("initial_control_tree")
                 != materializer._M33_INITIAL_CONTROL_TREE
                 or module._m33_live_preflight_contract_successor_errors(
