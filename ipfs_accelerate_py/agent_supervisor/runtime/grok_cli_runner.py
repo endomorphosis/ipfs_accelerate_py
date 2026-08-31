@@ -352,6 +352,8 @@ CANONICAL_LEGACY_PREFLIGHT_ROUTE_FLAG = (
     "--canonical-legacy-preflight-route"
 )
 GROK_PRIMARY_SANDBOX_PROFILE = "ipfs-accelerate-provider-isolated"
+GROK_WORKTREE_SANDBOX_PROFILE = "workspace"
+GROK_DISABLED_SANDBOX_PROFILE = "off"
 GROK_ISOLATION_GROK_SANDBOX = "grok-sandbox"
 GROK_ISOLATION_DOCKER = "docker"
 GROK_ISOLATION_WORKTREE = "worktree"
@@ -1136,7 +1138,8 @@ def build_grok_agent_command(
         "--tools",
         _SEALED_GROK_TOOLS,
         "--sandbox",
-        GROK_PRIMARY_SANDBOX_PROFILE,
+        grok_sandbox_cli_profile(GROK_ISOLATION_WORKTREE)
+        or GROK_WORKTREE_SANDBOX_PROFILE,
         "--max-turns",
         str(max_turns),
         "--output-format",
@@ -1376,13 +1379,15 @@ def _isolated_grok_home(
     codex_fallback_command: Sequence[str],
     workspace: Path | None = None,
     populate_credentials: bool = True,
+    isolation_backend: str = GROK_ISOLATION_GROK_SANDBOX,
 ) -> tuple[tempfile.TemporaryDirectory[str], dict[str, str], Path, tuple[Path, ...]]:
     """Create a private Grok home with a machine-resolved custom sandbox.
 
     A unique global profile avoids project/user profile precedence conflicts.
     Its non-empty exact-path deny set forces Grok's Linux bubblewrap backend;
     the sentinel guarantees that even hosts without peer CLIs fail closed if
-    the kernel sandbox cannot be installed.
+    the kernel sandbox cannot be installed.  Worktree isolation keeps the
+    Landlock ``workspace`` profile instead: this host cannot install bwrap.
     """
 
     temporary_home = tempfile.TemporaryDirectory(prefix="asref-grok-home-")
@@ -1403,16 +1408,23 @@ def _isolated_grok_home(
         if grok_home not in denied_paths:
             raise ValueError("Grok sandbox state-directory deny was not resolved")
 
-        policy_lines = [
-            f"[profiles.{GROK_PRIMARY_SANDBOX_PROFILE}]",
-            'extends = "workspace"',
-            "restrict_network = true",
-            "deny = [",
-        ]
-        policy_lines.extend(f"  {json.dumps(str(path))}," for path in denied_paths)
-        policy_lines.append("]")
         policy_path = grok_home / "sandbox.toml"
-        policy_path.write_text("\n".join(policy_lines) + "\n", encoding="utf-8")
+        write_custom_deny_profile = (
+            grok_sandbox_cli_profile(isolation_backend)
+            == GROK_PRIMARY_SANDBOX_PROFILE
+        )
+        if write_custom_deny_profile:
+            policy_lines = [
+                f"[profiles.{GROK_PRIMARY_SANDBOX_PROFILE}]",
+                'extends = "workspace"',
+                "restrict_network = true",
+                "deny = [",
+            ]
+            policy_lines.extend(f"  {json.dumps(str(path))}," for path in denied_paths)
+            policy_lines.append("]")
+            policy_path.write_text("\n".join(policy_lines) + "\n", encoding="utf-8")
+        else:
+            policy_path.write_text("", encoding="utf-8")
         policy_path.chmod(0o600)
 
         # Prevent compatibility discovery from importing peer-agent skills,
@@ -1846,6 +1858,63 @@ def _workspace_content_fingerprint(workspace: Path) -> str:
     except (OSError, UnicodeError) as exc:
         raise ValueError("unable to fingerprint Grok workspace") from exc
     return digest.hexdigest()
+
+
+def grok_sandbox_cli_profile(isolation_backend: str) -> str | None:
+    """Return the Grok ``--sandbox`` profile for one isolation backend.
+
+    Custom deny profiles require Linux bubblewrap user namespaces.  On hosts
+    where ``bwrap`` cannot set a uid map, worktree isolation must use the
+    built-in ``workspace`` Landlock profile (or ``off``) or Grok never starts.
+    """
+
+    backend = str(isolation_backend or "").strip().casefold()
+    if backend == GROK_ISOLATION_GROK_SANDBOX:
+        return GROK_PRIMARY_SANDBOX_PROFILE
+    if backend == GROK_ISOLATION_WORKTREE:
+        return GROK_WORKTREE_SANDBOX_PROFILE
+    return None
+
+
+def grok_stderr_is_sandbox_host_failure(text: str) -> bool:
+    """True when Grok died because this host cannot install bubblewrap."""
+
+    lowered = str(text or "").casefold()
+    return "bwrap: setting up uid map" in lowered or (
+        "bwrap: setting up gid map" in lowered
+    )
+
+
+def _clear_custom_grok_sandbox_profile(grok_home: Path) -> None:
+    """Drop the bubblewrap deny profile from an isolated Grok home."""
+
+    policy_path = grok_home / "sandbox.toml"
+    try:
+        policy_path.write_text("", encoding="utf-8")
+        policy_path.chmod(0o600)
+    except OSError:
+        return
+
+
+def _rewrite_grok_sandbox_profile(
+    command: Sequence[str],
+    profile: str | None,
+) -> list[str]:
+    rewritten = [str(item) for item in command]
+    try:
+        index = rewritten.index("--sandbox")
+    except ValueError:
+        if profile:
+            rewritten.extend(["--sandbox", str(profile)])
+        return rewritten
+    if profile:
+        if index + 1 < len(rewritten):
+            rewritten[index + 1] = str(profile)
+        else:
+            rewritten.append(str(profile))
+        return rewritten
+    del rewritten[index : index + 2 if index + 1 < len(rewritten) else index + 1]
+    return rewritten
 
 
 def _grok_custom_sandbox_available() -> bool:
@@ -14457,15 +14526,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 prompt_file=prompt_path,
                 permission_mode=permission_mode,
                 tools=_SEALED_GROK_TOOLS,
-                sandbox_profile=(
-                    GROK_PRIMARY_SANDBOX_PROFILE
-                    if isolation_backend
-                    in {
-                        GROK_ISOLATION_GROK_SANDBOX,
-                        GROK_ISOLATION_WORKTREE,
-                    }
-                    else None
-                ),
+                sandbox_profile=grok_sandbox_cli_profile(isolation_backend),
                 deny_rules=GROK_ISOLATION_DENY_RULES,
             )
             primary_session_id = str(uuid.uuid4())
@@ -14498,6 +14559,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 codex_fallback_command=codex_fallback_command,
                 workspace=workspace,
                 populate_credentials=False,
+                isolation_backend=isolation_backend,
             )
             env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = (
                 command_environment.wrapper_path
@@ -14537,6 +14599,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                         + ", ".join(str(path) for path in descendant_mounts)
                     )
             grok_launch_env = env
+            sandbox_profile = grok_sandbox_cli_profile(isolation_backend)
+            if sandbox_profile:
+                grok_launch_env["GROK_SANDBOX"] = sandbox_profile
+            else:
+                grok_launch_env.pop("GROK_SANDBOX", None)
             if isolation_backend == GROK_ISOLATION_DOCKER:
                 docker_bin = _docker_isolation_binary()
                 if not docker_bin:
@@ -14657,6 +14724,26 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                     provider_stdin=docker_provider_stdin,
                 )
             )
+            error_text = error_bytes.decode("utf-8", errors="replace")
+            if (
+                docker_lease is None
+                and child_returncode != 0
+                and grok_stderr_is_sandbox_host_failure(error_text)
+                and grok_sandbox_cli_profile(isolation_backend)
+                == GROK_PRIMARY_SANDBOX_PROFILE
+            ):
+                fallback_profile = GROK_WORKTREE_SANDBOX_PROFILE
+                cmd = _rewrite_grok_sandbox_profile(cmd, fallback_profile)
+                grok_launch_env["GROK_SANDBOX"] = fallback_profile
+                isolation_backend = GROK_ISOLATION_WORKTREE
+                _clear_custom_grok_sandbox_profile(Path(isolated_home.name))
+                child_returncode, error_bytes, error_size, error_overflow = (
+                    _run_grok_with_bounded_stderr(
+                        cmd,
+                        env=grok_launch_env,
+                        provider_stdin=None,
+                    )
+                )
             if docker_fence_thread is not None:
                 docker_fence_thread.join(timeout=6.0)
                 if docker_fence_thread.is_alive() or docker_fence_failures:

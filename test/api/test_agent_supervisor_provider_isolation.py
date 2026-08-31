@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
+from ipfs_accelerate_py.agent_supervisor.runtime import grok_cli_runner
 from ipfs_accelerate_py.agent_supervisor.runtime.provider_isolation import (
     CLI_LOG_COLLECTION_SCHEMA,
     KUBERNETES_LOG_VOLUME_MOUNT,
@@ -255,3 +257,79 @@ def test_publish_kubernetes_cli_logs_uses_kubectl(tmp_path, monkeypatch) -> None
         "aseh-lane-3",
     ]
     assert "quota denied" in receipt["error_snippets"][0]
+
+
+def test_worktree_isolation_uses_builtin_workspace_sandbox() -> None:
+    assert (
+        grok_cli_runner.grok_sandbox_cli_profile(
+            grok_cli_runner.GROK_ISOLATION_WORKTREE
+        )
+        == grok_cli_runner.GROK_WORKTREE_SANDBOX_PROFILE
+    )
+    assert grok_cli_runner.GROK_WORKTREE_SANDBOX_PROFILE == "workspace"
+    assert (
+        grok_cli_runner.grok_sandbox_cli_profile(
+            grok_cli_runner.GROK_ISOLATION_GROK_SANDBOX
+        )
+        == grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE
+    )
+    command = grok_cli_runner.build_grok_agent_command(
+        workspace=Path("/tmp/workspace"),
+        prompt_file=Path("/tmp/prompt.txt"),
+        model="grok-4.6",
+        max_turns=10,
+        permission_mode="bypassPermissions",
+        grok_bin="/usr/bin/grok",
+    )
+    assert command[command.index("--sandbox") + 1] == "workspace"
+    assert grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE not in command
+
+
+def test_grok_stderr_detects_bwrap_host_failure() -> None:
+    assert grok_cli_runner.grok_stderr_is_sandbox_host_failure(
+        "bwrap: setting up uid map: Permission denied"
+    )
+    assert grok_cli_runner.grok_stderr_is_sandbox_host_failure(
+        "bwrap: setting up gid map: Permission denied"
+    )
+    assert not grok_cli_runner.grok_stderr_is_sandbox_host_failure(
+        "quota exhausted"
+    )
+
+
+def test_rewrite_grok_sandbox_profile_swaps_custom_to_workspace() -> None:
+    command = [
+        "grok",
+        "--sandbox",
+        grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE,
+        "--prompt-file",
+        "prompt.txt",
+    ]
+    rewritten = grok_cli_runner._rewrite_grok_sandbox_profile(
+        command,
+        grok_cli_runner.GROK_WORKTREE_SANDBOX_PROFILE,
+    )
+    assert rewritten[rewritten.index("--sandbox") + 1] == "workspace"
+
+
+def test_isolated_grok_home_worktree_skips_custom_deny_profile(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".git").mkdir()
+    temporary_home, env, policy_path, _denied = grok_cli_runner._isolated_grok_home(
+        base_env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "sealed")},
+        child_env={"PATH": "/usr/bin:/bin"},
+        codex_fallback_command=(),
+        workspace=workspace,
+        populate_credentials=False,
+        isolation_backend=grok_cli_runner.GROK_ISOLATION_WORKTREE,
+    )
+    try:
+        text = Path(policy_path).read_text(encoding="utf-8")
+        assert grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE not in text
+        assert "deny = [" not in text
+        assert env["GROK_HOME"] == temporary_home.name
+    finally:
+        temporary_home.cleanup()

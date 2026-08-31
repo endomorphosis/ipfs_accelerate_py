@@ -1534,6 +1534,62 @@ def test_reopened_quarantine_retires_stale_blocked_attempt(
         first.close()
 
 
+def test_sandbox_host_failure_quarantine_reopens(tmp_path: Path) -> None:
+    daemon = _open_daemon(tmp_path, session="session:bwrap-reopen")
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt={
+                "operation": "database_strict_resume_quarantine",
+                "provider_phase_committed": False,
+                "reason": "bwrap: setting up uid map: Permission denied",
+                "attempt_id": "attempt:bwrap",
+            },
+        )
+        outcomes = daemon.reconcile_sandbox_host_failure_quarantines()
+        assert outcomes
+        assert outcomes[0]["reopened"] is True
+        reopened = daemon.task_source.get("task:cid:001")
+        assert reopened is not None
+        assert reopened.status == "todo"
+        assert reopened.body["completion_receipt"]["operation"] == (
+            "reopen_sandbox_host_failure"
+        )
+    finally:
+        daemon.close()
+
+
+def test_sandbox_host_failure_does_not_reopen_committed_provider_phase(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:bwrap-committed")
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt={
+                "operation": "database_strict_resume_quarantine",
+                "provider_phase_committed": True,
+                "reason": "bwrap: setting up uid map: Permission denied",
+            },
+        )
+        assert daemon.reconcile_sandbox_host_failure_quarantines() == []
+        still = daemon.task_source.get("task:cid:001")
+        assert still is not None
+        assert still.status == "quarantined"
+    finally:
+        daemon.close()
+
+
 def _git_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -8442,8 +8498,10 @@ def test_retry_reconciliation_rejects_superseded_coordination_fence(
         assert replacement is not None
         assert replacement.fencing_token > failed_attempt.fencing_token
 
-        with pytest.raises(DatabaseCoordinationError):
-            daemon.reconcile_terminal_retry_states()
+        outcomes = daemon.reconcile_terminal_retry_states()
+        assert any(
+            item.get("reason") == "stale_retry_fence_skipped" for item in outcomes
+        )
 
         control = daemon.task_source.get(failed_attempt.task_cid)
         assert control is not None

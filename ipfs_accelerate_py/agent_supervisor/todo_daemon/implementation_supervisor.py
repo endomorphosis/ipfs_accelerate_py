@@ -20951,6 +20951,13 @@ class PortalImplementationSupervisor:
         return True
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
+        from ..control.control_contracts import CursorReplayError
+
+        try:
+            append_jsonl_event(self.config.events_path, event_type, payload)
+            return
+        except CursorReplayError:
+            repair_jsonl_event_log(self.config.events_path)
         append_jsonl_event(self.config.events_path, event_type, payload)
 
     @staticmethod
