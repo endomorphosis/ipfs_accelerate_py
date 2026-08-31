@@ -548,14 +548,15 @@ def test_restart_sweep_accepts_only_exact_protected_recovery_projection(
     )
     holder["daemon"] = restarted
     try:
-        result = restarted.run_once()
         source = restarted.get_attempt(source_attempt_id)
         assert source is not None
+        # Drive the restart sweep directly.  run_once() can claim the rearmed
+        # row in the same pass and re-latch the protected-path reason.
+        assert restarted.reconcile_terminal_portal_failures() == []
+        outcomes = restarted.reconcile_blocked_protected_path_recoveries()
+        assert outcomes and outcomes[0].get("changed") is True
         task = restarted.task_source.get(source.task_cid)
         assert task is not None and task.status == "retrying"
-        assert result["protected_path_recovery_reconciliations"][0][
-            "changed"
-        ] is True
 
         # The immutable failed phase remains terminal, but its exact typed
         # recovery projection prevents restart reconciliation from reblocking.
@@ -564,6 +565,52 @@ def test_restart_sweep_accepts_only_exact_protected_recovery_projection(
         assert restarted.task_source.get(source.task_cid).status == "retrying"
     finally:
         restarted.close()
+
+
+def test_false_terminal_unstall_does_not_crash_protected_path_retrying_sweep(
+    tmp_path: Path,
+) -> None:
+    """Board unstall can rearm retrying without a protected-path recovery receipt.
+
+    Lane 1 crash-looped because reconcile_blocked_protected_path_recoveries
+    verified every retrying leftover as an exact protected-path projection.
+    """
+
+    def terminal_provider(_attempt: DatabaseTaskAttempt) -> Mapping[str, object]:
+        raise DatabasePortalBridgeError("implementation_protected_path_mutated")
+
+    daemon = _open_daemon(tmp_path, provider_fn=terminal_provider)
+    try:
+        attempt = _blocked_protected_attempt(daemon)
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+        daemon._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            new_status="retrying",
+            receipt={
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-false-terminal-portal-unstall@1"
+                ),
+                "operation": "database_portal_false_terminal_unstall",
+                "reason": "false_terminal_portal_unstall",
+                "previous_operation": "database_portal_terminal_failure",
+                "previous_reason": "implementation_protected_path_mutated",
+            },
+        )
+        retried = daemon.task_source.get(attempt.task_cid)
+        assert retried is not None and retried.status == "retrying"
+
+        outcomes = daemon.reconcile_blocked_protected_path_recoveries()
+        assert outcomes == []
+        assert daemon.task_source.get(attempt.task_cid).status == "retrying"
+
+        result = daemon.run_once()
+        assert "protected_path_recovery_reconciliations" in result
+        assert daemon.task_source.get(attempt.task_cid) is not None
+    finally:
+        daemon.close()
 
 
 def test_runner_binds_bridge_protected_path_recovery_callback(tmp_path: Path) -> None:

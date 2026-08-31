@@ -79911,7 +79911,7 @@ class DatabaseImplementationDaemon:
         self,
         callback: Callable[[], list[dict[str, Any]]],
     ) -> list[dict[str, Any]]:
-        """Run one reconciliation pass without letting Quack attach freeze the rest."""
+        """Run one reconciliation pass without letting one stale receipt freeze the rest."""
 
         try:
             return callback()
@@ -79920,6 +79920,20 @@ class DatabaseImplementationDaemon:
                 raise
             if self._is_quack_attach_contention(exc):
                 return []
+            if isinstance(
+                exc,
+                (
+                    DatabaseImplementationAuthorityError,
+                    DatabaseImplementationConflictError,
+                ),
+            ):
+                return [
+                    {
+                        "changed": False,
+                        "reason": "reconciliation_step_skipped_authority_error",
+                        "error_type": type(exc).__name__,
+                    }
+                ]
             raise
 
     def reconcile_stale_in_progress_gates(self) -> list[dict[str, Any]]:
@@ -83846,6 +83860,44 @@ class DatabaseImplementationDaemon:
         result["protected_path_recovery_budget"] = budget
         return result
 
+    @staticmethod
+    def _control_receipt_operation(task: Any) -> str:
+        task_body = getattr(task, "body", None)
+        receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        if not isinstance(receipt, Mapping):
+            return ""
+        return str(receipt.get("operation") or "")
+
+    def _retrying_typed_recovery_already_projected(
+        self,
+        *,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        expected_operation: str,
+        verify: Callable[[DatabaseTaskAttempt, Any], Any],
+    ) -> None:
+        """Verify only the exact typed recovery that owns this retrying row.
+
+        Board unstall and owner retry can move control to retrying without
+        that receipt.  Treating every leftover failed fence as the matching
+        projection raises and freezes claim_next for the whole lane.
+        """
+
+        if self._control_receipt_operation(task) != expected_operation:
+            return
+        try:
+            verify(attempt, task)
+            self._reconcile_failed_attempt_coordination(attempt)
+        except (
+            DatabaseImplementationAuthorityError,
+            DatabaseImplementationConflictError,
+        ):
+            return
+
     def reconcile_blocked_protected_path_recoveries(
         self,
     ) -> list[dict[str, Any]]:
@@ -83864,13 +83916,17 @@ class DatabaseImplementationDaemon:
                 continue
             task = self.task_source.get(attempt.task_cid)
             if task is None:
-                raise DatabaseImplementationAuthorityError(
-                    f"failed attempt {attempt.attempt_id} has no control task"
-                )
+                continue
             status = str(task.status or "").strip().lower()
             if status == "retrying":
-                self._verified_protected_path_recovery_state(attempt, task)
-                self._reconcile_failed_attempt_coordination(attempt)
+                self._retrying_typed_recovery_already_projected(
+                    attempt=attempt,
+                    task=task,
+                    expected_operation=(
+                        "database_portal_protected_path_retry_recovery"
+                    ),
+                    verify=self._verified_protected_path_recovery_state,
+                )
                 continue
             if status != "blocked":
                 continue
@@ -84060,16 +84116,17 @@ class DatabaseImplementationDaemon:
                 continue
             task = self.task_source.get(attempt.task_cid)
             if task is None:
-                raise DatabaseImplementationAuthorityError(
-                    f"failed attempt {attempt.attempt_id} has no control task"
-                )
+                continue
             status = str(task.status or "").strip().lower()
             if status == "retrying":
-                self._verified_external_protected_checkout_recovery_state(
-                    attempt,
-                    task,
+                self._retrying_typed_recovery_already_projected(
+                    attempt=attempt,
+                    task=task,
+                    expected_operation=(
+                        "database_portal_external_protected_checkout_retry_recovery"
+                    ),
+                    verify=self._verified_external_protected_checkout_recovery_state,
                 )
-                self._reconcile_failed_attempt_coordination(attempt)
                 continue
             if status != "blocked":
                 continue
@@ -84225,13 +84282,17 @@ class DatabaseImplementationDaemon:
                 continue
             task = self.task_source.get(attempt.task_cid)
             if task is None:
-                raise DatabaseImplementationAuthorityError(
-                    f"failed attempt {attempt.attempt_id} has no control task"
-                )
+                continue
             status = str(task.status or "").strip().lower()
             if status == "retrying":
-                self._verified_inflight_process_recovery_state(attempt, task)
-                self._reconcile_failed_attempt_coordination(attempt)
+                self._retrying_typed_recovery_already_projected(
+                    attempt=attempt,
+                    task=task,
+                    expected_operation=(
+                        "database_portal_inflight_process_retry_recovery"
+                    ),
+                    verify=self._verified_inflight_process_recovery_state,
+                )
                 continue
             if status != "blocked":
                 continue
@@ -84411,16 +84472,19 @@ class DatabaseImplementationDaemon:
                 continue
             task = self.task_source.get(attempt.task_cid)
             if task is None:
-                raise DatabaseImplementationAuthorityError(
-                    f"failed attempt {attempt.attempt_id} has no control task"
-                )
+                continue
             status = str(task.status or "").strip().lower()
             if status == "retrying":
-                self._verified_validation_retry_seed_conflict_recovery_state(
-                    attempt,
-                    task,
+                self._retrying_typed_recovery_already_projected(
+                    attempt=attempt,
+                    task=task,
+                    expected_operation=(
+                        "database_portal_validation_retry_seed_conflict_retry_recovery"
+                    ),
+                    verify=(
+                        self._verified_validation_retry_seed_conflict_recovery_state
+                    ),
                 )
-                self._reconcile_failed_attempt_coordination(attempt)
                 continue
             if status != "blocked":
                 continue
