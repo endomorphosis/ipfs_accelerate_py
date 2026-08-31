@@ -9349,6 +9349,560 @@ class PortalImplementationDaemon:
             )
         return record, status, ""
 
+    @staticmethod
+    def _database_recovery_sha256(value: Mapping[str, Any]) -> str:
+        try:
+            encoded = json.dumps(
+                value,
+                allow_nan=False,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        except (TypeError, ValueError):
+            return ""
+        return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+    def _interrupted_database_validation_authority(
+        self,
+        evidence: Mapping[str, Any],
+        *,
+        state: PortalTaskState,
+    ) -> dict[str, Any]:
+        """Rebind one DB-nominated validating crash to current local bytes."""
+
+        def failure(reason: str, **extra: Any) -> dict[str, Any]:
+            return {"ok": False, "reason": reason, **extra}
+
+        if set(evidence) != {
+            "schema",
+            "binding",
+            "recovery_identity",
+            "equivalent_receipt_ids",
+            "reconciliation_receipt",
+            "evidence_id",
+        } or evidence.get("schema") != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-interrupted-validation-recovery@1"
+        ):
+            return failure("database_recovery_evidence_schema_invalid")
+        unsigned_evidence = dict(evidence)
+        evidence_id = str(unsigned_evidence.pop("evidence_id", "") or "")
+        if (
+            not evidence_id
+            or self._database_recovery_sha256(unsigned_evidence) != evidence_id
+        ):
+            return failure("database_recovery_evidence_identity_invalid")
+        binding = evidence.get("binding")
+        receipt = evidence.get("reconciliation_receipt")
+        if not isinstance(binding, Mapping) or not isinstance(receipt, Mapping):
+            return failure("database_recovery_evidence_payload_invalid")
+        binding_fields = {
+            "schema",
+            "interface",
+            "attempt_id",
+            "claim_id",
+            "task_cid",
+            "task_alias",
+            "goal_cid",
+            "plan_cid",
+            "task_revision",
+            "fencing_token",
+            "fence_epoch",
+            "lease_id",
+            "task_body_digest",
+            "projection_seed_digest",
+            "projection_immutable_digest",
+            "authoritative_task_store",
+            "projection_authority",
+            "binding_id",
+        }
+        if (
+            set(binding) != binding_fields
+            or binding.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/database-portal-attempt-binding@1"
+            or binding.get("interface") != "DatabasePortalExecutionBridge@1"
+            or binding.get("authoritative_task_store") != "duckdb"
+            or binding.get("projection_authority") is not False
+        ):
+            return failure("database_recovery_binding_invalid")
+        unsigned_binding = dict(binding)
+        binding_id = str(unsigned_binding.pop("binding_id", "") or "")
+        if (
+            not binding_id
+            or self._database_recovery_sha256(unsigned_binding) != binding_id
+        ):
+            return failure("database_recovery_binding_identity_invalid")
+        unsigned_receipt = dict(receipt)
+        receipt_id = str(unsigned_receipt.pop("receipt_id", "") or "")
+        if (
+            not receipt_id
+            or self._database_recovery_sha256(unsigned_receipt) != receipt_id
+            or receipt.get("schema") != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-attempt-reconciliation@1"
+            )
+            or receipt.get("stage") != "blocked"
+            or receipt.get("binding_id") != binding_id
+            or receipt.get("attempt_root") != str(self.state_path.parent)
+            or receipt.get("task_alias") != binding.get("task_alias")
+            or receipt.get("task_cid") != binding.get("task_cid")
+            or receipt.get("attempt_id") != binding.get("attempt_id")
+            or receipt.get("claim_id") != binding.get("claim_id")
+            or receipt.get("fencing_token") != binding.get("fencing_token")
+            or receipt.get("fence_epoch") != binding.get("fence_epoch")
+        ):
+            return failure("database_recovery_receipt_identity_invalid")
+
+        nested = receipt.get("nested_state")
+        portal = receipt.get("portal_reconciliation")
+        fence = receipt.get("provider_runner_fence")
+        if not (
+            isinstance(nested, Mapping)
+            and nested.get("active") is True
+            and nested.get("active_phase") == "validating"
+            and nested.get("active_task_id") == binding.get("task_alias")
+            and isinstance(portal, Mapping)
+            and portal.get("reason") == "task_claim_reconciliation_blocked"
+            and portal.get("blocked") is True
+            and isinstance(fence, Mapping)
+            and fence.get("applicable") is True
+            and fence.get("fenced") is True
+            and fence.get("safe_to_restart") is True
+            and fence.get("reason")
+            == "ordinary_provider_runner_exact_birth_fenced"
+        ):
+            return failure("database_recovery_validating_fence_invalid")
+        task_id = str(nested.get("active_task_id") or "")
+        workspace_text = str(nested.get("active_worktree_path") or "")
+        original_branch = str(nested.get("active_branch") or "")
+        attempt = int(nested.get("active_attempt") or 0)
+        if (
+            not task_id
+            or not workspace_text
+            or not original_branch.startswith("implementation/")
+            or attempt <= 0
+            or state.last_implementation_task_id != task_id
+            or state.last_implementation_worktree_path != workspace_text
+            or state.last_implementation_task_cid
+            != str(
+                (portal.get("attempt_recovery") or {}).get(
+                    "canonical_task_cid"
+                )
+                or ""
+            )
+        ):
+            return failure("database_recovery_local_state_binding_invalid")
+        try:
+            tasks = [
+                task
+                for task in self._load_tasks()
+                if task.task_id == task_id
+                and self._canonical_ref(task)
+                == state.last_implementation_task_cid
+            ]
+        except Exception as exc:
+            return failure(
+                "database_recovery_task_source_unavailable",
+                error_type=type(exc).__name__,
+            )
+        if len(tasks) != 1:
+            return failure("database_recovery_task_revision_not_unique")
+        task = tasks[0]
+        identity = self._identity_for_task(task)
+        if (
+            identity.canonical_task_key
+            != state.last_implementation_task_key
+            or identity.canonical_task_cid
+            != state.last_implementation_task_cid
+            or normalize_status(task.status) != "todo"
+        ):
+            return failure("database_recovery_task_revision_changed")
+        validation_detail = str(nested.get("active_phase_detail") or "")
+        if validation_detail != "; ".join(task.validation):
+            return failure("database_recovery_validation_spec_changed")
+
+        protected = portal.get("protected_path_reconciliation")
+        lifecycle_summary = portal.get("worktree_lifecycle_reconciliation")
+        claim_summary = portal.get("task_claim_reconciliation")
+        if not (
+            isinstance(protected, Mapping)
+            and protected.get("reason") == "crash_reconciliation_unchanged"
+            and protected.get("blocked") is False
+            and protected.get("workspace_path") == workspace_text
+            and isinstance(lifecycle_summary, Mapping)
+            and lifecycle_summary.get("reconciled") is True
+            and lifecycle_summary.get("blocked") is False
+            and lifecycle_summary.get("state") == "terminal"
+            and lifecycle_summary.get("workspace_path") == workspace_text
+            and lifecycle_summary.get("attempt") == attempt
+            and isinstance(claim_summary, Mapping)
+            and claim_summary.get("reason") == "canonical_task_not_terminal"
+            and claim_summary.get("blocked") is True
+        ):
+            return failure("database_recovery_local_fence_summary_invalid")
+        workspace = Path(workspace_text)
+        try:
+            resolved_workspace = workspace.resolve(strict=True)
+            resolved_workspace.relative_to(self.worktree_root.resolve(strict=True))
+        except (OSError, RuntimeError, ValueError):
+            return failure("database_recovery_worktree_custody_invalid")
+        if workspace.is_symlink() or not self._is_git_worktree(workspace):
+            return failure("database_recovery_worktree_not_isolated_git")
+        record = self.worktree_lifecycle.load_workspace(workspace)
+        if (
+            record is None
+            or not record.is_terminal
+            or record.terminal_reason != "controlled_restart_dead_owner"
+            or record.task_id != task_id
+            or record.canonical_task_cid != identity.canonical_task_cid
+            or record.attempt != attempt
+            or record.branch != original_branch
+            or record.workspace_path != workspace_text
+            or record.record_id != lifecycle_summary.get("record_id")
+            or record.fence != lifecycle_summary.get("fence")
+        ):
+            return failure("database_recovery_lifecycle_authority_changed")
+
+        try:
+            events = self._iter_merge_lifecycle_events()
+        except CursorReplayError:
+            return failure("database_recovery_event_chain_invalid")
+        starts = [
+            event
+            for event in events
+            if event.get("type") == "implementation_started"
+            and event.get("task_id") == task_id
+            and event.get("canonical_task_cid") == identity.canonical_task_cid
+            and event.get("attempt") == attempt
+            and event.get("worktree_path") == workspace_text
+            and event.get("branch") == original_branch
+        ]
+        recoveries = [
+            event
+            for event in events
+            if event.get("type")
+            == "implementation_shutdown_reconciliation_blocked"
+            and event.get("task_id") == task_id
+            and event.get("attempt") == attempt
+            and event.get("reason") == "task_claim_reconciliation_blocked"
+            and all(event.get(key) == value for key, value in portal.items())
+        ]
+        if len(starts) != 1 or len(recoveries) != 1:
+            return failure("database_recovery_event_nomination_ambiguous")
+        start = starts[0]
+        recovery = recoveries[0]
+        baseline_ref = str(start.get("baseline_ref") or "")
+        if (
+            not baseline_ref
+            or int(start.get("sequence") or 0)
+            >= int(recovery.get("sequence") or 0)
+            or str(
+                (start.get("workspace_setup") or {}).get("base_commit") or ""
+            )
+            != baseline_ref
+        ):
+            return failure("database_recovery_start_event_invalid")
+        disqualifying_types = {
+            "implementation_finished",
+            "implementation_proposal_validated",
+            "implementation_proposal_rejected",
+            "worktree_reconciliation_candidate_queued",
+            "failed_validation_worktree_preserved",
+            "timed_out_worktree_preserved",
+            "implementation_timeout",
+            "implementation_terminated",
+        }
+
+        def harmless_outer_rescue_preflight(event: Mapping[str, Any]) -> bool:
+            """Recognize maintenance that stopped before validation began."""
+
+            validation = event.get("validation_result")
+            merge = event.get("merge_result")
+            error = str(
+                (validation or {}).get("error")
+                if isinstance(validation, Mapping)
+                else ""
+            )
+            return bool(
+                event.get("type")
+                == "worktree_reconciliation_validation_finished"
+                and event.get("attempt_consumed") is False
+                and event.get("provider_dispatched") is False
+                and int(event.get("returncode") or 0) != 0
+                and event.get("task_id") == task_id
+                and event.get("worktree_path") == workspace_text
+                and event.get("baseline_ref") == baseline_ref
+                and isinstance(validation, Mapping)
+                and validation.get("attempted") is False
+                and validation.get("passed") is False
+                and validation.get("reason")
+                == "reconciliation_validation_exception"
+                and error == "reconciled candidate worktree is not clean"
+                and isinstance(merge, Mapping)
+                and merge.get("merged") is False
+                and merge.get("queued") is not True
+                and merge.get("reason") == "not_attempted"
+            )
+
+        if any(
+            int(event.get("sequence") or 0)
+            > int(start.get("sequence") or 0)
+            and event.get("task_id") == task_id
+            and (
+                event.get("type") in disqualifying_types
+                or (
+                    event.get("type")
+                    in {
+                        "worktree_reconciliation_validation_started",
+                        "worktree_reconciliation_validation_finished",
+                    }
+                    and not harmless_outer_rescue_preflight(event)
+                )
+            )
+            for event in events
+        ):
+            return failure("database_recovery_already_terminal_or_validated")
+        current_branch = self._git_current_branch(workspace)
+        current_head = self._resolved_commit_ref(workspace, "HEAD")
+        baseline_commit = self._resolved_commit_ref(workspace, baseline_ref)
+        rescue_prefix = (
+            "rescue/worktree/"
+            + original_branch.strip("/").replace("/", "-")
+        )
+        if (
+            not current_branch
+            or (
+                current_branch != original_branch
+                and not current_branch.startswith(rescue_prefix)
+            )
+            or not current_head
+            or not baseline_commit
+            or not self._git_ref_is_ancestor_in_repo(
+                workspace,
+                baseline_commit,
+                current_head,
+            )
+        ):
+            return failure("database_recovery_rescue_transition_invalid")
+        return {
+            "ok": True,
+            "task": task,
+            "task_id": task_id,
+            "attempt": attempt,
+            "workspace_path": workspace,
+            "original_branch": original_branch,
+            "current_branch": current_branch,
+            "baseline_ref": baseline_commit,
+            "preparation_head": current_head,
+            "start_event_id": str(start.get("event_id") or ""),
+            "recovery_event_id": str(recovery.get("event_id") or ""),
+            "database_evidence_id": evidence_id,
+            "database_recovery_identity": str(
+                evidence.get("recovery_identity") or ""
+            ),
+            "database_receipt_id": receipt_id,
+            "lifecycle_record_id": record.record_id,
+            "lifecycle_fence": record.fence,
+        }
+
+    def _prepare_interrupted_database_validation_candidate(
+        self,
+        authority: Mapping[str, Any],
+        *,
+        state: PortalTaskState,
+    ) -> dict[str, Any]:
+        """Recursively stage retained work as a non-accepting Git candidate."""
+
+        task = authority.get("task")
+        workspace = authority.get("workspace_path")
+        if not isinstance(task, PortalTask) or not isinstance(workspace, Path):
+            return {"prepared": False, "reason": "recovery_authority_invalid"}
+        attempt = int(authority.get("attempt") or 0)
+        branch = str(authority.get("current_branch") or "")
+        baseline_ref = str(authority.get("baseline_ref") or "")
+        started_at = utc_now()
+        state.active_task_id = task.task_id
+        identity = self._identity_for_task(task)
+        state.active_task_key = identity.canonical_task_key
+        state.active_task_cid = identity.canonical_task_cid
+        state.active_task_title = task.title
+        state.active_task_track = task.track
+        state.active_task_started_at = started_at
+        state.active_attempt = attempt
+        state.active_phase = "preparing_interrupted_validation_candidate"
+        state.active_phase_started_at = started_at
+        state.active_phase_detail = str(
+            authority.get("database_evidence_id") or ""
+        )
+        state.active_worktree_path = str(workspace)
+        state.active_branch = branch
+        state.implementation_in_progress = True
+        state.heartbeat_at = started_at
+        state.last_progress_at = started_at
+        state.save(self.state_path)
+
+        protected_before = self._implementation_protected_path_snapshot(
+            workspace
+        )
+        snapshot_errors = self._implementation_protected_snapshot_errors(
+            protected_before
+        )
+        if snapshot_errors:
+            result = {
+                "prepared": False,
+                "reason": "recovery_protected_snapshot_invalid",
+                "snapshot_errors": snapshot_errors[:20],
+            }
+        else:
+            try:
+                commit_result = self._commit_worktree_changes(
+                    workspace,
+                    task,
+                    attempt,
+                    baseline_ref=baseline_ref,
+                )
+            except Exception as exc:
+                result = {
+                    "prepared": False,
+                    "reason": "recovery_candidate_commit_failed",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[-1000:],
+                }
+            else:
+                protected_violation = (
+                    self._implementation_protected_path_violation(
+                        task=task,
+                        attempt=attempt,
+                        workspace_path=workspace,
+                        before=protected_before,
+                    )
+                )
+                candidate_commit = str(
+                    commit_result.get("commit")
+                    or commit_result.get("candidate_commit")
+                    or ""
+                )
+                status = self._run_git(
+                    ["status", "--porcelain", "--untracked-files=all"],
+                    cwd=workspace,
+                ).stdout.strip()
+                current_head = self._resolved_commit_ref(workspace, "HEAD")
+                current_branch = self._git_current_branch(workspace)
+                baseline_commit = self._resolved_commit_ref(
+                    workspace,
+                    baseline_ref,
+                )
+                if protected_violation:
+                    result = {
+                        "prepared": False,
+                        "reason": "recovery_protected_path_mutated",
+                        "protected_path_violation": protected_violation,
+                    }
+                elif (
+                    not candidate_commit
+                    or candidate_commit != current_head
+                    or current_branch != branch
+                    or status
+                    or not baseline_commit
+                    or candidate_commit == baseline_commit
+                    or not self._git_ref_is_ancestor_in_repo(
+                        workspace,
+                        baseline_commit,
+                        candidate_commit,
+                    )
+                ):
+                    result = {
+                        "prepared": False,
+                        "reason": "recovery_candidate_identity_invalid",
+                        "candidate_commit": candidate_commit,
+                        "current_head": current_head,
+                        "current_branch": current_branch,
+                        "status_short": status.splitlines()[:20],
+                        "commit_result": commit_result,
+                    }
+                else:
+                    body = {
+                        "schema": (
+                            "ipfs_accelerate_py/agent-supervisor/"
+                            "interrupted-database-validation-candidate@1"
+                        ),
+                        "task_id": task.task_id,
+                        "canonical_task_key": identity.canonical_task_key,
+                        "canonical_task_cid": identity.canonical_task_cid,
+                        "attempt": attempt,
+                        "workspace_path": str(workspace),
+                        "original_branch": str(
+                            authority.get("original_branch") or ""
+                        ),
+                        "candidate_branch": branch,
+                        "baseline_ref": baseline_commit,
+                        "preparation_head": str(
+                            authority.get("preparation_head") or ""
+                        ),
+                        "candidate_commit": candidate_commit,
+                        "start_event_id": str(
+                            authority.get("start_event_id") or ""
+                        ),
+                        "recovery_event_id": str(
+                            authority.get("recovery_event_id") or ""
+                        ),
+                        "database_evidence_id": str(
+                            authority.get("database_evidence_id") or ""
+                        ),
+                        "database_recovery_identity": str(
+                            authority.get("database_recovery_identity") or ""
+                        ),
+                        "database_receipt_id": str(
+                            authority.get("database_receipt_id") or ""
+                        ),
+                        "lifecycle_record_id": str(
+                            authority.get("lifecycle_record_id") or ""
+                        ),
+                        "lifecycle_fence": int(
+                            authority.get("lifecycle_fence") or 0
+                        ),
+                        "commit_result": commit_result,
+                        "changed_submodule_paths": (
+                            self._committed_submodule_paths(
+                                commit_result.get("submodule_results") or []
+                            )
+                        ),
+                        "acceptance_inferred": False,
+                        "provider_dispatched": False,
+                        "attempt_consumed": False,
+                    }
+                    candidate_authority_id = content_identity(body)
+                    self._record_event(
+                        "interrupted_database_validation_candidate_prepared",
+                        {
+                            **body,
+                            "candidate_authority_id": candidate_authority_id,
+                        },
+                    )
+                    result = {
+                        **body,
+                        "prepared": True,
+                        "candidate_authority_id": candidate_authority_id,
+                    }
+
+        current_state = PortalTaskState.load(self.state_path)
+        if current_state.active_task_cid == identity.canonical_task_cid:
+            self._mark_implementation_finished(
+                current_state,
+                finished_at=utc_now(),
+            )
+            if result.get("prepared") is True:
+                current_state.last_implementation_commit = str(
+                    result.get("candidate_commit") or ""
+                )
+                current_state.last_implementation_branch = branch
+                current_state.last_implementation_worktree_path = str(
+                    workspace
+                )
+            current_state.save(self.state_path)
+        return result
+
     def _task_claim_release_receipt_path(
         self,
         *,
@@ -9650,8 +10204,10 @@ class PortalImplementationDaemon:
     def _reconcile_quiesced_implementation_task_claim(
         self,
         state: PortalTaskState,
+        *,
+        unfinished_candidate: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Release one exact dead claim after terminal lane/task proof."""
+        """Release one exact dead claim after terminal or staged-retry proof."""
 
         task_id = str(state.last_implementation_task_id or "").strip()
         canonical_task_cid = str(
@@ -9858,6 +10414,62 @@ class PortalImplementationDaemon:
                     attempt=attempt,
                 )
             )
+            unfinished_candidate_authority: dict[str, Any] | None = None
+            if (
+                record is not None
+                and authority_reason == "canonical_task_not_terminal"
+                and unfinished_candidate is not None
+            ):
+                candidate_event_matches = [
+                    event
+                    for event in self._iter_merge_lifecycle_events()
+                    if event.get("type")
+                    == "interrupted_database_validation_candidate_prepared"
+                    and event.get("candidate_authority_id")
+                    == unfinished_candidate.get("candidate_authority_id")
+                    and event.get("task_id") == task_id
+                    and event.get("canonical_task_cid")
+                    == canonical_task_cid
+                    and event.get("attempt") == attempt
+                ]
+                workspace = Path(
+                    str(unfinished_candidate.get("workspace_path") or "")
+                )
+                candidate_commit = str(
+                    unfinished_candidate.get("candidate_commit") or ""
+                )
+                candidate_branch = str(
+                    unfinished_candidate.get("candidate_branch") or ""
+                )
+                if (
+                    unfinished_candidate.get("prepared") is True
+                    and unfinished_candidate.get("acceptance_inferred")
+                    is False
+                    and unfinished_candidate.get("provider_dispatched")
+                    is False
+                    and unfinished_candidate.get("attempt_consumed") is False
+                    and len(candidate_event_matches) == 1
+                    and workspace.exists()
+                    and not workspace.is_symlink()
+                    and self._git_current_branch(workspace)
+                    == candidate_branch
+                    and self._resolved_commit_ref(workspace, "HEAD")
+                    == candidate_commit
+                    and not self._run_git(
+                        [
+                            "status",
+                            "--porcelain",
+                            "--untracked-files=all",
+                        ],
+                        cwd=workspace,
+                    ).stdout.strip()
+                ):
+                    unfinished_candidate_authority = {
+                        key: value
+                        for key, value in unfinished_candidate.items()
+                        if key != "task"
+                    }
+                    authority_reason = ""
             if record is None or authority_reason:
                 return blocked(
                     authority_reason,
@@ -9906,6 +10518,10 @@ class PortalImplementationDaemon:
             if released_attempt_evidence is not None:
                 basis["released_unfinished_attempt"] = (
                     released_attempt_evidence
+                )
+            if unfinished_candidate_authority is not None:
+                basis["unfinished_validation_candidate"] = (
+                    unfinished_candidate_authority
                 )
             operation_id = content_identity(basis)
             receipt_path = self._task_claim_release_receipt_path(
@@ -9996,6 +10612,10 @@ class PortalImplementationDaemon:
         if released_attempt_evidence is not None:
             result["released_unfinished_attempt"] = (
                 released_attempt_evidence
+            )
+        if unfinished_candidate_authority is not None:
+            result["unfinished_validation_candidate"] = (
+                unfinished_candidate_authority
             )
         self._record_event("implementation_task_claim_released", result)
         return result
@@ -10215,6 +10835,386 @@ class PortalImplementationDaemon:
         }
         self._record_event(
             "implementation_shutdown_reconciled",
+            result,
+        )
+        return result
+
+    def reconcile_interrupted_database_validation_attempt(
+        self,
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Resume controller validation for one exactly fenced DB attempt.
+
+        This recovery never dispatches a provider and never treats staging as
+        acceptance.  It first freezes checkout maintenance, rebinds the
+        immutable database receipt to the current task/lifecycle/worktree,
+        recursively commits the retained candidate, releases only the exact
+        dead task claim, and then enters the existing proposal, validation,
+        and merge authority.
+        """
+
+        def blocked(reason: str, **extra: Any) -> dict[str, Any]:
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": reason,
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                **extra,
+            }
+            self._record_event(
+                "interrupted_database_validation_recovery_blocked",
+                result,
+            )
+            return result
+
+        if not isinstance(evidence, Mapping):
+            return blocked("database_recovery_evidence_not_object")
+        receipt = evidence.get("reconciliation_receipt")
+        nested = (
+            receipt.get("nested_state")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        if not isinstance(nested, Mapping):
+            return blocked("database_recovery_evidence_payload_invalid")
+        task_id = str(nested.get("active_task_id") or "").strip()
+        original_branch = str(nested.get("active_branch") or "").strip()
+        raw_attempt = nested.get("active_attempt")
+        if (
+            not task_id
+            or not original_branch
+            or not isinstance(raw_attempt, int)
+            or isinstance(raw_attempt, bool)
+            or raw_attempt <= 0
+        ):
+            return blocked("database_recovery_evidence_hint_invalid")
+
+        # A durable queue handoff is asynchronous.  Replaying its exact event
+        # must wait for the merge authority; it must not restage the candidate
+        # or dispatch another provider while the task is still pending.
+        try:
+            queued_events = [
+                event
+                for event in self._iter_merge_lifecycle_events()
+                if event.get("type")
+                == "interrupted_database_validation_reconciled"
+                and event.get("reason")
+                == "interrupted_database_validation_queued"
+                and event.get("task_id") == task_id
+                and event.get("attempt") == raw_attempt
+                and event.get("database_evidence_id")
+                == evidence.get("evidence_id")
+                and event.get("provider_dispatched") is False
+                and event.get("attempt_consumed") is False
+                and event.get("durable_merge_handoff") is True
+                and isinstance(event.get("controller_validation"), Mapping)
+                and isinstance(
+                    event["controller_validation"].get("merge_result"),
+                    Mapping,
+                )
+                and event["controller_validation"]["merge_result"].get(
+                    "queued"
+                )
+                is True
+            ]
+        except CursorReplayError:
+            return blocked("database_recovery_queue_event_chain_invalid")
+        if len(queued_events) > 1:
+            return blocked("database_recovery_queue_event_ambiguous")
+        if queued_events:
+            queued_event = queued_events[0]
+            try:
+                current_tasks = [
+                    task for task in self._load_tasks() if task.task_id == task_id
+                ]
+            except Exception as exc:
+                return blocked(
+                    "database_recovery_queue_task_unavailable",
+                    error_type=type(exc).__name__,
+                )
+            if len(current_tasks) != 1 or self._canonical_ref(
+                current_tasks[0]
+            ) != queued_event.get("canonical_task_cid"):
+                return blocked("database_recovery_queue_task_changed")
+            current_status = normalize_status(current_tasks[0].status)
+            if current_status in IMPLEMENTATION_TASK_TERMINAL_STATUSES:
+                terminal = self.reconcile_quiesced_active_attempt()
+                if terminal.get("reconciled") is True:
+                    return {
+                        **terminal,
+                        "reason": (
+                            "interrupted_database_validation_merge_completed"
+                        ),
+                        "queued_recovery_event_id": str(
+                            queued_event.get("event_id") or ""
+                        ),
+                        "provider_dispatched": False,
+                        "attempt_consumed": False,
+                    }
+                return blocked(
+                    "database_recovery_queued_completion_not_quiesced",
+                    quiescence=terminal,
+                )
+            if current_status != "todo":
+                return blocked(
+                    "database_recovery_queue_task_status_invalid",
+                    task_status=current_status,
+                )
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "interrupted_database_validation_queued",
+                "task_id": task_id,
+                "attempt": raw_attempt,
+                "canonical_task_cid": str(
+                    queued_event.get("canonical_task_cid") or ""
+                ),
+                "candidate_authority_id": str(
+                    queued_event.get("candidate_authority_id") or ""
+                ),
+                "candidate_commit": str(
+                    queued_event.get("candidate_commit") or ""
+                ),
+                "database_evidence_id": str(
+                    evidence.get("evidence_id") or ""
+                ),
+                "provider_dispatched": False,
+                "attempt_consumed": False,
+                "controller_validation_terminal": False,
+                "durable_merge_handoff": True,
+                "controller_validation": dict(
+                    queued_event["controller_validation"]
+                ),
+                "replayed": True,
+                "queued_recovery_event_id": str(
+                    queued_event.get("event_id") or ""
+                ),
+            }
+
+        # Older recovery code may still have the immutable active state.  Let
+        # its ordinary exact lifecycle/protected-path pass quiesce that state;
+        # the expected non-terminal task claim remains deliberately held.
+        state = PortalTaskState.load(self.state_path)
+        if state.implementation_in_progress or any(
+            (
+                state.active_task_id,
+                state.active_task_cid,
+                state.active_attempt,
+                state.active_worktree_path,
+                state.active_branch,
+            )
+        ):
+            quiescence = self.reconcile_quiesced_active_attempt()
+            claim = quiescence.get("task_claim_reconciliation")
+            if not (
+                quiescence.get("blocked") is True
+                and quiescence.get("reason")
+                == "task_claim_reconciliation_blocked"
+                and isinstance(claim, Mapping)
+                and claim.get("reason") == "canonical_task_not_terminal"
+            ):
+                return blocked(
+                    "database_recovery_quiescence_not_exact",
+                    quiescence=quiescence,
+                )
+
+        lease, lease_reason, existing_lease, waited = (
+            self._acquire_checkout_mutation_lease(
+                task_id=task_id,
+                attempt=raw_attempt,
+                branch=original_branch,
+                operation="interrupted_database_validation_recovery",
+                extra={
+                    "database_evidence_id": str(
+                        evidence.get("evidence_id") or ""
+                    )
+                },
+            )
+        )
+        if lease is None:
+            return blocked(
+                "database_recovery_checkout_lease_unavailable",
+                lease_reason=lease_reason,
+                waited_seconds=waited,
+                existing_lease=(dict(existing_lease or {})),
+            )
+
+        authority: dict[str, Any] = {}
+        candidate: dict[str, Any] = {}
+        claim_reconciliation: dict[str, Any] = {}
+        replacement_claim: dict[str, Any] = {}
+        replacement_claim_path: Path | None = None
+        replacement_claim_acquired = False
+        release_ok = False
+        try:
+            state = PortalTaskState.load(self.state_path)
+            if state.implementation_in_progress or any(
+                (
+                    state.active_task_id,
+                    state.active_task_cid,
+                    state.active_attempt,
+                    state.active_worktree_path,
+                    state.active_branch,
+                )
+            ):
+                return blocked("database_recovery_lane_became_active")
+            authority = self._interrupted_database_validation_authority(
+                evidence,
+                state=state,
+            )
+            if authority.get("ok") is not True:
+                return blocked(
+                    str(
+                        authority.get("reason")
+                        or "database_recovery_authority_invalid"
+                    )
+                )
+            candidate = self._prepare_interrupted_database_validation_candidate(
+                authority,
+                state=state,
+            )
+            if candidate.get("prepared") is True:
+                claim_reconciliation = (
+                    self._reconcile_quiesced_implementation_task_claim(
+                        PortalTaskState.load(self.state_path),
+                        unfinished_candidate=candidate,
+                    )
+                )
+                task = authority.get("task")
+                if (
+                    claim_reconciliation.get("reconciled") is True
+                    and isinstance(task, PortalTask)
+                ):
+                    replacement_claim = (
+                        self._build_implementation_task_claim_metadata(
+                            task,
+                            raw_attempt,
+                            utc_now(),
+                        )
+                    )
+                    identity = self._identity_for_task(task)
+                    replacement_claim_path = (
+                        self._implementation_task_claim_path(
+                            task.task_id,
+                            canonical_task_cid=(
+                                identity.canonical_task_cid
+                            ),
+                        )
+                    )
+                    (
+                        replacement_claim_acquired,
+                        replacement_reason,
+                        replacement_existing,
+                    ) = self._try_acquire_implementation_task_claim(
+                        replacement_claim_path,
+                        replacement_claim,
+                    )
+                    if not replacement_claim_acquired:
+                        claim_reconciliation = {
+                            **claim_reconciliation,
+                            "reconciled": False,
+                            "blocked": True,
+                            "reason": (
+                                "replacement_task_claim_"
+                                + replacement_reason
+                            ),
+                            "existing_claim": dict(
+                                replacement_existing or {}
+                            ),
+                        }
+        finally:
+            release_ok = self._release_checkout_mutation_lease(lease)
+
+        if not release_ok:
+            return blocked("database_recovery_checkout_lease_release_lost")
+        if candidate.get("prepared") is not True:
+            return blocked(
+                str(
+                    candidate.get("reason")
+                    or "database_recovery_candidate_not_prepared"
+                ),
+                candidate={
+                    key: value
+                    for key, value in candidate.items()
+                    if key != "task"
+                },
+            )
+
+        if (
+            claim_reconciliation.get("reconciled") is not True
+            or not replacement_claim_acquired
+            or replacement_claim_path is None
+        ):
+            return blocked(
+                "database_recovery_task_claim_custody_not_transferred",
+                task_claim_reconciliation=claim_reconciliation,
+            )
+
+        task = authority.get("task")
+        workspace = authority.get("workspace_path")
+        if not isinstance(task, PortalTask) or not isinstance(workspace, Path):
+            return blocked("database_recovery_authority_lost_after_staging")
+        validation = self.reconcile_validated_worktree_candidate(
+            worktree_path=workspace,
+            branch_name=str(candidate.get("candidate_branch") or ""),
+            task=task,
+            baseline_ref=str(candidate.get("baseline_ref") or ""),
+            candidate_commit=str(candidate.get("candidate_commit") or ""),
+            changed_submodule_paths=list(
+                candidate.get("changed_submodule_paths") or []
+            ),
+            recovery_key=str(candidate.get("candidate_authority_id") or ""),
+            preacquired_task_claim=replacement_claim,
+        )
+        merge_result = validation.get("merge_result")
+        validation_passed = bool(
+            isinstance(validation.get("validation_result"), Mapping)
+            and validation["validation_result"].get("passed") is True
+        )
+        durable_handoff = bool(
+            isinstance(merge_result, Mapping)
+            and (
+                merge_result.get("merged") is True
+                or merge_result.get("queued") is True
+            )
+        )
+        validation_terminal_failure = bool(
+            not validation_passed and not durable_handoff
+        )
+
+        result = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": (
+                "interrupted_database_validation_rejected"
+                if validation_terminal_failure
+                else (
+                    "interrupted_database_validation_queued"
+                    if isinstance(merge_result, Mapping)
+                    and merge_result.get("queued") is True
+                    else "interrupted_database_validation_reconciled"
+                )
+            ),
+            "task_id": task.task_id,
+            "canonical_task_cid": self._identity_for_task(
+                task
+            ).canonical_task_cid,
+            "attempt": raw_attempt,
+            "candidate_authority_id": str(
+                candidate.get("candidate_authority_id") or ""
+            ),
+            "candidate_commit": str(candidate.get("candidate_commit") or ""),
+            "database_evidence_id": str(evidence.get("evidence_id") or ""),
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "controller_validation_terminal": validation_terminal_failure,
+            "durable_merge_handoff": durable_handoff,
+            "task_claim_reconciliation": claim_reconciliation,
+            "controller_validation": validation,
+        }
+        self._record_event(
+            "interrupted_database_validation_reconciled",
             result,
         )
         return result
@@ -75917,8 +76917,29 @@ class DatabaseImplementationDaemon:
                     outcomes.append(item)
                     blocked = True
                     continue
+                portal_reconciliation = nested.get(
+                    "portal_reconciliation"
+                )
+                controller_validation_terminal = bool(
+                    isinstance(portal_reconciliation, Mapping)
+                    and portal_reconciliation.get(
+                        "controller_validation_terminal"
+                    )
+                    is True
+                    and portal_reconciliation.get("reason")
+                    == "interrupted_database_validation_rejected"
+                )
+                merge_handoff_pending = bool(
+                    isinstance(portal_reconciliation, Mapping)
+                    and portal_reconciliation.get("durable_merge_handoff")
+                    is True
+                    and portal_reconciliation.get("reason")
+                    == "interrupted_database_validation_queued"
+                )
                 provider_unknown = bool(
                     not current.phase_committed(ATTEMPT_PHASE_PROVIDER)
+                    and not controller_validation_terminal
+                    and not merge_handoff_pending
                     and not str(nested.get("reason") or "").startswith(
                         "admitted_preportal_"
                     )
@@ -75965,11 +76986,15 @@ class DatabaseImplementationDaemon:
                     or committed_effect_result_missing
                 )
                 callback_unknown = bool(
-                    committed_provider_result_missing
-                    or committed_effect_result_missing
-                    or (
-                        callback_state["callback_boundary_crossed"]
-                        and not preserve_for_resume
+                    not controller_validation_terminal
+                    and not merge_handoff_pending
+                    and (
+                        committed_provider_result_missing
+                        or committed_effect_result_missing
+                        or (
+                            callback_state["callback_boundary_crossed"]
+                            and not preserve_for_resume
+                        )
                     )
                 )
                 non_rearmable_callback_boundary = bool(
@@ -76014,11 +77039,15 @@ class DatabaseImplementationDaemon:
                         "preserved_for_exact_phase_resume"
                         if preserve_for_resume
                         else (
-                            "blocked_unknown_outcome"
-                            if provider_unknown
-                            or effect_unknown
-                            or callback_unknown
-                            else "terminalized_for_retry"
+                            "preserved_for_merge_handoff"
+                            if merge_handoff_pending
+                            else (
+                                "blocked_unknown_outcome"
+                                if provider_unknown
+                                or effect_unknown
+                                or callback_unknown
+                                else "terminalized_for_retry"
+                            )
                         )
                     )
                 )
@@ -76076,15 +77105,23 @@ class DatabaseImplementationDaemon:
                 }
                 evidence["evidence_id"] = content_identity(evidence)
                 if not (
-                    preserve_for_resume and not superseded_attempt
+                    (preserve_for_resume or merge_handoff_pending)
+                    and not superseded_attempt
                 ):
                     self._record_database_portal_terminal_reconciliation_barrier(
                         current,
                         evidence,
                     )
-                if preserve_for_resume and not superseded_attempt:
+                if (
+                    (preserve_for_resume or merge_handoff_pending)
+                    and not superseded_attempt
+                ):
                     terminal = current
-                    disposition = "preserved_for_exact_phase_resume"
+                    disposition = (
+                        "preserved_for_merge_handoff"
+                        if merge_handoff_pending
+                        else "preserved_for_exact_phase_resume"
+                    )
                 else:
                     force_block = bool(
                         (
@@ -76151,7 +77188,10 @@ class DatabaseImplementationDaemon:
                     ],
                     "retry_receipt": dict(retry_receipt),
                 }
-                if disposition == "preserved_for_exact_phase_resume":
+                if disposition in {
+                    "preserved_for_exact_phase_resume",
+                    "preserved_for_merge_handoff",
+                }:
                     # This is a durable quiescence barrier, not a terminal DB
                     # transition.  Do not claim terminal evidence or occupy
                     # the one-per-terminal-attempt repair index while the

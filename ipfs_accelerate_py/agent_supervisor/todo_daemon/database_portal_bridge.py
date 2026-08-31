@@ -2523,8 +2523,27 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "portal_factory does not expose quiesced-attempt reconciliation"
             )
+        interrupted_validation_evidence = (
+            self._interrupted_validation_recovery_evidence(
+                attempt,
+                expected,
+            )
+        )
+        reconcile_interrupted_validation = getattr(
+            daemon,
+            "reconcile_interrupted_database_validation_attempt",
+            None,
+        )
         try:
-            raw_reconciliation = reconcile()
+            if (
+                interrupted_validation_evidence is not None
+                and callable(reconcile_interrupted_validation)
+            ):
+                raw_reconciliation = reconcile_interrupted_validation(
+                    interrupted_validation_evidence
+                )
+            else:
+                raw_reconciliation = reconcile()
             if not isinstance(raw_reconciliation, Mapping):
                 raise DatabasePortalBridgeError(
                     "Portal nested reconciliation returned a non-object"
@@ -2816,6 +2835,178 @@ class DatabasePortalExecutionBridge:
                 "database Portal reconciliation receipt identity does not verify"
             )
         return receipt
+
+    def _interrupted_validation_recovery_evidence(
+        self,
+        attempt: Any,
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Return one exact durable post-provider/pre-validation crash proof.
+
+        The nested Portal state is mutable and may already have been cleared by
+        an earlier crash-reconciliation pass.  Recovery may therefore use only
+        an immutable database-attempt reconciliation receipt that captured the
+        exact ``validating`` state while fencing the exact ordinary provider
+        birth.  Repeated receipts for the same exact recovery identity are
+        coalesced; distinct qualifying identities remain ambiguous.
+        """
+
+        paths = self._paths(attempt)
+        if not paths.reconciliation.exists():
+            return None
+        if (
+            paths.reconciliation.is_symlink()
+            or not paths.reconciliation.is_dir()
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal reconciliation evidence store is not exact"
+            )
+        try:
+            receipt_paths = sorted(paths.reconciliation.iterdir())
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "database Portal reconciliation evidence store is unreadable"
+            ) from exc
+        task_alias = str(binding.get("task_alias") or "")
+        binding_id = str(binding.get("binding_id") or "")
+        matches: list[dict[str, Any]] = []
+        for receipt_path in receipt_paths:
+            match = re.fullmatch(r"([0-9a-f]{64})\.json", receipt_path.name)
+            if match is None:
+                raise DatabasePortalBridgeError(
+                    "database Portal reconciliation evidence name is malformed"
+                )
+            receipt = self.load_reconciliation_receipt(
+                attempt,
+                "sha256:" + match.group(1),
+            )
+            if receipt.get("stage") != "blocked":
+                continue
+            nested = receipt.get("nested_state")
+            fence = receipt.get("provider_runner_fence")
+            portal = receipt.get("portal_reconciliation")
+            if not (
+                receipt.get("blocked") is True
+                and receipt.get("reconciled") is False
+                and receipt.get("reason")
+                == "nested_portal_attempt_reconciliation_blocked"
+                and receipt.get("binding_id") == binding_id
+                and receipt.get("task_alias") == task_alias
+                and receipt.get("terminal_provider_evidence") is False
+                and receipt.get("provider_runner_reconciliation_authority")
+                == "ordinary_provider_runner_fence"
+                and isinstance(nested, Mapping)
+                and nested.get("active") is True
+                and nested.get("active_phase") == "validating"
+                and nested.get("active_task_id") == task_alias
+                and isinstance(nested.get("active_attempt"), int)
+                and not isinstance(nested.get("active_attempt"), bool)
+                and int(nested.get("active_attempt") or 0) > 0
+                and isinstance(nested.get("active_worktree_path"), str)
+                and bool(str(nested.get("active_worktree_path") or "").strip())
+                and isinstance(nested.get("active_branch"), str)
+                and bool(str(nested.get("active_branch") or "").strip())
+                and nested.get("state_path") == str(paths.state)
+                and isinstance(fence, Mapping)
+                and fence.get("applicable") is True
+                and fence.get("fenced") is True
+                and fence.get("safe_to_restart") is True
+                and fence.get("reason")
+                == "ordinary_provider_runner_exact_birth_fenced"
+                and isinstance(portal, Mapping)
+                and portal.get("blocked") is True
+                and portal.get("reconciled") is False
+                and portal.get("reason")
+                == "task_claim_reconciliation_blocked"
+            ):
+                continue
+
+            protected = portal.get("protected_path_reconciliation")
+            lifecycle = portal.get("worktree_lifecycle_reconciliation")
+            claim = portal.get("task_claim_reconciliation")
+            attempt_recovery = portal.get("attempt_recovery")
+            active_attempt = int(nested["active_attempt"])
+            workspace = str(nested["active_worktree_path"])
+            if not (
+                isinstance(protected, Mapping)
+                and protected.get("blocked") is False
+                and protected.get("reason") == "crash_reconciliation_unchanged"
+                and protected.get("task_id") == task_alias
+                and protected.get("workspace_path") == workspace
+                and isinstance(lifecycle, Mapping)
+                and lifecycle.get("blocked") is False
+                and lifecycle.get("reconciled") is True
+                and lifecycle.get("state") == "terminal"
+                and lifecycle.get("task_id") == task_alias
+                and lifecycle.get("workspace_path") == workspace
+                and lifecycle.get("attempt") == active_attempt
+                and isinstance(claim, Mapping)
+                and claim.get("blocked") is True
+                and claim.get("reconciled") is False
+                and claim.get("reason") == "canonical_task_not_terminal"
+                and claim.get("task_id") == task_alias
+                and isinstance(attempt_recovery, Mapping)
+                and attempt_recovery.get("consumed") is False
+                and attempt_recovery.get("attempt") == active_attempt
+                and attempt_recovery.get("task_id") == task_alias
+            ):
+                continue
+            matches.append(receipt)
+
+        if not matches:
+            return None
+        recovery_groups: dict[str, list[dict[str, Any]]] = {}
+        for receipt in matches:
+            nested = dict(receipt["nested_state"])
+            portal = dict(receipt["portal_reconciliation"])
+            lifecycle = dict(portal["worktree_lifecycle_reconciliation"])
+            claim = dict(portal["task_claim_reconciliation"])
+            recovery_identity = _sha256_bytes(
+                _canonical_json(
+                    {
+                        "binding_id": binding_id,
+                        "nested_state_digest": nested.get("state_digest"),
+                        "active_attempt": nested.get("active_attempt"),
+                        "active_task_id": nested.get("active_task_id"),
+                        "active_worktree_path": nested.get(
+                            "active_worktree_path"
+                        ),
+                        "active_branch": nested.get("active_branch"),
+                        "lifecycle_record_id": lifecycle.get("record_id"),
+                        "lifecycle_fence": lifecycle.get("fence"),
+                        "canonical_task_cid": claim.get(
+                            "canonical_task_cid"
+                        ),
+                    }
+                )
+            )
+            recovery_groups.setdefault(recovery_identity, []).append(receipt)
+        if len(recovery_groups) != 1:
+            raise DatabasePortalBridgeError(
+                "database Portal interrupted validation evidence is ambiguous"
+            )
+        recovery_identity, equivalent_receipts = next(
+            iter(recovery_groups.items())
+        )
+        selected = min(
+            equivalent_receipts,
+            key=lambda item: str(item.get("receipt_id") or ""),
+        )
+        evidence = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-interrupted-validation-recovery@1"
+            ),
+            "binding": dict(binding),
+            "recovery_identity": recovery_identity,
+            "equivalent_receipt_ids": sorted(
+                str(item.get("receipt_id") or "")
+                for item in equivalent_receipts
+            ),
+            "reconciliation_receipt": selected,
+        }
+        evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
+        return evidence
 
     @staticmethod
     def _require_accepted_provider(attempt: Any, provider_result: Mapping[str, Any]) -> str:
