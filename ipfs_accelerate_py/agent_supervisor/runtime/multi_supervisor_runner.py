@@ -6,6 +6,7 @@ import argparse
 import errno
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -3488,6 +3489,7 @@ def build_configured_multi_supervisor_cli_runner(
     duration_seconds_env_var: str = "",
     heartbeat_interval_seconds: float | int | str | None = None,
     supervisor_status_stale_seconds: float | int | str | None = None,
+    supervisor_status_startup_grace_seconds: float | int | str | None = None,
     stop_grace_seconds: float | int | str | None = None,
     stamp: str = "",
     stamp_env_var: str = "",
@@ -3543,6 +3545,13 @@ def build_configured_multi_supervisor_cli_runner(
         argv.extend(["--heartbeat-interval-seconds", str(heartbeat_interval_seconds)])
     if supervisor_status_stale_seconds is not None:
         argv.extend(["--supervisor-status-stale-seconds", str(supervisor_status_stale_seconds)])
+    if supervisor_status_startup_grace_seconds is not None:
+        argv.extend(
+            [
+                "--supervisor-status-startup-grace-seconds",
+                str(supervisor_status_startup_grace_seconds),
+            ]
+        )
     if stop_grace_seconds is not None:
         argv.extend(["--stop-grace-seconds", str(stop_grace_seconds)])
     if master_log is not None:
@@ -3586,6 +3595,7 @@ def build_configured_multi_supervisor_launcher(
     duration_seconds_env_var: str = "",
     heartbeat_interval_seconds: float | int | str | None = None,
     supervisor_status_stale_seconds: float | int | str | None = None,
+    supervisor_status_startup_grace_seconds: float | int | str | None = None,
     stop_grace_seconds: float | int | str | None = None,
     stamp: str = "",
     stamp_env_var: str = "",
@@ -3617,6 +3627,9 @@ def build_configured_multi_supervisor_launcher(
             duration_seconds_env_var=duration_seconds_env_var,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             supervisor_status_stale_seconds=supervisor_status_stale_seconds,
+            supervisor_status_startup_grace_seconds=(
+                supervisor_status_startup_grace_seconds
+            ),
             stop_grace_seconds=stop_grace_seconds,
             stamp=stamp,
             stamp_env_var=stamp_env_var,
@@ -3655,6 +3668,7 @@ def build_repo_implementation_multi_supervisor_launcher(
     duration_seconds_env_var: str = "DURATION_SECONDS",
     heartbeat_interval_seconds: float | int | str | None = None,
     supervisor_status_stale_seconds: float | int | str | None = None,
+    supervisor_status_startup_grace_seconds: float | int | str | None = None,
     stop_grace_seconds: float | int | str | None = None,
     stamp: str = "",
     stamp_env_var: str = "STAMP",
@@ -3726,6 +3740,9 @@ def build_repo_implementation_multi_supervisor_launcher(
         duration_seconds_env_var=duration_seconds_env_var,
         heartbeat_interval_seconds=heartbeat_interval_seconds,
         supervisor_status_stale_seconds=supervisor_status_stale_seconds,
+        supervisor_status_startup_grace_seconds=(
+            supervisor_status_startup_grace_seconds
+        ),
         stop_grace_seconds=stop_grace_seconds,
         stamp=stamp,
         stamp_env_var=stamp_env_var,
@@ -4324,6 +4341,8 @@ def supervisor_status_health_fields(
     stale_seconds: float,
     expected_supervisor_pid: int | None = None,
     supervisor_status_not_before_epoch_seconds: float | None = None,
+    supervisor_status_startup_grace_seconds: float | None = None,
+    supervisor_status_started_monotonic_seconds: float | None = None,
 ) -> dict[str, object]:
     """Return heartbeat fields for the wrapper supervisor status file."""
 
@@ -4331,18 +4350,117 @@ def supervisor_status_health_fields(
     status_path = _inferred_supervisor_status_path(resolved)
     if status_path is None:
         return {"supervisor_status": "untracked"}
+    startup_started_at: float | None = None
+    startup_started_monotonic: float | None = None
+    startup_grace_seconds: float | None = None
+    if supervisor_status_startup_grace_seconds is not None:
+        try:
+            candidate_started_at = float(
+                supervisor_status_not_before_epoch_seconds
+            )
+            candidate_grace_seconds = float(
+                supervisor_status_startup_grace_seconds
+            )
+        except (TypeError, ValueError):
+            candidate_started_at = 0.0
+            candidate_grace_seconds = -1.0
+        if candidate_started_at > 0.0 and candidate_grace_seconds >= 0.0:
+            startup_started_at = candidate_started_at
+            startup_grace_seconds = candidate_grace_seconds
+            try:
+                candidate_started_monotonic = float(
+                    supervisor_status_started_monotonic_seconds
+                )
+            except (TypeError, ValueError):
+                candidate_started_monotonic = 0.0
+            if candidate_started_monotonic > 0.0:
+                startup_started_monotonic = candidate_started_monotonic
+
+    def startup_fields() -> dict[str, object]:
+        if startup_started_at is None or startup_grace_seconds is None:
+            return {}
+        elapsed = max(
+            0.0,
+            (
+                time.monotonic() - startup_started_monotonic
+                if startup_started_monotonic is not None
+                else time.time() - startup_started_at
+            ),
+        )
+        return {
+            "supervisor_startup_elapsed_seconds": round(elapsed, 1),
+            "supervisor_startup_grace_seconds": round(
+                startup_grace_seconds,
+                1,
+            ),
+            "supervisor_startup_grace_remaining_seconds": round(
+                max(0.0, startup_grace_seconds - elapsed),
+                1,
+            ),
+            "supervisor_startup_grace_expired": elapsed > startup_grace_seconds,
+        }
+
+    def awaiting_current_generation(
+        status: str,
+        **fields: object,
+    ) -> dict[str, object]:
+        startup = startup_fields()
+        if startup and not startup["supervisor_startup_grace_expired"]:
+            return {
+                "supervisor_status": "awaiting_current_generation",
+                "supervisor_status_path": str(status_path),
+                "supervisor_prior_generation_status": status,
+                "restart_supervisor": False,
+                **startup,
+                **fields,
+            }
+        return {
+            "supervisor_status": status,
+            "supervisor_status_path": str(status_path),
+            "restart_supervisor": bool(startup),
+            **startup,
+            **fields,
+        }
+
     payload = _read_json_dict(status_path)
     if not payload:
-        return {
-            "supervisor_status": "missing",
-            "supervisor_status_path": str(status_path),
-        }
+        return awaiting_current_generation("missing")
     updated_at = _parse_status_timestamp(payload.get("updated_at") or payload.get("heartbeat_at"))
     if updated_at is None:
-        return {
-            "supervisor_status": "unknown",
-            "supervisor_status_path": str(status_path),
-        }
+        return awaiting_current_generation("unknown")
+    if startup_started_at is not None:
+        try:
+            status_mtime = status_path.stat().st_mtime
+        except OSError:
+            return awaiting_current_generation("missing")
+        recorded_supervisor_pid = payload.get("supervisor_pid")
+        expected_pid_is_bound = bool(
+            type(expected_supervisor_pid) is int
+            and expected_supervisor_pid > 1
+        )
+        recorded_pid_mismatch = bool(
+            expected_pid_is_bound
+            and (
+                type(recorded_supervisor_pid) is not int
+                or recorded_supervisor_pid <= 1
+                or recorded_supervisor_pid != expected_supervisor_pid
+            )
+        )
+        status_predates_process = bool(
+            updated_at.timestamp() + 1e-6 < startup_started_at
+            or status_mtime + 1e-6 < startup_started_at
+        )
+        if recorded_pid_mismatch or status_predates_process:
+            age_seconds = max(
+                0.0,
+                (datetime.now(timezone.utc) - updated_at).total_seconds(),
+            )
+            return awaiting_current_generation(
+                "stale_prior_generation",
+                supervisor_status_age_seconds=round(age_seconds, 1),
+                supervisor_status_pid_mismatch=recorded_pid_mismatch,
+                supervisor_status_predates_process=status_predates_process,
+            )
     age_seconds = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds())
     if stale_seconds <= 0 or age_seconds <= stale_seconds:
         return {
@@ -4401,6 +4519,14 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
     age = fields.get("supervisor_status_age_seconds")
     if age is not None:
         parts.append(f"supervisor_status_age_seconds={age}")
+    startup_remaining = fields.get(
+        "supervisor_startup_grace_remaining_seconds"
+    )
+    if startup_remaining is not None:
+        parts.append(
+            "supervisor_startup_grace_remaining_seconds="
+            f"{startup_remaining}"
+        )
     active_task_id = fields.get("supervisor_active_task_id")
     if active_task_id:
         parts.append(f"supervisor_active_task_id={active_task_id}")
@@ -5235,6 +5361,10 @@ def start_track(
         launch_environment["PATH"] = "/usr/bin:/bin"
     try:
         try:
+            # This is a conservative lower bound for the child generation.
+            # Capture it before Popen because a fast child may publish its
+            # PID-bound status before Popen returns to the parent.
+            process_started_at_epoch_seconds = time.time()
             process = subprocess.Popen(
                 command,
                 cwd=repo_root,
@@ -5288,6 +5418,11 @@ def start_track(
     # Popen is only an observation handle.  The immutable profile is what lets
     # stop/restart rediscover children that have detached or been reparented.
     setattr(process, "_agent_supervisor_lifecycle_profile", profile)
+    setattr(
+        process,
+        "_agent_supervisor_started_at_epoch_seconds",
+        process_started_at_epoch_seconds,
+    )
     if plan_bound_dispatch:
         if gate_write_fd is None:
             raise AssertionError("plan-bound launch gate was not created")
@@ -5384,6 +5519,15 @@ def start_track(
         resolved.supervisor_pid_path.write_text(
             f"{process.pid}\n", encoding="utf-8"
         )
+    # The status publication grace begins only after all parent-side launch
+    # gates and durable birth bookkeeping have completed.  Before this point a
+    # plan-bound child is deliberately unable to publish its current status.
+    process_started_at_monotonic_seconds = time.monotonic()
+    setattr(
+        process,
+        "_agent_supervisor_started_at_monotonic_seconds",
+        process_started_at_monotonic_seconds,
+    )
     _emit(
         output,
         f"started {resolved.name} supervisor pid={process.pid} script={resolved.script_path} log={resolved.log_path}",
@@ -7238,6 +7382,7 @@ def run_supervisor_tracks(
     duration_seconds: float,
     heartbeat_interval_seconds: float = 60.0,
     supervisor_status_stale_seconds: float = 600.0,
+    supervisor_status_startup_grace_seconds: float | None = None,
     stop_grace_seconds: float = 10.0,
     python_executable: str = "python3",
     master_pid_path: Path | None = None,
@@ -7256,6 +7401,17 @@ def run_supervisor_tracks(
 ) -> dict[str, object]:
     """Run and supervise multiple tracks for the requested duration."""
 
+    if supervisor_status_startup_grace_seconds is not None:
+        supervisor_status_startup_grace_seconds = float(
+            supervisor_status_startup_grace_seconds
+        )
+        if (
+            not math.isfinite(supervisor_status_startup_grace_seconds)
+            or supervisor_status_startup_grace_seconds < 0.0
+        ):
+            raise ValueError(
+                "supervisor status startup grace must be finite and nonnegative"
+            )
     managed_tracks = list(tracks)
     live_profile_required = _configured_board_live_seal_required(
         common_args,
@@ -7403,6 +7559,57 @@ def run_supervisor_tracks(
     scope_drift_receipts: list[dict[str, Any]] = []
     replan_required = False
     run_started_at = time.time()
+    process_started_at: dict[str, float] = {}
+    process_started_monotonic: dict[str, float] = {}
+
+    def start_managed_track(track: SupervisorTrack) -> subprocess.Popen[bytes]:
+        """Start one track and retain the birth epoch for status fencing."""
+
+        process = start_track(
+            track,
+            repo_root=resolved_repo_root,
+            common_args=common_args,
+            python_executable=python_executable,
+            accepted_control_plane_pin=accepted_control_plane_pin,
+            accepted_control_plane_descriptor=(
+                accepted_control_plane_descriptor
+            ),
+            native_dependency_launch=native_dependency_launch,
+            configured_board_live_admission=(
+                configured_board_live_admission
+            ),
+            output=output,
+        )
+        started_at = getattr(
+            process,
+            "_agent_supervisor_started_at_epoch_seconds",
+            None,
+        )
+        started_monotonic = getattr(
+            process,
+            "_agent_supervisor_started_at_monotonic_seconds",
+            None,
+        )
+
+        def exact_birth_time(value: object, fallback: float) -> float:
+            if (
+                isinstance(value, (float, int))
+                and not isinstance(value, bool)
+                and math.isfinite(float(value))
+                and float(value) > 0.0
+            ):
+                return float(value)
+            return fallback
+
+        process_started_at[track.name] = exact_birth_time(
+            started_at,
+            time.time(),
+        )
+        process_started_monotonic[track.name] = exact_birth_time(
+            started_monotonic,
+            time.monotonic(),
+        )
+        return process
 
     def recovery_recipient(
         donor: PlanBoundSupervisorChild,
@@ -7460,20 +7667,8 @@ def run_supervisor_tracks(
                     raise ValueError("reassigned track name is not unique")
                 managed_tracks.append(adopted_track)
                 plan_children_by_name[adopted.name] = adopted
-                processes[adopted_track.name] = start_track(
-                    adopted_track,
-                    repo_root=resolved_repo_root,
-                    common_args=common_args,
-                    python_executable=python_executable,
-                    accepted_control_plane_pin=accepted_control_plane_pin,
-                    accepted_control_plane_descriptor=(
-                        accepted_control_plane_descriptor
-                    ),
-                    native_dependency_launch=native_dependency_launch,
-                    configured_board_live_admission=(
-                        configured_board_live_admission
-                    ),
-                    output=output,
+                processes[adopted_track.name] = start_managed_track(
+                    adopted_track
                 )
                 reassignment_count += 1
                 _emit(
@@ -7528,21 +7723,7 @@ def run_supervisor_tracks(
     try:
         _emit(output, f"starting {label} duration_seconds={duration_seconds:g}")
         for track in managed_tracks:
-            processes[track.name] = start_track(
-                track,
-                repo_root=resolved_repo_root,
-                common_args=common_args,
-                python_executable=python_executable,
-                accepted_control_plane_pin=accepted_control_plane_pin,
-                accepted_control_plane_descriptor=(
-                    accepted_control_plane_descriptor
-                ),
-                native_dependency_launch=native_dependency_launch,
-                configured_board_live_admission=(
-                    configured_board_live_admission
-                ),
-                output=output,
-            )
+            processes[track.name] = start_managed_track(track)
 
         deadline = time.monotonic() + max(0.0, float(duration_seconds))
         while time.monotonic() < deadline:
@@ -7568,7 +7749,15 @@ def run_supervisor_tracks(
                     expected_supervisor_pid=(
                         process.pid if process is not None else None
                     ),
-                    supervisor_status_not_before_epoch_seconds=run_started_at,
+                    supervisor_status_not_before_epoch_seconds=(
+                        process_started_at.get(track.name, run_started_at)
+                    ),
+                    supervisor_status_startup_grace_seconds=(
+                        supervisor_status_startup_grace_seconds
+                    ),
+                    supervisor_status_started_monotonic_seconds=(
+                        process_started_monotonic.get(track.name)
+                    ),
                 )
                 if process is not None and process.poll() is None and pid_alive(process.pid):
                     supervisor_summary = format_supervisor_status_fields(supervisor_fields)
@@ -7605,21 +7794,7 @@ def run_supervisor_tracks(
                             process.wait(timeout=max(0.1, stop_grace_seconds))
                         except subprocess.TimeoutExpired:
                             pass
-                        processes[track.name] = start_track(
-                            track,
-                            repo_root=resolved_repo_root,
-                            common_args=common_args,
-                            python_executable=python_executable,
-                            accepted_control_plane_pin=accepted_control_plane_pin,
-                            accepted_control_plane_descriptor=(
-                                accepted_control_plane_descriptor
-                            ),
-                            native_dependency_launch=native_dependency_launch,
-                            configured_board_live_admission=(
-                                configured_board_live_admission
-                            ),
-                            output=output,
-                        )
+                        processes[track.name] = start_managed_track(track)
                     elif exit_when_all_tracks_terminal:
                         task_fields = terminal_task_state_fields(
                             resolved,
@@ -7815,25 +7990,7 @@ def run_supervisor_tracks(
                                 blocked = blocker
                     if recover_execution and not blocked:
                         try:
-                            processes[track.name] = start_track(
-                                track,
-                                repo_root=resolved_repo_root,
-                                common_args=common_args,
-                                python_executable=python_executable,
-                                accepted_control_plane_pin=(
-                                    accepted_control_plane_pin
-                                ),
-                                accepted_control_plane_descriptor=(
-                                    accepted_control_plane_descriptor
-                                ),
-                                native_dependency_launch=(
-                                    native_dependency_launch
-                                ),
-                                configured_board_live_admission=(
-                                    configured_board_live_admission
-                                ),
-                                output=output,
-                            )
+                            processes[track.name] = start_managed_track(track)
                         except Exception as exc:  # noqa: BLE001
                             blocker = (
                                 "cannot restart recoverable plan-bound handoff: "
@@ -7874,21 +8031,7 @@ def run_supervisor_tracks(
                         raise SupervisorRunInterrupted(
                             f"could not fence exited {track.name} descendants"
                         )
-                processes[track.name] = start_track(
-                    track,
-                    repo_root=resolved_repo_root,
-                    common_args=common_args,
-                    python_executable=python_executable,
-                    accepted_control_plane_pin=accepted_control_plane_pin,
-                    accepted_control_plane_descriptor=(
-                        accepted_control_plane_descriptor
-                    ),
-                    native_dependency_launch=native_dependency_launch,
-                    configured_board_live_admission=(
-                        configured_board_live_admission
-                    ),
-                    output=output,
-                )
+                processes[track.name] = start_managed_track(track)
             dispatch_pending_reassignments()
             if replan_required:
                 _emit(
@@ -7991,6 +8134,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--duration-seconds", type=float, default=28800.0)
     parser.add_argument("--heartbeat-interval-seconds", type=float, default=60.0)
     parser.add_argument("--supervisor-status-stale-seconds", type=float, default=600.0)
+    parser.add_argument(
+        "--supervisor-status-startup-grace-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Wait this long for a spawned supervisor to publish a status "
+            "bound to its current process generation before restarting it."
+        ),
+    )
     parser.add_argument("--stop-grace-seconds", type=float, default=10.0)
     parser.add_argument("--stamp", default=utc_run_stamp())
     parser.add_argument("--master-dir", type=Path, default=Path("data/agent_supervisor"))
@@ -8743,6 +8895,9 @@ def main(argv: list[str] | None = None) -> int:
             duration_seconds=args.duration_seconds,
             heartbeat_interval_seconds=args.heartbeat_interval_seconds,
             supervisor_status_stale_seconds=args.supervisor_status_stale_seconds,
+            supervisor_status_startup_grace_seconds=(
+                args.supervisor_status_startup_grace_seconds
+            ),
             stop_grace_seconds=args.stop_grace_seconds,
             python_executable=args.python_executable,
             master_pid_path=master_pid,
