@@ -74214,6 +74214,59 @@ def _repair_database_execution_art_index_storage_impl(
                 cleanup=cleanup,
                 expected_present=False,
             )
+            installed_digest, installed_size, installed_identity = (
+                _database_execution_storage_named_identity_at(
+                    path.name,
+                    directory_fd=cleanup.parent_fd,
+                )
+            )
+            displaced_digest, displaced_size, displaced_identity = (
+                _database_execution_storage_named_identity_at(
+                    candidate.name,
+                    directory_fd=cleanup.parent_fd,
+                )
+            )
+            backup_digest, backup_size, backup_identity = (
+                _database_execution_storage_named_identity_at(
+                    backup.name,
+                    directory_fd=quarantine_fd,
+                )
+            )
+            assert rollback_link is not None
+            rollback_digest, rollback_size, rollback_identity = (
+                _database_execution_storage_named_identity_at(
+                    rollback_link.name,
+                    directory_fd=cleanup.parent_fd,
+                )
+            )
+            source_preserved = (
+                installed_digest == candidate_digest
+                and installed_size == candidate_size
+                and installed_identity == candidate_identity
+                and displaced_digest == source_digest
+                and displaced_size == source_size
+                and displaced_identity == source_identity
+                and backup_digest == source_digest
+                and backup_size == source_size
+                and rollback_digest == source_digest
+                and rollback_size == source_size
+                and rollback_identity[:2] == source_identity[:2]
+            )
+            if not source_preserved:
+                raise DatabaseImplementationExecutionStorageRepairError(
+                    "execution repair captured-source evidence changed after install"
+                )
+            # This is the final authority gate while the exact exchange can
+            # still be rolled back.  A legacy writer can publish a WAL after
+            # independent verification or even during the final installed-
+            # source identity read above; such a WAL is preserved and the
+            # captured source is restored before any displaced-source cleanup
+            # or committed receipt becomes visible.
+            _revalidate_database_execution_storage_wal(
+                wal_path,
+                cleanup=cleanup,
+                expected_present=False,
+            )
         except BaseException as install_exc:
             if exchange_performed:
                 failed_replacement = quarantine / (
@@ -74332,48 +74385,6 @@ def _repair_database_execution_art_index_storage_impl(
             ) from install_exc
 
         assert verified_projection is not None
-        installed_digest, installed_size, installed_identity = (
-            _database_execution_storage_named_identity_at(
-                path.name,
-                directory_fd=cleanup.parent_fd,
-            )
-        )
-        displaced_digest, displaced_size, displaced_identity = (
-            _database_execution_storage_named_identity_at(
-                candidate.name,
-                directory_fd=cleanup.parent_fd,
-            )
-        )
-        backup_digest, backup_size, backup_identity = (
-            _database_execution_storage_named_identity_at(
-                backup.name,
-                directory_fd=quarantine_fd,
-            )
-        )
-        assert rollback_link is not None
-        rollback_digest, rollback_size, rollback_identity = (
-            _database_execution_storage_named_identity_at(
-                rollback_link.name,
-                directory_fd=cleanup.parent_fd,
-            )
-        )
-        source_preserved = (
-            installed_digest == candidate_digest
-            and installed_size == candidate_size
-            and installed_identity == candidate_identity
-            and displaced_digest == source_digest
-            and displaced_size == source_size
-            and displaced_identity == source_identity
-            and backup_digest == source_digest
-            and backup_size == source_size
-            and rollback_digest == source_digest
-            and rollback_size == source_size
-            and rollback_identity[:2] == source_identity[:2]
-        )
-        if not source_preserved:
-            raise DatabaseImplementationExecutionStorageRepairError(
-                "execution repair captured-source evidence changed after install"
-            )
         os.unlink(candidate.name, dir_fd=cleanup.parent_fd)
         candidate = None
         os.fsync(cleanup.parent_fd)

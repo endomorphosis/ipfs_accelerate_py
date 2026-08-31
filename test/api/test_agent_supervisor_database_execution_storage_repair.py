@@ -1406,7 +1406,7 @@ def test_initially_absent_wal_appearance_blocks_install_and_preserves_bytes(
 
 
 @pytest.mark.parametrize("initial_wal", ["absent", "empty", "redundant_nonempty"])
-def test_late_wal_after_verifier_rolls_back_without_committed_evidence(
+def test_late_wal_after_final_source_read_rolls_back_without_committed_evidence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     initial_wal: str,
@@ -1445,7 +1445,7 @@ def test_late_wal_after_verifier_rolls_back_without_committed_evidence(
         identity = real_identity(name, directory_fd=directory_fd)
         if name == path.name and identity[2][1] != source_inode:
             installed_identity_reads += 1
-            if installed_identity_reads == 2:
+            if installed_identity_reads == 3:
                 wal_path.write_bytes(late_wal)
         return identity
 
@@ -1461,7 +1461,7 @@ def test_late_wal_after_verifier_rolls_back_without_committed_evidence(
         repair_database_execution_art_index_storage(path)
 
     assert "WAL appeared" in str(captured.value.__cause__)
-    assert installed_identity_reads >= 2
+    assert installed_identity_reads >= 3
     assert _sha256(path) == source_digest
     assert path.stat().st_ino == source_inode
     assert wal_path.read_bytes() == late_wal
