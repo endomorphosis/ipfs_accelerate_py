@@ -153,8 +153,37 @@ _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS: Final[frozenset[str]] = frozenset(
         "worktree_lifecycle_transition_failed",
         "inflight_process",
         "external_protected_checkout_recovery_required",
+        "portal_execution_incomplete",
     }
 )
+
+
+def _leftover_wait_blocked_coordination_matches(
+    coordination: Any,
+    *,
+    attempt_id: str,
+    claim_id: str,
+    attempt_number: int,
+) -> bool:
+    """True when blocked-receipt coordination is identity-bound.
+
+    An empty mapping is accepted: typed deferral persist historically omitted
+    the nested copy when coordination evidence was missing, while the
+    receipt-level attempt/claim/number fields remain the fence.
+    """
+
+    if not isinstance(coordination, Mapping):
+        return False
+    if not coordination:
+        return True
+    return (
+        coordination.get("attempt_id") == attempt_id
+        and coordination.get("claim_id") == claim_id
+        and type(coordination.get("attempt_number")) is int
+        and coordination.get("attempt_number") == attempt_number
+    )
+
+
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW: Final[int] = 16
 _TYPED_DEFERRAL_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
 _TYPED_DEFERRAL_GIT_OBJECT_RE = re.compile(r"[0-9a-f]{40}")
@@ -955,12 +984,11 @@ def _validated_leftover_wait_blocked_context(
             blocked_receipt.get(receipt_field),
             noun=f"leftover-wait exhausted {receipt_field}",
         )
-    if (
-        coordination.get("attempt_id") != blocked_receipt["attempt_id"]
-        or coordination.get("claim_id") != blocked_receipt["claim_id"]
-        or type(coordination.get("attempt_number")) is not int
-        or coordination.get("attempt_number")
-        != blocked_receipt["attempt_number"]
+    if not _leftover_wait_blocked_coordination_matches(
+        coordination,
+        attempt_id=str(blocked_receipt["attempt_id"]),
+        claim_id=str(blocked_receipt["claim_id"]),
+        attempt_number=int(blocked_receipt["attempt_number"]),
     ):
         raise TypedDeferralRecoveryError(
             "leftover-wait exhausted coordination has a foreign identity"

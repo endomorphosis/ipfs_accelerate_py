@@ -87700,6 +87700,9 @@ _DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_BUDGET_SCHEMA = (
 # Leftover-wait deferrals already have dedicated auto-recovery.  Counting
 # them toward the anti-spin budget turns a live wait into a permanent
 # block after max_task_attempts identical leftovers (PCAR-011).
+# ``portal_execution_incomplete`` is the same class: the inner portal never
+# dispatched a provider (resource-claim / incomplete projection) and a
+# leftover block must stay a wait, not a terminal budget exhaustion.
 _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS = frozenset(
     {
         "worktree_lifecycle_claim_exists",
@@ -87707,8 +87710,37 @@ _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS = frozenset(
         "worktree_lifecycle_transition_failed",
         "inflight_process",
         "external_protected_checkout_recovery_required",
+        "portal_execution_incomplete",
     }
 )
+
+
+def _leftover_wait_blocked_coordination_matches(
+    coordination: Any,
+    *,
+    attempt_id: str,
+    claim_id: str,
+    attempt_number: int,
+) -> bool:
+    """True when blocked-receipt coordination is identity-bound.
+
+    An empty mapping is accepted: typed deferral persist historically omitted
+    the nested copy when ``coordination_evidence`` was missing, while the
+    receipt-level attempt/claim/number fields remain the fence.
+    """
+
+    if not isinstance(coordination, Mapping):
+        return False
+    if not coordination:
+        return True
+    return (
+        coordination.get("attempt_id") == attempt_id
+        and coordination.get("claim_id") == claim_id
+        and type(coordination.get("attempt_number")) is int
+        and coordination.get("attempt_number") == attempt_number
+    )
+
+
 _DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-leftover-wait-deferral-budget-recovery@1"
@@ -112533,11 +112565,12 @@ class DatabaseImplementationDaemon:
             or not isinstance(
                 receipt.get("prior_queue_entry_preserved_inactive"), bool
             )
-            or not isinstance(coordination, Mapping)
-            or coordination.get("attempt_id") != attempt.attempt_id
-            or coordination.get("claim_id") != attempt.claim_id
-            or coordination.get("attempt_number")
-            != int(attempt.attempt_number)
+            or not _leftover_wait_blocked_coordination_matches(
+                coordination,
+                attempt_id=str(attempt.attempt_id),
+                claim_id=str(attempt.claim_id),
+                attempt_number=int(attempt.attempt_number),
+            )
             or receipt.get("control_expected_status")
             not in {"in_progress", "retrying"}
             or receipt.get("control_expected_revision") != task_revision - 1
@@ -114366,7 +114399,16 @@ class DatabaseImplementationDaemon:
                     "prior_queue_entry_preserved_inactive": (
                         queue_entry is not None
                     ),
-                    "coordination": dict(coordination_evidence or {}),
+                    "coordination": dict(
+                        coordination_evidence
+                        if isinstance(coordination_evidence, Mapping)
+                        and coordination_evidence
+                        else {
+                            "attempt_id": attempt.attempt_id,
+                            "claim_id": attempt.claim_id,
+                            "attempt_number": int(attempt.attempt_number),
+                        }
+                    ),
                     "control_expected_status": status,
                     "control_expected_revision": int(task.revision),
                 },
