@@ -1523,6 +1523,10 @@ def test_kita_config_maps_to_four_strict_existing_supervisor_lanes() -> None:
     assert "--implementation-supervisor-strict-task-sharding" in args
     assert "--exit-when-all-tracks-terminal" in args
     assert "--detach" in args
+    startup_grace_flag = args.index(
+        "--supervisor-status-startup-grace-seconds"
+    )
+    assert args[startup_grace_flag + 1] == "300.0"
     assert "--implement" in common
     assert "--strict-task-sharding" in common
     assert "--objective-refill-scan" not in common
