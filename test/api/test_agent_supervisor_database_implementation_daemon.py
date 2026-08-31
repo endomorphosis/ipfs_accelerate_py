@@ -1564,6 +1564,68 @@ def test_sandbox_host_failure_quarantine_reopens(tmp_path: Path) -> None:
         daemon.close()
 
 
+def test_false_terminal_unstalls_operator_merge_protected_path_block(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:protected-path-unstall",
+        repo_root=repo,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "blocked",
+            receipt={
+                "operation": "database_portal_terminal_failure",
+                "reason": "implementation_protected_path_mutated",
+                "retryable": False,
+            },
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert outcomes
+        assert outcomes[0]["reason"] == "false_terminal_portal_unstall"
+        reopened = daemon.task_source.get("task:cid:001")
+        assert reopened is not None
+        assert reopened.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_false_terminal_unstalls_quack_disconnect_block(tmp_path: Path) -> None:
+    daemon = _open_daemon(tmp_path, session="session:quack-unstall")
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "blocked",
+            receipt={
+                "operation": "database_portal_terminal_failure",
+                "reason": (
+                    "IO Error: Failed to send message: IO Error: Could not "
+                    "connect to server error for HTTP POST to "
+                    "'http://127.0.0.1:41487/quack'"
+                ),
+                "retryable": False,
+            },
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert outcomes
+        reopened = daemon.task_source.get("task:cid:001")
+        assert reopened is not None
+        assert reopened.status == "retrying"
+    finally:
+        daemon.close()
+
+
 def test_sandbox_host_failure_does_not_reopen_committed_provider_phase(
     tmp_path: Path,
 ) -> None:
