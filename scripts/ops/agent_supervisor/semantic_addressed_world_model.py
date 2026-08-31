@@ -30,6 +30,25 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+_M30_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.duckdb"
+)
+_M30_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.coordination.duckdb"
+)
+_M30_WORKTREE_ROOT = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/worktrees"
+)
+_M30_GENERATION = 28
+_M30_TARGET_PLAN_REVISION = 28
+_M30_TARGET_EVENT_WATERMARK = 281
+_M30_TARGET_PROJECTION_CID = (
+    "baguqeeragvf7yhfecuccjs3fqqg7azmwukg63sbgkbivnczfv6uljqd4js4q"
+)
+_M30_TARGET_QUACK_PORT = 24_070
 _M29_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
     "run-r2-m27/control.duckdb"
@@ -749,6 +768,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m30_key = "stopped_owner_restart_source_seal_successor_materialization"
     m29_key = "committed_evidence_verification_successor_materialization"
     m28_key = "live_claim_admission_recovery_successor_materialization"
     m27_key = "dead_owner_parallel_resume_successor_materialization"
@@ -772,6 +792,52 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m30_key in config:
+        authority = config.get(m30_key)
+        try:
+            expected = (
+                _materializer()
+                ._expected_m30_stopped_owner_restart_source_seal_authority()
+            )
+        except Exception as exc:
+            raise OperatorError("active M30 authority is unavailable") from exc
+        target_root = str(Path(_M30_STORE_ID).parent)
+        expected_runtime = {
+            "root": target_root,
+            "state": f"{target_root}/state",
+            "worktrees": _M30_WORKTREE_ROOT,
+            "merge_queue": f"{target_root}/merge-queue",
+            "logs": f"{target_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        runtime = config.get("runtime_paths")
+        binding = authority.get("runtime_binding") if isinstance(authority, Mapping) else None
+        if (
+            not isinstance(authority, Mapping)
+            or dict(authority) != expected
+            or authority.get("migration_revision") != "SAWM-R2-M30"
+            or not isinstance(binding, Mapping)
+            or binding.get("store_id") != _M30_STORE_ID
+            or binding.get("store_generation") != _M30_GENERATION
+            or binding.get("target_event_watermark") != _M30_TARGET_EVENT_WATERMARK
+            or binding.get("quack_port") != _M30_TARGET_QUACK_PORT
+            or authority.get("target_projection_cid") != _M30_TARGET_PROJECTION_CID
+            or not isinstance(program, Mapping)
+            or program.get("store_id") != _M30_STORE_ID
+            or program.get("store_generation") != str(_M30_GENERATION)
+            or program.get("quack_endpoint") != "quack:127.0.0.1:24070"
+            or program.get("worktree_root") != _M30_WORKTREE_ROOT
+            or not isinstance(owner, Mapping)
+            or owner.get("database_path") != _M30_STORE_ID
+            or owner.get("store_id") != _M30_STORE_ID
+            or owner.get("port") != _M30_TARGET_QUACK_PORT
+            or owner.get("state_dir") != f"{target_root}/quack-owner"
+            or runtime != expected_runtime
+        ):
+            raise OperatorError("active M30 stopped-owner restart authority is invalid")
+        return authority
     if m29_key in config:
         authority = config.get(m29_key)
         try:
@@ -2017,6 +2083,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            "stopped_owner_restart_source_seal_successor_materialization",
             "committed_evidence_verification_successor_materialization",
             "live_claim_admission_recovery_successor_materialization",
             "dead_owner_parallel_resume_successor_materialization",
@@ -4392,6 +4459,68 @@ def _require_m18_final_pair_marker(
                 "M18 materializer check differs from its final pair marker"
             )
     return MappingProxyType(dict(observed))
+
+
+def _require_m30_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M30's exact live generation-28 source-seal receipt."""
+
+    key = "stopped_owner_restart_source_seal_successor_materialization"
+    if key not in config:
+        return MappingProxyType({})
+    expected_authority = (
+        materializer._expected_m30_stopped_owner_restart_source_seal_authority()
+    )
+    if dict(authority) != expected_authority or config.get(key) != expected_authority:
+        raise OperatorError("M30 stopped-owner restart authority differs")
+    if checked is None:
+        raise OperatorError("M30 marker requires exact live materializer verification")
+    path = (REPO_ROOT / _M30_STORE_ID).resolve().parent / (
+        "m30-source-successor-receipt.json"
+    )
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            path, root=REPO_ROOT, noun="M30 source successor receipt"
+        )
+    except Exception as exc:
+        raise OperatorError("M30 exact source successor receipt is unavailable") from exc
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        claimed != materializer._identity(unhashed)
+        or checked.get("valid") is not True
+        or checked.get("event_watermark") != _M30_TARGET_EVENT_WATERMARK
+        or checked.get("projection_cid") != _M30_TARGET_PROJECTION_CID
+        or checked.get("generation_27_28_restart_rows_verified") is not True
+        or checked.get("prior_event_prefix_verified") is not True
+        or checked.get("full_event_and_evidence_body_verified") is not True
+        or checked.get("receipt") != observed
+        or observed.get("migration_revision") != "SAWM-R2-M30"
+        or observed.get(f"{key}_cid") != materializer._identity(expected_authority)
+        or observed.get("target_generation") != _M30_GENERATION
+        or observed.get("target_event_watermark") != _M30_TARGET_EVENT_WATERMARK
+        or observed.get("projection_cid") != _M30_TARGET_PROJECTION_CID
+        or observed.get("prior_event_prefix_sha256")
+        != expected_authority["prior_authority"]["event_prefix_sha256"]
+        or observed.get("prior_event_prefix_verified") is not True
+        or observed.get("queried_and_mutated_through_live_quack_only") is not True
+        or observed.get("direct_authoritative_file_opened") is not False
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M30 exact source successor receipt differs")
+    return MappingProxyType(
+        {
+            **dict(observed),
+            "source_successor_receipt_cid": claimed,
+            "source_successor_receipt_verified": True,
+            "final_pair_commit_marker_verified": False,
+        }
+    )
 
 
 def _require_m29_source_successor_marker(
@@ -7563,6 +7692,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if "stopped_owner_restart_source_seal_successor_materialization" in config:
+        return _require_m30_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if "committed_evidence_verification_successor_materialization" in config:
         return _require_m29_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -8554,6 +8687,29 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
+    if "stopped_owner_restart_source_seal_successor_materialization" in config:
+        active_materialization = _active_source_repair_materialization(config)
+        try:
+            admitted = materializer._check_m30_prestart_admission(REPO_ROOT, config)
+        except Exception as exc:
+            raise OperatorError(
+                "M30 stopped generation-27 restart is not admissible"
+            ) from exc
+        if (
+            admitted.get("valid") is not True
+            or admitted.get("prior_generation") != 27
+            or admitted.get("target_generation") != 28
+            or admitted.get("prior_event_watermark") != 280
+        ):
+            raise OperatorError("M30 prestart admission report differs")
+        return MappingProxyType(
+            {
+                "dependency_valid": True,
+                "board_valid": True,
+                "prior_authority": active_materialization,
+                "store": admitted,
+            }
+        )
     if _successor_materialization_configured(config):
         active_materialization = _active_source_repair_materialization(config)
         checked = materializer.check_materialized(REPO_ROOT, config_path)
@@ -9264,6 +9420,45 @@ def _m23_portal_completion_is_compatible(
         is False
         and operational_validation_revision.get("worker_self_approval") is False
     )
+
+
+def _verify_m30_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M30's evidence-only target while preserving event-280 heads."""
+
+    head = materializer._inspect_m30_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M30_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M30_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M30_TARGET_PROJECTION_CID
+        or head.get("projection_cid") != expected_projection_cid
+    ):
+        raise materializer.MigrationRequired("M30 live head projection differs")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        if observed is None:
+            raise materializer.MigrationRequired(f"M30 task is missing: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
 
 
 def _verify_m29_live_head_task_projection(
@@ -10533,6 +10728,9 @@ def _live_preflight(
             "program_definition_cid": population["program_definition_cid"],
         }
     )
+    m30_active = (
+        "stopped_owner_restart_source_seal_successor_materialization" in config
+    )
     m29_active = (
         "committed_evidence_verification_successor_materialization" in config
     )
@@ -10760,7 +10958,42 @@ def _live_preflight(
     except Exception:
         raise OperatorError("authenticated live Quack preflight open failed") from None
     try:
-        if m29_active:
+        if m30_active:
+            try:
+                m30_verified = materializer._verify_m30_live_materialization(
+                    live,
+                    live_identity,
+                    population,
+                    config,
+                    active_source_repair,
+                    validation_digest,
+                )
+                expected_m30_receipt = (
+                    materializer._expected_m30_source_successor_receipt(
+                        population,
+                        active_source_repair,
+                        validation_digest,
+                        m30_verified,
+                    )
+                )
+                final_pair_marker = _require_active_final_pair_marker(
+                    config,
+                    active_source_repair,
+                    materializer,
+                    checked={
+                        "valid": True,
+                        "receipt": expected_m30_receipt,
+                        **m30_verified,
+                    },
+                )
+            except (
+                materializer.MigrationRequired,
+                materializer.MaterializationError,
+            ) as exc:
+                raise OperatorError(
+                    f"M30 exact stopped-owner source seal failed: {exc}"
+                ) from exc
+        elif m29_active:
             try:
                 materializer._assert_m29_m28_receipt_absent(
                     REPO_ROOT, active_source_repair
@@ -10836,7 +11069,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if "committed_evidence_verification_successor_materialization" in config:
+            if "stopped_owner_restart_source_seal_successor_materialization" in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m30_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif "committed_evidence_verification_successor_materialization" in config:
                 statuses, _revisions, _receipts = (
                     _verify_m29_live_head_task_projection(
                         live,

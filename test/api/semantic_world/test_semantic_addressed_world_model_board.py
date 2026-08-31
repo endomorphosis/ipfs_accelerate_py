@@ -25,6 +25,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "stopped_owner_restart_source_seal_successor_materialization",
     "committed_evidence_verification_successor_materialization",
     "live_claim_admission_recovery_successor_materialization",
     "dead_owner_parallel_resume_successor_materialization",
@@ -222,6 +223,11 @@ def test_m29_nested_source_authority_overlay_is_presence_first() -> None:
         ).read_text(encoding="utf-8")
     )
     key = "committed_evidence_verification_successor_materialization"
+    scheduler, migration, seal = _historical_successor_controls_at(
+        key, scheduler, migration, seal
+    )
+    assert migration is not None
+    assert seal is not None
     expected = (
         materializer._expected_m29_committed_evidence_verification_authority()
     )
@@ -274,11 +280,13 @@ def test_m29_nested_source_authority_overlay_is_presence_first() -> None:
     )
     assert null_errors == ["active M29 nested-source authority differs"]
 
-    historical_scheduler = copy.deepcopy(scheduler)
-    historical_migration = copy.deepcopy(migration)
-    historical_seal = copy.deepcopy(seal)
+    historical_scheduler, historical_migration, historical_seal = (
+        _historical_successor_controls_at(key, scheduler, migration, seal)
+    )
     historical_scheduler.pop(key)
+    assert historical_migration is not None
     historical_migration.pop(key)
+    assert historical_seal is not None
     historical_seal.pop(f"{key}_cid")
     _effective, historical_errors = validator._effective_nested_source_authorities(
         seal["source_authorities"],
@@ -318,10 +326,12 @@ def test_m28_nested_source_authority_overlay_is_presence_first() -> None:
         ).read_text(encoding="utf-8")
     )
     m29_key = "committed_evidence_verification_successor_materialization"
-    scheduler.pop(m29_key, None)
-    migration.pop(m29_key, None)
-    seal.pop(f"{m29_key}_cid", None)
     m28_key = "live_claim_admission_recovery_successor_materialization"
+    scheduler, migration, seal = _historical_successor_controls_at(
+        m28_key, scheduler, migration, seal
+    )
+    assert migration is not None
+    assert seal is not None
     expected_m28 = (
         materializer._expected_m28_live_claim_admission_recovery_authority()
     )
@@ -4517,7 +4527,11 @@ def test_m29_committed_evidence_verification_authority_is_exact(
         lambda *_args, **_kwargs: [],
     )
     assert dependency._m29_committed_evidence_verification_successor_errors(
-        config, seal, inventory, root=REPO_ROOT
+        config,
+        seal,
+        inventory,
+        root=REPO_ROOT,
+        require_active_runtime=False,
     ) == []
 
     changed = copy.deepcopy(config)
@@ -4585,6 +4599,238 @@ def test_m29_presence_masks_m28_and_keeps_every_predecessor_historical(
     errors = board._active_successor_migration_errors(partial, {}, {})
     assert "M29 active" in errors
     assert any("only partially declared" in error for error in errors)
+
+
+def test_m30_authority_pins_stopped_event_280_and_generation_28() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m30_authority_test",
+    )
+    key = "stopped_owner_restart_source_seal_successor_materialization"
+    authority = (
+        materializer._expected_m30_stopped_owner_restart_source_seal_authority()
+    )
+    scheduler = json.loads(
+        (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
+        .read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json")
+        .read_text(encoding="utf-8")
+    )
+    assert scheduler[key] == authority == migration[key]
+    assert seal[f"{key}_cid"] == materializer._identity(authority)
+    assert scheduler["database_program"]["store_generation"] == "28"
+    assert authority["control_recorded_at"] == "2026-08-31T05:05:00Z"
+    assert authority["prior_authority"]["event_watermark"] == 280
+    assert authority["prior_authority"]["event_prefix_sha256"] == (
+        "633332aa54c610819c55ba0bcd9c4fa4b745bb5c4414e063a009a084df73d909"
+    )
+    assert authority["prior_authority"]["projection_cid"] == (
+        "baguqeeragk42f56z3bz6ofrjcfipippglefbblgnj7qtpl4zrg735w3ytzka"
+    )
+    assert authority["prior_authority"]["semantic_authority_digest"] == (
+        "sha256:395168339f24de03f6d6f91cc0ca0365df2ffa8d71a80ac9fecab6e282817163"
+    )
+    assert authority["prior_authority"]["program_definition_cid"] == (
+        "sha256:f581af1f2234c127231b47bb1bb8d42910b984dcd1bece9a6303949ac1ba0b72"
+    )
+    assert authority["prior_authority"]["plan_root_cid"] == (
+        "sha256:d9481937430405ff6a512e779b14b7ce676de45d277c65d3763ebe49445ba914"
+    )
+    assert authority["prior_authority"]["source_binding_cid"] == (
+        "sha256:60c69c7e554a3d037a441f8a9232b8e9eecbdc13fd53dc55cb79e9942738256e"
+    )
+    assert authority["prior_authority"]["control_store_sha256"] == (
+        "4e1c0cc5bd0aba06c4cc1267290baf22aafa10a25d9fc76ac14ea3c00a00d465"
+    )
+    assert authority["prior_authority"]["control_store_size"] == 43_528_192
+    assert authority["prior_authority"]["coordination_store_sha256"] == (
+        "0a93e9993e66b0671bc155a425f0536bb41a71affe2993d8128ba685bcba65cd"
+    )
+    assert authority["prior_authority"]["coordination_store_size"] == 17_051_648
+    assert authority["prior_authority"]["stopped_status_sha256"] == (
+        "bf44e8b996fc16bb2aed34f908e325301f9e4e32bd3c022052bb7c291683db36"
+    )
+    assert authority["prior_authority"]["m29_receipt_sha256"] == (
+        "6159a3e51d3850015692c4c2d1bbd7135ceab8ac500f185287b2f22616772f05"
+    )
+    assert authority["target_generation"] == 28
+    assert authority["target_event_watermark"] == 281
+    assert authority["target_projection_cid"] == (
+        "baguqeeragvf7yhfecuccjs3fqqg7azmwukg63sbgkbivnczfv6uljqd4js4q"
+    )
+    assert authority["stopped_owner"]["stopped_at"] == "2026-08-31T04:54:18Z"
+    assert authority["expected_task_heads"]["SAWM-006"] == {
+        "status": "in_progress", "revision": 7,
+    }
+    assert authority["expected_task_heads"]["SAWM-008"] == {
+        "status": "in_progress", "revision": 9,
+    }
+    assert authority["expected_task_heads"]["SAWM-015"] == {
+        "status": "completed", "revision": 7,
+    }
+    repair = authority["accepted_source_repair"]
+    assert repair["repair_commit"] == (
+        "b1c0226a5e95c36656b300034cd9f78b8a70201e"
+    )
+    assert repair["repair_parent"] == (
+        "64acbcc2afb7f51f33eb3ba398f6013caa54f6de"
+    )
+    assert repair["repair_tree"] == (
+        "69cdfa11e4ec5ffee6040cef582b7c006865ec5b"
+    )
+    assert repair["changed_paths"] == sorted(repair["blob_oids"])
+    assert set(authority["bounded_control_plane_repair_paths"]) == (
+        set(authority["operator_control_paths"])
+        | set(repair["changed_paths"])
+    )
+
+
+def test_m30_presence_masks_m29_and_keeps_history_nonactive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m30_presence_test",
+    )
+    dependency = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m30_presence_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m30_presence_test",
+    )
+    key = "stopped_owner_restart_source_seal_successor_materialization"
+    authority = (
+        materializer._expected_m30_stopped_owner_restart_source_seal_authority()
+    )
+    scheduler = {key: authority}
+    migration = {key: authority}
+    seal = {f"{key}_cid": materializer._identity(authority)}
+    assert dependency._m30_successor_declared(scheduler, {}, {}) is True
+    assert dependency._m30_successor_declared({}, seal, {}) is True
+    assert dependency._m30_successor_declared({}, {}, migration) is True
+    monkeypatch.setattr(
+        board, "_m30_migration_errors", lambda *_args, **_kwargs: ["M30 active"]
+    )
+    historical_calls: list[bool] = []
+
+    def historical(*_args: object, **kwargs: object) -> list[str]:
+        historical_calls.append(kwargs.get("require_active_runtime") is False)
+        return []
+
+    for name in (
+        "_m29_migration_errors", "_m28_migration_errors", "_m27_migration_errors",
+        "_m26_migration_errors", "_m25_migration_errors", "_m24_migration_errors",
+        "_m23_migration_errors", "_m22_migration_errors", "_m21_migration_errors",
+        "_m20_migration_errors", "_m19_migration_errors", "_m18_migration_errors",
+        "_m17_migration_errors", "_m16_migration_errors",
+    ):
+        monkeypatch.setattr(board, name, historical)
+    assert board._active_successor_migration_errors(
+        scheduler, seal, migration
+    ) == ["M30 active"]
+    assert historical_calls == [True] * 14
+    partial_errors = board._active_successor_migration_errors(scheduler, {}, {})
+    assert "M30 active" in partial_errors
+    assert any("partially declared" in error for error in partial_errors)
+
+
+def test_m30_quack_start_uses_prestart_admission_not_post_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m30_prestart_test",
+    )
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m30_prestart_test",
+    )
+    config = json.loads(
+        (REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
+        .read_text(encoding="utf-8")
+    )
+    authority = (
+        materializer._expected_m30_stopped_owner_restart_source_seal_authority()
+    )
+    fake = SimpleNamespace(
+        build_population=lambda _root: {},
+        _assert_committed_clean_source=lambda _root, _population: None,
+        _expected_m30_stopped_owner_restart_source_seal_authority=lambda: authority,
+        _check_m30_prestart_admission=lambda _root, _config: {
+            "valid": True,
+            "prior_generation": 27,
+            "target_generation": 28,
+            "prior_event_watermark": 280,
+        },
+        check_materialized=lambda *_args: pytest.fail(
+            "M30 prestart must not require its future live receipt"
+        ),
+    )
+    monkeypatch.setattr(operator, "_materializer", lambda: fake)
+    monkeypatch.setattr(operator, "_validator", lambda *_args: {"valid": True})
+    report = operator._validate_offline_quack_start(config)
+    assert report["store"]["target_generation"] == 28
+    assert report["prior_authority"] == authority
+
+
+def test_m30_prestart_rejects_stale_stop_and_token_handoff_controls() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m30_prestart_artifacts_test",
+    )
+    source = inspect.getsource(materializer._check_m30_prestart_admission)
+    assert 'status_path.with_name("quack-state-server.stop")' in source
+    assert '"env___SAWM_QUACK_TOKEN.quack-token"' in source
+    assert "os.path.lexists(stop_path)" in source
+    assert "os.path.lexists(token_handoff_path)" in source
+
+
+def test_m30_live_verifier_rechecks_event_280_prefix() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m30_prefix_test",
+    )
+    source = inspect.getsource(materializer._verify_m30_live_materialization)
+    assert "prior_prefix = _event_prefix_digest" in source
+    assert "_M30_PRIOR_EVENT_WATERMARK" in source
+    assert "_M30_PRIOR_EVENT_PREFIX_SHA256" in source
+    assert '"prior_event_prefix_verified": True' in source
+
+    projection_source = inspect.getsource(materializer._inspect_m30_live_projection)
+    assert "snapshot.dependency_count != 136" in projection_source
+    assert "snapshot.plan_count != 1" in projection_source
+    assert 'snapshot.plan_root_cid != str(population["plan_root_cid"])' in (
+        projection_source
+    )
+
+
+def test_m30_restart_verifier_pins_full_lifecycle_rows() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m30_lifecycle_rows_test",
+    )
+    source = inspect.getsource(materializer._inspect_m30_generation_restart_rows)
+    for required in (
+        "schema_revision,fence_epoch,revision",
+        "rotated_at,revoked_at,revision",
+        "server_id,epoch,fence_epoch,started_at,ended_at",
+        "snapshot_id,server_id,profile_id,duckdb_version,extension_name",
+        "identity.get(\"extension_fingerprint\") != _M30_EXTENSION_FINGERPRINT",
+        'int(identity.get("revision") or 0) != 0',
+        'int(identity.get("credential_generation") or 0) != 28',
+    ):
+        assert required in source
 
 
 def test_m29_provider_environment_guard_rejects_quack_token_substrings(
@@ -4869,6 +5115,107 @@ def test_m28_historical_source_chain_uses_m29_control_head(
     assert observed["current_head"] == (
         "d7e2a4ba9bc7eef32ffad131ffd092ff11f934c4"
     )
+
+
+def test_m29_historical_source_chain_uses_m30_control_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m29_historical_head_test",
+    )
+    dependency = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m29_historical_head_test",
+    )
+    m30_key = "stopped_owner_restart_source_seal_successor_materialization"
+    m29_key = "committed_evidence_verification_successor_materialization"
+    m30 = materializer._expected_m30_stopped_owner_restart_source_seal_authority()
+    m29 = materializer._expected_m29_committed_evidence_verification_authority()
+    scheduler = {m30_key: m30, m29_key: m29}
+    migration = {m30_key: m30, m29_key: m29}
+    seal = {
+        f"{m30_key}_cid": materializer._identity(m30),
+        f"{m29_key}_cid": materializer._identity(m29),
+    }
+    observed: dict[str, object] = {}
+
+    def source_chain(
+        _root: Path,
+        _materializer: object,
+        _authority: object,
+        *,
+        current_head: str | None = None,
+    ) -> list[str]:
+        observed["current_head"] = current_head
+        return []
+
+    monkeypatch.setattr(dependency, "_m29_source_chain_errors", source_chain)
+    assert dependency._m29_committed_evidence_verification_successor_errors(
+        scheduler,
+        seal,
+        migration,
+        root=REPO_ROOT,
+        require_active_runtime=False,
+    ) == []
+    assert observed["current_head"] == (
+        "f8e0cb5c8887474267b354e03363bde0c4a08597"
+    )
+
+
+def test_m29_source_chain_history_rebinds_exact_m30_control_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dependency = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m29_history_rebind_test",
+    )
+    control_head = "f8e0cb5c8887474267b354e03363bde0c4a08597"
+    captured: dict[str, object] = {}
+
+    class Materializer:
+        @staticmethod
+        def build_population(_root: Path) -> dict[str, object]:
+            return {
+                "source_binding": {
+                    "head": "f" * 40,
+                    "tree": "e" * 40,
+                    "datasets_gitlink": "d" * 40,
+                    "kit_gitlink": "c" * 40,
+                }
+            }
+
+        @staticmethod
+        def _assert_m29_source_delta(
+            _root: Path,
+            population: Mapping[str, object],
+            _authority: Mapping[str, object],
+        ) -> None:
+            captured.update(population["source_binding"])
+
+    def git(_root: Path, *args: str) -> str:
+        ref = args[-1]
+        if ref.endswith("^{tree}"):
+            return "1" * 40
+        if ref.endswith(":ipfs_datasets_py"):
+            return "2" * 40
+        if ref.endswith(":ipfs_kit_py"):
+            return "3" * 40
+        raise AssertionError(ref)
+
+    monkeypatch.setattr(dependency, "_git", git)
+    assert dependency._m29_source_chain_errors(
+        REPO_ROOT,
+        Materializer(),
+        {},
+        current_head=control_head,
+    ) == []
+    assert captured == {
+        "head": control_head,
+        "tree": "1" * 40,
+        "datasets_gitlink": "2" * 40,
+        "kit_gitlink": "3" * 40,
+    }
 
 
 def test_m28_source_chain_history_rebinds_exact_m29_control_source(

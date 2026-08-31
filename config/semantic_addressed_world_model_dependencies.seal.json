@@ -1,4 +1,5 @@
 {
+  "stopped_owner_restart_source_seal_successor_materialization_cid": "sha256:ef37e79ce07cbb18d16259feeb85c3176661ebc64ec3cb108c3d7b5624e294fe",
   "committed_evidence_verification_successor_materialization_cid": "sha256:618d5f7e1745bf4fdb1c6c0d45551818b2af032407c69415ec330329c2853110",
   "live_claim_admission_recovery_successor_materialization_cid": "sha256:f766e6f16a88ad50b5810312bacf8fb804474fb5a4e69de8973e728e98c93079",
   "dead_owner_parallel_resume_successor_materialization_cid": "sha256:d9b697e010382809e78acde0e34c9e1df2607cdf5326b52b719c1601384da4d0",

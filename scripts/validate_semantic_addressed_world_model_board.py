@@ -388,6 +388,30 @@ def _m16_migration_errors(
         return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m30_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Reuse the exact M30 stopped-owner restart/source-seal contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m30_stopped_owner_restart_source_seal_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
+            )
+        )
+    except Exception as exc:
+        return [f"M30 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _m29_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -713,6 +737,43 @@ def _active_successor_migration_errors(
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m30_key = "stopped_owner_restart_source_seal_successor_materialization"
+    m30_seal_key = f"{m30_key}_cid"
+    m30_presence = (
+        m30_key in scheduler,
+        m30_key in migration,
+        m30_seal_key in seal,
+    )
+    if any(m30_presence):
+        errors = _m30_migration_errors(scheduler, seal, migration)
+        if not all(m30_presence):
+            errors.append("M30 stopped-owner restart authority is only partially declared")
+        for validator in (
+            _m29_migration_errors,
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(
+                    scheduler,
+                    seal,
+                    migration,
+                    require_active_runtime=False,
+                )
+            )
+        return errors
 
     m29_key = "committed_evidence_verification_successor_materialization"
     m29_seal_key = f"{m29_key}_cid"
@@ -2953,6 +3014,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m30_key = "stopped_owner_restart_source_seal_successor_materialization"
+    m30_selected = any(
+        (
+            m30_key in config,
+            m30_key in migration,
+            f"{m30_key}_cid" in seal,
+        )
+    )
     m29_key = "committed_evidence_verification_successor_materialization"
     m29_selected = any(
         (
@@ -3206,6 +3275,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m30_selected
+        else "run-r2-m27"
         if m29_selected
         else "run-r2-m27"
         if m28_selected
@@ -3251,7 +3322,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "27"
+        "28"
+        if m30_selected
+        else "27"
         if m29_selected
         else "27"
         if m28_selected
@@ -3298,6 +3371,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m30_selected
+        else 24070
         if m29_selected
         else 24070
         if m28_selected
@@ -3357,7 +3432,43 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m29_selected:
+    if m30_selected:
+        successor = config.get(m30_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m30_stopped_owner_restart_source_seal_authority()
+            )
+            if (
+                type(successor) is not dict
+                or materializer._identity(successor) != materializer._identity(expected)
+                or type(migration.get(m30_key)) is not dict
+                or materializer._identity(migration.get(m30_key))
+                != materializer._identity(expected)
+                or seal.get(f"{m30_key}_cid") != materializer._identity(expected)
+                or module._m30_stopped_owner_restart_source_seal_successor_errors(
+                    config, seal, migration, root=root
+                )
+            ):
+                config_errors.append("M30 stopped-owner authority/CID/source differs")
+        except Exception as exc:
+            config_errors.append(
+                f"M30 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M30 active runtime paths are not exactly preserved")
+    elif m29_selected:
         successor = config.get(m29_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"

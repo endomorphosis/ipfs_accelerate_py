@@ -1700,7 +1700,55 @@ only the established nine protected controls. The adjacent M29 receipt is
 non-authoritative; launch admission still requires exact live Quack
 verification of both evidence events and every current authority binding.
 
-## 38. Current limitations at seal time
+## 38. M30 stopped-owner restart and live source-seal successor
+
+After ordinary authenticated work advanced the generation-27 store to event
+280, the owner stopped cleanly. `SAWM-R2-M30` preserves that exact stopped
+store, all M29 evidence and receipts, every event through 280, and the exact
+event-280 task heads. It authorizes the existing generic Quack lifecycle to
+perform one and only one next-generation start. The canonical maximum
+generation must be 27, the exact generation-27 owner row must already be
+`stopped`, and generation-28 lifecycle, generation, credential, server-epoch,
+and capability rows must all be absent before admission. Any live/ambiguous
+owner, changed store bytes, altered stopped status, cursor other than 280, or
+pre-existing generation-28 row fails closed.
+
+The generic owner generates the generation-28 server UUID, process birth, and
+start time. Those unknowable future values are not fabricated in the control
+authorization. After start they must agree across the protected status,
+authenticated Quack identity, and exact canonical generation-28 rows. M30 then
+uses only the closed live Quack mutation route to append one operator source
+seal at event 281. A committed event with a missing adjacent receipt is
+verified and resumed without event 282; any other event head is rejected.
+
+```text
+control       data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb
+coordination  data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.coordination.duckdb
+runtime root  data/agent_supervisor/semantic_addressed_world_model/run-r2-m27
+worktrees     data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/worktrees (preserved)
+Quack port    24070
+generation    27 stopped -> 28 ready (one restart)
+plan revision 28 (unchanged)
+event cursor  280 -> 281 (one operator evidence event)
+pre-projection baguqeeragk42f56z3bz6ofrjcfipippglefbblgnj7qtpl4zrg735w3ytzka
+post-projection baguqeeragvf7yhfecuccjs3fqqg7azmwukg63sbgkbivnczfv6uljqd4js4q
+```
+
+Before the restart, M30 also seals the bounded supervisor recovery commit
+`b1c0226a5e95c36656b300034cd9f78b8a70201e`: eight exact runtime/test blobs
+repair cross-attempt lifecycle recovery, crash-safe Portal receipts, managed
+daemon authority matching, and stalled-run resumption. That commit is a child
+of the stopped event-280 source head and is followed by exactly one commit over
+the nine operator-owned controls. The repair changes no task definition, task
+revision, task status, plan, accepted completion, coordination fact, worktree,
+sidecar, provider invocation, effect, merge, or implementation result.
+
+A malformed or partial M30 declaration takes precedence over M29 and fails
+closed on every validator, materializer, and operator selector. The adjacent
+M30 receipt is non-authoritative and binds the actual generation-28 identity
+plus the exact event-281 evidence bytes.
+
+## 39. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.
