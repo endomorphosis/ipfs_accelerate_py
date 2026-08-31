@@ -2,7 +2,10 @@
 
 Optional cache, receipt, and xdist components are imported only after proof
 reuse is enabled.  In xdist runs, workers remain read/execute-only and return
-bounded publication intents to the single controller (PCTDD-030).
+bounded publication intents to the single controller (PCTDD-030).  Collection
+attaches fixture-affinity and proof-cost scheduling descriptors; the
+controller-owned xdist scheduler (PCTDD-031) places tests without omitting
+them or merging resource pools.
 """
 
 from __future__ import annotations
@@ -47,6 +50,8 @@ REQUIRED_AUDIT_INI = "proof_reuse_required_audit"
 
 DISABLED_MARKER = "proof_reuse_disabled"
 EFFECTS_MARKER = "proof_reuse_effects"
+RESOURCE_POOL_MARKER = "proof_reuse_resource_pool"
+PROOF_COST_MARKER = "proof_reuse_proof_cost"
 
 _MARKER_DESCRIPTIONS = (
     (
@@ -58,6 +63,16 @@ _MARKER_DESCRIPTIONS = (
         EFFECTS_MARKER,
         "proof_reuse_effects(*adapters): declare reviewed effect adapter names "
         "for proof-reuse dependency tracing",
+    ),
+    (
+        RESOURCE_POOL_MARKER,
+        "proof_reuse_resource_pool(name): bind this test to one closed "
+        "resource pool (cpu, gpu, prover, hash, store); pools are never merged",
+    ),
+    (
+        PROOF_COST_MARKER,
+        "proof_reuse_proof_cost(n): integer proof-cost weight used by "
+        "fixture-proof-aware xdist placement",
     ),
 )
 
@@ -960,6 +975,18 @@ def pytest_collection_modifyitems(config: Any, items: Iterable[Any]) -> None:
         if metrics is not None:
             metrics.degraded(reason_code="fixture_definition_extraction_failed")
 
+    # PCTDD-031: attach fixture-affinity and proof-cost descriptors.  Placement
+    # never omits tests, never merges resource pools, and never authorizes skip.
+    try:
+        from .fixture_proof_aware_xdist import attach_scheduling_descriptors
+
+        attach_scheduling_descriptors(collected)
+        setattr(config, "ipfs_proof_reuse_scheduling_items", collected)
+    except Exception:
+        metrics = getattr(config, METRICS_ATTRIBUTE, None)
+        if metrics is not None:
+            metrics.degraded(reason_code="fixture_proof_aware_xdist_failed")
+
     from ...agent_supervisor.proof.test_execution_contracts import ReuseDecision
     from .lookup import (
         ITEM_LOOKUP_REQUEST_ATTRIBUTE,
@@ -1372,10 +1399,30 @@ def pytest_testnodedown(node: Any, error: Any) -> None:
         coordinator.mark_controller_unavailable()
 
 
+def pytest_xdist_make_scheduler(config: Any, log: Any = None) -> Any:
+    """Return fixture- and proof-aware placement; never omit or merge pools."""
+
+    if get_proof_reuse_config(config).mode is ProofReuseMode.OFF:
+        return None
+    try:
+        from .fixture_proof_aware_xdist import make_xdist_scheduler
+
+        return make_xdist_scheduler(config, log)
+    except Exception:
+        metrics = getattr(config, METRICS_ATTRIBUTE, None)
+        if metrics is not None:
+            metrics.degraded(reason_code="fixture_proof_aware_xdist_failed")
+        return None
+
+
 # xdist owns these hook specifications.  Mark them optional without importing
 # pytest during the module's cold-import path.
 pytest_configure_node.pytest_impl = {"optionalhook": True}  # type: ignore[attr-defined]
 pytest_testnodedown.pytest_impl = {"optionalhook": True}  # type: ignore[attr-defined]
+pytest_xdist_make_scheduler.pytest_impl = {"optionalhook": True}  # type: ignore[attr-defined]
+pytest_configure_node.optionalhook = True  # type: ignore[attr-defined]
+pytest_testnodedown.optionalhook = True  # type: ignore[attr-defined]
+pytest_xdist_make_scheduler.optionalhook = True  # type: ignore[attr-defined]
 
 
 def pytest_sessionfinish(session: Any, exitstatus: Any) -> None:
@@ -1482,6 +1529,7 @@ __all__ = [
     "pytest_sessionfinish",
     "pytest_terminal_summary",
     "pytest_testnodedown",
+    "pytest_xdist_make_scheduler",
     "set_proof_reuse_dependency_installer",
     "set_proof_reuse_service_resolver",
     "set_proof_reuse_identity_services",
