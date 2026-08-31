@@ -144,12 +144,14 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     ATTEMPT_PHASE_VALIDATION,
     DATABASE_DECLARED_OUTPUT_REARM_SCHEMA,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
+    DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
     DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
     DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS,
     DATABASE_PORTAL_POST_COMMIT_RECOVERY_DIAGNOSTIC_SCHEMA,
     DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA,
     DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2,
     DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
+    DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA,
     DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
     DATABASE_POST_MERGE_RECOVERY_SCHEMA,
     DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA,
@@ -158,6 +160,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_TASK_ATTEMPT_INTERFACE,
     POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
     POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA,
+    POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationConflictError,
     DatabaseImplementationCoordinationDriftError,
@@ -19388,6 +19391,700 @@ def _post_merge_repair_recovery_evidence(
         evidence
     )
     return evidence
+
+
+def _callback_integration_recovery_evidence(
+    daemon: DatabaseImplementationDaemon,
+    source: DatabaseTaskAttempt,
+    *,
+    request_id: str = "merge-request:callback-integration",
+) -> dict[str, object]:
+    """Build the compact callback receipt used by recovery-state tests.
+
+    Source qualification itself is covered by the bridge tests.  These tests
+    replace only that expensive verifier so the real DuckDB task, queue, and
+    coordination transitions remain under test.
+    """
+
+    candidate_commit = "a" * 40
+    target_commit = "c" * 40
+    qualification: dict[str, object] = {
+        "schema": POST_MERGE_CALLBACK_INTEGRATION_REQUALIFICATION_SCHEMA,
+        "task_ids": [source.task_alias],
+        "task_cid": source.task_cid,
+        "request_id": request_id,
+        "candidate_commit": candidate_commit,
+        "integration_commit": "b" * 40,
+        "train_receipt_id": "sha256:" + "4" * 64,
+        "current_target_commit": target_commit,
+    }
+    qualification["receipt_id"] = content_identity(qualification)
+    evidence: dict[str, object] = {
+        "schema": DATABASE_POST_MERGE_CALLBACK_INTEGRATION_RECOVERY_SCHEMA,
+        "request_id": request_id,
+        "task_cid": source.task_cid,
+        "task_alias": source.task_alias,
+        "candidate_commit": candidate_commit,
+        "source_attempt_id": source.attempt_id,
+        "source_claim_id": source.claim_id,
+        "source_lease_id": source.lease_id,
+        "source_fencing_token": source.fencing_token,
+        "source_fence_epoch": source.fence_epoch,
+        "source_binding_id": "sha256:" + "1" * 64,
+        "source_projection_immutable_digest": "sha256:" + "2" * 64,
+        "qualified_target_commit": target_commit,
+        "callback_requalification_receipt_id": qualification["receipt_id"],
+        "callback_requalification_receipt": qualification,
+    }
+    evidence["evidence_id"] = daemon._database_portal_evidence_digest(
+        evidence
+    )
+    return evidence
+
+
+def _real_released_unknown_callback_quarantine(
+    tmp_path: Path,
+) -> tuple[DatabaseImplementationDaemon, DatabaseTaskAttempt, list[str]]:
+    """Create the exact BLOCKED/quarantined/released callback crash shape."""
+
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane"
+    provider_calls: list[str] = []
+
+    def crash_after_callback_started(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise SimulatedProcessCrash("injected callback recovery fixture crash")
+
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:callback-integration-recovery",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+    )
+    try:
+        first.materialize_population(_population(1))
+        source = first.claim_next()
+        assert source is not None
+        with pytest.raises(
+            SimulatedProcessCrash,
+            match="callback recovery fixture crash",
+        ):
+            first._resume_attempt_without_process_crash(source)
+    finally:
+        first.close()
+
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:callback-integration-recovery",
+        provider_fn=crash_after_callback_started,
+        strict_task_sharding=True,
+    )
+    replay = restarted.run_once()
+    assert replay["implementation_result"]["reason"] == (
+        "portal_neutral_failure"
+    )
+    blocked = restarted.get_attempt(source.attempt_id)
+    task = restarted.task_source.get(source.task_cid)
+    claim = restarted.coordinator.get_task_claim(source.claim_id)
+    coordination_attempt = restarted.coordinator.get_task_attempt(
+        source.attempt_id
+    )
+    lease = restarted.coordinator.get_lease(source.lease_id)
+    assert blocked is not None
+    assert blocked.status == "blocked"
+    assert blocked.committed_phase == ATTEMPT_PHASE_BLOCKED
+    assert task is not None and task.status == "quarantined"
+    assert task.body["completion_receipt"]["operation"] == (
+        "database_portal_neutral_failure_quarantine"
+    )
+    assert claim is not None and claim.state.value == "released"
+    assert (
+        coordination_attempt is not None
+        and coordination_attempt.status.value == "released"
+    )
+    assert lease is not None and lease.state.value == "released"
+    assert restarted.list_running_attempts() == []
+    assert provider_calls == [source.attempt_id]
+    return restarted, blocked, provider_calls
+
+
+def test_callback_integration_recovery_rearms_real_neutral_quarantine_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, source, provider_calls = (
+        _real_released_unknown_callback_quarantine(tmp_path)
+    )
+    try:
+        evidence = _callback_integration_recovery_evidence(daemon, source)
+        monkeypatch.setattr(
+            daemon,
+            "_verified_post_merge_callback_integration_receipt",
+            lambda raw, **_kwargs: dict(raw),
+        )
+        before = daemon.task_source.get(source.task_cid)
+        assert before is not None and before.status == "quarantined"
+        expected_revision = int(before.revision)
+        expected_receipt = dict(before.body["completion_receipt"])
+        original_cas = (
+            daemon.task_source.record_queue_backoff_and_cas_status
+        )
+        cas_calls: list[dict[str, object]] = []
+
+        def observe_cas(**kwargs: object) -> object:
+            cas_calls.append(dict(kwargs))
+            return original_cas(**kwargs)
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "record_queue_backoff_and_cas_status",
+            observe_cas,
+        )
+
+        recovered = daemon.recover_blocked_post_merge_declared_outputs(
+            evidence
+        )
+
+        assert recovered["recovered"] is True
+        assert recovered["changed"] is True
+        assert recovered["status"] == "retrying"
+        assert recovered["qualification_kind"] == "callback_integration"
+        assert len(cas_calls) == 1
+        assert cas_calls[0]["expected_revision"] == expected_revision
+        assert cas_calls[0]["expected_control_receipt"] == expected_receipt
+        submitted_receipt = cas_calls[0]["receipt"]
+        assert isinstance(submitted_receipt, Mapping)
+        assert submitted_receipt["backoff_ms"] == 0
+        assert submitted_receipt["retry_not_before_ms"] == 0
+        retrying = daemon.task_source.get(source.task_cid)
+        assert retrying is not None and retrying.status == "retrying"
+        assert int(retrying.revision) == expected_revision + 1
+        transition = retrying.body["completion_receipt"]
+        assert transition["operation"] == (
+            "database_post_merge_declared_outputs_"
+            "callback_integration_recovery"
+        )
+        assert transition["control_expected_status"] == "quarantined"
+        assert transition["control_expected_revision"] == expected_revision
+        queue_entry = daemon.task_source.get_queue_entry(source.task_cid)
+        assert queue_entry is not None
+        assert transition["backoff_ms"] == 0
+        assert transition["retry_not_before_ms"] == (
+            queue_entry.retry_not_before_ms
+        )
+        assert queue_entry.reason == transition["queue_reason"]
+        assert transition["post_merge_completion_recovery_seed"][
+            "terminal_reason"
+        ] == "provider_callback_outcome_unknown"
+        assert daemon._typed_authoritative_attempt_floor(retrying) == int(
+            source.attempt_number
+        )
+        transplanted = replace(
+            retrying,
+            task_cid="task:cid:foreign",
+            task_alias="FOREIGN-999",
+        )
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="task identity differs from its source attempt",
+        ):
+            daemon._typed_authoritative_attempt_floor(transplanted)
+        assert daemon.list_running_attempts() == []
+        retired_source = daemon.get_attempt(source.attempt_id)
+        assert retired_source is not None
+        assert retired_source.status == "failed"
+        assert retired_source.committed_phase == ATTEMPT_PHASE_BLOCKED
+        claim = daemon.coordinator.get_task_claim(source.claim_id)
+        assert claim is not None and claim.state.value == "released"
+
+        repeated = daemon.recover_blocked_post_merge_declared_outputs(
+            evidence
+        )
+        assert repeated["recovered"] is True
+        assert repeated["changed"] is False
+        assert repeated["write_count"] == 0
+        assert len(cas_calls) == 1
+        unchanged = daemon.task_source.get(source.task_cid)
+        assert unchanged is not None
+        assert int(unchanged.revision) == expected_revision + 1
+        assert provider_calls == [source.attempt_id]
+    finally:
+        daemon.close()
+
+
+def test_callback_integration_recovery_replays_lost_cas_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, source, provider_calls = (
+        _real_released_unknown_callback_quarantine(tmp_path)
+    )
+    evidence = _callback_integration_recovery_evidence(
+        daemon,
+        source,
+        request_id="merge-request:callback-integration-lost-response",
+    )
+    try:
+        monkeypatch.setattr(
+            daemon,
+            "_verified_post_merge_callback_integration_receipt",
+            lambda raw, **_kwargs: dict(raw),
+        )
+        before = daemon.task_source.get(source.task_cid)
+        assert before is not None
+        expected_revision = int(before.revision)
+        original_cas = (
+            daemon.task_source.record_queue_backoff_and_cas_status
+        )
+
+        def lose_response(**kwargs: object) -> None:
+            original_cas(**kwargs)
+            raise RuntimeError("callback integration CAS response lost")
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "record_queue_backoff_and_cas_status",
+            lose_response,
+        )
+        recovered_after_loss = (
+            daemon.recover_blocked_post_merge_declared_outputs(evidence)
+        )
+        assert recovered_after_loss["recovered"] is True
+        assert recovered_after_loss["changed"] is False
+        assert recovered_after_loss["write_count"] == 0
+        committed = daemon.task_source.get(source.task_cid)
+        assert committed is not None and committed.status == "retrying"
+        assert int(committed.revision) == expected_revision + 1
+        retired_source = daemon.get_attempt(source.attempt_id)
+        assert retired_source is not None
+        assert retired_source.status == "failed"
+        assert retired_source.committed_phase == ATTEMPT_PHASE_BLOCKED
+        first_queue = daemon.task_source.get_queue_entry(source.task_cid)
+        assert first_queue is not None
+    finally:
+        daemon.close()
+
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        control_path=tmp_path / "control.duckdb",
+        session="session:callback-integration-recovery",
+        provider_fn=lambda attempt: (_ for _ in ()).throw(
+            AssertionError(f"unexpected redispatch: {attempt.attempt_id}")
+        ),
+        strict_task_sharding=True,
+    )
+    try:
+        monkeypatch.setattr(
+            daemon,
+            "_verified_post_merge_callback_integration_receipt",
+            lambda raw, **_kwargs: dict(raw),
+        )
+        replay = daemon.recover_blocked_post_merge_declared_outputs(evidence)
+        assert replay["recovered"] is True
+        assert replay["changed"] is False
+        assert replay["status"] == "retrying"
+        assert replay["write_count"] == 0
+        second_queue = daemon.task_source.get_queue_entry(source.task_cid)
+        assert second_queue is not None
+        assert second_queue.attempt == first_queue.attempt
+        current = daemon.task_source.get(source.task_cid)
+        assert current is not None
+        assert int(current.revision) == expected_revision + 1
+        assert daemon.list_running_attempts() == []
+        assert provider_calls == [source.attempt_id]
+    finally:
+        daemon.close()
+
+
+def test_callback_integration_recovery_hands_off_to_fresh_foreign_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, source, provider_calls = (
+        _real_released_unknown_callback_quarantine(tmp_path)
+    )
+    evidence = _callback_integration_recovery_evidence(
+        daemon,
+        source,
+        request_id="merge-request:callback-integration-successor-race",
+    )
+    consumer = _open_daemon(
+        tmp_path / "successor-lane",
+        control_path=tmp_path / "control.duckdb",
+        session="session:callback-integration-successor-consumer",
+        provider_fn=lambda attempt: (_ for _ in ()).throw(
+            AssertionError(f"unexpected redispatch: {attempt.attempt_id}")
+        ),
+        strict_task_sharding=True,
+    )
+    try:
+        monkeypatch.setattr(
+            daemon,
+            "_verified_post_merge_callback_integration_receipt",
+            lambda raw, **_kwargs: dict(raw),
+        )
+        quarantined = daemon.task_source.get(source.task_cid)
+        assert quarantined is not None
+        # A fresh lane has no source-lane provider row, so the ordinary live
+        # verifier remains closed.  Only the dedicated historical verifier
+        # can consume the fully sealed admitted callback intent, and its
+        # receipt shape remains exact.
+        assert (
+            consumer._neutral_portal_rejection_receipt_matches(
+                quarantined,
+                source,
+            )
+            is False
+        )
+        assert (
+            consumer._historical_callback_unknown_quarantine_receipt_matches(
+                quarantined,
+                source,
+            )
+            is True
+        )
+        tampered_receipt = dict(quarantined.body["completion_receipt"])
+        tampered_receipt["unexpected_authority"] = True
+        tampered = replace(
+            quarantined,
+            body={
+                **dict(quarantined.body),
+                "completion_receipt": tampered_receipt,
+            },
+        )
+        assert (
+            consumer._historical_callback_unknown_quarantine_receipt_matches(
+                tampered,
+                source,
+            )
+            is False
+        )
+        terminal_revision = int(quarantined.revision)
+        original_cas = (
+            daemon.task_source.record_queue_backoff_and_cas_status
+        )
+        cas_calls: list[dict[str, object]] = []
+        foreign_claims: list[DatabaseTaskAttempt | None] = []
+
+        def claim_successor_after_cas(**kwargs: object) -> object:
+            cas_calls.append(dict(kwargs))
+            result = original_cas(**kwargs)
+            foreign_claims.append(consumer.claim_next())
+            return result
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "record_queue_backoff_and_cas_status",
+            claim_successor_after_cas,
+        )
+        recovered = daemon.recover_blocked_post_merge_declared_outputs(
+            evidence
+        )
+        assert recovered["recovered"] is True
+        assert recovered["changed"] is True
+        assert recovered["status"] == "in_progress"
+        assert recovered["cursor_state"] == "superseded"
+        assert len(cas_calls) == 1
+        assert len(foreign_claims) == 1
+        successor = foreign_claims[0]
+        assert successor is not None
+        assert successor.attempt_number == source.attempt_number + 1
+        assert recovered["successor"]["attempt_id"] == successor.attempt_id
+        current = daemon.task_source.get(source.task_cid)
+        assert current is not None and current.status == "in_progress"
+        assert int(current.revision) > terminal_revision + 1
+        old_cursor = daemon.get_attempt(source.attempt_id)
+        assert old_cursor is not None
+        assert old_cursor.status == "blocked"
+        assert old_cursor.committed_phase == ATTEMPT_PHASE_BLOCKED
+        assert daemon.list_running_attempts() == []
+        assert [item.attempt_id for item in consumer.list_running_attempts()] == [
+            successor.attempt_id
+        ]
+
+        replay = daemon.recover_blocked_post_merge_declared_outputs(evidence)
+        assert replay["recovered"] is True
+        assert replay["changed"] is False
+        assert replay["status"] == "in_progress"
+        assert replay["cursor_state"] == "superseded"
+        assert replay["successor"]["attempt_id"] == successor.attempt_id
+        assert len(cas_calls) == 1
+        old_cursor = daemon.get_attempt(source.attempt_id)
+        assert old_cursor is not None and old_cursor.status == "blocked"
+
+        completion_digest = "sha256:" + "9" * 64
+        completed = consumer.complete_attempt(
+            successor,
+            evidence_digest=completion_digest,
+            validation_result={
+                "outcome": "passed",
+                "evidence_digest": completion_digest,
+                "argv": ["pytest", "callback-successor"],
+            },
+        )
+        assert completed.status == "succeeded"
+        canonical_complete = daemon.task_source.get(source.task_cid)
+        assert (
+            canonical_complete is not None
+            and canonical_complete.status == "completed"
+        )
+        terminal_replay = (
+            daemon.recover_blocked_post_merge_declared_outputs(evidence)
+        )
+        assert terminal_replay["recovered"] is True
+        assert terminal_replay["changed"] is False
+        assert terminal_replay["status"] == "completed"
+        assert terminal_replay["cursor_state"] == "superseded"
+        assert terminal_replay["successor"]["attempt_id"] == successor.attempt_id
+        assert terminal_replay["successor"]["control_operation"] == (
+            "database_complete"
+        )
+
+        # A completion is authoritative only while it is the exact canonical
+        # history head.  A later revision must prevent stale terminal replay.
+        canonical_history = (
+            daemon.task_source.task_revision_history_projection(
+                source.task_cid
+            )
+        )
+        stale_revisions = [
+            {
+                "revision": int(item["revision"]),
+                "status": str(item["status"]),
+                "body": json.loads(json.dumps(item["body"])),
+            }
+            for item in canonical_history["revisions"]
+        ]
+        stale_revisions.append(
+            {
+                "revision": int(stale_revisions[-1]["revision"]) + 1,
+                "status": "retrying",
+                "body": json.loads(json.dumps(stale_revisions[-1]["body"])),
+            }
+        )
+        stale_history_body = {
+            "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+            "task_cid": source.task_cid,
+            "revisions": stale_revisions,
+        }
+        with monkeypatch.context() as stale_history_patch:
+            stale_history_patch.setattr(
+                daemon.task_source,
+                "task_revision_history_projection",
+                lambda _task_cid: {
+                    **stale_history_body,
+                    "projection_cid": content_identity(stale_history_body),
+                },
+            )
+            with pytest.raises(
+                DatabaseImplementationConflictError,
+                match=(
+                    "terminal foreign successor history is absent or ambiguous"
+                ),
+            ):
+                daemon.recover_blocked_post_merge_declared_outputs(evidence)
+
+        reconciled = daemon.reconcile_expired_running_attempts()
+        assert any(
+            item.get("attempt_id") == source.attempt_id
+            and item.get("reason") == "control_task_left_quarantine"
+            and item.get("disposition") == "retired"
+            for item in reconciled
+        )
+        retired_cursor = daemon.get_attempt(source.attempt_id)
+        assert retired_cursor is not None and retired_cursor.status == "failed"
+        repeated_terminal = (
+            daemon.recover_blocked_post_merge_declared_outputs(evidence)
+        )
+        assert repeated_terminal["recovered"] is True
+        assert repeated_terminal["changed"] is False
+        assert repeated_terminal["status"] == "completed"
+        assert repeated_terminal["cursor_state"] == "superseded"
+        assert repeated_terminal["successor"]["attempt_id"] == (
+            successor.attempt_id
+        )
+        assert len(cas_calls) == 1
+        assert provider_calls == [source.attempt_id]
+    finally:
+        consumer.close()
+        daemon.close()
+
+
+def test_callback_integration_recovery_restarts_after_hard_crash_post_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SimulatedProcessDeath(BaseException):
+        pass
+
+    daemon, source, provider_calls = (
+        _real_released_unknown_callback_quarantine(tmp_path)
+    )
+    evidence = _callback_integration_recovery_evidence(
+        daemon,
+        source,
+        request_id="merge-request:callback-integration-post-cas-crash",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verified_post_merge_callback_integration_receipt",
+        lambda raw, **_kwargs: dict(raw),
+    )
+    quarantined = daemon.task_source.get(source.task_cid)
+    assert quarantined is not None
+    terminal_revision = int(quarantined.revision)
+    original_cas = daemon.task_source.record_queue_backoff_and_cas_status
+
+    def die_after_committed_cas(**kwargs: object) -> None:
+        original_cas(**kwargs)
+        raise SimulatedProcessDeath("injected process death after task CAS")
+
+    monkeypatch.setattr(
+        daemon.task_source,
+        "record_queue_backoff_and_cas_status",
+        die_after_committed_cas,
+    )
+    with pytest.raises(
+        SimulatedProcessDeath,
+        match="process death after task CAS",
+    ):
+        daemon.recover_blocked_post_merge_declared_outputs(evidence)
+    committed = daemon.task_source.get(source.task_cid)
+    assert committed is not None and committed.status == "retrying"
+    assert int(committed.revision) == terminal_revision + 1
+    still_blocked = daemon.get_attempt(source.attempt_id)
+    assert still_blocked is not None and still_blocked.status == "blocked"
+    first_queue = daemon.task_source.get_queue_entry(source.task_cid)
+    assert first_queue is not None
+    daemon.close()
+
+    restarted = _open_daemon(
+        tmp_path / "lane",
+        control_path=tmp_path / "control.duckdb",
+        session="session:callback-integration-recovery",
+        provider_fn=lambda attempt: (_ for _ in ()).throw(
+            AssertionError(f"unexpected redispatch: {attempt.attempt_id}")
+        ),
+        strict_task_sharding=True,
+    )
+    try:
+        monkeypatch.setattr(
+            restarted,
+            "_verified_post_merge_callback_integration_receipt",
+            lambda raw, **_kwargs: dict(raw),
+        )
+        replay = restarted.recover_blocked_post_merge_declared_outputs(
+            evidence
+        )
+        assert replay["recovered"] is True
+        assert replay["changed"] is False
+        assert replay["status"] == "retrying"
+        assert replay["cursor_state"] in {
+            "retired",
+            "already_retired",
+        }
+        retired = restarted.get_attempt(source.attempt_id)
+        assert retired is not None and retired.status == "failed"
+        assert retired.committed_phase == ATTEMPT_PHASE_BLOCKED
+        current = restarted.task_source.get(source.task_cid)
+        assert current is not None and current.status == "retrying"
+        assert int(current.revision) == terminal_revision + 1
+        second_queue = restarted.task_source.get_queue_entry(source.task_cid)
+        assert second_queue is not None
+        assert second_queue.attempt == first_queue.attempt
+        assert restarted.list_running_attempts() == []
+        assert provider_calls == [source.attempt_id]
+    finally:
+        restarted.close()
+
+
+def test_callback_integration_recovery_rejects_newer_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, source, provider_calls = (
+        _real_released_unknown_callback_quarantine(tmp_path)
+    )
+    try:
+        evidence = _callback_integration_recovery_evidence(
+            daemon,
+            source,
+            request_id="merge-request:callback-integration-superseded",
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_verified_post_merge_callback_integration_receipt",
+            lambda raw, **_kwargs: dict(raw),
+        )
+        quarantined = daemon.task_source.get(source.task_cid)
+        assert quarantined is not None
+        fixture_queue_reason = "fixture_newer_attempt_retry"
+        daemon.task_source.record_queue_backoff_and_cas_status(
+            task_cid=source.task_cid,
+            expected_revision=int(quarantined.revision),
+            expected_control_receipt=dict(
+                quarantined.body["completion_receipt"]
+            ),
+            status="retrying",
+            receipt={
+                "operation": "fixture_newer_attempt_retry",
+                "queue_reason": fixture_queue_reason,
+            },
+            delay_ms=0,
+            reason=fixture_queue_reason,
+        )
+        newer = daemon.claim_next()
+        assert newer is not None
+        assert newer.task_cid == source.task_cid
+        assert newer.attempt_number > source.attempt_number
+        newer = daemon.commit_phase(newer, ATTEMPT_PHASE_CONTEXT)
+        newer = daemon.commit_phase(
+            newer,
+            ATTEMPT_PHASE_FAILED,
+            body={
+                "reason": (
+                    DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+                ),
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        terminal = daemon._persist_terminal_portal_failure(
+            newer,
+            reason=(
+                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+            ),
+            coordination_evidence=(
+                daemon._reconcile_failed_attempt_coordination(newer)
+            ),
+        )
+        assert terminal["status"] == "blocked"
+        before = daemon.task_source.get(source.task_cid)
+        assert before is not None and before.status == "blocked"
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="latest failed database attempt|latest failed attempt",
+        ):
+            daemon.recover_blocked_post_merge_declared_outputs(evidence)
+
+        unchanged = daemon.task_source.get(source.task_cid)
+        assert unchanged is not None
+        assert unchanged.status == "blocked"
+        assert int(unchanged.revision) == int(before.revision)
+        assert unchanged.body["completion_receipt"] == before.body[
+            "completion_receipt"
+        ]
+        assert provider_calls == [source.attempt_id]
+    finally:
+        daemon.close()
 
 
 def test_preauthorize_accepts_wrapped_post_merge_terminal_reason(

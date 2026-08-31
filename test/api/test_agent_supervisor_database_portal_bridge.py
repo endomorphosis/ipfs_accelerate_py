@@ -16792,8 +16792,10 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
         fencing_token=7,
         fence_epoch=3,
         lease_id="lease:callback",
-        committed_phase="failed",
-        status="failed",
+        committed_phase=(
+            "blocked" if source_status == "quarantined" else "failed"
+        ),
+        status=("blocked" if source_status == "quarantined" else "failed"),
         started_at_ms=1,
         finished_at_ms=100,
         revision=3,
@@ -16870,12 +16872,30 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
             **kwargs: object,
         ) -> object:
             captured.update(kwargs)
-            return SimpleNamespace(
+            cas_result = SimpleNamespace(
                 to_dict=lambda: {
                     "status": "retrying",
                     "receipt": kwargs.get("receipt"),
                 }
             )
+            if source_status == "quarantined":
+                task.status = "retrying"
+                task.revision = int(task.revision) + 1
+                task.body = {
+                    "completion_receipt": kwargs.get("receipt"),
+                }
+                return {
+                    "cas_result": cas_result,
+                    "queue_reused": False,
+                    "queue_receipt": {},
+                }
+            return cas_result
+
+        def get_queue_entry(self, task_cid: str) -> object | None:
+            receipt = captured.get("receipt")
+            if task_cid != attempt.task_cid or not isinstance(receipt, dict):
+                return None
+            return SimpleNamespace(reason=receipt["queue_reason"])
 
     daemon._task_source = TaskSource()
     monkeypatch.setattr(daemon, "open", lambda: daemon)
@@ -16898,6 +16918,25 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
         daemon,
         "_post_merge_completion_crash_recovery_context",
         lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_verified_callback_unknown_recovery_history",
+        lambda current, **_kwargs: (
+            {"source_attempt": attempt}
+            if source_status == "quarantined"
+            and current.status == "retrying"
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_exact_latest_blocked_neutral_callback_source",
+        lambda *_args, **_kwargs: (
+            (attempt, coordination)
+            if source_status == "quarantined"
+            else None
+        ),
     )
     monkeypatch.setattr(
         daemon,
@@ -16949,6 +16988,38 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
         "_superseded_failed_attempt_reconciliation",
         lambda *_args, **_kwargs: None,
     )
+    monkeypatch.setattr(
+        daemon,
+        "_post_merge_completion_terminal_receipt_from_history",
+        lambda **_kwargs: (
+            {"failure_kind": terminal_reason}
+            if source_status == "quarantined"
+            else {"reason": terminal_reason}
+        ),
+    )
+    retired: list[str] = []
+    monkeypatch.setattr(
+        daemon,
+        "_post_merge_completion_source_attempt_from_seed",
+        lambda _seed: replace(attempt, status="failed"),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_settle_callback_unknown_recovery_cursor",
+        lambda history, _task: (
+            retired.append(history["source_attempt"].attempt_id)
+            or {
+                "cursor_state": "retired",
+                "retired": True,
+                "source_attempt_id": history["source_attempt"].attempt_id,
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_event",
+        lambda *_args, **_kwargs: None,
+    )
 
     def execute_retry(
         _attempt: object,
@@ -16990,8 +17061,13 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
     assert captured["status"] == "retrying"
     assert result["recovered"] is True
     assert result["write_count"] == 2
+    assert retired == (
+        [attempt.attempt_id] if source_status == "quarantined" else []
+    )
 
     retrying = SimpleNamespace(
+        task_cid=attempt.task_cid,
+        task_alias=attempt.task_alias,
         status="retrying",
         revision=int(transition["control_expected_revision"]) + 1,
         body={"completion_receipt": transition},
@@ -17007,15 +17083,6 @@ def test_callback_integration_evidence_builds_dedicated_retry_cas_seed(
             )
 
     daemon._task_source = ReplaySource()
-    monkeypatch.setattr(
-        daemon,
-        "_post_merge_completion_terminal_receipt_from_history",
-        lambda **_kwargs: (
-            {"failure_kind": terminal_reason}
-            if source_status == "quarantined"
-            else {"reason": terminal_reason}
-        ),
-    )
     replay = daemon._verified_post_merge_declared_output_recovery_state(
         attempt,
         retrying,

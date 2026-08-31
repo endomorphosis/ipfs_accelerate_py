@@ -14,6 +14,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -101,6 +102,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TypedStateOwnerAuthorizationError,
     TypedStateOwnerConnection,
     build_control_plane_operation_catalog,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DatabaseImplementationDaemon,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -5317,6 +5321,136 @@ def test_typed_owner_stamps_post_commit_retry_placeholders_before_cas(
         assert tuple(task.task_cid for task in source.ready_tasks().tasks) == (
             claimed.task_cid,
         )
+        assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
+    finally:
+        source.close()
+        server.stop()
+
+
+def test_typed_owner_stamps_callback_recovery_cooldown_before_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callback rearm remains queueable through the real typed owner path."""
+
+    database = tmp_path / "control.duckdb"
+    _seed(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "state",
+        store_id="callback-recovery-cooldown-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    clock = {"now_ms": 7_000}
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:callback-recovery",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.retry.cooldown.record",
+        ),
+        clock_ms=lambda: clock["now_ms"],
+    )
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        claim = _typed_claim_receipt(
+            source,
+            lane="callback-recovery",
+            claimed_from_revision=ready.revision,
+        )
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        ).task
+        attempt_identity = {
+            name: claim[name]
+            for name in (
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+            )
+        }
+        neutral = {
+            "operation": "database_portal_neutral_failure_quarantine",
+            **attempt_identity,
+            "failure_kind": "provider_callback_outcome_unknown",
+            "retry_suppressed": True,
+        }
+        quarantined = source.compare_and_set_status(
+            claimed.task_cid,
+            claimed.revision,
+            "quarantined",
+            neutral,
+            expected_control_receipt=claim,
+        ).task
+        queue_reason = (
+            "database_post_merge_declared_outputs_callback_integration:"
+            "merge-request:test:sha256:" + "a" * 64
+        )
+        transition_receipt = {
+            "operation": (
+                "database_post_merge_declared_outputs_"
+                "callback_integration_recovery"
+            ),
+            **attempt_identity,
+            "queue_reason": queue_reason,
+            "queue_receipt": {},
+            "backoff_ms": 0,
+            "retry_not_before_ms": 0,
+            "control_expected_status": "quarantined",
+            "control_expected_revision": quarantined.revision,
+        }
+
+        result = source.record_queue_backoff_and_cas_status(
+            task_cid=quarantined.task_cid,
+            expected_revision=quarantined.revision,
+            expected_control_receipt=neutral,
+            status="retrying",
+            receipt=transition_receipt,
+            delay_ms=0,
+            reason=queue_reason,
+        )
+
+        assert result["cas_result"].changed is True
+        assert result["transition_receipt"]["backoff_ms"] == 0
+        assert result["transition_receipt"]["retry_not_before_ms"] == 7_000
+        retrying = source.get_task(quarantined.task_cid)
+        assert retrying is not None
+        assert (retrying.status, retrying.revision) == (
+            "retrying",
+            quarantined.revision + 1,
+        )
+        assert retrying.body["completion_receipt"] == result[
+            "transition_receipt"
+        ]
+        queue = source.validate_retrying_task_cooldown(
+            retrying.task_cid,
+            expected_attempt_identity=attempt_identity,
+            expected_reason=queue_reason,
+            expected_delay_ms=0,
+        )
+        assert DatabaseImplementationDaemon._typed_authoritative_attempt_floor(
+            SimpleNamespace(task_source=source),
+            retrying,
+        ) == int(claim["attempt_number"])
+        assert queue.reason == queue_reason
+        assert queue.attempt == int(claim["attempt_number"])
+        assert queue.retry_not_before_ms == 7_000
+        assert tuple(
+            task.task_cid for task in source.ready_tasks().tasks
+        ) == (retrying.task_cid,)
         assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
     finally:
         source.close()
