@@ -73,6 +73,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA,
     DATABASE_PORTAL_POST_COMMIT_CANDIDATE_RECOVERY_SCHEMA,
+    DATABASE_PORTAL_POST_COMMIT_RECOVERY_DIAGNOSTIC_SCHEMA,
     DATABASE_PORTAL_PRE_DISPATCH_PROJECTION_RECOVERY_SCHEMA,
     DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
     DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
@@ -90,6 +91,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalCapacityRetry,
     DatabasePortalConsumedAttemptTerminal,
     DatabasePortalExecutionBridge,
+    DatabasePortalPostCommitRecoveryRejected,
     DatabasePortalProtectedPathPreserved,
     DatabasePortalValidationRetry,
     DatabasePortalVerificationRecoveryDeferred,
@@ -1764,12 +1766,31 @@ def test_bridge_post_commit_candidate_later_event_fails_closed(
     )
     append_jsonl_event(paths.events, "owner_restarted", {"task_id": source.task_alias})
 
-    with pytest.raises(
-        DatabasePortalBridgeError,
-        match="exact terminal event suffix",
-    ):
-        bridge.recover_post_commit_candidate(source)
+    diagnostics: list[dict[str, object]] = []
+    for _replay in range(2):
+        with pytest.raises(
+            DatabasePortalPostCommitRecoveryRejected,
+            match="post_commit_recovery_evidence_rejected",
+        ) as raised:
+            bridge.recover_post_commit_candidate(source)
+        diagnostics.append(dict(raised.value.diagnostic))
 
+    [first, replay] = diagnostics
+    assert first == replay
+    assert first["schema"] == (
+        DATABASE_PORTAL_POST_COMMIT_RECOVERY_DIAGNOSTIC_SCHEMA
+    )
+    assert first["disposition"] == "rejected_no_observed_effect"
+    assert first["stage"] == "callback_transport_rejected"
+    assert first["reason_code"] == "source_count_rejected"
+    assert first["task_authority_changed"] is False
+    assert first["provider_dispatched"] is False
+    assert first["attempt_consumed"] is False
+    assert first["mutation_provenance"] == {
+        "queue_observation": "not_attempted",
+        "event_stream_observation": "not_attempted",
+    }
+    assert str(first["diagnostic_signature"]).startswith("sha256:")
     assert factory_calls == []
 
 
@@ -15480,6 +15501,7 @@ def _run_vrif_callback_hygiene_requalification(
     revalidate_authority: object | None = None,
     gitlinked_validation: bool = False,
     submodule_calls: list[tuple[str, str]] | None = None,
+    rejection_sink: list[dict[str, object]] | None = None,
 ) -> tuple[dict[str, object] | None, Path, list[bytes], list[dict[str, str]]]:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -15884,6 +15906,7 @@ def _run_vrif_callback_hygiene_requalification(
             if callable(revalidate_authority)
             else None
         ),
+        rejection_sink=rejection_sink,
     )
     if isinstance(receipt, _PostMergeRecoveryDisposition):
         if deferred_results is not None:
@@ -15904,6 +15927,7 @@ def _run_vrif_callback_hygiene_requalification(
                 if callable(revalidate_authority)
                 else None
             ),
+            rejection_sink=rejection_sink,
         )
     if (
         advance_target_before_validation
@@ -15986,6 +16010,7 @@ def test_callback_requalification_surfaces_checkout_transaction_deferral(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     deferred_results: list[dict[str, object]] = []
+    rejection_sink: list[dict[str, object]] = []
     caplog.set_level(
         "INFO",
         logger=(
@@ -16002,11 +16027,13 @@ def test_callback_requalification_surfaces_checkout_transaction_deferral(
             ),
             transaction_failure_reason="checkout_mutation_lock_exists",
             deferred_results=deferred_results,
+            rejection_sink=rejection_sink,
         )
     )
 
     assert receipt is None
     assert cleanup_statuses == []
+    assert rejection_sink == []
     assert deferred_results == [
         {
             "schema": (
@@ -16885,6 +16912,74 @@ def test_post_merge_completion_recovery_rejects_conflicting_partial_seed(
     assert len(bridge._verified_event_chain(paths)) == 1
 
 
+@pytest.mark.parametrize(
+    ("source", "expected_gate"),
+    [
+        (SimpleNamespace(), "task_source_unavailable"),
+        (
+            SimpleNamespace(get_task=lambda _task_cid: None),
+            "canonical_task_missing",
+        ),
+        (
+            SimpleNamespace(
+                get_task=lambda _task_cid: SimpleNamespace(
+                    task_cid="task:other",
+                    task_alias="LGSWF-004",
+                    status="blocked",
+                )
+            ),
+            "canonical_task_identity_rejected",
+        ),
+        (
+            SimpleNamespace(
+                get_task=lambda _task_cid: SimpleNamespace(
+                    task_cid="task:cid:004",
+                    task_alias="LGSWF-004",
+                    status="completed",
+                )
+            ),
+            "task_status_rejected",
+        ),
+    ],
+)
+def test_current_recovery_task_status_records_exact_rejection_gate(
+    source: object,
+    expected_gate: str,
+) -> None:
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.task_source = source
+    trace: dict[str, object] = {"phase": "initial"}
+
+    assert (
+        bridge._current_recovery_task_status(
+            task_cid="task:cid:004",
+            task_alias="LGSWF-004",
+            admission_trace=trace,
+        )
+        == ""
+    )
+    assert trace["gate"] == expected_gate
+
+
+def test_current_recovery_task_status_records_read_rejection() -> None:
+    def rejected_get(_task_cid: str) -> None:
+        raise ValueError("malformed local record")
+
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    bridge.task_source = SimpleNamespace(get_task=rejected_get)
+    trace: dict[str, object] = {"phase": "initial"}
+
+    assert (
+        bridge._current_recovery_task_status(
+            task_cid="task:cid:004",
+            task_alias="LGSWF-004",
+            admission_trace=trace,
+        )
+        == ""
+    )
+    assert trace["gate"] == "canonical_task_read_rejected"
+
+
 def test_post_merge_completion_seed_admits_only_exact_shared_lane_source(
     tmp_path: Path,
 ) -> None:
@@ -16981,12 +17076,41 @@ def test_post_merge_completion_seed_admits_only_exact_shared_lane_source(
     )
 
     assert consumer._owned_post_merge_recovery_projection(request) is None
+    rejected_trace: dict[str, object] = {"phase": "initial"}
+    assert (
+        consumer._owned_post_merge_recovery_projection(
+            request,
+            allow_shared_lane_source=True,
+            admission_trace=rejected_trace,
+        )
+        is None
+    )
+    assert rejected_trace == {
+        "phase": "initial",
+        "gate": "task_status_rejected",
+        "allowed_task_statuses": ["blocked", "retrying"],
+        "allow_shared_lane_source": True,
+        "allow_callback_reconciliation_transport_lineage": False,
+        "request_present": True,
+        "request_status": "completed",
+        "missing_output_lineage": True,
+        "callback_transport_lineage": False,
+        "projection_scope": "shared_lane",
+        "task_source_getter": "get_task",
+        "canonical_task_present": True,
+        "canonical_task_identity_matches": True,
+        "canonical_task_status": "in_progress",
+    }
+    admitted_trace: dict[str, object] = {"phase": "initial"}
     admitted = consumer._owned_post_merge_recovery_projection(
         request,
         allowed_task_statuses=frozenset({"in_progress"}),
         allow_shared_lane_source=True,
+        admission_trace=admitted_trace,
     )
     assert admitted is not None
+    assert admitted_trace["gate"] == "admitted"
+    assert admitted_trace["allowed_task_statuses"] == ["in_progress"]
     assert admitted.binding["attempt_id"] == binding["attempt_id"]
     assert admitted.binding["binding_id"] == binding["binding_id"]
 
@@ -17546,7 +17670,10 @@ def _exact_callback_reconciliation_transport_fixture() -> tuple[
         target_repository_id=queue_repository_id
     )
     bridge.merge_target_branch = "main"
-    return bridge, [enqueue, terminal], request, {"task_alias": task_alias}
+    return bridge, [enqueue, terminal], request, {
+        "task_alias": task_alias,
+        "task_cid": task_cid,
+    }
 
 
 def _exact_callback_reconciliation_suffix_fixture(
@@ -18527,14 +18654,27 @@ def test_completed_callback_transport_replay_is_idempotent_and_cas_bound(
 
     bridge._post_merge_callback_integration_evidence = requalification
 
-    first = bridge._unknown_callback_landed_recovery_evidence(
-        attempt=attempt,
-        paths=paths,
-        binding=binding,
-    )
     if stale_control_revision:
-        assert first is None
+        with pytest.raises(
+            DatabasePortalPostCommitRecoveryRejected
+        ) as raised:
+            bridge._unknown_callback_landed_recovery_evidence(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+            )
+        assert raised.value.diagnostic["stage"] == (
+            "callback_integration_evidence_rejected"
+        )
+        assert raised.value.diagnostic["reason_code"] == (
+            "no_typed_nested_rejection"
+        )
     else:
+        first = bridge._unknown_callback_landed_recovery_evidence(
+            attempt=attempt,
+            paths=paths,
+            binding=binding,
+        )
         assert first == {"transport": "qualified"}
         assert bridge._unknown_callback_landed_recovery_evidence(
             attempt=attempt,
@@ -18692,6 +18832,33 @@ def test_recover_post_commit_candidate_settles_only_exact_quarantined_callback_t
     ]
     assert factory_calls == []
 
+    # A later projection rejection must not erase the queue transition that
+    # the canonical settlement consumer already made.
+    current_request["value"] = quarantined
+
+    def reject_completed_projection(
+        current: object,
+        **_kwargs: object,
+    ) -> object | None:
+        return projection if current is quarantined else None
+
+    bridge._owned_post_merge_recovery_projection = (
+        reject_completed_projection
+    )
+    with pytest.raises(DatabasePortalPostCommitRecoveryRejected) as raised:
+        bridge._unknown_callback_landed_recovery_evidence(
+            attempt=attempt,
+            paths=paths,
+            binding=binding,
+        )
+    assert raised.value.diagnostic["disposition"] == (
+        "rejected_after_observed_effect"
+    )
+    assert raised.value.diagnostic["mutation_provenance"] == {
+        "queue_observation": "changed",
+        "event_stream_observation": "unchanged",
+    }
+
 
 def test_callback_transport_rejects_queue_toctou_and_generic_projection_conflict() -> None:
     """The opt-in cannot turn a generic conflict or a replaced row into proof."""
@@ -18719,11 +18886,22 @@ def test_callback_transport_rejects_queue_toctou_and_generic_projection_conflict
     # The first row is a valid quarantine, but the second read replaces it
     # before projection admission.  This must fail before any evidence or
     # provider path is reached.
-    assert bridge._unknown_callback_landed_recovery_evidence(
-        attempt=SimpleNamespace(),
-        paths=SimpleNamespace(),
-        binding=binding,
-    ) is None
+    with pytest.raises(DatabasePortalPostCommitRecoveryRejected) as raised:
+        bridge._unknown_callback_landed_recovery_evidence(
+            attempt=SimpleNamespace(
+                attempt_id="attempt:transport-toctou",
+                claim_id="claim:transport-toctou",
+                lease_id="lease:transport-toctou",
+                fencing_token=11,
+                fence_epoch=5,
+            ),
+            paths=SimpleNamespace(),
+            binding=binding,
+        )
+    assert raised.value.diagnostic["stage"] == (
+        "callback_transport_rejected"
+    )
+    assert raised.value.diagnostic["reason_code"] == "queue_row_changed"
 
     # A row with the same generic failure reason but no exact callback
     # transport is never admitted through the new lineage opt-in.
