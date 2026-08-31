@@ -265,9 +265,30 @@ LANDED_CANDIDATE_FRESH_VALIDATION_HERMETIC_SUITES: Final[tuple[str, ...]] = (
 # Rebinding a landed PCPR-001 outer receipt onto the integrating merge after
 # the nested candidate is already in the current tree.  Hermetic candidate
 # coverage only; rewriting current-tree identities is not a live campaign.
+# A later integrating merge must record its first parent; binding the
+# previous merge as current-head is not a valid rebind.
 INTEGRATING_MERGE_CURRENT_HEAD_REBIND_HERMETIC_SUITES: Final[tuple[str, ...]] = (
     "test/api/test_agent_supervisor_landed_completion_recovery.py",
     "test/api/test_agent_supervisor_database_implementation_daemon.py",
+)
+CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS: Final[tuple[str, ...]] = (
+    "outer_commit",
+    "outer_tree",
+    "outer_subject",
+    "origin_main",
+    "origin_main_is_ancestor",
+    "accelerator_pre_change_commit",
+    "accelerator_pre_change_tree",
+    "accelerator_gitlink",
+    "accelerator_origin_main",
+    "accelerator_origin_main_is_ancestor",
+    "prior_receipt_outer_commit",
+    "prior_receipt_bound_outer_commit",
+    "landed_pcpr_001_nested_commit",
+    "first_landed_pcpr_001_nested_commit",
+    "integrating_merge",
+    "integrating_first_parent",
+    "landed_candidate_commit",
 )
 
 # Pending-merge dummy-consumer reconstruction and stale index.lock retry
@@ -944,13 +965,16 @@ def pcpr_phase0_current_tree_binding(
     landed_pcpr_001_nested_commit: str,
     first_landed_pcpr_001_nested_commit: str,
     integrating_merge: str,
+    integrating_first_parent: str,
     landed_candidate_commit: str,
 ) -> dict[str, Any]:
     """Measured current-tree identities for a Phase-0 outer receipt.
 
     Rewriting these identities onto an integrating merge is hermetic
     candidate coverage.  It is not a live campaign and cannot mint a
-    closed PCPR release outcome.
+    closed PCPR release outcome.  The first parent of that merge is the
+    previously bound outer commit; treating the parent or the landed
+    candidate as current-head fails closed.
     """
 
     _reject_closed_release_value(outer_subject, "outer_subject")
@@ -996,6 +1020,9 @@ def pcpr_phase0_current_tree_binding(
             "first_landed_pcpr_001_nested_commit",
         ),
         "integrating_merge": _git_object_id(integrating_merge, "integrating_merge"),
+        "integrating_first_parent": _git_object_id(
+            integrating_first_parent, "integrating_first_parent"
+        ),
         "landed_candidate_commit": _git_object_id(
             landed_candidate_commit, "landed_candidate_commit"
         ),
@@ -1020,6 +1047,22 @@ def pcpr_phase0_current_tree_binding(
     if binding["prior_receipt_bound_outer_commit"] == binding["outer_commit"]:
         raise DirectObjectiveEventDrivenQualificationError(
             "current-head rebind requires a new outer_commit"
+        )
+    if binding["integrating_first_parent"] == binding["outer_commit"]:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "integrating_first_parent must be the merge parent, not the integrating merge"
+        )
+    if binding["integrating_first_parent"] == binding["landed_candidate_commit"]:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "integrating_first_parent must not be the landed candidate"
+        )
+    if binding["prior_receipt_bound_outer_commit"] != binding["integrating_first_parent"]:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "prior_receipt_bound_outer_commit must equal integrating_first_parent"
+        )
+    if binding["prior_receipt_outer_commit"] != binding["landed_candidate_commit"]:
+        raise DirectObjectiveEventDrivenQualificationError(
+            "prior_receipt_outer_commit must equal landed_candidate_commit"
         )
     return binding
 
@@ -1064,6 +1107,28 @@ def _validate_current_tree_binding(payload: Mapping[str, Any]) -> None:
             raise DirectObjectiveEventDrivenQualificationError(
                 "current_tree_binding.integrating_merge must equal outer_commit"
             )
+        first_parent = binding.get("integrating_first_parent")
+        if first_parent is not None:
+            _git_object_id(
+                first_parent, "current_tree_binding.integrating_first_parent"
+            )
+            if first_parent == binding.get("outer_commit"):
+                raise DirectObjectiveEventDrivenQualificationError(
+                    "current_tree_binding.integrating_first_parent must not equal outer_commit"
+                )
+        missing = [
+            key
+            for key in CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS
+            if key not in binding
+        ]
+        if missing:
+            raise DirectObjectiveEventDrivenQualificationError(
+                f"current_tree_binding missing {missing[0]} for integrating-merge rebind"
+            )
+        pcpr_phase0_current_tree_binding(
+            **{key: binding[key] for key in CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS}
+        )
+        return
     nested = binding.get("landed_pcpr_001_nested_commit")
     if nested is not None:
         _git_object_id(nested, "current_tree_binding.landed_pcpr_001_nested_commit")
@@ -1071,28 +1136,6 @@ def _validate_current_tree_binding(payload: Mapping[str, Any]) -> None:
             raise DirectObjectiveEventDrivenQualificationError(
                 "current_tree_binding.landed nested Accelerate commit must equal the current gitlink"
             )
-    constructor_keys = (
-        "outer_commit",
-        "outer_tree",
-        "outer_subject",
-        "origin_main",
-        "origin_main_is_ancestor",
-        "accelerator_pre_change_commit",
-        "accelerator_pre_change_tree",
-        "accelerator_gitlink",
-        "accelerator_origin_main",
-        "accelerator_origin_main_is_ancestor",
-        "prior_receipt_outer_commit",
-        "prior_receipt_bound_outer_commit",
-        "landed_pcpr_001_nested_commit",
-        "first_landed_pcpr_001_nested_commit",
-        "integrating_merge",
-        "landed_candidate_commit",
-    )
-    if all(key in binding for key in constructor_keys):
-        pcpr_phase0_current_tree_binding(
-            **{key: binding[key] for key in constructor_keys}
-        )
 
 
 LIVE_COUNT_CASES: Final[frozenset[str]] = frozenset(

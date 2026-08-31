@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.direct_objective_event_drive
     CASE_UNAVAILABLE_REASONS,
     CLOSED_RELEASE_OUTCOMES,
     CURRENT_HEAD_UNAVAILABLE_VERDICT_CID,
+    CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS,
     DIRECT_OBJECTIVE_EVENT_DRIVEN_QUALIFICATION_INTERFACE,
     GITLINK_LANDED_MERGE_HERMETIC_SUITES,
     HARD_ZERO_INVARIANTS,
@@ -100,6 +101,9 @@ def test_closed_vocabularies_match_phase_zero_requirements() -> None:
         "test/api/test_agent_supervisor_landed_completion_recovery.py",
         "test/api/test_agent_supervisor_database_implementation_daemon.py",
     )
+    assert "integrating_first_parent" in CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS
+    assert "integrating_merge" in CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS
+    assert "landed_candidate_commit" in CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS
     assert PENDING_MERGE_RECOVERY_HERMETIC_SUITES == (
         "test/api/test_agent_supervisor_merge_train.py",
     )
@@ -640,25 +644,26 @@ def test_hermetic_auto_start_suites_cannot_satisfy_live_refill() -> None:
 
 def _example_current_tree_binding_kwargs() -> dict[str, str | bool]:
     return {
-        "outer_commit": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
-        "outer_tree": "108b81b2187aa08d3685831673dc53bd43fe74a5",
+        "outer_commit": "0ff88eb0d3c065f6d6744623abc4ae23ae189930",
+        "outer_tree": "82d252f597694cd10e8fe14f687fd89a78863c33",
         "outer_subject": (
-            "Merge commit '8e5a2842580cb878b24b4b092046a8ad5e0ef7cc' into "
+            "Merge commit '31a37e2849780dba3d92c0aed2e99c92c3475058' into "
             "agent/proof-carrying-platform-qualification-and-release-v1"
         ),
         "origin_main": "bb8869ed72eb7002434345d9969efee729c4f7f6",
         "origin_main_is_ancestor": True,
-        "accelerator_pre_change_commit": "5268250e377992aa44d0167d8a7a7f49b43514f2",
-        "accelerator_pre_change_tree": "d68edc763a981651ce4830e710094a8f8db5fd8f",
-        "accelerator_gitlink": "5268250e377992aa44d0167d8a7a7f49b43514f2",
+        "accelerator_pre_change_commit": "cdf251bc742681825181f6363c4e403a02efbd22",
+        "accelerator_pre_change_tree": "a35b3a95ddbbe7cdce56a081948bd19241c53d10",
+        "accelerator_gitlink": "cdf251bc742681825181f6363c4e403a02efbd22",
         "accelerator_origin_main": "f8c2f633fa6a781b822176fd63e1a229f96b581c",
         "accelerator_origin_main_is_ancestor": True,
-        "prior_receipt_outer_commit": "8e5a2842580cb878b24b4b092046a8ad5e0ef7cc",
-        "prior_receipt_bound_outer_commit": "112fcbefff41e3005b94f31ef618906e8ce48ea9",
-        "landed_pcpr_001_nested_commit": "5268250e377992aa44d0167d8a7a7f49b43514f2",
+        "prior_receipt_outer_commit": "31a37e2849780dba3d92c0aed2e99c92c3475058",
+        "prior_receipt_bound_outer_commit": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
+        "landed_pcpr_001_nested_commit": "cdf251bc742681825181f6363c4e403a02efbd22",
         "first_landed_pcpr_001_nested_commit": "38deb2ea57b171da90e5f2d4194ef6f100f9795b",
-        "integrating_merge": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
-        "landed_candidate_commit": "8e5a2842580cb878b24b4b092046a8ad5e0ef7cc",
+        "integrating_merge": "0ff88eb0d3c065f6d6744623abc4ae23ae189930",
+        "integrating_first_parent": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
+        "landed_candidate_commit": "31a37e2849780dba3d92c0aed2e99c92c3475058",
     }
 
 
@@ -668,11 +673,16 @@ def test_current_tree_binding_rebind_is_measured_and_not_a_release() -> None:
     assert binding["origin_main_is_ancestor"] is True
     assert binding["accelerator_origin_main_is_ancestor"] is True
     assert binding["integrating_merge"] == binding["outer_commit"]
+    assert binding["integrating_first_parent"] == binding["prior_receipt_bound_outer_commit"]
+    assert binding["integrating_first_parent"] != binding["outer_commit"]
+    assert binding["integrating_first_parent"] != binding["landed_candidate_commit"]
+    assert binding["prior_receipt_outer_commit"] == binding["landed_candidate_commit"]
     assert binding["landed_pcpr_001_nested_commit"] == binding["accelerator_gitlink"]
     assert binding["accelerator_pre_change_commit"] == binding["accelerator_gitlink"]
     assert binding["landed_candidate_commit"] != binding["outer_commit"]
     assert binding["prior_receipt_bound_outer_commit"] != binding["outer_commit"]
     assert binding["accelerator_post_change_commit"] == "pending nested commit after admission"
+    assert set(_example_current_tree_binding_kwargs()) == set(CURRENT_TREE_BINDING_CONSTRUCTOR_KEYS)
     assert all(outcome not in binding["outer_subject"] for outcome in CLOSED_RELEASE_OUTCOMES)
     assert "closed_release_outcome" not in binding
     sections = current_head_pcpr_phase0_receipt_sections()
@@ -748,16 +758,16 @@ def test_current_tree_binding_rejects_non_ancestor_and_mismatched_merge() -> Non
         "status": "implemented",
         "qualification_verdict": sections["qualification_verdict"],
         "current_tree_binding": {
-            "outer_commit": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
-            "outer_tree": "108b81b2187aa08d3685831673dc53bd43fe74a5",
+            "outer_commit": "0ff88eb0d3c065f6d6744623abc4ae23ae189930",
+            "outer_tree": "82d252f597694cd10e8fe14f687fd89a78863c33",
             "origin_main": "bb8869ed72eb7002434345d9969efee729c4f7f6",
             "origin_main_is_ancestor": True,
-            "accelerator_pre_change_commit": "5268250e377992aa44d0167d8a7a7f49b43514f2",
-            "accelerator_pre_change_tree": "d68edc763a981651ce4830e710094a8f8db5fd8f",
-            "accelerator_gitlink": "5268250e377992aa44d0167d8a7a7f49b43514f2",
+            "accelerator_pre_change_commit": "cdf251bc742681825181f6363c4e403a02efbd22",
+            "accelerator_pre_change_tree": "a35b3a95ddbbe7cdce56a081948bd19241c53d10",
+            "accelerator_gitlink": "cdf251bc742681825181f6363c4e403a02efbd22",
             "accelerator_origin_main": "f8c2f633fa6a781b822176fd63e1a229f96b581c",
             "accelerator_origin_main_is_ancestor": True,
-            "integrating_merge": "112fcbefff41e3005b94f31ef618906e8ce48ea9",
+            "integrating_merge": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
             "evidence_kind": "measured",
         },
     }
@@ -769,9 +779,46 @@ def test_current_tree_binding_rejects_non_ancestor_and_mismatched_merge() -> Non
         "qualification_verdict": sections["qualification_verdict"],
         "current_tree_binding": {
             **_example_current_tree_binding_kwargs(),
-            "prior_receipt_bound_outer_commit": "6cdc9a62bd9b7e67a16332bc76234207cc03d71f",
+            "prior_receipt_bound_outer_commit": "0ff88eb0d3c065f6d6744623abc4ae23ae189930",
             "evidence_kind": "measured",
         },
     }
     with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="new outer_commit"):
         validate_pcpr_phase0_outer_receipt(stale_bound)
+    kwargs = _example_current_tree_binding_kwargs()
+    kwargs["integrating_first_parent"] = kwargs["outer_commit"]
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="integrating_first_parent"):
+        pcpr_phase0_current_tree_binding(**kwargs)
+    kwargs = _example_current_tree_binding_kwargs()
+    kwargs["integrating_first_parent"] = kwargs["landed_candidate_commit"]
+    with pytest.raises(DirectObjectiveEventDrivenQualificationError, match="landed candidate"):
+        pcpr_phase0_current_tree_binding(**kwargs)
+    kwargs = _example_current_tree_binding_kwargs()
+    kwargs["prior_receipt_bound_outer_commit"] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    with pytest.raises(
+        DirectObjectiveEventDrivenQualificationError, match="prior_receipt_bound_outer_commit"
+    ):
+        pcpr_phase0_current_tree_binding(**kwargs)
+    kwargs = _example_current_tree_binding_kwargs()
+    kwargs["prior_receipt_outer_commit"] = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    with pytest.raises(
+        DirectObjectiveEventDrivenQualificationError, match="prior_receipt_outer_commit"
+    ):
+        pcpr_phase0_current_tree_binding(**kwargs)
+    missing_parent = {
+        "task_id": PCPR_PHASE0_TASK_ID,
+        "status": "implemented",
+        "qualification_verdict": sections["qualification_verdict"],
+        "current_tree_binding": {
+            **{
+                key: value
+                for key, value in _example_current_tree_binding_kwargs().items()
+                if key != "integrating_first_parent"
+            },
+            "evidence_kind": "measured",
+        },
+    }
+    with pytest.raises(
+        DirectObjectiveEventDrivenQualificationError, match="integrating_first_parent"
+    ):
+        validate_pcpr_phase0_outer_receipt(missing_parent)
