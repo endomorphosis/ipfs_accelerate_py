@@ -99855,31 +99855,37 @@ class DatabaseImplementationDaemon:
             if _is_quack_attach_error(exc):
                 return []
             raise
-        page = list_tasks(status="in_progress", limit=TASK_SOURCE_QUERY_LIMIT)
+        pages = (
+            list_tasks(status="in_progress", limit=TASK_SOURCE_QUERY_LIMIT),
+            list_tasks(status="retrying", limit=TASK_SOURCE_QUERY_LIMIT),
+        )
         outcomes: list[dict[str, Any]] = []
-        for task in tuple(getattr(page, "tasks", ()) or ()):
-            cid = str(getattr(task, "task_cid", "") or "")
-            if not cid or cid in live_cids:
-                continue
-            try:
-                if self._task_outputs_landed_on_target(task):
-                    outcome = self._complete_landed_quarantined_task(task)
-                    if outcome is not None:
-                        outcomes.append(outcome)
+        seen: set[str] = set()
+        for page in pages:
+            for task in tuple(getattr(page, "tasks", ()) or ()):
+                cid = str(getattr(task, "task_cid", "") or "")
+                if not cid or cid in live_cids or cid in seen:
                     continue
-                requeued = self._requeue_unimplemented_control_task(task)
-            except Exception as exc:
-                outcomes.append(
-                    {
-                        "task_cid": cid,
-                        "requeued": False,
-                        "completed": False,
-                        "reason": str(exc),
-                    }
-                )
-                continue
-            if requeued is not None:
-                outcomes.append(requeued)
+                seen.add(cid)
+                try:
+                    if self._task_outputs_landed_on_target(task):
+                        outcome = self._complete_landed_quarantined_task(task)
+                        if outcome is not None:
+                            outcomes.append(outcome)
+                        continue
+                    requeued = self._requeue_unimplemented_control_task(task)
+                except Exception as exc:
+                    outcomes.append(
+                        {
+                            "task_cid": cid,
+                            "requeued": False,
+                            "completed": False,
+                            "reason": str(exc),
+                        }
+                    )
+                    continue
+                if requeued is not None:
+                    outcomes.append(requeued)
         return outcomes
 
     def reconcile_inflight_deferral_blocks(self) -> list[dict[str, Any]]:
@@ -120911,6 +120917,7 @@ class DatabaseImplementationDaemon:
             "claimed",
             "running",
             "quarantined",
+            "retrying",
         }:
             return None
         paths = self._task_declared_output_paths(current)
