@@ -14929,6 +14929,114 @@ def test_resume_completes_landed_outputs_before_provider() -> None:
     assert result["status"] == "completed"
 
 
+def test_rearm_landed_retrying_without_local_attempt_is_claimable() -> None:
+    task = SimpleNamespace(
+        task_cid="task:pcpr-002",
+        task_alias="PCPR-002",
+        status="retrying",
+        revision=9,
+        body={"completion_receipt": {"operation": "database_portal_retry"}},
+    )
+    daemon = SimpleNamespace(
+        _persist_task_retry_state=lambda *_args, **_kwargs: (
+            (_ for _ in ()).throw(
+                AssertionError("retrying leftover must stay claimable")
+            )
+        ),
+        _landed_completion_recovery_fn=lambda _attempt: None,
+        get_attempt=lambda _attempt_id: None,
+        _latest_failed_attempts=lambda: (),
+    )
+    outcome = DatabaseImplementationDaemon._rearm_landed_task_for_authorized_completion(
+        daemon,
+        task,
+    )
+    assert outcome is not None
+    assert outcome["rearmed"] is True
+    assert outcome["completed"] is False
+    assert outcome["reason"] == "landed_retrying_claimable"
+
+
+def test_complete_landed_admitted_retries_minimal_receipt() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
+        TransactionError,
+    )
+
+    cas_receipts: list[dict[str, object]] = []
+    admitted = {
+        "operation": "database_attempt_admitted",
+        "attempt_id": "attempt:1",
+        "claim_id": "claim:1",
+        "lease_id": "lease:1",
+        "owner_session_id": "session:1",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+    }
+    task = SimpleNamespace(
+        task_cid="task:pcpr-002",
+        task_alias="PCPR-002",
+        status="in_progress",
+        revision=4,
+        body={"completion_receipt": dict(admitted)},
+    )
+
+    def cas_status(
+        _task_cid: str,
+        **kwargs: object,
+    ) -> None:
+        receipt = dict(kwargs["receipt"])  # type: ignore[arg-type]
+        cas_receipts.append(receipt)
+        if "landed_merge_repair" in receipt:
+            raise TransactionError(
+                "typed state-owner authorization_denied "
+                "(TypedStateOwnerAuthorizationError)"
+            )
+        task.status = "completed"
+
+    daemon = SimpleNamespace(
+        merge_target_ref="HEAD",
+        task_source=SimpleNamespace(
+            get=lambda _cid: task,
+            record_validation_result=lambda **_kwargs: None,
+        ),
+        _task_declared_output_paths=lambda _task: (
+            "artifacts/proof_carrying_platform_qualification_and_release/"
+            "receipts/PCPR-002.json",
+        ),
+        _cas_task_status_database=cas_status,
+        _record_event=lambda *_args, **_kwargs: None,
+    )
+    daemon._landed_merge_repair_proof = (
+        lambda current, attempt_id="": (
+            DatabaseImplementationDaemon._landed_merge_repair_proof(
+                daemon,
+                current,
+                attempt_id=attempt_id,
+            )
+        )
+    )
+    daemon._requires_fresh_portal_revalidation = (
+        lambda current: DatabaseImplementationDaemon._requires_fresh_portal_revalidation(
+            daemon,
+            current,
+        )
+    )
+
+    outcome = DatabaseImplementationDaemon._complete_landed_admitted_task(
+        daemon,
+        task,
+        admitted,
+    )
+    assert outcome is not None
+    assert outcome["completed"] is True
+    assert outcome["task_alias"] == "PCPR-002"
+    assert len(cas_receipts) == 2
+    assert "landed_merge_repair" in cas_receipts[0]
+    assert "landed_merge_repair" not in cas_receipts[1]
+    assert cas_receipts[1]["operation"] == "database_complete"
+    assert cas_receipts[1]["attempt_id"] == "attempt:1"
+
+
 def test_resume_unknown_callback_completes_landed_outputs() -> None:
     attempt = SimpleNamespace(
         attempt_id="attempt:1",

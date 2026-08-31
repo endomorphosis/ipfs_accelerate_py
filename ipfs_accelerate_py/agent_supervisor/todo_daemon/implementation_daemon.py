@@ -119760,6 +119760,7 @@ class DatabaseImplementationDaemon:
                 outcome="passed",
                 evidence_digest=digest,
                 argv=["database-landed-merge-repair"],
+                attempt_id=str(control_receipt.get("attempt_id") or ""),
                 body=proof,
             )
         refreshed = self.task_source.get(task_cid)
@@ -119774,32 +119775,58 @@ class DatabaseImplementationDaemon:
             refreshed,
         ):
             return None
-        receipt = {
+        refreshed_body = getattr(refreshed, "body", None)
+        admitted = control_receipt
+        refreshed_receipt = (
+            refreshed_body.get("completion_receipt")
+            if isinstance(refreshed_body, Mapping)
+            else None
+        )
+        if (
+            isinstance(refreshed_receipt, Mapping)
+            and refreshed_receipt.get("operation") == "database_attempt_admitted"
+        ):
+            admitted = dict(refreshed_receipt)
+        identity = {
+            name: admitted.get(name)
+            for name in (
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "fencing_token",
+                "fence_epoch",
+            )
+        }
+        base_receipt = {
             "operation": "database_complete",
-            "attempt_id": control_receipt.get("attempt_id"),
-            "claim_id": control_receipt.get("claim_id"),
-            "lease_id": control_receipt.get("lease_id"),
-            "owner_session_id": control_receipt.get("owner_session_id"),
-            "fencing_token": control_receipt.get("fencing_token"),
-            "fence_epoch": control_receipt.get("fence_epoch"),
+            **identity,
             "evidence_digest": digest,
             "reason": "declared_outputs_landed_on_target",
-            "landed_merge_repair": proof,
         }
-        try:
-            self._cas_task_status_database(
-                refreshed.task_cid,
-                expected_revision=int(refreshed.revision),
-                new_status="completed",
-                receipt=receipt,
-                evidence_digests=[digest],
-                expected_control_receipt=dict(control_receipt),
-            )
-        except (
-            TypedStateOwnerAuthorizationError,
-            TypedStateOwnerRemoteError,
-            TransactionError,
+        cas_error: BaseException | None = None
+        for extra in (
+            {"landed_merge_repair": proof},
+            {},
         ):
+            try:
+                self._cas_task_status_database(
+                    refreshed.task_cid,
+                    expected_revision=int(refreshed.revision),
+                    new_status="completed",
+                    receipt={**base_receipt, **extra},
+                    evidence_digests=[digest],
+                    expected_control_receipt=dict(admitted),
+                )
+                cas_error = None
+                break
+            except (
+                TypedStateOwnerAuthorizationError,
+                TypedStateOwnerRemoteError,
+                TransactionError,
+            ) as exc:
+                cas_error = exc
+        if cas_error is not None:
             return None
         self._record_event(
             "landed_merge_repaired",
@@ -119857,7 +119884,20 @@ class DatabaseImplementationDaemon:
                     if str(getattr(candidate, "task_cid", "") or "") == task_cid:
                         attempt = candidate
                         break
+        status = str(getattr(current, "status", "") or "").strip().lower()
+        claimable = {
+            "task_cid": task_cid,
+            "task_alias": task_alias,
+            "completed": False,
+            "rearmed": True,
+            "changed": False,
+            "reason": "landed_retrying_claimable",
+        }
         if attempt is None:
+            if status == "retrying":
+                # Home-lane claim_next can admit this leftover even when the
+                # observing lane has no local failed attempt sidecar row.
+                return claimable
             return {
                 "task_cid": task_cid,
                 "task_alias": task_alias,
@@ -119866,6 +119906,8 @@ class DatabaseImplementationDaemon:
             }
         raw_recovery = recovery_fn(attempt) if callable(recovery_fn) else None
         if raw_recovery is None:
+            if status == "retrying":
+                return claimable
             return {
                 "task_cid": task_cid,
                 "task_alias": task_alias,
@@ -119891,6 +119933,8 @@ class DatabaseImplementationDaemon:
                 landed_completion_recovery_evidence=recovery,
             )
         except Exception as exc:
+            if status == "retrying":
+                return {**claimable, "reason": str(exc)[:300]}
             return {
                 "task_cid": task_cid,
                 "task_alias": task_alias,
