@@ -207,6 +207,7 @@ from ..task_sources.database_task_source import (
     TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION,
     typed_deferral_budget_supersession_matches,
 )
+from ..task_sources.control_plane_transactions import TransactionError
 from ..task_sources.quack_state_client import QuackClientError
 from ..task_sources.intent_repository import (
     TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
@@ -108896,6 +108897,9 @@ class DatabaseImplementationDaemon:
                     TaskSourceIntegrityError,
                     DatabaseTaskSourceIntegrityError,
                     QuackClientError,
+                    TransactionError,
+                    TypedStateOwnerAuthorizationError,
+                    TypedStateOwnerRemoteError,
                 ) as exc:
                     leftover = get_queue_entry(attempt.task_cid)
                     return {
@@ -117335,26 +117339,45 @@ class DatabaseImplementationDaemon:
                 if superseded_outcome is not None:
                     outcomes.append(superseded_outcome)
                     continue
-                outcome = self._persist_failed_attempt_transition(
-                    attempt,
-                    status=status,
-                    transition=lambda: self._persist_task_retry_state(
+                try:
+                    outcome = self._persist_failed_attempt_transition(
                         attempt,
-                        reason=str(evidence["reason"]),
-                        backoff_ms=int(evidence["backoff_ms"]),
-                        evidence_source=str(evidence["evidence_source"]),
-                        coordination_evidence=coordination,
-                        validation_retry_evidence=evidence.get(
-                            "typed_validation_retry"
+                        status=status,
+                        transition=lambda: self._persist_task_retry_state(
+                            attempt,
+                            reason=str(evidence["reason"]),
+                            backoff_ms=int(evidence["backoff_ms"]),
+                            evidence_source=str(evidence["evidence_source"]),
+                            coordination_evidence=coordination,
+                            validation_retry_evidence=evidence.get(
+                                "typed_validation_retry"
+                            ),
+                            capacity_retry_evidence=evidence.get(
+                                "typed_capacity_retry"
+                            ),
+                            protected_preservation_evidence=evidence.get(
+                                "typed_protected_preservation"
+                            ),
                         ),
-                        capacity_retry_evidence=evidence.get(
-                            "typed_capacity_retry"
-                        ),
-                        protected_preservation_evidence=evidence.get(
-                            "typed_protected_preservation"
-                        ),
-                    ),
-                )
+                    )
+                except (
+                    TaskSourceIntegrityError,
+                    DatabaseTaskSourceIntegrityError,
+                    QuackClientError,
+                    TransactionError,
+                    TypedStateOwnerAuthorizationError,
+                    TypedStateOwnerRemoteError,
+                ) as exc:
+                    outcomes.append(
+                        {
+                            "task_cid": attempt.task_cid,
+                            "attempt_id": attempt.attempt_id,
+                            "status": status,
+                            "changed": False,
+                            "reason": str(exc)[:300],
+                        }
+                    )
+                    continue
                 if outcome.get("reason") != (
                     "failed_attempt_coordination_superseded"
                 ):
