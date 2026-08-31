@@ -9171,6 +9171,31 @@ def test_bridge_protected_recovery_failures_never_dispatch_or_consume(
         assert portal.reconcile_calls == []
 
 
+def test_bridge_surfaces_protected_reconciliation_validation_reason(
+    tmp_path: Path,
+) -> None:
+    record, target, repo, target_root, *_remaining = (
+        _prepare_protected_preservation_successor_seed(tmp_path)
+    )
+    bridge, _observed, _queue, provider_hooks, _factory_calls = (
+        _protected_recovery_bridge(
+            record=record,
+            target=target,
+            repo=repo,
+            target_root=target_root,
+            mode="validation_failure",
+        )
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="^declared_validation_failed$",
+    ):
+        bridge.run_provider(target)
+
+    assert provider_hooks == []
+
+
 def test_bridge_rejects_conflicting_deterministic_recovery_branch_on_replay(
     tmp_path: Path,
 ) -> None:

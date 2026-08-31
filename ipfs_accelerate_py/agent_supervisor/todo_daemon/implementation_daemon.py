@@ -42640,13 +42640,6 @@ class PortalImplementationDaemon:
                     "reconciled candidate identity or ancestry mismatch"
                 )
 
-            protected_path_snapshot = (
-                self._require_implementation_protected_snapshot(
-                    task=task,
-                    attempt=attempt,
-                    workspace_path=worktree_path,
-                )
-            )
             state.active_task_id = task.task_id
             state.active_task_key = identity.canonical_task_key
             state.active_task_cid = identity.canonical_task_cid
@@ -42698,6 +42691,20 @@ class PortalImplementationDaemon:
                 raise RuntimeError(
                     "reconciled candidate worktree is not clean"
                 )
+
+            # This linked worktree may have been reconstructed from an exact
+            # retained commit without initialized submodules.  Canonical
+            # preparation above is supervisor-owned setup and can materialize
+            # the tracked gitlink contents.  Establish the mutation fence only
+            # after that deterministic setup and its clean-tree check, while
+            # still covering proposal collection, validation, and merge.
+            protected_path_snapshot = (
+                self._require_implementation_protected_snapshot(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=worktree_path,
+                )
+            )
 
             log_path.parent.mkdir(parents=True, exist_ok=True)
             with _open_private_implementation_log(log_path, "w") as log_fh:

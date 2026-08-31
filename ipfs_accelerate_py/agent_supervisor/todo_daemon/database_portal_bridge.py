@@ -20653,8 +20653,15 @@ class DatabasePortalExecutionBridge:
                 and merge_result.get("queued") is not True
             )
             if not merged:
+                validation_result = transaction.get("validation_result")
                 reason = str(
                     transaction.get("reason")
+                    or (
+                        validation_result.get("reason")
+                        if isinstance(validation_result, Mapping)
+                        and validation_result.get("passed") is not True
+                        else ""
+                    )
                     or (
                         merge_result.get("reason")
                         if isinstance(merge_result, Mapping)

@@ -31444,6 +31444,72 @@ def test_reconciled_candidate_restores_tracked_validation_screenshot(
     assert _git(repo, "status", "--short") == ""
 
 
+def test_reconciled_candidate_fences_protected_submodule_after_trusted_setup(
+    tmp_path: Path,
+):
+    repo, _submodule = _seed_parent_with_submodule(tmp_path)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-010M",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "add reconciliation task")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/accel-010m-submodule-setup"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    worktree_path = tmp_path / "candidate-with-uninitialized-submodule"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    protected_relative = "libs/child/child.txt"
+    assert not (worktree_path / protected_relative).exists()
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=["libs/child"],
+        implementation_protected_paths=[protected_relative],
+    )
+    task = daemon._load_tasks()[0]
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=baseline,
+        candidate_commit=candidate,
+        recovery_key="protected-submodule-setup-recovery",
+    )
+
+    assert result["returncode"] == 0
+    assert result["validation_result"]["passed"] is True
+    assert result["protected_path_violation"] == {}
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert not any(
+        event.get("type") == "implementation_protected_path_mutated"
+        for event in events
+    )
+
+
 def test_reconciled_candidate_records_protected_generated_artifact_mutation(
     tmp_path: Path,
 ):
