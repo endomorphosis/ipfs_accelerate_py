@@ -27,11 +27,21 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, fields
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
+from ...llm_router import resolve_agent_implementation_route_binding
 from ..proof.formal_verification_contracts import content_identity
 from ..runtime.event_log import EVENT_LOG_MANIFEST_SCHEMA
+from ..runtime.provider_failure_policy import (
+    GROK_FAILURE_RECEIPT_PREFIX,
+    GROK_ROUTE_OUTCOME_PREFIX,
+    extract_grok_failure_receipts,
+    extract_grok_route_outcomes,
+    valid_grok_failure_receipt,
+    valid_grok_route_outcome,
+)
 from ..task_sources.intent_repository import (
     VALIDATION_ARGV_REPRESENTATION,
     VALIDATION_REPRESENTATION_POLICY_KEY,
@@ -56,6 +66,10 @@ DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA: Final[str] = (
 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-deferred-provider-rearm-evidence@1"
+)
+DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-terminal-no-effect-route-rearm-evidence@1"
 )
 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_REASON: Final[str] = (
     "authenticated_Grok_4.5_primary_is_unavailable;_"
@@ -226,6 +240,96 @@ DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_FIELDS: Final[
         "merge_attempted",
         "acceptance_inferred",
         "route_deferred",
+        "nested_state_quiescent",
+        "evidence_id",
+    }
+)
+DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "schema",
+        "attempt_id",
+        "claim_id",
+        "task_cid",
+        "task_alias",
+        "attempt_number",
+        "owner_session_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "attempt_root_key",
+        "attempt_authority_root_digest",
+        "attempt_root_digest",
+        "binding_id",
+        "binding_admission_id",
+        "binding_admission_digest",
+        "projection_immutable_digest",
+        "task_revision",
+        "board_namespace",
+        "nested_task_cid",
+        "nested_attempt",
+        "event_stream_id",
+        "event_snapshot_id",
+        "event_manifest_digest",
+        "event_count",
+        "event_head_sequence",
+        "event_head_id",
+        "prelude_event_count",
+        "prelude_event_ids_digest",
+        "task_selected_event_id",
+        "diagnostic_event_count",
+        "diagnostic_event_ids_digest",
+        "protected_snapshot_recorded_event_id",
+        "implementation_started_event_id",
+        "pre_implementation_event_id",
+        "pre_implementation_receipt_cid",
+        "protected_snapshot_cleared_event_id",
+        "worktree_release_event_id",
+        "implementation_finished_event_id",
+        "daemon_pass_event_id",
+        "state_digest",
+        "outer_block_receipt_digest",
+        "command_sha256",
+        "route_plan_sha256",
+        "route_id",
+        "primary_provider",
+        "primary_model",
+        "fallback_provider",
+        "fallback_model",
+        "fallback_reasoning_effort",
+        "log_relative_path",
+        "log_sha256",
+        "log_size",
+        "log_identity_digest",
+        "quota_probe_receipt_id",
+        "quota_probe_receipt_digest",
+        "route_outcome_id",
+        "route_outcome_digest",
+        "failure_class",
+        "verifier_status",
+        "runner_returncode",
+        "provider_dispatched",
+        "wrapper_process_dispatched",
+        "quota_probe_dispatched",
+        "primary_model_dispatched",
+        "fallback_model_dispatched",
+        "implementation_dispatched",
+        "provider_effect_committed",
+        "implementation_effect_committed",
+        "legacy_nested_attempt_consumed",
+        "rearm_attempt_consumed",
+        "attempt_consumed",
+        "validation_attempted",
+        "commit_created",
+        "merge_attempted",
+        "acceptance_inferred",
+        "protected_snapshot_unchanged",
+        "workspace_unchanged",
+        "cleanup_terminal",
+        "route_denied",
+        "historical_receipt_only",
+        "fresh_fallback_authority",
         "nested_state_quiescent",
         "evidence_id",
     }
@@ -403,6 +507,126 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
             "board_namespace",
         }
     ),
+    "local_submodule_source_discovered": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "repo_root",
+            "source_root",
+            "source_key",
+            "source",
+            "expected_ref",
+        }
+    ),
+    "implementation_protected_path_snapshot_recorded": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "task_id",
+            "attempt",
+            "workspace_path",
+            "protected_paths",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+        }
+    ),
+    "implementation_started": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "task_id",
+            "attempt",
+            "outputs",
+            "command",
+            "log_path",
+            "worktree_path",
+            "branch",
+            "baseline_ref",
+            "workspace_setup",
+            "cache_hit",
+            "setup_duration_seconds",
+            "saved_duration_seconds",
+            "checkpoint_directory",
+            "timeout_policy",
+            "execution_mode",
+            "provider_dispatched",
+            "worktree_lifecycle",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+        }
+    ),
+    # This is the exact predecessor event.  In particular, the later
+    # ``effective_*`` audit fields are deliberately not accepted here.
+    "pre_implementation_kernel_evaluated": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "event",
+            "task_id",
+            "attempt",
+            "disposition",
+            "provider_authorized",
+            "provider_hook_count",
+            "skip_provider",
+            "reason_code",
+            "receipt_cid",
+            "residual_packet_cid",
+            "analytical_candidate_count",
+            "kernel_receipt",
+            "interface",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+        }
+    ),
+    "implementation_protected_path_snapshot_cleared": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "task_id",
+            "attempt",
+            "reason",
+            "canonical_task_key",
+            "canonical_task_cid",
+            "board_namespace",
+        }
+    ),
+    "worktree_pool_lease_released": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "attempted",
+            "handoff_reason",
+            "worktree_path",
+            "released",
+            "reason",
+            "pooled",
+            "entry_id",
+            "cache_key",
+            "base_ref",
+            "base_commit",
+            "branch",
+            "dependency_paths",
+            "reused",
+            "cache_hit",
+            "setup_seconds",
+            "estimated_seconds_saved",
+            "setup_time_saved_seconds",
+            "invalidation_reason",
+            "invalidation_reasons",
+            "lifecycle_finalize",
+        }
+    ),
+    "worktree_cleanup_fenced": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "worktree_path",
+            "branch",
+            "allowed",
+            "disposition",
+            "reason",
+            "failure_kind",
+            "attempt_consumed",
+            "provider_call_allowed",
+            "record",
+        }
+    ),
     "cleanup_finished": _EVENT_ENVELOPE_FIELDS
     | frozenset(
         {
@@ -548,6 +772,43 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
 _SETUP_EVENT_FIELD_VARIANTS: Final[
     dict[str, frozenset[frozenset[str]]]
 ] = {
+    # The protected quota/medium predecessor predates ``exception_result``.
+    # Keep its exact historical shape as a separate closed variant instead of
+    # weakening either version with an optional authority-bearing field.
+    "implementation_finished": frozenset(
+        {
+            _NO_PROVIDER_EVENT_FIELDS["implementation_finished"]
+            - frozenset({"exception_result"}),
+        }
+    ),
+    "pre_implementation_kernel_evaluated": frozenset(
+        {
+            _NO_PROVIDER_EVENT_FIELDS[
+                "pre_implementation_kernel_evaluated"
+            ]
+            | frozenset(
+                {
+                    "effective_provider_authorized",
+                    "effective_skip_provider",
+                    "effective_reason_code",
+                }
+            ),
+        }
+    ),
+    "implementation_resource_claim_lock_cleared": frozenset(
+        {
+            _NO_PROVIDER_EVENT_FIELDS[
+                "implementation_resource_claim_lock_cleared"
+            ]
+            | frozenset(
+                {
+                    "canonical_task_key",
+                    "canonical_task_cid",
+                    "board_namespace",
+                }
+            ),
+        }
+    ),
     "nested_submodule_initialization_guarded": frozenset(
         {
             _EVENT_ENVELOPE_FIELDS
@@ -3072,6 +3333,7 @@ class DatabasePortalExecutionBridge:
             os.O_RDONLY
             | getattr(os, "O_CLOEXEC", 0)
             | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
         )
         try:
             descriptor = os.open(name, flags, dir_fd=directory_fd)
@@ -3127,6 +3389,183 @@ class DatabasePortalExecutionBridge:
                 "database Portal recovery authority changed during read"
             )
         return raw, fingerprint
+
+    @classmethod
+    def _read_exact_terminal_no_effect_log(
+        cls,
+        attempt_fd: int,
+        name: str,
+        *,
+        maximum_bytes: int = 256 * 1024,
+    ) -> tuple[bytes, tuple[int, ...], str]:
+        """Read one legacy runner log through the already-pinned attempt.
+
+        The four predecessor attempts used an owner-private ``0700`` attempt
+        directory containing an owner/group ``0775`` log directory, while the
+        authoritative attempt log itself was owner-private ``0600``.  That
+        exact historical mode profile is part of this versioned verifier; it
+        is not a general relaxation of the private-file reader.
+        """
+
+        if (
+            re.fullmatch(r"pctdd-[0-9]{3}-attempt-[1-9][0-9]*[.]log", name)
+            is None
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal terminal no-effect log name is malformed"
+            )
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        descriptor = -1
+        try:
+            descriptor = os.open(
+                "implementation-logs",
+                flags,
+                dir_fd=attempt_fd,
+            )
+            directory_before = os.fstat(descriptor)
+            published_before = os.stat(
+                "implementation-logs",
+                dir_fd=attempt_fd,
+                follow_symlinks=False,
+            )
+            directory_fingerprint = cls._authority_fingerprint(
+                directory_before
+            )
+            if (
+                not stat.S_ISDIR(directory_before.st_mode)
+                or directory_before.st_uid != os.geteuid()
+                or directory_before.st_gid != os.getegid()
+                or int(directory_before.st_nlink) < 2
+                or stat.S_IMODE(directory_before.st_mode) != 0o775
+                or directory_fingerprint
+                != cls._authority_fingerprint(published_before)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal legacy log directory identity is invalid"
+                )
+            attempt_prefix = name[: -len(".log")]
+            alias_prefix = attempt_prefix.rsplit("-attempt-", 1)[0]
+            expected_names = sorted(
+                {
+                    f"{attempt_prefix}-context-receipt.json",
+                    name,
+                    f"{alias_prefix}-base-context-capsule.json",
+                    f"{alias_prefix}-base-context-receipt.json",
+                    f"{alias_prefix}-diagnostic-receipt.json",
+                    f"{alias_prefix}-diagnostic-state.json",
+                }
+            )
+            names_before = sorted(os.listdir(descriptor))
+            if names_before != expected_names:
+                raise DatabasePortalBridgeError(
+                    "database Portal legacy log population is not exact"
+                )
+            entry_fingerprints: dict[str, tuple[int, ...]] = {}
+            for entry_name in names_before:
+                entry = os.stat(
+                    entry_name,
+                    dir_fd=descriptor,
+                    follow_symlinks=False,
+                )
+                entry_fingerprint = cls._authority_fingerprint(entry)
+                expected_mode = 0o600 if entry_name == name else 0o664
+                if (
+                    not stat.S_ISREG(entry.st_mode)
+                    or entry.st_uid != os.geteuid()
+                    or entry.st_gid != os.getegid()
+                    or int(entry.st_nlink) != 1
+                    or stat.S_IMODE(entry.st_mode) != expected_mode
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal legacy log entry identity is invalid"
+                    )
+                entry_fingerprints[entry_name] = entry_fingerprint
+            raw, log_fingerprint = cls._read_exact_private_child(
+                descriptor,
+                name,
+                maximum_bytes=maximum_bytes,
+            )
+            names_after = sorted(os.listdir(descriptor))
+            entries_after = {
+                entry_name: cls._authority_fingerprint(
+                    os.stat(
+                        entry_name,
+                        dir_fd=descriptor,
+                        follow_symlinks=False,
+                    )
+                )
+                for entry_name in names_after
+            }
+            directory_after = os.fstat(descriptor)
+            published_after = os.stat(
+                "implementation-logs",
+                dir_fd=attempt_fd,
+                follow_symlinks=False,
+            )
+            if (
+                names_after != names_before
+                or entries_after != entry_fingerprints
+                or cls._authority_fingerprint(directory_after)
+                != directory_fingerprint
+                or cls._authority_fingerprint(published_after)
+                != directory_fingerprint
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal legacy log directory changed during read"
+                )
+            identity = {
+                "directory_name": "implementation-logs",
+                "directory_fingerprint": list(directory_fingerprint),
+                "entry_names_digest": _sha256_bytes(
+                    _canonical_json(names_before)
+                ),
+                "entry_fingerprints": {
+                    entry_name: list(entry_fingerprints[entry_name])
+                    for entry_name in names_before
+                },
+                "log_name": name,
+                "log_fingerprint": list(log_fingerprint),
+            }
+            return raw, log_fingerprint, _sha256_bytes(
+                _canonical_json(identity)
+            )
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "database Portal terminal no-effect log authority is unreadable"
+            ) from exc
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+
+    @classmethod
+    def _revalidate_exact_terminal_no_effect_log(
+        cls,
+        attempt_fd: int,
+        name: str,
+        *,
+        expected_raw: bytes,
+        expected_fingerprint: tuple[int, ...],
+        expected_identity_digest: str,
+    ) -> None:
+        raw, fingerprint, identity_digest = (
+            cls._read_exact_terminal_no_effect_log(
+                attempt_fd,
+                name,
+            )
+        )
+        if (
+            raw != expected_raw
+            or fingerprint != expected_fingerprint
+            or identity_digest != expected_identity_digest
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal legacy log changed during snapshot replay"
+            )
 
     @classmethod
     def _revalidate_private_children(
@@ -3677,6 +4116,243 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "database Portal nested-submodule diagnostic is malformed"
                 )
+        elif event_type == "local_submodule_source_discovered":
+            if any(
+                not isinstance(event.get(name), str)
+                or not str(event.get(name) or "")
+                for name in (
+                    "repo_root",
+                    "source_root",
+                    "source_key",
+                    "source",
+                    "expected_ref",
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal local-source diagnostic is malformed"
+                )
+        elif event_type == "implementation_protected_path_snapshot_recorded":
+            protected_paths = event.get("protected_paths")
+            if (
+                any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in (
+                        "task_id",
+                        "workspace_path",
+                        "canonical_task_key",
+                        "canonical_task_cid",
+                        "board_namespace",
+                    )
+                )
+                or type(event.get("attempt")) is not int
+                or int(event["attempt"]) < 1
+                or not isinstance(protected_paths, list)
+                or not protected_paths
+                or any(
+                    not isinstance(path, str)
+                    or not path
+                    or PurePosixPath(path).is_absolute()
+                    or ".." in PurePosixPath(path).parts
+                    for path in protected_paths
+                )
+                or len(set(protected_paths)) != len(protected_paths)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal protected snapshot event is malformed"
+                )
+        elif event_type == "implementation_started":
+            command = event.get("command")
+            outputs = event.get("outputs")
+            if (
+                any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in (
+                        "task_id",
+                        "log_path",
+                        "worktree_path",
+                        "branch",
+                        "baseline_ref",
+                        "checkpoint_directory",
+                        "execution_mode",
+                        "canonical_task_key",
+                        "canonical_task_cid",
+                        "board_namespace",
+                    )
+                )
+                or type(event.get("attempt")) is not int
+                or int(event["attempt"]) < 1
+                or not isinstance(command, list)
+                or not command
+                or any(not isinstance(item, str) or not item for item in command)
+                or not isinstance(outputs, list)
+                or any(not isinstance(item, str) or not item for item in outputs)
+                or not isinstance(event.get("workspace_setup"), Mapping)
+                or not isinstance(event.get("timeout_policy"), Mapping)
+                or not isinstance(event.get("worktree_lifecycle"), Mapping)
+                or not isinstance(event.get("cache_hit"), bool)
+                or not isinstance(event.get("provider_dispatched"), bool)
+                or any(
+                    isinstance(event.get(name), bool)
+                    or not isinstance(event.get(name), (int, float))
+                    or float(event[name]) < 0.0
+                    for name in (
+                        "setup_duration_seconds",
+                        "saved_duration_seconds",
+                    )
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal implementation-start event is malformed"
+                )
+        elif event_type == "pre_implementation_kernel_evaluated":
+            if (
+                any(
+                    not isinstance(event.get(name), str)
+                    for name in (
+                        "residual_packet_cid",
+                        "receipt_cid",
+                    )
+                )
+                or any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in (
+                        "event",
+                        "task_id",
+                        "disposition",
+                        "reason_code",
+                        "interface",
+                        "canonical_task_key",
+                        "canonical_task_cid",
+                        "board_namespace",
+                    )
+                )
+                or type(event.get("attempt")) is not int
+                or int(event["attempt"]) < 1
+                or type(event.get("provider_hook_count")) is not int
+                or int(event["provider_hook_count"]) < 0
+                or type(event.get("analytical_candidate_count")) is not int
+                or int(event["analytical_candidate_count"]) < 0
+                or not isinstance(event.get("provider_authorized"), bool)
+                or not isinstance(event.get("skip_provider"), bool)
+                or not isinstance(event.get("kernel_receipt"), Mapping)
+                or (
+                    "effective_provider_authorized" in event
+                    and not isinstance(
+                        event.get("effective_provider_authorized"), bool
+                    )
+                )
+                or (
+                    "effective_skip_provider" in event
+                    and not isinstance(event.get("effective_skip_provider"), bool)
+                )
+                or (
+                    "effective_reason_code" in event
+                    and (
+                        not isinstance(event.get("effective_reason_code"), str)
+                        or not str(event.get("effective_reason_code") or "")
+                    )
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal pre-implementation event is malformed"
+                )
+        elif event_type == "implementation_protected_path_snapshot_cleared":
+            if (
+                any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in (
+                        "task_id",
+                        "reason",
+                        "canonical_task_key",
+                        "canonical_task_cid",
+                        "board_namespace",
+                    )
+                )
+                or type(event.get("attempt")) is not int
+                or int(event["attempt"]) < 1
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal protected snapshot clear is malformed"
+                )
+        elif event_type == "worktree_pool_lease_released":
+            if (
+                any(
+                    not isinstance(event.get(name), str)
+                    for name in (
+                        "invalidation_reason",
+                        "handoff_reason",
+                    )
+                )
+                or any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in (
+                        "worktree_path",
+                        "reason",
+                        "entry_id",
+                        "cache_key",
+                        "base_ref",
+                        "base_commit",
+                        "branch",
+                    )
+                )
+                or any(
+                    not isinstance(event.get(name), bool)
+                    for name in (
+                        "attempted",
+                        "released",
+                        "pooled",
+                        "reused",
+                        "cache_hit",
+                    )
+                )
+                or any(
+                    isinstance(event.get(name), bool)
+                    or not isinstance(event.get(name), (int, float))
+                    or float(event[name]) < 0.0
+                    for name in (
+                        "setup_seconds",
+                        "estimated_seconds_saved",
+                        "setup_time_saved_seconds",
+                    )
+                )
+                or not isinstance(event.get("dependency_paths"), list)
+                or not isinstance(event.get("invalidation_reasons"), list)
+                or not isinstance(event.get("lifecycle_finalize"), Mapping)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal pool-release event is malformed"
+                )
+        elif event_type == "worktree_cleanup_fenced":
+            if (
+                any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in (
+                        "worktree_path",
+                        "branch",
+                        "disposition",
+                        "reason",
+                        "failure_kind",
+                    )
+                )
+                or any(
+                    not isinstance(event.get(name), bool)
+                    for name in (
+                        "allowed",
+                        "attempt_consumed",
+                        "provider_call_allowed",
+                    )
+                )
+                or not isinstance(event.get("record"), Mapping)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal fenced-cleanup event is malformed"
+                )
         elif event_type == "submodule_worktree_base_ref_retried":
             required_strings = (
                 ("worktree_path", "source", "source_key", "bad_ref", "fallback_ref")
@@ -3848,6 +4524,7 @@ class DatabasePortalExecutionBridge:
                 os.O_RDONLY
                 | getattr(os, "O_CLOEXEC", 0)
                 | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0)
             )
             try:
                 descriptor = os.open(
@@ -3873,7 +4550,15 @@ class DatabasePortalExecutionBridge:
                     raise DatabasePortalBridgeError(
                         "database Portal event lock is not an exact private file"
                     )
-                fcntl.flock(descriptor, fcntl.LOCK_SH)
+                try:
+                    fcntl.flock(
+                        descriptor,
+                        fcntl.LOCK_SH | fcntl.LOCK_NB,
+                    )
+                except (BlockingIOError, PermissionError) as exc:
+                    raise DatabasePortalBridgeError(
+                        "database Portal event lock is currently unavailable"
+                    ) from exc
             except BaseException:
                 if descriptor >= 0:
                     with suppress(OSError):
@@ -4079,6 +4764,103 @@ class DatabasePortalExecutionBridge:
                     raise DatabasePortalBridgeError(
                         "database Portal event population is incomplete"
                     )
+                terminal_log: dict[str, Any] = {}
+                started = [
+                    event
+                    for event in events
+                    if event.get("type") == "implementation_started"
+                ]
+                legacy_pre_kernel = [
+                    event
+                    for event in events
+                    if event.get("type")
+                    == "pre_implementation_kernel_evaluated"
+                    and frozenset(event)
+                    == _NO_PROVIDER_EVENT_FIELDS[
+                        "pre_implementation_kernel_evaluated"
+                    ]
+                ]
+                legacy_suffix = [
+                    "implementation_protected_path_snapshot_recorded",
+                    "implementation_started",
+                    "pre_implementation_kernel_evaluated",
+                    "implementation_protected_path_snapshot_cleared",
+                    "worktree_pool_lease_released",
+                    "implementation_finished",
+                    "daemon_pass",
+                ]
+                read_legacy_log = bool(
+                    len(events) >= len(legacy_suffix)
+                    and [
+                        str(event.get("type") or "")
+                        for event in events[-len(legacy_suffix) :]
+                    ]
+                    == legacy_suffix
+                    and len(legacy_pre_kernel) == 1
+                )
+                if read_legacy_log:
+                    finished = [
+                        event
+                        for event in events
+                        if event.get("type") == "implementation_finished"
+                    ]
+                    if len(started) != 1 or len(finished) != 1:
+                        raise DatabasePortalBridgeError(
+                            "database Portal terminal no-effect attempt population "
+                            "is ambiguous"
+                        )
+                    task_id = str(started[0].get("task_id") or "")
+                    nested_attempt = started[0].get("attempt")
+                    if (
+                        re.fullmatch(r"PCTDD-[0-9]{3}", task_id) is None
+                        or type(nested_attempt) is not int
+                        or nested_attempt < 1
+                        or finished[0].get("task_id") != task_id
+                        or finished[0].get("attempt") != nested_attempt
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "database Portal terminal no-effect attempt identity "
+                            "is malformed"
+                        )
+                    log_name = (
+                        f"{task_id.lower()}-attempt-{nested_attempt}.log"
+                    )
+                    log_raw, log_fingerprint, log_identity_digest = (
+                        self._read_exact_terminal_no_effect_log(
+                            attempt_fd,
+                            log_name,
+                        )
+                    )
+                    terminal_log = {
+                        "terminal_no_effect_log_raw": log_raw,
+                        "terminal_no_effect_log_relative_path": (
+                            f"implementation-logs/{log_name}"
+                        ),
+                        "terminal_no_effect_log_fingerprint": log_fingerprint,
+                        "terminal_no_effect_log_identity_digest": (
+                            log_identity_digest
+                        ),
+                    }
+                if terminal_log:
+                    self._revalidate_exact_terminal_no_effect_log(
+                        attempt_fd,
+                        Path(
+                            str(
+                                terminal_log[
+                                    "terminal_no_effect_log_relative_path"
+                                ]
+                            )
+                        ).name,
+                        expected_raw=terminal_log[
+                            "terminal_no_effect_log_raw"
+                        ],
+                        expected_fingerprint=terminal_log[
+                            "terminal_no_effect_log_fingerprint"
+                        ],
+                        expected_identity_digest=terminal_log[
+                            "terminal_no_effect_log_identity_digest"
+                        ],
+                    )
                 self._revalidate_private_children(
                     attempt_fd,
                     child_snapshots,
@@ -4099,6 +4881,7 @@ class DatabasePortalExecutionBridge:
                     "events": events,
                     "manifest": manifest,
                     "directory_names": sorted(names_before),
+                    **terminal_log,
                 }
         finally:
             try:
@@ -4782,6 +5565,942 @@ class DatabasePortalExecutionBridge:
         evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
         return evidence
 
+    def _terminal_no_effect_route_log_admission(
+        self,
+        *,
+        raw_log: bytes,
+        command: Sequence[Any],
+        task_alias: str,
+        task_title: str,
+        expected_worktree: str,
+        expected_branch: str,
+        expected_baseline: str,
+        runner_returncode: int,
+    ) -> dict[str, Any] | None:
+        """Admit the one historical Grok quota/medium denied-route log.
+
+        This proves only that the wrapper ran a typed quota preflight and
+        denied the unauthorized fallback before either implementation model
+        was dispatched.  In particular, it creates no fresh Codex authority.
+        """
+
+        expected_route = {
+            "authorization": None,
+            "fallback_implementer_identity": "codex",
+            "fallback_model_id": "gpt-5.6-terra",
+            "fallback_provider_id": "codex",
+            "fallback_reasoning_effort": "medium",
+            "fallback_trigger": "primary_quota_exhausted",
+            "invocation_binding": None,
+            "primary_model_id": "grok-4.6",
+            "primary_provider_id": "grok_cli",
+            "route_id": (
+                "agent-supervisor-grok45-terra56-medium-hard-quota-v1"
+            ),
+        }
+        try:
+            text = raw_log.decode("utf-8", errors="strict")
+            command_items = list(command)
+            if (
+                len(command_items) != 21
+                or any(
+                    not isinstance(item, str) or not item
+                    for item in command_items
+                )
+                or not Path(command_items[0]).is_absolute()
+                or re.fullmatch(r"python(?:3(?:[.][0-9]+)?)?", Path(command_items[0]).name)
+                is None
+                or command_items[1:3]
+                != [
+                    "-m",
+                    "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+                ]
+                or command_items[3::2]
+                != [
+                    "--workspace",
+                    "--model",
+                    "--max-turns",
+                    "--mode",
+                    "--codex-fallback-reasoning-effort",
+                    "--codex-fallback-command-json",
+                    "--grok-bin",
+                    "--grok-failure-receipt-nonce",
+                    "--agent-implementation-route-json",
+                ]
+            ):
+                return None
+            values = {
+                command_items[index]: command_items[index + 1]
+                for index in range(3, len(command_items), 2)
+            }
+            nonce = values["--grok-failure-receipt-nonce"]
+            if (
+                values["--workspace"] != expected_worktree
+                or values["--model"] != "grok-4.6"
+                or values["--max-turns"] != "100000"
+                or values["--mode"] != "agent"
+                or values["--codex-fallback-reasoning-effort"] != "medium"
+                or not Path(values["--grok-bin"]).is_absolute()
+                or Path(values["--grok-bin"]).name != "grok"
+                or re.fullmatch(r"[0-9a-f]{64}", nonce) is None
+            ):
+                return None
+            route_binding = self._strict_json_object_bytes(
+                values["--agent-implementation-route-json"].encode("utf-8"),
+                authority="historical implementation route",
+            )
+            if not _closed_typed_record_matches(
+                route_binding,
+                expected_route,
+            ):
+                return None
+            route_plan = resolve_agent_implementation_route_binding(
+                route_binding,
+                # This version admits no authorization artifact or invocation
+                # binding.  The resolver still receives an explicit local root
+                # and independently reconstructs the canonical route identity.
+                repo_root=expected_worktree,
+            )
+            if (
+                route_plan.authorization is not None
+                or route_plan.invocation_binding is not None
+                or route_plan.as_binding_dict() != expected_route
+            ):
+                return None
+            fallback = json.loads(
+                values["--codex-fallback-command-json"],
+                parse_constant=lambda _value: (_ for _ in ()).throw(
+                    ValueError("nonfinite fallback command value")
+                ),
+            )
+            if (
+                not isinstance(fallback, list)
+                or len(fallback) != 14
+                or any(not isinstance(item, str) or not item for item in fallback)
+                or not Path(fallback[0]).is_absolute()
+                or Path(fallback[0]).name != "codex"
+                or fallback[1:]
+                != [
+                    "exec",
+                    "--ignore-user-config",
+                    "--ignore-rules",
+                    "--ephemeral",
+                    "-s",
+                    "workspace-write",
+                    "-C",
+                    expected_worktree,
+                    "-m",
+                    "gpt-5.6-terra",
+                    "-c",
+                    'model_reasoning_effort="medium"',
+                    "-",
+                ]
+            ):
+                return None
+            receipt_lines = [
+                line
+                for line in text.split("\n")
+                if line.startswith(GROK_FAILURE_RECEIPT_PREFIX)
+            ]
+            outcome_lines = [
+                line
+                for line in text.split("\n")
+                if line.startswith(GROK_ROUTE_OUTCOME_PREFIX)
+            ]
+            receipts = extract_grok_failure_receipts(text)
+            outcomes = extract_grok_route_outcomes(text)
+            if (
+                len(receipt_lines) != 1
+                or len(outcome_lines) != 1
+                or len(receipts) != 1
+                or len(outcomes) != 1
+            ):
+                return None
+            receipt = receipts[0]
+            outcome = outcomes[0]
+            probe_returncode = receipt.get("probe_returncode")
+            if (
+                type(probe_returncode) is not int
+                or probe_returncode != 1
+                or runner_returncode != 1
+                or not valid_grok_failure_receipt(
+                    receipt,
+                    nonce=nonce,
+                    model="grok-4.6",
+                    returncode=probe_returncode,
+                )
+                or receipt.get("failure_class") != "hard_quota_exhausted"
+                or receipt.get("primary_dispatched") is not False
+                or not valid_grok_route_outcome(
+                    outcome,
+                    receipt=receipt,
+                    route_plan=route_plan.as_outcome_dict(),
+                    runner_returncode=runner_returncode,
+                )
+                or outcome.get("decision") != "denied"
+                or outcome.get("verifier_status") != "not_run"
+                or outcome.get("quota_evidence_id") != ""
+                or outcome.get("fallback_dispatched") is not False
+                or outcome.get("fallback_returncode") is not None
+            ):
+                return None
+            lines = text.split("\n")
+            if (
+                "\r" in text
+                or len(lines) != 11
+                or lines[-1] != ""
+                or lines[0] != f"Task: {task_alias} {task_title}"
+                or not lines[1].startswith("Started: ")
+                or lines[2] != f"Workspace: {expected_worktree}"
+                or lines[3] != f"Branch: {expected_branch}"
+                or lines[4] != f"Baseline: {expected_baseline}"
+                or lines[5] != f"Command: {shlex.join(command_items)}"
+                or lines[6] != ""
+                or lines[7]
+                != GROK_FAILURE_RECEIPT_PREFIX
+                + json.dumps(
+                    dict(receipt),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                or lines[8]
+                != (
+                    "Typed Grok preflight did not authorize fallback; "
+                    "Codex fallback is forbidden"
+                )
+                or lines[9]
+                != GROK_ROUTE_OUTCOME_PREFIX
+                + json.dumps(
+                    dict(outcome),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            ):
+                return None
+            started_at = datetime.fromisoformat(lines[1][len("Started: ") :])
+            if started_at.tzinfo is None:
+                return None
+        except (
+            DatabasePortalBridgeError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            OSError,
+            TypeError,
+            ValueError,
+        ):
+            return None
+        return {
+            "command_sha256": _sha256_bytes(
+                _canonical_json(command_items)
+            ),
+            "route_plan_sha256": _sha256_bytes(
+                _canonical_json(route_plan.as_binding_dict())
+            ),
+            "route_id": route_plan.route_id,
+            "primary_provider": route_plan.primary_provider_id,
+            "primary_model": route_plan.primary_model_id,
+            "fallback_provider": route_plan.fallback_provider_id,
+            "fallback_model": route_plan.fallback_model_id,
+            "fallback_reasoning_effort": (
+                route_plan.fallback_reasoning_effort
+            ),
+            "quota_probe_receipt_id": str(receipt["receipt_id"]),
+            "quota_probe_receipt_digest": _sha256_bytes(
+                _canonical_json(dict(receipt))
+            ),
+            "route_outcome_id": str(outcome["outcome_id"]),
+            "route_outcome_digest": _sha256_bytes(
+                _canonical_json(dict(outcome))
+            ),
+            "failure_class": str(receipt["failure_class"]),
+            "verifier_status": str(outcome["verifier_status"]),
+            "runner_returncode": runner_returncode,
+        }
+
+    def _terminal_no_effect_route_rearm_evidence(
+        self,
+        attempt: Any,
+        *,
+        receipt: Mapping[str, Any],
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        durable_binding: Mapping[str, Any],
+        identity: Mapping[str, str],
+        projection_track: str,
+        projection_status: str,
+        directory_names: Sequence[str],
+        state: Mapping[str, Any],
+        state_digest: str,
+        events: Sequence[Mapping[str, Any]],
+        manifest: Mapping[str, Any],
+        log_raw: bytes | None,
+        log_relative_path: str,
+        log_identity_digest: str,
+    ) -> Mapping[str, Any] | None:
+        """Prove one closed predecessor attempt consumed no model effect."""
+
+        base_names = {
+            ".implementation.lock.update.lock",
+            ".portal-events.jsonl.lock",
+            "database-attempt-binding.json",
+            "implementation-logs",
+            "implementation_checkpoints",
+            "portal-events.jsonl",
+            "portal-events.jsonl.manifest.json",
+            "portal-strategy.json",
+            "portal-task-state.json",
+            "task-projection.md",
+            "task_queue.json",
+        }
+        checkpoint_names = {
+            ".portal-task-state.event-driven-checkpoint.json.lock",
+            "portal-task-state.event-driven-checkpoint.json",
+        }
+        observed_names = frozenset(directory_names)
+        if (
+            projection_status != "ready"
+            or observed_names not in {frozenset(base_names), frozenset(base_names | checkpoint_names)}
+            or log_raw is None
+            or not log_relative_path
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", log_identity_digest)
+        ):
+            return None
+
+        task_alias = str(binding.get("task_alias") or "")
+        nested_task_cid = str(identity.get("canonical_task_cid") or "")
+        canonical_task_key = str(identity.get("canonical_task_key") or "")
+        board_namespace = str(identity.get("board_namespace") or "")
+        task_title = str(identity.get("title") or "")
+        if (
+            task_alias not in {"PCTDD-005", "PCTDD-006", "PCTDD-007", "PCTDD-034"}
+            or board_namespace
+            != "parallel-content-sealing-proof-carrying-tdd-v1"
+            or not nested_task_cid
+            or not canonical_task_key
+            or not task_title
+            or type(binding.get("task_revision")) is not int
+            or int(binding["task_revision"]) < 0
+        ):
+            return None
+
+        selected_indexes = [
+            index
+            for index, event in enumerate(events)
+            if event.get("type") == "task_selected"
+            and event.get("task_id") == task_alias
+            and event.get("canonical_task_cid") == nested_task_cid
+        ]
+        suffix_types = [
+            "implementation_protected_path_snapshot_recorded",
+            "implementation_started",
+            "pre_implementation_kernel_evaluated",
+            "implementation_protected_path_snapshot_cleared",
+            "worktree_pool_lease_released",
+            "implementation_finished",
+            "daemon_pass",
+        ]
+        if (
+            len(selected_indexes) != 1
+            or len(events) < len(suffix_types) + 1
+            or [str(event.get("type") or "") for event in events[-7:]]
+            != suffix_types
+            or sum(event.get("type") == "task_selected" for event in events) != 1
+        ):
+            return None
+        selected_index = selected_indexes[0]
+        selected_event = events[selected_index]
+        recorded, started, pre_kernel, cleared, released, finished, daemon_pass = (
+            events[-7:]
+        )
+        prelude = list(events[:selected_index])
+        diagnostic_events = list(events[selected_index + 1 : -7])
+        expected_diagnostic_types = [
+            "nested_submodule_initialization_guarded",
+        ] * 5 + ["local_submodule_source_discovered"] * 7 + [
+            "nested_submodule_initialization_guarded"
+        ]
+        if task_alias in {"PCTDD-005", "PCTDD-034"}:
+            expected_diagnostic_types.insert(
+                0, "implementation_resource_claim_lock_cleared"
+            )
+        if [str(event.get("type") or "") for event in diagnostic_events] != (
+            expected_diagnostic_types
+        ):
+            return None
+
+        if prelude:
+            expected_prelude_types = [
+                "worktree_cleanup_fenced",
+                "worktree_cleanup_fenced",
+                "daemon_pass",
+                "worktree_cleanup_fenced",
+                "worktree_cleanup_fenced",
+                "worktree_cleanup_fenced",
+                "worktree_cleanup_fenced",
+                "worktree_cleanup_fenced",
+                "worktree_cleanup_fenced",
+            ]
+            fenced = [
+                event
+                for event in prelude
+                if event.get("type") == "worktree_cleanup_fenced"
+            ]
+            lifecycle_fields = {
+                "schema",
+                "task_id",
+                "canonical_task_cid",
+                "attempt",
+                "workspace_path",
+                "branch",
+                "merge_target",
+                "repo_root",
+                "state_dir",
+                "lease_id",
+                "lane_id",
+                "owner",
+                "created_at",
+                "updated_at",
+                "expires_at",
+                "fence",
+                "state",
+                "terminal_reason",
+                "record_id",
+            }
+            if (
+                task_alias != "PCTDD-034"
+                or [str(event.get("type") or "") for event in prelude]
+                != expected_prelude_types
+                or len(fenced) != 8
+                or any(
+                    event.get("allowed") is not False
+                    or event.get("attempt_consumed") is not False
+                    or event.get("provider_call_allowed") is not False
+                    or event.get("disposition") != "deny"
+                    or event.get("failure_kind") != "lifecycle_race"
+                    or event.get("reason")
+                    != "nonterminal_preparing_owner_alive"
+                    or not isinstance(event.get("record"), Mapping)
+                    or set(event["record"]) != lifecycle_fields
+                    or event["record"].get("schema")
+                    != (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "worktree-lifecycle-record@1"
+                    )
+                    or event["record"].get("state") != "preparing"
+                    or event["record"].get("terminal_reason") != ""
+                    or type(event["record"].get("attempt")) is not int
+                    or int(event["record"]["attempt"]) != 1
+                    or not isinstance(event["record"].get("owner"), Mapping)
+                    or set(event["record"]["owner"])
+                    != {"boot_id", "parent_pid", "pid", "start_time_ticks"}
+                    for event in fenced
+                )
+                or any(
+                    dict(event["record"]) != dict(fenced[0]["record"])
+                    or event.get("worktree_path")
+                    != fenced[0].get("worktree_path")
+                    or event.get("branch") != fenced[0].get("branch")
+                    for event in fenced[1:]
+                )
+            ):
+                return None
+        elif task_alias == "PCTDD-034":
+            return None
+
+        exact_identity = {
+            "task_id": task_alias,
+            "canonical_task_key": canonical_task_key,
+            "canonical_task_cid": nested_task_cid,
+            "board_namespace": board_namespace,
+        }
+        nested_attempt = finished.get("attempt")
+        if (
+            selected_event.get("title") != task_title
+            or selected_event.get("track") != projection_track
+            or any(
+                selected_event.get(name) != value
+                for name, value in exact_identity.items()
+            )
+            or type(nested_attempt) is not int
+            or nested_attempt != 1
+            or any(
+                event.get("attempt") != nested_attempt
+                or any(event.get(name) != value for name, value in exact_identity.items())
+                for event in (recorded, started, pre_kernel, cleared, finished)
+            )
+            or finished.get("task_cid") != nested_task_cid
+        ):
+            return None
+        if frozenset(pre_kernel) != _NO_PROVIDER_EVENT_FIELDS[
+            "pre_implementation_kernel_evaluated"
+        ]:
+            return None
+        try:
+            from .implementation_disposition import (
+                implementation_disposition_cid,
+                verify_pre_implementation_kernel_receipt,
+            )
+
+            verified_kernel = verify_pre_implementation_kernel_receipt(
+                pre_kernel["kernel_receipt"],
+                expected_task_cid=nested_task_cid,
+            )
+        except (ImportError, TypeError, ValueError):
+            return None
+        if (
+            verified_kernel.attempt != nested_attempt
+            or verified_kernel.disposition.value != "abstain_review"
+            or verified_kernel.reason_code != "no_analytical_close"
+            or verified_kernel.residual_packet_cid != ""
+            or pre_kernel.get("event") != "pre_implementation_kernel_evaluated"
+            or pre_kernel.get("disposition") != "abstain_review"
+            or pre_kernel.get("provider_authorized") is not False
+            or pre_kernel.get("provider_hook_count") != 0
+            or pre_kernel.get("skip_provider") is not True
+            or pre_kernel.get("reason_code") != "no_analytical_close"
+            or pre_kernel.get("residual_packet_cid") != ""
+            or pre_kernel.get("analytical_candidate_count") != 0
+            or pre_kernel.get("interface")
+            != "ImplementationDaemon@pre_implementation_kernel"
+            or pre_kernel.get("receipt_cid")
+            != implementation_disposition_cid(dict(pre_kernel["kernel_receipt"]))
+        ):
+            return None
+
+        expected_log_path = str(paths.root / log_relative_path)
+        worktree_path = str(started.get("worktree_path") or "")
+        branch = str(started.get("branch") or "")
+        baseline_ref = str(started.get("baseline_ref") or "")
+        if (
+            log_relative_path
+            != f"implementation-logs/{task_alias.lower()}-attempt-1.log"
+            or started.get("log_path") != expected_log_path
+            or finished.get("log_path") != expected_log_path
+            or recorded.get("workspace_path") != worktree_path
+            or finished.get("worktree_path") != worktree_path
+            or released.get("worktree_path") != worktree_path
+            or finished.get("branch") != branch
+            or released.get("branch") != branch
+            or finished.get("baseline_ref") != baseline_ref
+            or started.get("execution_mode") != "model-assisted"
+            or started.get("provider_dispatched") is not False
+            or cleared.get("reason") != "failed_agent_terminal_check_unchanged"
+        ):
+            return None
+        log_admission = self._terminal_no_effect_route_log_admission(
+            raw_log=log_raw,
+            command=started.get("command") or (),
+            task_alias=task_alias,
+            task_title=task_title,
+            expected_worktree=worktree_path,
+            expected_branch=branch,
+            expected_baseline=baseline_ref,
+            runner_returncode=int(finished.get("returncode") or 0),
+        )
+        if log_admission is None:
+            return None
+
+        release_body = {
+            key: value
+            for key, value in released.items()
+            if key not in _EVENT_ENVELOPE_FIELDS
+        }
+        cleanup_result = finished.get("cleanup_result")
+        started_setup = started.get("workspace_setup")
+        finished_setup = finished.get("workspace_setup")
+        expected_finished_setup: dict[str, Any] | None = None
+        if isinstance(started_setup, Mapping):
+            expected_finished_setup = dict(started_setup)
+            raw_preflight = started_setup.get(
+                "validation_project_dependency_preflight"
+            )
+            if isinstance(raw_preflight, Mapping):
+                def bounded_count(field: str) -> int:
+                    value = raw_preflight.get(field)
+                    return (
+                        len(value)
+                        if isinstance(value, Sequence)
+                        and not isinstance(value, (str, bytes, bytearray))
+                        else 0
+                    )
+
+                def bounded_int(field: str) -> int:
+                    value = raw_preflight.get(field)
+                    return (
+                        max(0, value)
+                        if type(value) is int
+                        else 0
+                    )
+
+                expected_finished_setup[
+                    "validation_project_dependency_preflight"
+                ] = {
+                    "schema": str(raw_preflight.get("schema") or "")[:512],
+                    "receipt_id": str(raw_preflight.get("receipt_id") or "")[:1024],
+                    "retry_fingerprint": str(raw_preflight.get("retry_fingerprint") or "")[:1024],
+                    "passed": raw_preflight.get("passed") is True,
+                    "applicable": raw_preflight.get("applicable") is True,
+                    "reason": str(raw_preflight.get("reason") or "")[:1000],
+                    "automatic_install_attempted": raw_preflight.get("automatic_install_attempted") is True,
+                    "probe_scope": str(raw_preflight.get("probe_scope") or "")[:512],
+                    "validation_command_count": bounded_int("validation_command_count"),
+                    "project_count": bounded_count("projects"),
+                    "project_root_count": bounded_count("project_roots"),
+                    "missing_count": bounded_count("missing_requirements"),
+                    "incompatible_count": bounded_count("incompatible_requirements"),
+                    "invalid_requirement_count": bounded_count("invalid_requirements"),
+                    "invalid_command_count": bounded_count("invalid_commands"),
+                    "event_projection_compacted": True,
+                    "full_receipt_event": "implementation_started",
+                }
+        if (
+            released.get("attempted") is not True
+            or released.get("released") is not True
+            or released.get("pooled") is not True
+            or released.get("reason") != "clean_prepared_workspace"
+            or released.get("handoff_reason") != "implementation_command_failed"
+            or released.get("base_ref") != started.get("workspace_setup", {}).get("base_ref")
+            or released.get("base_commit") != started.get("workspace_setup", {}).get("base_commit")
+            or released.get("lifecycle_finalize")
+            != {
+                "fence": released.get("lifecycle_finalize", {}).get("fence"),
+                "finalized": True,
+                "reason": "pool_release_implementation_command_failed",
+                "state": "terminal",
+            }
+            or type(released.get("lifecycle_finalize", {}).get("fence")) is not int
+            or not isinstance(cleanup_result, Mapping)
+            or set(cleanup_result)
+            != {"cleaned", "lifecycle_finalize", "pool_release", "pooled", "reason"}
+            or cleanup_result.get("cleaned") is not True
+            or cleanup_result.get("pooled") is not True
+            or cleanup_result.get("reason")
+            != "failed_implementation_pool_lease_released"
+            or cleanup_result.get("pool_release") != release_body
+            or cleanup_result.get("lifecycle_finalize")
+            != {"finalized": False, "reason": "no_lifecycle_record"}
+            or finished.get("lifecycle_finalize")
+            != {"finalized": False, "reason": "no_lifecycle_record"}
+            or finished.get("returncode") != 1
+            or finished.get("attempt_consumed") is not True
+            or finished.get("provider_dispatched") is not True
+            or finished.get("implementation_commit") != ""
+            or finished.get("validation_result")
+            != {"attempted": False, "passed": True, "reason": "not_run", "results": [], "returncode": 0}
+            or finished.get("commit_result") != {"committed": False}
+            or finished.get("merge_result")
+            != {"merged": False, "reason": "not_attempted"}
+            or finished.get("board_completion")
+            != {"complete": False, "pending_merge": False, "reason": "implementation_or_validation_failed"}
+            or finished.get("failed_preservation_result") != {}
+            or expected_finished_setup is None
+            or finished_setup != expected_finished_setup
+            or finished.get("cache_hit") != started.get("cache_hit")
+            or finished.get("setup_duration_seconds")
+            != started.get("setup_duration_seconds")
+            or finished.get("saved_duration_seconds")
+            != started.get("saved_duration_seconds")
+        ):
+            return None
+
+        forbidden_types = {
+            "provider_invocation_committed",
+            "validation_started",
+            "validation_finished",
+            "commit_created",
+            "merge_started",
+            "merge_finished",
+            "task_completed",
+            "proof_accepted",
+        }
+        if any(event.get("type") in forbidden_types for event in events):
+            return None
+
+        state_identity = state.get("task_identities")
+        identity_record = (
+            state_identity.get(task_alias)
+            if isinstance(state_identity, Mapping)
+            else None
+        )
+        semantic_fingerprint = canonical_task_key.rsplit("/", 1)[-1]
+        identity_fields = {
+            "board_namespace",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "display_task_id",
+            "identity_version",
+            "semantic_fingerprint",
+            "source_path",
+        }
+        active_string_fields = (
+            "active_task_id",
+            "active_task_key",
+            "active_task_cid",
+            "active_task_title",
+            "active_task_track",
+            "active_task_started_at",
+            "active_phase",
+            "active_phase_started_at",
+            "active_phase_detail",
+            "active_log_path",
+            "active_worktree_path",
+            "active_branch",
+        )
+        if not (
+            state.get("implementation_in_progress") is False
+            and all(state.get(name) == "" for name in active_string_fields)
+            and state.get("active_attempt") == 0
+            and state.get("active_provider_runner") == {}
+            and state.get("last_implementation_task_id") == task_alias
+            and state.get("last_implementation_task_key") == canonical_task_key
+            and state.get("last_implementation_task_cid") == nested_task_cid
+            and state.get("last_implementation_returncode") == 1
+            and state.get("last_implementation_log_path") == expected_log_path
+            and state.get("last_implementation_worktree_path") == worktree_path
+            and state.get("last_implementation_branch") == branch
+            and state.get("last_implementation_commit") == ""
+            and state.get("last_merge_returncode") is None
+            and state.get("last_merge_error") == "not_attempted"
+            and all(
+                state.get(name) == ""
+                for name in (
+                    "last_merge_started_at",
+                    "last_merge_finished_at",
+                    "last_merge_branch",
+                    "last_merge_commit",
+                )
+            )
+            and state.get("last_proof_workflow") == {}
+            and isinstance(state_identity, Mapping)
+            and set(state_identity) == {task_alias}
+            and isinstance(identity_record, Mapping)
+            and set(identity_record) == identity_fields
+            and identity_record.get("display_task_id") == task_alias
+            and identity_record.get("canonical_task_key") == canonical_task_key
+            and identity_record.get("canonical_task_cid") == nested_task_cid
+            and identity_record.get("board_namespace") == board_namespace
+            and identity_record.get("identity_version") == 1
+            and identity_record.get("semantic_fingerprint") == semantic_fingerprint
+            and identity_record.get("source_path") == str(paths.task_projection)
+            and state.get("implementation_attempts") == {task_alias: 1}
+            and state.get("implementation_attempts_by_cid") == {nested_task_cid: 1}
+            and state.get("task_statuses") == {task_alias: "ready"}
+            and state.get("ready_task_ids") == [task_alias]
+            and state.get("selectable_ready_task_ids") == [task_alias]
+            and state.get("eligible_ready_task_ids") == [task_alias]
+            and all(
+                state.get(name) == []
+                for name in (
+                    "completed_task_ids",
+                    "external_reserved_task_ids",
+                    "assumed_completed_task_ids",
+                    "strict_deprioritized_ready_task_ids",
+                    "waiting_task_ids",
+                    "blocked_task_ids",
+                )
+            )
+            and state.get("task_count") == 1
+            and state.get("ready_count") == 1
+            and state.get("selectable_ready_count") == 1
+            and state.get("eligible_ready_count") == 1
+            and all(
+                state.get(name) == 0
+                for name in (
+                    "completed_count",
+                    "external_reserved_count",
+                    "assumed_completed_count",
+                    "strict_deprioritized_ready_count",
+                    "waiting_count",
+                    "blocked_count",
+                )
+            )
+            and state.get("recommended_task_id") == ""
+            and state.get("recommended_actions") == []
+            and state.get("task_artifacts") == {task_alias: []}
+            and isinstance(state.get("task_validation"), Mapping)
+            and set(state["task_validation"]) == {task_alias}
+            and isinstance(state["task_validation"][task_alias], list)
+            and bool(state["task_validation"][task_alias])
+            and all(
+                isinstance(command_item, str) and bool(command_item)
+                for command_item in state["task_validation"][task_alias]
+            )
+            and state.get("protected_implementation_attempts") == {}
+            and state.get("retry_budget_repair_receipts") == {}
+            and state.get("retry_budget_repair_rearm_receipts") == {}
+            and state.get("stale_proposal_replay_rearm_receipts") == {}
+            and state.get("validation_obsolescence_rearm_receipts") == {}
+            and state.get("strategy_generation") == 0
+            and state.get("selection_idle_reason") == ""
+        ):
+            return None
+
+        empty_pass_lists = (
+            "attempt_limited_task_ids",
+            "completion_receipt_task_ids",
+            "manual_completion_authority_affected_goal_ids",
+            "manual_completion_authority_dependency_task_ids",
+            "manual_completion_authority_required_task_ids",
+            "manual_completion_authority_task_ids",
+            "manual_completion_renewal_quarantined_task_ids",
+            "manual_completion_revalidation_only_task_ids",
+            "manual_completion_revalidation_task_ids",
+            "quarantined_manual_completion_status_task_ids",
+            "released_retry_budget_strategy_block_task_ids",
+            "retry_budget_rearmed_task_ids",
+            "retry_budget_reset_deferred_task_ids",
+            "retry_budget_reset_task_ids",
+            "shared_active_merge_task_ids",
+            "shared_completed_task_ids",
+        )
+        expected_projection_delta = [
+            "active_task_cid",
+            "active_task_id",
+            "active_task_key",
+            "active_task_started_at",
+            "active_task_title",
+            "active_task_track",
+            "eligible_ready_count",
+            "eligible_ready_task_ids",
+            "heartbeat_at",
+            "last_progress_at",
+        ]
+        if task_alias != "PCTDD-034":
+            expected_projection_delta.extend(
+                [
+                    "ready_count",
+                    "ready_task_ids",
+                ]
+            )
+        expected_projection_delta.extend(
+            [
+                "recommended_actions",
+                "recommended_task_id",
+                "selectable_ready_count",
+                "selectable_ready_task_ids",
+            ]
+        )
+        if task_alias != "PCTDD-034":
+            expected_projection_delta.extend(
+                [
+                    "task_artifacts",
+                    "task_count",
+                    "task_identities",
+                    "task_statuses",
+                    "task_validation",
+                ]
+            )
+        else:
+            expected_projection_delta.append("selection_idle_reason")
+        if not (
+            daemon_pass.get("previous_event_id") == finished.get("event_id")
+            and daemon_pass.get("completed_count") == 0
+            and daemon_pass.get("ready_count") == 1
+            and daemon_pass.get("selectable_ready_count") == 1
+            and daemon_pass.get("eligible_ready_count") == 1
+            and daemon_pass.get("strict_deprioritized_ready_count") == 0
+            and daemon_pass.get("waiting_count") == 0
+            and daemon_pass.get("blocked_count") == 0
+            and daemon_pass.get("active_task_id") == ""
+            and daemon_pass.get("selection_idle_reason") == ""
+            and daemon_pass.get("max_task_attempts") == 1
+            and daemon_pass.get("ordinary_provider_dispatch_allowed") is True
+            and daemon_pass.get("execution_slice_task_statuses")
+            == {task_alias: "ready"}
+            and daemon_pass.get("execution_slice_task_cids_by_id")
+            == {task_alias: nested_task_cid}
+            and all(daemon_pass.get(name) == [] for name in empty_pass_lists)
+            and daemon_pass.get("manual_completion_authority_revalidation_only")
+            is False
+            and daemon_pass.get("protected_path_conflicts") == {}
+            and daemon_pass.get("virgin_task_transfer")
+            == {"granted_away_task_ids": [], "granted_to_lane_task_ids": [], "mode": "", "request_task_id": ""}
+            and daemon_pass.get("projection_delta_keys")
+            == expected_projection_delta
+        ):
+            return None
+
+        evidence: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "task_alias": task_alias,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "attempt_root_key": paths.root.name,
+            "attempt_authority_root_digest": _sha256_bytes(str(self.attempt_root).encode("utf-8")),
+            "attempt_root_digest": _sha256_bytes(str(paths.root).encode("utf-8")),
+            "binding_id": str(binding["binding_id"]),
+            "binding_admission_id": str(durable_binding.get("record_id") or ""),
+            "binding_admission_digest": _sha256_bytes(_canonical_json(dict(durable_binding))),
+            "projection_immutable_digest": str(binding["projection_immutable_digest"]),
+            "task_revision": int(binding["task_revision"]),
+            "board_namespace": board_namespace,
+            "nested_task_cid": nested_task_cid,
+            "nested_attempt": nested_attempt,
+            "event_stream_id": str(manifest["stream_id"]),
+            "event_snapshot_id": str(manifest["snapshot_id"]),
+            "event_manifest_digest": str(manifest.get("manifest_digest") or ""),
+            "event_count": len(events),
+            "event_head_sequence": int(manifest["latest_sequence"]),
+            "event_head_id": str(manifest["last_event_id"]),
+            "prelude_event_count": len(prelude),
+            "prelude_event_ids_digest": _sha256_bytes(_canonical_json([str(event["event_id"]) for event in prelude])),
+            "task_selected_event_id": str(selected_event["event_id"]),
+            "diagnostic_event_count": len(diagnostic_events),
+            "diagnostic_event_ids_digest": _sha256_bytes(_canonical_json([str(event["event_id"]) for event in diagnostic_events])),
+            "protected_snapshot_recorded_event_id": str(recorded["event_id"]),
+            "implementation_started_event_id": str(started["event_id"]),
+            "pre_implementation_event_id": str(pre_kernel["event_id"]),
+            "pre_implementation_receipt_cid": str(pre_kernel["receipt_cid"]),
+            "protected_snapshot_cleared_event_id": str(cleared["event_id"]),
+            "worktree_release_event_id": str(released["event_id"]),
+            "implementation_finished_event_id": str(finished["event_id"]),
+            "daemon_pass_event_id": str(daemon_pass["event_id"]),
+            "state_digest": state_digest,
+            "outer_block_receipt_digest": _sha256_bytes(_canonical_json(dict(receipt))),
+            **log_admission,
+            "log_relative_path": log_relative_path,
+            "log_sha256": _sha256_bytes(log_raw),
+            "log_size": len(log_raw),
+            "log_identity_digest": log_identity_digest,
+            "provider_dispatched": False,
+            "wrapper_process_dispatched": True,
+            "quota_probe_dispatched": True,
+            "primary_model_dispatched": False,
+            "fallback_model_dispatched": False,
+            "implementation_dispatched": False,
+            "provider_effect_committed": False,
+            "implementation_effect_committed": False,
+            "legacy_nested_attempt_consumed": True,
+            "rearm_attempt_consumed": False,
+            "attempt_consumed": False,
+            "validation_attempted": False,
+            "commit_created": False,
+            "merge_attempted": False,
+            "acceptance_inferred": False,
+            "protected_snapshot_unchanged": True,
+            "workspace_unchanged": True,
+            "cleanup_terminal": True,
+            "route_denied": True,
+            "historical_receipt_only": True,
+            "fresh_fallback_authority": False,
+            "nested_state_quiescent": True,
+        }
+        if set(evidence) != (
+            DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_FIELDS
+            - {"evidence_id"}
+        ):
+            raise DatabasePortalBridgeError(
+                "terminal no-effect evidence field construction drifted"
+            )
+        evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
+        return evidence
+
     def _deferred_provider_rearm_evidence(
         self,
         attempt: Any,
@@ -5313,6 +7032,7 @@ class DatabasePortalExecutionBridge:
             projection_task = self._projection_task(paths, binding, projection)
             identity = {
                 "task_id": projection_task.task_id,
+                "title": str(projection_task.title or ""),
                 "canonical_task_key": str(
                     projection_task.canonical_task_key or ""
                 ),
@@ -5381,6 +7101,33 @@ class DatabasePortalExecutionBridge:
             )
         ):
             return None
+
+        terminal_no_effect_evidence = (
+            self._terminal_no_effect_route_rearm_evidence(
+                attempt,
+                receipt=receipt,
+                paths=paths,
+                binding=binding,
+                durable_binding=durable_binding,
+                identity=identity,
+                projection_track=projection_track,
+                projection_status=projection_status,
+                directory_names=directory_names,
+                state=state,
+                state_digest=state_digest,
+                events=events,
+                manifest=manifest,
+                log_raw=sealed.get("terminal_no_effect_log_raw"),
+                log_relative_path=str(
+                    sealed.get("terminal_no_effect_log_relative_path") or ""
+                ),
+                log_identity_digest=str(
+                    sealed.get("terminal_no_effect_log_identity_digest") or ""
+                ),
+            )
+        )
+        if terminal_no_effect_evidence is not None:
+            return terminal_no_effect_evidence
 
         deferred_provider_evidence = self._deferred_provider_rearm_evidence(
             attempt,
@@ -7533,6 +9280,8 @@ __all__ = (
     "DATABASE_PORTAL_ATTEMPT_RECONCILIATION_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
+    "DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_FIELDS",
+    "DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA",
     "DatabasePortalAttemptPaths",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalProviderRouteDeferred",

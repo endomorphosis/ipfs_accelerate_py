@@ -21,6 +21,7 @@ from typing import Callable
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    canonical_json,
     content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
@@ -67,6 +68,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+    DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
 )
@@ -5490,8 +5492,583 @@ def _deferred_provider_rearm_evidence(
     return evidence
 
 
+def _terminal_no_effect_route_rearm_evidence(
+    candidate: DatabaseTaskAttempt,
+    outer_receipt: dict[str, object],
+) -> dict[str, object]:
+    """Build one exact outer admission candidate for the versioned bridge."""
+
+    def sha(value: object) -> str:
+        return "sha256:" + hashlib.sha256(
+            str(value).encode("utf-8")
+        ).hexdigest()
+
+    route_plan = {
+        "authorization": None,
+        "fallback_implementer_identity": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_provider_id": "codex",
+        "fallback_reasoning_effort": "medium",
+        "fallback_trigger": "primary_quota_exhausted",
+        "invocation_binding": None,
+        "primary_model_id": "grok-4.6",
+        "primary_provider_id": "grok_cli",
+        "route_id": (
+            "agent-supervisor-grok45-terra56-medium-hard-quota-v1"
+        ),
+    }
+    prelude_event_count = 9 if candidate.task_alias == "PCTDD-034" else 0
+    diagnostic_event_count = (
+        14 if candidate.task_alias in {"PCTDD-005", "PCTDD-034"} else 13
+    )
+    event_count = prelude_event_count + diagnostic_event_count + 8
+    event_head_id = sha("terminal-no-effect-daemon-pass")
+    evidence: dict[str, object] = {
+        "schema": DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
+        "attempt_id": candidate.attempt_id,
+        "claim_id": candidate.claim_id,
+        "task_cid": candidate.task_cid,
+        "task_alias": candidate.task_alias,
+        "attempt_number": candidate.attempt_number,
+        "owner_session_id": candidate.owner_session_id,
+        "lease_id": candidate.lease_id,
+        "fencing_token": candidate.fencing_token,
+        "fence_epoch": candidate.fence_epoch,
+        "attempt_root_key": hashlib.sha256(
+            candidate.attempt_id.encode("utf-8")
+        ).hexdigest()[:24],
+        "attempt_authority_root_digest": sha("attempt-authority-root"),
+        "attempt_root_digest": sha("attempt-root"),
+        "binding_id": sha("binding"),
+        "binding_admission_id": content_identity(
+            {"terminal-no-effect-binding": candidate.attempt_id}
+        ),
+        "binding_admission_digest": sha("binding-admission"),
+        "projection_immutable_digest": sha("projection"),
+        "task_revision": 7,
+        "board_namespace": "parallel-content-sealing-proof-carrying-tdd-v1",
+        "nested_task_cid": content_identity(
+            {"terminal-no-effect-task": candidate.task_cid}
+        ),
+        "nested_attempt": 1,
+        "event_stream_id": "event-log:" + sha("event-stream"),
+        "event_snapshot_id": "event-log-snapshot:" + sha("event-snapshot"),
+        "event_manifest_digest": sha("event-manifest"),
+        "event_count": event_count,
+        "event_head_sequence": event_count,
+        "event_head_id": event_head_id,
+        "prelude_event_count": prelude_event_count,
+        "prelude_event_ids_digest": sha("prelude-events"),
+        "task_selected_event_id": sha("task-selected"),
+        "diagnostic_event_count": diagnostic_event_count,
+        "diagnostic_event_ids_digest": sha("diagnostic-events"),
+        "protected_snapshot_recorded_event_id": sha("snapshot-recorded"),
+        "implementation_started_event_id": sha("implementation-started"),
+        "pre_implementation_event_id": sha("pre-implementation"),
+        "pre_implementation_receipt_cid": content_identity(
+            {"pre-implementation": candidate.attempt_id}
+        ),
+        "protected_snapshot_cleared_event_id": sha("snapshot-cleared"),
+        "worktree_release_event_id": sha("worktree-release"),
+        "implementation_finished_event_id": sha("implementation-finished"),
+        "daemon_pass_event_id": event_head_id,
+        "state_digest": sha("state"),
+        "outer_block_receipt_digest": (
+            DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                outer_receipt
+            )
+        ),
+        "command_sha256": sha("command"),
+        "route_plan_sha256": "sha256:" + hashlib.sha256(
+            canonical_json(route_plan).encode("utf-8")
+        ).hexdigest(),
+        "route_id": (
+            "agent-supervisor-grok45-terra56-medium-hard-quota-v1"
+        ),
+        "primary_provider": "grok_cli",
+        "primary_model": "grok-4.6",
+        "fallback_provider": "codex",
+        "fallback_model": "gpt-5.6-terra",
+        "fallback_reasoning_effort": "medium",
+        "log_relative_path": (
+            f"implementation-logs/{candidate.task_alias.lower()}-attempt-1.log"
+        ),
+        "log_sha256": sha("implementation-log"),
+        "log_size": 4096,
+        "log_identity_digest": sha("implementation-log-identity"),
+        "quota_probe_receipt_id": sha("quota-probe-receipt"),
+        "quota_probe_receipt_digest": sha("quota-probe-receipt-bytes"),
+        "route_outcome_id": sha("route-outcome"),
+        "route_outcome_digest": sha("route-outcome-bytes"),
+        "failure_class": "hard_quota_exhausted",
+        "verifier_status": "not_run",
+        "runner_returncode": 1,
+        "provider_dispatched": False,
+        "wrapper_process_dispatched": True,
+        "quota_probe_dispatched": True,
+        "primary_model_dispatched": False,
+        "fallback_model_dispatched": False,
+        "implementation_dispatched": False,
+        "provider_effect_committed": False,
+        "implementation_effect_committed": False,
+        "legacy_nested_attempt_consumed": True,
+        "rearm_attempt_consumed": False,
+        "attempt_consumed": False,
+        "validation_attempted": False,
+        "commit_created": False,
+        "merge_attempted": False,
+        "acceptance_inferred": False,
+        "protected_snapshot_unchanged": True,
+        "workspace_unchanged": True,
+        "cleanup_terminal": True,
+        "route_denied": True,
+        "historical_receipt_only": True,
+        "fresh_fallback_authority": False,
+        "nested_state_quiescent": True,
+    }
+    evidence["evidence_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            evidence,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    return evidence
+
+
+def _rehash_terminal_no_effect_route_evidence(
+    evidence: dict[str, object],
+) -> None:
+    unsigned = dict(evidence)
+    unsigned.pop("evidence_id", None)
+    evidence["evidence_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def test_terminal_no_effect_route_evidence_validator_is_closed_and_fenced() -> None:
+    candidate = DatabaseTaskAttempt(
+        attempt_id="attempt:terminal-no-effect",
+        claim_id="claim:terminal-no-effect",
+        task_cid="task:cid:terminal-no-effect",
+        task_alias="PCTDD-034",
+        attempt_number=6,
+        owner_session_id="session:terminal-no-effect",
+        lease_id="lease:terminal-no-effect",
+        fencing_token=17,
+        fence_epoch=9,
+        committed_phase="failed",
+        status="failed",
+        started_at_ms=1,
+        finished_at_ms=2,
+        body={},
+    )
+    original: dict[str, object] = {
+        "attempt_id": candidate.attempt_id,
+        "claim_id": candidate.claim_id,
+        "task_cid": candidate.task_cid,
+        "attempt_number": candidate.attempt_number,
+        "owner_session_id": candidate.owner_session_id,
+        "lease_id": candidate.lease_id,
+        "fencing_token": candidate.fencing_token,
+        "fence_epoch": candidate.fence_epoch,
+        "attempts_used": 1,
+    }
+    task = SimpleNamespace(
+        task_cid=candidate.task_cid,
+        task_alias=candidate.task_alias,
+    )
+    evidence = _terminal_no_effect_route_rearm_evidence(candidate, original)
+
+    assert DatabaseImplementationDaemon._valid_no_provider_rearm_evidence(
+        evidence,
+        task=task,
+        original=original,
+        expected_evidence_id=str(evidence["evidence_id"]),
+    )
+
+    near_misses: tuple[tuple[str, object], ...] = (
+        ("wrapper_process_dispatched", False),
+        ("quota_probe_dispatched", False),
+        ("primary_model_dispatched", True),
+        ("fallback_model_dispatched", True),
+        ("legacy_nested_attempt_consumed", False),
+        ("rearm_attempt_consumed", True),
+        ("attempt_consumed", True),
+        ("fresh_fallback_authority", True),
+        ("route_denied", False),
+        ("historical_receipt_only", False),
+        ("claim_id", "claim:other"),
+        ("fencing_token", candidate.fencing_token + 1),
+        ("board_namespace", "unreviewed-board"),
+        ("nested_attempt", 2),
+        ("prelude_event_count", 8),
+        ("diagnostic_event_count", 13),
+        ("event_count", 30),
+        ("route_plan_sha256", "sha256:" + "0" * 64),
+        ("route_id", "route:unreviewed"),
+        ("log_relative_path", "../escaped.log"),
+        ("log_relative_path", "implementation-logs/unreviewed.log"),
+        ("log_relative_path", "implementation-logs/pctdd-034-attempt-2.log"),
+        ("runner_returncode", 2),
+        ("runner_returncode", True),
+        ("unexpected_authority", True),
+    )
+    for field, value in near_misses:
+        malformed = dict(evidence)
+        malformed[field] = value
+        _rehash_terminal_no_effect_route_evidence(malformed)
+        assert not DatabaseImplementationDaemon._valid_no_provider_rearm_evidence(
+            malformed,
+            task=task,
+            original=original,
+            expected_evidence_id=str(malformed["evidence_id"]),
+        ), field
+
+
+def _terminal_no_effect_historical_selector_case(
+    *,
+    task_alias: str = "PCTDD-034",
+    attempt_number: int = 6,
+    attempts_used: int = 1,
+    rearm_count: int | None = None,
+) -> SimpleNamespace:
+    case = _historical_stale_dispatch_selector_case(
+        task_alias=task_alias,
+        attempt_number=attempt_number,
+        attempts_used=attempts_used,
+    )
+    case.receipt["reason"] = "callback_authority_incomplete_blocked"
+    case.receipt.pop("terminal_reconciliation")
+    if rearm_count is not None:
+        case.receipt["unknown_outcome_rearm_count"] = rearm_count
+    case.phase_body.clear()
+    case.phase_body.update(
+        {
+            "database_disposition": "blocked_unknown_outcome",
+            "reason": "callback_authority_incomplete_blocked",
+            "retry_exhausted": True,
+            "unknown_authority": True,
+        }
+    )
+    evidence = _terminal_no_effect_route_rearm_evidence(
+        case.attempt,
+        case.receipt,
+    )
+    case.evidence.clear()
+    case.evidence.update(evidence)
+    case.daemon._database_portal_terminal_reconciliation_saga = (
+        lambda _attempt: None
+    )
+
+    def journal(
+        _attempt: object,
+        *,
+        dispatch_kind: str,
+        idempotency_key: str,
+    ) -> dict[str, object] | None:
+        case.calls["journal"].append((dispatch_kind, idempotency_key))
+        if dispatch_kind == "effect":
+            return None
+        return {
+            "outcome": "raised",
+            "body": {"exception_type": "DatabasePortalBridgeError"},
+            "updated_at_ms": 1,
+        }
+
+    case.daemon._dispatch_journal_entry = journal
+    return case
+
+
+@pytest.mark.parametrize(
+    ("task_alias", "attempt_number", "rearm_count"),
+    (
+        ("PCTDD-005", 2, None),
+        ("PCTDD-006", 3, 1),
+        ("PCTDD-007", 3, 1),
+        ("PCTDD-034", 6, None),
+    ),
+)
+def test_terminal_no_effect_route_selector_admits_historical_attempt_suffix(
+    task_alias: str,
+    attempt_number: int,
+    rearm_count: int | None,
+) -> None:
+    """Only the exact versioned legacy route budget is admitted."""
+
+    case = _terminal_no_effect_historical_selector_case(
+        task_alias=task_alias,
+        attempt_number=attempt_number,
+        rearm_count=rearm_count,
+    )
+
+    admitted = case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    )
+
+    assert admitted is not None
+    assert admitted["schema"] == (
+        DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA
+    )
+    assert admitted["attempt_number"] == attempt_number
+    assert admitted["legacy_nested_attempt_consumed"] is True
+    assert admitted["rearm_attempt_consumed"] is False
+    assert admitted["fresh_fallback_authority"] is False
+    assert case.calls["verifier"] == [case.attempt]
+
+
+@pytest.mark.parametrize(
+    ("task_alias", "attempt_number", "attempts_used", "rearm_count"),
+    (
+        ("PCTDD-034", 5, 1, None),
+        ("PCTDD-034", 7, 1, None),
+        ("PCTDD-006", 3, 1, 0),
+        ("PCTDD-006", 3, 1, 2),
+        ("PCTDD-034", 6, 0, None),
+        ("PCTDD-034", 6, 2, None),
+    ),
+)
+def test_terminal_no_effect_route_selector_rejects_near_historical_budget(
+    task_alias: str,
+    attempt_number: int,
+    attempts_used: int,
+    rearm_count: int | None,
+) -> None:
+    """No neighboring ordinal or budget inherits migration authority."""
+
+    case = _terminal_no_effect_historical_selector_case(
+        task_alias=task_alias,
+        attempt_number=attempt_number,
+        attempts_used=attempts_used,
+        rearm_count=rearm_count,
+    )
+    task_before = case.task.to_dict()
+    attempt_before = case.attempt.to_dict()
+    receipt_before = json.loads(json.dumps(case.receipt))
+
+    assert case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    ) is None
+    # The 3 == 1 + 2 case remains eligible for the generic exact-count
+    # non-consuming verifier so the established deferred route is preserved;
+    # its returned terminal-migration schema still fails the closed tuple gate.
+    expected_verifier_calls = (
+        [case.attempt]
+        if (task_alias, attempt_number, attempts_used, rearm_count)
+        == ("PCTDD-006", 3, 1, 2)
+        else []
+    )
+    assert case.calls["verifier"] == expected_verifier_calls
+    if expected_verifier_calls:
+        assert case.calls["journal"] == [
+            ("effect", f"effect:{case.attempt.attempt_id}"),
+            ("provider", f"provider:{case.attempt.attempt_id}"),
+        ]
+        assert len(case.calls["provider"]) == 1
+        assert len(case.calls["effect"]) == 1
+    else:
+        assert case.calls["journal"] == []
+        assert case.calls["provider"] == []
+        assert case.calls["effect"] == []
+    assert case.task.to_dict() == task_before
+    assert case.attempt.to_dict() == attempt_before
+    assert case.receipt == receipt_before
+
+
+def test_terminal_no_effect_route_selector_rejects_terminal_claim_fence_mismatch() -> None:
+    case = _terminal_no_effect_historical_selector_case()
+    claim = case.daemon._selector_coordinator.get_task_claim(
+        case.attempt.claim_id
+    )
+    assert claim is not None
+    exact = claim.to_dict()
+    claim.to_dict = lambda: {
+        **exact,
+        "fencing_token": int(exact["fencing_token"]) + 1,
+    }
+
+    assert case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    ) is None
+    assert case.calls["verifier"] == []
+    assert len(case.calls["provider"]) == 1
+    assert len(case.calls["effect"]) == 1
+
+
+def test_terminal_no_effect_route_rearm_uses_existing_saga_without_dispatch(
+    tmp_path: Path,
+) -> None:
+    _count_zero_deferred_provider_rearm_task(
+        tmp_path,
+        task_alias="PCTDD-005",
+    )
+    provider_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:terminal-no-effect-rearm",
+        provider_calls=provider_calls,
+        max_task_attempts=1,
+    )
+
+    class ExactTerminalNoEffectBridge:
+        def validate_active_attempt_roots(
+            self,
+            attempts: list[DatabaseTaskAttempt],
+        ) -> dict[str, str]:
+            assert attempts == []
+            return {}
+
+        def no_provider_dispatch_rearm_evidence(
+            self,
+            candidate: DatabaseTaskAttempt,
+            *,
+            outer_block_receipt: dict[str, object],
+        ) -> dict[str, object]:
+            return _terminal_no_effect_route_rearm_evidence(
+                candidate,
+                outer_block_receipt,
+            )
+
+    try:
+        attempt = daemon.claim_next()
+        assert attempt is not None and attempt.attempt_number == 2
+        attempt = daemon.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        key = f"provider:{attempt.attempt_id}"
+        daemon._begin_callback_dispatch(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=key,
+        )
+        daemon._record_callback_dispatch_outcome(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=key,
+            outcome="raised",
+            body={"exception_type": "DatabasePortalBridgeError"},
+        )
+        _failed, blocked_receipt = daemon._finalize_failed_attempt(
+            attempt,
+            reason="callback_authority_incomplete_blocked",
+            force_block=True,
+            unknown_authority=True,
+        )
+        assert blocked_receipt["unknown_outcome_rearm_count"] == 0
+        daemon._database_portal_bridge = ExactTerminalNoEffectBridge()
+
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["rearmed"] is True
+        assert outcomes[0]["unknown_outcome_rearm_count"] == 0
+        assert outcomes[0]["provider_dispatched"] is False
+        assert provider_calls == []
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        receipt = dict(task.body["completion_receipt"])
+        assert receipt["attempts_used"] == 0
+        assert receipt["retry_exhausted"] is False
+        assert receipt["unknown_outcome_rearm_count"] == 0
+        assert receipt["no_provider_rearm_evidence"]["schema"] == (
+            DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA
+        )
+        assert receipt["no_provider_rearm_fence"]["state"] == "admitted"
+        assert DatabaseImplementationDaemon._no_provider_rearm_fence_state(
+            task
+        ) == "admitted"
+
+        for historical_attempt, historical_rearm_count in (
+            (1, 0),
+            (3, 0),
+            (2, 1),
+        ):
+            malformed_receipt = json.loads(json.dumps(receipt))
+            original = malformed_receipt[
+                "no_provider_rearm_original_block_receipt"
+            ]
+            original["attempt_number"] = historical_attempt
+            if historical_rearm_count:
+                original["unknown_outcome_rearm_count"] = (
+                    historical_rearm_count
+                )
+            else:
+                original.pop("unknown_outcome_rearm_count", None)
+            malformed_evidence = malformed_receipt[
+                "no_provider_rearm_evidence"
+            ]
+            malformed_evidence["attempt_number"] = historical_attempt
+            blocked_digest = (
+                DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                    original
+                )
+            )
+            malformed_evidence["outer_block_receipt_digest"] = blocked_digest
+            _rehash_terminal_no_effect_route_evidence(malformed_evidence)
+            evidence_id = str(malformed_evidence["evidence_id"])
+            malformed_receipt["no_provider_rearm_evidence_id"] = evidence_id
+            malformed_receipt["unknown_outcome_rearm_count"] = (
+                historical_rearm_count
+            )
+            malformed_fence = malformed_receipt["no_provider_rearm_fence"]
+            malformed_fence["evidence_id"] = evidence_id
+            malformed_fence["blocked_receipt_digest"] = blocked_digest
+            malformed_saga_id = (
+                DatabaseImplementationDaemon._database_no_provider_rearm_saga_id(
+                    saga_nonce=str(malformed_fence["saga_nonce"]),
+                    task_cid=str(task.task_cid),
+                    attempt_id=str(original["attempt_id"]),
+                    claim_id=str(original["claim_id"]),
+                    evidence_id=evidence_id,
+                    blocked_receipt_digest=blocked_digest,
+                    blocked_revision=int(malformed_fence["blocked_revision"]),
+                )
+            )
+            malformed_fence["saga_id"] = malformed_saga_id
+            malformed_receipt["no_provider_rearm_saga_id"] = (
+                malformed_saga_id
+            )
+            immutable = dict(malformed_receipt)
+            immutable.pop("no_provider_rearm_fence")
+            malformed_fence["immutable_receipt_digest"] = (
+                DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                    immutable
+                )
+            )
+            malformed_task = SimpleNamespace(
+                task_cid=task.task_cid,
+                task_alias=task.task_alias,
+                revision=task.revision,
+                status=task.status,
+                body={"completion_receipt": malformed_receipt},
+            )
+            assert DatabaseImplementationDaemon._no_provider_rearm_fence_state(
+                malformed_task
+            ) == "invalid"
+
+        receipt_before = json.loads(json.dumps(receipt))
+        assert daemon.reconcile_blocked_unknown_outcome_tasks() == []
+        replayed = daemon.task_source.get(attempt.task_cid)
+        assert replayed is not None
+        assert replayed.body["completion_receipt"] == receipt_before
+        assert provider_calls == []
+    finally:
+        daemon.close()
+
+
 def _count_zero_deferred_provider_rearm_task(
     tmp_path: Path,
+    *,
+    task_alias: str = "DQP-T001",
 ) -> SimpleNamespace:
     """Create one exact admitted count-zero deferred-provider rearm."""
 
@@ -5524,7 +6101,9 @@ def _count_zero_deferred_provider_rearm_task(
             )
 
     try:
-        daemon.materialize_population(_population(1))
+        population = _population(1)
+        population["tasks"][0]["task_id"] = task_alias
+        daemon.materialize_population(population)
         attempt = daemon.claim_next()
         assert attempt is not None and attempt.attempt_number == 1
         attempt = daemon.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)

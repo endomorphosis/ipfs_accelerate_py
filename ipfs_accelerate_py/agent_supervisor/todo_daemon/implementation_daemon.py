@@ -76116,6 +76116,39 @@ DATABASE_UNKNOWN_OUTCOME_BLOCK_REASONS = frozenset(
 )
 DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION = "database_unknown_outcome_rearmed"
 DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT = 3
+_DATABASE_PORTAL_TERMINAL_NO_EFFECT_HISTORICAL_BUDGETS = frozenset(
+    {
+        ("PCTDD-005", 2, 1, 0),
+        ("PCTDD-006", 3, 1, 1),
+        ("PCTDD-007", 3, 1, 1),
+        ("PCTDD-034", 6, 1, 0),
+    }
+)
+# This is one-shot predecessor compatibility, not a reusable refund policy.
+# Its non-replay property relies on monotonic authenticated Quack state plus
+# the existing fenced CAS/journal transition.  Rollback of both canonical
+# state and its evidence is outside this local migration verifier's authority.
+
+
+def _database_portal_terminal_no_effect_historical_budget_matches(
+    *,
+    task_alias: Any,
+    attempt_number: Any,
+    attempts_used: Any,
+    rearm_count: Any,
+) -> bool:
+    """Match only the four immutable predecessor budget tuples."""
+
+    return bool(
+        type(task_alias) is str
+        and type(attempt_number) is int
+        and type(attempts_used) is int
+        and type(rearm_count) is int
+        and (task_alias, attempt_number, attempts_used, rearm_count)
+        in _DATABASE_PORTAL_TERMINAL_NO_EFFECT_HISTORICAL_BUDGETS
+    )
+
+
 DATABASE_TERMINAL_LANDED_COMPLETION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-terminal-landed-completion@1"
@@ -82701,6 +82734,8 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_AUTHORIZATION_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_FIELDS,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_FIELDS,
+            DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
         )
 
         if not isinstance(evidence, Mapping):
@@ -82720,6 +82755,229 @@ class DatabaseImplementationDaemon:
             ).hexdigest()
         except (TypeError, ValueError):
             return False
+        if (
+            record.get("schema")
+            == DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA
+        ):
+            digest_fields = {
+                "attempt_authority_root_digest",
+                "attempt_root_digest",
+                "binding_admission_digest",
+                "projection_immutable_digest",
+                "event_manifest_digest",
+                "event_head_id",
+                "prelude_event_ids_digest",
+                "task_selected_event_id",
+                "diagnostic_event_ids_digest",
+                "protected_snapshot_recorded_event_id",
+                "implementation_started_event_id",
+                "pre_implementation_event_id",
+                "protected_snapshot_cleared_event_id",
+                "worktree_release_event_id",
+                "implementation_finished_event_id",
+                "daemon_pass_event_id",
+                "state_digest",
+                "outer_block_receipt_digest",
+                "command_sha256",
+                "route_plan_sha256",
+                "log_sha256",
+                "log_identity_digest",
+                "quota_probe_receipt_id",
+                "quota_probe_receipt_digest",
+                "route_outcome_id",
+                "route_outcome_digest",
+            }
+            integer_fields = {
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+                "task_revision",
+                "nested_attempt",
+                "event_count",
+                "event_head_sequence",
+                "prelude_event_count",
+                "diagnostic_event_count",
+                "log_size",
+                "runner_returncode",
+            }
+            true_fields = {
+                "wrapper_process_dispatched",
+                "quota_probe_dispatched",
+                "legacy_nested_attempt_consumed",
+                "protected_snapshot_unchanged",
+                "workspace_unchanged",
+                "cleanup_terminal",
+                "route_denied",
+                "historical_receipt_only",
+                "nested_state_quiescent",
+            }
+            false_fields = {
+                "provider_dispatched",
+                "primary_model_dispatched",
+                "fallback_model_dispatched",
+                "implementation_dispatched",
+                "provider_effect_committed",
+                "implementation_effect_committed",
+                "rearm_attempt_consumed",
+                "attempt_consumed",
+                "validation_attempted",
+                "commit_created",
+                "merge_attempted",
+                "acceptance_inferred",
+                "fresh_fallback_authority",
+            }
+            task_alias = str(record.get("task_alias") or "")
+            original_rearm_count = original.get(
+                "unknown_outcome_rearm_count",
+                0,
+            )
+            expected_prelude_count = 9 if task_alias == "PCTDD-034" else 0
+            expected_diagnostic_count = (
+                14 if task_alias in {"PCTDD-005", "PCTDD-034"} else 13
+            )
+            expected_route_plan = {
+                "authorization": None,
+                "fallback_implementer_identity": "codex",
+                "fallback_model_id": "gpt-5.6-terra",
+                "fallback_provider_id": "codex",
+                "fallback_reasoning_effort": "medium",
+                "fallback_trigger": "primary_quota_exhausted",
+                "invocation_binding": None,
+                "primary_model_id": "grok-4.6",
+                "primary_provider_id": "grok_cli",
+                "route_id": (
+                    "agent-supervisor-grok45-terra56-medium-hard-quota-v1"
+                ),
+            }
+            expected_route_plan_sha256 = "sha256:" + hashlib.sha256(
+                canonical_json(expected_route_plan).encode("utf-8")
+            ).hexdigest()
+            raw_log_path = record.get("log_relative_path")
+            try:
+                log_path = PurePosixPath(str(raw_log_path))
+                confined_log_path = bool(
+                    type(raw_log_path) is str
+                    and raw_log_path
+                    and not log_path.is_absolute()
+                    and log_path.as_posix() == raw_log_path
+                    and all(part not in {"", ".", ".."} for part in log_path.parts)
+                    and re.fullmatch(
+                        (
+                            r"implementation-logs/pctdd-[0-9]{3}-"
+                            r"attempt-[1-9][0-9]*[.]log"
+                        ),
+                        raw_log_path,
+                    )
+                    is not None
+                )
+            except (TypeError, ValueError):
+                confined_log_path = False
+            return bool(
+                set(record)
+                == set(
+                    DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_FIELDS
+                )
+                and re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id)
+                and evidence_id == expected_evidence_id
+                and calculated_id == evidence_id
+                and all(
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(record.get(name) or ""),
+                    )
+                    for name in digest_fields
+                )
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(record.get("binding_id") or ""),
+                )
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(record.get("binding_admission_id") or ""),
+                )
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(record.get("nested_task_cid") or ""),
+                )
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(record.get("pre_implementation_receipt_cid") or ""),
+                )
+                and re.fullmatch(
+                    r"event-log:sha256:[0-9a-f]{64}",
+                    str(record.get("event_stream_id") or ""),
+                )
+                and re.fullmatch(
+                    r"event-log-snapshot:sha256:[0-9a-f]{64}",
+                    str(record.get("event_snapshot_id") or ""),
+                )
+                and all(type(record.get(name)) is int for name in integer_fields)
+                and int(record["attempt_number"]) >= 1
+                and int(record["fencing_token"]) >= 0
+                and int(record["fence_epoch"]) >= 0
+                and int(record["task_revision"]) >= 0
+                and int(record["nested_attempt"]) == 1
+                and _database_portal_terminal_no_effect_historical_budget_matches(
+                    task_alias=task_alias,
+                    attempt_number=record.get("attempt_number"),
+                    attempts_used=original.get("attempts_used"),
+                    rearm_count=original_rearm_count,
+                )
+                and record.get("prelude_event_count")
+                == expected_prelude_count
+                and record.get("diagnostic_event_count")
+                == expected_diagnostic_count
+                and record.get("event_count")
+                == expected_prelude_count + expected_diagnostic_count + 8
+                and record.get("event_head_sequence") == record.get("event_count")
+                and int(record["log_size"]) > 0
+                and int(record["runner_returncode"]) == 1
+                and record.get("attempt_root_key")
+                == hashlib.sha256(
+                    str(record.get("attempt_id") or "").encode("utf-8")
+                ).hexdigest()[:24]
+                and record.get("event_head_id")
+                == record.get("daemon_pass_event_id")
+                and record.get("board_namespace")
+                == "parallel-content-sealing-proof-carrying-tdd-v1"
+                and record.get("route_plan_sha256")
+                == expected_route_plan_sha256
+                and record.get("route_id")
+                == (
+                    "agent-supervisor-grok45-terra56-medium-"
+                    "hard-quota-v1"
+                )
+                and record.get("primary_provider") == "grok_cli"
+                and record.get("primary_model") == "grok-4.6"
+                and record.get("fallback_provider") == "codex"
+                and record.get("fallback_model") == "gpt-5.6-terra"
+                and record.get("fallback_reasoning_effort") == "medium"
+                and record.get("failure_class") == "hard_quota_exhausted"
+                and record.get("verifier_status") == "not_run"
+                and confined_log_path
+                and raw_log_path
+                == f"implementation-logs/{task_alias.lower()}-attempt-1.log"
+                and all(record.get(name) is True for name in true_fields)
+                and all(record.get(name) is False for name in false_fields)
+                and record.get("task_cid")
+                == str(getattr(task, "task_cid", "") or "")
+                and record.get("task_alias")
+                == str(getattr(task, "task_alias", "") or "")
+                and record.get("attempt_id") == original.get("attempt_id")
+                and record.get("claim_id") == original.get("claim_id")
+                and record.get("attempt_number")
+                == original.get("attempt_number")
+                and record.get("owner_session_id")
+                == original.get("owner_session_id")
+                and record.get("lease_id") == original.get("lease_id")
+                and record.get("fencing_token")
+                == original.get("fencing_token")
+                and record.get("fence_epoch") == original.get("fence_epoch")
+                and record.get("outer_block_receipt_digest")
+                == DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                    original
+                )
+            )
         if (
             record.get("schema")
             == DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA
@@ -83238,6 +83496,7 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
         )
 
         body = getattr(task, "body", None)
@@ -83295,6 +83554,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
             }
         )
         terminal_recovery_refund = rearm_evidence_schema in {
@@ -83304,6 +83564,10 @@ class DatabaseImplementationDaemon:
         stale_dispatch_migration_refund = (
             rearm_evidence_schema
             == DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA
+        )
+        terminal_no_effect_route_refund = (
+            rearm_evidence_schema
+            == DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA
         )
         try:
             original_bytes = canonical_json(dict(original)).encode("utf-8")
@@ -83354,8 +83618,18 @@ class DatabaseImplementationDaemon:
                     >= raw_original_attempts_used + prior_rearms
                 )
                 or (
+                    terminal_no_effect_route_refund
+                    and _database_portal_terminal_no_effect_historical_budget_matches(
+                        task_alias=str(getattr(task, "task_alias", "") or ""),
+                        attempt_number=raw_original_attempt_number,
+                        attempts_used=raw_original_attempts_used,
+                        rearm_count=prior_rearms,
+                    )
+                )
+                or (
                     proof_backed_nonconsuming_refund
                     and not stale_dispatch_migration_refund
+                    and not terminal_no_effect_route_refund
                     and raw_original_attempt_number
                     == raw_original_attempts_used + prior_rearms
                 )
@@ -84802,6 +85076,23 @@ class DatabaseImplementationDaemon:
         # the stale-dispatch verifier is allowed to advance only its nested
         # recovery journal.  An invalid outer budget must therefore reject
         # before that one-shot nested transition can occur.
+        # Link-bearing migration verifiers may advance an immutable one-shot
+        # journal, so their budget must be closed before entry.  Link-free
+        # snapshot verifiers are read-only candidates.  This is one-shot
+        # predecessor compatibility: only one of the four immutable historical
+        # alias/attempt/budget tuples may be nominated.  The exact failed phase
+        # plus raised callback journal are checked below before verifier entry,
+        # and the returned evidence must pass its versioned schema gate before
+        # the tuple has any rearm authority.
+        terminal_no_effect_route_candidate = bool(
+            interrupted_phase_link is None
+            and _database_portal_terminal_no_effect_historical_budget_matches(
+                task_alias=str(attempt.task_alias),
+                attempt_number=attempt.attempt_number,
+                attempts_used=raw_attempts_used,
+                rearm_count=raw_rearm_count,
+            )
+        )
         pre_verifier_budget_binding = bool(
             (
                 stale_dispatch_receipt
@@ -84816,11 +85107,14 @@ class DatabaseImplementationDaemon:
             )
             or (
                 interrupted_phase_link is None
-                and int(attempt.attempt_number)
-                in {
-                    int(raw_attempts_used),
-                    int(raw_attempts_used) + int(raw_rearm_count),
-                }
+                and (
+                    int(attempt.attempt_number)
+                    in {
+                        int(raw_attempts_used),
+                        int(raw_attempts_used) + int(raw_rearm_count),
+                    }
+                    or terminal_no_effect_route_candidate
+                )
             )
         )
         if (
@@ -85052,6 +85346,7 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
         )
 
         evidence_schema = str(evidence.get("schema") or "")
@@ -85068,11 +85363,16 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
             }
         )
         stale_dispatch_migration = bool(
             evidence_schema
             == DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA
+        )
+        terminal_no_effect_route = bool(
+            evidence_schema
+            == DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA
         )
         if terminal_recovery is not (interrupted_phase_link is not None):
             return None
@@ -85087,8 +85387,18 @@ class DatabaseImplementationDaemon:
                 >= int(raw_attempts_used) + int(raw_rearm_count)
             )
             or (
+                terminal_no_effect_route
+                and _database_portal_terminal_no_effect_historical_budget_matches(
+                    task_alias=str(attempt.task_alias),
+                    attempt_number=attempt.attempt_number,
+                    attempts_used=raw_attempts_used,
+                    rearm_count=raw_rearm_count,
+                )
+            )
+            or (
                 proof_backed_nonconsuming_recovery
                 and not stale_dispatch_migration
+                and not terminal_no_effect_route
                 and int(attempt.attempt_number)
                 == int(raw_attempts_used) + int(raw_rearm_count)
             )
@@ -85467,6 +85777,7 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
         )
 
         pending_receipt = dict(
@@ -85505,6 +85816,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
             }
             minimum_rearm_count = 0 if proof_backed_nonconsuming else 1
             if not (
@@ -86763,6 +87075,10 @@ class DatabaseImplementationDaemon:
         projection, so control-plane loss cannot permanently stall the board.
         """
 
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
+        )
+
         landed_recoveries = self.reconcile_blocked_terminal_landed_tasks()
         terminal_candidate_cids = {
             str(item.get("task_cid") or "")
@@ -86867,6 +87183,7 @@ class DatabaseImplementationDaemon:
                         "database-portal-stale-dispatch-migration-"
                         "rearm-evidence@1"
                     ),
+                    DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
                 }
             )
             if no_provider_evidence is None and (
