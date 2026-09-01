@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aseh/patch-plan@1",
+  "title": "PatchPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "base_tree_id", "semantic_intent", "files", "preconditions", "postconditions", "invariants", "tests_proofs", "scope", "patch_digest", "proposer_id", "plan_digest"],
+  "properties": {
+    "schema": {"const": "aseh/patch-plan@1"},
+    "base_tree_id": {"type": "string", "minLength": 1},
+    "semantic_intent": {"type": "string", "minLength": 1},
+    "files": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["path", "symbols"], "properties": {"path": {"type": "string", "minLength": 1}, "symbols": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}}}},
+    "preconditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "postconditions": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "invariants": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "tests_proofs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "scope": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "patch_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "proposer_id": {"type": "string", "minLength": 1},
+    "plan_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}
