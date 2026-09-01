@@ -1444,12 +1444,38 @@ _M37_BASE_SOURCE_BINDING_CID = (
 _M37_BASE_CONTROL_COMMIT = "a3db1cde328c5aeba86896d4f6813821251ceb7e"
 _M37_BASE_CONTROL_TREE = "fba8c205656afda738ac5f14c2841fb1da452ea0"
 _M37_OPERATOR_CONTROL_PATHS = frozenset(_M33_OPERATOR_CONTROL_PATHS)
-_M37_INITIAL_CONTROL_COMMIT = "PENDING_M37_INITIAL_CONTROL_COMMIT"
-_M37_INITIAL_CONTROL_TREE = "PENDING_M37_INITIAL_CONTROL_TREE"
+_M37_INITIAL_CONTROL_COMMIT = "fb6672403850bc4b473db8e5e759176e3028adc0"
+_M37_INITIAL_CONTROL_TREE = "bb9132b3dd333ad11c60efac45186e1fc6cdb11a"
 _M37_INITIAL_CONTROL_BLOBS = MappingProxyType(
     {
-        path: f"PENDING_M37_INITIAL_BLOB_{index:02d}"
-        for index, path in enumerate(sorted(_M37_OPERATOR_CONTROL_PATHS), start=1)
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "38eb15cad7f27245f441c233d1a7e95b56bacb54"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "873dc0921b8214426734030d41cfa93976b09a31"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "6bedce84ec064a5825e71d85d210e6fbab6ef12f"
+        ),
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ): "15a583d2bab8d516881e35c30faf5679043c09ab",
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "538911ed0cdae2b62237b24538d4b6a8b0da39b0"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "60194183c0ca975648e0a61a5f0cbf3f62b1953d"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "45a26d42625017c17d00ec5e775dd9384e9b15f5"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "d07973e903664cee960a9b28b0c32439b118aa1f"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "bc1caded09826cd55bfc118de5c77d49a6239d5c"
+        ),
     }
 )
 _M37_STORE_ID = _M33_STORE_ID

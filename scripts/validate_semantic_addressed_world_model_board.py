@@ -4036,6 +4036,12 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 != "a3db1cde328c5aeba86896d4f6813821251ceb7e"
                 or source_chain.get("base_control_tree")
                 != "fba8c205656afda738ac5f14c2841fb1da452ea0"
+                or source_chain.get("initial_control_commit")
+                != "fb6672403850bc4b473db8e5e759176e3028adc0"
+                or source_chain.get("initial_control_tree")
+                != "bb9132b3dd333ad11c60efac45186e1fc6cdb11a"
+                or expected_seal_cid
+                != "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
                 or prior.get("schema") != "sawm/current-operational-head@1"
                 or prior.get("event_watermark") != 290
                 or m36_anchor.get("migration_revision") != "SAWM-R2-M36"

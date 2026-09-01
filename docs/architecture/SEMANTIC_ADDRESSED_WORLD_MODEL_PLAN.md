@@ -1976,6 +1976,11 @@ marker, and issued recovery receipt
 M37 authorizes exactly one generation-bearing restart, from that recovered
 generation 29 to generation 30, on the same database UUID, store, runtime root,
 port, dependency seal, task/goal/plan authority, and four-lane scheduler.  Its
+initial control commit is
+`fb6672403850bc4b473db8e5e759176e3028adc0` with tree
+`bb9132b3dd333ad11c60efac45186e1fc6cdb11a`; the direct reseal binds authority
+CID `sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795`.
+Its
 prestart admission checks the stopped status and recovery receipt bytes, M36
 receipt and the complete event-290 prefix, exact control and coordination files, absence of a
 live owner/marker/token handoff, and the immutable source chain.  After the

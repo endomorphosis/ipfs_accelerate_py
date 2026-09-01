@@ -3392,6 +3392,12 @@ def _m37_post_reboot_generation_restart_successor_errors(
             or expected.get("supersession_mode")
             != "generation_bearing_post_reboot_restart_source_seal"
             or expected.get("control_recorded_at") != "2026-09-01T00:10:00Z"
+            or expected_cid
+            != "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
+            or materializer._M37_INITIAL_CONTROL_COMMIT
+            != "fb6672403850bc4b473db8e5e759176e3028adc0"
+            or materializer._M37_INITIAL_CONTROL_TREE
+            != "bb9132b3dd333ad11c60efac45186e1fc6cdb11a"
             or expected.get("target_generation") != 30
             or expected.get("target_event_watermark") != 291
             or expected.get("target_projection_cid")

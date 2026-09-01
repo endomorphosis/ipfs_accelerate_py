@@ -4652,6 +4652,10 @@ def test_m37_authority_pins_reboot_recovery_generation_and_source_chain() -> Non
         if identity_state == "placeholder"
         else materializer._identity(authority)
     )
+    if identity_state == "sealed":
+        assert expected_authority_cid == (
+            "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
+        )
     assert seal[f"{key}_cid"] == reference["authority_cid"] == expected_authority_cid
     assert reference["schema"] == "sawm/operator-control-authority-reference@1"
     assert reference["migration_revision"] == "SAWM-R2-M37"
@@ -4809,6 +4813,13 @@ def test_m37_authority_pins_reboot_recovery_generation_and_source_chain() -> Non
     assert chain["base_control_tree"] == (
         "fba8c205656afda738ac5f14c2841fb1da452ea0"
     )
+    if identity_state == "sealed":
+        assert chain["initial_control_commit"] == (
+            "fb6672403850bc4b473db8e5e759176e3028adc0"
+        )
+        assert chain["initial_control_tree"] == (
+            "bb9132b3dd333ad11c60efac45186e1fc6cdb11a"
+        )
     assert len(authority["operator_control_paths"]) == 9
     assert set(chain["initial_control_blobs"]) == set(
         authority["operator_control_paths"]
