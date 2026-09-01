@@ -884,6 +884,15 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
             "lock_owner_pid",
         }
     ),
+    "implementation_lock_cleared": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "task_id",
+            "lock_path",
+            "branch",
+            "lock_owner_pid",
+        }
+    ),
     "implementation_retry_deferred": _EVENT_ENVELOPE_FIELDS
     | frozenset(
         {
@@ -1007,6 +1016,38 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
 _SETUP_EVENT_FIELD_VARIANTS: Final[
     dict[str, frozenset[frozenset[str]]]
 ] = {
+    # The stale-dispatch producer predates the canonical-key fields used by
+    # the ordinary unfinished-attempt release.  Keep the occurrence as an
+    # exact closed variant: the two records make different claims and must
+    # never be widened into one optional-field schema.
+    "implementation_task_claim_released": frozenset(
+        {
+            _EVENT_ENVELOPE_FIELDS
+            | frozenset(
+                {
+                    "attempt",
+                    "blocked",
+                    "canonical_task_cid",
+                    "claim_id",
+                    "claim_lease_id",
+                    "claim_path",
+                    "lifecycle_fence",
+                    "lifecycle_record_id",
+                    "operation_id",
+                    "owner_pid",
+                    "reason",
+                    "receipt_id",
+                    "receipt_path",
+                    "reconciled",
+                    "released_at",
+                    "stale_dispatch_intent_released_for_retry",
+                    "state_dir",
+                    "task_id",
+                    "task_status",
+                }
+            ),
+        }
+    ),
     "implementation_protected_path_snapshot_cleared": frozenset(
         {
             _EVENT_ENVELOPE_FIELDS
@@ -1163,6 +1204,86 @@ def _closed_typed_record_matches(
             type(observed.get(name)) is type(value)
             and observed.get(name) == value
             for name, value in expected.items()
+        )
+    )
+
+
+_IDENTIFIED_QUIESCED_STALE_CLAIM_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "attempt",
+        "blocked",
+        "canonical_task_cid",
+        "claim_id",
+        "claim_lease_id",
+        "claim_path",
+        "lifecycle_fence",
+        "lifecycle_record_id",
+        "operation_id",
+        "owner_pid",
+        "reason",
+        "receipt_id",
+        "receipt_path",
+        "reconciled",
+        "released_at",
+        "stale_dispatch_intent_released_for_retry",
+        "state_dir",
+        "task_id",
+        "task_status",
+    }
+)
+
+
+def _valid_identified_quiesced_stale_claim(value: Any) -> bool:
+    """Validate the exact stale-dispatch claim-release producer body."""
+
+    if not isinstance(value, Mapping) or set(value) != set(
+        _IDENTIFIED_QUIESCED_STALE_CLAIM_FIELDS
+    ):
+        return False
+    path_fields = ("claim_path", "receipt_path", "state_dir")
+    return bool(
+        type(value.get("attempt")) is int
+        and int(value["attempt"]) >= 1
+        and type(value.get("lifecycle_fence")) is int
+        and int(value["lifecycle_fence"]) >= 1
+        and type(value.get("owner_pid")) is int
+        and int(value["owner_pid"]) > 0
+        and value.get("blocked") is False
+        and value.get("reconciled") is True
+        and value.get("reason") == "quiesced_task_claim_released"
+        and value.get("task_status") == "todo"
+        and value.get("stale_dispatch_intent_released_for_retry") is True
+        and re.fullmatch(
+            r"baguqeera[a-z2-7]{52}",
+            str(value.get("canonical_task_cid") or ""),
+        )
+        is not None
+        and all(
+            re.fullmatch(
+                r"baguqeera[a-z2-7]{52}",
+                str(value.get(name) or ""),
+            )
+            is not None
+            for name in (
+                "claim_id",
+                "lifecycle_record_id",
+                "operation_id",
+                "receipt_id",
+            )
+        )
+        and re.fullmatch(
+            r"[0-9a-f]{40}", str(value.get("claim_lease_id") or "")
+        )
+        is not None
+        and isinstance(value.get("task_id"), str)
+        and bool(str(value.get("task_id") or ""))
+        and isinstance(value.get("released_at"), str)
+        and bool(str(value.get("released_at") or ""))
+        and all(
+            isinstance(value.get(name), str)
+            and bool(str(value.get(name) or ""))
+            and PurePosixPath(str(value[name])).is_absolute()
+            for name in path_fields
         )
     )
 
@@ -4842,26 +4963,28 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "database Portal stale-worktree diagnostic is malformed"
                 )
-        elif event_type == "implementation_shutdown_reconciled":
+        elif event_type == "implementation_task_claim_released":
             if (
-                event.get("reconciled") is not True
-                or event.get("blocked") is not False
-                or event.get("reason") != "already_quiesced"
-                or not isinstance(event.get("reconciled_at"), str)
-                or not str(event.get("reconciled_at") or "")
-                or event.get("task_id") != ""
-                or type(event.get("attempt")) is not int
-                or event.get("attempt") != 0
-                or event.get("attempt_recovery") != {}
-                or not _closed_typed_record_matches(
-                    event.get("task_claim_reconciliation"),
+                "stale_dispatch_intent_released_for_retry" in event
+                and not _valid_identified_quiesced_stale_claim(
                     {
-                        "blocked": False,
-                        "reason": "no_task_claim_identity",
-                        "reconciled": False,
-                    },
+                        name: event[name]
+                        for name in _IDENTIFIED_QUIESCED_STALE_CLAIM_FIELDS
+                    }
                 )
-                or not _closed_typed_record_matches(
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal stale-dispatch release is malformed"
+                )
+        elif event_type == "implementation_shutdown_reconciled":
+            common_quiescent = bool(
+                event.get("reconciled") is True
+                and event.get("blocked") is False
+                and event.get("reason") == "already_quiesced"
+                and isinstance(event.get("reconciled_at"), str)
+                and bool(str(event.get("reconciled_at") or ""))
+                and event.get("attempt_recovery") == {}
+                and _closed_typed_record_matches(
                     event.get("protected_path_reconciliation"),
                     {
                         "blocked": False,
@@ -4870,7 +4993,7 @@ class DatabasePortalExecutionBridge:
                         "scan_outside_lease": True,
                     },
                 )
-                or not _closed_typed_record_matches(
+                and _closed_typed_record_matches(
                     event.get("worktree_lifecycle_reconciliation"),
                     {
                         "blocked": False,
@@ -4878,8 +5001,65 @@ class DatabasePortalExecutionBridge:
                         "reconciled": False,
                     },
                 )
-                or event.get("stale_lock_cleared") is not False
-            ):
+            )
+            anonymous = bool(
+                common_quiescent
+                and event.get("task_id") == ""
+                and type(event.get("attempt")) is int
+                and event.get("attempt") == 0
+                and _closed_typed_record_matches(
+                    event.get("task_claim_reconciliation"),
+                    {
+                        "blocked": False,
+                        "reason": "no_task_claim_identity",
+                        "reconciled": False,
+                    },
+                )
+                and event.get("stale_lock_cleared") is False
+            )
+            task_id = str(event.get("task_id") or "")
+            attempt_number = event.get("attempt")
+            claim = event.get("task_claim_reconciliation")
+            identified_release = bool(
+                common_quiescent
+                and task_id
+                and type(attempt_number) is int
+                and int(attempt_number) >= 1
+                and _valid_identified_quiesced_stale_claim(claim)
+                and claim.get("task_id") == task_id
+                and claim.get("attempt") == attempt_number
+                and event.get("stale_lock_cleared") is True
+            )
+            identified_no_claim = bool(
+                common_quiescent
+                and task_id
+                and type(attempt_number) is int
+                and int(attempt_number) >= 1
+                and isinstance(claim, Mapping)
+                and set(claim)
+                == {
+                    "blocked",
+                    "canonical_task_cid",
+                    "claim_path",
+                    "reason",
+                    "reconciled",
+                    "task_id",
+                }
+                and claim.get("blocked") is False
+                and claim.get("reconciled") is False
+                and claim.get("reason") == "no_task_claim"
+                and claim.get("task_id") == task_id
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(claim.get("canonical_task_cid") or ""),
+                )
+                is not None
+                and isinstance(claim.get("claim_path"), str)
+                and bool(str(claim.get("claim_path") or ""))
+                and PurePosixPath(str(claim.get("claim_path"))).is_absolute()
+                and event.get("stale_lock_cleared") is False
+            )
+            if not (anonymous or identified_release or identified_no_claim):
                 raise DatabasePortalBridgeError(
                     "database Portal quiescent-shutdown event is malformed"
                 )
@@ -4908,7 +5088,10 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "database Portal implementation terminal event is malformed"
                 )
-        elif event_type == "implementation_resource_claim_lock_cleared":
+        elif event_type in {
+            "implementation_lock_cleared",
+            "implementation_resource_claim_lock_cleared",
+        }:
             if (
                 not isinstance(event.get("task_id"), str)
                 or not str(event.get("task_id") or "")

@@ -1198,6 +1198,167 @@ def _seed_terminal_quiescent_resource_deferral(
     return daemon, bridge, terminal, paths, outer_receipt
 
 
+def _append_identified_quiesced_release_suffix(
+    paths: object,
+    *,
+    mutation: str = "",
+) -> None:
+    """Append the four closed event bodies observed in the live PCTDD-007 suffix."""
+
+    def append(events: list[dict[str, object]]) -> None:
+        previous = events[-1]
+        envelope = {
+            "sequence": int(previous["sequence"]) + 1,
+            "timestamp": "2026-09-01T17:06:04.694680+00:00",
+            "event_id": "sha256:" + "0" * 64,
+            "type": "implementation_task_claim_released",
+            "stream_id": str(previous["stream_id"]),
+            "snapshot_id": str(previous["snapshot_id"]),
+            "previous_event_id": str(previous["event_id"]),
+        }
+        cid = "baguqeera" + "a" * 52
+        root = str(Path(paths.root))
+        claim_path = str(Path(root).parent / "implementation-task-claims" / "claim.lock")
+        receipt_path = str(
+            Path(root)
+            / "implementation-task-claim-release-receipts"
+            / "canonical-task-0123456789abcdef01234567-a1.json"
+        )
+        stale_claim: dict[str, object] = {
+            "attempt": 1,
+            "blocked": False,
+            "canonical_task_cid": cid,
+            "claim_id": cid,
+            "claim_lease_id": "a" * 40,
+            "claim_path": claim_path,
+            "lifecycle_fence": 4,
+            "lifecycle_record_id": cid,
+            "operation_id": cid,
+            "owner_pid": 2765210,
+            "reason": "quiesced_task_claim_released",
+            "receipt_id": cid,
+            "receipt_path": receipt_path,
+            "reconciled": True,
+            "released_at": "2026-09-01T17:06:04.694304+00:00",
+            "stale_dispatch_intent_released_for_retry": True,
+            "state_dir": root,
+            "task_id": "PCTDD-007",
+            "task_status": "todo",
+        }
+        release = {**envelope, **stale_claim}
+        lock_clear = {
+            **envelope,
+            "sequence": int(envelope["sequence"]) + 1,
+            "type": "implementation_lock_cleared",
+            "task_id": "PCTDD-007",
+            "lock_path": str(Path(root) / "implementation.lock"),
+            "branch": "",
+            "lock_owner_pid": 2765210,
+        }
+        shutdown_common = {
+            **envelope,
+            "sequence": int(envelope["sequence"]) + 2,
+            "type": "implementation_shutdown_reconciled",
+            "attempt": 1,
+            "attempt_recovery": {},
+            "blocked": False,
+            "protected_path_reconciliation": {
+                "blocked": False,
+                "critical_section_entered": False,
+                "reason": "no_active_snapshot",
+                "scan_outside_lease": True,
+            },
+            "reason": "already_quiesced",
+            "reconciled": True,
+            "reconciled_at": "2026-09-01T15:37:53.668137+00:00",
+            "stale_lock_cleared": True,
+            "task_id": "PCTDD-007",
+            "worktree_lifecycle_reconciliation": {
+                "blocked": False,
+                "reason": "no_active_worktree",
+                "reconciled": False,
+            },
+        }
+        release_shutdown = {
+            **shutdown_common,
+            "task_claim_reconciliation": dict(stale_claim),
+        }
+        no_claim_shutdown = {
+            **shutdown_common,
+            "sequence": int(envelope["sequence"]) + 3,
+            "stale_lock_cleared": False,
+            "task_claim_reconciliation": {
+                "blocked": False,
+                "canonical_task_cid": cid,
+                "claim_path": claim_path,
+                "reason": "no_task_claim",
+                "reconciled": False,
+                "task_id": "PCTDD-007",
+            },
+        }
+        if mutation == "release_extra_key":
+            release["unexpected"] = "authority widening"
+        elif mutation == "release_stale_flag_type":
+            release["stale_dispatch_intent_released_for_retry"] = 1
+        elif mutation == "lock_owner_bool":
+            lock_clear["lock_owner_pid"] = True
+        elif mutation == "release_shutdown_reason":
+            release_shutdown["reason"] = "different_reason"
+        elif mutation == "no_claim_extra_key":
+            no_claim = dict(no_claim_shutdown["task_claim_reconciliation"])
+            no_claim["claim_id"] = cid
+            no_claim_shutdown["task_claim_reconciliation"] = no_claim
+        events.extend(
+            [release, lock_clear, release_shutdown, no_claim_shutdown]
+        )
+
+    _rewrite_active_event_chain(paths, append)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "",
+        "release_extra_key",
+        "release_stale_flag_type",
+        "lock_owner_bool",
+        "release_shutdown_reason",
+        "no_claim_extra_key",
+    ),
+)
+def test_pinned_snapshot_closes_identified_quiesced_release_suffix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    daemon, bridge, _attempt, paths, _receipt = (
+        _seed_terminal_quiescent_resource_deferral(
+            tmp_path,
+            monkeypatch,
+            shutdown_event_count=1,
+        )
+    )
+    try:
+        _append_identified_quiesced_release_suffix(paths, mutation=mutation)
+        if mutation:
+            with pytest.raises(DatabasePortalBridgeError):
+                bridge._pinned_no_provider_snapshot(paths)
+        else:
+            snapshot = bridge._pinned_no_provider_snapshot(paths)
+            assert [event["type"] for event in snapshot["events"][-4:]] == [
+                "implementation_task_claim_released",
+                "implementation_lock_cleared",
+                "implementation_shutdown_reconciled",
+                "implementation_shutdown_reconciled",
+            ]
+            assert snapshot["events"][-2]["stale_lock_cleared"] is True
+            assert snapshot["events"][-1]["task_claim_reconciliation"][
+                "reason"
+            ] == "no_task_claim"
+    finally:
+        daemon.close()
+
+
 def _set_terminal_submodule_cleanup(
     events: list[dict[str, object]],
     cleanup: list[dict[str, object]],
