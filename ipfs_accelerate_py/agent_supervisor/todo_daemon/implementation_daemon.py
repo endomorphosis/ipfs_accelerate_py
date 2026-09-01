@@ -83217,6 +83217,7 @@ class DatabaseImplementationDaemon:
         """Return one closed shared no-provider rearm fence state."""
 
         from .database_portal_bridge import (
+            DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
         )
@@ -83264,13 +83265,27 @@ class DatabaseImplementationDaemon:
             fence.get("immutable_receipt_digest") or ""
         )
         state = str(fence.get("state") or "")
-        interrupted_recovery_refund = bool(
-            isinstance(receipt.get("no_provider_rearm_evidence"), Mapping)
-            and receipt["no_provider_rearm_evidence"].get("schema")
+        rearm_evidence = receipt.get("no_provider_rearm_evidence")
+        rearm_evidence_schema = (
+            str(rearm_evidence.get("schema") or "")
+            if isinstance(rearm_evidence, Mapping)
+            else ""
+        )
+        proof_backed_nonconsuming_refund = bool(
+            rearm_evidence_schema
             in {
+                DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
             }
+        )
+        terminal_recovery_refund = rearm_evidence_schema in {
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+        }
+        stale_dispatch_migration_refund = (
+            rearm_evidence_schema
+            == DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA
         )
         try:
             original_bytes = canonical_json(dict(original)).encode("utf-8")
@@ -83297,12 +83312,12 @@ class DatabaseImplementationDaemon:
             return "invalid"
         rearm_count_valid = bool(
             (
-                interrupted_recovery_refund
+                proof_backed_nonconsuming_refund
                 and rearm_count == prior_rearms
                 and 0 <= rearm_count <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
             )
             or (
-                not interrupted_recovery_refund
+                not proof_backed_nonconsuming_refund
                 and rearm_count == prior_rearms + 1
                 and 1 <= rearm_count <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
             )
@@ -83312,13 +83327,45 @@ class DatabaseImplementationDaemon:
         original_attempt_count_valid = bool(
             type(raw_original_attempt_number) is int
             and type(raw_original_attempts_used) is int
+            and raw_original_attempt_number >= 1
+            and raw_original_attempts_used >= 1
             and (
-                raw_original_attempt_number == raw_original_attempts_used
+                (
+                    stale_dispatch_migration_refund
+                    and raw_original_attempt_number
+                    >= raw_original_attempts_used + prior_rearms
+                )
                 or (
-                    interrupted_recovery_refund
+                    proof_backed_nonconsuming_refund
+                    and not stale_dispatch_migration_refund
                     and raw_original_attempt_number
                     == raw_original_attempts_used + prior_rearms
                 )
+                or (
+                    not proof_backed_nonconsuming_refund
+                    and raw_original_attempt_number
+                    == raw_original_attempts_used
+                )
+            )
+        )
+        original_terminal_link = original.get("terminal_reconciliation")
+        terminal_recovery_link_valid = bool(
+            (
+                terminal_recovery_refund
+                and isinstance(original_terminal_link, Mapping)
+                and bool(original_terminal_link)
+                and original_terminal_link.get("evidence_id")
+                == (
+                    rearm_evidence.get(
+                        "terminal_reconciliation_evidence_id"
+                    )
+                    if isinstance(rearm_evidence, Mapping)
+                    else None
+                )
+            )
+            or (
+                not terminal_recovery_refund
+                and original_terminal_link in (None, {})
             )
         )
         expected_saga_id = (
@@ -83415,7 +83462,11 @@ class DatabaseImplementationDaemon:
             and original.get("operation")
             == "database_unknown_outcome_blocked"
             and original.get("reason")
-            == "callback_authority_incomplete_blocked"
+            == (
+                "provider_dispatch_outcome_unknown"
+                if stale_dispatch_migration_refund
+                else "callback_authority_incomplete_blocked"
+            )
             and original.get("forced_block") is True
             and original.get("authority_outcome") == "unknown"
             and original.get("retry_exhausted") is True
@@ -83424,6 +83475,7 @@ class DatabaseImplementationDaemon:
             and type(original.get("max_task_attempts")) is int
             and original.get("max_task_attempts") >= 1
             and original_attempt_count_valid
+            and terminal_recovery_link_valid
             and type(original.get("fencing_token")) is int
             and type(original.get("fence_epoch")) is int
             and bool(str(original.get("attempt_id") or ""))
@@ -84634,11 +84686,46 @@ class DatabaseImplementationDaemon:
             )
         raw_attempts_used = receipt.get("attempts_used")
         raw_rearm_count = receipt.get("unknown_outcome_rearm_count", 0)
+        claimed_budget = attempt.body.get("retry_budget")
         attempt_budget_shape = bool(
             type(raw_attempts_used) is int
             and raw_attempts_used >= 1
             and type(raw_rearm_count) is int
             and 0 <= raw_rearm_count <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+        )
+        claimed_budget_shape = bool(
+            isinstance(claimed_budget, Mapping)
+            and set(claimed_budget)
+            == {
+                "schema",
+                "validation_spec_cid",
+                "attempts_used",
+                "max_task_attempts",
+                "configured_max_task_attempts",
+                "policy_mismatch",
+                "malformed",
+                "retry_exhausted",
+            }
+            and claimed_budget.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
+            and claimed_budget.get("validation_spec_cid")
+            == receipt.get("validation_spec_cid")
+            and type(claimed_budget.get("attempts_used")) is int
+            and claimed_budget.get("attempts_used") == raw_attempts_used
+            and type(claimed_budget.get("max_task_attempts")) is int
+            and claimed_budget.get("max_task_attempts")
+            == receipt.get("max_task_attempts")
+            and type(claimed_budget.get("configured_max_task_attempts")) is int
+            and claimed_budget.get("configured_max_task_attempts")
+            == claimed_budget.get("max_task_attempts")
+            and claimed_budget.get("policy_mismatch") is False
+            and claimed_budget.get("malformed") is False
+            and type(claimed_budget.get("retry_exhausted")) is bool
+            and claimed_budget.get("retry_exhausted")
+            is (
+                int(claimed_budget.get("max_task_attempts") or 0) > 0
+                and int(claimed_budget.get("attempts_used") or 0)
+                >= int(claimed_budget.get("max_task_attempts") or 0)
+            )
         )
         control_claim_shape = bool(
             type(control_claim.get("revision")) is int
@@ -84668,6 +84755,7 @@ class DatabaseImplementationDaemon:
                 and control_claim.get("validation_spec_cid")
                 == self._retry_budget_validation_spec_cid(task)
                 and attempt_budget_shape
+                and claimed_budget_shape
                 and type(receipt.get("max_task_attempts")) is int
                 and receipt.get("max_task_attempts")
                 == int(budget_state["max_task_attempts"])
@@ -84687,6 +84775,36 @@ class DatabaseImplementationDaemon:
             failed_phase_body,
             receipt,
         )
+        stale_dispatch_receipt = bool(
+            receipt.get("operation") == "database_unknown_outcome_blocked"
+            and receipt.get("reason") == "provider_dispatch_outcome_unknown"
+            and interrupted_phase_link is not None
+        )
+        # Validate the immutable budget before invoking a migration verifier:
+        # the stale-dispatch verifier is allowed to advance only its nested
+        # recovery journal.  An invalid outer budget must therefore reject
+        # before that one-shot nested transition can occur.
+        pre_verifier_budget_binding = bool(
+            (
+                stale_dispatch_receipt
+                and int(attempt.attempt_number)
+                >= int(raw_attempts_used) + int(raw_rearm_count)
+            )
+            or (
+                interrupted_phase_link is not None
+                and not stale_dispatch_receipt
+                and int(attempt.attempt_number)
+                == int(raw_attempts_used) + int(raw_rearm_count)
+            )
+            or (
+                interrupted_phase_link is None
+                and int(attempt.attempt_number)
+                in {
+                    int(raw_attempts_used),
+                    int(raw_attempts_used) + int(raw_rearm_count),
+                }
+            )
+        )
         if (
             [str(item.get("phase") or "") for item in phases]
             != [
@@ -84700,6 +84818,7 @@ class DatabaseImplementationDaemon:
                 )
                 or interrupted_phase_link is not None
             )
+            or not pre_verifier_budget_binding
         ):
             return None
         try:
@@ -84768,11 +84887,62 @@ class DatabaseImplementationDaemon:
             )
         except Exception:
             return None
-        if (
-            provider_dispatch is None
-            or provider_dispatch.get("outcome") != "raised"
-            or dict(provider_dispatch.get("body") or {})
-            != {"exception_type": "DatabasePortalBridgeError"}
+        provider_dispatch_outcome = (
+            str(provider_dispatch.get("outcome") or "")
+            if isinstance(provider_dispatch, Mapping)
+            else ""
+        )
+        provider_dispatch_body = (
+            dict(provider_dispatch.get("body") or {})
+            if isinstance(provider_dispatch, Mapping)
+            and isinstance(provider_dispatch.get("body"), Mapping)
+            else None
+        )
+        provider_dispatch_raised_exactly = bool(
+            provider_dispatch_outcome == "raised"
+            and provider_dispatch_body
+            == {"exception_type": "DatabasePortalBridgeError"}
+        )
+        legacy_started_dispatch_body = bool(
+            isinstance(provider_dispatch_body, Mapping)
+            and (
+                (
+                    set(provider_dispatch_body)
+                    == {
+                        "resumed_from",
+                        "preentry_publication_retry_count",
+                    }
+                    and provider_dispatch_body.get("resumed_from")
+                    == "deferred"
+                    and type(
+                        provider_dispatch_body.get(
+                            "preentry_publication_retry_count"
+                        )
+                    )
+                    is int
+                    and provider_dispatch_body.get(
+                        "preentry_publication_retry_count"
+                    )
+                    == 0
+                )
+                or provider_dispatch_body
+                == {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "database-callback-dispatch@1"
+                    ),
+                    "outcome": "unknown_until_callback_returns",
+                }
+            )
+        )
+        stale_dispatch_started_candidate = bool(
+            stale_dispatch_receipt
+            and provider_dispatch_outcome == "started"
+            and legacy_started_dispatch_body
+        )
+        if not (
+            provider_dispatch_raised_exactly
+            or stale_dispatch_started_candidate
         ):
             return None
         completion = self.coordinator.get_prepared_task_completion(
@@ -84861,27 +85031,51 @@ class DatabaseImplementationDaemon:
         ):
             return None
         from .database_portal_bridge import (
+            DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
         )
 
-        interrupted_recovery = bool(
-            evidence.get("schema")
+        evidence_schema = str(evidence.get("schema") or "")
+        terminal_recovery = bool(
+            evidence_schema
             in {
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
             }
         )
-        if interrupted_recovery is not (interrupted_phase_link is not None):
+        proof_backed_nonconsuming_recovery = bool(
+            evidence_schema
+            in {
+                DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            }
+        )
+        stale_dispatch_migration = bool(
+            evidence_schema
+            == DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA
+        )
+        if terminal_recovery is not (interrupted_phase_link is not None):
+            return None
+        if stale_dispatch_started_candidate and not stale_dispatch_migration:
+            return None
+        if stale_dispatch_migration is not stale_dispatch_receipt:
             return None
         attempt_budget_binding = bool(
             (
-                interrupted_recovery
+                stale_dispatch_migration
+                and int(attempt.attempt_number)
+                >= int(raw_attempts_used) + int(raw_rearm_count)
+            )
+            or (
+                proof_backed_nonconsuming_recovery
+                and not stale_dispatch_migration
                 and int(attempt.attempt_number)
                 == int(raw_attempts_used) + int(raw_rearm_count)
             )
             or (
-                not interrupted_recovery
+                not proof_backed_nonconsuming_recovery
                 and int(attempt.attempt_number) == int(raw_attempts_used)
             )
         )
@@ -85251,6 +85445,12 @@ class DatabaseImplementationDaemon:
     ) -> dict[str, Any] | None:
         """Build one exact bounded compensation from shared control bytes."""
 
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+        )
+
         pending_receipt = dict(
             getattr(task, "body", {}).get("completion_receipt") or {}
         )
@@ -85274,10 +85474,26 @@ class DatabaseImplementationDaemon:
             raw_rearm_count = pending_receipt.get(
                 "unknown_outcome_rearm_count"
             )
-            if isinstance(raw_rearm_count, bool):
+            if type(raw_rearm_count) is not int:
                 return None
-            rearm_count = int(raw_rearm_count)
-            if not 1 <= rearm_count <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT:
+            rearm_count = raw_rearm_count
+            evidence = pending_receipt.get("no_provider_rearm_evidence")
+            evidence_schema = (
+                str(evidence.get("schema") or "")
+                if isinstance(evidence, Mapping)
+                else ""
+            )
+            proof_backed_nonconsuming = evidence_schema in {
+                DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            }
+            minimum_rearm_count = 0 if proof_backed_nonconsuming else 1
+            if not (
+                minimum_rearm_count
+                <= rearm_count
+                <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+            ):
                 return None
         except (TypeError, ValueError):
             return None
@@ -86614,10 +86830,15 @@ class DatabaseImplementationDaemon:
                 )
                 else None
             )
-            interrupted_recovery_refund = bool(
+            proof_backed_nonconsuming_refund = bool(
                 isinstance(no_provider_evidence, Mapping)
                 and no_provider_evidence.get("schema")
                 in {
+                    (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "database-portal-deferred-provider-"
+                        "rearm-evidence@1"
+                    ),
                     (
                         "ipfs_accelerate_py/agent-supervisor/"
                         "database-portal-interrupted-implementation-"
@@ -86676,7 +86897,7 @@ class DatabaseImplementationDaemon:
             prior_rearms = raw_prior_rearms
             if (
                 prior_rearms >= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
-                and not interrupted_recovery_refund
+                and not proof_backed_nonconsuming_refund
             ):
                 continue
             claim_id = str(receipt.get("claim_id") or "")
@@ -86722,7 +86943,7 @@ class DatabaseImplementationDaemon:
                     # claim receives a new attempt.
                     "unknown_outcome_rearm_count": (
                         prior_rearms
-                        if interrupted_recovery_refund
+                        if proof_backed_nonconsuming_refund
                         else prior_rearms + 1
                     ),
                     "owner_session_id": self.owner_session_id,
@@ -87045,7 +87266,7 @@ class DatabaseImplementationDaemon:
                 "previous_owner_session_id": blocking_session,
                 "unknown_outcome_rearm_count": (
                     prior_rearms
-                    if interrupted_recovery_refund
+                    if proof_backed_nonconsuming_refund
                     else prior_rearms + 1
                 ),
             }

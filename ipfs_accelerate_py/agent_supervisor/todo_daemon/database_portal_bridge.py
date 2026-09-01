@@ -4119,6 +4119,8 @@ class DatabasePortalExecutionBridge:
         self,
         attempt: Any,
         receipt: Mapping[str, Any],
+        *,
+        expected_evidence_schema: str | None = None,
     ) -> dict[str, Any] | None:
         """Prove exact implementing-crash recovery without redispatch/completion.
 
@@ -4130,6 +4132,16 @@ class DatabasePortalExecutionBridge:
         control recovery; it cannot invoke a provider, validation, commit, or
         merge callback.
         """
+
+        accepted_expected_schemas = {
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+        }
+        if (
+            expected_evidence_schema is not None
+            and expected_evidence_schema not in accepted_expected_schemas
+        ):
+            return None
 
         link = receipt.get("terminal_reconciliation")
         if not isinstance(link, Mapping):
@@ -4216,12 +4228,19 @@ class DatabasePortalExecutionBridge:
                 str(link["commit_barrier_receipt_id"]),
                 required_stage="commit_barrier",
             )
-            source = self._interrupted_implementation_retry_evidence(
-                attempt,
-                binding,
+            source = (
+                None
+                if expected_evidence_schema
+                == DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA
+                else self._interrupted_implementation_retry_evidence(
+                    attempt,
+                    binding,
+                )
             )
             migration_source = None
-            if source is None:
+            if source is None and expected_evidence_schema != (
+                DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+            ):
                 migration_source = (
                     self._stale_dispatch_migration_retry_evidence(
                         attempt,
@@ -5259,6 +5278,11 @@ class DatabasePortalExecutionBridge:
                 return self._interrupted_implementation_rearm_evidence(
                     attempt,
                     receipt,
+                    expected_evidence_schema=(
+                        DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA
+                        if stale_dispatch_migration_policy
+                        else DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+                    ),
                 )
 
         paths = self._paths(attempt)

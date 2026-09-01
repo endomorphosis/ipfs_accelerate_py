@@ -40,6 +40,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
+    DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+    DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
@@ -985,7 +987,7 @@ def test_exact_pre_dispatch_provider_deferral_rearms_without_nested_effect(
     monkeypatch: pytest.MonkeyPatch,
     interleave_lock_clear: bool,
 ) -> None:
-    """Admit the exact sealed P006/P007 route, including P007 diagnostics."""
+    """Admit P006/P007 without consuming the generic rearm allowance."""
 
     _repo, daemon, bridge, attempt, paths = (
         _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
@@ -999,6 +1001,11 @@ def test_exact_pre_dispatch_provider_deferral_rearms_without_nested_effect(
         task = daemon.task_source.get(attempt.task_cid)
         terminal = daemon.get_attempt(attempt.attempt_id)
         assert task is not None and terminal is not None
+        # Absence is the canonical initial count: the proof-backed route must
+        # preserve zero rather than consume the generic rearm allowance.
+        assert "unknown_outcome_rearm_count" not in task.body[
+            "completion_receipt"
+        ]
 
         evidence = bridge.no_provider_dispatch_rearm_evidence(
             terminal,
@@ -1078,13 +1085,13 @@ def test_exact_pre_dispatch_provider_deferral_rearms_without_nested_effect(
         assert rearm["task_cid"] == attempt.task_cid
         assert rearm["previous_attempt_id"] == attempt.attempt_id
         assert rearm["provider_dispatched"] is False
-        assert rearm["unknown_outcome_rearm_count"] == 1
+        assert rearm["unknown_outcome_rearm_count"] == 0
         rearmed = daemon.task_source.get(attempt.task_cid)
         assert rearmed is not None and rearmed.status == "retrying"
         rearm_receipt = rearmed.body["completion_receipt"]
         assert rearm_receipt["attempts_used"] == 0
         assert rearm_receipt["retry_exhausted"] is False
-        assert rearm_receipt["unknown_outcome_rearm_count"] == 1
+        assert rearm_receipt["unknown_outcome_rearm_count"] == 0
         assert rearm_receipt["no_provider_rearm_evidence_id"] == evidence[
             "evidence_id"
         ]
@@ -1424,7 +1431,12 @@ def test_terminal_rearm_candidate_never_downgrades_to_setup_evidence(
     def reject_interrupted(
         _attempt: object,
         _receipt: object,
+        *,
+        expected_evidence_schema: str | None = None,
     ) -> None:
+        assert expected_evidence_schema == (
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+        )
         interrupted_calls.append("interrupted")
         return None
 
@@ -1447,6 +1459,197 @@ def test_terminal_rearm_candidate_never_downgrades_to_setup_evidence(
         outer_block_receipt=receipt,
     ) is None
     assert len(interrupted_calls) == expected_interrupted_calls
+
+
+@pytest.mark.parametrize(
+    ("reason", "expected_evidence_schema"),
+    (
+        (
+            "callback_authority_incomplete_blocked",
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+        ),
+        (
+            "provider_dispatch_outcome_unknown",
+            DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+        ),
+    ),
+    ids=("standard-interrupted", "stale-dispatch-migration"),
+)
+def test_terminal_rearm_outer_policy_selects_exact_evidence_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reason: str,
+    expected_evidence_schema: str,
+) -> None:
+    """Matching terminal policies reach only their versioned evidence route."""
+
+    attempt = SimpleNamespace(
+        task_cid="task:terminal-policy-route",
+        attempt_id="attempt:terminal-policy-route",
+        claim_id="claim:terminal-policy-route",
+        lease_id="lease:terminal-policy-route",
+        attempt_number=2,
+        owner_session_id="session:terminal-policy-route",
+        fencing_token=7,
+        fence_epoch=3,
+        status="failed",
+        committed_phase="failed",
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+    )
+    receipt = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-retry-budget@1",
+        "operation": "database_unknown_outcome_blocked",
+        "reason": reason,
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "attempt_number": attempt.attempt_number,
+        "owner_session_id": attempt.owner_session_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "retry_exhausted": True,
+        "forced_block": True,
+        "authority_outcome": "unknown",
+        "process_instance_id": "process:terminal-policy-route",
+        "terminal_reconciliation": {"schema": "delegated-to-terminal-verifier"},
+    }
+    selected: list[str | None] = []
+    expected_result = {"schema": expected_evidence_schema, "matched": True}
+
+    def select_terminal_evidence(
+        _attempt: object,
+        _receipt: object,
+        *,
+        expected_evidence_schema: str | None = None,
+    ) -> dict[str, object]:
+        selected.append(expected_evidence_schema)
+        return dict(expected_result)
+
+    monkeypatch.setattr(
+        bridge,
+        "_interrupted_implementation_rearm_evidence",
+        select_terminal_evidence,
+    )
+
+    assert bridge.no_provider_dispatch_rearm_evidence(
+        attempt,
+        outer_block_receipt=receipt,
+    ) == expected_result
+    assert selected == [expected_evidence_schema]
+
+
+@pytest.mark.parametrize(
+    ("expected_evidence_schema", "matching_source", "forbidden_source"),
+    (
+        (
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            "_interrupted_implementation_retry_evidence",
+            "_stale_dispatch_migration_retry_evidence",
+        ),
+        (
+            DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            "_stale_dispatch_migration_retry_evidence",
+            "_interrupted_implementation_retry_evidence",
+        ),
+    ),
+    ids=("standard-never-migrates", "stale-never-interrupt-recovers"),
+)
+def test_terminal_rearm_schema_gate_never_probes_opposite_recovery_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    expected_evidence_schema: str,
+    matching_source: str,
+    forbidden_source: str,
+) -> None:
+    """Schema selection occurs before an incompatible recovery can mutate."""
+
+    attempt = SimpleNamespace(
+        task_cid="task:terminal-source-gate",
+        attempt_id="attempt:terminal-source-gate",
+        claim_id="claim:terminal-source-gate",
+        lease_id="lease:terminal-source-gate",
+        attempt_number=3,
+        owner_session_id="session:terminal-source-gate",
+        fencing_token=8,
+        fence_epoch=4,
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "recovery replay ran after an empty matching source"
+        ),
+    )
+    link = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-terminal-reconciliation-link@1"
+        ),
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "task_cid": attempt.task_cid,
+        "attempt_number": attempt.attempt_number,
+        "owner_session_id": attempt.owner_session_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "binding_id": "sha256:" + "1" * 64,
+        "nested_state_digest": "sha256:" + "2" * 64,
+        "nested_reason": "nested_portal_attempt_reconciled",
+        "nested_reconciled": True,
+        "trigger": "database_daemon_startup",
+        "intended_database_disposition": "blocked_unknown_outcome",
+        "prepared_reconciliation_receipt_id": "sha256:" + "3" * 64,
+        "commit_barrier_receipt_id": "sha256:" + "4" * 64,
+    }
+    link["evidence_id"] = content_identity(link)
+    matching_calls: list[str] = []
+
+    def empty_matching_source(
+        _attempt: object,
+        _binding: object,
+    ) -> None:
+        matching_calls.append(matching_source)
+        return None
+
+    def forbidden_recovery_source(*_args: object, **_kwargs: object) -> None:
+        pytest.fail(f"incompatible recovery source was probed: {forbidden_source}")
+
+    monkeypatch.setattr(bridge, matching_source, empty_matching_source)
+    monkeypatch.setattr(bridge, forbidden_source, forbidden_recovery_source)
+    monkeypatch.setattr(
+        bridge,
+        "_read_binding",
+        lambda _path: {"binding_id": link["binding_id"]},
+    )
+    monkeypatch.setattr(bridge, "_verify_binding_identity", lambda _binding: None)
+    monkeypatch.setattr(
+        bridge,
+        "load_reconciliation_receipt",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_strict_state_record",
+        lambda _path: ({}, "sha256:" + "5" * 64),
+    )
+    bridge.bind_attempt_binding_authority(
+        recorder=lambda *_args, **_kwargs: None,
+        reconciliation_recorder=lambda *_args, **_kwargs: None,
+        lookup=lambda _attempt: {},
+    )
+
+    assert bridge._interrupted_implementation_rearm_evidence(
+        attempt,
+        {"terminal_reconciliation": link},
+        expected_evidence_schema=expected_evidence_schema,
+    ) is None
+    assert matching_calls == [matching_source]
 
 
 def test_nested_setup_failure_rearm_rejects_track_not_matching_projection(

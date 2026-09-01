@@ -61,7 +61,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     parse_args,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_BACKOFF_SECONDS,
+    DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+    DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_REASON,
     DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+    DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
@@ -931,11 +935,37 @@ def test_exact_interrupted_implementation_refunds_attempt_two_without_widening_u
                 "message": "interrupted nested implementation recovered",
             },
         )
+        terminal_reconciliation = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-terminal-reconciliation-link@1"
+            ),
+            "attempt_id": attempt_two.attempt_id,
+            "claim_id": attempt_two.claim_id,
+            "task_cid": attempt_two.task_cid,
+            "attempt_number": attempt_two.attempt_number,
+            "owner_session_id": attempt_two.owner_session_id,
+            "lease_id": attempt_two.lease_id,
+            "fencing_token": attempt_two.fencing_token,
+            "fence_epoch": attempt_two.fence_epoch,
+            "binding_id": "sha256:" + "3" * 64,
+            "nested_state_digest": "sha256:" + "a" * 64,
+            "nested_reason": "nested_portal_attempt_reconciled",
+            "nested_reconciled": True,
+            "trigger": "database_daemon_startup",
+            "intended_database_disposition": "blocked_unknown_outcome",
+            "prepared_reconciliation_receipt_id": "sha256:" + "9" * 64,
+            "commit_barrier_receipt_id": "sha256:" + "b" * 64,
+        }
+        terminal_reconciliation["evidence_id"] = content_identity(
+            terminal_reconciliation
+        )
         failed, receipt = daemon._finalize_failed_attempt(
             attempt_two,
             reason="callback_authority_incomplete_blocked",
             force_block=True,
             unknown_authority=True,
+            reconciliation_evidence=terminal_reconciliation,
         )
         assert failed.status == "failed"
         assert receipt["attempt_number"] == 2
@@ -944,6 +974,11 @@ def test_exact_interrupted_implementation_refunds_attempt_two_without_widening_u
 
         task = daemon.task_source.get(attempt_two.task_cid)
         assert task is not None and task.status == "blocked"
+        receipt = dict(task.body["completion_receipt"])
+        assert receipt["terminal_reconciliation"] == terminal_reconciliation
+        terminal_reconciliation_evidence_id = str(
+            terminal_reconciliation["evidence_id"]
+        )
         evidence = {
             "schema": (
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
@@ -971,7 +1006,7 @@ def test_exact_interrupted_implementation_refunds_attempt_two_without_widening_u
             "nested_task_cid": "nested:task:current",
             "nested_attempt": 1,
             "terminal_reconciliation_evidence_id": (
-                "baguqeeras3b36epxxn7yv5nfylhmk5uahqhimjgn2452lpf7a523gkgkcfrq"
+                terminal_reconciliation_evidence_id
             ),
             "first_clear_receipt_id": "sha256:" + "6" * 64,
             "interrupted_retry_evidence_id": "sha256:" + "7" * 64,
@@ -1865,10 +1900,16 @@ def test_stale_dispatch_migration_rearm_uses_exact_policy_without_dispatch(
     def observe_rearm(
         candidate_attempt: object,
         candidate_receipt: object,
+        *,
+        expected_evidence_schema: str | None = None,
     ) -> dict[str, object] | None:
         rearm_calls.append(str(getattr(candidate_attempt, "attempt_id", "")))
         assert isinstance(candidate_receipt, dict)
-        return original_rearm(candidate_attempt, candidate_receipt)
+        return original_rearm(
+            candidate_attempt,
+            candidate_receipt,
+            expected_evidence_schema=expected_evidence_schema,
+        )
 
     monkeypatch.setattr(
         bridge,
@@ -1999,6 +2040,504 @@ def test_stale_dispatch_migration_rearm_uses_exact_policy_without_dispatch(
         assert state_snapshots == [], case
     replay.clear()
     replay.update(valid_replay)
+
+
+class _StaleDispatchSelectorHarness(DatabaseImplementationDaemon):
+    """Side-effect-free harness for the daemon's evidence selector."""
+
+    def open(self) -> "_StaleDispatchSelectorHarness":
+        return self
+
+    @property
+    def task_source(self) -> object:
+        return self._selector_task_source
+
+    @property
+    def coordinator(self) -> object:
+        return self._selector_coordinator
+
+
+def _historical_stale_dispatch_selector_case(
+    *,
+    task_alias: str,
+    attempt_number: int,
+    attempts_used: int = 1,
+) -> SimpleNamespace:
+    """Build the exact outer historical shape without opening a store."""
+
+    daemon = object.__new__(_StaleDispatchSelectorHarness)
+    task_cid = f"task:cid:{task_alias.lower()}"
+    attempt_id = f"attempt:historical-{task_alias.lower()}"
+    claim_id = f"claim:historical-{task_alias.lower()}"
+    owner_session_id = f"session:historical-{task_alias.lower()}"
+    lease_id = f"lease:historical-{task_alias.lower()}"
+    validation_spec_cid = "sha256:" + "1" * 64
+    execution_spec_cid = "sha256:" + "2" * 64
+    task_revision = 4
+    retry_budget = {
+        "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+        "validation_spec_cid": validation_spec_cid,
+        "attempts_used": attempts_used,
+        "max_task_attempts": 1,
+        "configured_max_task_attempts": 1,
+        "policy_mismatch": False,
+        "malformed": False,
+        "retry_exhausted": True,
+    }
+    control_claim = {
+        "task_cid": task_cid,
+        "revision": task_revision - 1,
+        "execution_spec_cid": execution_spec_cid,
+        "validation_spec_cid": validation_spec_cid,
+    }
+    attempt = DatabaseTaskAttempt(
+        attempt_id=attempt_id,
+        claim_id=claim_id,
+        task_cid=task_cid,
+        task_alias=task_alias,
+        attempt_number=attempt_number,
+        owner_session_id=owner_session_id,
+        lease_id=lease_id,
+        fencing_token=attempt_number,
+        fence_epoch=attempt_number,
+        committed_phase="failed",
+        status="failed",
+        started_at_ms=1,
+        finished_at_ms=2,
+        body={
+            "control_claim": control_claim,
+            "retry_budget": retry_budget,
+        },
+    )
+    task_record = {
+        "task_cid": task_cid,
+        "task_alias": task_alias,
+        "status": "blocked",
+        "revision": task_revision,
+        "body": {},
+    }
+    task = SimpleNamespace(**task_record)
+    task.to_dict = lambda: json.loads(json.dumps(task_record))
+    exact_attempt = {
+        "attempt_id": attempt_id,
+        "claim_id": claim_id,
+        "task_cid": task_cid,
+        "attempt_number": attempt_number,
+        "owner_session_id": owner_session_id,
+        "lease_id": lease_id,
+        "fencing_token": attempt_number,
+        "fence_epoch": attempt_number,
+    }
+    link = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-terminal-reconciliation-link@1"
+        ),
+        **exact_attempt,
+        "binding_id": "sha256:" + "3" * 64,
+        "nested_state_digest": "sha256:" + "4" * 64,
+        "nested_reason": "nested_portal_attempt_reconciled",
+        "nested_reconciled": True,
+        "trigger": "database_daemon_startup",
+        "intended_database_disposition": "blocked_unknown_outcome",
+        "prepared_reconciliation_receipt_id": "sha256:" + "5" * 64,
+        "commit_barrier_receipt_id": "sha256:" + "6" * 64,
+    }
+    link["evidence_id"] = content_identity(link)
+    receipt = {
+        "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+        **exact_attempt,
+        "validation_spec_cid": validation_spec_cid,
+        "attempts_used": attempts_used,
+        "max_task_attempts": 1,
+        "retry_exhausted": True,
+        "process_instance_id": f"process:historical-{task_alias.lower()}",
+        "operation": "database_unknown_outcome_blocked",
+        "reason": "provider_dispatch_outcome_unknown",
+        "forced_block": True,
+        "authority_outcome": "unknown",
+        # Both preserved P005/P034 receipts predate this optional counter.
+        "terminal_reconciliation": link,
+    }
+    phase_body = {
+        "database_disposition": "blocked_unknown_outcome",
+        "reason": "provider_dispatch_outcome_unknown",
+        "retry_exhausted": True,
+        "unknown_authority": True,
+        "terminal_reconciliation": link,
+    }
+
+    def sha256_record(value: object) -> str:
+        return "sha256:" + hashlib.sha256(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+
+    evidence = {
+        "schema": DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+        **exact_attempt,
+        "task_alias": task_alias,
+        "attempt_root_key": hashlib.sha256(
+            attempt_id.encode("utf-8")
+        ).hexdigest()[:24],
+        "attempt_authority_root_digest": "sha256:" + "7" * 64,
+        "attempt_root_digest": "sha256:" + "8" * 64,
+        "binding_id": link["binding_id"],
+        "binding_admission_id": content_identity(
+            {"binding-admission": task_alias}
+        ),
+        "binding_admission_digest": "sha256:" + "9" * 64,
+        "projection_immutable_digest": "sha256:" + "a" * 64,
+        "nested_task_cid": content_identity({"nested-task": task_alias}),
+        "nested_attempt": 1,
+        "terminal_reconciliation_evidence_id": link["evidence_id"],
+        "first_clear_receipt_id": "sha256:" + "b" * 64,
+        "migration_retry_evidence_id": "sha256:" + "c" * 64,
+        "migration_id": content_identity({"migration": task_alias}),
+        "migration_preparation_event_id": "sha256:" + "d" * 64,
+        "state_recovery_event_id": "sha256:" + "e" * 64,
+        "migration_terminal_event_id": "sha256:" + "f" * 64,
+        "migration_receipt_id": content_identity(
+            {"migration-receipt": task_alias}
+        ),
+        "legacy_claim_release_receipt_id": content_identity(
+            {"legacy-claim-release": task_alias}
+        ),
+        "legacy_claim_release_event_id": "sha256:" + "0" * 64,
+        "stale_lock_cleared": False,
+        "stale_lock_clear_event_id": "",
+        "prepared_reconciliation_receipt_id": link[
+            "prepared_reconciliation_receipt_id"
+        ],
+        "commit_barrier_receipt_id": link["commit_barrier_receipt_id"],
+        "pre_state_digest": link["nested_state_digest"],
+        "state_digest": "sha256:" + "1" * 64,
+        "outer_block_receipt_digest": (
+            DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                receipt
+            )
+        ),
+        "provider_dispatched": False,
+        "implementation_dispatched": False,
+        "validation_attempted": False,
+        "commit_created": False,
+        "merge_attempted": False,
+        "acceptance_inferred": False,
+        "recovery_terminal": True,
+        "retained_candidate_disposition": "preserved_unvalidated",
+    }
+    authorization = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-stale-dispatch-migration-"
+            "rearm-authorization@1"
+        ),
+        **{
+            name: evidence[name]
+            for name in (
+                "attempt_id",
+                "claim_id",
+                "task_cid",
+                "attempt_number",
+                "owner_session_id",
+                "lease_id",
+                "fencing_token",
+                "fence_epoch",
+                "binding_id",
+                "binding_admission_id",
+                "binding_admission_digest",
+                "projection_immutable_digest",
+                "nested_task_cid",
+                "nested_attempt",
+                "terminal_reconciliation_evidence_id",
+                "first_clear_receipt_id",
+                "migration_retry_evidence_id",
+                "migration_id",
+                "migration_preparation_event_id",
+                "state_recovery_event_id",
+                "migration_terminal_event_id",
+                "migration_receipt_id",
+                "legacy_claim_release_receipt_id",
+                "legacy_claim_release_event_id",
+                "stale_lock_cleared",
+                "stale_lock_clear_event_id",
+                "prepared_reconciliation_receipt_id",
+                "commit_barrier_receipt_id",
+                "pre_state_digest",
+                "state_digest",
+                "outer_block_receipt_digest",
+            )
+        },
+    }
+    evidence["rearm_authorization_id"] = sha256_record(authorization)
+    evidence["evidence_id"] = sha256_record(evidence)
+
+    calls: dict[str, list[object]] = {
+        "verifier": [],
+        "journal": [],
+        "provider": [],
+        "effect": [],
+    }
+
+    def verifier(
+        candidate_attempt: object,
+        *,
+        outer_block_receipt: object,
+    ) -> dict[str, object]:
+        calls["verifier"].append(candidate_attempt)
+        assert outer_block_receipt is receipt
+        return dict(evidence)
+
+    claim_record = {
+        "task_cid": task_cid,
+        "claim_id": claim_id,
+        "attempt_id": attempt_id,
+        "attempt_number": attempt_number,
+        "owner_session_id": owner_session_id,
+        "lease_id": lease_id,
+        "fencing_token": attempt_number,
+        "fence_epoch": attempt_number,
+    }
+    claim = SimpleNamespace(state=SimpleNamespace(value="released"))
+    claim.to_dict = lambda: dict(claim_record)
+    terminal_saga = {
+        **exact_attempt,
+        "intended_database_disposition": "blocked_unknown_outcome",
+        "evidence_id": link["evidence_id"],
+        "prepared_reconciliation_receipt_id": link[
+            "prepared_reconciliation_receipt_id"
+        ],
+        "commit_barrier_receipt_id": link["commit_barrier_receipt_id"],
+        "stage": "terminal",
+        "receipt_id": "sha256:" + "2" * 64,
+    }
+
+    daemon._selector_task_source = SimpleNamespace(
+        get=lambda candidate: task if candidate == task_cid else None
+    )
+    daemon._selector_coordinator = SimpleNamespace(
+        get_prepared_task_completion=lambda _candidate: None,
+        get_task_claim=lambda candidate: (
+            claim if candidate == claim_id else None
+        ),
+    )
+    daemon._database_portal_bridge = SimpleNamespace(
+        no_provider_dispatch_rearm_evidence=verifier
+    )
+    daemon.get_attempt = lambda candidate: (
+        attempt if candidate == attempt_id else None
+    )
+    daemon._retry_budget_state = lambda _task: {
+        "max_task_attempts": 1,
+        "malformed": False,
+        "policy_mismatch": False,
+    }
+    daemon._task_execution_spec_cid = lambda _task: execution_spec_cid
+    daemon._retry_budget_validation_spec_cid = (
+        lambda _task: validation_spec_cid
+    )
+    daemon.phase_history = lambda _candidate: [
+        {"phase": "claimed", "body": {}},
+        {"phase": "context", "body": {}},
+        {"phase": "failed", "body": phase_body},
+    ]
+    daemon._database_portal_terminal_reconciliation_saga = (
+        lambda _attempt: terminal_saga
+    )
+    daemon.provider_invocation_recorded = lambda *args, **kwargs: (
+        calls["provider"].append((args, kwargs)) and None
+    )
+    daemon.effect_claim_recorded = lambda *args, **kwargs: (
+        calls["effect"].append((args, kwargs)) and None
+    )
+    started_body = (
+        {
+            "resumed_from": "deferred",
+            "preentry_publication_retry_count": 0,
+        }
+        if task_alias == "PCTDD-005"
+        else {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-callback-dispatch@1"
+            ),
+            "outcome": "unknown_until_callback_returns",
+        }
+    )
+
+    def journal(
+        _attempt: object,
+        *,
+        dispatch_kind: str,
+        idempotency_key: str,
+    ) -> dict[str, object] | None:
+        calls["journal"].append((dispatch_kind, idempotency_key))
+        if dispatch_kind == "effect":
+            return None
+        return {
+            "outcome": "started",
+            "body": dict(started_body),
+            "updated_at_ms": 1,
+        }
+
+    daemon._dispatch_journal_entry = journal
+    return SimpleNamespace(
+        daemon=daemon,
+        task=task,
+        attempt=attempt,
+        receipt=receipt,
+        phase_body=phase_body,
+        evidence=evidence,
+        calls=calls,
+        started_body=started_body,
+    )
+
+
+@pytest.mark.parametrize(
+    ("task_alias", "attempt_number"),
+    [("PCTDD-005", 1), ("PCTDD-034", 5)],
+)
+def test_stale_dispatch_started_journal_admits_exact_historical_budget(
+    task_alias: str,
+    attempt_number: int,
+) -> None:
+    """P005/P034's exact old started journal can only refund, never dispatch."""
+
+    case = _historical_stale_dispatch_selector_case(
+        task_alias=task_alias,
+        attempt_number=attempt_number,
+    )
+    task_before = case.task.to_dict()
+    attempt_before = case.attempt.to_dict()
+
+    admitted = case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    )
+
+    assert admitted is not None
+    assert admitted["schema"] == (
+        DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA
+    )
+    assert admitted["terminal_reconciliation_evidence_id"] == (
+        case.receipt["terminal_reconciliation"]["evidence_id"]
+    )
+    assert "unknown_outcome_rearm_count" not in case.receipt
+    assert case.receipt["attempts_used"] == 1
+    assert case.calls["verifier"] == [case.attempt]
+    assert case.calls["journal"] == [
+        ("effect", f"effect:{case.attempt.attempt_id}"),
+        ("provider", f"provider:{case.attempt.attempt_id}"),
+    ]
+    assert len(case.calls["provider"]) == 1
+    assert len(case.calls["effect"]) == 1
+    assert admitted["provider_dispatched"] is False
+    assert admitted["implementation_dispatched"] is False
+    assert admitted["acceptance_inferred"] is False
+    assert case.task.to_dict() == task_before
+    assert case.attempt.to_dict() == attempt_before
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_verifier_calls", "expected_probe_calls"),
+    [
+        ("standard_policy", 0, 1),
+        ("missing_terminal_link", 0, 0),
+        ("wrong_evidence_schema", 1, 1),
+        ("boolean_resumed_count", 0, 1),
+        ("float_resumed_count", 0, 1),
+        ("extra_started_body_field", 0, 1),
+    ],
+)
+def test_stale_dispatch_started_journal_fails_closed_without_exact_migration(
+    mutation: str,
+    expected_verifier_calls: int,
+    expected_probe_calls: int,
+) -> None:
+    case = _historical_stale_dispatch_selector_case(
+        task_alias="PCTDD-005",
+        attempt_number=1,
+    )
+    if mutation == "standard_policy":
+        case.receipt["reason"] = "callback_authority_incomplete_blocked"
+        case.phase_body["reason"] = "callback_authority_incomplete_blocked"
+    elif mutation == "missing_terminal_link":
+        case.receipt["reason"] = "callback_authority_incomplete_blocked"
+        case.phase_body["reason"] = "callback_authority_incomplete_blocked"
+        case.receipt.pop("terminal_reconciliation")
+        case.phase_body.pop("terminal_reconciliation")
+    elif mutation == "wrong_evidence_schema":
+        case.evidence["schema"] = (
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+        )
+        case.evidence.pop("evidence_id")
+        case.evidence["evidence_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                case.evidence,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        # Isolate the selector's schema gate from the schema-specific payload
+        # validator: even an otherwise admitted interrupted proof cannot
+        # authorize this historical started-journal exception.
+        case.daemon._valid_no_provider_rearm_evidence = (
+            lambda *args, **kwargs: True
+        )
+    elif mutation == "boolean_resumed_count":
+        case.started_body["preentry_publication_retry_count"] = False
+    elif mutation == "float_resumed_count":
+        case.started_body["preentry_publication_retry_count"] = 0.0
+    else:
+        case.started_body["unreviewed_field"] = True
+
+    task_before = case.task.to_dict()
+    attempt_before = case.attempt.to_dict()
+    receipt_before = json.loads(json.dumps(case.receipt))
+
+    assert case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    ) is None
+    assert len(case.calls["verifier"]) == expected_verifier_calls
+    assert len(case.calls["provider"]) == expected_probe_calls
+    assert len(case.calls["effect"]) == expected_probe_calls
+    assert len(case.calls["journal"]) == expected_probe_calls * 2
+    assert case.task.to_dict() == task_before
+    assert case.attempt.to_dict() == attempt_before
+    assert case.receipt == receipt_before
+
+
+def test_stale_dispatch_invalid_budget_rejects_before_nested_migration() -> None:
+    """The one-shot nested verifier is not invoked for an underbound budget."""
+
+    case = _historical_stale_dispatch_selector_case(
+        task_alias="PCTDD-034",
+        attempt_number=5,
+        attempts_used=6,
+    )
+    task_before = case.task.to_dict()
+    attempt_before = case.attempt.to_dict()
+    receipt_before = json.loads(json.dumps(case.receipt))
+
+    assert case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    ) is None
+    assert case.calls["verifier"] == []
+    assert case.calls["journal"] == []
+    assert case.calls["provider"] == []
+    assert case.calls["effect"] == []
+    assert case.task.to_dict() == task_before
+    assert case.attempt.to_dict() == attempt_before
+    assert case.receipt == receipt_before
 
 
 def test_interrupted_rearm_uses_production_run_once_link_and_terminal_saga(
@@ -4874,3 +5413,527 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
         assert first.task_cid != second.task_cid
     finally:
         daemon.close()
+
+
+def _deferred_provider_rearm_evidence(
+    daemon: DatabaseImplementationDaemon,
+    candidate: DatabaseTaskAttempt,
+    outer_receipt: dict[str, object],
+) -> dict[str, object]:
+    """Build the exact reviewed deferred-provider proof used by recovery tests."""
+
+    event_head_id = "sha256:" + "9" * 64
+    evidence: dict[str, object] = {
+        "schema": DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+        "attempt_id": candidate.attempt_id,
+        "claim_id": candidate.claim_id,
+        "task_cid": candidate.task_cid,
+        "task_alias": candidate.task_alias,
+        "attempt_number": candidate.attempt_number,
+        "owner_session_id": candidate.owner_session_id,
+        "lease_id": candidate.lease_id,
+        "fencing_token": candidate.fencing_token,
+        "fence_epoch": candidate.fence_epoch,
+        "attempt_root_key": hashlib.sha256(
+            candidate.attempt_id.encode("utf-8")
+        ).hexdigest()[:24],
+        "attempt_authority_root_digest": "sha256:" + "1" * 64,
+        "attempt_root_digest": "sha256:" + "2" * 64,
+        "binding_id": "sha256:" + "3" * 64,
+        "binding_admission_id": content_identity(
+            {"deferred-provider-binding": candidate.attempt_id}
+        ),
+        "binding_admission_digest": "sha256:" + "4" * 64,
+        "projection_immutable_digest": "sha256:" + "5" * 64,
+        "nested_task_cid": content_identity(
+            {"deferred-provider-nested-task": candidate.task_cid}
+        ),
+        "nested_attempt": 1,
+        "event_stream_id": "event-log:sha256:" + "6" * 64,
+        "event_snapshot_id": "event-log-snapshot:sha256:" + "7" * 64,
+        "event_manifest_digest": "sha256:" + "8" * 64,
+        "event_count": 4,
+        "event_head_sequence": 4,
+        "event_head_id": event_head_id,
+        "task_selected_event_id": "sha256:" + "a" * 64,
+        "retry_deferred_event_id": "sha256:" + "b" * 64,
+        "daemon_pass_event_id": event_head_id,
+        "diagnostic_event_count": 1,
+        "diagnostic_event_ids_digest": "sha256:" + "c" * 64,
+        "deferred_reason": DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_REASON,
+        "deferred_backoff_seconds": (
+            DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_BACKOFF_SECONDS
+        ),
+        "diagnostic_receipt_id": "",
+        "state_digest": "sha256:" + "d" * 64,
+        "outer_block_receipt_digest": (
+            daemon._database_no_provider_rearm_digest(outer_receipt)
+        ),
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "validation_attempted": False,
+        "commit_created": False,
+        "merge_attempted": False,
+        "acceptance_inferred": False,
+        "route_deferred": True,
+        "nested_state_quiescent": True,
+    }
+    evidence["evidence_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            evidence,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    return evidence
+
+
+def _count_zero_deferred_provider_rearm_task(
+    tmp_path: Path,
+) -> SimpleNamespace:
+    """Create one exact admitted count-zero deferred-provider rearm."""
+
+    provider_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:count-zero-deferred-rearm",
+        provider_calls=provider_calls,
+        max_task_attempts=1,
+    )
+
+    class ExactDeferredProviderBridge:
+        def validate_active_attempt_roots(
+            self,
+            attempts: list[DatabaseTaskAttempt],
+        ) -> dict[str, str]:
+            assert attempts == []
+            return {}
+
+        def no_provider_dispatch_rearm_evidence(
+            self,
+            candidate: DatabaseTaskAttempt,
+            *,
+            outer_block_receipt: dict[str, object],
+        ) -> dict[str, object]:
+            return _deferred_provider_rearm_evidence(
+                daemon,
+                candidate,
+                outer_block_receipt,
+            )
+
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None and attempt.attempt_number == 1
+        attempt = daemon.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        idempotency_key = f"provider:{attempt.attempt_id}"
+        daemon._begin_callback_dispatch(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=idempotency_key,
+        )
+        daemon._record_callback_dispatch_outcome(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=idempotency_key,
+            outcome="raised",
+            body={"exception_type": "DatabasePortalBridgeError"},
+        )
+        _failed, blocked_receipt = daemon._finalize_failed_attempt(
+            attempt,
+            reason="callback_authority_incomplete_blocked",
+            force_block=True,
+            unknown_authority=True,
+        )
+        assert blocked_receipt["attempts_used"] == 1
+        assert "unknown_outcome_rearm_count" not in blocked_receipt
+
+        daemon._database_portal_bridge = ExactDeferredProviderBridge()
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+        assert len(outcomes) == 1
+        assert outcomes[0]["unknown_outcome_rearm_count"] == 0
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        receipt = json.loads(
+            json.dumps(task.body["completion_receipt"])
+        )
+        assert receipt["unknown_outcome_rearm_count"] == 0
+        assert receipt["attempts_used"] == 0
+        assert receipt["no_provider_rearm_evidence"]["schema"] == (
+            DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA
+        )
+        assert receipt["no_provider_rearm_fence"]["state"] == "admitted"
+        assert provider_calls == []
+        return SimpleNamespace(
+            task_cid=str(task.task_cid),
+            task_alias=str(task.task_alias),
+            revision=int(task.revision),
+            status=str(task.status),
+            body={"completion_receipt": receipt},
+        )
+    finally:
+        daemon.close()
+
+
+def test_attempt_two_deferred_provider_evidence_is_nonconsuming_and_shared_fenced(
+    tmp_path: Path,
+) -> None:
+    """Admit the exact P006/P007 2=1+1 route without widening its budget."""
+
+    provider_calls: list[str] = []
+    seed = _open_daemon(
+        tmp_path,
+        session="session:deferred-provider-attempt-two",
+        provider_calls=provider_calls,
+        max_task_attempts=2,
+    )
+    try:
+        seed.materialize_population(_population(1))
+        attempt_one = seed.claim_next()
+        assert attempt_one is not None and attempt_one.attempt_number == 1
+        seed._begin_callback_dispatch(
+            attempt_one,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt_one.attempt_id}",
+        )
+        seed._finalize_failed_attempt(
+            attempt_one,
+            reason="provider_dispatch_outcome_unknown",
+            force_block=True,
+            unknown_authority=True,
+        )
+    finally:
+        seed.close()
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:deferred-provider-attempt-two",
+        provider_calls=provider_calls,
+        max_task_attempts=2,
+    )
+
+    verifier_calls: list[tuple[int, int, str]] = []
+
+    class ExactDeferredProviderBridge:
+        def validate_active_attempt_roots(
+            self,
+            attempts: list[DatabaseTaskAttempt],
+        ) -> dict[str, str]:
+            assert attempts == []
+            return {}
+
+        def no_provider_dispatch_rearm_evidence(
+            self,
+            candidate: DatabaseTaskAttempt,
+            *,
+            outer_block_receipt: dict[str, object],
+        ) -> dict[str, object] | None:
+            verifier_calls.append(
+                (
+                    int(outer_block_receipt.get("attempt_number") or 0),
+                    int(
+                        outer_block_receipt.get("unknown_outcome_rearm_count")
+                        or 0
+                    ),
+                    str(outer_block_receipt.get("reason") or ""),
+                )
+            )
+            if outer_block_receipt.get("reason") != (
+                "callback_authority_incomplete_blocked"
+            ):
+                return None
+            return _deferred_provider_rearm_evidence(
+                daemon,
+                candidate,
+                outer_block_receipt,
+            )
+
+    try:
+        first_rearm = daemon.reconcile_blocked_unknown_outcome_tasks()
+        assert len(first_rearm) == 1
+        assert first_rearm[0]["unknown_outcome_rearm_count"] == 1
+        attempt_two = daemon.claim_next()
+        assert attempt_two is not None and attempt_two.attempt_number == 2
+        attempt_two = daemon.commit_phase(
+            attempt_two,
+            ATTEMPT_PHASE_CONTEXT,
+        )
+        daemon._begin_callback_dispatch(
+            attempt_two,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt_two.attempt_id}",
+        )
+        daemon._record_callback_dispatch_outcome(
+            attempt_two,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt_two.attempt_id}",
+            outcome="raised",
+            body={"exception_type": "DatabasePortalBridgeError"},
+        )
+        _failed, blocked_receipt = daemon._finalize_failed_attempt(
+            attempt_two,
+            reason="callback_authority_incomplete_blocked",
+            force_block=True,
+            unknown_authority=True,
+        )
+        assert blocked_receipt["attempt_number"] == 2
+        assert blocked_receipt["attempts_used"] == 1
+        assert blocked_receipt["unknown_outcome_rearm_count"] == 1
+        blocked_task = daemon.task_source.get(attempt_two.task_cid)
+        assert blocked_task is not None and blocked_task.status == "blocked"
+
+        bridge = ExactDeferredProviderBridge()
+        daemon._database_portal_bridge = bridge
+        for wrong_count in (0, 2):
+            inexact_count = {
+                **blocked_receipt,
+                "unknown_outcome_rearm_count": wrong_count,
+            }
+            calls_before = len(verifier_calls)
+            assert daemon._database_portal_no_provider_rearm_evidence(
+                blocked_task,
+                inexact_count,
+            ) is None
+            assert len(verifier_calls) == calls_before
+
+        wrong_reason = {
+            **blocked_receipt,
+            "reason": "provider_dispatch_outcome_unknown",
+        }
+        calls_before = len(verifier_calls)
+        assert daemon._database_portal_no_provider_rearm_evidence(
+            blocked_task,
+            wrong_reason,
+        ) is None
+        assert verifier_calls[calls_before:] == [
+            (2, 1, "provider_dispatch_outcome_unknown")
+        ]
+
+        admitted_evidence = daemon._database_portal_no_provider_rearm_evidence(
+            blocked_task,
+            blocked_receipt,
+        )
+        assert admitted_evidence is not None
+        assert admitted_evidence["schema"] == (
+            DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA
+        )
+        assert admitted_evidence["attempt_consumed"] is False
+        assert verifier_calls[-1] == (
+            2,
+            1,
+            "callback_authority_incomplete_blocked",
+        )
+
+        result = daemon.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_unknown_outcomes_rearmed"
+        )
+        assert result["implementation_result"] is None
+        assert len(result["unknown_outcome_rearms"]) == 1
+        outcome = result["unknown_outcome_rearms"][0]
+        assert outcome["previous_attempt_id"] == attempt_two.attempt_id
+        assert outcome["unknown_outcome_rearm_count"] == 1
+        assert outcome["provider_dispatched"] is False
+        rearmed = daemon.task_source.get(attempt_two.task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        rearm_receipt = rearmed.body["completion_receipt"]
+        assert rearm_receipt["attempts_used"] == 0
+        assert rearm_receipt["unknown_outcome_rearm_count"] == 1
+        assert rearm_receipt["no_provider_rearm_evidence"]["schema"] == (
+            DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA
+        )
+        assert rearm_receipt["no_provider_rearm_fence"]["state"] == "admitted"
+        assert daemon._no_provider_rearm_fence_state(rearmed) == "admitted"
+        assert not daemon._automatic_claim_forbidden(rearmed)
+        assert provider_calls == []
+
+        for field, value in (
+            ("unknown_outcome_rearm_count", 0),
+            ("unknown_outcome_rearm_count", 2),
+            ("reason", "provider_dispatch_outcome_unknown"),
+        ):
+            malformed_receipt = json.loads(json.dumps(rearm_receipt))
+            malformed_original = dict(
+                malformed_receipt["no_provider_rearm_original_block_receipt"]
+            )
+            malformed_original[field] = value
+            malformed_receipt[
+                "no_provider_rearm_original_block_receipt"
+            ] = malformed_original
+            malformed_task = SimpleNamespace(
+                task_cid=rearmed.task_cid,
+                task_alias=rearmed.task_alias,
+                revision=rearmed.revision,
+                status=rearmed.status,
+                body={
+                    **dict(rearmed.body),
+                    "completion_receipt": malformed_receipt,
+                },
+            )
+            assert daemon._no_provider_rearm_fence_state(malformed_task) == (
+                "invalid"
+            )
+            assert daemon._automatic_claim_forbidden(malformed_task)
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "fence_state",
+    ("pending", "admitting", "compensating"),
+)
+def test_count_zero_proof_backed_shared_fence_crash_states_compensate(
+    tmp_path: Path,
+    fence_state: str,
+) -> None:
+    """Recover every pre-admission crash using the exact count-zero proof."""
+
+    admitted = _count_zero_deferred_provider_rearm_task(tmp_path)
+    receipt = json.loads(json.dumps(admitted.body["completion_receipt"]))
+    fence = dict(receipt["no_provider_rearm_fence"])
+    retrying_revision = int(fence["retrying_revision"])
+    admitted_revision = int(fence["admitted_revision"])
+    if fence_state == "pending":
+        fence["state"] = "pending"
+        fence["admitted_revision"] = 0
+        task_revision = retrying_revision
+        task_status = "retrying"
+        expected_cas_count = 1
+    elif fence_state == "admitting":
+        fence["state"] = "admitting"
+        task_revision = retrying_revision + 1
+        task_status = "blocked"
+        expected_cas_count = 2
+    else:
+        fence["state"] = "compensating"
+        task_revision = admitted_revision
+        task_status = "retrying"
+        expected_cas_count = 1
+    receipt["no_provider_rearm_fence"] = fence
+    crash_task = SimpleNamespace(
+        task_cid=admitted.task_cid,
+        task_alias=admitted.task_alias,
+        revision=task_revision,
+        status=task_status,
+        body={"completion_receipt": receipt},
+    )
+    assert DatabaseImplementationDaemon._no_provider_rearm_fence_state(
+        crash_task
+    ) == fence_state
+
+    class SharedTaskSource:
+        def __init__(self, task: SimpleNamespace) -> None:
+            self.current = task
+
+        def list_tasks(self, *, limit: int) -> SimpleNamespace:
+            assert limit > 0
+            return SimpleNamespace(tasks=(self.current,))
+
+        def get(self, task_cid: str) -> SimpleNamespace | None:
+            if task_cid != self.current.task_cid:
+                return None
+            return self.current
+
+    source = SharedTaskSource(crash_task)
+    daemon = object.__new__(_StaleDispatchSelectorHarness)
+    daemon._selector_task_source = source
+    cas_calls: list[tuple[int, str]] = []
+
+    def exact_cas(
+        task_cid: str,
+        *,
+        expected_revision: int,
+        new_status: str,
+        receipt: dict[str, object],
+    ) -> SimpleNamespace:
+        current = source.current
+        assert task_cid == current.task_cid
+        assert expected_revision == current.revision
+        cas_calls.append((expected_revision, new_status))
+        updated = SimpleNamespace(
+            task_cid=current.task_cid,
+            task_alias=current.task_alias,
+            revision=current.revision + 1,
+            status=new_status,
+            body={"completion_receipt": dict(receipt)},
+        )
+        source.current = updated
+        return SimpleNamespace(task=updated)
+
+    daemon._cas_task_status_database = exact_cas
+    outcomes = daemon._reconcile_shared_no_provider_rearm_fences()
+
+    assert len(outcomes) == 1
+    assert outcomes[0]["prior_fence_state"] == fence_state
+    assert outcomes[0]["control_compensated"] is True
+    assert len(cas_calls) == expected_cas_count
+    assert source.current.status == "blocked"
+    assert source.current.revision == task_revision + expected_cas_count
+    compensation_receipt = source.current.body["completion_receipt"]
+    assert compensation_receipt["operation"] == (
+        "database_unknown_outcome_blocked"
+    )
+    assert compensation_receipt["unknown_outcome_rearm_count"] == 0
+    compensation = compensation_receipt["no_provider_rearm_compensation"]
+    assert compensation["saga_id"] == fence["saga_id"]
+    assert compensation["evidence_id"] == fence["evidence_id"]
+    assert compensation["retrying_revision"] == (
+        source.current.revision - 1
+    )
+    assert compensation["compensated_revision"] == source.current.revision
+
+
+def test_count_zero_shared_fence_compensation_schema_policy_is_closed(
+    tmp_path: Path,
+) -> None:
+    """Count zero is reserved for the exact proof-backed schema vocabulary."""
+
+    admitted = _count_zero_deferred_provider_rearm_task(tmp_path)
+    exact_nonconsuming_schemas = {
+        DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+        DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+        DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+    }
+    for schema in exact_nonconsuming_schemas:
+        receipt = json.loads(json.dumps(admitted.body["completion_receipt"]))
+        receipt["no_provider_rearm_evidence"]["schema"] = schema
+        task = SimpleNamespace(
+            task_cid=admitted.task_cid,
+            task_alias=admitted.task_alias,
+            revision=admitted.revision,
+            status=admitted.status,
+            body={"completion_receipt": receipt},
+        )
+        compensation = (
+            DatabaseImplementationDaemon._shared_no_provider_rearm_compensation_receipt(
+                task,
+                retrying_revision=task.revision,
+            )
+        )
+        assert compensation is not None, schema
+        assert compensation["unknown_outcome_rearm_count"] == 0
+
+    for schema in (
+        DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA,
+        DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA + "-near-miss",
+        "",
+    ):
+        receipt = json.loads(json.dumps(admitted.body["completion_receipt"]))
+        receipt["no_provider_rearm_evidence"]["schema"] = schema
+        task = SimpleNamespace(
+            task_cid=admitted.task_cid,
+            task_alias=admitted.task_alias,
+            revision=admitted.revision,
+            status=admitted.status,
+            body={"completion_receipt": receipt},
+        )
+        assert (
+            DatabaseImplementationDaemon._shared_no_provider_rearm_compensation_receipt(
+                task,
+                retrying_revision=task.revision,
+            )
+            is None
+        ), schema
