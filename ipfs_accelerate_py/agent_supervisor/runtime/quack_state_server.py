@@ -108,6 +108,10 @@ OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
 STATUS_FILENAME: Final = "quack-state-server.status.json"
 CONTROL_STOP_FILENAME: Final = "quack-state-server.stop"
+CONTROL_REISSUE_FILENAME: Final = "quack-state-server.reissue-handoff"
+HANDOFF_REISSUE_REQUEST_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/quack-handoff-reissue-request@1"
+)
 PROVISIONAL_OWNER_MARKER_GENERATION: Final[int] = 1
 
 LOOPBACK_HOSTS: Final[frozenset[str]] = frozenset(
@@ -1073,6 +1077,23 @@ class TokenVault:
             raise QuackStateServerTokenError("token is not available for handle")
         return self._token
 
+    def reissue_handoff(self) -> Path:
+        """Rewrite the coordinator handoff from the in-memory credential.
+
+        Launch retires the provider-readable file.  The live owner still holds
+        the token and can republish it for a later trusted coordinator without
+        minting a new generation.
+        """
+
+        handle = self._handle
+        token = self._token
+        if not handle or not token:
+            raise QuackStateServerTokenError("token is not available for handle")
+        path = self.state_dir / _token_handoff_filename(handle)
+        _atomic_write_text(path, token, mode=0o600)
+        self._path = path
+        return path
+
     def destroy(self) -> None:
         self._token = None
         if self._path is not None:
@@ -1552,6 +1573,18 @@ class QuackStateServer:
 
     def stop_control_path(self) -> Path:
         return self.config.state_dir / CONTROL_STOP_FILENAME
+
+    def reissue_handoff_control_path(self) -> Path:
+        return self.config.state_dir / CONTROL_REISSUE_FILENAME
+
+    def honor_handoff_reissue_request(self) -> dict[str, Any] | None:
+        """Republish the coordinator handoff when a confined request is present."""
+
+        return honor_handoff_reissue_request(
+            state_dir=self.config.state_dir,
+            vault=self._vault,
+            request_path=self.reissue_handoff_control_path(),
+        )
 
     # -- capability + migration -------------------------------------------
 
