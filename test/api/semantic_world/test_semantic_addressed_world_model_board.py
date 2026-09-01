@@ -4997,7 +4997,7 @@ def test_m39_dispatch_precedes_m38_and_requires_receipt_last() -> None:
     assert "event_cursor != _M39_TARGET_EVENT_WATERMARK" in core
 
 
-def test_m39_stale_owner_recovery_requires_a_generation_31_successor() -> None:
+def test_m39_stale_owner_recovery_requires_a_generation_32_successor() -> None:
     operator = _load(
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         "sawm_operator_m39_stale_recovery_test",
@@ -5012,8 +5012,8 @@ def test_m39_stale_owner_recovery_requires_a_generation_31_successor() -> None:
     with pytest.raises(
         operator.OperatorError,
         match=(
-            "M43 binds a cleanly stopped generation-30 owner; use the sealed "
-            "generation-31 quack-start path"
+            "binds a cleanly stopped generation-31 owner; use the sealed "
+            "generation-32 quack-start path instead of stale-owner recovery"
         ),
     ):
         operator._recover_stale_quack(config)
