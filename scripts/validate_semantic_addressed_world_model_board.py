@@ -4125,7 +4125,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 or (
                     identity_state == "sealed"
                     and expected_seal_cid
-                    != "sha256:282c5e53a751394f50c6b5a4a6d9a94541e2dc511fca0bff47f696d50dc4e1af"
+                    != "sha256:664af21f470ada7e4d4bf02313df473ed345c539b122f30036db8c8ee171a8eb"
                 )
                 or expected.get("target_event_watermark") != 291
                 or expected.get("target_projection_cid")

@@ -1125,7 +1125,7 @@ def _active_source_repair_materialization(
             or expected.get("migration_kind") != _M38_SUCCESSOR_KEY
             or expected.get("control_recorded_at") != "2026-09-01T01:10:00Z"
             or reference.get("authority_cid")
-            != "sha256:282c5e53a751394f50c6b5a4a6d9a94541e2dc511fca0bff47f696d50dc4e1af"
+            != "sha256:664af21f470ada7e4d4bf02313df473ed345c539b122f30036db8c8ee171a8eb"
             or not isinstance(binding, Mapping)
             or binding.get("store_id") != _M38_STORE_ID
             or binding.get("store_generation") != _M38_GENERATION
