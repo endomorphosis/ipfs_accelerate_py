@@ -6,6 +6,7 @@ import errno
 import hashlib
 import json
 import os
+import py_compile
 import stat
 import subprocess
 from dataclasses import replace
@@ -31,6 +32,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA,
+    CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA_V2,
+    CROSS_ATTEMPT_IGNORED_RUNTIME_ARTIFACT_OBSERVATION_SCHEMA,
     CROSS_ATTEMPT_LIFECYCLE_AUTHORITY_SCHEMA,
     CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME,
     CROSS_ATTEMPT_PROTECTED_STATE_CLEARANCE_SCHEMA,
@@ -1325,11 +1328,16 @@ def _cross_attempt_recovery_fixture(
     git("config", "user.name", "Portal Test")
     git("config", "user.email", "portal@example.invalid")
     (repository / "seed.py").write_text("SEED = True\n", encoding="utf-8")
+    (repository / "ipfs_accelerate_py").mkdir()
+    (repository / "ipfs_accelerate_py/seed.py").write_text(
+        "PACKAGE_SEED = True\n",
+        encoding="utf-8",
+    )
     (repository / "control.todo.md").write_text(
         "# protected control\n",
         encoding="utf-8",
     )
-    git("add", "seed.py", "control.todo.md")
+    git("add", "seed.py", "ipfs_accelerate_py/seed.py", "control.todo.md")
     git("commit", "-q", "-m", "seed")
 
     if nested_output_path:
@@ -2020,6 +2028,10 @@ def test_bridge_content_addresses_exact_declared_nested_output_before_clearance(
     assert preservation["schema"] == (
         CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA
     )
+    assert CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA == (
+        "ipfs_accelerate_py/agent-supervisor/"
+        "database-cross-attempt-declared-output-preservation@1"
+    )
     assert preservation["outputs"] == [
         {
             "blob_filename": blob_paths[0].name,
@@ -2120,6 +2132,212 @@ def test_bridge_attests_live_shape_legacy_rescue_and_preserves_nested_output(
         f"{preservation['preservation_id']}"
     )
     assert portals and portals[0].run_count == 1
+
+
+def _create_ignored_tracked_python_cache(workspace: Path) -> Path:
+    git_path = subprocess.run(
+        ["git", "rev-parse", "--git-path", "info/exclude"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    exclude_path = Path(git_path)
+    if not exclude_path.is_absolute():
+        exclude_path = workspace / exclude_path
+    with exclude_path.open("a", encoding="utf-8") as stream:
+        stream.write("__pycache__/\n")
+    compiled = py_compile.compile(
+        str(workspace / "ipfs_accelerate_py/seed.py"),
+        doraise=True,
+    )
+    cache_path = Path(compiled)
+    assert cache_path.is_file()
+    return cache_path
+
+
+def test_bridge_attests_ignored_tracked_python_cache_without_deleting_it(
+    tmp_path: Path,
+) -> None:
+    nested_path = "ipfs_datasets_py/program_execution_trace.py"
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+            nested_output_path=nested_path,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    cache_path = _create_ignored_tracked_python_cache(workspace)
+    cache_bytes = cache_path.read_bytes()
+
+    result = bridge.run_provider(attempt)
+
+    assert result["accepted"] is True
+    assert cache_path.read_bytes() == cache_bytes
+    preservation_paths = tuple(
+        Path(predecessor.state_dir).glob(
+            "cross-attempt-declared-output-preservation-*.json"
+        )
+    )
+    assert len(preservation_paths) == 1
+    preservation = json.loads(
+        preservation_paths[0].read_text(encoding="utf-8")
+    )
+    assert preservation["schema"] == (
+        CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA_V2
+    )
+    observation = preservation["ignored_runtime_artifacts"]
+    assert observation["schema"] == (
+        CROSS_ATTEMPT_IGNORED_RUNTIME_ARTIFACT_OBSERVATION_SCHEMA
+    )
+    assert observation["artifact_count"] == 1
+    assert observation["raw_bytes_preserved_in_worktree"] is True
+    assert observation["raw_bytes_copied_to_receipt"] is False
+    assert observation["payloads_executed"] is False
+    assert observation["admitted_as_declared_output"] is False
+    assert observation["authoritative"] is False
+    assert observation["task_completion_authority"] is False
+    artifact = observation["artifacts"][0]
+    assert artifact["path"] == cache_path.relative_to(workspace).as_posix()
+    assert artifact["source_path"] == "ipfs_accelerate_py/seed.py"
+    assert artifact["sha256"] == "sha256:" + hashlib.sha256(
+        cache_bytes
+    ).hexdigest()
+    assert artifact["executed"] is False
+    assert artifact["admitted_as_declared_output"] is False
+    assert artifact["authoritative"] is False
+    assert cache_path.name not in json.dumps(preservation["outputs"])
+    assert portals and portals[0].run_count == 1
+
+
+@pytest.mark.parametrize(
+    "unsafe_ignored_kind",
+    (
+        "unrelated",
+        "bad_magic",
+        "untracked_source",
+        "wrong_tag",
+        "symlink",
+        "writable_mode",
+        "writable_source",
+    ),
+)
+def test_bridge_still_rejects_every_unsafe_top_level_ignored_artifact(
+    tmp_path: Path,
+    unsafe_ignored_kind: str,
+) -> None:
+    nested_path = "ipfs_datasets_py/program_execution_trace.py"
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+            nested_output_path=nested_path,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    cache_path = _create_ignored_tracked_python_cache(workspace)
+    if unsafe_ignored_kind == "unrelated":
+        exclude_path = Path(
+            subprocess.run(
+                ["git", "rev-parse", "--git-path", "info/exclude"],
+                cwd=workspace,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+        if not exclude_path.is_absolute():
+            exclude_path = workspace / exclude_path
+        with exclude_path.open("a", encoding="utf-8") as stream:
+            stream.write("/runtime.cache\n")
+        (workspace / "runtime.cache").write_bytes(b"not authority\n")
+    elif unsafe_ignored_kind == "bad_magic":
+        payload = bytearray(cache_path.read_bytes())
+        payload[:4] = b"BAD!"
+        cache_path.write_bytes(payload)
+    elif unsafe_ignored_kind == "untracked_source":
+        source = workspace / "untracked.py"
+        source.write_text("VALUE = 1\n", encoding="utf-8")
+        py_compile.compile(str(source), doraise=True)
+        source.unlink()
+    elif unsafe_ignored_kind == "wrong_tag":
+        cache_path.rename(cache_path.with_name("seed.cpython-999.pyc"))
+    elif unsafe_ignored_kind == "symlink":
+        cache_path.unlink()
+        cache_path.symlink_to("../seed.py")
+    elif unsafe_ignored_kind == "writable_mode":
+        cache_path.chmod(0o666)
+    else:
+        (workspace / "ipfs_accelerate_py/seed.py").chmod(0o666)
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_declared_output_top_level_ignored",
+    ):
+        bridge.run_provider(attempt)
+
+    assert not tuple(
+        prior_root.glob("cross-attempt-declared-output-preservation-*.json")
+    )
+    assert not tuple(
+        prior_root.glob("cross-attempt-protected-state-retirement-*.json")
+    )
+    current = store.load_workspace(workspace)
+    assert current is not None and current.is_nonterminal
+    assert not portals or portals[0].run_count == 0
+
+
+def test_bridge_reobserves_ignored_python_cache_before_retirement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    nested_path = "ipfs_datasets_py/program_execution_trace.py"
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+            nested_output_path=nested_path,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    cache_path = _create_ignored_tracked_python_cache(workspace)
+    original = bridge._declared_nested_output_observation
+    observations = 0
+
+    def mutate_after_first_observation(**kwargs: object) -> object:
+        nonlocal observations
+        observed = original(**kwargs)
+        observations += 1
+        if observations == 1:
+            payload = bytearray(cache_path.read_bytes())
+            payload[-1] ^= 1
+            cache_path.write_bytes(payload)
+        return observed
+
+    monkeypatch.setattr(
+        bridge,
+        "_declared_nested_output_observation",
+        mutate_after_first_observation,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_declared_output_changed_during_preservation",
+    ):
+        bridge.run_provider(attempt)
+
+    assert observations == 2
+    assert not tuple(
+        prior_root.glob("cross-attempt-protected-state-retirement-*.json")
+    )
+    current = store.load_workspace(workspace)
+    assert current is not None and current.is_nonterminal
+    assert not portals or portals[0].run_count == 0
 
 
 @pytest.mark.parametrize(

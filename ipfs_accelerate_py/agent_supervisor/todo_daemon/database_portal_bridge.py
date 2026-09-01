@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import errno
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -24,6 +25,7 @@ import secrets
 import shlex
 import stat
 import subprocess
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -119,6 +121,14 @@ CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-cross-attempt-declared-output-preservation@1"
 )
+CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA_V2: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-cross-attempt-declared-output-preservation@2"
+)
+CROSS_ATTEMPT_IGNORED_RUNTIME_ARTIFACT_OBSERVATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-cross-attempt-ignored-runtime-artifact-observation@1"
+)
 CROSS_ATTEMPT_PROTECTED_STATE_CLEARANCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-cross-attempt-protected-state-clearance@1"
@@ -152,6 +162,10 @@ _PROTECTED_STATE_ADOPTION_PREFIX: Final[str] = (
 _MAX_PRESERVED_DECLARED_OUTPUT_FILES: Final[int] = 64
 _MAX_PRESERVED_DECLARED_OUTPUT_FILE_BYTES: Final[int] = 4 * 1024 * 1024
 _MAX_PRESERVED_DECLARED_OUTPUT_TOTAL_BYTES: Final[int] = 16 * 1024 * 1024
+_MAX_PRESERVED_IGNORED_RUNTIME_ARTIFACTS: Final[int] = 64
+_MAX_PRESERVED_IGNORED_RUNTIME_ARTIFACT_TOTAL_BYTES: Final[int] = (
+    16 * 1024 * 1024
+)
 _SUPERSEDED_LIFECYCLE_TERMINAL_REASON: Final[str] = (
     "superseded_database_attempt_preserved"
 )
@@ -2992,6 +3006,192 @@ class DatabasePortalExecutionBridge:
             for match in _SECRET_ASSIGNMENT_RE.finditer(text)
         )
 
+    def _ignored_runtime_artifact_observation(
+        self,
+        *,
+        workspace: Path,
+        raw_paths: bytes,
+    ) -> dict[str, Any]:
+        """Attest retained CPython caches without consuming or deleting them.
+
+        Historical provider processes could leave ignored ``__pycache__``
+        files in an otherwise preserved worktree.  They are not task output,
+        source, or authority, but rejecting them forever prevents the exact
+        declared nested output from being content-addressed.  This narrow
+        adapter accepts only stable, single-link bytecode caches for an exact
+        tracked source file and never deserializes or executes their payload.
+        Every other ignored path continues to fail closed.
+        """
+
+        reason = "cross_attempt_declared_output_top_level_ignored"
+        paths = self._nul_path_records(raw_paths, reason=reason)
+        if not paths:
+            return {}
+        if len(paths) > _MAX_PRESERVED_IGNORED_RUNTIME_ARTIFACTS:
+            raise DatabasePortalBridgeDeferred(reason)
+        cache_tag = str(getattr(sys.implementation, "cache_tag", "") or "")
+        if re.fullmatch(r"cpython-[0-9]+", cache_tag) is None:
+            raise DatabasePortalBridgeDeferred(reason)
+        try:
+            workspace_root = workspace.resolve(strict=True)
+            workspace_identity = workspace.lstat()
+        except OSError as exc:
+            raise DatabasePortalBridgeDeferred(reason) from exc
+        artifacts: list[dict[str, Any]] = []
+        total_bytes = 0
+        filename_pattern = re.compile(
+            rf"(?P<stem>[^/]+)\.{re.escape(cache_tag)}"
+            r"(?:\.opt-(?P<optimization>[12]))?\.pyc"
+        )
+        for relative_path in sorted(paths):
+            candidate = PurePosixPath(relative_path)
+            if (
+                len(candidate.parts) < 3
+                or candidate.parts[0] != "ipfs_accelerate_py"
+                or candidate.parts[-2] != "__pycache__"
+            ):
+                raise DatabasePortalBridgeDeferred(reason)
+            filename = candidate.parts[-1]
+            matched = filename_pattern.fullmatch(filename)
+            if matched is None:
+                raise DatabasePortalBridgeDeferred(reason)
+            source_path = PurePosixPath(
+                *candidate.parts[:-2],
+                f"{matched.group('stem')}.py",
+            ).as_posix()
+            source_path = self._canonical_recovery_path(source_path)
+            artifact = workspace_root.joinpath(*candidate.parts)
+            source = workspace_root.joinpath(*PurePosixPath(source_path).parts)
+            try:
+                if (
+                    artifact.resolve(strict=True) != artifact
+                    or source.resolve(strict=True) != source
+                ):
+                    raise DatabasePortalBridgeDeferred(reason)
+                artifact_bytes, artifact_identity = _stable_regular_bytes(
+                    artifact,
+                    noun="ignored CPython cache artifact",
+                )
+                source_bytes, source_identity = _stable_regular_bytes(
+                    source,
+                    noun="tracked CPython cache source",
+                )
+            except (DatabasePortalBridgeError, OSError, RuntimeError) as exc:
+                raise DatabasePortalBridgeDeferred(reason) from exc
+            artifact_mode = stat.S_IMODE(artifact_identity.st_mode)
+            source_mode = stat.S_IMODE(source_identity.st_mode)
+            if (
+                artifact_identity.st_uid != os.geteuid()
+                or source_identity.st_uid != os.geteuid()
+                or artifact_identity.st_gid != workspace_identity.st_gid
+                or source_identity.st_gid != workspace_identity.st_gid
+                or not artifact_mode & stat.S_IRUSR
+                or artifact_mode & (stat.S_IWOTH | 0o111)
+                or not source_mode & stat.S_IRUSR
+                or source_mode & stat.S_IWOTH
+                or len(artifact_bytes) < 16
+                or artifact_bytes[:4] != importlib.util.MAGIC_NUMBER
+            ):
+                raise DatabasePortalBridgeDeferred(reason)
+            tracked = self._git_observation(
+                workspace,
+                "ls-files",
+                "--stage",
+                "-z",
+                "--",
+                source_path,
+                text=False,
+            )
+            tracked_records = tuple(
+                value
+                for value in bytes(tracked.stdout or b"").split(b"\0")
+                if value
+            )
+            if tracked.returncode != 0 or len(tracked_records) != 1:
+                raise DatabasePortalBridgeDeferred(reason)
+            try:
+                index_fields, indexed_path = tracked_records[0].split(b"\t", 1)
+                index_mode, source_blob_oid, stage = index_fields.split(b" ")
+                decoded_indexed_path = indexed_path.decode("utf-8", errors="strict")
+                decoded_mode = index_mode.decode("ascii")
+                decoded_blob_oid = source_blob_oid.decode("ascii")
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise DatabasePortalBridgeDeferred(reason) from exc
+            if (
+                decoded_indexed_path != source_path
+                or decoded_mode not in {"100644", "100755"}
+                or stage != b"0"
+                or re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", decoded_blob_oid)
+                is None
+            ):
+                raise DatabasePortalBridgeDeferred(reason)
+            flags = int.from_bytes(artifact_bytes[4:8], "little")
+            if flags == 0:
+                source_mtime = int.from_bytes(artifact_bytes[8:12], "little")
+                source_size = int.from_bytes(artifact_bytes[12:16], "little")
+                if (
+                    source_mtime != (int(source_identity.st_mtime) & 0xFFFFFFFF)
+                    or source_size != (len(source_bytes) & 0xFFFFFFFF)
+                ):
+                    raise DatabasePortalBridgeDeferred(reason)
+                invalidation_mode = "timestamp"
+            elif flags in {1, 3}:
+                if artifact_bytes[8:16] != importlib.util.source_hash(source_bytes):
+                    raise DatabasePortalBridgeDeferred(reason)
+                invalidation_mode = (
+                    "checked_hash" if flags == 3 else "unchecked_hash"
+                )
+            else:
+                raise DatabasePortalBridgeDeferred(reason)
+            total_bytes += len(artifact_bytes)
+            if total_bytes > _MAX_PRESERVED_IGNORED_RUNTIME_ARTIFACT_TOTAL_BYTES:
+                raise DatabasePortalBridgeDeferred(reason)
+            artifacts.append(
+                {
+                    "path": relative_path,
+                    "source_path": source_path,
+                    "source_index_mode": decoded_mode,
+                    "source_blob_oid": decoded_blob_oid,
+                    "source_sha256": _sha256_bytes(source_bytes),
+                    "cache_tag": cache_tag,
+                    "optimization": int(matched.group("optimization") or 0),
+                    "invalidation_mode": invalidation_mode,
+                    "magic_number_hex": importlib.util.MAGIC_NUMBER.hex(),
+                    "mode": artifact_mode,
+                    "device": int(artifact_identity.st_dev),
+                    "inode": int(artifact_identity.st_ino),
+                    "mtime_ns": int(artifact_identity.st_mtime_ns),
+                    "ctime_ns": int(artifact_identity.st_ctime_ns),
+                    "size": len(artifact_bytes),
+                    "sha256": _sha256_bytes(artifact_bytes),
+                    "source_mode": source_mode,
+                    "source_device": int(source_identity.st_dev),
+                    "source_inode": int(source_identity.st_ino),
+                    "source_mtime_ns": int(source_identity.st_mtime_ns),
+                    "source_ctime_ns": int(source_identity.st_ctime_ns),
+                    "preserved_in_worktree": True,
+                    "deleted": False,
+                    "executed": False,
+                    "admitted_as_declared_output": False,
+                    "authoritative": False,
+                }
+            )
+        return {
+            "schema": (
+                CROSS_ATTEMPT_IGNORED_RUNTIME_ARTIFACT_OBSERVATION_SCHEMA
+            ),
+            "artifact_kind": "cpython_bytecode_cache",
+            "artifact_count": len(artifacts),
+            "total_bytes": total_bytes,
+            "artifacts": artifacts,
+            "raw_bytes_preserved_in_worktree": True,
+            "raw_bytes_copied_to_receipt": False,
+            "payloads_executed": False,
+            "admitted_as_declared_output": False,
+            "authoritative": False,
+            "task_completion_authority": False,
+        }
+
     def _declared_nested_output_observation(
         self,
         *,
@@ -3047,29 +3247,35 @@ class DatabasePortalExecutionBridge:
             observed = self._git_observation(workspace, *arguments)
             if observed.returncode != 0:
                 raise DatabasePortalBridgeDeferred(reason)
-        for arguments, reason in (
-            (
-                ("ls-files", "--others", "--exclude-standard", "-z"),
-                "cross_attempt_declared_output_top_level_untracked",
-            ),
-            (
-                (
-                    "ls-files",
-                    "--others",
-                    "--ignored",
-                    "--exclude-standard",
-                    "-z",
-                ),
-                "cross_attempt_declared_output_top_level_ignored",
-            ),
-        ):
-            observed = self._git_observation(
-                workspace,
-                *arguments,
-                text=False,
+        untracked = self._git_observation(
+            workspace,
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "-z",
+            text=False,
+        )
+        if untracked.returncode != 0 or bytes(untracked.stdout or b""):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_top_level_untracked"
             )
-            if observed.returncode != 0 or bytes(observed.stdout or b""):
-                raise DatabasePortalBridgeDeferred(reason)
+        ignored = self._git_observation(
+            workspace,
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "-z",
+            text=False,
+        )
+        if ignored.returncode != 0:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_top_level_ignored"
+            )
+        ignored_runtime_artifacts = self._ignored_runtime_artifact_observation(
+            workspace=workspace,
+            raw_paths=bytes(ignored.stdout or b""),
+        )
 
         gitlinks = self._direct_gitlinks(workspace)
         output_records: list[dict[str, Any]] = []
@@ -3298,37 +3504,41 @@ class DatabasePortalExecutionBridge:
                 "cross_attempt_declared_output_top_level_status_ambiguous"
             )
         workspace_identity = workspace.lstat()
-        return (
-            {
-                "schema": CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA,
-                "task_id": str(record.task_id),
-                "attempt": int(record.attempt),
-                "prior_attempt_id": prior_binding["attempt_id"],
-                "prior_binding_id": prior_binding["binding_id"],
-                "lifecycle_record_id": str(record.record_id),
-                "workspace_path": str(workspace),
-                "workspace_device": int(workspace_identity.st_dev),
-                "workspace_inode": int(workspace_identity.st_ino),
-                "branch": branch_name,
-                "head": head_id,
-                "tree": tree_id,
-                "projection_sha256": _sha256_file(prior_paths.task_projection),
-                "declared_outputs": sorted(declared_outputs),
-                "dirty_gitlinks": sorted(dirty_gitlinks),
-                "outputs": sorted(
-                    output_records,
-                    key=lambda item: item["repository_path"],
-                ),
-                "total_bytes": total_bytes,
-                "worktree_deleted": False,
-                "provider_dispatched": False,
-                "mutation_authority": False,
-                "merge_authority": False,
-                "task_completion_authority": False,
-                "normal_validation_required": True,
-            },
-            blob_payloads,
-        )
+        observation = {
+            "schema": (
+                CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA_V2
+                if ignored_runtime_artifacts
+                else CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA
+            ),
+            "task_id": str(record.task_id),
+            "attempt": int(record.attempt),
+            "prior_attempt_id": prior_binding["attempt_id"],
+            "prior_binding_id": prior_binding["binding_id"],
+            "lifecycle_record_id": str(record.record_id),
+            "workspace_path": str(workspace),
+            "workspace_device": int(workspace_identity.st_dev),
+            "workspace_inode": int(workspace_identity.st_ino),
+            "branch": branch_name,
+            "head": head_id,
+            "tree": tree_id,
+            "projection_sha256": _sha256_file(prior_paths.task_projection),
+            "declared_outputs": sorted(declared_outputs),
+            "dirty_gitlinks": sorted(dirty_gitlinks),
+            "outputs": sorted(
+                output_records,
+                key=lambda item: item["repository_path"],
+            ),
+            "total_bytes": total_bytes,
+            "worktree_deleted": False,
+            "provider_dispatched": False,
+            "mutation_authority": False,
+            "merge_authority": False,
+            "task_completion_authority": False,
+            "normal_validation_required": True,
+        }
+        if ignored_runtime_artifacts:
+            observation["ignored_runtime_artifacts"] = ignored_runtime_artifacts
+        return observation, blob_payloads
 
     def _preserve_declared_nested_outputs(
         self,
