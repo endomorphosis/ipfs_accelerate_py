@@ -27,6 +27,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "committed_m38_evidence_reconciliation_successor_materialization",
     "pre_authoritative_custody_restart_successor_materialization",
     "post_reboot_generation_restart_successor_materialization",
     "operator_task_binding_correction_successor_materialization",
@@ -4560,6 +4561,207 @@ def test_m11_pair_receipt_last_rehearsal_is_idempotent_and_tamper_closed(
         materializer._store_sha256(control),
         materializer._store_sha256(coordination),
     )
+
+
+class _M39OneRowResult:
+    def __init__(self, row: object | None) -> None:
+        self._row = row
+
+    def fetchone(self) -> object | None:
+        return self._row
+
+
+class _M39CommittedEventConnection:
+    def __init__(self, evidence: object, event: object) -> None:
+        self.evidence = evidence
+        self.event = event
+
+    def execute(self, query: str, _parameters: object = None) -> _M39OneRowResult:
+        del _parameters
+        if "FROM evidence_nodes" in query:
+            return _M39OneRowResult(self.evidence)
+        if "FROM domain_events" in query:
+            return _M39OneRowResult(self.event)
+        raise AssertionError(f"unexpected query: {query}")
+
+
+def test_m39_reconstructs_the_exact_committed_m38_event_not_current_controls() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m39_historical_event_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    historical = materializer._m39_historical_m38_authority()
+    body, evidence, event = materializer._m39_expected_historical_m38_rows(config)
+
+    assert materializer._identity(historical) == materializer._M39_M38_AUTHORITY_CID
+    assert materializer._identity(body) == materializer._M39_M38_EVIDENCE_DIGEST
+    assert body["current_source_head"] == materializer._M39_M38_SOURCE_HEAD
+    assert body["current_source_tree"] == materializer._M39_M38_SOURCE_TREE
+    assert body["authorization_cid"] == materializer._M39_M38_AUTHORITY_CID
+    assert evidence[0] == materializer._M39_M38_EVIDENCE_ID
+    assert event[0] == materializer._M39_M38_EVENT_ID
+    assert materializer._identity(
+        materializer._expected_m38_pre_authoritative_custody_restart_authority()
+    ) != materializer._M39_M38_AUTHORITY_CID
+
+
+def test_m39_authority_binds_c1_repair_lineage_and_closed_deltas() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m39_authority_test",
+    )
+    authority = (
+        materializer._expected_m39_committed_m38_evidence_reconciliation_authority()
+    )
+    reference = materializer._m39_authority_reference()
+    chain = authority["source_chain"]
+
+    assert authority["schema"] == (
+        "sawm/committed-m38-evidence-reconciliation-successor-authorization@1"
+    )
+    assert reference == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M39",
+        "authority_cid": materializer._identity(authority),
+    }
+    assert chain["base_control_commit"] == materializer._M39_BASE_CONTROL_COMMIT
+    assert chain["json_comparison_repair_commit"] == (
+        "146653af91fe3846cb98e49a54ae1173e3a3dc66"
+    )
+    assert chain["canonical_envelope_repair_commit"] == (
+        "32d2966c4944157d664748c536cfa167f7ae38f5"
+    )
+    assert chain["materializer_repair_commit"] == (
+        "b581305f42ad4eda6b3d749680e79107c1c150b3"
+    )
+    assert chain["final_control_parent"] == chain["materializer_repair_commit"]
+    assert chain["bounded_repair_commit_count"] == 3
+    assert authority["exact_changes"]["evidence_node_changes"] == 1
+    assert authority["exact_changes"]["evidence_event_changes"] == 1
+    assert authority["exact_changes"]["validation_event_changes"] == 0
+    assert authority["exact_changes"]["accepted_completion_changes"] == 0
+
+
+def test_m39_verifies_full_historical_row_and_closed_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m39_committed_event_verifier_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    _body, evidence, event = materializer._m39_expected_historical_m38_rows(config)
+    projection = {
+        "evidence_node_count": 48,
+        "evidence_event_count": 37,
+        "validation_event_count": 11,
+        "passed_validation_event_count": 11,
+        "validation_evidence_node_count": 11,
+    }
+    monkeypatch.setattr(
+        materializer,
+        "_m38_evidence_projection_from_events",
+        lambda *_args, **_kwargs: projection,
+    )
+    result = materializer._verify_m39_committed_m38_event(
+        _M39CommittedEventConnection(evidence, event), config
+    )
+    assert result["prior_m38_event_id"] == materializer._M39_M38_EVENT_ID
+    assert result["prior_m38_evidence_id"] == materializer._M39_M38_EVIDENCE_ID
+    assert result["prior_evidence_node_count"] == 48
+    assert result["prior_evidence_event_count"] == 37
+    assert result["prior_validation_event_count"] == 11
+
+    tampered_event = tuple(event[:9]) + ("{}",)
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="committed M38 event/evidence rows differ",
+    ):
+        materializer._verify_m39_committed_m38_event(
+            _M39CommittedEventConnection(evidence, tampered_event), config
+        )
+
+
+def test_m39_receipt_publication_is_last_idempotent_and_nofollow(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m39_receipt_test",
+    )
+    control = tmp_path / "control.duckdb"
+    control.write_bytes(b"not-opened")
+    expected = {"schema": "test/m39-receipt@1", "receipt_cid": "sha256:test"}
+
+    first = materializer._ensure_m39_source_successor_receipt(
+        tmp_path, control, expected
+    )
+    second = materializer._ensure_m39_source_successor_receipt(
+        tmp_path, control, expected
+    )
+    assert first == second == expected
+    assert json.loads(
+        (tmp_path / "m39-source-successor-receipt.json").read_text(
+            encoding="utf-8"
+        )
+    ) == expected
+
+    (tmp_path / "m39-source-successor-receipt.json").unlink()
+    (tmp_path / "m39-source-successor-receipt.json").symlink_to(control)
+    with pytest.raises(materializer.MigrationRequired):
+        materializer._ensure_m39_source_successor_receipt(
+            tmp_path, control, expected
+        )
+
+
+def test_m39_dispatch_precedes_m38_and_requires_receipt_last() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m39_dispatch_test",
+    )
+    check_source = inspect.getsource(materializer.check_materialized)
+    materialize_source = inspect.getsource(materializer.materialize)
+    m39 = "_m39_successor_configured_on_any_surface"
+    m38 = "_m38_successor_configured_on_any_surface"
+
+    assert check_source.index(m39) < check_source.index(m38)
+    assert materialize_source.index(m39) < materialize_source.index(m38)
+    core = inspect.getsource(materializer._materialize_m39)
+    assert core.index("_verify_m39_live_materialization") < core.index(
+        "_ensure_m39_source_successor_receipt"
+    )
+    assert "event_cursor == _M39_PRIOR_EVENT_WATERMARK" in core
+    assert "event_cursor != _M39_TARGET_EVENT_WATERMARK" in core
+
+
+def test_m39_live_verifier_requires_exact_plus_one_evidence_only_delta() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m39_delta_test",
+    )
+    source = inspect.getsource(materializer._verify_m39_live_materialization)
+
+    assert "_verify_m39_committed_m38_event" in source
+    assert "_verify_m38_evidence_projection" in source
+    assert "_M39_TARGET_EVIDENCE_NODE_COUNT" in source
+    assert "_M39_TARGET_EVIDENCE_EVENT_COUNT" in source
+    assert 'prior["prior_evidence_node_count"] + 1' in source
+    assert 'prior["prior_evidence_event_count"] + 1' in source
+    assert 'prior["prior_validation_event_count"]' in source
+    assert 'prior["prior_passed_validation_event_count"]' in source
+    assert "_M39_LIVE_SERVER_ID" in source
+    assert "_M39_LIVE_PROCESS_BIRTH_ID" in source
 
 
 def test_m21_generation_realization_authority_is_exact_and_presence_first() -> None:
