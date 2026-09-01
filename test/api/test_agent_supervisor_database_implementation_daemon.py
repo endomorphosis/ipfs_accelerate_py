@@ -37,6 +37,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_COMPLETE,
+    ATTEMPT_PHASE_CONTEXT,
     ATTEMPT_PHASE_EFFECT,
     ATTEMPT_PHASE_PROVIDER,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
@@ -117,6 +118,7 @@ def _open_daemon(
     strict_task_sharding: bool = False,
     task_prefix: str = "",
     max_task_attempts: int = 0,
+    callbacks_bound: bool = True,
 ) -> DatabaseImplementationDaemon:
     database_path = tmp_path / "control.duckdb"
     coordination_path = tmp_path / "coordination.duckdb"
@@ -153,9 +155,9 @@ def _open_daemon(
         pid_path=None,
         queue_path=None,
         lease_ms=lease_ms,
-        provider_fn=provider_fn or default_provider,
-        effect_fn=effect_fn or effect,
-        validation_fn=validation_fn,
+        provider_fn=(provider_fn or default_provider) if callbacks_bound else None,
+        effect_fn=(effect_fn or effect) if callbacks_bound else None,
+        validation_fn=validation_fn if callbacks_bound else None,
         clock_ms=clock_ms,
         task_shard_count=task_shard_count,
         task_shard_index=task_shard_index,
@@ -510,6 +512,53 @@ def test_identical_materializer_replay_cannot_rearm_exhausted_budget(
         daemon.close()
 
 
+def test_unreviewed_nested_portal_rearm_evidence_is_claim_fenced() -> None:
+    """An empty shortcut identity is invalid, never merely inapplicable."""
+
+    shortcut = SimpleNamespace(
+        task_cid="task:cid:pctdd-034",
+        revision=9,
+        status="retrying",
+        body={
+            "completion_receipt": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "nested-portal-rearm-evidence@1"
+                ),
+                "evidence_id": "",
+            }
+        },
+    )
+
+    assert (
+        DatabaseImplementationDaemon._no_provider_rearm_fence_state(shortcut)
+        == "invalid"
+    )
+    assert DatabaseImplementationDaemon._automatic_claim_forbidden(shortcut)
+
+    nested = SimpleNamespace(
+        **{
+            **vars(shortcut),
+            "body": {
+                "completion_receipt": {
+                    "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                    "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+                    "no_provider_rearm_evidence_id": "",
+                    "no_provider_rearm_evidence": {
+                        "schema": "nested-portal-rearm-evidence@1",
+                        "evidence_id": "",
+                    },
+                }
+            },
+        }
+    )
+    assert (
+        DatabaseImplementationDaemon._no_provider_rearm_fence_state(nested)
+        == "invalid"
+    )
+    assert DatabaseImplementationDaemon._automatic_claim_forbidden(nested)
+
+
 def test_identical_materializer_replay_preserves_live_claim_revision(
     tmp_path: Path,
 ) -> None:
@@ -813,6 +862,1039 @@ def test_crash_reconciler_preserves_dispatch_process_for_automatic_rearm(
         )
     finally:
         successor.close()
+
+
+def test_exact_interrupted_implementation_refunds_attempt_two_without_widening_unknown_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Match the live attempt-2/count-1 recovery without a generic rearm."""
+
+    first = _open_daemon(
+        tmp_path,
+        session="session:interrupted-refund",
+        max_task_attempts=2,
+    )
+    try:
+        first.materialize_population(_population(1))
+        attempt_one = first.claim_next()
+        assert attempt_one is not None
+        first._begin_callback_dispatch(
+            attempt_one,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt_one.attempt_id}",
+        )
+        first._finalize_failed_attempt(
+            attempt_one,
+            reason="provider_dispatch_outcome_unknown",
+            force_block=True,
+            unknown_authority=True,
+        )
+    finally:
+        first.close()
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:interrupted-refund",
+        max_task_attempts=2,
+    )
+    callback_calls: list[str] = []
+    try:
+        generic = daemon.reconcile_blocked_unknown_outcome_tasks()
+        assert len(generic) == 1
+        assert generic[0]["unknown_outcome_rearm_count"] == 1
+        attempt_two = daemon.claim_next()
+        assert attempt_two is not None
+        assert attempt_two.attempt_number == 2
+        daemon._begin_callback_dispatch(
+            attempt_two,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt_two.attempt_id}",
+        )
+        daemon._record_callback_dispatch_outcome(
+            attempt_two,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt_two.attempt_id}",
+            outcome="raised",
+            body={
+                "exception_type": "DatabasePortalBridgeError",
+                "message": "interrupted nested implementation recovered",
+            },
+        )
+        failed, receipt = daemon._finalize_failed_attempt(
+            attempt_two,
+            reason="callback_authority_incomplete_blocked",
+            force_block=True,
+            unknown_authority=True,
+        )
+        assert failed.status == "failed"
+        assert receipt["attempt_number"] == 2
+        assert receipt["attempts_used"] == 1
+        assert receipt["unknown_outcome_rearm_count"] == 1
+
+        task = daemon.task_source.get(attempt_two.task_cid)
+        assert task is not None and task.status == "blocked"
+        evidence = {
+            "schema": (
+                DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+            ),
+            "attempt_id": attempt_two.attempt_id,
+            "claim_id": attempt_two.claim_id,
+            "task_cid": attempt_two.task_cid,
+            "task_alias": attempt_two.task_alias,
+            "attempt_number": attempt_two.attempt_number,
+            "owner_session_id": attempt_two.owner_session_id,
+            "lease_id": attempt_two.lease_id,
+            "fencing_token": attempt_two.fencing_token,
+            "fence_epoch": attempt_two.fence_epoch,
+            "attempt_root_key": hashlib.sha256(
+                attempt_two.attempt_id.encode("utf-8")
+            ).hexdigest()[:24],
+            "attempt_authority_root_digest": "sha256:" + "1" * 64,
+            "attempt_root_digest": "sha256:" + "2" * 64,
+            "binding_id": "sha256:" + "3" * 64,
+            "binding_admission_id": content_identity(
+                {"binding-admission": "current"}
+            ),
+            "binding_admission_digest": "sha256:" + "4" * 64,
+            "projection_immutable_digest": "sha256:" + "5" * 64,
+            "nested_task_cid": "nested:task:current",
+            "nested_attempt": 1,
+            "terminal_reconciliation_evidence_id": (
+                "baguqeeras3b36epxxn7yv5nfylhmk5uahqhimjgn2452lpf7a523gkgkcfrq"
+            ),
+            "first_clear_receipt_id": "sha256:" + "6" * 64,
+            "interrupted_retry_evidence_id": "sha256:" + "7" * 64,
+            "interrupted_retry_id": content_identity(
+                {"interrupted-retry": "current"}
+            ),
+            "state_recovery_event_id": "sha256:" + "8" * 64,
+            "claim_release_receipt_id": content_identity(
+                {"claim-release": "current"}
+            ),
+            "prepared_reconciliation_receipt_id": "sha256:" + "9" * 64,
+            "commit_barrier_receipt_id": "sha256:" + "b" * 64,
+            "state_digest": "sha256:" + "a" * 64,
+            "outer_block_receipt_digest": (
+                daemon._database_no_provider_rearm_digest(receipt)
+            ),
+            "provider_dispatched": False,
+            "implementation_dispatched": False,
+            "validation_attempted": False,
+            "commit_created": False,
+            "merge_attempted": False,
+            "acceptance_inferred": False,
+            "recovery_terminal": True,
+            "retained_candidate_disposition": "preserved_unvalidated",
+        }
+        authorization = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-interrupted-implementation-"
+                "rearm-authorization@1"
+            ),
+            **{
+                name: evidence[name]
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "task_cid",
+                    "attempt_number",
+                    "owner_session_id",
+                    "lease_id",
+                    "fencing_token",
+                    "fence_epoch",
+                    "binding_id",
+                    "binding_admission_id",
+                    "binding_admission_digest",
+                    "projection_immutable_digest",
+                    "nested_task_cid",
+                    "nested_attempt",
+                    "terminal_reconciliation_evidence_id",
+                    "first_clear_receipt_id",
+                    "interrupted_retry_evidence_id",
+                    "interrupted_retry_id",
+                    "state_recovery_event_id",
+                    "claim_release_receipt_id",
+                    "prepared_reconciliation_receipt_id",
+                    "commit_barrier_receipt_id",
+                    "state_digest",
+                    "outer_block_receipt_digest",
+                )
+            },
+        }
+        evidence["rearm_authorization_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                authorization,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        evidence["evidence_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                evidence,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        assert daemon._valid_no_provider_rearm_evidence(
+            evidence,
+            task=task,
+            original=receipt,
+            expected_evidence_id=evidence["evidence_id"],
+        )
+        for content_id_field in (
+            "binding_admission_id",
+            "interrupted_retry_id",
+            "claim_release_receipt_id",
+        ):
+            wrong_profile = {**evidence, content_id_field: "sha256:" + "e" * 64}
+            wrong_authorization = {
+                **authorization,
+                content_id_field: wrong_profile[content_id_field],
+            }
+            wrong_profile["rearm_authorization_id"] = (
+                "sha256:"
+                + hashlib.sha256(
+                    json.dumps(
+                        wrong_authorization,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                        default=str,
+                    ).encode("utf-8")
+                ).hexdigest()
+            )
+            wrong_unsigned = dict(wrong_profile)
+            wrong_unsigned.pop("evidence_id")
+            wrong_profile["evidence_id"] = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    wrong_unsigned,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+            assert not daemon._valid_no_provider_rearm_evidence(
+                wrong_profile,
+                task=task,
+                original=receipt,
+                expected_evidence_id=wrong_profile["evidence_id"],
+            )
+        tampered_authorization = {
+            **evidence,
+            "rearm_authorization_id": "sha256:" + "c" * 64,
+        }
+        tampered_unsigned = dict(tampered_authorization)
+        tampered_unsigned.pop("evidence_id")
+        tampered_authorization["evidence_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                tampered_unsigned,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        assert not daemon._valid_no_provider_rearm_evidence(
+            tampered_authorization,
+            task=task,
+            original=receipt,
+            expected_evidence_id=tampered_authorization["evidence_id"],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_database_portal_no_provider_rearm_evidence",
+            lambda _task, _receipt: dict(evidence),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_resume_attempt_without_process_crash",
+            lambda _attempt: callback_calls.append("callback"),
+        )
+
+        refunded = daemon.run_once()
+
+        assert refunded["selection_idle_reason"] == (
+            "database_unknown_outcomes_rearmed"
+        )
+        assert refunded["implementation_result"] is None
+        assert callback_calls == []
+        assert len(refunded["unknown_outcome_rearms"]) == 1
+        outcome = refunded["unknown_outcome_rearms"][0]
+        assert outcome["previous_attempt_id"] == attempt_two.attempt_id
+        assert outcome["unknown_outcome_rearm_count"] == 1
+        assert outcome["nested_event_head_id"] == (
+            evidence["state_recovery_event_id"]
+        )
+        rearmed = daemon.task_source.get(attempt_two.task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        rearm_receipt = rearmed.body["completion_receipt"]
+        assert rearm_receipt["attempts_used"] == 0
+        assert rearm_receipt["retry_exhausted"] is False
+        # The exact no-provider refund is not a second generic allowance.
+        assert rearm_receipt["unknown_outcome_rearm_count"] == 1
+        assert rearm_receipt["no_provider_rearm_evidence_id"] == (
+            evidence["evidence_id"]
+        )
+        for numeric_field in ("attempts_used", "attempt_number"):
+            for malformed in (None, "not-an-integer", True, [], {}):
+                malformed_receipt = dict(rearm_receipt)
+                malformed_original = dict(
+                    malformed_receipt["no_provider_rearm_original_block_receipt"]
+                )
+                malformed_original[numeric_field] = malformed
+                malformed_receipt[
+                    "no_provider_rearm_original_block_receipt"
+                ] = malformed_original
+                malformed_task = SimpleNamespace(
+                    task_cid=rearmed.task_cid,
+                    task_alias=rearmed.task_alias,
+                    revision=rearmed.revision,
+                    status=rearmed.status,
+                    body={
+                        **dict(rearmed.body),
+                        "completion_receipt": malformed_receipt,
+                    },
+                )
+                assert (
+                    daemon._no_provider_rearm_fence_state(malformed_task)
+                    == "invalid"
+                )
+                assert daemon._automatic_claim_forbidden(malformed_task)
+        assert daemon.reconcile_blocked_unknown_outcome_tasks() == []
+        assert callback_calls == []
+    finally:
+        daemon.close()
+
+
+def test_interrupted_rearm_evidence_binds_terminal_barrier_and_recovery_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recomputed outer link cannot detach the immutable recovery barrier."""
+
+    attempt = SimpleNamespace(
+        attempt_id="attempt:interrupted:exact",
+        claim_id="claim:interrupted:exact",
+        task_cid="task:cid:pctdd-034",
+        task_alias="PCTDD-034",
+        attempt_number=2,
+        owner_session_id="session:interrupted:exact",
+        lease_id="lease:interrupted:exact",
+        fencing_token=7,
+        fence_epoch=3,
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    paths = bridge._paths(attempt)
+    state_digest = "sha256:" + "1" * 64
+    binding = {
+        "task_alias": attempt.task_alias,
+        "binding_id": "sha256:" + "2" * 64,
+        "projection_immutable_digest": "sha256:" + "3" * 64,
+    }
+    exact_attempt = {
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "task_cid": attempt.task_cid,
+        "attempt_number": attempt.attempt_number,
+        "owner_session_id": attempt.owner_session_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+    }
+    durable_binding = {
+        **exact_attempt,
+        **binding,
+        "stage": "portal_entered",
+        "record_id": content_identity({"binding-admission": "exact"}),
+    }
+    released_attempt = {
+        "released_from": 1,
+        "released_to": 0,
+        "event_id": "sha256:" + "5" * 64,
+    }
+    replay = {
+        "reconciled": True,
+        "blocked": False,
+        "reason": "interrupted_implementation_recovered_for_retry",
+        "task_id": attempt.task_alias,
+        "canonical_task_cid": "nested:task:current",
+        "attempt": 1,
+        "task_claim_reconciliation": {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_task_claim_released",
+            "task_id": attempt.task_alias,
+            "task_status": "todo",
+            "released_unfinished_retry_id": content_identity(
+                {"interrupted-retry": "exact"}
+            ),
+            "receipt_id": content_identity({"claim-release": "exact"}),
+            "released_unfinished_attempt": released_attempt,
+        },
+        "provider_dispatched": False,
+        "implementation_dispatched": False,
+        "acceptance_inferred": False,
+        "retained_candidate_disposition": "preserved_unvalidated",
+        "stale_lock_cleared": False,
+    }
+    recovery = {
+        **replay,
+        "provider_forbidden_terminal_recovery": {
+            "applicable": False,
+            "blocked": False,
+            "implementation_dispatched": False,
+            "provider_dispatched": False,
+            "reason": "provider_forbidden_terminal_recovery_not_applicable",
+            "reconciled": False,
+        },
+    }
+    prepared_id = "sha256:" + "8" * 64
+    barrier_id = "sha256:" + "9" * 64
+    trigger = "database_daemon_startup"
+    prepared = {
+        "receipt_id": prepared_id,
+        "binding_id": binding["binding_id"],
+        "intended_database_disposition": "blocked_unknown_outcome",
+        "reason": "nested_portal_attempt_reconciled",
+        "reconciled": True,
+        "blocked": False,
+        "trigger": trigger,
+        "nested_state": {
+            "present": True,
+            "active": False,
+            "active_task_id": "",
+            "active_attempt": 0,
+            "active_phase": "",
+            "state_path": str(paths.state),
+            "state_digest": state_digest,
+        },
+        "provider_runner_fence": {
+            "safe_to_restart": True,
+            "applicable": False,
+            "fenced": False,
+            "reason": "ordinary_provider_runner_receipt_absent",
+        },
+        "portal_reconciliation": recovery,
+    }
+    barrier = {
+        **prepared,
+        "receipt_id": barrier_id,
+        "prepared_reconciliation_receipt_id": prepared_id,
+    }
+    source_receipt = {
+        "binding_id": binding["binding_id"],
+        "receipt_id": "sha256:" + "a" * 64,
+    }
+    source = {
+        "reconciliation_receipt": source_receipt,
+        "evidence_id": "sha256:" + "b" * 64,
+    }
+    link = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-terminal-reconciliation-link@1"
+        ),
+        **exact_attempt,
+        "binding_id": binding["binding_id"],
+        "nested_state_digest": state_digest,
+        "nested_reason": "nested_portal_attempt_reconciled",
+        "nested_reconciled": True,
+        "trigger": trigger,
+        "intended_database_disposition": "blocked_unknown_outcome",
+        "prepared_reconciliation_receipt_id": prepared_id,
+        "commit_barrier_receipt_id": barrier_id,
+    }
+    link["evidence_id"] = content_identity(link)
+    calls: list[str] = []
+
+    class RetryOnlyPortal:
+        def reconcile_interrupted_database_implementation_attempt(
+            self,
+            evidence: object,
+        ) -> dict[str, object]:
+            assert evidence == source
+            calls.append("recovery")
+            return dict(replay)
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    bridge.portal_factory = lambda _paths, _alias: RetryOnlyPortal()
+    bridge._binding_lookup = lambda _attempt: dict(durable_binding)
+    monkeypatch.setattr(bridge, "_read_binding", lambda _path: dict(binding))
+    monkeypatch.setattr(bridge, "_verify_binding_identity", lambda _value: None)
+    monkeypatch.setattr(
+        bridge,
+        "load_reconciliation_receipt",
+        lambda _attempt, receipt_id, required_stage="": (
+            dict(prepared) if receipt_id == prepared_id else dict(barrier)
+        ),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_interrupted_implementation_retry_evidence",
+        lambda _attempt, _binding: dict(source),
+    )
+    state = {
+        "implementation_in_progress": False,
+        "active_task_id": "",
+        "active_attempt": 0,
+        "active_phase": "",
+    }
+    monkeypatch.setattr(
+        bridge,
+        "_strict_state_record",
+        lambda _path: (dict(state), state_digest),
+    )
+
+    outer_receipt = {**exact_attempt, "terminal_reconciliation": link}
+    evidence = bridge._interrupted_implementation_rearm_evidence(
+        attempt,
+        outer_receipt,
+    )
+
+    assert evidence is not None
+    assert evidence["rearm_authorization_id"].startswith("sha256:")
+    assert evidence["terminal_reconciliation_evidence_id"] == link["evidence_id"]
+    assert evidence["commit_barrier_receipt_id"] == barrier_id
+    assert calls == ["recovery"]
+    assert DatabaseImplementationDaemon._valid_no_provider_rearm_evidence(
+        evidence,
+        task=attempt,
+        original=outer_receipt,
+        expected_evidence_id=evidence["evidence_id"],
+    )
+
+    tampered_link = {**link, "trigger": "tampered-trigger"}
+    tampered_link.pop("evidence_id")
+    tampered_link["evidence_id"] = content_identity(tampered_link)
+    assert bridge._interrupted_implementation_rearm_evidence(
+        attempt,
+        {**exact_attempt, "terminal_reconciliation": tampered_link},
+    ) is None
+    assert calls == ["recovery"]
+
+    persisted_bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "persisted-barrier-attempts",
+        portal_factory=lambda _paths, _alias: RetryOnlyPortal(),
+    )
+    persisted_paths = persisted_bridge._paths(attempt)
+    persisted_paths.reconciliation.mkdir(parents=True)
+    persisted_nested = {
+        "present": True,
+        "active": False,
+        "active_task_id": "",
+        "active_attempt": 0,
+        "active_phase": "",
+        "state_path": str(persisted_paths.state),
+        "state_digest": state_digest,
+    }
+    persisted_core = {
+        "binding_id": binding["binding_id"],
+        "reason": "nested_portal_attempt_reconciled",
+        "reconciled": True,
+        "blocked": False,
+        "nested_state": persisted_nested,
+        "provider_runner_fence": prepared["provider_runner_fence"],
+        "portal_reconciliation": recovery,
+        "terminal_provider_evidence": False,
+    }
+    persisted_prepared = persisted_bridge.persist_reconciliation_receipt(
+        attempt,
+        {
+            **persisted_core,
+            "stage": "prepared",
+            "trigger": trigger,
+            "intended_database_disposition": "blocked_unknown_outcome",
+            "reconciled_at": "2026-01-01T00:00:00+00:00",
+        },
+    )
+    persisted_bridge._binding_lookup = lambda _attempt: dict(durable_binding)
+    monkeypatch.setattr(
+        persisted_bridge,
+        "_read_binding",
+        lambda _path: dict(binding),
+    )
+    monkeypatch.setattr(
+        persisted_bridge,
+        "_verify_binding_identity",
+        lambda _value: None,
+    )
+    monkeypatch.setattr(
+        persisted_bridge,
+        "_interrupted_implementation_retry_evidence",
+        lambda _attempt, _binding: dict(source),
+    )
+    monkeypatch.setattr(
+        persisted_bridge,
+        "_strict_state_record",
+        lambda _path: (dict(state), state_digest),
+    )
+    for changed_field, changed_value in (
+        ("binding_id", "sha256:" + "f" * 64),
+        ("reason", "contradictory-reason"),
+        ("reconciled", False),
+        ("blocked", True),
+        (
+            "nested_state",
+            {**persisted_nested, "state_digest": "sha256:" + "e" * 64},
+        ),
+        (
+            "provider_runner_fence",
+            {**prepared["provider_runner_fence"], "safe_to_restart": False},
+        ),
+        (
+            "portal_reconciliation",
+            {**recovery, "reason": "contradictory-recovery"},
+        ),
+        ("reconciled_at", "2026-01-01T00:00:01+00:00"),
+    ):
+        contradictory_core = {
+            **persisted_core,
+            changed_field: changed_value,
+        }
+        contradictory_barrier = (
+            persisted_bridge.persist_reconciliation_receipt(
+                attempt,
+                {
+                    **contradictory_core,
+                    "stage": "commit_barrier",
+                    "trigger": trigger,
+                    "intended_database_disposition": (
+                        "blocked_unknown_outcome"
+                    ),
+                    "prepared_reconciliation_receipt_id": (
+                        persisted_prepared["receipt_id"]
+                    ),
+                    "reconciled_at": (
+                        changed_value
+                        if changed_field == "reconciled_at"
+                        else "2026-01-01T00:00:00+00:00"
+                    ),
+                },
+            )
+        )
+        contradictory_link = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-terminal-reconciliation-link@1"
+            ),
+            **exact_attempt,
+            "binding_id": binding["binding_id"],
+            "nested_state_digest": state_digest,
+            "nested_reason": "nested_portal_attempt_reconciled",
+            "nested_reconciled": True,
+            "trigger": trigger,
+            "intended_database_disposition": "blocked_unknown_outcome",
+            "prepared_reconciliation_receipt_id": persisted_prepared[
+                "receipt_id"
+            ],
+            "commit_barrier_receipt_id": contradictory_barrier["receipt_id"],
+        }
+        contradictory_link["evidence_id"] = content_identity(
+            contradictory_link
+        )
+        assert persisted_bridge._interrupted_implementation_rearm_evidence(
+            attempt,
+            {
+                **exact_attempt,
+                "terminal_reconciliation": contradictory_link,
+            },
+        ) is None
+    assert calls == ["recovery"]
+
+
+def test_interrupted_rearm_uses_production_run_once_link_and_terminal_saga(
+    tmp_path: Path,
+) -> None:
+    """The real verifier admits one linked refund without widening budget."""
+
+    seed = _open_daemon(
+        tmp_path,
+        session="session:production-interrupted-refund",
+        max_task_attempts=2,
+    )
+    try:
+        seed.materialize_population(_population(1))
+        attempt_one = seed.claim_next()
+        assert attempt_one is not None
+        seed._begin_callback_dispatch(
+            attempt_one,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt_one.attempt_id}",
+        )
+        seed._finalize_failed_attempt(
+            attempt_one,
+            reason="provider_dispatch_outcome_unknown",
+            force_block=True,
+            unknown_authority=True,
+        )
+    finally:
+        seed.close()
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:production-interrupted-refund",
+        max_task_attempts=2,
+        callbacks_bound=False,
+    )
+    replay_holder: dict[str, object] = {}
+    recovery_calls: list[str] = []
+
+    class RetryOnlyPortal:
+        def reconcile_interrupted_database_implementation_attempt(
+            self,
+            evidence: object,
+        ) -> dict[str, object]:
+            assert isinstance(evidence, dict)
+            assert evidence.get("schema") == (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-interrupted-implementation-retry@1"
+            )
+            recovery_calls.append("recovery")
+            return dict(replay_holder)
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=daemon.task_source,
+        attempt_root=tmp_path / "portal-attempts",
+        portal_factory=lambda _paths, _alias: RetryOnlyPortal(),
+    )
+    daemon.bind_execution_callbacks(
+        provider_fn=bridge.run_provider,
+        effect_fn=bridge.apply_effect,
+        validation_fn=bridge.validate_effect,
+    )
+    daemon.bind_database_portal_bridge(bridge)
+    try:
+        generic = daemon.reconcile_blocked_unknown_outcome_tasks()
+        assert len(generic) == 1
+        assert generic[0]["unknown_outcome_rearm_count"] == 1
+
+        attempt = daemon.claim_next()
+        assert attempt is not None and attempt.attempt_number == 2
+        attempt = daemon.commit_phase(
+            attempt,
+            ATTEMPT_PHASE_CONTEXT,
+            body={"context_cid": content_identity({"attempt": attempt.attempt_id})},
+        )
+        daemon._begin_callback_dispatch(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        record = daemon.task_source.get(attempt.task_cid)
+        assert record is not None
+        paths, binding = bridge._ensure_attempt_projection(
+            attempt,
+            record,
+            admit_before_publish=True,
+        )
+        daemon._record_callback_dispatch_outcome(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+            outcome="raised",
+            body={
+                "exception_type": "DatabasePortalBridgeError",
+                "message": "interrupted nested implementation recovered",
+            },
+        )
+        assert bridge._binding_recorder is not None
+        bridge._binding_recorder(attempt, binding, "portal_entered")
+
+        quiescent_state = {
+            "implementation_in_progress": False,
+            "active_task_id": "",
+            "active_attempt": 0,
+            "active_phase": "",
+        }
+        state_bytes = json.dumps(
+            quiescent_state,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        paths.state.write_bytes(state_bytes)
+        paths.state.chmod(0o600)
+        state_digest = "sha256:" + hashlib.sha256(state_bytes).hexdigest()
+        nested_task_cid = "nested:task:current"
+        nested_attempt = 1
+        workspace = str(tmp_path / "retained-candidate")
+        first_clear = bridge.persist_reconciliation_receipt(
+            attempt,
+            {
+                "stage": "blocked",
+                "trigger": "supervisor_signal_shutdown",
+                "reconciled_at": "2026-01-01T00:00:00+00:00",
+                "reconciled": False,
+                "blocked": True,
+                "reason": "nested_portal_attempt_reconciliation_blocked",
+                "binding_id": binding["binding_id"],
+                "nested_state": {
+                    "present": True,
+                    "active": True,
+                    "active_task_id": attempt.task_alias,
+                    "active_attempt": nested_attempt,
+                    "active_phase": "implementing",
+                    "active_worktree_path": workspace,
+                    "active_branch": "implementation/test-attempt-1",
+                    "state_path": str(paths.state),
+                    "state_digest": "sha256:" + "0" * 64,
+                },
+                "provider_runner_fence": {
+                    "applicable": True,
+                    "fenced": True,
+                    "safe_to_restart": True,
+                    "pid": 4242,
+                    "reason": "ordinary_provider_runner_exact_birth_fenced",
+                },
+                "provider_runner_reconciliation_authority": (
+                    "ordinary_provider_runner_fence"
+                ),
+                "portal_reconciliation": {
+                    "reason": "task_claim_reconciliation_blocked",
+                    "reconciled_at": "2026-01-01T00:00:00+00:00",
+                    "protected_path_reconciliation": {
+                        "reason": "crash_reconciliation_unchanged",
+                    },
+                    "worktree_lifecycle_reconciliation": {
+                        "state": "terminal",
+                        "record_id": content_identity({"lifecycle": "terminal"}),
+                        "fence": 1,
+                    },
+                    "task_claim_reconciliation": {
+                        "reason": "canonical_task_not_terminal",
+                        "observed_task_status": "todo",
+                        "canonical_task_cid": nested_task_cid,
+                    },
+                    "attempt_recovery": {
+                        "consumed": False,
+                        "previous_display_count": nested_attempt,
+                        "previous_cid_count": nested_attempt,
+                    },
+                },
+                "terminal_provider_evidence": False,
+            },
+        )
+        interrupted_retry_id = content_identity(
+            {"interrupted-retry": attempt.attempt_id}
+        )
+        released_attempt = {
+            "released_from": nested_attempt,
+            "released_to": nested_attempt - 1,
+            "event_id": "sha256:" + "2" * 64,
+        }
+        replay_holder.update(
+            {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "interrupted_implementation_recovered_for_retry",
+                "task_id": attempt.task_alias,
+                "canonical_task_cid": nested_task_cid,
+                "attempt": nested_attempt,
+                "task_claim_reconciliation": {
+                    "reconciled": True,
+                    "blocked": False,
+                    "reason": "quiesced_task_claim_released",
+                    "task_id": attempt.task_alias,
+                    "task_status": "todo",
+                    "released_unfinished_retry_id": interrupted_retry_id,
+                    "receipt_id": content_identity(
+                        {"claim-release": attempt.attempt_id}
+                    ),
+                    "released_unfinished_attempt": released_attempt,
+                },
+                "provider_dispatched": False,
+                "implementation_dispatched": False,
+                "acceptance_inferred": False,
+                "retained_candidate_disposition": "preserved_unvalidated",
+                "stale_lock_cleared": False,
+            }
+        )
+        recovery = {
+            **replay_holder,
+            "provider_forbidden_terminal_recovery": {
+                "applicable": False,
+                "blocked": False,
+                "implementation_dispatched": False,
+                "provider_dispatched": False,
+                "reason": "provider_forbidden_terminal_recovery_not_applicable",
+                "reconciled": False,
+            },
+        }
+        terminal_core = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "nested_portal_attempt_reconciled",
+            "binding_id": binding["binding_id"],
+            "nested_state": {
+                "present": True,
+                "active": False,
+                "active_task_id": "",
+                "active_attempt": 0,
+                "active_phase": "",
+                "state_path": str(paths.state),
+                "state_digest": state_digest,
+            },
+            "provider_runner_fence": {
+                "safe_to_restart": True,
+                "applicable": False,
+                "fenced": False,
+                "reason": "ordinary_provider_runner_receipt_absent",
+            },
+            "portal_reconciliation": recovery,
+            "terminal_provider_evidence": False,
+        }
+        trigger = "database_daemon_startup"
+        prepared = bridge.persist_reconciliation_receipt(
+            attempt,
+            {
+                **terminal_core,
+                "stage": "prepared",
+                "trigger": trigger,
+                "intended_database_disposition": "blocked_unknown_outcome",
+                "reconciled_at": "2026-01-01T00:00:01+00:00",
+            },
+        )
+        barrier = bridge.persist_reconciliation_receipt(
+            attempt,
+            {
+                **terminal_core,
+                "stage": "commit_barrier",
+                "trigger": trigger,
+                "intended_database_disposition": "blocked_unknown_outcome",
+                "prepared_reconciliation_receipt_id": prepared["receipt_id"],
+                "reconciled_at": "2026-01-01T00:00:01+00:00",
+            },
+        )
+        link = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-terminal-reconciliation-link@1"
+            ),
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "task_cid": attempt.task_cid,
+            "attempt_number": attempt.attempt_number,
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": attempt.fencing_token,
+            "fence_epoch": attempt.fence_epoch,
+            "binding_id": binding["binding_id"],
+            "nested_state_digest": state_digest,
+            "nested_reason": "nested_portal_attempt_reconciled",
+            "nested_reconciled": True,
+            "trigger": trigger,
+            "intended_database_disposition": "blocked_unknown_outcome",
+            "prepared_reconciliation_receipt_id": prepared["receipt_id"],
+            "commit_barrier_receipt_id": barrier["receipt_id"],
+        }
+        link["evidence_id"] = content_identity(link)
+        daemon._record_database_portal_terminal_reconciliation_barrier(
+            attempt,
+            link,
+        )
+        failed, receipt = daemon._finalize_failed_attempt(
+            attempt,
+            reason="callback_authority_incomplete_blocked",
+            force_block=True,
+            unknown_authority=True,
+            reconciliation_evidence=link,
+        )
+        assert receipt["attempts_used"] == 1
+        assert receipt["unknown_outcome_rearm_count"] == 1
+        repaired = daemon._repair_database_portal_terminal_receipts(
+            bridge=bridge,
+            trigger="test_terminal_repair",
+            exact_attempt=failed,
+        )
+        assert len(repaired) == 1 and repaired[0]["reconciled"] is True
+        saga = daemon._database_portal_terminal_reconciliation_saga(failed)
+        assert saga is not None and saga["stage"] == "terminal"
+
+        failed_phase = daemon.phase_history(failed.attempt_id)[-1]["body"]
+        mismatched_phase = dict(failed_phase)
+        mismatched_phase["terminal_reconciliation"] = {
+            **link,
+            "trigger": "different-trigger",
+        }
+        assert daemon._database_interrupted_failed_phase_link(
+            mismatched_phase,
+            receipt,
+        ) is None
+        assert recovery_calls == []
+
+        blocked_task = daemon.task_source.get(attempt.task_cid)
+        assert blocked_task is not None
+        assert daemon._database_interrupted_failed_phase_link(
+            daemon.phase_history(failed.attempt_id)[-1]["body"],
+            receipt,
+        ) is not None
+        assert [
+            phase["phase"] for phase in daemon.phase_history(failed.attempt_id)
+        ] == ["claimed", "context", "failed"]
+        provider_dispatch = daemon._dispatch_journal_entry(
+            failed,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{failed.attempt_id}",
+        )
+        assert provider_dispatch is not None
+        assert provider_dispatch["outcome"] == "raised"
+        assert provider_dispatch["body"]["exception_type"] == (
+            "DatabasePortalBridgeError"
+        )
+        terminal_claim = daemon.coordinator.get_task_claim(failed.claim_id)
+        assert terminal_claim is not None
+        assert str(terminal_claim.state.value) == "released"
+        control_claim = dict(failed.body["control_claim"])
+        assert blocked_task.revision == int(control_claim["revision"]) + 1
+        assert control_claim["task_cid"] == failed.task_cid
+        assert control_claim["execution_spec_cid"] == (
+            daemon._task_execution_spec_cid(blocked_task)
+        )
+        assert control_claim["validation_spec_cid"] == (
+            daemon._retry_budget_validation_spec_cid(blocked_task)
+        )
+        budget_state = daemon._retry_budget_state(blocked_task)
+        assert budget_state["malformed"] is False
+        assert budget_state["policy_mismatch"] is False
+        assert receipt["max_task_attempts"] == budget_state["max_task_attempts"]
+
+        result = daemon.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_unknown_outcomes_rearmed"
+        )
+        assert len(result["unknown_outcome_rearms"]) == 1
+        assert recovery_calls == ["recovery"]
+        rearmed = daemon.task_source.get(attempt.task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        rearm_receipt = rearmed.body["completion_receipt"]
+        assert rearm_receipt["attempts_used"] == 0
+        assert rearm_receipt["unknown_outcome_rearm_count"] == 1
+        assert rearm_receipt["no_provider_rearm_evidence"][
+            "first_clear_receipt_id"
+        ] == first_clear["receipt_id"]
+        assert daemon.reconcile_blocked_unknown_outcome_tasks() == []
+        assert daemon._unresolved_database_no_provider_rearm_sagas() == ()
+        assert recovery_calls == ["recovery"]
+    finally:
+        daemon.close()
 
 
 def test_unknown_outcome_rearm_limit_survives_claim_and_block_revisions(

@@ -3511,6 +3511,389 @@ class DatabasePortalExecutionBridge:
                         with suppress(OSError):
                             os.close(descriptor)
 
+    def _interrupted_implementation_rearm_evidence(
+        self,
+        attempt: Any,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Prove an exact implementing crash was refunded before dispatch.
+
+        This successor proof is intentionally distinct from the setup-failure
+        evidence below.  It binds the immutable first-clear receipt, the
+        callback-free interrupted-retry adapter, its exact claim-release
+        receipt, and the outer prepared reconciliation object.  Replaying the
+        adapter is idempotent and may only finish that already-authorized
+        control recovery; it cannot invoke a provider, validation, commit, or
+        merge callback.
+        """
+
+        link = receipt.get("terminal_reconciliation")
+        if not isinstance(link, Mapping):
+            return None
+        link = dict(link)
+        link_fields = {
+            "schema",
+            "attempt_id",
+            "claim_id",
+            "task_cid",
+            "attempt_number",
+            "owner_session_id",
+            "lease_id",
+            "fencing_token",
+            "fence_epoch",
+            "binding_id",
+            "nested_state_digest",
+            "nested_reason",
+            "nested_reconciled",
+            "trigger",
+            "intended_database_disposition",
+            "prepared_reconciliation_receipt_id",
+            "commit_barrier_receipt_id",
+            "evidence_id",
+        }
+        exact_attempt = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        unsigned_link = dict(link)
+        link_evidence_id = str(unsigned_link.pop("evidence_id", "") or "")
+        if (
+            set(link) != link_fields
+            or link.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-terminal-reconciliation-link@1"
+            )
+            or any(link.get(name) != value for name, value in exact_attempt.items())
+            or link.get("nested_reason") != "nested_portal_attempt_reconciled"
+            or link.get("nested_reconciled") is not True
+            or link.get("intended_database_disposition")
+            != "blocked_unknown_outcome"
+            or not re.fullmatch(r"baguqeera[a-z2-7]{52}", link_evidence_id)
+            or content_identity(unsigned_link) != link_evidence_id
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(link.get("prepared_reconciliation_receipt_id") or ""),
+            )
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(link.get("commit_barrier_receipt_id") or ""),
+            )
+        ):
+            return None
+
+        paths = self._paths(attempt)
+        try:
+            binding = self._read_binding(paths.binding)
+            self._verify_binding_identity(binding)
+            durable_binding = (
+                self._binding_lookup(attempt)
+                if self._binding_lookup is not None
+                else None
+            )
+            prepared = self.load_reconciliation_receipt(
+                attempt,
+                str(link["prepared_reconciliation_receipt_id"]),
+                required_stage="prepared",
+            )
+            commit_barrier = self.load_reconciliation_receipt(
+                attempt,
+                str(link["commit_barrier_receipt_id"]),
+                required_stage="commit_barrier",
+            )
+            source = self._interrupted_implementation_retry_evidence(
+                attempt,
+                binding,
+            )
+            state_before, state_digest_before = self._strict_state_record(
+                paths.state
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if source is None or not isinstance(durable_binding, Mapping):
+            return None
+        durable_expected = {
+            **exact_attempt,
+            "binding_id": str(binding.get("binding_id") or ""),
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "stage": "portal_entered",
+        }
+        current_nested = prepared.get("nested_state")
+        recovery = prepared.get("portal_reconciliation")
+        provider_fence = prepared.get("provider_runner_fence")
+        prepared_barrier_core = {
+            name: value
+            for name, value in prepared.items()
+            if name not in {"stage", "receipt_id"}
+        }
+        commit_barrier_core = {
+            name: value
+            for name, value in commit_barrier.items()
+            if name
+            not in {
+                "stage",
+                "receipt_id",
+                "prepared_reconciliation_receipt_id",
+            }
+        }
+        if (
+            any(
+                durable_binding.get(name) != value
+                for name, value in durable_expected.items()
+            )
+            or prepared.get("binding_id") != binding.get("binding_id")
+            or prepared.get("intended_database_disposition")
+            != "blocked_unknown_outcome"
+            or prepared.get("reason") != "nested_portal_attempt_reconciled"
+            or prepared.get("reconciled") is not True
+            or prepared.get("blocked") is not False
+            or prepared.get("receipt_id")
+            != link.get("prepared_reconciliation_receipt_id")
+            or prepared.get("trigger") != link.get("trigger")
+            or link.get("binding_id") != prepared.get("binding_id")
+            or link.get("nested_reason") != prepared.get("reason")
+            or link.get("nested_reconciled")
+            is not prepared.get("reconciled")
+            or not isinstance(current_nested, Mapping)
+            or current_nested.get("present") is not True
+            or current_nested.get("active") is not False
+            or current_nested.get("active_task_id") != ""
+            or current_nested.get("active_attempt") != 0
+            or current_nested.get("active_phase") != ""
+            or current_nested.get("state_path") != str(paths.state)
+            or current_nested.get("state_digest") != state_digest_before
+            or link.get("nested_state_digest") != state_digest_before
+            or commit_barrier.get("receipt_id")
+            != link.get("commit_barrier_receipt_id")
+            or commit_barrier.get("prepared_reconciliation_receipt_id")
+            != prepared.get("receipt_id")
+            or commit_barrier_core != prepared_barrier_core
+            or commit_barrier.get("intended_database_disposition")
+            != "blocked_unknown_outcome"
+            or commit_barrier.get("trigger") != link.get("trigger")
+            or not isinstance(state_before, Mapping)
+            or state_before.get("implementation_in_progress") is not False
+            or state_before.get("active_task_id") != ""
+            or state_before.get("active_attempt") != 0
+            or state_before.get("active_phase") != ""
+            or not isinstance(provider_fence, Mapping)
+            or provider_fence.get("safe_to_restart") is not True
+            or provider_fence.get("applicable") is not False
+            or provider_fence.get("fenced") is not False
+            or provider_fence.get("reason")
+            != "ordinary_provider_runner_receipt_absent"
+            or not isinstance(recovery, Mapping)
+        ):
+            return None
+
+        source_receipt = source.get("reconciliation_receipt")
+        source_evidence_id = str(source.get("evidence_id") or "")
+        if (
+            not isinstance(source_receipt, Mapping)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", source_evidence_id)
+            or source_receipt.get("binding_id") != binding.get("binding_id")
+        ):
+            return None
+
+        daemon = self.portal_factory(
+            paths,
+            str(binding.get("task_alias") or attempt.task_cid),
+        )
+        replay: dict[str, Any] = {}
+        try:
+            reconcile = getattr(
+                daemon,
+                "reconcile_interrupted_database_implementation_attempt",
+                None,
+            )
+            if not callable(reconcile):
+                return None
+            raw_replay = reconcile(source)
+            if not isinstance(raw_replay, Mapping):
+                return None
+            replay = dict(raw_replay)
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        finally:
+            close = getattr(daemon, "close_event_runtime", None) or getattr(
+                daemon,
+                "close",
+                None,
+            )
+            if callable(close):
+                close()
+        try:
+            state_after, state_digest_after = self._strict_state_record(paths.state)
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if state_after != state_before or state_digest_after != state_digest_before:
+            return None
+
+        recovery_core = dict(recovery)
+        forbidden_terminal = recovery_core.pop(
+            "provider_forbidden_terminal_recovery",
+            None,
+        )
+        original_lock_clear = recovery_core.pop("stale_lock_cleared", None)
+        replay_core = dict(replay)
+        replay_lock_clear = replay_core.pop("stale_lock_cleared", None)
+        claim_release = replay.get("task_claim_reconciliation")
+        released_attempt = (
+            claim_release.get("released_unfinished_attempt")
+            if isinstance(claim_release, Mapping)
+            else None
+        )
+        if (
+            recovery_core != replay_core
+            or not isinstance(original_lock_clear, bool)
+            or not isinstance(replay_lock_clear, bool)
+            or not isinstance(forbidden_terminal, Mapping)
+            or dict(forbidden_terminal)
+            != {
+                "applicable": False,
+                "blocked": False,
+                "implementation_dispatched": False,
+                "provider_dispatched": False,
+                "reason": "provider_forbidden_terminal_recovery_not_applicable",
+                "reconciled": False,
+            }
+            or replay.get("reconciled") is not True
+            or replay.get("blocked") is not False
+            or replay.get("reason")
+            != "interrupted_implementation_recovered_for_retry"
+            or replay.get("provider_dispatched") is not False
+            or replay.get("implementation_dispatched") is not False
+            or replay.get("acceptance_inferred") is not False
+            or replay.get("retained_candidate_disposition")
+            != "preserved_unvalidated"
+            or not isinstance(claim_release, Mapping)
+            or claim_release.get("reconciled") is not True
+            or claim_release.get("blocked") is not False
+            or claim_release.get("reason") != "quiesced_task_claim_released"
+            or claim_release.get("task_id") != binding.get("task_alias")
+            or claim_release.get("task_status") != "todo"
+            or not isinstance(released_attempt, Mapping)
+            or released_attempt.get("released_from")
+            != replay.get("attempt")
+            or released_attempt.get("released_to")
+            != int(replay.get("attempt") or 0) - 1
+        ):
+            return None
+
+        authorization = {
+            "schema": (
+                DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_AUTHORIZATION_SCHEMA
+            ),
+            **exact_attempt,
+            "binding_id": str(binding.get("binding_id") or ""),
+            "binding_admission_id": str(
+                durable_binding.get("record_id") or ""
+            ),
+            "binding_admission_digest": _sha256_bytes(
+                _canonical_json(dict(durable_binding))
+            ),
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "nested_task_cid": str(replay.get("canonical_task_cid") or ""),
+            "nested_attempt": int(replay.get("attempt") or 0),
+            "terminal_reconciliation_evidence_id": link_evidence_id,
+            "first_clear_receipt_id": str(
+                source_receipt.get("receipt_id") or ""
+            ),
+            "interrupted_retry_evidence_id": source_evidence_id,
+            "interrupted_retry_id": str(
+                claim_release.get("released_unfinished_retry_id") or ""
+            ),
+            "state_recovery_event_id": str(
+                released_attempt.get("event_id") or ""
+            ),
+            "claim_release_receipt_id": str(
+                claim_release.get("receipt_id") or ""
+            ),
+            "prepared_reconciliation_receipt_id": str(
+                prepared.get("receipt_id") or ""
+            ),
+            "commit_barrier_receipt_id": str(
+                commit_barrier.get("receipt_id") or ""
+            ),
+            "state_digest": state_digest_after,
+            "outer_block_receipt_digest": _sha256_bytes(
+                _canonical_json(dict(receipt))
+            ),
+        }
+        rearm_authorization_id = _sha256_bytes(_canonical_json(authorization))
+
+        evidence: dict[str, Any] = {
+            "schema": (
+                DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+            ),
+            **exact_attempt,
+            "task_alias": str(binding.get("task_alias") or ""),
+            "attempt_root_key": paths.root.name,
+            "attempt_authority_root_digest": _sha256_bytes(
+                str(self.attempt_root).encode("utf-8")
+            ),
+            "attempt_root_digest": _sha256_bytes(
+                str(paths.root).encode("utf-8")
+            ),
+            "binding_id": str(binding.get("binding_id") or ""),
+            "binding_admission_id": str(
+                durable_binding.get("record_id") or ""
+            ),
+            "binding_admission_digest": _sha256_bytes(
+                _canonical_json(dict(durable_binding))
+            ),
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "nested_task_cid": str(replay.get("canonical_task_cid") or ""),
+            "nested_attempt": int(replay.get("attempt") or 0),
+            "terminal_reconciliation_evidence_id": link_evidence_id,
+            "first_clear_receipt_id": str(
+                source_receipt.get("receipt_id") or ""
+            ),
+            "interrupted_retry_evidence_id": source_evidence_id,
+            "interrupted_retry_id": str(
+                claim_release.get("released_unfinished_retry_id") or ""
+            ),
+            "state_recovery_event_id": str(
+                released_attempt.get("event_id") or ""
+            ),
+            "claim_release_receipt_id": str(
+                claim_release.get("receipt_id") or ""
+            ),
+            "prepared_reconciliation_receipt_id": str(
+                prepared.get("receipt_id") or ""
+            ),
+            "commit_barrier_receipt_id": str(
+                commit_barrier.get("receipt_id") or ""
+            ),
+            "state_digest": state_digest_after,
+            "outer_block_receipt_digest": _sha256_bytes(
+                _canonical_json(dict(receipt))
+            ),
+            "rearm_authorization_id": rearm_authorization_id,
+            "provider_dispatched": False,
+            "implementation_dispatched": False,
+            "validation_attempted": False,
+            "commit_created": False,
+            "merge_attempted": False,
+            "acceptance_inferred": False,
+            "recovery_terminal": True,
+            "retained_candidate_disposition": "preserved_unvalidated",
+        }
+        evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
+        return evidence
+
     def no_provider_dispatch_rearm_evidence(
         self,
         attempt: Any,

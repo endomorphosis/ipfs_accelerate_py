@@ -80141,6 +80141,170 @@ class DatabaseImplementationDaemon:
             ).hexdigest()
         except (TypeError, ValueError):
             return False
+        if (
+            record.get("schema")
+            == DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+        ):
+            digest_fields = {
+                "attempt_authority_root_digest",
+                "attempt_root_digest",
+                "binding_admission_digest",
+                "projection_immutable_digest",
+                "first_clear_receipt_id",
+                "interrupted_retry_evidence_id",
+                "state_recovery_event_id",
+                "prepared_reconciliation_receipt_id",
+                "commit_barrier_receipt_id",
+                "state_digest",
+                "outer_block_receipt_digest",
+                "rearm_authorization_id",
+            }
+            sha_identity_fields = {
+                "binding_id",
+            }
+            content_identity_fields = {
+                "binding_admission_id",
+                "interrupted_retry_id",
+                "claim_release_receipt_id",
+            }
+            integer_fields = {
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+                "nested_attempt",
+            }
+            authorization = {
+                "schema": (
+                    DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_AUTHORIZATION_SCHEMA
+                ),
+                **{
+                    name: record.get(name)
+                    for name in (
+                        "attempt_id",
+                        "claim_id",
+                        "task_cid",
+                        "attempt_number",
+                        "owner_session_id",
+                        "lease_id",
+                        "fencing_token",
+                        "fence_epoch",
+                    )
+                },
+                **{
+                    name: record.get(name)
+                    for name in (
+                        "binding_id",
+                        "binding_admission_id",
+                        "binding_admission_digest",
+                        "projection_immutable_digest",
+                        "nested_task_cid",
+                        "nested_attempt",
+                        "terminal_reconciliation_evidence_id",
+                        "first_clear_receipt_id",
+                        "interrupted_retry_evidence_id",
+                        "interrupted_retry_id",
+                        "state_recovery_event_id",
+                        "claim_release_receipt_id",
+                        "prepared_reconciliation_receipt_id",
+                        "commit_barrier_receipt_id",
+                        "state_digest",
+                        "outer_block_receipt_digest",
+                    )
+                },
+            }
+            calculated_authorization_id = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    authorization,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+            return bool(
+                set(record)
+                == set(
+                    DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_FIELDS
+                )
+                and re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id)
+                and evidence_id == expected_evidence_id
+                and calculated_id == evidence_id
+                and all(
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(record.get(name) or ""),
+                    )
+                    for name in digest_fields
+                )
+                and all(
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(record.get(name) or ""),
+                    )
+                    for name in sha_identity_fields
+                )
+                and all(
+                    re.fullmatch(
+                        r"baguqeera[a-z2-7]{52}",
+                        str(record.get(name) or ""),
+                    )
+                    for name in content_identity_fields
+                )
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(
+                        record.get("terminal_reconciliation_evidence_id")
+                        or ""
+                    ),
+                )
+                and all(
+                    type(record.get(name)) is int and int(record[name]) >= 0
+                    for name in integer_fields
+                )
+                and int(record.get("attempt_number") or 0) >= 1
+                and int(record.get("nested_attempt") or 0) >= 1
+                and record.get("attempt_root_key")
+                == hashlib.sha256(
+                    str(record.get("attempt_id") or "").encode("utf-8")
+                ).hexdigest()[:24]
+                and all(
+                    bool(str(record.get(name) or ""))
+                    for name in (
+                        "attempt_root_key",
+                        "nested_task_cid",
+                    )
+                )
+                and record.get("rearm_authorization_id")
+                == calculated_authorization_id
+                and record.get("provider_dispatched") is False
+                and record.get("implementation_dispatched") is False
+                and record.get("validation_attempted") is False
+                and record.get("commit_created") is False
+                and record.get("merge_attempted") is False
+                and record.get("acceptance_inferred") is False
+                and record.get("recovery_terminal") is True
+                and record.get("retained_candidate_disposition")
+                == "preserved_unvalidated"
+                and record.get("task_cid")
+                == str(getattr(task, "task_cid", "") or "")
+                and record.get("task_alias")
+                == str(getattr(task, "task_alias", "") or "")
+                and record.get("attempt_id") == original.get("attempt_id")
+                and record.get("claim_id") == original.get("claim_id")
+                and record.get("attempt_number")
+                == original.get("attempt_number")
+                and record.get("owner_session_id")
+                == original.get("owner_session_id")
+                and record.get("lease_id") == original.get("lease_id")
+                and record.get("fencing_token")
+                == original.get("fencing_token")
+                and record.get("fence_epoch")
+                == original.get("fence_epoch")
+                and record.get("outer_block_receipt_digest")
+                == DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                    original
+                )
+            )
         digest_fields = {
             "attempt_authority_root_digest",
             "attempt_root_digest",
@@ -80213,6 +80377,16 @@ class DatabaseImplementationDaemon:
         receipt = body.get("completion_receipt")
         if not isinstance(receipt, Mapping):
             return "not_applicable"
+        nested_rearm_evidence = receipt.get("no_provider_rearm_evidence")
+        for candidate in (receipt, nested_rearm_evidence):
+            if isinstance(candidate, Mapping) and str(
+                candidate.get("schema") or ""
+            ).rsplit("/", 1)[-1] == "nested-portal-rearm-evidence@1":
+                # This unreviewed predecessor schema has no closed verifier
+                # or admitted identity profile.  In particular, an empty
+                # evidence_id must fence automatic claims rather than fall
+                # through as an unrelated receipt.
+                return "invalid"
         is_no_provider_rearm = bool(
             receipt.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
             and receipt.get("operation")
@@ -80259,6 +80433,32 @@ class DatabaseImplementationDaemon:
             prior_rearms = int(raw_prior_rearms)
         except (TypeError, ValueError):
             return "invalid"
+        rearm_count_valid = bool(
+            (
+                interrupted_recovery_refund
+                and rearm_count == prior_rearms
+                and 0 <= rearm_count <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+            )
+            or (
+                not interrupted_recovery_refund
+                and rearm_count == prior_rearms + 1
+                and 1 <= rearm_count <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+            )
+        )
+        raw_original_attempt_number = original.get("attempt_number")
+        raw_original_attempts_used = original.get("attempts_used")
+        original_attempt_count_valid = bool(
+            type(raw_original_attempt_number) is int
+            and type(raw_original_attempts_used) is int
+            and (
+                raw_original_attempt_number == raw_original_attempts_used
+                or (
+                    interrupted_recovery_refund
+                    and raw_original_attempt_number
+                    == raw_original_attempts_used + prior_rearms
+                )
+            )
+        )
         expected_saga_id = (
             DatabaseImplementationDaemon._database_no_provider_rearm_saga_id(
                 saga_nonce=str(fence.get("saga_nonce") or ""),
@@ -81031,6 +81231,97 @@ class DatabaseImplementationDaemon:
             )
         )
 
+    @staticmethod
+    def _database_interrupted_failed_phase_link(
+        body: Any,
+        receipt: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Return one exact populated interrupted-recovery phase link.
+
+        The older no-provider setup proof deliberately admits no terminal
+        reconciliation saga.  An interrupted implementation is the opposite:
+        its immutable prepared/commit-barrier chain must be linked from both
+        the failed phase and canonical blocked task receipt.  This parser only
+        nominates that closed link; the bridge still verifies every referenced
+        immutable object and current nested authority before rearm.
+        """
+
+        if type(body) is not dict:
+            return None
+        expected_body = {
+            "database_disposition": "blocked_unknown_outcome",
+            "reason": "callback_authority_incomplete_blocked",
+            "retry_exhausted": True,
+            "unknown_authority": True,
+        }
+        if set(body) != set(expected_body) | {"terminal_reconciliation"} or any(
+            type(body.get(name)) is not type(value) or body.get(name) != value
+            for name, value in expected_body.items()
+        ):
+            return None
+        raw_link = body.get("terminal_reconciliation")
+        receipt_link = receipt.get("terminal_reconciliation")
+        if type(raw_link) is not dict or type(receipt_link) is not dict:
+            return None
+        link = dict(raw_link)
+        if link != dict(receipt_link):
+            return None
+        expected_link_fields = {
+            "schema",
+            "attempt_id",
+            "claim_id",
+            "task_cid",
+            "attempt_number",
+            "owner_session_id",
+            "lease_id",
+            "fencing_token",
+            "fence_epoch",
+            "binding_id",
+            "nested_state_digest",
+            "nested_reason",
+            "nested_reconciled",
+            "trigger",
+            "intended_database_disposition",
+            "prepared_reconciliation_receipt_id",
+            "commit_barrier_receipt_id",
+            "evidence_id",
+        }
+        unsigned = dict(link)
+        evidence_id = str(unsigned.pop("evidence_id", "") or "")
+        if (
+            set(link) != expected_link_fields
+            or link.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-terminal-reconciliation-link@1"
+            )
+            or link.get("nested_reason") != "nested_portal_attempt_reconciled"
+            or link.get("nested_reconciled") is not True
+            or link.get("intended_database_disposition")
+            != "blocked_unknown_outcome"
+            or not str(link.get("trigger") or "").strip()
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(link.get("binding_id") or ""),
+            )
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(link.get("nested_state_digest") or ""),
+            )
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(link.get("prepared_reconciliation_receipt_id") or ""),
+            )
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(link.get("commit_barrier_receipt_id") or ""),
+            )
+            or not re.fullmatch(r"baguqeera[a-z2-7]{52}", evidence_id)
+            or content_identity(unsigned) != evidence_id
+        ):
+            return None
+        return MappingProxyType(link)
+
     def _database_portal_no_provider_rearm_evidence(
         self,
         task: Any,
@@ -81159,6 +81450,10 @@ class DatabaseImplementationDaemon:
         failed_phase_body = (
             phases[-1].get("body") if phases else None
         )
+        interrupted_phase_link = self._database_interrupted_failed_phase_link(
+            failed_phase_body,
+            receipt,
+        )
         if (
             [str(item.get("phase") or "") for item in phases]
             != [
@@ -81166,17 +81461,51 @@ class DatabaseImplementationDaemon:
                 ATTEMPT_PHASE_CONTEXT,
                 ATTEMPT_PHASE_FAILED,
             ]
-            or not self._database_no_provider_failed_phase_body_is_admissible(
-                failed_phase_body
+            or not (
+                self._database_no_provider_failed_phase_body_is_admissible(
+                    failed_phase_body
+                )
+                or interrupted_phase_link is not None
             )
         ):
             return None
         try:
-            if (
-                self._database_portal_terminal_reconciliation_saga(attempt)
-                is not None
-            ):
+            terminal_saga = self._database_portal_terminal_reconciliation_saga(
+                attempt
+            )
+            if interrupted_phase_link is None and terminal_saga is not None:
                 return None
+            if interrupted_phase_link is not None:
+                expected_saga = {
+                    **self._database_attempt_identity(attempt),
+                    "intended_database_disposition": "blocked_unknown_outcome",
+                    "evidence_id": str(
+                        interrupted_phase_link.get("evidence_id") or ""
+                    ),
+                    "prepared_reconciliation_receipt_id": str(
+                        interrupted_phase_link.get(
+                            "prepared_reconciliation_receipt_id"
+                        )
+                        or ""
+                    ),
+                    "commit_barrier_receipt_id": str(
+                        interrupted_phase_link.get("commit_barrier_receipt_id")
+                        or ""
+                    ),
+                    "stage": "terminal",
+                }
+                if (
+                    terminal_saga is None
+                    or any(
+                        terminal_saga.get(name) != expected
+                        for name, expected in expected_saga.items()
+                    )
+                    or not re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(terminal_saga.get("receipt_id") or ""),
+                    )
+                ):
+                    return None
         except Exception:
             return None
         try:
@@ -81273,6 +81602,36 @@ class DatabaseImplementationDaemon:
             or not re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id)
             or expected_evidence_id != evidence_id
         ):
+            return None
+        if not self._valid_no_provider_rearm_evidence(
+            evidence,
+            task=task,
+            original=receipt,
+            expected_evidence_id=evidence_id,
+        ):
+            return None
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+        )
+
+        interrupted_recovery = bool(
+            evidence.get("schema")
+            == DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+        )
+        if interrupted_recovery is not (interrupted_phase_link is not None):
+            return None
+        attempt_budget_binding = bool(
+            (
+                interrupted_recovery
+                and int(attempt.attempt_number)
+                == int(raw_attempts_used) + int(raw_rearm_count)
+            )
+            or (
+                not interrupted_recovery
+                and int(attempt.attempt_number) == int(raw_attempts_used)
+            )
+        )
+        if not attempt_budget_binding:
             return None
         current_task = self.task_source.get(attempt.task_cid)
         current_attempt = self.get_attempt(attempt.attempt_id)
