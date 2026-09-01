@@ -2116,17 +2116,16 @@ def _recover_poisoned_owner_connection(
                 gateway._connection = replacement
             native_replaced = True
         listener_down = not _owner_listener_ready(server)
-        # A healthy exclusive handle plus a still-bound TCP port must not
-        # null `_transport_connection` and re-enter `transport.start()`.
-        # That rebind is what the live-query fallback used to trigger.
-        if native_replaced or (listener_down and unusable):
+        # Reconnect a poisoned handle in place. Restarting transport while
+        # the TCP listener is still bound drops every typed lane attach.
+        if native_replaced and listener_down:
             _restart_owner_transport(
                 server,
                 previous=current,
                 replacement=replacement,
             )
             return True
-        return native_replaced or unusable
+        return native_replaced
 
 
 def _owner_task_projection(server: Any) -> dict[str, Any]:
@@ -2155,12 +2154,12 @@ def _owner_identity_snapshot(server: Any) -> dict[str, Any]:
 
 
 def _publish_live_projection(server: Any, paths: Mapping[str, Path]) -> dict[str, Any]:
-    try:
-        ready = server.ready(retry_transient_birth=False)
-    except Exception:
-        if not _owner_listener_ready(server):
-            raise
-        ready = _owner_identity_snapshot(server)
+    # Periodic projection must not call server.ready(): that holds
+    # `_owner_transaction_lock` across a sidecar quack_query and starves
+    # typed load_store_generation, so SPAR-018 never gets claimed.
+    if not _owner_listener_ready(server):
+        raise OperatorError("SPAR Quack listener is not bound")
+    ready = _owner_identity_snapshot(server)
     task_projection = _owner_task_projection(server)
     unsigned = {
         "schema": "spar/live-owner-projection@1",

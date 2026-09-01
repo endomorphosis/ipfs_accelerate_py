@@ -1559,26 +1559,28 @@ def test_publish_live_projection_skips_live_query_birth_retry(
     class _Server:
         def ready(self, *, retry_transient_birth: bool = True) -> dict[str, object]:
             calls.append(retry_transient_birth)
-            return {
-                "process_birth_id": "birth:test",
-                "server_id": "server:test",
-                "store_id": "store:test",
-                "generation": 1,
-                "schema_revision": 1,
-                "live": True,
-            }
+            raise AssertionError("periodic projection must not call server.ready()")
 
     server = _Server()
     server._connection = object()  # type: ignore[attr-defined]
     server._owner_transaction_lock = threading.RLock()  # type: ignore[attr-defined]
+    server._identity = SimpleNamespace(  # type: ignore[attr-defined]
+        process_birth_id="birth:test",
+        server_id="server:test",
+        store_id="store:test",
+        generation=1,
+        schema_revision=1,
+    )
+    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: True)
     monkeypatch.setattr(
         materializer,
         "_task_status",
         lambda _connection: {"task_count": 0, "status_counts": {}},
     )
     payload = materializer._publish_live_projection(server, {"owner": tmp_path})
-    assert calls == [False]
+    assert calls == []
     assert payload["quack_authenticated_live_query"] is True
+    assert payload["owner_process_birth_id"] == "birth:test"
     assert (tmp_path / "spar-live-projection.json").is_file()
 
 
