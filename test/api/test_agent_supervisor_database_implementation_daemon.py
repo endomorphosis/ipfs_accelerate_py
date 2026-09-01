@@ -17,7 +17,7 @@ import json
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Callable
+from typing import Callable, Mapping
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
@@ -68,6 +68,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_BACKOFF_SECONDS,
     DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_REASON,
+    DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_AUTHORIZATION_SCHEMA,
+    DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_FIELDS,
+    DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_FIELDS,
     DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_PIN,
@@ -3071,6 +3074,35 @@ def test_quiesced_release_started_journal_admits_only_exact_current_tuple(
             },
         )
     ]
+
+
+def test_fenced_provider_started_journal_selects_consuming_successor() -> None:
+    case = _quiesced_release_started_selector_case(
+        task_alias="PCTDD-006",
+        attempt_number=1,
+        rearm_count=0,
+    )
+    case.evidence.clear()
+    case.evidence.update(
+        _fenced_provider_unpublished_evidence(
+            case.attempt,
+            case.receipt,
+        )
+    )
+
+    admitted = case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    )
+
+    assert admitted is not None
+    assert admitted["schema"] == (
+        DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA
+    )
+    assert admitted["attempt_consumed"] is True
+    assert admitted["retry_authorized_once"] is True
+    assert admitted["effect_admitted"] is False
+    assert case.calls["verifier"] == [case.attempt]
     assert case.calls["effect"] == [
         (
             (case.attempt.attempt_id,),
@@ -6922,6 +6954,389 @@ def _rehash_terminal_no_effect_route_evidence(
             default=str,
         ).encode("utf-8")
     ).hexdigest()
+
+
+def _fenced_provider_unpublished_evidence(
+    candidate: DatabaseTaskAttempt,
+    original: Mapping[str, object],
+) -> dict[str, object]:
+    sha = "sha256:" + "a" * 64
+    cid = "baguqeera" + "a" * 52
+    terminal_link = dict(original.get("terminal_reconciliation") or {})
+    values: dict[str, object] = {
+        "schema": DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA,
+        "attempt_id": candidate.attempt_id,
+        "claim_id": candidate.claim_id,
+        "task_cid": candidate.task_cid,
+        "task_alias": candidate.task_alias,
+        "attempt_number": candidate.attempt_number,
+        "owner_session_id": candidate.owner_session_id,
+        "lease_id": candidate.lease_id,
+        "fencing_token": candidate.fencing_token,
+        "fence_epoch": candidate.fence_epoch,
+        "attempt_root_key": hashlib.sha256(
+            candidate.attempt_id.encode("utf-8")
+        ).hexdigest()[:24],
+        "attempt_authority_root_digest": sha,
+        "attempt_root_digest": sha,
+        "attempt_directory_names_digest": sha,
+        "binding_id": sha,
+        "binding_admission_id": cid,
+        "binding_admission_digest": sha,
+        "projection_immutable_digest": sha,
+        "task_revision": 1,
+        "board_namespace": "parallel-content-sealing-proof-carrying-tdd-v1",
+        "nested_task_cid": cid,
+        "nested_attempt": 1,
+        "terminal_reconciliation_evidence_id": str(
+            terminal_link.get("evidence_id") or cid
+        ),
+        "prepared_reconciliation_receipt_id": str(
+            terminal_link.get("prepared_reconciliation_receipt_id") or sha
+        ),
+        "commit_barrier_receipt_id": str(
+            terminal_link.get("commit_barrier_receipt_id") or sha
+        ),
+        "terminal_reconciliation_receipt_id": sha,
+        "reconciliation_receipt_count": 5,
+        "reconciliation_receipt_ids_digest": sha,
+        "fenced_provider_receipt_count": 2,
+        "fenced_provider_receipt_ids_digest": sha,
+        "provider_fence_chronology_digest": sha,
+        "container_removed_receipt_id": sha,
+        "terminal_lifecycle_receipt_id": sha,
+        "provider_runner_pid": 4242,
+        "provider_runner_receipt_id": cid,
+        "provider_container_fence_receipt_id": cid,
+        "task_claim_release_receipt_id": cid,
+        "task_claim_release_receipt_name": (
+            "canonical-task-0123456789abcdef01234567-a1.json"
+        ),
+        "task_claim_release_event_id": sha,
+        "implementation_started_event_id": sha,
+        "terminal_lifecycle_event_id": sha,
+        "event_stream_id": "event-log:sha256:" + "b" * 64,
+        "event_snapshot_id": "event-log-snapshot:sha256:" + "b" * 64,
+        "event_manifest_digest": sha,
+        "event_count": 42,
+        "event_head_sequence": 42,
+        "event_head_id": sha,
+        "workspace_path": "/tmp/destroyed-pctdd-worker",
+        "branch": "implementation/pctdd-006-a1",
+        "baseline_ref": "c" * 40,
+        "branch_disposition": "absent",
+        "branch_target": "",
+        "workspace_absent": True,
+        "prepared_state_digest": sha,
+        "state_digest": sha,
+        "outer_block_receipt_digest": (
+            DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                original
+            )
+        ),
+        "provider_runner_started": True,
+        "implementation_runner_started": True,
+        "terminal_provider_outcome_admitted": False,
+        "terminal_provider_evidence_present": False,
+        "effect_admitted": False,
+        "attempt_consumed": True,
+        "retry_authorized_once": True,
+        "authoritative_validation_admitted": False,
+        "commit_admitted": False,
+        "merge_admitted": False,
+        "publication_admitted": False,
+        "candidate_ref_delta": False,
+        "acceptance_inferred": False,
+        "recovery_terminal": True,
+        "candidate_disposition": "destroyed_unaccepted",
+        "nested_state_quiescent": True,
+    }
+    authorization_fields = (
+        "binding_id",
+        "binding_admission_id",
+        "binding_admission_digest",
+        "projection_immutable_digest",
+        "task_revision",
+        "board_namespace",
+        "nested_task_cid",
+        "nested_attempt",
+        "terminal_reconciliation_evidence_id",
+        "prepared_reconciliation_receipt_id",
+        "commit_barrier_receipt_id",
+        "terminal_reconciliation_receipt_id",
+        "reconciliation_receipt_count",
+        "reconciliation_receipt_ids_digest",
+        "fenced_provider_receipt_count",
+        "fenced_provider_receipt_ids_digest",
+        "provider_fence_chronology_digest",
+        "container_removed_receipt_id",
+        "terminal_lifecycle_receipt_id",
+        "provider_runner_pid",
+        "provider_runner_receipt_id",
+        "provider_container_fence_receipt_id",
+        "task_claim_release_receipt_id",
+        "task_claim_release_receipt_name",
+        "task_claim_release_event_id",
+        "implementation_started_event_id",
+        "terminal_lifecycle_event_id",
+        "event_stream_id",
+        "event_snapshot_id",
+        "event_manifest_digest",
+        "event_count",
+        "event_head_sequence",
+        "event_head_id",
+        "workspace_path",
+        "branch",
+        "baseline_ref",
+        "branch_disposition",
+        "branch_target",
+        "workspace_absent",
+        "prepared_state_digest",
+        "state_digest",
+        "outer_block_receipt_digest",
+    )
+    authorization = {
+        "schema": DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_AUTHORIZATION_SCHEMA,
+        **{
+            name: values[name]
+            for name in (
+                "attempt_id",
+                "claim_id",
+                "task_cid",
+                "attempt_number",
+                "owner_session_id",
+                "lease_id",
+                "fencing_token",
+                "fence_epoch",
+            )
+        },
+        **{name: values[name] for name in authorization_fields},
+    }
+    values["rearm_authorization_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            authorization,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert set(values) == set(
+        DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_FIELDS
+    ) - {"evidence_id"}
+    values["evidence_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            values,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    return values
+
+
+def test_fenced_provider_unpublished_evidence_validator_is_closed() -> None:
+    candidate = DatabaseTaskAttempt(
+        attempt_id="attempt:fenced-provider",
+        claim_id="claim:fenced-provider",
+        task_cid="task:cid:fenced-provider",
+        task_alias="PCTDD-006",
+        attempt_number=3,
+        owner_session_id="session:fenced-provider",
+        lease_id="lease:fenced-provider",
+        fencing_token=17,
+        fence_epoch=9,
+        committed_phase="failed",
+        status="failed",
+        started_at_ms=1,
+        finished_at_ms=2,
+        body={},
+    )
+    terminal_link = {
+        "evidence_id": "baguqeera" + "a" * 52,
+        "prepared_reconciliation_receipt_id": "sha256:" + "a" * 64,
+        "commit_barrier_receipt_id": "sha256:" + "a" * 64,
+    }
+    original: dict[str, object] = {
+        "attempt_id": candidate.attempt_id,
+        "claim_id": candidate.claim_id,
+        "task_cid": candidate.task_cid,
+        "attempt_number": candidate.attempt_number,
+        "owner_session_id": candidate.owner_session_id,
+        "lease_id": candidate.lease_id,
+        "fencing_token": candidate.fencing_token,
+        "fence_epoch": candidate.fence_epoch,
+        "attempts_used": 1,
+        "terminal_reconciliation": terminal_link,
+    }
+    task = SimpleNamespace(
+        task_cid=candidate.task_cid,
+        task_alias=candidate.task_alias,
+    )
+    evidence = _fenced_provider_unpublished_evidence(candidate, original)
+    assert DatabaseImplementationDaemon._valid_no_provider_rearm_evidence(
+        evidence,
+        task=task,
+        original=original,
+        expected_evidence_id=str(evidence["evidence_id"]),
+    )
+
+    for field, value in (
+        ("effect_admitted", True),
+        ("candidate_ref_delta", True),
+        ("workspace_absent", False),
+        ("attempt_consumed", False),
+        ("provider_runner_started", False),
+        ("terminal_provider_evidence_present", True),
+        ("claim_id", "claim:spliced-attempt"),
+        ("provider_fence_chronology_digest", "sha256:" + "d" * 64),
+        ("unexpected_publication_authority", True),
+    ):
+        malformed = dict(evidence)
+        malformed[field] = value
+        unsigned = dict(malformed)
+        unsigned.pop("evidence_id", None)
+        malformed["evidence_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                unsigned,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        assert not DatabaseImplementationDaemon._valid_no_provider_rearm_evidence(
+            malformed,
+            task=task,
+            original=original,
+            expected_evidence_id=str(malformed["evidence_id"]),
+        ), field
+
+
+def test_fenced_provider_rearm_preserves_consumed_attempt_and_grants_one_credit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = SimpleNamespace(
+        task_cid="task:cid:fenced-consumed",
+        task_alias="PCTDD-006",
+        validations=(),
+        body={},
+        revision=13,
+        status="retrying",
+    )
+    validation_spec_cid = (
+        DatabaseImplementationDaemon._retry_budget_validation_spec_cid(task)
+    )
+    terminal_evidence_id = "baguqeera" + "a" * 52
+    original: dict[str, object] = {
+        "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+        "operation": "database_unknown_outcome_blocked",
+        "task_cid": task.task_cid,
+        "validation_spec_cid": validation_spec_cid,
+        "attempts_used": 1,
+        "max_task_attempts": 1,
+        "retry_exhausted": True,
+        "process_instance_id": "process:old",
+        "owner_session_id": "session:old",
+        "reason": "callback_authority_incomplete_blocked",
+        "unknown_outcome_rearm_count": 0,
+        "forced_block": True,
+        "authority_outcome": "unknown",
+        "attempt_id": "attempt:fenced-consumed",
+        "claim_id": "claim:fenced-consumed",
+        "lease_id": "lease:fenced-consumed",
+        "attempt_number": 1,
+        "fencing_token": 7,
+        "fence_epoch": 3,
+        "terminal_reconciliation": {"evidence_id": terminal_evidence_id},
+    }
+    evidence_id = "sha256:" + "e" * 64
+    evidence = {
+        "schema": DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA,
+        "terminal_reconciliation_evidence_id": terminal_evidence_id,
+        "attempt_consumed": True,
+        "retry_authorized_once": True,
+        "evidence_id": evidence_id,
+    }
+    blocked_revision = 10
+    retrying_revision = 11
+    saga_nonce = "no-provider-rearm:" + "1" * 24
+    blocked_digest = DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+        original
+    )
+    saga_id = DatabaseImplementationDaemon._database_no_provider_rearm_saga_id(
+        saga_nonce=saga_nonce,
+        task_cid=task.task_cid,
+        attempt_id=str(original["attempt_id"]),
+        claim_id=str(original["claim_id"]),
+        evidence_id=evidence_id,
+        blocked_receipt_digest=blocked_digest,
+        blocked_revision=blocked_revision,
+    )
+    receipt: dict[str, object] = {
+        "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+        "operation": DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
+        "task_cid": task.task_cid,
+        "validation_spec_cid": validation_spec_cid,
+        "attempts_used": 1,
+        "max_task_attempts": 1,
+        "retry_exhausted": False,
+        "process_instance_id": "process:new",
+        "owner_session_id": "session:new",
+        "reason": original["reason"],
+        "unknown_outcome_rearm_count": 1,
+        "forced_block": False,
+        "authority_outcome": "rearmed",
+        "previous_operation": original["operation"],
+        "previous_owner_session_id": original["owner_session_id"],
+        "previous_attempt_id": original["attempt_id"],
+        "previous_claim_id": original["claim_id"],
+        "no_provider_rearm_evidence": evidence,
+        "no_provider_rearm_evidence_id": evidence_id,
+        "previous_block_process_instance_id": original["process_instance_id"],
+        "no_provider_rearm_saga_id": saga_id,
+        "no_provider_rearm_original_block_receipt": original,
+    }
+    immutable_digest = (
+        DatabaseImplementationDaemon._database_no_provider_rearm_digest(receipt)
+    )
+    receipt["no_provider_rearm_fence"] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-no-provider-rearm-fence@1"
+        ),
+        "saga_id": saga_id,
+        "saga_nonce": saga_nonce,
+        "state": "admitted",
+        "evidence_id": evidence_id,
+        "blocked_receipt_digest": blocked_digest,
+        "blocked_revision": blocked_revision,
+        "retrying_revision": retrying_revision,
+        "admitted_revision": retrying_revision + 2,
+        "immutable_receipt_digest": immutable_digest,
+    }
+    task.body = {"completion_receipt": receipt}
+    monkeypatch.setattr(
+        DatabaseImplementationDaemon,
+        "_valid_no_provider_rearm_evidence",
+        staticmethod(lambda *_args, **_kwargs: True),
+    )
+    assert DatabaseImplementationDaemon._no_provider_rearm_fence_state(task) == (
+        "admitted"
+    )
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon.max_task_attempts = 1
+    retry_state = daemon._retry_budget_state(task)
+    assert retry_state["attempts_used"] == 1
+    assert retry_state["retry_exhausted"] is False
+
+    refunded = dict(receipt)
+    refunded["attempts_used"] = 0
+    task.body = {"completion_receipt": refunded}
+    assert DatabaseImplementationDaemon._no_provider_rearm_fence_state(task) == (
+        "invalid"
+    )
 
 
 def test_terminal_no_effect_route_evidence_validator_is_closed_and_fenced() -> None:

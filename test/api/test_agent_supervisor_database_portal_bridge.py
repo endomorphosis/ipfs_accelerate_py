@@ -1568,6 +1568,282 @@ def test_quiesced_release_fence_revalidates_before_callback_and_holds_lock(
         daemon.close()
 
 
+def test_fenced_provider_unpublished_event_chronology_is_closed() -> None:
+    """The successor admits one split fence/release chronology only."""
+
+    task_alias = "PCTDD-006"
+    nested_task_cid = "baguqeera" + "a" * 52
+    workspace = "/tmp/pctdd-006-fenced-provider"
+    identity = {
+        "canonical_task_key": "task/v1/" + "a" * 64,
+        "canonical_task_cid": nested_task_cid,
+        "board_namespace": "parallel-content-sealing-proof-carrying-tdd-v1",
+    }
+
+    def event(sequence: int, event_type: str, **body: object) -> dict[str, object]:
+        return {
+            "sequence": sequence,
+            "timestamp": "2026-09-01T20:00:00+00:00",
+            "event_id": "sha256:" + f"{sequence:064x}",
+            "type": event_type,
+            "stream_id": "event-log:sha256:" + "1" * 64,
+            "snapshot_id": "event-log-snapshot:sha256:" + "1" * 64,
+            "previous_event_id": (
+                "" if sequence == 1 else "sha256:" + f"{sequence - 1:064x}"
+            ),
+            **body,
+        }
+
+    events = [
+        event(1, "task_selected", task_id=task_alias, **identity),
+        event(
+            2,
+            "implementation_protected_path_snapshot_recorded",
+            task_id=task_alias,
+            attempt=1,
+            workspace_path=workspace,
+            **identity,
+        ),
+        event(
+            3,
+            "implementation_started",
+            task_id=task_alias,
+            attempt=1,
+            worktree_path=workspace,
+            branch="implementation/pctdd-006-a1",
+            baseline_ref="a" * 40,
+            provider_dispatched=False,
+            **identity,
+        ),
+        event(
+            4,
+            "pre_implementation_kernel_evaluated",
+            task_id=task_alias,
+            attempt=1,
+        ),
+        event(
+            5,
+            "implementation_shutdown_reconciliation_blocked",
+            task_id=task_alias,
+            attempt=1,
+            worktree_path=workspace,
+            reconciled=False,
+            blocked=True,
+            reason="implementation_worker_still_active",
+        ),
+        event(
+            6,
+            "implementation_protected_path_snapshot_cleared",
+            task_id=task_alias,
+            attempt=1,
+        ),
+        event(
+            7,
+            "implementation_protected_path_snapshot_reconciled",
+            task_id=task_alias,
+            attempt=1,
+            workspace_path=workspace,
+        ),
+        event(
+            8,
+            "implementation_shutdown_reconciliation_blocked",
+            task_id=task_alias,
+            attempt=1,
+            reason="task_claim_reconciliation_blocked",
+            worktree_lifecycle_reconciliation={
+                "state": "terminal",
+                "reconciled": True,
+                "blocked": False,
+                "workspace_path": workspace,
+            },
+        ),
+        event(
+            9,
+            "implementation_task_claim_released",
+            task_id=task_alias,
+            attempt=1,
+            reason="quiesced_task_claim_released",
+            stale_dispatch_intent_released_for_retry=True,
+        ),
+        event(
+            10,
+            "implementation_lock_cleared",
+            task_id=task_alias,
+            branch="",
+        ),
+        event(
+            11,
+            "implementation_shutdown_reconciled",
+            task_id=task_alias,
+            attempt=1,
+            reason="already_quiesced",
+            reconciled=True,
+            blocked=False,
+        ),
+    ]
+    classify = database_portal_bridge_module._fenced_provider_unpublished_event_roles
+    assert classify(
+        events,
+        task_alias=task_alias,
+        nested_task_cid=nested_task_cid,
+        nested_attempt=1,
+        workspace_path=workspace,
+    ) is not None
+
+    reordered = [dict(item) for item in events]
+    reordered[4], reordered[5] = reordered[5], reordered[4]
+    assert classify(
+        reordered,
+        task_alias=task_alias,
+        nested_task_cid=nested_task_cid,
+        nested_attempt=1,
+        workspace_path=workspace,
+    ) is None
+
+    extra_effect = [dict(item) for item in events]
+    extra_effect.append(event(12, "implementation_finished", task_id=task_alias))
+    assert classify(
+        extra_effect,
+        task_alias=task_alias,
+        nested_task_cid=nested_task_cid,
+        nested_attempt=1,
+        workspace_path=workspace,
+    ) is None
+
+    cross_attempt = [dict(item) for item in events]
+    cross_attempt[7]["attempt"] = 2
+    assert classify(
+        cross_attempt,
+        task_alias=task_alias,
+        nested_task_cid=nested_task_cid,
+        nested_attempt=1,
+        workspace_path=workspace,
+    ) is None
+
+    crossed_clear = [dict(item) for item in events]
+    crossed_clear[5]["attempt"] = 2
+    assert classify(
+        crossed_clear,
+        task_alias=task_alias,
+        nested_task_cid=nested_task_cid,
+        nested_attempt=1,
+        workspace_path=workspace,
+    ) is None
+
+    crossed_selection = [dict(item) for item in events]
+    crossed_selection[0]["canonical_task_cid"] = "baguqeera" + "b" * 52
+    assert classify(
+        crossed_selection,
+        task_alias=task_alias,
+        nested_task_cid=nested_task_cid,
+        nested_attempt=1,
+        workspace_path=workspace,
+    ) is None
+
+
+def test_fenced_provider_destroyed_candidate_ref_state_is_fail_closed(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    git_dir = repo / ".git"
+    branch = "implementation/pctdd-006-a1"
+    baseline = "a" * 40
+    (git_dir / "refs" / "heads" / "implementation").mkdir(parents=True)
+
+    ref_state = database_portal_bridge_module._fenced_provider_branch_state
+    assert ref_state(repo, branch=branch, baseline_ref=baseline) == (
+        "absent",
+        "",
+    )
+    branch_ref = git_dir / "refs" / "heads" / "implementation" / "pctdd-006-a1"
+    branch_ref.write_text(baseline + "\n", encoding="ascii")
+    assert ref_state(repo, branch=branch, baseline_ref=baseline) == (
+        "baseline",
+        baseline,
+    )
+    branch_ref.write_text("b" * 40 + "\n", encoding="ascii")
+    assert ref_state(repo, branch=branch, baseline_ref=baseline) is None
+
+
+def test_fenced_provider_revalidation_blocks_workspace_and_ref_races(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, bridge, attempt, paths, outer_receipt = (
+        _seed_terminal_quiescent_resource_deferral(
+            tmp_path,
+            monkeypatch,
+            shutdown_event_count=1,
+        )
+    )
+    workspace = tmp_path / "destroyed-provider-worktree"
+    expected = {
+        "schema": (
+            database_portal_bridge_module.
+            DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA
+        ),
+        "evidence_id": "sha256:" + "3" * 64,
+        "workspace_path": str(workspace),
+        "branch": "implementation/pctdd-006-a1",
+        "baseline_ref": "a" * 40,
+        "branch_disposition": "absent",
+        "branch_target": "",
+        **_seed_quiesced_release_artifact_population(paths),
+    }
+    ref_state: list[tuple[str, str]] = [("absent", "")]
+    monkeypatch.setattr(
+        bridge,
+        "_fenced_provider_unpublished_rearm_evidence",
+        lambda *_args, **_kwargs: dict(expected),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_revalidate_pinned_quiesced_release_snapshot",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "_fenced_provider_branch_state",
+        lambda *_args, **_kwargs: ref_state[-1],
+    )
+    calls: list[str] = []
+    try:
+        assert bridge.execute_with_revalidated_fenced_provider_unpublished(
+            attempt,
+            outer_block_receipt=outer_receipt,
+            expected_evidence=expected,
+            callback=lambda: calls.append("committed") or "committed",
+        ) == "committed"
+        assert calls == ["committed"]
+
+        workspace.mkdir()
+        with pytest.raises(DatabasePortalBridgeError):
+            bridge.execute_with_revalidated_fenced_provider_unpublished(
+                attempt,
+                outer_block_receipt=outer_receipt,
+                expected_evidence=expected,
+                callback=lambda: calls.append("workspace-race"),
+            )
+        assert calls == ["committed"]
+        workspace.rmdir()
+
+        def race_ref_after_cas() -> str:
+            calls.append("ref-race")
+            ref_state.append(("baseline", "a" * 40))
+            return "committed-before-race-detected"
+
+        with pytest.raises(DatabasePortalBridgeError):
+            bridge.execute_with_revalidated_fenced_provider_unpublished(
+                attempt,
+                outer_block_receipt=outer_receipt,
+                expected_evidence=expected,
+                callback=race_ref_after_cas,
+            )
+        assert calls == ["committed", "ref-race"]
+    finally:
+        daemon.close()
+
+
 def test_quiesced_release_artifact_pin_rejects_mixed_modes_swap_and_fifo(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

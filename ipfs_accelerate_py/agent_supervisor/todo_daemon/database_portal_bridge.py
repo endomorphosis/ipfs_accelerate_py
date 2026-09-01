@@ -168,6 +168,16 @@ DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_AUTHORIZATION_SCHEMA: Fina
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-quiesced-stale-dispatch-release-rearm-authorization@1"
 )
+DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-fenced-provider-unpublished-rearm-evidence@1"
+)
+DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_AUTHORIZATION_SCHEMA: Final[
+    str
+] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-fenced-provider-unpublished-rearm-authorization@1"
+)
 _STALE_DISPATCH_MIGRATION_REPLAY_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "reconciled",
@@ -658,6 +668,419 @@ DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_FIELDS: Final[
         "evidence_id",
     }
 )
+DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "schema",
+        "attempt_id",
+        "claim_id",
+        "task_cid",
+        "task_alias",
+        "attempt_number",
+        "owner_session_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "attempt_root_key",
+        "attempt_authority_root_digest",
+        "attempt_root_digest",
+        "attempt_directory_names_digest",
+        "binding_id",
+        "binding_admission_id",
+        "binding_admission_digest",
+        "projection_immutable_digest",
+        "task_revision",
+        "board_namespace",
+        "nested_task_cid",
+        "nested_attempt",
+        "terminal_reconciliation_evidence_id",
+        "prepared_reconciliation_receipt_id",
+        "commit_barrier_receipt_id",
+        "terminal_reconciliation_receipt_id",
+        "reconciliation_receipt_count",
+        "reconciliation_receipt_ids_digest",
+        "fenced_provider_receipt_count",
+        "fenced_provider_receipt_ids_digest",
+        "provider_fence_chronology_digest",
+        "container_removed_receipt_id",
+        "terminal_lifecycle_receipt_id",
+        "provider_runner_pid",
+        "provider_runner_receipt_id",
+        "provider_container_fence_receipt_id",
+        "task_claim_release_receipt_id",
+        "task_claim_release_receipt_name",
+        "task_claim_release_event_id",
+        "implementation_started_event_id",
+        "terminal_lifecycle_event_id",
+        "event_stream_id",
+        "event_snapshot_id",
+        "event_manifest_digest",
+        "event_count",
+        "event_head_sequence",
+        "event_head_id",
+        "workspace_path",
+        "branch",
+        "baseline_ref",
+        "branch_disposition",
+        "branch_target",
+        "workspace_absent",
+        "prepared_state_digest",
+        "state_digest",
+        "outer_block_receipt_digest",
+        "rearm_authorization_id",
+        "provider_runner_started",
+        "implementation_runner_started",
+        "terminal_provider_outcome_admitted",
+        "terminal_provider_evidence_present",
+        "effect_admitted",
+        "attempt_consumed",
+        "retry_authorized_once",
+        "authoritative_validation_admitted",
+        "commit_admitted",
+        "merge_admitted",
+        "publication_admitted",
+        "candidate_ref_delta",
+        "acceptance_inferred",
+        "recovery_terminal",
+        "candidate_disposition",
+        "nested_state_quiescent",
+        "evidence_id",
+    }
+)
+
+_FENCED_PROVIDER_UNPUBLISHED_ALLOWED_EVENT_TYPES: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "implementation_lock_cleared",
+            "implementation_protected_path_snapshot_cleared",
+            "implementation_protected_path_snapshot_reconciled",
+            "implementation_protected_path_snapshot_recorded",
+            "implementation_resource_claim_lock_cleared",
+            "implementation_shutdown_reconciled",
+            "implementation_shutdown_reconciliation_blocked",
+            "implementation_started",
+            "implementation_task_claim_released",
+            "local_submodule_source_discovered",
+            "nested_submodule_initialization_guarded",
+            "pre_implementation_kernel_evaluated",
+            "task_selected",
+            "worktree_pool_reuse_fenced",
+        }
+    )
+)
+
+
+def _fenced_provider_unpublished_event_roles(
+    events: Sequence[Mapping[str, Any]],
+    *,
+    task_alias: str,
+    nested_task_cid: str,
+    nested_attempt: int,
+    workspace_path: str,
+) -> dict[str, Mapping[str, Any]] | None:
+    """Recognize one ordered provider-started, effect-unpublished history.
+
+    The event manifest already authenticates every envelope and predecessor
+    edge.  This classifier closes the semantic population: setup may contain
+    bounded diagnostics, an arbitrary number of repeated still-active
+    observations is harmless, and exactly one terminal lifecycle observation
+    must precede the claim release.  Validation, commit, merge, completion and
+    provider-result events are absent from the closed vocabulary.
+    """
+
+    if (
+        not events
+        or not task_alias
+        or not nested_task_cid
+        or type(nested_attempt) is not int
+        or nested_attempt < 1
+        or not workspace_path
+        or any(
+            type(event.get("type")) is not str
+            or event.get("type")
+            not in _FENCED_PROVIDER_UNPUBLISHED_ALLOWED_EVENT_TYPES
+            for event in events
+        )
+    ):
+        return None
+    try:
+        sequences = [int(event["sequence"]) for event in events]
+    except (KeyError, TypeError, ValueError):
+        return None
+    if sequences != list(range(1, len(events) + 1)):
+        return None
+
+    def occurrences(event_type: str) -> list[Mapping[str, Any]]:
+        return [event for event in events if event.get("type") == event_type]
+
+    singular_types = (
+        "task_selected",
+        "implementation_protected_path_snapshot_recorded",
+        "implementation_started",
+        "pre_implementation_kernel_evaluated",
+        "implementation_protected_path_snapshot_cleared",
+        "implementation_protected_path_snapshot_reconciled",
+        "implementation_task_claim_released",
+        "implementation_lock_cleared",
+    )
+    singular = {name: occurrences(name) for name in singular_types}
+    if any(len(items) != 1 for items in singular.values()):
+        return None
+    started = singular["implementation_started"][0]
+    selected = singular["task_selected"][0]
+    recorded = singular["implementation_protected_path_snapshot_recorded"][0]
+    pre_kernel = singular["pre_implementation_kernel_evaluated"][0]
+    cleared = singular["implementation_protected_path_snapshot_cleared"][0]
+    reconciled = singular[
+        "implementation_protected_path_snapshot_reconciled"
+    ][0]
+    release = singular["implementation_task_claim_released"][0]
+    lock_clear = singular["implementation_lock_cleared"][0]
+    pool_diagnostics = occurrences("worktree_pool_reuse_fenced")
+    blocked = occurrences("implementation_shutdown_reconciliation_blocked")
+    shutdown = occurrences("implementation_shutdown_reconciled")
+    if not blocked or not shutdown or len(pool_diagnostics) > 1:
+        return None
+
+    terminal_blocks = [
+        event
+        for event in blocked
+        if event.get("reason") == "task_claim_reconciliation_blocked"
+        and isinstance(event.get("worktree_lifecycle_reconciliation"), Mapping)
+        and event["worktree_lifecycle_reconciliation"].get("state") == "terminal"
+        and event["worktree_lifecycle_reconciliation"].get("reconciled") is True
+        and event["worktree_lifecycle_reconciliation"].get("blocked") is False
+        and event["worktree_lifecycle_reconciliation"].get("workspace_path")
+        == workspace_path
+        and event.get("task_id") == task_alias
+        and event.get("attempt") == nested_attempt
+    ]
+    active_blocks = [
+        event
+        for event in blocked
+        if set(event)
+        == {
+            "attempt",
+            "blocked",
+            "event_id",
+            "previous_event_id",
+            "reason",
+            "reconciled",
+            "sequence",
+            "snapshot_id",
+            "stream_id",
+            "task_id",
+            "timestamp",
+            "type",
+            "worktree_path",
+        }
+        and event.get("reason") == "implementation_worker_still_active"
+        and event.get("reconciled") is False
+        and event.get("blocked") is True
+        and event.get("task_id") == task_alias
+        and event.get("attempt") == nested_attempt
+        and event.get("worktree_path") == workspace_path
+    ]
+    if len(terminal_blocks) != 1 or len(active_blocks) + 1 != len(blocked):
+        return None
+    terminal = terminal_blocks[0]
+    ordered = [
+        recorded,
+        started,
+        pre_kernel,
+        *active_blocks,
+        cleared,
+        reconciled,
+        terminal,
+        release,
+        lock_clear,
+        *shutdown,
+    ]
+    if [int(item["sequence"]) for item in ordered] != sorted(
+        int(item["sequence"]) for item in ordered
+    ):
+        return None
+    first_setup_sequence = int(recorded["sequence"])
+    if any(
+        int(event["sequence"]) >= first_setup_sequence
+        for event in events
+        if event.get("type")
+        in {
+            "implementation_resource_claim_lock_cleared",
+            "local_submodule_source_discovered",
+            "nested_submodule_initialization_guarded",
+            "task_selected",
+            "worktree_pool_reuse_fenced",
+        }
+    ):
+        return None
+    if pool_diagnostics and int(pool_diagnostics[0]["sequence"]) >= int(
+        selected["sequence"]
+    ):
+        # This is a closed, denied pre-selection diagnostic about an older
+        # lifecycle.  It contributes to the immutable history but no identity
+        # or provider authority for the selected task.
+        return None
+    selected_identity = (
+        selected.get("canonical_task_key"),
+        selected.get("canonical_task_cid"),
+        selected.get("board_namespace"),
+    )
+    if (
+        selected.get("task_id") != task_alias
+        or selected.get("canonical_task_cid") != nested_task_cid
+        or any(not str(value or "") for value in selected_identity)
+        or started.get("task_id") != task_alias
+        or started.get("attempt") != nested_attempt
+        or started.get("worktree_path") != workspace_path
+        or started.get("provider_dispatched") is not False
+        or not str(started.get("branch") or "")
+        or not re.fullmatch(r"[0-9a-f]{40,64}", str(started.get("baseline_ref") or ""))
+        or recorded.get("task_id") != task_alias
+        or recorded.get("attempt") != nested_attempt
+        or recorded.get("workspace_path") != workspace_path
+        or (
+            recorded.get("canonical_task_key"),
+            recorded.get("canonical_task_cid"),
+            recorded.get("board_namespace"),
+        )
+        != selected_identity
+        or (
+            started.get("canonical_task_key"),
+            started.get("canonical_task_cid"),
+            started.get("board_namespace"),
+        )
+        != selected_identity
+        or pre_kernel.get("task_id") != task_alias
+        or pre_kernel.get("attempt") != nested_attempt
+        or cleared.get("task_id") != task_alias
+        or cleared.get("attempt") != nested_attempt
+        or reconciled.get("task_id") != task_alias
+        or reconciled.get("attempt") != nested_attempt
+        or reconciled.get("workspace_path") != workspace_path
+        or release.get("task_id") != task_alias
+        or release.get("attempt") != nested_attempt
+        or release.get("reason") != "quiesced_task_claim_released"
+        or release.get("stale_dispatch_intent_released_for_retry") is not True
+        or lock_clear.get("task_id") != task_alias
+        or lock_clear.get("branch") != ""
+        or any(
+            event.get("task_id") != task_alias
+            or event.get("attempt") != nested_attempt
+            or event.get("reason") != "already_quiesced"
+            or event.get("reconciled") is not True
+            or event.get("blocked") is not False
+            for event in shutdown
+        )
+    ):
+        return None
+    return {
+        "implementation_started": started,
+        "terminal_lifecycle": terminal,
+        "task_claim_release": release,
+    }
+
+
+def _fenced_provider_branch_state(
+    attempt_root: Path,
+    *,
+    branch: str,
+    baseline_ref: str,
+) -> tuple[str, str] | None:
+    """Prove that a destroyed candidate has no unpublished branch delta.
+
+    This deliberately reads Git's ref store directly instead of invoking Git
+    or a hook-bearing repository command.  A loose ref may be absent or point
+    exactly at the recorded baseline.  Packed refs are checked when no loose
+    ref exists; malformed or duplicate entries fail closed.
+    """
+
+    branch_path = PurePosixPath(branch)
+    if (
+        not branch.startswith("implementation/")
+        or branch_path.is_absolute()
+        or any(part in {"", ".", ".."} for part in branch_path.parts)
+        or "\\" in branch
+        or "\x00" in branch
+        or re.fullmatch(r"[0-9a-f]{40,64}", baseline_ref) is None
+    ):
+        return None
+    repository_root: Path | None = None
+    for candidate in (attempt_root, *attempt_root.parents):
+        marker = candidate / ".git"
+        if marker.exists() or marker.is_symlink():
+            repository_root = candidate
+            break
+    if repository_root is None:
+        return None
+    marker = repository_root / ".git"
+    try:
+        if marker.is_symlink():
+            return None
+        if marker.is_dir():
+            git_dir = marker.resolve(strict=True)
+        elif marker.is_file() and marker.stat().st_size <= 4096:
+            text = marker.read_text(encoding="utf-8").strip()
+            if not text.startswith("gitdir: "):
+                return None
+            raw_git_dir = Path(text.removeprefix("gitdir: "))
+            git_dir = (
+                raw_git_dir
+                if raw_git_dir.is_absolute()
+                else repository_root / raw_git_dir
+            ).resolve(strict=True)
+        else:
+            return None
+        common_dir = git_dir
+        common_marker = git_dir / "commondir"
+        if common_marker.exists():
+            if (
+                common_marker.is_symlink()
+                or not common_marker.is_file()
+                or common_marker.stat().st_size > 4096
+            ):
+                return None
+            raw_common = Path(
+                common_marker.read_text(encoding="utf-8").strip()
+            )
+            common_dir = (
+                raw_common if raw_common.is_absolute() else git_dir / raw_common
+            ).resolve(strict=True)
+        loose = common_dir / "refs" / "heads" / Path(*branch_path.parts)
+        if loose.exists() or loose.is_symlink():
+            if (
+                loose.is_symlink()
+                or not loose.is_file()
+                or loose.stat().st_size > 256
+            ):
+                return None
+            target = loose.read_text(encoding="ascii").strip()
+            if target != baseline_ref:
+                return None
+            return "baseline", target
+        packed = common_dir / "packed-refs"
+        if not packed.exists():
+            return "absent", ""
+        if packed.is_symlink() or not packed.is_file() or packed.stat().st_size > 32 * 1024 * 1024:
+            return None
+        ref_name = "refs/heads/" + branch
+        targets: list[str] = []
+        for line in packed.read_text(encoding="ascii").splitlines():
+            if not line or line.startswith(("#", "^")):
+                continue
+            pieces = line.split(" ", 1)
+            if len(pieces) != 2:
+                return None
+            if pieces[1] == ref_name:
+                targets.append(pieces[0])
+        if not targets:
+            return "absent", ""
+        if len(targets) != 1 or targets[0] != baseline_ref:
+            return None
+        return "baseline", targets[0]
+    except (OSError, UnicodeError, ValueError):
+        return None
 _QUIESCED_STALE_DISPATCH_RELEASE_ALLOWED_EVENT_TYPES: Final[frozenset[str]] = (
     frozenset(
         {
@@ -1013,6 +1436,21 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
         {
             "worktree_path",
             "branch",
+            "allowed",
+            "disposition",
+            "reason",
+            "failure_kind",
+            "attempt_consumed",
+            "provider_call_allowed",
+            "record",
+        }
+    ),
+    "worktree_pool_reuse_fenced": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "worktree_path",
+            "branch",
+            "phase",
             "allowed",
             "disposition",
             "reason",
@@ -5024,6 +5462,47 @@ class DatabasePortalExecutionBridge:
             ):
                 raise DatabasePortalBridgeError(
                     "database Portal fenced-cleanup event is malformed"
+                )
+        elif event_type == "worktree_pool_reuse_fenced":
+            record = event.get("record")
+            if (
+                any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in (
+                        "worktree_path",
+                        "branch",
+                        "phase",
+                        "disposition",
+                        "reason",
+                        "failure_kind",
+                    )
+                )
+                or event.get("phase") != "preflight"
+                or event.get("disposition") != "deny"
+                or event.get("reason") != "nonterminal_active_owner_alive"
+                or event.get("failure_kind") != "lifecycle_race"
+                or any(
+                    event.get(name) is not False
+                    for name in (
+                        "allowed",
+                        "attempt_consumed",
+                        "provider_call_allowed",
+                    )
+                )
+                or not isinstance(record, Mapping)
+                or record.get("schema")
+                != "ipfs_accelerate_py/agent-supervisor/worktree-lifecycle-record@1"
+                or record.get("state") != "active"
+                or record.get("workspace_path") != event.get("worktree_path")
+                or record.get("branch") != event.get("branch")
+                or not re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(record.get("record_id") or ""),
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal fenced pool-reuse event is malformed"
                 )
         elif event_type == "submodule_worktree_base_ref_retried":
             required_strings = (
@@ -10622,7 +11101,10 @@ class DatabasePortalExecutionBridge:
                 and candidate.get("blocked") is True
                 and candidate.get("reconciled") is False
                 and candidate.get("reason")
-                == "nested_portal_attempt_reconciliation_blocked"
+                in {
+                    "nested_portal_attempt_reconciliation_blocked",
+                    "nested_provider_runner_fence_unproven",
+                }
                 and candidate.get("terminal_provider_evidence") is False
                 and "terminal_provider_receipt_id" not in candidate
                 and candidate.get("provider_runner_reconciliation_authority")
@@ -10999,6 +11481,881 @@ class DatabasePortalExecutionBridge:
         evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
         return evidence
 
+    def _fenced_provider_unpublished_rearm_evidence(
+        self,
+        attempt: Any,
+        receipt: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Prove a started provider was fenced before any result was admitted.
+
+        Unlike the no-provider and interrupted-retry profiles, this evidence
+        honestly records that external implementation began and consumes one
+        outer retry allowance.  It is read-only: a complete immutable receipt
+        population must show the exact-birth/container fence, terminal
+        worktree lifecycle, released stale dispatch claim, absent candidate
+        workspace/ref delta, current quiescence, and no result/effect or
+        validation/commit/merge/completion events.
+        """
+
+        link = receipt.get("terminal_reconciliation")
+        if type(link) is not dict:
+            return None
+        link = dict(link)
+        exact_attempt = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        unsigned_link = dict(link)
+        link_evidence_id = str(unsigned_link.pop("evidence_id", "") or "")
+        if (
+            set(link) != set(DATABASE_PORTAL_TERMINAL_RECONCILIATION_LINK_FIELDS)
+            or link.get("schema")
+            != DATABASE_PORTAL_TERMINAL_RECONCILIATION_LINK_SCHEMA
+            or not _strict_attempt_integer_fields(link)
+            or any(
+                type(link.get(name)) is not type(value)
+                or link.get(name) != value
+                for name, value in exact_attempt.items()
+            )
+            or link.get("nested_reason") != "nested_portal_attempt_reconciled"
+            or link.get("nested_reconciled") is not True
+            or link.get("intended_database_disposition")
+            != "blocked_unknown_outcome"
+            or not re.fullmatch(r"baguqeera[a-z2-7]{52}", link_evidence_id)
+            or content_identity(unsigned_link) != link_evidence_id
+        ):
+            return None
+
+        paths = self._paths(attempt)
+        if paths.root != self.attempt_root / hashlib.sha256(
+            str(attempt.attempt_id).encode("utf-8")
+        ).hexdigest()[:24]:
+            return None
+        try:
+            sealed = self._pinned_no_provider_snapshot(
+                paths,
+                reject_duplicate_physical_events=True,
+            )
+            binding = dict(sealed["binding"])
+            self._verify_binding_identity(binding)
+            durable_binding = (
+                self._binding_lookup(attempt)
+                if self._binding_lookup is not None
+                else None
+            )
+            projection = str(sealed["projection"])
+            identity = self._projection_task_identity(paths, binding, projection)
+            state = dict(sealed["state"])
+            state_digest = str(sealed["state_digest"])
+            verified_current = self._verify_nested_state_identity(
+                paths,
+                binding,
+                identity,
+                payload=state,
+                state_digest=state_digest,
+            )
+            events = list(sealed["events"])
+            manifest = dict(sealed["manifest"])
+            directory_names = list(sealed["directory_names"])
+            prepared = self.load_reconciliation_receipt(
+                attempt,
+                str(link["prepared_reconciliation_receipt_id"]),
+                required_stage="prepared",
+            )
+            commit_barrier = self.load_reconciliation_receipt(
+                attempt,
+                str(link["commit_barrier_receipt_id"]),
+                required_stage="commit_barrier",
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if not isinstance(durable_binding, Mapping):
+            return None
+        task_alias = str(binding.get("task_alias") or "")
+        nested_task_cid = str(identity.get("canonical_task_cid") or "")
+        binding_expected = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        durable_expected = {
+            **exact_attempt,
+            "binding_id": str(binding.get("binding_id") or ""),
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "stage": "portal_entered",
+        }
+        if (
+            _projection_immutable_digest(projection)
+            != binding.get("projection_immutable_digest")
+            or _HEADER.findall(projection) != [task_alias]
+            or _projection_status(projection) != "ready"
+            or any(
+                type(binding.get(name)) is not type(value)
+                or binding.get(name) != value
+                for name, value in binding_expected.items()
+            )
+            or any(
+                type(durable_binding.get(name)) is not type(value)
+                or durable_binding.get(name) != value
+                for name, value in durable_expected.items()
+            )
+            or not re.fullmatch(
+                r"baguqeera[a-z2-7]{52}",
+                str(durable_binding.get("record_id") or ""),
+            )
+            or link.get("binding_id") != binding.get("binding_id")
+            or not self._nested_state_is_exactly_quiescent(
+                state,
+                verified_current,
+            )
+            or (
+                isinstance(state.get("task_statuses"), Mapping)
+                and state["task_statuses"].get(task_alias) != "ready"
+            )
+        ):
+            return None
+
+        prepared_core = {
+            name: value
+            for name, value in prepared.items()
+            if name not in {"stage", "receipt_id"}
+        }
+        barrier_core = {
+            name: value
+            for name, value in commit_barrier.items()
+            if name
+            not in {"stage", "receipt_id", "prepared_reconciliation_receipt_id"}
+        }
+        nested_state = prepared.get("nested_state")
+        prepared_fence = prepared.get("provider_runner_fence")
+        recovery = prepared.get("portal_reconciliation")
+        claim_release = (
+            recovery.get("task_claim_reconciliation")
+            if isinstance(recovery, Mapping)
+            else None
+        )
+        if (
+            prepared.get("receipt_id")
+            != link.get("prepared_reconciliation_receipt_id")
+            or commit_barrier.get("receipt_id")
+            != link.get("commit_barrier_receipt_id")
+            or commit_barrier.get("prepared_reconciliation_receipt_id")
+            != prepared.get("receipt_id")
+            or _canonical_json(prepared_core) != _canonical_json(barrier_core)
+            or prepared.get("binding_id") != binding.get("binding_id")
+            or prepared.get("reason") != "nested_portal_attempt_reconciled"
+            or prepared.get("reconciled") is not True
+            or prepared.get("blocked") is not False
+            or prepared.get("intended_database_disposition")
+            != "blocked_unknown_outcome"
+            or prepared.get("terminal_provider_evidence") is not False
+            or prepared.get("terminal_provider_receipt_id") != ""
+            or not isinstance(nested_state, Mapping)
+            or nested_state.get("active") is not False
+            or nested_state.get("active_attempt") != 0
+            or nested_state.get("active_task_id") != ""
+            or nested_state.get("active_phase") != ""
+            or nested_state.get("state_path") != str(paths.state)
+            or nested_state.get("state_digest")
+            != link.get("nested_state_digest")
+            or not _closed_typed_record_matches(
+                prepared_fence,
+                {
+                    "applicable": False,
+                    "fenced": False,
+                    "reason": "ordinary_provider_runner_receipt_absent",
+                    "safe_to_restart": True,
+                },
+            )
+            or not isinstance(recovery, Mapping)
+            or recovery.get("reason") != "already_quiesced"
+            or recovery.get("reconciled") is not True
+            or recovery.get("blocked") is not False
+            or not isinstance(claim_release, Mapping)
+            or claim_release.get("reason") != "quiesced_task_claim_released"
+            or claim_release.get("reconciled") is not True
+            or claim_release.get("blocked") is not False
+            or claim_release.get("task_id") != task_alias
+            or claim_release.get("canonical_task_cid") != nested_task_cid
+            or claim_release.get("stale_dispatch_intent_released_for_retry")
+            is not True
+            or type(claim_release.get("attempt")) is not int
+            or int(claim_release.get("attempt") or 0) < 1
+            or claim_release.get("task_status") != "todo"
+        ):
+            return None
+        nested_attempt = int(claim_release["attempt"])
+        try:
+            release_receipt = self._strict_quiesced_task_claim_release_receipt(
+                paths,
+                claim_release,
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if (
+            release_receipt.get("stale_dispatch_intent_released_for_retry")
+            is not True
+        ):
+            return None
+        release_receipt_name = Path(
+            str(claim_release.get("receipt_path") or "")
+        ).name
+        if re.fullmatch(
+            r"canonical-task-[0-9a-f]{24}-a[1-9][0-9]*[.]json",
+            release_receipt_name,
+        ) is None:
+            return None
+
+        try:
+            reconciliation_paths = sorted(paths.reconciliation.iterdir())
+            reconciliation_receipts = [
+                self.load_reconciliation_receipt(
+                    attempt,
+                    "sha256:" + match.group(1),
+                )
+                for path in reconciliation_paths
+                if (
+                    match := re.fullmatch(
+                        r"([0-9a-f]{64})[.]json",
+                        path.name,
+                    )
+                )
+                is not None
+            ]
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if len(reconciliation_paths) != len(reconciliation_receipts):
+            return None
+        stage_counts = {
+            stage: sum(item.get("stage") == stage for item in reconciliation_receipts)
+            for stage in ("prepared", "commit_barrier", "terminal")
+        }
+        terminal_receipts = [
+            item for item in reconciliation_receipts if item.get("stage") == "terminal"
+        ]
+        blocked_receipts = [
+            item for item in reconciliation_receipts if item.get("stage") == "blocked"
+        ]
+        if (
+            stage_counts != {"prepared": 1, "commit_barrier": 1, "terminal": 1}
+            or len(terminal_receipts) != 1
+            or not 1 <= len(blocked_receipts) <= 8
+            or len(reconciliation_receipts) != len(blocked_receipts) + 3
+            or any(
+                item.get("terminal_provider_evidence") is not False
+                or item.get("terminal_provider_receipt_id") not in {None, ""}
+                for item in reconciliation_receipts
+            )
+        ):
+            return None
+        terminal_receipt = terminal_receipts[0]
+        terminal_core = {
+            name: value
+            for name, value in terminal_receipt.items()
+            if name
+            not in {
+                "stage",
+                "receipt_id",
+                "prepared_reconciliation_receipt_id",
+                "database_disposition",
+                "database_attempt_status",
+                "database_attempt_phase",
+                "database_task_status",
+                "terminal_reconciliation_evidence_id",
+                "retry_receipt",
+            }
+        }
+        if (
+            terminal_receipt.get("prepared_reconciliation_receipt_id")
+            != prepared.get("receipt_id")
+            or terminal_receipt.get("terminal_reconciliation_evidence_id")
+            != link_evidence_id
+            or _canonical_json(terminal_core) != _canonical_json(prepared_core)
+        ):
+            return None
+
+        runner_lineage: tuple[Any, ...] | None = None
+        fenced_receipts: list[Mapping[str, Any]] = []
+        removed_receipts: list[Mapping[str, Any]] = []
+        terminal_lifecycle_receipts: list[Mapping[str, Any]] = []
+        for candidate in blocked_receipts:
+            nested = candidate.get("nested_state")
+            fence = candidate.get("provider_runner_fence")
+            portal = candidate.get("portal_reconciliation")
+            container = (
+                fence.get("container_fence") if isinstance(fence, Mapping) else None
+            )
+            if not (
+                candidate.get("binding_id") == binding.get("binding_id")
+                and candidate.get("task_alias") == task_alias
+                and candidate.get("blocked") is True
+                and candidate.get("reconciled") is False
+                and candidate.get("reason")
+                in {
+                    "nested_portal_attempt_reconciliation_blocked",
+                    "nested_provider_runner_fence_unproven",
+                }
+                and candidate.get("terminal_provider_evidence") is False
+                and candidate.get("provider_runner_reconciliation_authority")
+                == "ordinary_provider_runner_fence"
+                and isinstance(nested, Mapping)
+                and isinstance(fence, Mapping)
+                and isinstance(container, Mapping)
+            ):
+                return None
+            expected_runner = {
+                "task_id": container.get("task_id"),
+                "attempt": container.get("attempt"),
+                "task_revision_cid": container.get("task_revision_cid"),
+                "workspace_path": container.get("workspace_path"),
+                "pid": container.get("runner_pid"),
+                "receipt_id": container.get("runner_receipt_id"),
+            }
+            try:
+                validated_fence = self._validated_provider_runner_fence(
+                    fence,
+                    expected_runner_receipt=expected_runner,
+                )
+            except (DatabasePortalBridgeError, TypeError, ValueError):
+                return None
+            lineage = (
+                validated_fence.get("pid"),
+                container.get("runner_receipt_id"),
+                container.get("task_id"),
+                container.get("attempt"),
+                container.get("task_revision_cid"),
+                container.get("workspace_path"),
+            )
+            if runner_lineage is None:
+                runner_lineage = lineage
+            elif runner_lineage != lineage:
+                return None
+            if validated_fence.get("safe_to_restart") is False:
+                if not (
+                    candidate.get("reason")
+                    == "nested_provider_runner_fence_unproven"
+                    and validated_fence.get("fenced") is False
+                    and validated_fence.get("reason")
+                    == "ordinary_grok_orphan_container_fence_unproven"
+                    and nested.get("active") is True
+                    and nested.get("active_phase") == "implementing"
+                    and nested.get("active_task_id") == task_alias
+                    and nested.get("active_attempt") == nested_attempt
+                    and nested.get("active_worktree_path") == lineage[-1]
+                    and portal is None
+                ):
+                    return None
+                continue
+            if not (
+                candidate.get("reason")
+                == "nested_portal_attempt_reconciliation_blocked"
+                and validated_fence.get("applicable") is True
+                and validated_fence.get("fenced") is True
+                and validated_fence.get("reason")
+                == "ordinary_provider_runner_exact_birth_fenced"
+            ):
+                return None
+            fenced_receipts.append(candidate)
+            if container.get("removed") is True:
+                removed_receipts.append(candidate)
+            if isinstance(portal, Mapping) and portal.get("reason") == (
+                "implementation_worker_still_active"
+            ):
+                if not (
+                    nested.get("active") is True
+                    and nested.get("active_phase") == "implementing"
+                    and nested.get("active_task_id") == task_alias
+                    and nested.get("active_attempt") == nested_attempt
+                ):
+                    return None
+                continue
+            protected = portal.get("protected_path_reconciliation") if isinstance(portal, Mapping) else None
+            lifecycle = portal.get("worktree_lifecycle_reconciliation") if isinstance(portal, Mapping) else None
+            claim = portal.get("task_claim_reconciliation") if isinstance(portal, Mapping) else None
+            attempt_recovery = portal.get("attempt_recovery") if isinstance(portal, Mapping) else None
+            if not (
+                isinstance(portal, Mapping)
+                and portal.get("reason") == "task_claim_reconciliation_blocked"
+                and portal.get("blocked") is True
+                and portal.get("reconciled") is False
+                and nested.get("active") is False
+                and nested.get("active_attempt") == 0
+                and nested.get("active_task_id") == ""
+                and isinstance(protected, Mapping)
+                and protected.get("blocked") is False
+                and protected.get("reason") == "crash_reconciliation_unchanged"
+                and protected.get("workspace_path") == lineage[-1]
+                and isinstance(lifecycle, Mapping)
+                and lifecycle.get("blocked") is False
+                and lifecycle.get("reconciled") is True
+                and lifecycle.get("state") == "terminal"
+                and lifecycle.get("task_id") == task_alias
+                and lifecycle.get("attempt") == nested_attempt
+                and lifecycle.get("workspace_path") == lineage[-1]
+                and isinstance(claim, Mapping)
+                and claim.get("blocked") is True
+                and claim.get("reconciled") is False
+                and claim.get("reason") == "canonical_task_not_terminal"
+                and claim.get("observed_task_status") == "todo"
+                and claim.get("task_id") == task_alias
+                and claim.get("canonical_task_cid") == nested_task_cid
+                and isinstance(attempt_recovery, Mapping)
+                and attempt_recovery.get("consumed") is False
+                and attempt_recovery.get("attempt") == nested_attempt
+                and attempt_recovery.get("task_id") == task_alias
+                and attempt_recovery.get("canonical_task_cid") == nested_task_cid
+            ):
+                return None
+            terminal_lifecycle_receipts.append(candidate)
+        if (
+            runner_lineage is None
+            or not fenced_receipts
+            or len(removed_receipts) != 1
+            or len(terminal_lifecycle_receipts) != 1
+            or runner_lineage[2] != task_alias
+            or runner_lineage[3] != nested_attempt
+            or runner_lineage[4] != nested_task_cid
+            or not re.fullmatch(
+                r"baguqeera[a-z2-7]{52}",
+                str(runner_lineage[1] or ""),
+            )
+        ):
+            return None
+        workspace = str(runner_lineage[5] or "")
+        roles = _fenced_provider_unpublished_event_roles(
+            events,
+            task_alias=task_alias,
+            nested_task_cid=nested_task_cid,
+            nested_attempt=nested_attempt,
+            workspace_path=workspace,
+        )
+        if roles is None:
+            return None
+        envelope_fields = set(_EVENT_ENVELOPE_FIELDS)
+        terminal_event = roles["terminal_lifecycle"]
+        release_event = roles["task_claim_release"]
+        terminal_portal = terminal_lifecycle_receipts[0].get(
+            "portal_reconciliation"
+        )
+        if (
+            {
+                name: value
+                for name, value in terminal_event.items()
+                if name not in envelope_fields
+            }
+            != dict(terminal_portal or {})
+            or {
+                name: value
+                for name, value in release_event.items()
+                if name not in envelope_fields
+            }
+            != dict(claim_release)
+            or Path(workspace).exists()
+            or Path(workspace).is_symlink()
+        ):
+            return None
+        active_fenced_receipts = [
+            candidate
+            for candidate in fenced_receipts
+            if candidate is not terminal_lifecycle_receipts[0]
+        ]
+        active_fence_portals = {
+            _canonical_json(dict(candidate.get("portal_reconciliation") or {}))
+            for candidate in active_fenced_receipts
+        }
+        active_fence_events = [
+            event
+            for event in events
+            if event.get("type")
+            == "implementation_shutdown_reconciliation_blocked"
+            and _canonical_json(
+                {
+                    name: value
+                    for name, value in event.items()
+                    if name not in envelope_fields
+                }
+            )
+            in active_fence_portals
+        ]
+        if (
+            (active_fenced_receipts and not active_fence_events)
+            or any(
+                int(event["sequence"]) >= int(terminal_event["sequence"])
+                for event in active_fence_events
+            )
+        ):
+            return None
+        started = roles["implementation_started"]
+        branch = str(started.get("branch") or "")
+        baseline_ref = str(started.get("baseline_ref") or "")
+        branch_state = _fenced_provider_branch_state(
+            self.attempt_root,
+            branch=branch,
+            baseline_ref=baseline_ref,
+        )
+        if branch_state is None:
+            return None
+        branch_disposition, branch_target = branch_state
+        if (
+            len(events) != int(manifest.get("latest_sequence") or 0)
+            or int(manifest.get("latest_sequence") or 0)
+            != int(manifest.get("files", [{}])[-1].get("last_sequence") or 0)
+            or str(events[-1].get("event_id") or "")
+            != str(manifest.get("last_event_id") or "")
+        ):
+            return None
+
+        receipt_ids = sorted(
+            str(item.get("receipt_id") or "") for item in reconciliation_receipts
+        )
+        removed_fence = removed_receipts[0]["provider_runner_fence"][
+            "container_fence"
+        ]
+        authorization_fields = (
+            "binding_id",
+            "binding_admission_id",
+            "binding_admission_digest",
+            "projection_immutable_digest",
+            "task_revision",
+            "board_namespace",
+            "nested_task_cid",
+            "nested_attempt",
+            "terminal_reconciliation_evidence_id",
+            "prepared_reconciliation_receipt_id",
+            "commit_barrier_receipt_id",
+            "terminal_reconciliation_receipt_id",
+            "reconciliation_receipt_count",
+            "reconciliation_receipt_ids_digest",
+            "fenced_provider_receipt_count",
+            "fenced_provider_receipt_ids_digest",
+            "provider_fence_chronology_digest",
+            "container_removed_receipt_id",
+            "terminal_lifecycle_receipt_id",
+            "provider_runner_pid",
+            "provider_runner_receipt_id",
+            "provider_container_fence_receipt_id",
+            "task_claim_release_receipt_id",
+            "task_claim_release_receipt_name",
+            "task_claim_release_event_id",
+            "implementation_started_event_id",
+            "terminal_lifecycle_event_id",
+            "event_stream_id",
+            "event_snapshot_id",
+            "event_manifest_digest",
+            "event_count",
+            "event_head_sequence",
+            "event_head_id",
+            "workspace_path",
+            "branch",
+            "baseline_ref",
+            "branch_disposition",
+            "branch_target",
+            "workspace_absent",
+            "prepared_state_digest",
+            "state_digest",
+            "outer_block_receipt_digest",
+        )
+        authority_values = {
+            "binding_id": str(binding.get("binding_id") or ""),
+            "binding_admission_id": str(durable_binding.get("record_id") or ""),
+            "binding_admission_digest": _sha256_bytes(
+                _canonical_json(dict(durable_binding))
+            ),
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "task_revision": int(binding.get("task_revision") or 0),
+            "board_namespace": str(identity.get("board_namespace") or ""),
+            "nested_task_cid": nested_task_cid,
+            "nested_attempt": nested_attempt,
+            "terminal_reconciliation_evidence_id": link_evidence_id,
+            "prepared_reconciliation_receipt_id": str(prepared["receipt_id"]),
+            "commit_barrier_receipt_id": str(commit_barrier["receipt_id"]),
+            "terminal_reconciliation_receipt_id": str(
+                terminal_receipt["receipt_id"]
+            ),
+            "reconciliation_receipt_count": len(reconciliation_receipts),
+            "reconciliation_receipt_ids_digest": _sha256_bytes(
+                _canonical_json(receipt_ids)
+            ),
+            "fenced_provider_receipt_count": len(fenced_receipts),
+            "fenced_provider_receipt_ids_digest": _sha256_bytes(
+                _canonical_json(
+                    sorted(str(item["receipt_id"]) for item in fenced_receipts)
+                )
+            ),
+            "provider_fence_chronology_digest": _sha256_bytes(
+                _canonical_json(
+                    {
+                        "active_exact_birth_receipt_ids": sorted(
+                            str(item["receipt_id"])
+                            for item in active_fenced_receipts
+                        ),
+                        "active_exact_birth_event_ids": [
+                            str(item["event_id"])
+                            for item in active_fence_events
+                        ],
+                        "terminal_exact_birth_receipt_id": str(
+                            terminal_lifecycle_receipts[0]["receipt_id"]
+                        ),
+                        "terminal_lifecycle_event_id": str(
+                            terminal_event["event_id"]
+                        ),
+                        "claim_release_receipt_id": str(
+                            release_receipt["receipt_id"]
+                        ),
+                        "claim_release_event_id": str(release_event["event_id"]),
+                    }
+                )
+            ),
+            "container_removed_receipt_id": str(
+                removed_receipts[0]["receipt_id"]
+            ),
+            "terminal_lifecycle_receipt_id": str(
+                terminal_lifecycle_receipts[0]["receipt_id"]
+            ),
+            "provider_runner_pid": int(runner_lineage[0]),
+            "provider_runner_receipt_id": str(runner_lineage[1]),
+            "provider_container_fence_receipt_id": str(
+                removed_fence.get("receipt_id") or ""
+            ),
+            "task_claim_release_receipt_id": str(
+                release_receipt.get("receipt_id") or ""
+            ),
+            "task_claim_release_receipt_name": release_receipt_name,
+            "task_claim_release_event_id": str(release_event.get("event_id") or ""),
+            "implementation_started_event_id": str(started.get("event_id") or ""),
+            "terminal_lifecycle_event_id": str(terminal_event.get("event_id") or ""),
+            "event_stream_id": str(manifest.get("stream_id") or ""),
+            "event_snapshot_id": str(manifest.get("snapshot_id") or ""),
+            "event_manifest_digest": str(manifest.get("manifest_digest") or ""),
+            "event_count": len(events),
+            "event_head_sequence": int(manifest.get("latest_sequence") or 0),
+            "event_head_id": str(manifest.get("last_event_id") or ""),
+            "workspace_path": workspace,
+            "branch": branch,
+            "baseline_ref": baseline_ref,
+            "branch_disposition": branch_disposition,
+            "branch_target": branch_target,
+            "workspace_absent": True,
+            "prepared_state_digest": str(nested_state.get("state_digest") or ""),
+            "state_digest": state_digest,
+            "outer_block_receipt_digest": _sha256_bytes(
+                _canonical_json(dict(receipt))
+            ),
+        }
+        authorization = {
+            "schema": (
+                DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_AUTHORIZATION_SCHEMA
+            ),
+            **exact_attempt,
+            **{name: authority_values[name] for name in authorization_fields},
+        }
+        authorization_id = _sha256_bytes(_canonical_json(authorization))
+        evidence: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA,
+            **exact_attempt,
+            "task_alias": task_alias,
+            "attempt_root_key": paths.root.name,
+            "attempt_authority_root_digest": _sha256_bytes(
+                str(self.attempt_root).encode("utf-8")
+            ),
+            "attempt_root_digest": _sha256_bytes(str(paths.root).encode("utf-8")),
+            "attempt_directory_names_digest": _sha256_bytes(
+                _canonical_json(directory_names)
+            ),
+            **authority_values,
+            "rearm_authorization_id": authorization_id,
+            "provider_runner_started": True,
+            "implementation_runner_started": True,
+            "terminal_provider_outcome_admitted": False,
+            "terminal_provider_evidence_present": False,
+            "effect_admitted": False,
+            "attempt_consumed": True,
+            "retry_authorized_once": True,
+            "authoritative_validation_admitted": False,
+            "commit_admitted": False,
+            "merge_admitted": False,
+            "publication_admitted": False,
+            "candidate_ref_delta": False,
+            "acceptance_inferred": False,
+            "recovery_terminal": True,
+            "candidate_disposition": "destroyed_unaccepted",
+            "nested_state_quiescent": True,
+        }
+        if set(evidence) != (
+            DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_FIELDS
+            - {"evidence_id"}
+        ):
+            raise DatabasePortalBridgeError(
+                "fenced provider evidence field construction drifted"
+            )
+        evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
+        return evidence
+
+    def revalidate_fenced_provider_unpublished_rearm_evidence(
+        self,
+        attempt: Any,
+        *,
+        outer_block_receipt: Mapping[str, Any],
+        expected_evidence: Mapping[str, Any],
+    ) -> bool:
+        """Rebuild the exact started-provider proof immediately before CAS."""
+
+        if (
+            not isinstance(expected_evidence, Mapping)
+            or expected_evidence.get("schema")
+            != DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA
+        ):
+            return False
+        try:
+            current = self._fenced_provider_unpublished_rearm_evidence(
+                attempt,
+                dict(outer_block_receipt),
+            )
+            return bool(
+                isinstance(current, Mapping)
+                and _canonical_json(dict(current))
+                == _canonical_json(dict(expected_evidence))
+                and current.get("evidence_id")
+                == expected_evidence.get("evidence_id")
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return False
+
+    def execute_with_revalidated_fenced_provider_unpublished(
+        self,
+        attempt: Any,
+        *,
+        outer_block_receipt: Mapping[str, Any],
+        expected_evidence: Mapping[str, Any],
+        callback: Callable[[], Any],
+    ) -> Any:
+        """Hold nested receipt/event fences across one consuming outer CAS.
+
+        The provider/container is never restarted here.  The exact immutable
+        fence and release populations, current quiescent snapshot, destroyed
+        workspace, and absent-or-baseline candidate ref are checked directly
+        before and after the callback.  Any advance fails into the caller's
+        existing fenced compensation saga.
+        """
+
+        if not callable(callback):
+            raise TypeError(
+                "revalidated fenced-provider callback must be callable"
+            )
+        if not self.revalidate_fenced_provider_unpublished_rearm_evidence(
+            attempt,
+            outer_block_receipt=outer_block_receipt,
+            expected_evidence=expected_evidence,
+        ):
+            raise DatabasePortalBridgeError(
+                "fenced-provider unpublished occurrence advanced"
+            )
+
+        workspace = Path(str(expected_evidence.get("workspace_path") or ""))
+        branch = str(expected_evidence.get("branch") or "")
+        baseline_ref = str(expected_evidence.get("baseline_ref") or "")
+        expected_branch_state = (
+            str(expected_evidence.get("branch_disposition") or ""),
+            str(expected_evidence.get("branch_target") or ""),
+        )
+
+        def verify_destroyed_candidate() -> None:
+            if (
+                not workspace.is_absolute()
+                or workspace.exists()
+                or workspace.is_symlink()
+                or _fenced_provider_branch_state(
+                    self.attempt_root,
+                    branch=branch,
+                    baseline_ref=baseline_ref,
+                )
+                != expected_branch_state
+            ):
+                raise DatabasePortalBridgeError(
+                    "fenced-provider destroyed candidate state advanced"
+                )
+
+        paths = self._paths(attempt)
+        parent_fd = authority_fd = attempt_fd = -1
+        pinned: tuple[Any, ...] = ()
+        try:
+            parent_fd, authority_fd, attempt_fd, pinned = (
+                self._open_pinned_private_attempt_directory(
+                    authority_root=self.attempt_root,
+                    attempt_key=paths.root.name,
+                )
+            )
+            names_before = set(os.listdir(attempt_fd))
+            directory_before = self._authority_fingerprint(os.fstat(attempt_fd))
+            if ".portal-events.jsonl.lock" not in names_before:
+                raise DatabasePortalBridgeError(
+                    "fenced-provider event fence is absent"
+                )
+            with self._pinned_quiesced_release_artifact_population(
+                attempt,
+                attempt_fd,
+                expected_evidence=expected_evidence,
+            ) as artifacts:
+                with self._shared_private_event_lock(attempt_fd, names_before):
+                    verify_artifacts = artifacts["verify"]
+                    verify_artifacts()
+                    self._revalidate_pinned_quiesced_release_snapshot(
+                        attempt_fd,
+                        expected_evidence=expected_evidence,
+                    )
+                    verify_destroyed_candidate()
+                    if (
+                        set(os.listdir(attempt_fd)) != names_before
+                        or self._authority_fingerprint(os.fstat(attempt_fd))
+                        != directory_before
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "fenced-provider attempt root changed before CAS"
+                        )
+                    result = callback()
+                    verify_artifacts()
+                    self._revalidate_pinned_quiesced_release_snapshot(
+                        attempt_fd,
+                        expected_evidence=expected_evidence,
+                    )
+                    verify_destroyed_candidate()
+                    self._verify_pinned_private_attempt_directory(
+                        parent_fd=parent_fd,
+                        authority_fd=authority_fd,
+                        attempt_fd=attempt_fd,
+                        snapshot=pinned,
+                    )
+                    pinned = ()
+                    return result
+        finally:
+            try:
+                if pinned:
+                    self._verify_pinned_private_attempt_directory(
+                        parent_fd=parent_fd,
+                        authority_fd=authority_fd,
+                        attempt_fd=attempt_fd,
+                        snapshot=pinned,
+                    )
+            finally:
+                for descriptor in (attempt_fd, authority_fd, parent_fd):
+                    if descriptor >= 0:
+                        with suppress(OSError):
+                            os.close(descriptor)
+
     def revalidate_quiesced_stale_dispatch_release_rearm_evidence(
         self,
         attempt: Any,
@@ -11239,6 +12596,14 @@ class DatabasePortalExecutionBridge:
                     )
                     if quiesced_release is not None:
                         return quiesced_release
+                fenced_provider_unpublished = (
+                    self._fenced_provider_unpublished_rearm_evidence(
+                        attempt,
+                        receipt,
+                    )
+                )
+                if fenced_provider_unpublished is not None:
+                    return fenced_provider_unpublished
                 interrupted_evidence = (
                     self._interrupted_implementation_rearm_evidence(
                         attempt,
@@ -13617,6 +14982,9 @@ __all__ = (
     "DATABASE_PORTAL_ATTEMPT_RECONCILIATION_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
+    "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_AUTHORIZATION_SCHEMA",
+    "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_FIELDS",
+    "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_AUTHORIZATION_SCHEMA",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_FIELDS",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA",
