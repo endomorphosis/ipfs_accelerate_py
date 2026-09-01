@@ -2757,7 +2757,53 @@ self-approval. The 17,315-byte canonical authority body has CID
 `m48-source-successor-receipt.json` is published mode `0600` only after the
 authenticated append and complete live verification.
 
-## 57. Current limitations at seal time
+## 57. M49 post-M48 successor-report fix
+
+`SAWM-R2-M49` is the append-only, same-owner evidence successor that admits
+the bounded control-plane repair commit
+`3025557ac782af4f55b59b5fb00c661ba6fcfd77`. The repair is a direct child of
+M48 final control commit `53f050c40ad78f61674f7383ebc2708e062a7677`
+and changes only the operator facade and its focused board regression test. It
+makes successor report selection mutually exclusive so an accepted M48 report
+cannot fall through into an older report shape. The exact repair tree is
+`ef8aeb4e5134b70659161e4344acd9c01c3205e8`; its binary diff SHA-256 is
+`8d55dafd4648403ade53a7db9ee8d1113194ccc664e9cae1721a00beb8d7b487`.
+
+M49 preserves M48's generation-35/event-305 authority exactly. In particular,
+the mode-`0600`, 6,495-byte M48 receipt has SHA-256
+`9a0f54ea8e42eb6ae8b87acbeed951aab1a4f643996958b9c09dcdcb52ae9e20`
+and content identity
+`sha256:72bbd190a41c137d579c6f9372cd85aa8e8b469dc910ebed78be2db28bd09698`.
+Its event prefix is
+`8134c0a6ec08cd3eefa9e6255ac3df8d1473cbad4e61ead38621250e87050571`
+and its task-head projection is
+`baguqeerar773puawanjlnneg2heko27svsonv5dfg5pioayyqemfu73ljpwa`.
+
+The only authorized runtime delta is one authenticated Quack evidence append
+from event 305 to event 306 through the exact already-live generation-35 owner
+`server:b37f1c63-76ff-42e1-8404-10e15952f472`, process birth
+`birth:8067c25fb34a40bbfa92ff287a4c7441`, started
+`2026-09-01T15:45:32Z`. Restart is not authorized. If that owner stops or its
+identity differs, M49 fails closed. A separately sealed generation-36 successor
+is required. Event 306 retains plan revision 28 and advances only
+the evidence counts from 54 to 55 nodes and 43 to 44 evidence events; all 11
+validation events remain passed. Task, goal, plan, coordination, provider,
+effect, implementation, merge, validation, status, and completion semantics
+remain unchanged. The resulting task-head projection is
+`baguqeeracfikkmsrysxh3fmhmhri3iduzcki2kqxgoyz2gmszjdkxexm25mq`.
+
+M49 seals one nine-control child of the repair. The final child's commit, tree,
+blobs, and source binding are excluded from the canonical authority body to
+avoid recursive identity. Presence on any protected surface selects M49
+newest-first; partial, pending, malformed, wrong-parent, extra-path, or
+mismatched declarations fail closed without falling back to M48. The canonical
+authority CID is
+`sha256:712ace8de59282858a149b8a65457311bf79ccee8abd1907df862f958916e0cc`
+and the canonical body is 17,098 bytes. `m49-source-successor-receipt.json`
+is published mode `0600` only after authenticated event append and full live
+verification. M49 grants no direct DuckDB writer or worker self-approval.
+
+## 58. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

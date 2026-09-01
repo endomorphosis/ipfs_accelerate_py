@@ -65,6 +65,18 @@ _M48_TARGET_PROJECTION_CID = (
 _M48_M47_RECEIPT_CID = (
     "sha256:52d8954b5c31a07deafd6077cc9786a3de170017660bca0746dffae08c128919"
 )
+_M49_AUTHORITY_CID = (
+    "sha256:712ace8de59282858a149b8a65457311bf79ccee8abd1907df862f958916e0cc"
+)
+_M49_AUTHORITY_SIZE = 17_098
+_M49_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M49_FINAL_CONTROL_AUTHORITY_CID"
+_M49_SUCCESSOR_KEY = "post_m48_successor_report_fix_materialization"
+_M49_TARGET_PROJECTION_CID = (
+    "baguqeeracfikkmsrysxh3fmhmhri3iduzcki2kqxgoyz2gmszjdkxexm25mq"
+)
+_M49_M48_RECEIPT_CID = (
+    "sha256:72bbd190a41c137d579c6f9372cd85aa8e8b469dc910ebed78be2db28bd09698"
+)
 _M47_AUTHORITY_CID = (
     "sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444"
 )
@@ -470,6 +482,27 @@ def _m39_migration_errors(
         )
     except Exception as exc:
         return [f"M39 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m49_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse M49's exact same-owner event-306 source contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m49_post_m48_successor_report_fix_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+            )
+        )
+    except Exception as exc:
+        return [f"M49 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _m48_migration_errors(
@@ -1228,12 +1261,57 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M48 before every historical successor. Consequently
+    Key presence selects M49 before every historical successor. Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m49_key = _M49_SUCCESSOR_KEY
+    m49_presence = (
+        m49_key in scheduler,
+        m49_key in migration,
+        f"{m49_key}_cid" in seal,
+    )
+    if any(m49_presence):
+        errors = _m49_migration_errors(scheduler, seal, migration)
+        if not all(m49_presence):
+            errors.append("M49 successor authority is only partially declared")
+        if errors:
+            return errors
+        for validator in (
+            _m36_migration_errors,
+            _m35_migration_errors,
+            _m34_migration_errors,
+            _m33_migration_errors,
+            _m32_migration_errors,
+            _m31_migration_errors,
+            _m30_migration_errors,
+            _m29_migration_errors,
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(
+                    scheduler,
+                    seal,
+                    migration,
+                    require_active_runtime=False,
+                )
+            )
+        return errors
 
     m48_key = _M48_SUCCESSOR_KEY
     m48_presence = (
@@ -4338,6 +4416,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m49_key = _M49_SUCCESSOR_KEY
+    m49_selected = any(
+        (
+            m49_key in config,
+            m49_key in migration,
+            f"{m49_key}_cid" in seal,
+        )
+    )
     m48_key = _M48_SUCCESSOR_KEY
     m48_selected = any(
         (
@@ -5055,7 +5141,128 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m48_selected:
+    if m49_selected:
+        successor = config.get(m49_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m49_post_m48_successor_report_fix_authority()
+            )
+            contract = materializer._validated_m49_live_preflight_contract(expected)
+            reference = dict(materializer._m49_authority_reference())
+            configured_cid = str(materializer._M49_AUTHORITY_CID)
+            receipt = expected.get("preserved_m48_receipt", {})
+            preserved = expected.get("preserved_m48_materialization", {})
+            owner = expected.get("live_owner", {})
+            repair = expected.get("accepted_control_plane_repair", {})
+            target = expected.get("target_authority", {})
+            chain = expected.get("source_chain", {})
+            changes = expected.get("exact_changes", {})
+            preservation = expected.get("preservation", {})
+            m49_errors = module._m49_post_m48_successor_report_fix_errors(
+                config, seal, migration, root=root
+            )
+            if (
+                successor != reference
+                or migration.get(m49_key) != reference
+                or seal.get(f"{m49_key}_cid") != configured_cid
+                or configured_cid != _M49_AUTHORITY_CID
+                or configured_cid == _M49_UNSEALED_AUTHORITY_CID
+                or materializer._identity(expected) != configured_cid
+                or len(materializer._canonical(expected)) != _M49_AUTHORITY_SIZE
+                or m49_errors
+                or expected.get("schema")
+                != "sawm/post-m48-successor-report-fix-authorization@1"
+                or expected.get("migration_revision") != "SAWM-R2-M49"
+                or expected.get("migration_kind") != m49_key
+                or expected.get("authorized") is not True
+                or expected.get("authority") != "operator_control_plane"
+                or int(expected.get("target_generation") or 0) != 35
+                or int(expected.get("target_event_watermark") or 0) != 306
+                or int(expected.get("target_plan_revision") or 0) != 28
+                or expected.get("target_projection_cid")
+                != _M49_TARGET_PROJECTION_CID
+                or receipt.get("receipt_cid") != _M49_M48_RECEIPT_CID
+                or receipt.get("sha256")
+                != "9a0f54ea8e42eb6ae8b87acbeed951aab1a4f643996958b9c09dcdcb52ae9e20"
+                or receipt.get("size") != 6_495
+                or receipt.get("mode") != "0600"
+                or receipt.get("created_or_rewritten") is not False
+                or preserved.get("authority_cid") != _M48_AUTHORITY_CID
+                or preserved.get("receipt_cid") != _M49_M48_RECEIPT_CID
+                or preserved.get("event_watermark") != 305
+                or preserved.get("projection_cid") != _M48_TARGET_PROJECTION_CID
+                or owner.get("server_id")
+                != "server:b37f1c63-76ff-42e1-8404-10e15952f472"
+                or owner.get("process_birth_id")
+                != "birth:8067c25fb34a40bbfa92ff287a4c7441"
+                or owner.get("same_owner_required") is not True
+                or owner.get("generation_restart_authorized") is not False
+                or repair.get("repair_commit")
+                != "3025557ac782af4f55b59b5fb00c661ba6fcfd77"
+                or repair.get("authority_weakened") is not False
+                or target.get("event_watermark") != 306
+                or target.get("projection_cid") != _M49_TARGET_PROJECTION_CID
+                or chain.get("m48_final_control_commit")
+                != "53f050c40ad78f61674f7383ebc2708e062a7677"
+                or chain.get("repair_commit")
+                != "3025557ac782af4f55b59b5fb00c661ba6fcfd77"
+                or chain.get("final_control_parent")
+                != "3025557ac782af4f55b59b5fb00c661ba6fcfd77"
+                or chain.get("repair_commit_count") != 1
+                or chain.get("final_control_commit_count") != 1
+                or chain.get("current_commit_identity_embedded_in_authority")
+                is not False
+                or expected.get("ordinary_source_changes") != 2
+                or contract.get("target_generation") != 35
+                or contract.get("prior_event_watermark") != 305
+                or contract.get("target_event_watermark") != 306
+                or contract.get("same_live_owner_required") is not True
+                or contract.get("generation_restart_authorized") is not False
+                or contract.get("m48_receipt_must_be_preserved") is not True
+                or contract.get("event_305_must_be_preserved") is not True
+                or contract.get("event_306_must_be_absent_before_append") is not True
+                or changes.get("event_suffix_length") != 1
+                or changes.get("evidence_node_changes") != 1
+                or changes.get("evidence_event_changes") != 1
+                or changes.get("validation_event_changes") != 0
+                or changes.get("owner_generation_changes") != 0
+                or changes.get("task_revision_changes") != 0
+                or changes.get("task_status_changes") != 0
+                or changes.get("goal_revision_changes") != 0
+                or changes.get("goal_status_changes") != 0
+                or changes.get("plan_revision_changes") != 0
+                or changes.get("accepted_completion_changes") != 0
+                or changes.get("worker_self_approval") is not False
+                or preservation.get("same_live_owner") is not True
+                or preservation.get("same_store_generation") is not True
+                or preservation.get("generation_restart") is not False
+                or preservation.get("m48_authority_preserved_exactly") is not True
+                or preservation.get("m48_receipt_preserved_exactly") is not True
+                or preservation.get("event_305_preserved_exactly") is not True
+                or preservation.get("worker_self_approval") is not False
+            ):
+                config_errors.append(
+                    "M49 same-owner event-306 repair authority/source seal differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M49 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M49 active runtime paths are not exactly preserved")
+    if m48_selected and not m49_selected:
         successor = config.get(m48_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"

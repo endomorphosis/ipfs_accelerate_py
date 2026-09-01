@@ -1,4 +1,5 @@
 {
+  "post_m48_successor_report_fix_materialization": {"authority_cid":"sha256:712ace8de59282858a149b8a65457311bf79ccee8abd1907df862f958916e0cc","migration_revision":"SAWM-R2-M49","schema":"sawm/operator-control-authority-reference@1"},
   "post_m47_clean_shutdown_restart_successor_materialization": {"authority_cid":"sha256:a7b262b976b38eb94646a9d73c595ff49ab9b1f89fa528443745ed964be025f6","migration_revision":"SAWM-R2-M48","schema":"sawm/operator-control-authority-reference@1"},
   "ignored_python_cache_preservation_and_recovery_successor_materialization": {"authority_cid":"sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444","migration_revision":"SAWM-R2-M47","schema":"sawm/operator-control-authority-reference@1"},
   "legacy_no_delta_rescue_recovery_successor_materialization": {"authority_cid":"sha256:47ed315018541ef5c4c759c1c486cae2a411821ed4e9902877b08439b79b4455","migration_revision":"SAWM-R2-M46","schema":"sawm/operator-control-authority-reference@1"},
