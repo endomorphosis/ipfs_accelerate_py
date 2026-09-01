@@ -18,6 +18,7 @@ import math
 import os
 import re
 import select
+import stat
 import tempfile
 import threading
 import time
@@ -35,6 +36,9 @@ from ..control.control_contracts import EventCursor
 PATH_METADATA_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/path-metadata@1"
 PROJECTION_DELTA_CHECKPOINT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/projection-delta-checkpoint@1"
+)
+PROJECTION_CHECKPOINT_QUARANTINE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/projection-checkpoint-quarantine@1"
 )
 TASKBOARD_MATERIALIZATION_JOURNAL_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/taskboard-materialization-journal@1"
@@ -1789,20 +1793,81 @@ class ProjectionDeltaCheckpointStore:
     def _guard(self) -> Iterator[None]:
         with self._thread_lock:
             self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-            with self._lock_path.open("a+b") as stream:
-                fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+            flags = (
+                os.O_RDWR
+                | os.O_CREAT
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+            )
+            try:
+                descriptor = os.open(self._lock_path, flags, 0o600)
+            except OSError as exc:
+                if exc.errno == errno.ELOOP:
+                    raise ValueError(
+                        "projection checkpoint lock is not a regular file"
+                    ) from exc
+                raise
+            try:
+                opened = os.fstat(descriptor)
+                if not stat.S_ISREG(opened.st_mode):
+                    raise ValueError(
+                        "projection checkpoint lock is not a regular file"
+                    )
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
                 try:
                     yield
                 finally:
-                    fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
 
     def _read_unlocked(self) -> dict[str, Any] | None:
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
         try:
-            raw = self.path.read_bytes()
-        except (FileNotFoundError, OSError):
+            descriptor = os.open(self.path, flags)
+        except FileNotFoundError:
             return None
-        if len(raw) > self.max_bytes:
-            raise ValueError("projection checkpoint exceeds persistence bound")
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise ValueError(
+                    "projection checkpoint is not a regular file"
+                ) from exc
+            raise
+        try:
+            opened = os.fstat(descriptor)
+            if not stat.S_ISREG(opened.st_mode):
+                raise ValueError(
+                    "projection checkpoint is not a regular file"
+                )
+            if opened.st_size > self.max_bytes:
+                raise ValueError(
+                    "projection checkpoint exceeds persistence bound"
+                )
+            chunks: list[bytes] = []
+            total = 0
+            while True:
+                chunk = os.read(
+                    descriptor,
+                    min(1024 * 1024, self.max_bytes + 1 - total),
+                )
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                total += len(chunk)
+                if total > self.max_bytes:
+                    raise ValueError(
+                        "projection checkpoint exceeds persistence bound"
+                    )
+            raw = b"".join(chunks)
+        finally:
+            os.close(descriptor)
         try:
             value = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -1843,6 +1908,404 @@ class ProjectionDeltaCheckpointStore:
     def load_record(self) -> dict[str, Any] | None:
         record = self._read_unlocked()
         return None if record is None else dict(record)
+
+    @staticmethod
+    def _regular_file_digest(
+        path: Path,
+        *,
+        max_bytes: int,
+    ) -> tuple[os.stat_result, str]:
+        """Hash one exact regular file without following a symlink."""
+
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(path, flags)
+        try:
+            opened = os.fstat(descriptor)
+            if not stat.S_ISREG(opened.st_mode):
+                raise ValueError("projection checkpoint is not a regular file")
+            if opened.st_size > max_bytes:
+                raise ValueError(
+                    "projection checkpoint exceeds quarantine digest bound"
+                )
+            digest = hashlib.sha256()
+            total = 0
+            while True:
+                chunk = os.read(
+                    descriptor,
+                    min(1024 * 1024, max_bytes + 1 - total),
+                )
+                if not chunk:
+                    break
+                digest.update(chunk)
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ValueError(
+                        "projection checkpoint exceeds quarantine digest bound"
+                    )
+        finally:
+            os.close(descriptor)
+        return opened, "sha256:" + digest.hexdigest()
+
+    @staticmethod
+    def _fsync_regular_file(path: Path) -> os.stat_result:
+        """Fsync one no-follow regular-file opening and return its identity."""
+
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(path, flags)
+        try:
+            opened = os.fstat(descriptor)
+            if not stat.S_ISREG(opened.st_mode):
+                raise ValueError(
+                    "projection checkpoint is not a regular file"
+                )
+            os.fsync(descriptor)
+            return opened
+        finally:
+            os.close(descriptor)
+
+    def _quarantine_oversized_unlocked(
+        self,
+        before: os.stat_result,
+    ) -> dict[str, Any]:
+        """Retain an oversized invalid file without reading its contents."""
+
+        identity_opening = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "oversized-projection-checkpoint-identity@1"
+            ),
+            "device": int(before.st_dev),
+            "inode": int(before.st_ino),
+            "size": int(before.st_size),
+            "mtime_ns": int(before.st_mtime_ns),
+        }
+        identity_digest = hashlib.sha256(
+            _canonical_json_bytes(identity_opening)
+        ).hexdigest()
+        quarantine_path = self.path.with_name(
+            f".{self.path.name}.invalid-oversized-{identity_digest}"
+        )
+        try:
+            os.link(self.path, quarantine_path, follow_symlinks=False)
+        except FileExistsError:
+            retained = quarantine_path.lstat()
+            if (
+                not stat.S_ISREG(retained.st_mode)
+                or retained.st_dev != before.st_dev
+                or retained.st_ino != before.st_ino
+            ):
+                raise RuntimeError(
+                    "oversized projection checkpoint quarantine identity collided"
+                )
+        source = self.path.lstat()
+        retained = quarantine_path.lstat()
+        source_identity = (
+            source.st_dev,
+            source.st_ino,
+            source.st_size,
+            source.st_mtime_ns,
+            source.st_ctime_ns,
+        )
+        retained_identity = (
+            retained.st_dev,
+            retained.st_ino,
+            retained.st_size,
+            retained.st_mtime_ns,
+            retained.st_ctime_ns,
+        )
+        if (
+            source_identity != retained_identity
+            or source_identity[:4]
+            != (
+                before.st_dev,
+                before.st_ino,
+                before.st_size,
+                before.st_mtime_ns,
+            )
+            or source.st_ctime_ns < before.st_ctime_ns
+        ):
+            raise RuntimeError(
+                "oversized projection checkpoint changed during quarantine"
+            )
+        synced_source = self._fsync_regular_file(self.path)
+        synced_retained = self._fsync_regular_file(quarantine_path)
+        synced_source_identity = (
+            synced_source.st_dev,
+            synced_source.st_ino,
+            synced_source.st_size,
+            synced_source.st_mtime_ns,
+            synced_source.st_ctime_ns,
+        )
+        synced_retained_identity = (
+            synced_retained.st_dev,
+            synced_retained.st_ino,
+            synced_retained.st_size,
+            synced_retained.st_mtime_ns,
+            synced_retained.st_ctime_ns,
+        )
+        if (
+            synced_source_identity != source_identity
+            or synced_retained_identity != retained_identity
+        ):
+            raise RuntimeError(
+                "oversized projection checkpoint changed before persistence"
+            )
+        directory = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+            final = self.path.lstat()
+            final_identity = (
+                final.st_dev,
+                final.st_ino,
+                final.st_size,
+                final.st_mtime_ns,
+                final.st_ctime_ns,
+            )
+            if final_identity != source_identity:
+                raise RuntimeError(
+                    "oversized projection checkpoint changed before commit"
+                )
+            self.path.unlink()
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        return {
+            "schema": PROJECTION_CHECKPOINT_QUARANTINE_SCHEMA,
+            "quarantined": True,
+            "reason": "oversized_projection_checkpoint",
+            "source_path": str(self.path),
+            "quarantine_path": str(quarantine_path),
+            # This bounded route deliberately makes no full-content hash
+            # claim; the exact oversized inode is retained by hard link.
+            "source_sha256": "",
+            "source_size": int(before.st_size),
+        }
+
+    def quarantine_invalid(self) -> dict[str, Any]:
+        """Recoverably retire one malformed checkpoint under its writer lock.
+
+        This operation never replaces a valid checkpoint and never follows a
+        symlink.  A content- or bounded-identity-derived sibling is hard-linked
+        and persisted before the invalid authority path is unlinked, so the
+        suspect bytes remain available after an automatic runtime repair.
+        """
+
+        with self._guard():
+            try:
+                initial = self.path.lstat()
+            except FileNotFoundError:
+                return {
+                    "schema": PROJECTION_CHECKPOINT_QUARANTINE_SCHEMA,
+                    "quarantined": False,
+                    "reason": "checkpoint_absent",
+                    "source_path": str(self.path),
+                    "quarantine_path": "",
+                    "source_sha256": "",
+                    "source_size": 0,
+                }
+            if stat.S_ISLNK(initial.st_mode) or not stat.S_ISREG(
+                initial.st_mode
+            ):
+                raise ValueError(
+                    "invalid projection checkpoint is not a regular file"
+                )
+            try:
+                current = self._read_unlocked()
+            except ValueError:
+                current = None
+            else:
+                return {
+                    "schema": PROJECTION_CHECKPOINT_QUARANTINE_SCHEMA,
+                    "quarantined": False,
+                    "reason": (
+                        "checkpoint_absent"
+                        if current is None
+                        else "checkpoint_valid"
+                    ),
+                    "source_path": str(self.path),
+                    "quarantine_path": "",
+                    "source_sha256": "",
+                    "source_size": 0,
+                }
+
+            before = self.path.lstat()
+            if stat.S_ISLNK(before.st_mode) or not stat.S_ISREG(before.st_mode):
+                raise ValueError(
+                    "invalid projection checkpoint is not a regular file"
+                )
+            if before.st_size > self.max_bytes:
+                return self._quarantine_oversized_unlocked(before)
+            opened, digest = self._regular_file_digest(
+                self.path,
+                max_bytes=self.max_bytes,
+            )
+            after = self.path.lstat()
+            identity = (
+                before.st_dev,
+                before.st_ino,
+                before.st_size,
+                before.st_mtime_ns,
+                before.st_ctime_ns,
+            )
+            observed = (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+                after.st_mtime_ns,
+                after.st_ctime_ns,
+            )
+            opened_identity = (
+                opened.st_dev,
+                opened.st_ino,
+                opened.st_size,
+                opened.st_mtime_ns,
+                opened.st_ctime_ns,
+            )
+            if identity != observed or identity != opened_identity:
+                raise RuntimeError(
+                    "projection checkpoint changed during quarantine"
+                )
+            quarantine_path = self.path.with_name(
+                f".{self.path.name}.invalid-{digest.removeprefix('sha256:')}"
+            )
+            link_created = False
+            try:
+                os.link(
+                    self.path,
+                    quarantine_path,
+                    follow_symlinks=False,
+                )
+                link_created = True
+            except FileExistsError:
+                quarantined, quarantined_digest = self._regular_file_digest(
+                    quarantine_path,
+                    max_bytes=self.max_bytes,
+                )
+                if (
+                    quarantined.st_size != opened.st_size
+                    or quarantined_digest != digest
+                ):
+                    raise RuntimeError(
+                        "projection checkpoint quarantine identity collided"
+                    )
+            source_opened, source_digest = self._regular_file_digest(
+                self.path,
+                max_bytes=self.max_bytes,
+            )
+            quarantine_opened, quarantine_digest = (
+                self._regular_file_digest(
+                    quarantine_path,
+                    max_bytes=self.max_bytes,
+                )
+            )
+            source_final = self.path.lstat()
+            source_final_identity = (
+                source_final.st_dev,
+                source_final.st_ino,
+                source_final.st_size,
+                source_final.st_mtime_ns,
+                source_final.st_ctime_ns,
+            )
+            source_opened_identity = (
+                source_opened.st_dev,
+                source_opened.st_ino,
+                source_opened.st_size,
+                source_opened.st_mtime_ns,
+                source_opened.st_ctime_ns,
+            )
+            original_base_identity = identity[:4]
+            source_base_identity = source_opened_identity[:4]
+            if (
+                source_final_identity != source_opened_identity
+                or source_base_identity != original_base_identity
+                or source_opened.st_ctime_ns < opened.st_ctime_ns
+                or source_digest != digest
+                or quarantine_digest != digest
+                or quarantine_opened.st_size != opened.st_size
+                or (
+                    link_created
+                    and (
+                        quarantine_opened.st_dev != source_opened.st_dev
+                        or quarantine_opened.st_ino != source_opened.st_ino
+                        or quarantine_opened.st_ctime_ns
+                        != source_opened.st_ctime_ns
+                    )
+                )
+            ):
+                raise RuntimeError(
+                    "projection checkpoint changed during quarantine commit"
+                )
+            synced_source = self._fsync_regular_file(self.path)
+            synced_quarantine = self._fsync_regular_file(quarantine_path)
+            if (
+                (
+                    synced_source.st_dev,
+                    synced_source.st_ino,
+                    synced_source.st_size,
+                    synced_source.st_mtime_ns,
+                    synced_source.st_ctime_ns,
+                )
+                != source_opened_identity
+                or (
+                    synced_quarantine.st_dev,
+                    synced_quarantine.st_ino,
+                    synced_quarantine.st_size,
+                    synced_quarantine.st_mtime_ns,
+                    synced_quarantine.st_ctime_ns,
+                )
+                != (
+                    quarantine_opened.st_dev,
+                    quarantine_opened.st_ino,
+                    quarantine_opened.st_size,
+                    quarantine_opened.st_mtime_ns,
+                    quarantine_opened.st_ctime_ns,
+                )
+            ):
+                raise RuntimeError(
+                    "projection checkpoint changed before persistence"
+                )
+            directory = os.open(self.path.parent, os.O_RDONLY)
+            try:
+                # Persist the recoverable link before retiring the authority
+                # path, then persist the unlink as a separate ordered step.
+                os.fsync(directory)
+                final = self.path.lstat()
+                final_identity = (
+                    final.st_dev,
+                    final.st_ino,
+                    final.st_size,
+                    final.st_mtime_ns,
+                    final.st_ctime_ns,
+                )
+                if final_identity != source_opened_identity:
+                    raise RuntimeError(
+                        "projection checkpoint changed before quarantine commit"
+                    )
+                self.path.unlink()
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+            return {
+                "schema": PROJECTION_CHECKPOINT_QUARANTINE_SCHEMA,
+                "quarantined": True,
+                "reason": "invalid_projection_checkpoint",
+                "source_path": str(self.path),
+                "quarantine_path": str(quarantine_path),
+                "source_sha256": digest,
+                "source_size": int(opened.st_size),
+            }
 
     def materialize(
         self,

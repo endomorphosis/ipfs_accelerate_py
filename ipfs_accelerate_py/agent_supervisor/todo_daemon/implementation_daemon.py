@@ -76149,6 +76149,33 @@ def _database_portal_terminal_no_effect_historical_budget_matches(
     )
 
 
+def _database_terminal_claim_ordinal_lower_bound(
+    *,
+    attempt_number: Any,
+    attempts_used: Any,
+    rearm_count: Any,
+) -> bool:
+    """Check only the corruption lower bound between two distinct counters.
+
+    ``attempt_number`` is the coordinator's monotonic claim/fence ordinal;
+    ``attempts_used`` is the consumptive validation-epoch retry budget.  An
+    exact proof-backed refund deliberately resets the latter without rewinding
+    the former.  Therefore an ordinal gap is *not* refund evidence.  Rearm
+    authority comes only from the separately verified current attempt, claim,
+    lease, fence, terminal link, saga, and evidence root.
+    """
+
+    return bool(
+        type(attempt_number) is int
+        and type(attempts_used) is int
+        and type(rearm_count) is int
+        and attempt_number >= 1
+        and attempts_used >= 1
+        and 0 <= rearm_count <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+        and attempt_number >= attempts_used + rearm_count
+    )
+
+
 DATABASE_TERMINAL_LANDED_COMPLETION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-terminal-landed-completion@1"
@@ -82734,6 +82761,8 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_AUTHORIZATION_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_FIELDS,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_FIELDS,
+            DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_FIELDS,
             DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
         )
@@ -82973,6 +83002,162 @@ class DatabaseImplementationDaemon:
                 and record.get("fencing_token")
                 == original.get("fencing_token")
                 and record.get("fence_epoch") == original.get("fence_epoch")
+                and record.get("outer_block_receipt_digest")
+                == DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                    original
+                )
+            )
+        if (
+            record.get("schema")
+            == DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA
+        ):
+            board_namespace = record.get("board_namespace")
+            board_namespace_is_closed = bool(
+                type(board_namespace) is str
+                and board_namespace == board_namespace.strip()
+                and 1 <= len(board_namespace.encode("utf-8")) <= 256
+                and not any(
+                    character in board_namespace
+                    for character in ("\x00", "\r", "\n")
+                )
+            )
+            digest_fields = {
+                "attempt_authority_root_digest",
+                "attempt_root_digest",
+                "attempt_directory_names_digest",
+                "binding_admission_digest",
+                "projection_immutable_digest",
+                "prepared_reconciliation_receipt_id",
+                "commit_barrier_receipt_id",
+                "event_manifest_digest",
+                "event_head_id",
+                "resource_deferred_daemon_pass_event_id",
+                "diagnostic_event_ids_digest",
+                "shutdown_reconciliation_event_ids_digest",
+                "state_digest",
+                "outer_block_receipt_digest",
+            }
+            integer_fields = {
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+                "task_revision",
+                "nested_attempt",
+                "event_count",
+                "event_head_sequence",
+                "diagnostic_event_count",
+                "shutdown_reconciliation_event_count",
+            }
+            true_fields = {
+                "task_never_selected",
+                "route_deferred",
+                "nested_state_quiescent",
+            }
+            false_fields = {
+                "provider_dispatched",
+                "implementation_dispatched",
+                "attempt_consumed",
+                "validation_attempted",
+                "commit_created",
+                "merge_attempted",
+                "acceptance_inferred",
+            }
+            terminal_link = original.get("terminal_reconciliation")
+            return bool(
+                set(record)
+                == set(
+                    DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_FIELDS
+                )
+                and re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id)
+                and evidence_id == expected_evidence_id
+                and calculated_id == evidence_id
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(record.get("binding_id") or ""),
+                )
+                and all(
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(record.get(name) or ""),
+                    )
+                    for name in digest_fields
+                )
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(record.get("binding_admission_id") or ""),
+                )
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(record.get("nested_task_cid") or ""),
+                )
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(record.get("terminal_reconciliation_evidence_id") or ""),
+                )
+                and re.fullmatch(
+                    r"event-log:sha256:[0-9a-f]{64}",
+                    str(record.get("event_stream_id") or ""),
+                )
+                and re.fullmatch(
+                    r"event-log-snapshot:sha256:[0-9a-f]{64}",
+                    str(record.get("event_snapshot_id") or ""),
+                )
+                and all(type(record.get(name)) is int for name in integer_fields)
+                and int(record["attempt_number"]) >= 1
+                and int(record["fencing_token"]) >= 0
+                and int(record["fence_epoch"]) >= 0
+                and int(record["task_revision"]) >= 0
+                and int(record["nested_attempt"]) == 0
+                and 0 <= int(record["diagnostic_event_count"]) <= 4_095
+                and 1
+                <= int(record["shutdown_reconciliation_event_count"])
+                <= 4_095
+                and 2 <= int(record["event_count"]) <= 4_096
+                and int(record["event_count"])
+                == 1
+                + int(record["diagnostic_event_count"])
+                + int(record["shutdown_reconciliation_event_count"])
+                and record.get("event_head_sequence")
+                == record.get("event_count")
+                and record.get("attempt_root_key")
+                == hashlib.sha256(
+                    str(record.get("attempt_id") or "").encode("utf-8")
+                ).hexdigest()[:24]
+                and record.get("selection_idle_reason")
+                == "all_selectable_ready_tasks_deferred_by_resource_claim"
+                and record.get("nested_reconciliation_reason")
+                == "already_quiesced"
+                and record.get("provider_runner_fence_reason")
+                == "ordinary_provider_runner_receipt_absent"
+                and all(record.get(name) is True for name in true_fields)
+                and all(record.get(name) is False for name in false_fields)
+                # The bridge has already bound this exact namespace to the
+                # immutable projection and state identity.  Keep the outer
+                # verifier reusable across sealed boards while rejecting an
+                # empty, unbounded, or control-bearing namespace opening.
+                and board_namespace_is_closed
+                and record.get("task_cid")
+                == str(getattr(task, "task_cid", "") or "")
+                and record.get("task_alias")
+                == str(getattr(task, "task_alias", "") or "")
+                and record.get("attempt_id") == original.get("attempt_id")
+                and record.get("claim_id") == original.get("claim_id")
+                and record.get("attempt_number")
+                == original.get("attempt_number")
+                and record.get("owner_session_id")
+                == original.get("owner_session_id")
+                and record.get("lease_id") == original.get("lease_id")
+                and record.get("fencing_token")
+                == original.get("fencing_token")
+                and record.get("fence_epoch") == original.get("fence_epoch")
+                and isinstance(terminal_link, Mapping)
+                and bool(terminal_link)
+                and record.get("terminal_reconciliation_evidence_id")
+                == terminal_link.get("evidence_id")
+                and record.get("prepared_reconciliation_receipt_id")
+                == terminal_link.get("prepared_reconciliation_receipt_id")
+                and record.get("commit_barrier_receipt_id")
+                == terminal_link.get("commit_barrier_receipt_id")
                 and record.get("outer_block_receipt_digest")
                 == DatabaseImplementationDaemon._database_no_provider_rearm_digest(
                     original
@@ -83496,6 +83681,7 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
         )
 
@@ -83554,12 +83740,14 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
             }
         )
         terminal_recovery_refund = rearm_evidence_schema in {
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
         }
         stale_dispatch_migration_refund = (
             rearm_evidence_schema
@@ -83614,8 +83802,11 @@ class DatabaseImplementationDaemon:
             and (
                 (
                     stale_dispatch_migration_refund
-                    and raw_original_attempt_number
-                    >= raw_original_attempts_used + prior_rearms
+                    and _database_terminal_claim_ordinal_lower_bound(
+                        attempt_number=raw_original_attempt_number,
+                        attempts_used=raw_original_attempts_used,
+                        rearm_count=prior_rearms,
+                    )
                 )
                 or (
                     terminal_no_effect_route_refund
@@ -83627,7 +83818,17 @@ class DatabaseImplementationDaemon:
                     )
                 )
                 or (
+                    terminal_recovery_refund
+                    and not stale_dispatch_migration_refund
+                    and _database_terminal_claim_ordinal_lower_bound(
+                        attempt_number=raw_original_attempt_number,
+                        attempts_used=raw_original_attempts_used,
+                        rearm_count=prior_rearms,
+                    )
+                )
+                or (
                     proof_backed_nonconsuming_refund
+                    and not terminal_recovery_refund
                     and not stale_dispatch_migration_refund
                     and not terminal_no_effect_route_refund
                     and raw_original_attempt_number
@@ -85096,14 +85297,20 @@ class DatabaseImplementationDaemon:
         pre_verifier_budget_binding = bool(
             (
                 stale_dispatch_receipt
-                and int(attempt.attempt_number)
-                >= int(raw_attempts_used) + int(raw_rearm_count)
+                and _database_terminal_claim_ordinal_lower_bound(
+                    attempt_number=attempt.attempt_number,
+                    attempts_used=raw_attempts_used,
+                    rearm_count=raw_rearm_count,
+                )
             )
             or (
                 interrupted_phase_link is not None
                 and not stale_dispatch_receipt
-                and int(attempt.attempt_number)
-                == int(raw_attempts_used) + int(raw_rearm_count)
+                and _database_terminal_claim_ordinal_lower_bound(
+                    attempt_number=attempt.attempt_number,
+                    attempts_used=raw_attempts_used,
+                    rearm_count=raw_rearm_count,
+                )
             )
             or (
                 interrupted_phase_link is None
@@ -85252,9 +85459,24 @@ class DatabaseImplementationDaemon:
             and provider_dispatch_outcome == "started"
             and legacy_started_dispatch_body
         )
+        terminal_quiescent_deferred_dispatch_candidate = bool(
+            interrupted_phase_link is not None
+            and not stale_dispatch_receipt
+            and provider_dispatch_outcome == "deferred"
+            and provider_dispatch_body
+            == {"exception_type": "DatabasePortalBridgeDeferred"}
+        )
+        terminal_linked_timeout_candidate = bool(
+            interrupted_phase_link is not None
+            and not stale_dispatch_receipt
+            and provider_dispatch_outcome == "raised"
+            and provider_dispatch_body == {"exception_type": "TimeoutError"}
+        )
         if not (
             provider_dispatch_raised_exactly
             or stale_dispatch_started_candidate
+            or terminal_quiescent_deferred_dispatch_candidate
+            or terminal_linked_timeout_candidate
         ):
             return None
         completion = self.coordinator.get_prepared_task_completion(
@@ -85330,6 +85552,20 @@ class DatabaseImplementationDaemon:
                     and evidence.get("attempt_consumed") is False
                     and evidence.get("acceptance_inferred") is False
                 )
+                or (
+                    evidence.get("schema")
+                    == (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "database-portal-terminal-quiescent-deferred-"
+                        "rearm-evidence@1"
+                    )
+                    and evidence.get("route_deferred") is True
+                    and evidence.get("nested_state_quiescent") is True
+                    and evidence.get("task_never_selected") is True
+                    and evidence.get("implementation_dispatched") is False
+                    and evidence.get("attempt_consumed") is False
+                    and evidence.get("acceptance_inferred") is False
+                )
             )
             or not re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id)
             or expected_evidence_id != evidence_id
@@ -85346,6 +85582,7 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
         )
 
@@ -85355,6 +85592,7 @@ class DatabaseImplementationDaemon:
             in {
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             }
         )
         proof_backed_nonconsuming_recovery = bool(
@@ -85363,6 +85601,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
             }
         )
@@ -85374,7 +85613,20 @@ class DatabaseImplementationDaemon:
             evidence_schema
             == DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA
         )
+        terminal_quiescent_deferred = bool(
+            evidence_schema
+            == DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA
+        )
         if terminal_recovery is not (interrupted_phase_link is not None):
+            return None
+        if terminal_quiescent_deferred_dispatch_candidate and not (
+            terminal_quiescent_deferred
+        ):
+            return None
+        if terminal_quiescent_deferred and not (
+            terminal_quiescent_deferred_dispatch_candidate
+            or terminal_linked_timeout_candidate
+        ):
             return None
         if stale_dispatch_started_candidate and not stale_dispatch_migration:
             return None
@@ -85383,8 +85635,11 @@ class DatabaseImplementationDaemon:
         attempt_budget_binding = bool(
             (
                 stale_dispatch_migration
-                and int(attempt.attempt_number)
-                >= int(raw_attempts_used) + int(raw_rearm_count)
+                and _database_terminal_claim_ordinal_lower_bound(
+                    attempt_number=attempt.attempt_number,
+                    attempts_used=raw_attempts_used,
+                    rearm_count=raw_rearm_count,
+                )
             )
             or (
                 terminal_no_effect_route
@@ -85396,7 +85651,17 @@ class DatabaseImplementationDaemon:
                 )
             )
             or (
+                terminal_recovery
+                and not stale_dispatch_migration
+                and _database_terminal_claim_ordinal_lower_bound(
+                    attempt_number=attempt.attempt_number,
+                    attempts_used=raw_attempts_used,
+                    rearm_count=raw_rearm_count,
+                )
+            )
+            or (
                 proof_backed_nonconsuming_recovery
+                and not terminal_recovery
                 and not stale_dispatch_migration
                 and not terminal_no_effect_route
                 and int(attempt.attempt_number)
@@ -85777,6 +86042,7 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
         )
 
@@ -85816,6 +86082,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
             }
             minimum_rearm_count = 0 if proof_backed_nonconsuming else 1
@@ -86381,9 +86648,11 @@ class DatabaseImplementationDaemon:
             rearm_count = record["unknown_outcome_rearm_count"]
             if (
                 type(rearm_count) is not int
-                or not 1
-                <= int(rearm_count)
-                <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+                or not (
+                    0
+                    <= int(rearm_count)
+                    <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+                )
             ):
                 return False
         else:
@@ -86401,8 +86670,11 @@ class DatabaseImplementationDaemon:
             or record.get("owner_session_id") != attempt.owner_session_id
             or type(record.get("attempts_used")) is not int
             or int(record.get("attempts_used")) < 1
-            or int(record.get("attempts_used")) + int(rearm_count)
-            != int(attempt.attempt_number)
+            or not _database_terminal_claim_ordinal_lower_bound(
+                attempt_number=attempt.attempt_number,
+                attempts_used=record.get("attempts_used"),
+                rearm_count=rearm_count,
+            )
             or type(record.get("max_task_attempts")) is not int
             or int(record.get("max_task_attempts")) < 0
             or type(record.get("attempt_number")) is not int
@@ -86705,12 +86977,22 @@ class DatabaseImplementationDaemon:
             dispatch_kind="effect",
             idempotency_key=f"effect:{attempt.attempt_id}",
         )
+        provider_dispatch_is_provider_free = bool(
+            isinstance(provider_dispatch, Mapping)
+            and (
+                provider_dispatch.get("outcome") in {"started", "raised"}
+                or (
+                    provider_dispatch.get("outcome") == "deferred"
+                    and provider_dispatch.get("body")
+                    == {"exception_type": "DatabasePortalBridgeDeferred"}
+                )
+            )
+        )
         if (
             provider_result is not None
             or effect_result is not None
             or effect_dispatch is not None
-            or provider_dispatch is None
-            or provider_dispatch.get("outcome") not in {"started", "raised"}
+            or not provider_dispatch_is_provider_free
             or attempt.phase_committed(ATTEMPT_PHASE_PROVIDER)
             or attempt.phase_committed(ATTEMPT_PHASE_EFFECT)
         ):
@@ -87076,6 +87358,7 @@ class DatabaseImplementationDaemon:
         """
 
         from .database_portal_bridge import (
+            DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
         )
 
@@ -87183,6 +87466,7 @@ class DatabaseImplementationDaemon:
                         "database-portal-stale-dispatch-migration-"
                         "rearm-evidence@1"
                     ),
+                    DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
                     DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
                 }
             )

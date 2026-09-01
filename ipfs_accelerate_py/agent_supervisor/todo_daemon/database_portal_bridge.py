@@ -80,6 +80,10 @@ DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-interrupted-implementation-rearm-evidence@1"
 )
+DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-terminal-quiescent-deferred-rearm-evidence@1"
+)
 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_AUTHORIZATION_SCHEMA: Final[
     str
 ] = (
@@ -379,6 +383,64 @@ DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_FIELDS: Final[
         "evidence_id",
     }
 )
+DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "schema",
+        "attempt_id",
+        "claim_id",
+        "task_cid",
+        "task_alias",
+        "attempt_number",
+        "owner_session_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "attempt_root_key",
+        "attempt_authority_root_digest",
+        "attempt_root_digest",
+        "attempt_directory_names_digest",
+        "binding_id",
+        "binding_admission_id",
+        "binding_admission_digest",
+        "projection_immutable_digest",
+        "task_revision",
+        "board_namespace",
+        "nested_task_cid",
+        "nested_attempt",
+        "terminal_reconciliation_evidence_id",
+        "prepared_reconciliation_receipt_id",
+        "commit_barrier_receipt_id",
+        "event_stream_id",
+        "event_snapshot_id",
+        "event_manifest_digest",
+        "event_count",
+        "event_head_sequence",
+        "event_head_id",
+        "resource_deferred_daemon_pass_event_id",
+        "diagnostic_event_count",
+        "diagnostic_event_ids_digest",
+        "shutdown_reconciliation_event_count",
+        "shutdown_reconciliation_event_ids_digest",
+        "state_digest",
+        "outer_block_receipt_digest",
+        "selection_idle_reason",
+        "nested_reconciliation_reason",
+        "provider_runner_fence_reason",
+        "provider_dispatched",
+        "implementation_dispatched",
+        "task_never_selected",
+        "attempt_consumed",
+        "validation_attempted",
+        "commit_created",
+        "merge_attempted",
+        "acceptance_inferred",
+        "route_deferred",
+        "nested_state_quiescent",
+        "evidence_id",
+    }
+)
 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_FIELDS: Final[
     frozenset[str]
 ] = frozenset(
@@ -639,6 +701,33 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
             "cleaned",
             "submodule_cleanup",
             "lifecycle_finalize",
+        }
+    ),
+    "stale_worktree_cleanup": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "attempted",
+            "max_age_seconds",
+            "removed_count",
+            "skipped_count",
+            "removed",
+            "skipped",
+        }
+    ),
+    "implementation_shutdown_reconciled": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "reconciled",
+            "blocked",
+            "reason",
+            "reconciled_at",
+            "task_id",
+            "attempt",
+            "attempt_recovery",
+            "task_claim_reconciliation",
+            "protected_path_reconciliation",
+            "worktree_lifecycle_reconciliation",
+            "stale_lock_cleared",
         }
     ),
     "failed_setup_worktree_cleanup": _EVENT_ENVELOPE_FIELDS
@@ -4399,6 +4488,138 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "database Portal cleanup event is malformed"
                 )
+        elif event_type == "stale_worktree_cleanup":
+            removed = event.get("removed")
+            skipped = event.get("skipped")
+            removed_fields = {
+                "age_seconds",
+                "branch",
+                "cleanup_result",
+                "worktree_path",
+            }
+            skipped_fields = {"branch", "reason", "worktree_path"}
+            cleanup_fields = {
+                "branch",
+                "cleaned",
+                "deleted_branch",
+                "finished_at",
+                "lifecycle_finalize",
+                "removed_worktree",
+                "started_at",
+                "submodule_cleanup",
+                "worktree_path",
+            }
+            if (
+                event.get("attempted") is not True
+                or isinstance(event.get("max_age_seconds"), bool)
+                or not isinstance(event.get("max_age_seconds"), (int, float))
+                or float(event["max_age_seconds"]) <= 0.0
+                or type(event.get("removed_count")) is not int
+                or type(event.get("skipped_count")) is not int
+                or not isinstance(removed, list)
+                or not isinstance(skipped, list)
+                or int(event["removed_count"]) != len(removed)
+                or int(event["skipped_count"]) != len(skipped)
+                or any(
+                    not isinstance(item, Mapping)
+                    or set(item) != skipped_fields
+                    or any(
+                        not isinstance(item.get(name), str)
+                        or (name != "branch" and not str(item.get(name) or ""))
+                        for name in skipped_fields
+                    )
+                    for item in skipped
+                )
+                or any(
+                    not isinstance(item, Mapping)
+                    or set(item) != removed_fields
+                    or isinstance(item.get("age_seconds"), bool)
+                    or not isinstance(item.get("age_seconds"), (int, float))
+                    or float(item["age_seconds"]) < 0.0
+                    or not isinstance(item.get("branch"), str)
+                    or not str(item.get("branch") or "")
+                    or not isinstance(item.get("worktree_path"), str)
+                    or not str(item.get("worktree_path") or "")
+                    or not isinstance(item.get("cleanup_result"), Mapping)
+                    or set(item["cleanup_result"]) != cleanup_fields
+                    or item["cleanup_result"].get("cleaned") is not True
+                    or any(
+                        not isinstance(
+                            item["cleanup_result"].get(name), bool
+                        )
+                        for name in ("removed_worktree", "deleted_branch")
+                    )
+                    or any(
+                        not isinstance(
+                            item["cleanup_result"].get(name), str
+                        )
+                        or not str(
+                            item["cleanup_result"].get(name) or ""
+                        )
+                        for name in (
+                            "branch",
+                            "finished_at",
+                            "started_at",
+                            "worktree_path",
+                        )
+                    )
+                    or not DatabasePortalExecutionBridge._successful_submodule_cleanup_shape(
+                        item["cleanup_result"].get("submodule_cleanup")
+                    )
+                    or not _closed_typed_record_matches(
+                        item["cleanup_result"].get("lifecycle_finalize"),
+                        {
+                            "finalized": False,
+                            "reason": "no_lifecycle_record",
+                        },
+                    )
+                    for item in removed
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal stale-worktree diagnostic is malformed"
+                )
+        elif event_type == "implementation_shutdown_reconciled":
+            if (
+                event.get("reconciled") is not True
+                or event.get("blocked") is not False
+                or event.get("reason") != "already_quiesced"
+                or not isinstance(event.get("reconciled_at"), str)
+                or not str(event.get("reconciled_at") or "")
+                or event.get("task_id") != ""
+                or type(event.get("attempt")) is not int
+                or event.get("attempt") != 0
+                or event.get("attempt_recovery") != {}
+                or not _closed_typed_record_matches(
+                    event.get("task_claim_reconciliation"),
+                    {
+                        "blocked": False,
+                        "reason": "no_task_claim_identity",
+                        "reconciled": False,
+                    },
+                )
+                or not _closed_typed_record_matches(
+                    event.get("protected_path_reconciliation"),
+                    {
+                        "blocked": False,
+                        "critical_section_entered": False,
+                        "reason": "no_active_snapshot",
+                        "scan_outside_lease": True,
+                    },
+                )
+                or not _closed_typed_record_matches(
+                    event.get("worktree_lifecycle_reconciliation"),
+                    {
+                        "blocked": False,
+                        "reason": "no_active_worktree",
+                        "reconciled": False,
+                    },
+                )
+                or event.get("stale_lock_cleared") is not False
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal quiescent-shutdown event is malformed"
+                )
         elif event_type in {
             "failed_setup_worktree_cleanup",
             "implementation_exception",
@@ -6930,6 +7151,678 @@ class DatabasePortalExecutionBridge:
         evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
         return evidence
 
+    def _terminal_quiescent_deferred_rearm_evidence(
+        self,
+        attempt: Any,
+        receipt: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Prove terminal-linked deferral before nested task selection.
+
+        This evidence version covers a database attempt that crossed the
+        Portal entry boundary, but whose single projected task was deferred by
+        a resource claim before ``task_selected``.  The outer terminal saga is
+        already durable, so the proof binds its prepared and commit-barrier
+        receipts as well as the post-probe event head.  Repeated exact
+        ``already_quiesced`` shutdown events are diagnostics, not attempts.
+        """
+
+        link = receipt.get("terminal_reconciliation")
+        if type(link) is not dict:
+            return None
+        link = dict(link)
+        exact_attempt = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        unsigned_link = dict(link)
+        link_evidence_id = str(unsigned_link.pop("evidence_id", "") or "")
+        if (
+            set(link) != set(DATABASE_PORTAL_TERMINAL_RECONCILIATION_LINK_FIELDS)
+            or link.get("schema")
+            != DATABASE_PORTAL_TERMINAL_RECONCILIATION_LINK_SCHEMA
+            or not _strict_attempt_integer_fields(link)
+            or any(
+                type(link.get(name)) is not type(value)
+                or link.get(name) != value
+                for name, value in exact_attempt.items()
+            )
+            or link.get("nested_reason") != "nested_portal_attempt_reconciled"
+            or link.get("nested_reconciled") is not True
+            or link.get("intended_database_disposition")
+            != "blocked_unknown_outcome"
+            or not re.fullmatch(r"baguqeera[a-z2-7]{52}", link_evidence_id)
+            or content_identity(unsigned_link) != link_evidence_id
+            or any(
+                not re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(link.get(name) or ""),
+                )
+                for name in (
+                    "prepared_reconciliation_receipt_id",
+                    "commit_barrier_receipt_id",
+                )
+            )
+        ):
+            return None
+
+        paths = self._paths(attempt)
+        expected_root = self.attempt_root / hashlib.sha256(
+            str(attempt.attempt_id).encode("utf-8")
+        ).hexdigest()[:24]
+        if paths.root != expected_root:
+            return None
+        try:
+            sealed = self._pinned_no_provider_snapshot(paths)
+            binding = dict(sealed["binding"])
+            self._verify_binding_identity(binding)
+            durable_binding = (
+                self._binding_lookup(attempt)
+                if self._binding_lookup is not None
+                else None
+            )
+            projection = str(sealed["projection"])
+            if (
+                _projection_immutable_digest(projection)
+                != str(binding.get("projection_immutable_digest") or "")
+                or _HEADER.findall(projection)
+                != [str(binding.get("task_alias") or "")]
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal task projection identity changed"
+                )
+            projection_task = self._projection_task(paths, binding, projection)
+            identity = {
+                "task_id": projection_task.task_id,
+                "canonical_task_key": str(
+                    projection_task.canonical_task_key or ""
+                ),
+                "canonical_task_cid": str(
+                    projection_task.canonical_task_cid or ""
+                ),
+                "board_namespace": str(
+                    projection_task.board_namespace or ""
+                ),
+            }
+            if any(not value for value in identity.values()):
+                raise DatabasePortalBridgeError(
+                    "Portal task projection lacks a complete canonical identity"
+                )
+            projection_status = _projection_status(projection)
+            state = dict(sealed["state"])
+            state_digest = str(sealed["state_digest"])
+            events = list(sealed["events"])
+            manifest = dict(sealed["manifest"])
+            directory_names = list(sealed["directory_names"])
+            prepared = self.load_reconciliation_receipt(
+                attempt,
+                str(link["prepared_reconciliation_receipt_id"]),
+                required_stage="prepared",
+            )
+            commit_barrier = self.load_reconciliation_receipt(
+                attempt,
+                str(link["commit_barrier_receipt_id"]),
+                required_stage="commit_barrier",
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if not isinstance(durable_binding, Mapping):
+            return None
+
+        binding_expected = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        durable_expected = {
+            **exact_attempt,
+            "binding_id": str(binding.get("binding_id") or ""),
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "stage": "portal_entered",
+        }
+        if (
+            any(
+                type(binding.get(name)) is not type(value)
+                or binding.get(name) != value
+                for name, value in binding_expected.items()
+            )
+            or any(
+                type(durable_binding.get(name)) is not type(value)
+                or durable_binding.get(name) != value
+                for name, value in durable_expected.items()
+            )
+            or not str(durable_binding.get("record_id") or "")
+            or link.get("binding_id") != binding.get("binding_id")
+            or projection_status != "ready"
+        ):
+            return None
+
+        required_directory_names = {
+            ".implementation.lock.update.lock",
+            ".portal-events.jsonl.lock",
+            ".portal-task-state.event-driven-checkpoint.json.lock",
+            "database-attempt-binding.json",
+            "database-attempt-reconciliations",
+            "portal-events.jsonl",
+            "portal-events.jsonl.manifest.json",
+            "portal-strategy.json",
+            "portal-task-state.event-driven-checkpoint.json",
+            "portal-task-state.json",
+            "task-projection.md",
+            "task_queue.json",
+        }
+        observed_directory_names = set(directory_names)
+        unexpected_directory_names = observed_directory_names - (
+            required_directory_names | {"portal-events.jsonl"}
+        )
+        if (
+            not required_directory_names.issubset(observed_directory_names)
+            or any(
+                re.fullmatch(r"portal-events\.jsonl\.rotated-[0-9]+", name)
+                is None
+                for name in unexpected_directory_names
+            )
+        ):
+            return None
+
+        prepared_fields = {
+            "schema",
+            "interface",
+            *(set(exact_attempt) - {"lease_id"}),
+            "attempt_root",
+            "task_alias",
+            "stage",
+            "trigger",
+            "reconciled_at",
+            "reconciled",
+            "blocked",
+            "reason",
+            "binding_id",
+            "historical_binding",
+            "nested_state",
+            "provider_runner_fence",
+            "provider_runner_reconciliation_authority",
+            "portal_reconciliation",
+            "terminal_provider_evidence",
+            "terminal_provider_receipt_id",
+            "intended_database_disposition",
+            "receipt_id",
+        }
+        commit_fields = prepared_fields | {"prepared_reconciliation_receipt_id"}
+        prepared_barrier_core = {
+            name: value
+            for name, value in prepared.items()
+            if name not in {"stage", "receipt_id"}
+        }
+        commit_barrier_core = {
+            name: value
+            for name, value in commit_barrier.items()
+            if name
+            not in {
+                "stage",
+                "receipt_id",
+                "prepared_reconciliation_receipt_id",
+            }
+        }
+        nested_state = prepared.get("nested_state")
+        provider_fence = prepared.get("provider_runner_fence")
+        reconciliation = prepared.get("portal_reconciliation")
+        if not isinstance(reconciliation, Mapping):
+            return None
+        reconciliation = dict(reconciliation)
+        reconciliation_timestamp = reconciliation.get("reconciled_at")
+        expected_reconciliation = {
+            "attempt": 0,
+            "attempt_recovery": {},
+            "blocked": False,
+            "protected_path_reconciliation": {
+                "blocked": False,
+                "critical_section_entered": False,
+                "reason": "no_active_snapshot",
+                "scan_outside_lease": True,
+            },
+            "provider_forbidden_terminal_recovery": {
+                "applicable": False,
+                "blocked": False,
+                "implementation_dispatched": False,
+                "provider_dispatched": False,
+                "reason": "provider_forbidden_terminal_recovery_not_applicable",
+                "reconciled": False,
+            },
+            "reason": "already_quiesced",
+            "reconciled": True,
+            "reconciled_at": reconciliation_timestamp,
+            "stale_lock_cleared": False,
+            "task_claim_reconciliation": {
+                "blocked": False,
+                "reason": "no_task_claim_identity",
+                "reconciled": False,
+            },
+            "task_id": "",
+            "worktree_lifecycle_reconciliation": {
+                "blocked": False,
+                "reason": "no_active_worktree",
+                "reconciled": False,
+            },
+        }
+        expected_nested_state = {
+            "active": False,
+            "active_attempt": 0,
+            "active_branch": "",
+            "active_phase": "",
+            "active_phase_detail": "",
+            "active_task_id": "",
+            "active_worktree_path": "",
+            "present": True,
+            "state_digest": state_digest,
+            "state_path": str(paths.state),
+        }
+        if (
+            set(prepared) != prepared_fields
+            or set(commit_barrier) != commit_fields
+            or prepared.get("receipt_id")
+            != link.get("prepared_reconciliation_receipt_id")
+            or commit_barrier.get("receipt_id")
+            != link.get("commit_barrier_receipt_id")
+            or commit_barrier.get("prepared_reconciliation_receipt_id")
+            != prepared.get("receipt_id")
+            or _canonical_json(commit_barrier_core)
+            != _canonical_json(prepared_barrier_core)
+            or prepared.get("binding_id") != binding.get("binding_id")
+            or prepared.get("historical_binding") is not False
+            or prepared.get("reason") != "nested_portal_attempt_reconciled"
+            or prepared.get("reconciled") is not True
+            or prepared.get("blocked") is not False
+            or prepared.get("intended_database_disposition")
+            != "blocked_unknown_outcome"
+            or prepared.get("trigger") != link.get("trigger")
+            or prepared.get("terminal_provider_evidence") is not False
+            or prepared.get("terminal_provider_receipt_id") != ""
+            or prepared.get("provider_runner_reconciliation_authority")
+            != "not_applicable"
+            or not isinstance(prepared.get("reconciled_at"), str)
+            or not str(prepared.get("reconciled_at") or "")
+            or not _closed_typed_record_matches(
+                nested_state,
+                expected_nested_state,
+            )
+            or link.get("nested_state_digest") != state_digest
+            or not _closed_typed_record_matches(
+                provider_fence,
+                {
+                    "applicable": False,
+                    "fenced": False,
+                    "reason": "ordinary_provider_runner_receipt_absent",
+                    "safe_to_restart": True,
+                },
+            )
+            or not isinstance(reconciliation_timestamp, str)
+            or not str(reconciliation_timestamp or "")
+            or not _closed_typed_record_matches(
+                reconciliation,
+                expected_reconciliation,
+            )
+        ):
+            return None
+
+        task_alias = str(binding.get("task_alias") or "")
+        nested_task_cid = str(identity.get("canonical_task_cid") or "")
+        canonical_task_key = str(identity.get("canonical_task_key") or "")
+        semantic_fingerprint = canonical_task_key.rsplit("/", 1)[-1]
+        identity_record = (
+            state.get("task_identities", {}).get(task_alias)
+            if isinstance(state.get("task_identities"), Mapping)
+            else None
+        )
+        empty_state_strings = (
+            "active_task_id",
+            "active_task_key",
+            "active_task_cid",
+            "active_task_title",
+            "active_task_track",
+            "active_task_started_at",
+            "active_phase",
+            "active_phase_started_at",
+            "active_phase_detail",
+            "active_log_path",
+            "active_worktree_path",
+            "active_branch",
+            "last_implementation_task_id",
+            "last_implementation_task_key",
+            "last_implementation_task_cid",
+            "last_implementation_started_at",
+            "last_implementation_finished_at",
+            "last_implementation_log_path",
+            "last_implementation_worktree_path",
+            "last_implementation_branch",
+            "last_implementation_commit",
+            "last_merge_started_at",
+            "last_merge_finished_at",
+            "last_merge_branch",
+            "last_merge_commit",
+        )
+        selection_idle_reason = (
+            "all_selectable_ready_tasks_deferred_by_resource_claim"
+        )
+        if not (
+            state.get("implementation_in_progress") is False
+            and all(state.get(name) == "" for name in empty_state_strings)
+            and type(state.get("active_attempt")) is int
+            and state.get("active_attempt") == 0
+            and state.get("active_provider_runner") == {}
+            and state.get("last_implementation_returncode") is None
+            and state.get("last_proof_workflow") == {}
+            and state.get("last_merge_returncode") is None
+            and state.get("last_merge_error") == ""
+            and isinstance(identity_record, Mapping)
+            and set(state.get("task_identities", {})) == {task_alias}
+            and set(identity_record)
+            == {
+                "board_namespace",
+                "canonical_task_cid",
+                "canonical_task_key",
+                "display_task_id",
+                "identity_version",
+                "semantic_fingerprint",
+                "source_path",
+            }
+            and identity_record.get("display_task_id") == task_alias
+            and identity_record.get("canonical_task_key") == canonical_task_key
+            and identity_record.get("canonical_task_cid") == nested_task_cid
+            and identity_record.get("board_namespace")
+            == identity.get("board_namespace")
+            and type(identity_record.get("identity_version")) is int
+            and identity_record.get("identity_version") == 1
+            and identity_record.get("semantic_fingerprint")
+            == semantic_fingerprint
+            and identity_record.get("source_path") == str(paths.task_projection)
+            and state.get("implementation_attempts") == {}
+            and state.get("implementation_attempts_by_cid") == {}
+            and state.get("task_statuses") == {task_alias: "ready"}
+            and state.get("ready_task_ids") == [task_alias]
+            and state.get("selectable_ready_task_ids") == []
+            and state.get("eligible_ready_task_ids") == []
+            and state.get("completed_task_ids") == []
+            and state.get("external_reserved_task_ids") == []
+            and state.get("assumed_completed_task_ids") == []
+            and state.get("strict_deprioritized_ready_task_ids") == []
+            and state.get("waiting_task_ids") == []
+            and state.get("blocked_task_ids") == []
+            and state.get("task_count") == 1
+            and state.get("ready_count") == 1
+            and state.get("selectable_ready_count") == 0
+            and state.get("eligible_ready_count") == 0
+            and state.get("completed_count") == 0
+            and state.get("external_reserved_count") == 0
+            and state.get("assumed_completed_count") == 0
+            and state.get("strict_deprioritized_ready_count") == 0
+            and state.get("waiting_count") == 0
+            and state.get("blocked_count") == 0
+            and state.get("recommended_task_id") == ""
+            and state.get("recommended_actions") == []
+            and state.get("task_artifacts") == {task_alias: []}
+            and isinstance(state.get("task_validation"), Mapping)
+            and set(state["task_validation"]) == {task_alias}
+            and isinstance(state["task_validation"][task_alias], list)
+            and bool(state["task_validation"][task_alias])
+            and all(
+                isinstance(command, str) and bool(command)
+                for command in state["task_validation"][task_alias]
+            )
+            and state.get("protected_implementation_attempts") == {}
+            and state.get("retry_budget_repair_receipts") == {}
+            and state.get("retry_budget_repair_rearm_receipts") == {}
+            and state.get("stale_proposal_replay_rearm_receipts") == {}
+            and state.get("validation_obsolescence_rearm_receipts") == {}
+            and state.get("strategy_generation") == 0
+            and state.get("selection_idle_reason") == selection_idle_reason
+        ):
+            return None
+
+        selected_events = [
+            event for event in events if event.get("type") == "task_selected"
+        ]
+        resource_deferred_events = [
+            event
+            for event in events
+            if event.get("type") == "daemon_pass"
+            and event.get("selection_idle_reason") == selection_idle_reason
+        ]
+        shutdown_events = [
+            event
+            for event in events
+            if event.get("type") == "implementation_shutdown_reconciled"
+        ]
+        allowed_diagnostic_types = {
+            "cleanup_finished",
+            "dirty_submodule_reset_deferred",
+            "stale_worktree_cleanup",
+            "worktree_cleanup_fenced",
+        }
+        diagnostic_events = [
+            event
+            for event in events
+            if event.get("type") in allowed_diagnostic_types
+        ]
+        forbidden_effect_types = {
+            "implementation_started",
+            "implementation_finished",
+            "implementation_exception",
+            "implementation_retry_deferred",
+            "provider_invocation_committed",
+            "validation_finished",
+            "merge_finished",
+            "task_completed",
+        }
+        if (
+            selected_events
+            or len(resource_deferred_events) != 1
+            or not shutdown_events
+            or len(events)
+            != 1 + len(diagnostic_events) + len(shutdown_events)
+            or any(
+                event.get("type") in forbidden_effect_types
+                or event.get("provider_dispatched") is True
+                or event.get("attempt_consumed") is True
+                or bool(str(event.get("implementation_commit") or ""))
+                or isinstance(event.get("validation_result"), Mapping)
+                or isinstance(event.get("commit_result"), Mapping)
+                or isinstance(event.get("merge_result"), Mapping)
+                for event in events
+            )
+            or any(
+                int(event.get("sequence") or 0)
+                <= int(resource_deferred_events[0].get("sequence") or 0)
+                for event in shutdown_events
+            )
+            or any(
+                event.get("reconciled_at") != reconciliation_timestamp
+                for event in shutdown_events
+            )
+        ):
+            return None
+        for event in diagnostic_events:
+            if event.get("type") == "worktree_cleanup_fenced" and not (
+                event.get("allowed") is False
+                and event.get("attempt_consumed") is False
+                and event.get("provider_call_allowed") is False
+                and event.get("disposition") == "deny"
+            ):
+                return None
+            if event.get("type") == "cleanup_finished" and (
+                event.get("cleaned") is not True
+            ):
+                return None
+
+        daemon_pass = resource_deferred_events[0]
+        if not (
+            daemon_pass.get("completed_count") == state.get("completed_count")
+            and daemon_pass.get("ready_count") == state.get("ready_count")
+            and daemon_pass.get("selectable_ready_count")
+            == state.get("selectable_ready_count")
+            and daemon_pass.get("eligible_ready_count")
+            == state.get("eligible_ready_count")
+            and daemon_pass.get("strict_deprioritized_ready_count")
+            == state.get("strict_deprioritized_ready_count")
+            and daemon_pass.get("waiting_count") == state.get("waiting_count")
+            and daemon_pass.get("blocked_count") == state.get("blocked_count")
+            and daemon_pass.get("active_task_id") == ""
+            and daemon_pass.get("selection_idle_reason")
+            == selection_idle_reason
+            and daemon_pass.get("max_task_attempts") == 1
+            and daemon_pass.get("ordinary_provider_dispatch_allowed") is True
+            and daemon_pass.get("execution_slice_task_statuses")
+            == {task_alias: "ready"}
+            and daemon_pass.get("execution_slice_task_cids_by_id")
+            == {task_alias: nested_task_cid}
+            and daemon_pass.get("shared_completed_task_ids") == []
+            and daemon_pass.get("protected_path_conflicts") == {}
+            and daemon_pass.get("manual_completion_authority_revalidation_only")
+            is False
+            and daemon_pass.get("virgin_task_transfer")
+            == {
+                "granted_away_task_ids": [],
+                "granted_to_lane_task_ids": [],
+                "mode": "",
+                "request_task_id": "",
+            }
+            and daemon_pass.get("projection_delta_keys")
+            == [
+                "heartbeat_at",
+                "last_progress_at",
+                "ready_count",
+                "ready_task_ids",
+                "selection_idle_reason",
+                "task_artifacts",
+                "task_count",
+                "task_identities",
+                "task_statuses",
+                "task_validation",
+            ]
+            and all(
+                daemon_pass.get(name) == []
+                for name in (
+                    "attempt_limited_task_ids",
+                    "completion_receipt_task_ids",
+                    "manual_completion_authority_affected_goal_ids",
+                    "manual_completion_authority_dependency_task_ids",
+                    "manual_completion_authority_required_task_ids",
+                    "manual_completion_authority_task_ids",
+                    "manual_completion_renewal_quarantined_task_ids",
+                    "manual_completion_revalidation_only_task_ids",
+                    "manual_completion_revalidation_task_ids",
+                    "quarantined_manual_completion_status_task_ids",
+                    "released_retry_budget_strategy_block_task_ids",
+                    "retry_budget_rearmed_task_ids",
+                    "retry_budget_reset_deferred_task_ids",
+                    "retry_budget_reset_task_ids",
+                    "shared_active_merge_task_ids",
+                )
+            )
+        ):
+            return None
+
+        evidence: dict[str, Any] = {
+            "schema": (
+                DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA
+            ),
+            **exact_attempt,
+            "task_alias": task_alias,
+            "attempt_root_key": paths.root.name,
+            "attempt_authority_root_digest": _sha256_bytes(
+                str(self.attempt_root).encode("utf-8")
+            ),
+            "attempt_root_digest": _sha256_bytes(
+                str(paths.root).encode("utf-8")
+            ),
+            "attempt_directory_names_digest": _sha256_bytes(
+                _canonical_json(sorted(directory_names))
+            ),
+            "binding_id": str(binding.get("binding_id") or ""),
+            "binding_admission_id": str(
+                durable_binding.get("record_id") or ""
+            ),
+            "binding_admission_digest": _sha256_bytes(
+                _canonical_json(dict(durable_binding))
+            ),
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "task_revision": int(binding.get("task_revision") or 0),
+            "board_namespace": str(identity.get("board_namespace") or ""),
+            "nested_task_cid": nested_task_cid,
+            "nested_attempt": 0,
+            "terminal_reconciliation_evidence_id": link_evidence_id,
+            "prepared_reconciliation_receipt_id": str(
+                prepared.get("receipt_id") or ""
+            ),
+            "commit_barrier_receipt_id": str(
+                commit_barrier.get("receipt_id") or ""
+            ),
+            "event_stream_id": str(manifest.get("stream_id") or ""),
+            "event_snapshot_id": str(manifest.get("snapshot_id") or ""),
+            "event_manifest_digest": str(
+                manifest.get("manifest_digest") or ""
+            ),
+            "event_count": len(events),
+            "event_head_sequence": int(manifest.get("latest_sequence") or 0),
+            "event_head_id": str(manifest.get("last_event_id") or ""),
+            "resource_deferred_daemon_pass_event_id": str(
+                daemon_pass.get("event_id") or ""
+            ),
+            "diagnostic_event_count": len(diagnostic_events),
+            "diagnostic_event_ids_digest": _sha256_bytes(
+                _canonical_json(
+                    [str(event.get("event_id") or "") for event in diagnostic_events]
+                )
+            ),
+            "shutdown_reconciliation_event_count": len(shutdown_events),
+            "shutdown_reconciliation_event_ids_digest": _sha256_bytes(
+                _canonical_json(
+                    [str(event.get("event_id") or "") for event in shutdown_events]
+                )
+            ),
+            "state_digest": state_digest,
+            "outer_block_receipt_digest": _sha256_bytes(
+                _canonical_json(dict(receipt))
+            ),
+            "selection_idle_reason": selection_idle_reason,
+            "nested_reconciliation_reason": "already_quiesced",
+            "provider_runner_fence_reason": (
+                "ordinary_provider_runner_receipt_absent"
+            ),
+            "provider_dispatched": False,
+            "implementation_dispatched": False,
+            "task_never_selected": True,
+            "attempt_consumed": False,
+            "validation_attempted": False,
+            "commit_created": False,
+            "merge_attempted": False,
+            "acceptance_inferred": False,
+            "route_deferred": True,
+            "nested_state_quiescent": True,
+        }
+        if set(evidence) != (
+            DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_FIELDS
+            - {"evidence_id"}
+        ):
+            raise DatabasePortalBridgeError(
+                "terminal quiescent deferred evidence field construction drifted"
+            )
+        evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
+        return evidence
+
     def no_provider_dispatch_rearm_evidence(
         self,
         attempt: Any,
@@ -6938,10 +7831,12 @@ class DatabasePortalExecutionBridge:
     ) -> Mapping[str, Any] | None:
         """Prove one exact nested recovery is eligible for bounded rearm.
 
-        A populated terminal-reconciliation link is owned exclusively by the
-        interrupted-implementation verifier.  It may not fall back to the
-        legacy setup-failure proof when that stricter verifier rejects it.
-        Neither route infers safety from a missing receipt or empty directory.
+        A populated terminal-reconciliation link first reaches the exact
+        interrupted-implementation verifier.  Under the standard policy only,
+        a distinct successor may then prove that the nested task was never
+        selected because its route remained resource-deferred.  Neither route
+        may fall through to legacy setup-failure evidence, and the stale
+        dispatch migration policy remains exclusive to its migration proof.
         """
 
         receipt = dict(outer_block_receipt)
@@ -6994,14 +7889,24 @@ class DatabasePortalExecutionBridge:
             if type(terminal_link) is not dict:
                 return None
             if terminal_link:
-                return self._interrupted_implementation_rearm_evidence(
+                interrupted_evidence = (
+                    self._interrupted_implementation_rearm_evidence(
+                        attempt,
+                        receipt,
+                        expected_evidence_schema=(
+                            DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA
+                            if stale_dispatch_migration_policy
+                            else DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+                        ),
+                    )
+                )
+                if interrupted_evidence is not None:
+                    return interrupted_evidence
+                if not standard_policy:
+                    return None
+                return self._terminal_quiescent_deferred_rearm_evidence(
                     attempt,
                     receipt,
-                    expected_evidence_schema=(
-                        DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA
-                        if stale_dispatch_migration_policy
-                        else DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
-                    ),
                 )
 
         paths = self._paths(attempt)
@@ -9280,6 +10185,8 @@ __all__ = (
     "DATABASE_PORTAL_ATTEMPT_RECONCILIATION_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
+    "DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_FIELDS",
+    "DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA",
     "DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_FIELDS",
     "DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA",
     "DatabasePortalAttemptPaths",

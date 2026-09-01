@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import argparse
 import errno
+import hashlib
 import logging
+import os
 import shutil
+import stat
 import time
 from pathlib import Path
 from typing import Any
@@ -568,6 +571,202 @@ def test_projection_and_taskboard_stores_make_zero_unchanged_writes(
     with locked_taskboard(board) as stream:
         assert replace_locked_taskboard(stream, "# Board\n") is False
     assert _file_identity(board) == board_identity
+
+
+def test_invalid_projection_checkpoint_is_recoverably_quarantined(
+    tmp_path: Path,
+) -> None:
+    checkpoint_path = tmp_path / "projection-checkpoint.json"
+    invalid_bytes = b'{"schema":"truncated"'
+    checkpoint_path.write_bytes(invalid_bytes)
+    store = ProjectionDeltaCheckpointStore(checkpoint_path)
+
+    receipt = store.quarantine_invalid()
+
+    assert receipt == {
+        "schema": taskboard_store.PROJECTION_CHECKPOINT_QUARANTINE_SCHEMA,
+        "quarantined": True,
+        "reason": "invalid_projection_checkpoint",
+        "source_path": str(checkpoint_path),
+        "quarantine_path": receipt["quarantine_path"],
+        "source_sha256": (
+            "sha256:"
+            "45549975360d737f33ceff7743f1022a9471d3c0363ddb9f115f8aa060938a64"
+        ),
+        "source_size": len(invalid_bytes),
+    }
+    quarantine_path = Path(receipt["quarantine_path"])
+    assert not checkpoint_path.exists()
+    assert quarantine_path.parent == checkpoint_path.parent
+    assert quarantine_path.read_bytes() == invalid_bytes
+    assert store.quarantine_invalid()["reason"] == "checkpoint_absent"
+
+    cursor = EventCursor.initial(
+        "recovered-runtime-events",
+        snapshot_id="recovered-runtime-snapshot",
+    )
+    assert store.materialize({"ready": 1}, cursor).written
+    assert store.quarantine_invalid()["reason"] == "checkpoint_valid"
+    assert store.load() == ({"ready": 1}, cursor)
+
+
+def test_projection_checkpoint_load_and_quarantine_refuse_valid_symlink(
+    tmp_path: Path,
+) -> None:
+    checkpoint_path = tmp_path / "projection-checkpoint.json"
+    target = tmp_path / "outside-checkpoint.json"
+    cursor = EventCursor.initial(
+        "outside-runtime-events",
+        snapshot_id="outside-runtime-snapshot",
+    )
+    target_store = ProjectionDeltaCheckpointStore(target)
+    assert target_store.materialize({"outside": True}, cursor).written
+    target_bytes = target.read_bytes()
+    checkpoint_path.symlink_to(target)
+    store = ProjectionDeltaCheckpointStore(checkpoint_path)
+
+    with pytest.raises(ValueError, match="regular file"):
+        store.load()
+    with pytest.raises(ValueError, match="regular file"):
+        store.quarantine_invalid()
+
+    assert checkpoint_path.is_symlink()
+    assert target.read_bytes() == target_bytes
+    assert target_store.load() == ({"outside": True}, cursor)
+    assert not tuple(tmp_path.glob(".projection-checkpoint.json.invalid-*"))
+
+
+def test_projection_checkpoint_load_and_quarantine_refuse_fifo_promptly(
+    tmp_path: Path,
+) -> None:
+    checkpoint_path = tmp_path / "projection-checkpoint.json"
+    os.mkfifo(checkpoint_path)
+    store = ProjectionDeltaCheckpointStore(checkpoint_path)
+    started = time.monotonic()
+
+    with pytest.raises(ValueError, match="regular file"):
+        store.load()
+    with pytest.raises(ValueError, match="regular file"):
+        store.quarantine_invalid()
+
+    assert time.monotonic() - started < 1.0
+    assert stat.S_ISFIFO(checkpoint_path.lstat().st_mode)
+    assert not tuple(tmp_path.glob(".projection-checkpoint.json.invalid-*"))
+
+
+def test_projection_checkpoint_writer_lock_refuses_symlink(
+    tmp_path: Path,
+) -> None:
+    checkpoint_path = tmp_path / "projection-checkpoint.json"
+    outside_lock = tmp_path / "outside.lock"
+    outside_lock.write_bytes(b"outside-lock-bytes")
+    lock_path = tmp_path / ".projection-checkpoint.json.lock"
+    lock_path.symlink_to(outside_lock)
+    store = ProjectionDeltaCheckpointStore(checkpoint_path)
+    cursor = EventCursor.initial(
+        "runtime-events",
+        snapshot_id="runtime-snapshot",
+    )
+
+    with pytest.raises(ValueError, match="lock is not a regular file"):
+        store.materialize({"ready": 1}, cursor)
+
+    assert lock_path.is_symlink()
+    assert outside_lock.read_bytes() == b"outside-lock-bytes"
+    assert not checkpoint_path.exists()
+
+
+def test_oversized_projection_checkpoint_quarantine_reads_zero_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkpoint_path = tmp_path / "projection-checkpoint.json"
+    max_bytes = 1024
+    with checkpoint_path.open("wb") as stream:
+        stream.truncate(max_bytes + 1)
+    source_inode = checkpoint_path.stat().st_ino
+    store = ProjectionDeltaCheckpointStore(
+        checkpoint_path,
+        max_bytes=max_bytes,
+    )
+
+    def forbid_read(*_args: object, **_kwargs: object) -> bytes:
+        raise AssertionError("oversized quarantine must not read content")
+
+    monkeypatch.setattr(taskboard_store.os, "read", forbid_read)
+    with pytest.raises(ValueError, match="exceeds persistence bound"):
+        store.load()
+    receipt = store.quarantine_invalid()
+
+    assert receipt["quarantined"] is True
+    assert receipt["reason"] == "oversized_projection_checkpoint"
+    assert receipt["source_sha256"] == ""
+    assert receipt["source_size"] == max_bytes + 1
+    assert not checkpoint_path.exists()
+    quarantine_path = Path(receipt["quarantine_path"])
+    assert quarantine_path.stat().st_ino == source_inode
+    assert quarantine_path.stat().st_size == max_bytes + 1
+
+
+def test_projection_checkpoint_quarantine_link_failure_preserves_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkpoint_path = tmp_path / "projection-checkpoint.json"
+    invalid_bytes = b'{"schema":"invalid"}\n'
+    checkpoint_path.write_bytes(invalid_bytes)
+
+    def fail_link(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError("injected link failure")
+
+    monkeypatch.setattr(taskboard_store.os, "link", fail_link)
+    with pytest.raises(PermissionError, match="injected link failure"):
+        ProjectionDeltaCheckpointStore(checkpoint_path).quarantine_invalid()
+
+    assert checkpoint_path.read_bytes() == invalid_bytes
+    assert not tuple(tmp_path.glob(".projection-checkpoint.json.invalid-*"))
+
+
+def test_projection_checkpoint_quarantine_collision_is_fail_closed(
+    tmp_path: Path,
+) -> None:
+    checkpoint_path = tmp_path / "projection-checkpoint.json"
+    invalid_bytes = b'{"schema":"invalid"}\n'
+    checkpoint_path.write_bytes(invalid_bytes)
+    digest = hashlib.sha256(invalid_bytes).hexdigest()
+    quarantine_path = tmp_path / (
+        f".projection-checkpoint.json.invalid-{digest}"
+    )
+    quarantine_path.write_bytes(b"different retained bytes")
+
+    with pytest.raises(RuntimeError, match="identity collided"):
+        ProjectionDeltaCheckpointStore(checkpoint_path).quarantine_invalid()
+
+    assert checkpoint_path.read_bytes() == invalid_bytes
+    assert quarantine_path.read_bytes() == b"different retained bytes"
+
+
+def test_projection_checkpoint_quarantine_fsync_failure_keeps_both_links(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkpoint_path = tmp_path / "projection-checkpoint.json"
+    invalid_bytes = b'{"schema":"invalid"}\n'
+    checkpoint_path.write_bytes(invalid_bytes)
+
+    def fail_fsync(_descriptor: int) -> None:
+        raise OSError("injected fsync failure")
+
+    monkeypatch.setattr(taskboard_store.os, "fsync", fail_fsync)
+    with pytest.raises(OSError, match="injected fsync failure"):
+        ProjectionDeltaCheckpointStore(checkpoint_path).quarantine_invalid()
+
+    quarantine_paths = tuple(
+        tmp_path.glob(".projection-checkpoint.json.invalid-*")
+    )
+    assert checkpoint_path.read_bytes() == invalid_bytes
+    assert len(quarantine_paths) == 1
+    assert quarantine_paths[0].read_bytes() == invalid_bytes
 
 
 def test_drained_board_ten_minute_logical_fixture_uses_under_two_percent_cpu_and_writes_nothing(

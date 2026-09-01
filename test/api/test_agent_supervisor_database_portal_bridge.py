@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -24,6 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 from ipfs_accelerate_py.agent_supervisor.runtime import event_log as event_log_module
 from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     append_jsonl_event,
+    latest_event_cursor,
     rotate_event_log_if_needed,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
@@ -35,6 +37,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import (
+    ProjectionDeltaCheckpointStore,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     database_portal_bridge as database_portal_bridge_module,
 )
@@ -42,11 +47,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+    DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT,
     DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION,
     SEMANTIC_TRUTH_AUTHORITY_ENV,
     SEMANTIC_WRITER_POLICY_ENV,
@@ -801,6 +808,395 @@ def _quiesce_pre_dispatch_provider_deferral_state(paths: object) -> None:
     state.save(paths.state)
 
 
+_TERMINAL_QUIESCENT_RECONCILED_AT = "2026-09-01T13:09:09+00:00"
+
+
+def _rewrite_as_terminal_quiescent_resource_deferral(
+    paths: object,
+    *,
+    shutdown_event_count: int = 2,
+) -> None:
+    """Create a sealed no-selection history with a repeated quiescent tail."""
+
+    envelope_fields = {
+        "type",
+        "timestamp",
+        "stream_id",
+        "snapshot_id",
+        "sequence",
+        "previous_event_id",
+        "event_id",
+    }
+
+    def replace(events: list[dict[str, object]]) -> None:
+        source_pass = json.loads(
+            json.dumps(
+                next(
+                    event
+                    for event in reversed(events)
+                    if event.get("type") == "daemon_pass"
+                )
+            )
+        )
+        envelope = {name: source_pass[name] for name in envelope_fields}
+        task_id = next(iter(source_pass["execution_slice_task_statuses"]))
+        task_cid = source_pass["execution_slice_task_cids_by_id"][task_id]
+        daemon_pass = {
+            **source_pass,
+            "completed_count": 0,
+            "ready_count": 1,
+            "selectable_ready_count": 0,
+            "eligible_ready_count": 0,
+            "strict_deprioritized_ready_count": 0,
+            "waiting_count": 0,
+            "blocked_count": 0,
+            "active_task_id": "",
+            "selection_idle_reason": (
+                "all_selectable_ready_tasks_deferred_by_resource_claim"
+            ),
+            "max_task_attempts": 1,
+            "ordinary_provider_dispatch_allowed": True,
+            "execution_slice_task_statuses": {task_id: "ready"},
+            "execution_slice_task_cids_by_id": {task_id: task_cid},
+            "projection_delta_keys": [
+                "heartbeat_at",
+                "last_progress_at",
+                "ready_count",
+                "ready_task_ids",
+                "selection_idle_reason",
+                "task_artifacts",
+                "task_count",
+                "task_identities",
+                "task_statuses",
+                "task_validation",
+            ],
+            "protected_path_conflicts": {},
+            "virgin_task_transfer": {
+                "granted_away_task_ids": [],
+                "granted_to_lane_task_ids": [],
+                "mode": "",
+                "request_task_id": "",
+            },
+        }
+        for name in tuple(daemon_pass):
+            if name.endswith("_task_ids"):
+                daemon_pass[name] = []
+        source_cleanup = json.loads(
+            json.dumps(
+                next(
+                    event
+                    for event in events
+                    if event.get("type") == "cleanup_finished"
+                )
+            )
+        )
+        diagnostic_envelope = {
+            name: source_pass[name] for name in envelope_fields
+        }
+        dirty_submodule = {
+            **diagnostic_envelope,
+            "type": "dirty_submodule_reset_deferred",
+            "attempted": True,
+            "dirty_count": 1,
+            "reset": [
+                {
+                    "path": "external/ipfs_kit",
+                    "reset_ok": False,
+                    "update_ok": False,
+                    "preserved": True,
+                    "reason": "non_destructive_reconciliation",
+                    "dirty_paths": ["ipfs_kit_py/user-change.py"],
+                }
+            ],
+            "generated_artifact_preservation": [],
+        }
+        cleanup_fenced = {
+            **diagnostic_envelope,
+            "type": "worktree_cleanup_fenced",
+            "worktree_path": str(source_cleanup["worktree_path"]),
+            "branch": str(source_cleanup["branch"]),
+            "allowed": False,
+            "disposition": "deny",
+            "reason": "no_matching_lifecycle_authority",
+            "failure_kind": "lifecycle_fence_absent",
+            "attempt_consumed": False,
+            "provider_call_allowed": False,
+            "record": {
+                "schema": "test-maintenance-fence@1",
+                "owner": "different-attempt",
+            },
+        }
+        stale_cleanup_result = {
+            "branch": str(source_cleanup["branch"]),
+            "cleaned": True,
+            "deleted_branch": bool(source_cleanup["deleted_branch"]),
+            "finished_at": str(source_cleanup["finished_at"]),
+            "lifecycle_finalize": {
+                "finalized": False,
+                "reason": "no_lifecycle_record",
+            },
+            "removed_worktree": bool(source_cleanup["removed_worktree"]),
+            "started_at": str(source_cleanup["started_at"]),
+            "submodule_cleanup": [
+                {
+                    "path": "external/ipfs_kit",
+                    "branch": "maintenance/external-ipfs-kit",
+                    "removed_worktree": False,
+                    "deleted_branch": False,
+                    "cleaned": True,
+                    "errors": [],
+                    "nested_submodule_cleanup": [
+                        {
+                            "path": "external/ipfs_kit/vendor/prover",
+                            "branch": "maintenance/vendor-prover",
+                            "removed_worktree": False,
+                            "deleted_branch": False,
+                            "cleaned": True,
+                            "errors": [],
+                            "nested_submodule_cleanup": [],
+                            "independent_checkout": False,
+                        }
+                    ],
+                    "independent_checkout": False,
+                }
+            ],
+            "worktree_path": str(source_cleanup["worktree_path"]),
+        }
+        stale_cleanup = {
+            **diagnostic_envelope,
+            "type": "stale_worktree_cleanup",
+            "attempted": True,
+            "max_age_seconds": 3_600.0,
+            "removed_count": 1,
+            "skipped_count": 0,
+            "removed": [
+                {
+                    "age_seconds": 7_200.0,
+                    "branch": str(source_cleanup["branch"]),
+                    "cleanup_result": stale_cleanup_result,
+                    "worktree_path": str(source_cleanup["worktree_path"]),
+                }
+            ],
+            "skipped": [],
+        }
+        shutdown = {
+            **envelope,
+            "type": "implementation_shutdown_reconciled",
+            "reconciled": True,
+            "blocked": False,
+            "reason": "already_quiesced",
+            "reconciled_at": _TERMINAL_QUIESCENT_RECONCILED_AT,
+            "task_id": "",
+            "attempt": 0,
+            "attempt_recovery": {},
+            "task_claim_reconciliation": {
+                "reconciled": False,
+                "blocked": False,
+                "reason": "no_task_claim_identity",
+            },
+            "protected_path_reconciliation": {
+                "blocked": False,
+                "reason": "no_active_snapshot",
+                "scan_outside_lease": True,
+                "critical_section_entered": False,
+            },
+            "worktree_lifecycle_reconciliation": {
+                "reconciled": False,
+                "blocked": False,
+                "reason": "no_active_worktree",
+            },
+            "stale_lock_cleared": False,
+        }
+        diagnostics = [
+            dirty_submodule,
+            cleanup_fenced,
+            source_cleanup,
+            stale_cleanup,
+        ]
+        replacement = [*diagnostics[:2], daemon_pass]
+        for index, diagnostic in enumerate(diagnostics[2:]):
+            replacement.append(diagnostic)
+            if index < shutdown_event_count:
+                replacement.append(json.loads(json.dumps(shutdown)))
+        replacement.extend(
+            json.loads(json.dumps(shutdown))
+            for _index in range(
+                max(0, shutdown_event_count - len(diagnostics[2:]))
+            )
+        )
+        for sequence, event in enumerate(replacement, start=1):
+            event["sequence"] = sequence
+        events[:] = replacement
+
+    _rewrite_active_event_chain(paths, replace)
+
+
+def _terminal_quiescent_outer_receipt(
+    bridge: DatabasePortalExecutionBridge,
+    attempt: DatabaseTaskAttempt,
+    paths: object,
+    outer_receipt: Mapping[str, object],
+) -> dict[str, object]:
+    """Persist exact prepared/barrier receipts and return their outer link."""
+
+    binding = json.loads(Path(paths.binding).read_text(encoding="utf-8"))
+    _state, state_digest = bridge._strict_state_record(Path(paths.state))
+    nested_state = {
+        "present": True,
+        "state_path": str(paths.state),
+        "state_digest": state_digest,
+        "active": False,
+        "active_task_id": "",
+        "active_attempt": 0,
+        "active_phase": "",
+        "active_phase_detail": "",
+        "active_worktree_path": "",
+        "active_branch": "",
+    }
+    portal_reconciliation = {
+        "reconciled": True,
+        "blocked": False,
+        "reason": "already_quiesced",
+        "reconciled_at": _TERMINAL_QUIESCENT_RECONCILED_AT,
+        "task_id": "",
+        "attempt": 0,
+        "attempt_recovery": {},
+        "task_claim_reconciliation": {
+            "reconciled": False,
+            "blocked": False,
+            "reason": "no_task_claim_identity",
+        },
+        "protected_path_reconciliation": {
+            "blocked": False,
+            "reason": "no_active_snapshot",
+            "scan_outside_lease": True,
+            "critical_section_entered": False,
+        },
+        "worktree_lifecycle_reconciliation": {
+            "reconciled": False,
+            "blocked": False,
+            "reason": "no_active_worktree",
+        },
+        "stale_lock_cleared": False,
+        "provider_forbidden_terminal_recovery": {
+            "reconciled": False,
+            "blocked": False,
+            "applicable": False,
+            "reason": "provider_forbidden_terminal_recovery_not_applicable",
+            "provider_dispatched": False,
+            "implementation_dispatched": False,
+        },
+    }
+    payload = {
+        "stage": "prepared",
+        "trigger": "database_daemon_startup",
+        "reconciled_at": "2026-09-01T13:08:50+00:00",
+        "reconciled": True,
+        "blocked": False,
+        "reason": "nested_portal_attempt_reconciled",
+        "binding_id": binding["binding_id"],
+        "historical_binding": False,
+        "nested_state": nested_state,
+        "provider_runner_fence": {
+            "applicable": False,
+            "safe_to_restart": True,
+            "fenced": False,
+            "reason": "ordinary_provider_runner_receipt_absent",
+        },
+        "provider_runner_reconciliation_authority": "not_applicable",
+        "portal_reconciliation": portal_reconciliation,
+        "terminal_provider_evidence": False,
+        "terminal_provider_receipt_id": "",
+        "intended_database_disposition": "blocked_unknown_outcome",
+    }
+    prepared = bridge.persist_reconciliation_receipt(attempt, payload)
+    commit_payload = {
+        **payload,
+        "stage": "commit_barrier",
+        "prepared_reconciliation_receipt_id": prepared["receipt_id"],
+    }
+    commit_barrier = bridge.persist_reconciliation_receipt(
+        attempt,
+        commit_payload,
+    )
+    link = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-terminal-reconciliation-link@1"
+        ),
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "task_cid": attempt.task_cid,
+        "attempt_number": attempt.attempt_number,
+        "owner_session_id": attempt.owner_session_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "binding_id": binding["binding_id"],
+        "nested_state_digest": state_digest,
+        "nested_reason": "nested_portal_attempt_reconciled",
+        "nested_reconciled": True,
+        "trigger": "database_daemon_startup",
+        "intended_database_disposition": "blocked_unknown_outcome",
+        "prepared_reconciliation_receipt_id": prepared["receipt_id"],
+        "commit_barrier_receipt_id": commit_barrier["receipt_id"],
+    }
+    link["evidence_id"] = content_identity(link)
+    result = dict(outer_receipt)
+    result["terminal_reconciliation"] = link
+    return result
+
+
+def _seed_terminal_quiescent_resource_deferral(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    shutdown_event_count: int = 2,
+) -> tuple[
+    DatabaseImplementationDaemon,
+    DatabasePortalExecutionBridge,
+    DatabaseTaskAttempt,
+    object,
+    dict[str, object],
+]:
+    _repo, daemon, bridge, claimed, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    terminal = daemon.get_attempt(claimed.attempt_id)
+    task = daemon.task_source.get(claimed.task_cid)
+    assert terminal is not None and task is not None
+    _quiesce_pre_dispatch_provider_deferral_state(paths)
+    state = PortalTaskState.load(paths.state)
+    state.selection_idle_reason = (
+        "all_selectable_ready_tasks_deferred_by_resource_claim"
+    )
+    state.heartbeat_at = _TERMINAL_QUIESCENT_RECONCILED_AT
+    state.last_progress_at = _TERMINAL_QUIESCENT_RECONCILED_AT
+    assert state.save(paths.state) is True
+    _rewrite_as_terminal_quiescent_resource_deferral(
+        paths,
+        shutdown_event_count=shutdown_event_count,
+    )
+    root = Path(paths.root)
+    (root / ".implementation.lock.update.lock").write_bytes(b"")
+    (root / ".portal-task-state.event-driven-checkpoint.json.lock").write_bytes(
+        b""
+    )
+    ProjectionDeltaCheckpointStore(
+        root / "portal-task-state.event-driven-checkpoint.json"
+    ).materialize(
+        {},
+        latest_event_cursor(paths.events),
+    )
+    outer_receipt = _terminal_quiescent_outer_receipt(
+        bridge,
+        terminal,
+        paths,
+        task.body["completion_receipt"],
+    )
+    return daemon, bridge, terminal, paths, outer_receipt
+
+
 def _set_terminal_submodule_cleanup(
     events: list[dict[str, object]],
     cleanup: list[dict[str, object]],
@@ -1378,11 +1774,15 @@ def test_nested_setup_failure_rearm_binds_sealed_projection_track(
 
 
 @pytest.mark.parametrize(
-    ("terminal_link", "expected_interrupted_calls"),
     (
-        ({"schema": "malformed-populated-terminal-link"}, 1),
-        (None, 0),
-        ([], 0),
+        "terminal_link",
+        "expected_interrupted_calls",
+        "expected_quiescent_calls",
+    ),
+    (
+        ({"schema": "malformed-populated-terminal-link"}, 1, 1),
+        (None, 0, 0),
+        ([], 0, 0),
     ),
 )
 def test_terminal_rearm_candidate_never_downgrades_to_setup_evidence(
@@ -1390,6 +1790,7 @@ def test_terminal_rearm_candidate_never_downgrades_to_setup_evidence(
     monkeypatch: pytest.MonkeyPatch,
     terminal_link: object,
     expected_interrupted_calls: int,
+    expected_quiescent_calls: int,
 ) -> None:
     attempt = SimpleNamespace(
         task_cid="task:terminal-route",
@@ -1427,6 +1828,7 @@ def test_terminal_rearm_candidate_never_downgrades_to_setup_evidence(
         "terminal_reconciliation": terminal_link,
     }
     interrupted_calls: list[str] = []
+    quiescent_calls: list[str] = []
 
     def reject_interrupted(
         _attempt: object,
@@ -1438,6 +1840,13 @@ def test_terminal_rearm_candidate_never_downgrades_to_setup_evidence(
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
         )
         interrupted_calls.append("interrupted")
+        return None
+
+    def reject_quiescent(
+        _attempt: object,
+        _receipt: object,
+    ) -> None:
+        quiescent_calls.append("quiescent")
         return None
 
     def forbidden_setup_fallback(_paths: object) -> object:
@@ -1453,12 +1862,497 @@ def test_terminal_rearm_candidate_never_downgrades_to_setup_evidence(
         "_pinned_no_provider_snapshot",
         forbidden_setup_fallback,
     )
+    monkeypatch.setattr(
+        bridge,
+        "_terminal_quiescent_deferred_rearm_evidence",
+        reject_quiescent,
+    )
 
     assert bridge.no_provider_dispatch_rearm_evidence(
         attempt,
         outer_block_receipt=receipt,
     ) is None
     assert len(interrupted_calls) == expected_interrupted_calls
+    assert len(quiescent_calls) == expected_quiescent_calls
+
+
+def test_terminal_quiescent_resource_deferral_rearms_after_interrupted_miss(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, bridge, attempt, paths, outer_receipt = (
+        _seed_terminal_quiescent_resource_deferral(
+            tmp_path,
+            monkeypatch,
+            shutdown_event_count=3,
+        )
+    )
+    interrupted_calls: list[str | None] = []
+
+    def no_interrupted_evidence(
+        _attempt: object,
+        _receipt: object,
+        *,
+        expected_evidence_schema: str | None = None,
+    ) -> None:
+        interrupted_calls.append(expected_evidence_schema)
+        return None
+
+    monkeypatch.setattr(
+        bridge,
+        "_interrupted_implementation_rearm_evidence",
+        no_interrupted_evidence,
+    )
+    try:
+        evidence = bridge.no_provider_dispatch_rearm_evidence(
+            attempt,
+            outer_block_receipt=outer_receipt,
+        )
+
+        assert evidence is not None
+        assert evidence["schema"] == (
+            DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA
+        )
+        assert evidence["terminal_reconciliation_evidence_id"] == (
+            outer_receipt["terminal_reconciliation"]["evidence_id"]
+        )
+        assert evidence["shutdown_reconciliation_event_count"] >= 3
+        assert evidence["diagnostic_event_count"] == 4
+        assert evidence["event_count"] == (
+            1
+            + evidence["diagnostic_event_count"]
+            + evidence["shutdown_reconciliation_event_count"]
+        )
+        event_types = [
+            json.loads(line)["type"]
+            for line in Path(paths.events).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert {
+            "cleanup_finished",
+            "dirty_submodule_reset_deferred",
+            "stale_worktree_cleanup",
+            "worktree_cleanup_fenced",
+        }.issubset(event_types)
+        resource_deferred_index = event_types.index("daemon_pass")
+        assert any(
+            event_type
+            in {
+                "cleanup_finished",
+                "dirty_submodule_reset_deferred",
+                "stale_worktree_cleanup",
+                "worktree_cleanup_fenced",
+            }
+            for event_type in event_types[:resource_deferred_index]
+        )
+        first_shutdown = event_types.index("implementation_shutdown_reconciled")
+        assert any(
+            event_type
+            in {
+                "cleanup_finished",
+                "dirty_submodule_reset_deferred",
+                "stale_worktree_cleanup",
+                "worktree_cleanup_fenced",
+            }
+            for event_type in event_types[first_shutdown + 1 :]
+        )
+        assert evidence["task_never_selected"] is True
+        assert evidence["route_deferred"] is True
+        assert evidence["provider_dispatched"] is False
+        assert evidence["implementation_dispatched"] is False
+        assert evidence["attempt_consumed"] is False
+        assert interrupted_calls == [
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+        ]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("dispatch_outcome", "exception_type"),
+    (
+        ("raised", "TimeoutError"),
+        ("deferred", "DatabasePortalBridgeDeferred"),
+    ),
+)
+def test_terminal_landed_probe_then_quiescent_rearm_occurs_once_same_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dispatch_outcome: str,
+    exception_type: str,
+) -> None:
+    """The non-applicable lander extends the pinned head before generic rearm."""
+
+    daemon, bridge, attempt, paths, outer_receipt = (
+        _seed_terminal_quiescent_resource_deferral(
+            tmp_path,
+            monkeypatch,
+            shutdown_event_count=2,
+        )
+    )
+    link = dict(outer_receipt["terminal_reconciliation"])
+    task = daemon.task_source.get(attempt.task_cid)
+    assert task is not None and task.status == "blocked"
+
+    task_body = dict(task.body)
+    task_body["completion_receipt"] = dict(outer_receipt)
+    with daemon.task_source._intent._connection(write=True) as connection:
+        connection.execute(
+            "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+            [
+                json.dumps(task_body, separators=(",", ":"), sort_keys=True),
+                attempt.task_cid,
+            ],
+        )
+    failed_body = dict(daemon.phase_history(attempt.attempt_id)[-1]["body"])
+    failed_body["terminal_reconciliation"] = link
+    daemon._require_connection().execute(
+        """
+        UPDATE attempt_phases SET body_json = ?
+        WHERE attempt_id = ? AND phase = 'failed'
+        """,
+        [
+            json.dumps(failed_body, separators=(",", ":"), sort_keys=True),
+            attempt.attempt_id,
+        ],
+    )
+    daemon._require_connection().execute(
+        """
+        UPDATE attempt_dispatch_journal
+        SET outcome = ?, body_json = ?
+        WHERE attempt_id = ? AND dispatch_kind = 'provider'
+        """,
+        [
+            dispatch_outcome,
+            json.dumps(
+                {"exception_type": exception_type},
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            attempt.attempt_id,
+        ],
+    )
+    daemon._record_database_portal_terminal_reconciliation_barrier(
+        attempt,
+        link,
+    )
+    prepared = bridge.load_reconciliation_receipt(
+        attempt,
+        str(link["prepared_reconciliation_receipt_id"]),
+        required_stage="prepared",
+    )
+    barrier = bridge.load_reconciliation_receipt(
+        attempt,
+        str(link["commit_barrier_receipt_id"]),
+        required_stage="commit_barrier",
+    )
+    terminal_payload = daemon._terminal_reconciliation_receipt_payload(
+        prepared=prepared,
+        barrier=barrier,
+        evidence=link,
+        attempt=attempt,
+        actual_disposition="blocked_unknown_outcome",
+    )
+    terminal_receipt = bridge.persist_reconciliation_receipt(
+        attempt,
+        terminal_payload,
+    )
+    daemon._record_database_portal_terminal_reconciliation(
+        attempt,
+        str(terminal_receipt["receipt_id"]),
+    )
+    before_events = [
+        json.loads(line)
+        for line in Path(paths.events).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    before_shutdowns = sum(
+        event.get("type") == "implementation_shutdown_reconciled"
+        for event in before_events
+    )
+    bridge_results: list[Mapping[str, object] | None] = []
+    real_rearm_evidence = bridge.no_provider_dispatch_rearm_evidence
+
+    def observe_rearm_evidence(
+        selected_attempt: object,
+        *,
+        outer_block_receipt: Mapping[str, object],
+    ) -> Mapping[str, object] | None:
+        result = real_rearm_evidence(
+            selected_attempt,
+            outer_block_receipt=outer_block_receipt,
+        )
+        bridge_results.append(result)
+        return result
+
+    monkeypatch.setattr(
+        bridge,
+        "no_provider_dispatch_rearm_evidence",
+        observe_rearm_evidence,
+    )
+    daemon_results: list[Mapping[str, object] | None] = []
+    real_daemon_rearm_evidence = (
+        daemon._database_portal_no_provider_rearm_evidence
+    )
+
+    def observe_daemon_rearm_evidence(
+        selected_task: object,
+        selected_receipt: Mapping[str, object],
+    ) -> Mapping[str, object] | None:
+        result = real_daemon_rearm_evidence(
+            selected_task,
+            selected_receipt,
+        )
+        daemon_results.append(result)
+        return result
+
+    monkeypatch.setattr(
+        daemon,
+        "_database_portal_no_provider_rearm_evidence",
+        observe_daemon_rearm_evidence,
+    )
+
+    try:
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert bridge_results and bridge_results[0] is not None
+        assert daemon_results and daemon_results[0] is not None
+        assert len(outcomes) == 1
+        assert outcomes[0]["rearmed"] is True, json.dumps(
+            outcomes,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        assert outcomes[0]["provider_dispatched"] is False
+        after_events = [
+            json.loads(line)
+            for line in Path(paths.events).read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert sum(
+            event.get("type") == "implementation_shutdown_reconciled"
+            for event in after_events
+        ) == before_shutdowns + 1
+        assert after_events[-1]["type"] == "implementation_shutdown_reconciled"
+        current = daemon.task_source.get(attempt.task_cid)
+        assert current is not None and current.status == "retrying"
+        current_receipt = current.body["completion_receipt"]
+        assert current_receipt["no_provider_rearm_evidence"]["schema"] == (
+            DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA
+        )
+        assert current_receipt["no_provider_rearm_evidence"][
+            "event_head_id"
+        ] == after_events[-1]["event_id"]
+        assert current_receipt["no_provider_rearm_fence"]["state"] == "admitted"
+        assert daemon.reconcile_blocked_unknown_outcome_tasks() == []
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "terminal_link_state",
+        "state_idle_reason",
+        "provider_runner_fence",
+        "task_selected",
+        "shutdown_before_resource_deferral",
+        "nested_maintenance_cleanup",
+        "unexpected_attempt_child",
+    ),
+)
+def test_terminal_quiescent_resource_deferral_rejects_tampering(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    daemon, bridge, attempt, paths, outer_receipt = (
+        _seed_terminal_quiescent_resource_deferral(
+            tmp_path,
+            monkeypatch,
+            shutdown_event_count=2,
+        )
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_interrupted_implementation_rearm_evidence",
+        lambda *_args, **_kwargs: None,
+    )
+    if mutation == "terminal_link_state":
+        link = dict(outer_receipt["terminal_reconciliation"])
+        link["nested_state_digest"] = "sha256:" + "f" * 64
+        link.pop("evidence_id")
+        link["evidence_id"] = content_identity(link)
+        outer_receipt["terminal_reconciliation"] = link
+    elif mutation == "state_idle_reason":
+        state = PortalTaskState.load(paths.state)
+        state.selection_idle_reason = ""
+        assert state.save(paths.state) is True
+    elif mutation == "provider_runner_fence":
+        original_load = bridge.load_reconciliation_receipt
+
+        def tampered_load(
+            selected_attempt: object,
+            receipt_id: str,
+            *,
+            required_stage: str = "",
+        ) -> dict[str, object]:
+            loaded = original_load(
+                selected_attempt,
+                receipt_id,
+                required_stage=required_stage,
+            )
+            if required_stage == "prepared":
+                loaded["provider_runner_fence"] = {
+                    "applicable": False,
+                    "safe_to_restart": False,
+                    "fenced": False,
+                    "reason": "ordinary_provider_runner_receipt_absent",
+                }
+            return loaded
+
+        monkeypatch.setattr(
+            bridge,
+            "load_reconciliation_receipt",
+            tampered_load,
+        )
+    elif mutation == "task_selected":
+        state = PortalTaskState.load(paths.state)
+        task_id = next(iter(state.task_identities))
+        task_identity = state.task_identities[task_id]
+
+        def select_task(events: list[dict[str, object]]) -> None:
+            source = dict(events[-1])
+            for name in tuple(source):
+                if name not in {
+                    "type",
+                    "timestamp",
+                    "stream_id",
+                    "snapshot_id",
+                    "sequence",
+                    "previous_event_id",
+                    "event_id",
+                }:
+                    source.pop(name)
+            source.update(
+                {
+                    "type": "task_selected",
+                    "task_id": task_id,
+                    "title": "Selected despite resource deferral",
+                    "track": "implementation",
+                    "canonical_task_key": task_identity[
+                        "canonical_task_key"
+                    ],
+                    "canonical_task_cid": task_identity[
+                        "canonical_task_cid"
+                    ],
+                    "board_namespace": task_identity["board_namespace"],
+                }
+            )
+            events.insert(1, source)
+            for sequence, event in enumerate(events, start=1):
+                event["sequence"] = sequence
+
+        _rewrite_active_event_chain(paths, select_task)
+    elif mutation == "shutdown_before_resource_deferral":
+
+        def reorder_shutdown(events: list[dict[str, object]]) -> None:
+            shutdown_index = next(
+                index
+                for index, event in enumerate(events)
+                if event.get("type") == "implementation_shutdown_reconciled"
+            )
+            events.insert(0, events.pop(shutdown_index))
+            for sequence, event in enumerate(events, start=1):
+                event["sequence"] = sequence
+
+        _rewrite_active_event_chain(paths, reorder_shutdown)
+    elif mutation == "nested_maintenance_cleanup":
+
+        def poison_nested_cleanup(events: list[dict[str, object]]) -> None:
+            stale = next(
+                event
+                for event in events
+                if event.get("type") == "stale_worktree_cleanup"
+            )
+            nested = stale["removed"][0]["cleanup_result"][
+                "submodule_cleanup"
+            ][0]["nested_submodule_cleanup"][0]
+            nested["cleaned"] = False
+
+        _rewrite_active_event_chain(paths, poison_nested_cleanup)
+    elif mutation == "unexpected_attempt_child":
+        (Path(paths.root) / "unbound-provider-result.json").write_text(
+            "{}\n",
+            encoding="utf-8",
+        )
+    else:  # pragma: no cover - parametrization is closed above
+        raise AssertionError(mutation)
+    try:
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            attempt,
+            outer_block_receipt=outer_receipt,
+        ) is None
+    finally:
+        daemon.close()
+
+
+def test_stale_dispatch_policy_never_reaches_quiescent_resource_successor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempt = SimpleNamespace(
+        task_cid="task:terminal-policy",
+        attempt_id="attempt:terminal-policy",
+        claim_id="claim:terminal-policy",
+        lease_id="lease:terminal-policy",
+        attempt_number=2,
+        owner_session_id="session:terminal-policy",
+        fencing_token=8,
+        fence_epoch=4,
+        status="failed",
+        committed_phase="failed",
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+    )
+    receipt = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-retry-budget@1",
+        "operation": "database_unknown_outcome_blocked",
+        "reason": "provider_dispatch_outcome_unknown",
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "attempt_number": attempt.attempt_number,
+        "owner_session_id": attempt.owner_session_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "retry_exhausted": True,
+        "forced_block": True,
+        "authority_outcome": "unknown",
+        "process_instance_id": "process:terminal-policy",
+        "terminal_reconciliation": {"schema": "populated"},
+    }
+    monkeypatch.setattr(
+        bridge,
+        "_interrupted_implementation_rearm_evidence",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_terminal_quiescent_deferred_rearm_evidence",
+        lambda *_args, **_kwargs: pytest.fail(
+            "stale migration policy reached standard quiescent successor"
+        ),
+    )
+
+    assert bridge.no_provider_dispatch_rearm_evidence(
+        attempt,
+        outer_block_receipt=receipt,
+    ) is None
 
 
 @pytest.mark.parametrize(
@@ -8912,7 +9806,12 @@ def test_blocked_terminal_selector_completes_landed_candidate_once(
     ("malformed_field", "malformed_value"),
     (
         ("attempts_used", {"not": "an integer"}),
-        ("unknown_outcome_rearm_count", 0),
+        ("unknown_outcome_rearm_count", -1),
+        ("unknown_outcome_rearm_count", True),
+        (
+            "unknown_outcome_rearm_count",
+            DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT + 1,
+        ),
     ),
 )
 def test_blocked_terminal_selector_contains_malformed_retry_budget(
@@ -8957,6 +9856,60 @@ def test_blocked_terminal_selector_contains_malformed_retry_budget(
         current = daemon.task_source.get_task(attempt.task_cid)
         assert current is not None and current.status == "blocked"
         assert calls == []
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_blocked_terminal_retry_gate_accepts_zero_with_higher_claim_ordinal(
+    tmp_path: Path,
+) -> None:
+    """A coordinator claim ordinal is not a consumptive retry counter."""
+
+    daemon, _bridge, attempt, _paths = _seed_terminal_blocked_landed_candidate(
+        tmp_path
+    )
+    task = daemon.task_source.get_task(attempt.task_cid)
+    assert task is not None
+    higher_attempt = replace(
+        attempt,
+        attempt_number=7,
+        fencing_token=7,
+        fence_epoch=7,
+    )
+    receipt = dict(task.body["completion_receipt"])
+    link = dict(receipt["terminal_reconciliation"])
+    link.update(
+        {
+            "attempt_number": higher_attempt.attempt_number,
+            "fencing_token": higher_attempt.fencing_token,
+            "fence_epoch": higher_attempt.fence_epoch,
+        }
+    )
+    link.pop("evidence_id")
+    link["evidence_id"] = content_identity(link)
+    receipt.update(
+        {
+            "attempt_number": higher_attempt.attempt_number,
+            "fencing_token": higher_attempt.fencing_token,
+            "fence_epoch": higher_attempt.fence_epoch,
+            "unknown_outcome_rearm_count": 0,
+            "terminal_reconciliation": link,
+        }
+    )
+    task_body = dict(task.body)
+    task_body["completion_receipt"] = receipt
+    higher_task = replace(task, body=task_body)
+    try:
+        assert higher_attempt.attempt_number > (
+            receipt["attempts_used"]
+            + receipt["unknown_outcome_rearm_count"]
+        )
+        assert daemon._blocked_terminal_landed_receipt_is_exact(
+            task=higher_task,
+            attempt=higher_attempt,
+            receipt=receipt,
+        )
     finally:
         daemon.close()
 

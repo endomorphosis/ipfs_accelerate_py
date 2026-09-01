@@ -57,6 +57,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
     _canonical_mapping_matches,
+    _database_terminal_claim_ordinal_lower_bound,
     is_database_authority_mode,
     open_database_implementation_daemon,
     parse_args,
@@ -68,6 +69,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+    DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
@@ -2395,6 +2397,8 @@ def _historical_stale_dispatch_selector_case(
         receipt=receipt,
         phase_body=phase_body,
         evidence=evidence,
+        claim_record=claim_record,
+        terminal_saga=terminal_saga,
         calls=calls,
         started_body=started_body,
     )
@@ -2537,6 +2541,297 @@ def test_stale_dispatch_invalid_budget_rejects_before_nested_migration() -> None
     assert case.calls["journal"] == []
     assert case.calls["provider"] == []
     assert case.calls["effect"] == []
+    assert case.task.to_dict() == task_before
+    assert case.attempt.to_dict() == attempt_before
+    assert case.receipt == receipt_before
+
+
+def _terminal_linked_interrupted_selector_case(
+    *,
+    attempt_number: int = 7,
+    attempts_used: int = 1,
+    rearm_count: object = 0,
+) -> SimpleNamespace:
+    """Build an exact linked interrupted proof whose counters have a gap."""
+
+    case = _historical_stale_dispatch_selector_case(
+        task_alias="PCTDD-034",
+        attempt_number=attempt_number,
+        attempts_used=attempts_used,
+    )
+    case.receipt["reason"] = "callback_authority_incomplete_blocked"
+    case.receipt["unknown_outcome_rearm_count"] = rearm_count
+    case.phase_body["reason"] = "callback_authority_incomplete_blocked"
+    case.evidence["schema"] = (
+        DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+    )
+    unsigned = dict(case.evidence)
+    unsigned.pop("evidence_id", None)
+    case.evidence["evidence_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    def raised_journal(
+        _attempt: object,
+        *,
+        dispatch_kind: str,
+        idempotency_key: str,
+    ) -> dict[str, object] | None:
+        case.calls["journal"].append((dispatch_kind, idempotency_key))
+        if dispatch_kind == "effect":
+            return None
+        return {
+            "outcome": "raised",
+            "body": {"exception_type": "DatabasePortalBridgeError"},
+            "updated_at_ms": 1,
+        }
+
+    case.daemon._dispatch_journal_entry = raised_journal
+    case.daemon._valid_no_provider_rearm_evidence = (
+        lambda evidence, *, task, original, expected_evidence_id: bool(
+            task is case.task
+            and original is case.receipt
+            and evidence.get("schema")
+            == DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+            and evidence.get("evidence_id") == expected_evidence_id
+        )
+    )
+    return case
+
+
+@pytest.mark.parametrize(
+    ("attempt_number", "attempts_used", "rearm_count", "expected"),
+    (
+        (1, 1, 0, True),
+        (10_000, 1, 0, True),
+        (7, 1, 3, True),
+        (3, 1, 3, False),
+        (True, 1, 0, False),
+        (1, True, 0, False),
+        (1, 1, False, False),
+        (1, 0, 0, False),
+        (1, 1, -1, False),
+        (5, 1, DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT + 1, False),
+    ),
+)
+def test_terminal_claim_ordinal_is_only_a_typed_corruption_lower_bound(
+    attempt_number: object,
+    attempts_used: object,
+    rearm_count: object,
+    expected: bool,
+) -> None:
+    assert (
+        _database_terminal_claim_ordinal_lower_bound(
+            attempt_number=attempt_number,
+            attempts_used=attempts_used,
+            rearm_count=rearm_count,
+        )
+        is expected
+    )
+
+
+def test_terminal_linked_interrupted_selector_accepts_zero_with_higher_ordinal(
+) -> None:
+    """An ordinal gap coexists with, but never authorizes, exact evidence."""
+
+    case = _terminal_linked_interrupted_selector_case()
+    task_before = case.task.to_dict()
+    attempt_before = case.attempt.to_dict()
+    receipt_before = json.loads(json.dumps(case.receipt))
+
+    admitted = case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    )
+
+    assert admitted is not None
+    assert admitted["schema"] == (
+        DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+    )
+    assert case.attempt.attempt_number == 7
+    assert case.receipt["attempts_used"] == 1
+    assert case.receipt["unknown_outcome_rearm_count"] == 0
+    assert case.attempt.attempt_number > (
+        case.receipt["attempts_used"]
+        + case.receipt["unknown_outcome_rearm_count"]
+    )
+    assert case.calls["verifier"] == [case.attempt]
+    assert case.calls["journal"] == [
+        ("effect", f"effect:{case.attempt.attempt_id}"),
+        ("provider", f"provider:{case.attempt.attempt_id}"),
+    ]
+    assert case.task.to_dict() == task_before
+    assert case.attempt.to_dict() == attempt_before
+    assert case.receipt == receipt_before
+
+
+def _terminal_linked_timeout_selector_case(
+    *,
+    outcome: str = "raised",
+    body: object = None,
+    quiescent_evidence: bool = True,
+) -> SimpleNamespace:
+    """Build the exact live outer TimeoutError shape around closed evidence."""
+
+    case = _terminal_linked_interrupted_selector_case()
+    if quiescent_evidence:
+        case.evidence.update(
+            {
+                "schema": (
+                    DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA
+                ),
+                "route_deferred": True,
+                "nested_state_quiescent": True,
+                "task_never_selected": True,
+                "implementation_dispatched": False,
+                "attempt_consumed": False,
+                "acceptance_inferred": False,
+            }
+        )
+    unsigned = dict(case.evidence)
+    unsigned.pop("evidence_id", None)
+    case.evidence["evidence_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    dispatch_body = (
+        {"exception_type": "TimeoutError"} if body is None else body
+    )
+
+    def timeout_journal(
+        _attempt: object,
+        *,
+        dispatch_kind: str,
+        idempotency_key: str,
+    ) -> dict[str, object] | None:
+        case.calls["journal"].append((dispatch_kind, idempotency_key))
+        if dispatch_kind == "effect":
+            return None
+        return {
+            "outcome": outcome,
+            "body": dispatch_body,
+            "updated_at_ms": 1,
+        }
+
+    case.daemon._dispatch_journal_entry = timeout_journal
+    expected_schema = str(case.evidence["schema"])
+    case.daemon._valid_no_provider_rearm_evidence = (
+        lambda evidence, *, task, original, expected_evidence_id: bool(
+            task is case.task
+            and original is case.receipt
+            and evidence.get("schema") == expected_schema
+            and evidence.get("evidence_id") == expected_evidence_id
+        )
+    )
+    return case
+
+
+def test_terminal_linked_timeout_admits_quiescent_or_interrupted_closed_proof(
+) -> None:
+    """The live outer timeout never chooses the nested evidence class itself."""
+
+    for quiescent_evidence in (True, False):
+        case = _terminal_linked_timeout_selector_case(
+            quiescent_evidence=quiescent_evidence,
+        )
+
+        admitted = case.daemon._database_portal_no_provider_rearm_evidence(
+            case.task,
+            case.receipt,
+        )
+
+        assert admitted is not None
+        assert admitted["schema"] == (
+            DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA
+            if quiescent_evidence
+            else DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+        )
+        assert case.calls["verifier"] == [case.attempt]
+        assert case.calls["journal"] == [
+            ("effect", f"effect:{case.attempt.attempt_id}"),
+            ("provider", f"provider:{case.attempt.attempt_id}"),
+        ]
+
+
+@pytest.mark.parametrize(
+    ("outcome", "body"),
+    (
+        ("raised", {"exception_type": "RuntimeError"}),
+        ("raised", {"exception_type": "TimeoutError", "message": "late"}),
+        ("raised", {"exception_type": "TimeoutError", "retryable": True}),
+        ("deferred", {"exception_type": "TimeoutError"}),
+        ("raised", "TimeoutError"),
+    ),
+)
+def test_terminal_linked_timeout_outer_journal_shape_is_closed(
+    outcome: str,
+    body: object,
+) -> None:
+    case = _terminal_linked_timeout_selector_case(
+        outcome=outcome,
+        body=body,
+    )
+
+    assert case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    ) is None
+    assert case.calls["verifier"] == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_verifier_calls", "expected_journal_calls"),
+    (
+        ("boolean_zero", 0, 0),
+        ("underbound_budget", 0, 0),
+        ("missing_terminal_link", 0, 0),
+        ("wrong_claim", 0, 2),
+        ("wrong_saga", 0, 0),
+        ("wrong_evidence_root", 1, 2),
+    ),
+)
+def test_terminal_linked_interrupted_selector_keeps_budget_edges_closed(
+    mutation: str,
+    expected_verifier_calls: int,
+    expected_journal_calls: int,
+) -> None:
+    """Numeric aliases, underbinding, and link loss never reach recovery."""
+
+    case = _terminal_linked_interrupted_selector_case(
+        attempts_used=8 if mutation == "underbound_budget" else 1,
+        rearm_count=False if mutation == "boolean_zero" else 0,
+    )
+    if mutation == "missing_terminal_link":
+        case.receipt.pop("terminal_reconciliation")
+        case.phase_body.pop("terminal_reconciliation")
+    elif mutation == "wrong_claim":
+        case.claim_record["lease_id"] = "lease:wrong-current-claim"
+    elif mutation == "wrong_saga":
+        case.terminal_saga["commit_barrier_receipt_id"] = "sha256:" + "f" * 64
+    elif mutation == "wrong_evidence_root":
+        case.evidence["state_digest"] = "sha256:" + "e" * 64
+    task_before = case.task.to_dict()
+    attempt_before = case.attempt.to_dict()
+    receipt_before = json.loads(json.dumps(case.receipt))
+
+    assert case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    ) is None
+    assert len(case.calls["verifier"]) == expected_verifier_calls
+    assert len(case.calls["journal"]) == expected_journal_calls
     assert case.task.to_dict() == task_before
     assert case.attempt.to_dict() == attempt_before
     assert case.receipt == receipt_before
@@ -6475,6 +6770,7 @@ def test_count_zero_shared_fence_compensation_schema_policy_is_closed(
         DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
         DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
         DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
+        DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
     }
     for schema in exact_nonconsuming_schemas:
         receipt = json.loads(json.dumps(admitted.body["completion_receipt"]))
