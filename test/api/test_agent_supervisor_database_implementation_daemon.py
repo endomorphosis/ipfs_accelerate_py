@@ -58,6 +58,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseTaskAttempt,
     _canonical_mapping_matches,
     _database_portal_historical_interrupted_state_transition_budget_matches,
+    _database_portal_quiesced_stale_dispatch_release_budget_matches,
     _database_terminal_claim_ordinal_lower_bound,
     is_database_authority_mode,
     open_database_implementation_daemon,
@@ -72,6 +73,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_PIN,
     DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA,
+    DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
@@ -6944,6 +6946,56 @@ def test_terminal_no_effect_route_selector_admits_historical_attempt_suffix(
 @pytest.mark.parametrize(
     ("task_alias", "attempt_number", "attempts_used", "rearm_count"),
     (
+        ("PCTDD-005", 3, 1, 0),
+        ("PCTDD-006", 4, 1, 1),
+        ("PCTDD-007", 4, 1, 1),
+        ("PCTDD-034", 8, 1, 0),
+    ),
+)
+def test_quiesced_stale_release_budget_admits_only_current_outer_histories(
+    task_alias: str,
+    attempt_number: int,
+    attempts_used: int,
+    rearm_count: int,
+) -> None:
+    assert _database_portal_quiesced_stale_dispatch_release_budget_matches(
+        task_alias=task_alias,
+        attempt_number=attempt_number,
+        attempts_used=attempts_used,
+        rearm_count=rearm_count,
+    )
+
+
+@pytest.mark.parametrize(
+    ("task_alias", "attempt_number", "attempts_used", "rearm_count"),
+    (
+        ("PCTDD-005", 2, 1, 0),
+        ("PCTDD-006", 3, 1, 1),
+        ("PCTDD-007", 3, 1, 1),
+        ("PCTDD-034", 6, 1, 0),
+        ("PCTDD-005", 3, 2, 0),
+        ("PCTDD-006", 4, 1, 0),
+        ("PCTDD-007", 4, 1, 2),
+        ("PCTDD-034", 8, 1, 1),
+    ),
+)
+def test_quiesced_stale_release_budget_rejects_predecessors_and_near_misses(
+    task_alias: str,
+    attempt_number: int,
+    attempts_used: int,
+    rearm_count: int,
+) -> None:
+    assert not _database_portal_quiesced_stale_dispatch_release_budget_matches(
+        task_alias=task_alias,
+        attempt_number=attempt_number,
+        attempts_used=attempts_used,
+        rearm_count=rearm_count,
+    )
+
+
+@pytest.mark.parametrize(
+    ("task_alias", "attempt_number", "attempts_used", "rearm_count"),
+    (
         ("PCTDD-034", 5, 1, None),
         ("PCTDD-034", 7, 1, None),
         ("PCTDD-006", 3, 1, 0),
@@ -7176,6 +7228,329 @@ def test_terminal_no_effect_route_rearm_uses_existing_saga_without_dispatch(
         assert replayed is not None
         assert replayed.body["completion_receipt"] == receipt_before
         assert provider_calls == []
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "failure_mode",
+    ("none", "stale_head", "post_cas_artifact_replaced"),
+)
+def test_quiesced_stale_release_rearm_is_fenced_nonconsuming_and_effect_free(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_mode: str,
+) -> None:
+    """The new occurrence proof may authorize one semantic rearm, never work."""
+
+    # One count-zero predecessor followed by the exact terminal-no-effect
+    # migration creates the current PCTDD-005 outer ordinal without consuming
+    # its one-attempt budget.
+    _count_zero_deferred_provider_rearm_task(
+        tmp_path,
+        task_alias="PCTDD-005",
+    )
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    validation_calls: list[str] = []
+
+    def validation(
+        attempt: DatabaseTaskAttempt,
+        _effect_result: object,
+    ) -> dict[str, object]:
+        validation_calls.append(attempt.attempt_id)
+        return {"status": "passed"}
+
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:quiesced-release:{failure_mode}",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        validation_fn=validation,
+        max_task_attempts=1,
+    )
+    try:
+        predecessor = daemon.claim_next()
+        assert predecessor is not None and predecessor.attempt_number == 2
+        predecessor = daemon.commit_phase(predecessor, ATTEMPT_PHASE_CONTEXT)
+        predecessor_key = f"provider:{predecessor.attempt_id}"
+        daemon._begin_callback_dispatch(
+            predecessor,
+            dispatch_kind="provider",
+            idempotency_key=predecessor_key,
+        )
+        daemon._record_callback_dispatch_outcome(
+            predecessor,
+            dispatch_kind="provider",
+            idempotency_key=predecessor_key,
+            outcome="raised",
+            body={"exception_type": "DatabasePortalBridgeError"},
+        )
+        daemon._finalize_failed_attempt(
+            predecessor,
+            reason="callback_authority_incomplete_blocked",
+            force_block=True,
+            unknown_authority=True,
+        )
+
+        class ExactTerminalNoEffectPredecessorBridge:
+            def validate_active_attempt_roots(
+                self,
+                attempts: list[DatabaseTaskAttempt],
+            ) -> dict[str, str]:
+                assert attempts == []
+                return {}
+
+            def no_provider_dispatch_rearm_evidence(
+                self,
+                candidate: DatabaseTaskAttempt,
+                *,
+                outer_block_receipt: dict[str, object],
+            ) -> dict[str, object]:
+                return _terminal_no_effect_route_rearm_evidence(
+                    candidate,
+                    outer_block_receipt,
+                )
+
+        daemon._database_portal_bridge = ExactTerminalNoEffectPredecessorBridge()
+        predecessor_outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+        assert len(predecessor_outcomes) == 1
+        assert predecessor_outcomes[0]["rearmed"] is True
+
+        attempt = daemon.claim_next()
+        assert attempt is not None and attempt.attempt_number == 3
+        attempt = daemon.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        provider_key = f"provider:{attempt.attempt_id}"
+        daemon._begin_callback_dispatch(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=provider_key,
+        )
+        daemon._record_callback_dispatch_outcome(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=provider_key,
+            outcome="raised",
+            body={"exception_type": "DatabasePortalBridgeError"},
+        )
+        link: dict[str, object] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-terminal-reconciliation-link@1"
+            ),
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "task_cid": attempt.task_cid,
+            "attempt_number": attempt.attempt_number,
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": attempt.fencing_token,
+            "fence_epoch": attempt.fence_epoch,
+            "binding_id": "sha256:" + "3" * 64,
+            "nested_state_digest": "sha256:" + "a" * 64,
+            "nested_reason": "nested_portal_attempt_reconciled",
+            "nested_reconciled": True,
+            "trigger": "database_daemon_startup",
+            "intended_database_disposition": "blocked_unknown_outcome",
+            "prepared_reconciliation_receipt_id": "sha256:" + "9" * 64,
+            "commit_barrier_receipt_id": "sha256:" + "b" * 64,
+        }
+        link["evidence_id"] = content_identity(link)
+        failed, blocked_receipt = daemon._finalize_failed_attempt(
+            attempt,
+            reason="callback_authority_incomplete_blocked",
+            force_block=True,
+            unknown_authority=True,
+            reconciliation_evidence=link,
+        )
+        assert failed.status == "failed"
+        assert blocked_receipt["attempt_number"] == 3
+        assert blocked_receipt["attempts_used"] == 1
+        assert blocked_receipt.get("unknown_outcome_rearm_count", 0) == 0
+
+        evidence: dict[str, object] = {
+            "schema": (
+                DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA
+            ),
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "task_cid": attempt.task_cid,
+            "task_alias": attempt.task_alias,
+            "attempt_number": attempt.attempt_number,
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": attempt.fencing_token,
+            "fence_epoch": attempt.fence_epoch,
+            "terminal_reconciliation_evidence_id": link["evidence_id"],
+            "event_head_id": "sha256:" + "c" * 64,
+            "provider_dispatched": False,
+            "implementation_dispatched": False,
+            "attempt_consumed": False,
+            "validation_attempted": False,
+            "commit_created": False,
+            "merge_attempted": False,
+            "acceptance_inferred": False,
+            "recovery_terminal": True,
+            "retained_candidate_disposition": "preserved_unvalidated",
+        }
+        evidence["evidence_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                evidence,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        nested_barrier_calls: list[str] = []
+
+        class ExactQuiescedReleaseBridge:
+            def no_provider_dispatch_rearm_evidence(
+                self,
+                candidate: DatabaseTaskAttempt,
+                *,
+                outer_block_receipt: dict[str, object],
+            ) -> dict[str, object]:
+                assert candidate.to_dict() == failed.to_dict()
+                assert outer_block_receipt == blocked_receipt
+                return dict(evidence)
+
+            def execute_with_revalidated_quiesced_stale_dispatch_release(
+                self,
+                candidate: DatabaseTaskAttempt,
+                *,
+                outer_block_receipt: object,
+                expected_evidence: object,
+                callback: Callable[[], object],
+            ) -> object:
+                assert candidate.to_dict() == failed.to_dict()
+                assert outer_block_receipt == blocked_receipt
+                assert expected_evidence == evidence
+                nested_barrier_calls.append(str(evidence["event_head_id"]))
+                if failure_mode == "stale_head":
+                    raise DatabasePortalBridgeError(
+                        "nested event head advanced before control CAS"
+                    )
+                result = callback()
+                if failure_mode == "post_cas_artifact_replaced":
+                    raise DatabasePortalBridgeError(
+                        "release receipt was atomically replaced after control CAS"
+                    )
+                return result
+
+        daemon._database_portal_bridge = ExactQuiescedReleaseBridge()
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_blocked_terminal_landed_tasks",
+            lambda: [],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_database_portal_terminal_reconciliation_saga",
+            lambda _candidate: {
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "task_cid": attempt.task_cid,
+                "attempt_number": attempt.attempt_number,
+                "owner_session_id": attempt.owner_session_id,
+                "lease_id": attempt.lease_id,
+                "fencing_token": attempt.fencing_token,
+                "fence_epoch": attempt.fence_epoch,
+                "intended_database_disposition": "blocked_unknown_outcome",
+                "evidence_id": link["evidence_id"],
+                "prepared_reconciliation_receipt_id": link[
+                    "prepared_reconciliation_receipt_id"
+                ],
+                "commit_barrier_receipt_id": link["commit_barrier_receipt_id"],
+                "stage": "terminal",
+                "receipt_id": "sha256:" + "d" * 64,
+            },
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_valid_no_provider_rearm_evidence",
+            lambda *_args, **_kwargs: True,
+        )
+        if failure_mode == "post_cas_artifact_replaced":
+            # Compensation revalidates through the class-level static gate.
+            # This integration fixture deliberately carries only the fields
+            # needed to exercise the saga; schema closure is covered by the
+            # dedicated evidence-validator matrix.
+            monkeypatch.setattr(
+                DatabaseImplementationDaemon,
+                "_valid_no_provider_rearm_evidence",
+                staticmethod(lambda *_args, **_kwargs: True),
+            )
+
+        terminal_barrier_calls: list[str] = []
+        real_terminal_barrier = (
+            daemon.coordinator.execute_with_terminal_task_claim_barrier
+        )
+
+        def terminal_barrier(claim: object, callback: Callable[[], object]) -> object:
+            terminal_barrier_calls.append(str(getattr(claim, "claim_id", "")))
+            return real_terminal_barrier(claim, callback)
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "execute_with_terminal_task_claim_barrier",
+            terminal_barrier,
+        )
+        cas_calls: list[str] = []
+        real_cas = daemon._cas_task_status_database
+
+        def tracked_cas(*args: object, **kwargs: object) -> object:
+            cas_calls.append(str(kwargs.get("new_status") or ""))
+            return real_cas(*args, **kwargs)
+
+        monkeypatch.setattr(daemon, "_cas_task_status_database", tracked_cas)
+        attempt_before = failed.to_dict()
+
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert terminal_barrier_calls == [attempt.claim_id]
+        assert nested_barrier_calls == [evidence["event_head_id"]]
+        assert daemon.get_attempt(attempt.attempt_id).to_dict() == attempt_before
+        assert provider_calls == []
+        assert effect_calls == []
+        assert validation_calls == []
+        assert daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=provider_key,
+        ) is None
+        assert daemon.effect_claim_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        ) is None
+        assert daemon.coordinator.get_prepared_task_completion(
+            attempt.task_cid
+        ) is None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        if failure_mode == "stale_head":
+            assert cas_calls == []
+            assert task.status == "blocked"
+            assert not any(outcome.get("rearmed") is True for outcome in outcomes)
+        elif failure_mode == "post_cas_artifact_replaced":
+            # A non-cooperating producer can race the directory flock.  The
+            # retained-FD postcheck raises after the first status CAS, and the
+            # existing pending-fence saga restores blocked before dispatch.
+            # Both the tentative rearm and its fail-closed compensation use
+            # the instrumented daemon CAS facade.
+            assert cas_calls == ["retrying", "blocked"]
+            assert task.status == "blocked"
+            assert not any(outcome.get("rearmed") is True for outcome in outcomes)
+        else:
+            # The established shared-fence saga uses three physical writes, but
+            # exactly one terminal barrier and one nested proof authorize the
+            # single semantic blocked -> retrying rearm.
+            assert cas_calls == ["retrying", "blocked", "retrying"]
+            assert len(outcomes) == 1 and outcomes[0]["rearmed"] is True
+            assert task.status == "retrying"
+            receipt = dict(task.body["completion_receipt"])
+            assert receipt["attempts_used"] == 0
+            assert receipt["unknown_outcome_rearm_count"] == 0
+            assert receipt["no_provider_rearm_evidence"] == evidence
+            assert receipt["no_provider_rearm_fence"]["state"] == "admitted"
     finally:
         daemon.close()
 
@@ -7590,6 +7965,7 @@ def test_count_zero_shared_fence_compensation_schema_policy_is_closed(
         DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
         DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
         DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+        DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
         DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
         DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
         DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,

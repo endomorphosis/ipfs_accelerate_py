@@ -156,6 +156,18 @@ DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_AUTHORIZATION_SCHEMA: Final[
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-stale-dispatch-migration-rearm-authorization@1"
 )
+DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA: Final[
+    str
+] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-quiesced-stale-dispatch-release-rearm-evidence@1"
+)
+DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_AUTHORIZATION_SCHEMA: Final[
+    str
+] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-quiesced-stale-dispatch-release-rearm-authorization@1"
+)
 _STALE_DISPATCH_MIGRATION_REPLAY_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "reconciled",
@@ -575,6 +587,245 @@ DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_FIELDS: Final[
         "evidence_id",
     }
 )
+DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "schema",
+        "attempt_id",
+        "claim_id",
+        "task_cid",
+        "task_alias",
+        "attempt_number",
+        "owner_session_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "attempt_root_key",
+        "attempt_authority_root_digest",
+        "attempt_root_digest",
+        "attempt_directory_names_digest",
+        "binding_id",
+        "binding_admission_id",
+        "binding_admission_digest",
+        "projection_immutable_digest",
+        "task_revision",
+        "board_namespace",
+        "nested_task_cid",
+        "nested_attempt",
+        "release_variant",
+        "terminal_reconciliation_evidence_id",
+        "prepared_reconciliation_receipt_id",
+        "commit_barrier_receipt_id",
+        "terminal_reconciliation_receipt_id",
+        "reconciliation_receipt_count",
+        "reconciliation_receipt_ids_digest",
+        "implementing_fence_receipt_count",
+        "implementing_fence_receipt_ids_digest",
+        "implementing_fence_event_count",
+        "implementing_fence_event_ids_digest",
+        "claim_recovery_receipt_id",
+        "claim_recovery_event_count",
+        "claim_recovery_event_ids_digest",
+        "task_claim_release_receipt_id",
+        "task_claim_release_receipt_name",
+        "task_claim_release_event_id",
+        "released_unfinished_retry_id",
+        "state_recovery_event_id",
+        "post_release_event_count",
+        "post_release_event_ids_digest",
+        "post_release_shutdown_reconciliation_count",
+        "event_stream_id",
+        "event_snapshot_id",
+        "event_manifest_digest",
+        "event_count",
+        "event_head_sequence",
+        "event_head_id",
+        "prepared_state_digest",
+        "state_digest",
+        "outer_block_receipt_digest",
+        "rearm_authorization_id",
+        "provider_dispatched",
+        "implementation_dispatched",
+        "attempt_consumed",
+        "validation_attempted",
+        "commit_created",
+        "merge_attempted",
+        "acceptance_inferred",
+        "recovery_terminal",
+        "retained_candidate_disposition",
+        "nested_state_quiescent",
+        "evidence_id",
+    }
+)
+_QUIESCED_STALE_DISPATCH_RELEASE_ALLOWED_EVENT_TYPES: Final[frozenset[str]] = (
+    frozenset(
+        {
+            # This is the closed union of the four sealed PCTDD histories that
+            # this one-shot migration profile admits.  In particular, effect,
+            # validation, commit, merge, completion, and ordinary finished-run
+            # events are absent even though the generic snapshot decoder knows
+            # how to parse some of them.
+            "cleanup_finished",
+            "dirty_submodule_reset_deferred",
+            "implementation_lock_cleared",
+            "implementation_protected_path_snapshot_cleared",
+            "implementation_protected_path_snapshot_reconciled",
+            "implementation_protected_path_snapshot_recorded",
+            "implementation_shutdown_reconciled",
+            "implementation_shutdown_reconciliation_blocked",
+            "implementation_started",
+            "implementation_state_recovered",
+            "implementation_task_claim_released",
+            "interrupted_implementation_retry_prepared",
+            "local_submodule_source_discovered",
+            "merged_worktree_cleanup",
+            "nested_submodule_initialization_guarded",
+            "pre_implementation_kernel_evaluated",
+            "task_selected",
+        }
+    )
+)
+
+
+def _quiesced_stale_dispatch_release_event_population_is_closed(
+    events: Sequence[Mapping[str, Any]],
+) -> bool:
+    """Return whether every occurrence belongs to the sealed migration history."""
+
+    return bool(
+        events
+        and all(
+            type(event.get("type")) is str
+            and event.get("type")
+            in _QUIESCED_STALE_DISPATCH_RELEASE_ALLOWED_EVENT_TYPES
+            for event in events
+        )
+    )
+
+
+def _quiesced_stale_dispatch_release_event_roles_are_exact(
+    events: Sequence[Mapping[str, Any]],
+    *,
+    task_alias: str,
+) -> bool:
+    """Bind the non-growing core of each of the four admitted live histories."""
+
+    expected_by_task: dict[str, dict[str, int]] = {
+        "PCTDD-005": {
+            "dirty_submodule_reset_deferred": 1,
+            "implementation_protected_path_snapshot_cleared": 1,
+            "implementation_protected_path_snapshot_reconciled": 1,
+            "implementation_protected_path_snapshot_recorded": 1,
+            "implementation_shutdown_reconciliation_blocked": 1,
+            "implementation_started": 1,
+            "implementation_state_recovered": 1,
+            "implementation_task_claim_released": 1,
+            "interrupted_implementation_retry_prepared": 1,
+            "local_submodule_source_discovered": 7,
+            "nested_submodule_initialization_guarded": 6,
+            "pre_implementation_kernel_evaluated": 1,
+            "task_selected": 1,
+        },
+        "PCTDD-006": {
+            "dirty_submodule_reset_deferred": 1,
+            "implementation_lock_cleared": 1,
+            "implementation_protected_path_snapshot_cleared": 1,
+            "implementation_protected_path_snapshot_reconciled": 1,
+            "implementation_protected_path_snapshot_recorded": 1,
+            "implementation_shutdown_reconciliation_blocked": 1,
+            "implementation_started": 1,
+            "implementation_state_recovered": 1,
+            "implementation_task_claim_released": 1,
+            "interrupted_implementation_retry_prepared": 1,
+            "local_submodule_source_discovered": 7,
+            "nested_submodule_initialization_guarded": 6,
+            "pre_implementation_kernel_evaluated": 1,
+            "task_selected": 1,
+        },
+        "PCTDD-007": {
+            "cleanup_finished": 1,
+            "dirty_submodule_reset_deferred": 1,
+            "implementation_lock_cleared": 1,
+            "implementation_protected_path_snapshot_cleared": 1,
+            "implementation_protected_path_snapshot_reconciled": 1,
+            "implementation_protected_path_snapshot_recorded": 1,
+            "implementation_shutdown_reconciliation_blocked": 273,
+            "implementation_started": 1,
+            "implementation_task_claim_released": 1,
+            "local_submodule_source_discovered": 7,
+            "merged_worktree_cleanup": 1,
+            "nested_submodule_initialization_guarded": 6,
+            "pre_implementation_kernel_evaluated": 1,
+            "task_selected": 1,
+        },
+        "PCTDD-034": {
+            "implementation_protected_path_snapshot_cleared": 1,
+            "implementation_protected_path_snapshot_reconciled": 1,
+            "implementation_protected_path_snapshot_recorded": 1,
+            "implementation_shutdown_reconciliation_blocked": 2,
+            "implementation_started": 1,
+            "implementation_state_recovered": 1,
+            "implementation_task_claim_released": 1,
+            "interrupted_implementation_retry_prepared": 1,
+            "local_submodule_source_discovered": 7,
+            "nested_submodule_initialization_guarded": 6,
+            "pre_implementation_kernel_evaluated": 1,
+            "task_selected": 1,
+        },
+    }
+    expected = expected_by_task.get(task_alias)
+    if expected is None:
+        return False
+    observed: dict[str, int] = {}
+    for event in events:
+        event_type = str(event.get("type") or "")
+        observed[event_type] = observed.get(event_type, 0) + 1
+    shutdown_count = observed.pop("implementation_shutdown_reconciled", 0)
+    if task_alias == "PCTDD-007":
+        if shutdown_count < 1:
+            return False
+    elif shutdown_count != 0:
+        return False
+    return observed == expected
+
+
+def _quiesced_stale_dispatch_release_receipt_population_is_closed(
+    receipts: Sequence[Mapping[str, Any]],
+    *,
+    task_alias: str,
+) -> bool:
+    """Reject extra stages or any reconciliation carrying provider evidence."""
+
+    stages = [str(receipt.get("stage") or "") for receipt in receipts]
+    expected_blocked = {
+        "PCTDD-005": 1,
+        "PCTDD-006": 1,
+        "PCTDD-007": 5,
+        "PCTDD-034": 2,
+    }.get(task_alias)
+    return bool(
+        receipts
+        and expected_blocked is not None
+        and set(stages) <= {"blocked", "prepared", "commit_barrier", "terminal"}
+        and stages.count("blocked") == expected_blocked
+        and stages.count("prepared") == 1
+        and stages.count("commit_barrier") == 1
+        and stages.count("terminal") == 1
+        and all(
+            receipt.get("terminal_provider_evidence") is False
+            and (
+                receipt.get("terminal_provider_receipt_id") == ""
+                or (
+                    receipt.get("stage") == "blocked"
+                    and "terminal_provider_receipt_id" not in receipt
+                )
+            )
+            for receipt in receipts
+        )
+    )
+
+
 _EVENT_MANIFEST_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "schema",
@@ -796,6 +1047,22 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
             "skipped",
         }
     ),
+    "merged_worktree_cleanup": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "attempted",
+            "max_cleanups",
+            "prune_returncode",
+            "prune_stderr",
+            "prune_stdout",
+            "removed",
+            "removed_count",
+            "skipped",
+            "skipped_count",
+            "target_branch",
+            "worktree_root",
+        }
+    ),
     "implementation_shutdown_reconciled": _EVENT_ENVELOPE_FIELDS
     | frozenset(
         {
@@ -876,6 +1143,17 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
         }
     ),
     "implementation_resource_claim_lock_cleared": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "task_id",
+            "lock_path",
+            "branch",
+            "lock_owner_pid",
+        }
+    ),
+    # Exact producer name used by the quiesced task-claim release path.  It
+    # is deliberately distinct from the resource-claim diagnostic above.
+    "implementation_lock_cleared": _EVENT_ENVELOPE_FIELDS
     | frozenset(
         {
             "task_id",
@@ -1007,6 +1285,37 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
 _SETUP_EVENT_FIELD_VARIANTS: Final[
     dict[str, frozenset[frozenset[str]]]
 ] = {
+    # The stale-dispatch-intent producer predates the board/key fields on the
+    # unfinished-attempt release event and substitutes one exact boolean for
+    # the two unfinished-attempt fields.  Keep it as a closed versioned shape.
+    "implementation_task_claim_released": frozenset(
+        {
+            _EVENT_ENVELOPE_FIELDS
+            | frozenset(
+                {
+                    "attempt",
+                    "blocked",
+                    "canonical_task_cid",
+                    "claim_id",
+                    "claim_lease_id",
+                    "claim_path",
+                    "lifecycle_fence",
+                    "lifecycle_record_id",
+                    "operation_id",
+                    "owner_pid",
+                    "reason",
+                    "receipt_id",
+                    "receipt_path",
+                    "reconciled",
+                    "released_at",
+                    "stale_dispatch_intent_released_for_retry",
+                    "state_dir",
+                    "task_id",
+                    "task_status",
+                }
+            ),
+        }
+    ),
     "implementation_protected_path_snapshot_cleared": frozenset(
         {
             _EVENT_ENVELOPE_FIELDS
@@ -1042,6 +1351,17 @@ _SETUP_EVENT_FIELD_VARIANTS: Final[
                     "task_claim_reconciliation",
                     "protected_path_reconciliation",
                     "worktree_lifecycle_reconciliation",
+                }
+            ),
+            _EVENT_ENVELOPE_FIELDS
+            | frozenset(
+                {
+                    "attempt",
+                    "blocked",
+                    "reason",
+                    "reconciled",
+                    "task_id",
+                    "worktree_path",
                 }
             ),
         }
@@ -4751,6 +5071,32 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "database Portal cleanup event is malformed"
                 )
+        elif event_type == "merged_worktree_cleanup":
+            removed = event.get("removed")
+            skipped = event.get("skipped")
+            if (
+                event.get("attempted") is not True
+                or type(event.get("max_cleanups")) is not int
+                or not 1 <= int(event["max_cleanups"]) <= 1024
+                or type(event.get("prune_returncode")) is not int
+                or not isinstance(event.get("prune_stdout"), str)
+                or not isinstance(event.get("prune_stderr"), str)
+                or not isinstance(event.get("target_branch"), str)
+                or not str(event.get("target_branch") or "")
+                or not isinstance(event.get("worktree_root"), str)
+                or not str(event.get("worktree_root") or "")
+                or type(event.get("removed_count")) is not int
+                or type(event.get("skipped_count")) is not int
+                or not isinstance(removed, list)
+                or not isinstance(skipped, list)
+                or int(event["removed_count"]) != len(removed)
+                or int(event["skipped_count"]) != len(skipped)
+                or any(not isinstance(item, Mapping) for item in removed)
+                or any(not isinstance(item, Mapping) for item in skipped)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal merged-worktree cleanup is malformed"
+                )
         elif event_type == "stale_worktree_cleanup":
             removed = event.get("removed")
             skipped = event.get("skipped")
@@ -4842,25 +5188,134 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "database Portal stale-worktree diagnostic is malformed"
                 )
-        elif event_type == "implementation_shutdown_reconciled":
-            if (
-                event.get("reconciled") is not True
-                or event.get("blocked") is not False
-                or event.get("reason") != "already_quiesced"
-                or not isinstance(event.get("reconciled_at"), str)
-                or not str(event.get("reconciled_at") or "")
-                or event.get("task_id") != ""
+        elif event_type == "implementation_shutdown_reconciliation_blocked":
+            simple_worker_shape = frozenset(event) == (
+                _EVENT_ENVELOPE_FIELDS
+                | frozenset(
+                    {
+                        "attempt",
+                        "blocked",
+                        "reason",
+                        "reconciled",
+                        "task_id",
+                        "worktree_path",
+                    }
+                )
+            )
+            if simple_worker_shape and (
+                event.get("blocked") is not True
+                or event.get("reconciled") is not False
+                or event.get("reason") != "implementation_worker_still_active"
+                or not isinstance(event.get("task_id"), str)
+                or not str(event.get("task_id") or "")
                 or type(event.get("attempt")) is not int
-                or event.get("attempt") != 0
-                or event.get("attempt_recovery") != {}
-                or not _closed_typed_record_matches(
-                    event.get("task_claim_reconciliation"),
+                or int(event["attempt"]) < 1
+                or not isinstance(event.get("worktree_path"), str)
+                or not str(event.get("worktree_path") or "")
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal active-worker reconciliation is malformed"
+                )
+        elif event_type == "implementation_shutdown_reconciled":
+            task_id = event.get("task_id")
+            nested_attempt = event.get("attempt")
+            claim = event.get("task_claim_reconciliation")
+            legacy_identityless = bool(
+                task_id == ""
+                and type(nested_attempt) is int
+                and nested_attempt == 0
+                and _closed_typed_record_matches(
+                    claim,
                     {
                         "blocked": False,
                         "reason": "no_task_claim_identity",
                         "reconciled": False,
                     },
                 )
+                and event.get("stale_lock_cleared") is False
+            )
+            task_bound_no_claim = bool(
+                isinstance(task_id, str)
+                and bool(task_id)
+                and type(nested_attempt) is int
+                and nested_attempt >= 1
+                and isinstance(claim, Mapping)
+                and set(claim)
+                == {
+                    "blocked",
+                    "canonical_task_cid",
+                    "claim_path",
+                    "reason",
+                    "reconciled",
+                    "task_id",
+                }
+                and claim.get("blocked") is False
+                and claim.get("reconciled") is False
+                and claim.get("reason") == "no_task_claim"
+                and claim.get("task_id") == task_id
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(claim.get("canonical_task_cid") or ""),
+                )
+                is not None
+                and isinstance(claim.get("claim_path"), str)
+                and bool(str(claim.get("claim_path") or ""))
+                and event.get("stale_lock_cleared") is False
+            )
+            release_claim_fields = {
+                "attempt",
+                "blocked",
+                "canonical_task_cid",
+                "claim_id",
+                "claim_lease_id",
+                "claim_path",
+                "lifecycle_fence",
+                "lifecycle_record_id",
+                "operation_id",
+                "owner_pid",
+                "reason",
+                "receipt_id",
+                "receipt_path",
+                "reconciled",
+                "released_at",
+                "stale_dispatch_intent_released_for_retry",
+                "state_dir",
+                "task_id",
+                "task_status",
+            }
+            task_bound_release = bool(
+                isinstance(task_id, str)
+                and bool(task_id)
+                and type(nested_attempt) is int
+                and nested_attempt >= 1
+                and isinstance(claim, Mapping)
+                and set(claim) == release_claim_fields
+                and claim.get("attempt") == nested_attempt
+                and claim.get("task_id") == task_id
+                and claim.get("blocked") is False
+                and claim.get("reconciled") is True
+                and claim.get("reason") == "quiesced_task_claim_released"
+                and claim.get("task_status") == "todo"
+                and claim.get("stale_dispatch_intent_released_for_retry") is True
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(claim.get("canonical_task_cid") or ""),
+                )
+                is not None
+                and re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(claim.get("receipt_id") or ""),
+                )
+                is not None
+                and event.get("stale_lock_cleared") is True
+            )
+            if (
+                event.get("reconciled") is not True
+                or event.get("blocked") is not False
+                or event.get("reason") != "already_quiesced"
+                or not isinstance(event.get("reconciled_at"), str)
+                or not str(event.get("reconciled_at") or "")
+                or event.get("attempt_recovery") != {}
                 or not _closed_typed_record_matches(
                     event.get("protected_path_reconciliation"),
                     {
@@ -4878,7 +5333,10 @@ class DatabasePortalExecutionBridge:
                         "reconciled": False,
                     },
                 )
-                or event.get("stale_lock_cleared") is not False
+                or sum(
+                    (legacy_identityless, task_bound_no_claim, task_bound_release)
+                )
+                != 1
             ):
                 raise DatabasePortalBridgeError(
                     "database Portal quiescent-shutdown event is malformed"
@@ -4908,7 +5366,10 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "database Portal implementation terminal event is malformed"
                 )
-        elif event_type == "implementation_resource_claim_lock_cleared":
+        elif event_type in {
+            "implementation_resource_claim_lock_cleared",
+            "implementation_lock_cleared",
+        }:
             if (
                 not isinstance(event.get("task_id"), str)
                 or not str(event.get("task_id") or "")
@@ -4921,6 +5382,73 @@ class DatabasePortalExecutionBridge:
             ):
                 raise DatabasePortalBridgeError(
                     "database Portal resource-lock diagnostic is malformed"
+                )
+        elif event_type == "implementation_task_claim_released":
+            stale_release = "stale_dispatch_intent_released_for_retry" in event
+            unfinished_release = "released_unfinished_attempt" in event
+            required_strings = {
+                "task_id",
+                "canonical_task_cid",
+                "claim_id",
+                "claim_lease_id",
+                "claim_path",
+                "lifecycle_record_id",
+                "operation_id",
+                "receipt_id",
+                "receipt_path",
+                "released_at",
+                "state_dir",
+            }
+            if (
+                stale_release is unfinished_release
+                or any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in required_strings
+                )
+                or type(event.get("attempt")) is not int
+                or int(event["attempt"]) < 1
+                or type(event.get("owner_pid")) is not int
+                or int(event["owner_pid"]) <= 0
+                or type(event.get("lifecycle_fence")) is not int
+                or int(event["lifecycle_fence"]) < 1
+                or event.get("blocked") is not False
+                or event.get("reconciled") is not True
+                or event.get("reason") != "quiesced_task_claim_released"
+                or event.get("task_status") != "todo"
+                or re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(event.get("canonical_task_cid") or ""),
+                )
+                is None
+                or re.fullmatch(
+                    r"baguqeera[a-z2-7]{52}",
+                    str(event.get("receipt_id") or ""),
+                )
+                is None
+                or (
+                    stale_release
+                    and event.get("stale_dispatch_intent_released_for_retry")
+                    is not True
+                )
+                or (
+                    unfinished_release
+                    and (
+                        not isinstance(
+                            event.get("released_unfinished_attempt"), Mapping
+                        )
+                        or re.fullmatch(
+                            r"baguqeera[a-z2-7]{52}",
+                            str(
+                                event.get("released_unfinished_retry_id") or ""
+                            ),
+                        )
+                        is None
+                    )
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal task-claim release event is malformed"
                 )
         elif event_type == "implementation_retry_deferred":
             if (
@@ -5059,6 +5587,8 @@ class DatabasePortalExecutionBridge:
     def _pinned_no_provider_snapshot(
         self,
         paths: DatabasePortalAttemptPaths,
+        *,
+        reject_duplicate_physical_events: bool = False,
     ) -> dict[str, Any]:
         """Read a closed terminal snapshot without a repairing scanner."""
         parent_fd = authority_fd = attempt_fd = -1
@@ -5203,9 +5733,9 @@ class DatabasePortalExecutionBridge:
                         source_last = sequence
                         known = events_by_sequence.get(sequence)
                         if known is not None:
-                            if known != event:
+                            if known != event or reject_duplicate_physical_events:
                                 raise DatabasePortalBridgeError(
-                                    "database Portal event sequence conflicts"
+                                    "database Portal event sequence conflicts or repeats"
                                 )
                             continue
                         if (
@@ -8559,6 +9089,2052 @@ class DatabasePortalExecutionBridge:
         evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
         return evidence
 
+    def _strict_quiesced_task_claim_release_receipt(
+        self,
+        paths: DatabasePortalAttemptPaths,
+        claim_release: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Read one exact release receipt without opening recovery authority.
+
+        The terminal reconciliation already nominates the receipt path and
+        content identity.  This reader confines that nomination to the exact
+        attempt root and accepts only the two producer shapes used by the
+        versioned quiesced-release migration below.
+        """
+
+        receipt_path = Path(str(claim_release.get("receipt_path") or ""))
+        receipt_dir = paths.root / "implementation-task-claim-release-receipts"
+        if (
+            not receipt_path.name
+            or receipt_path.parent != receipt_dir
+            or re.fullmatch(
+                r"canonical-task-[0-9a-f]{24}-a[1-9][0-9]*[.]json",
+                receipt_path.name,
+            )
+            is None
+            or paths.root.is_symlink()
+            or receipt_dir.is_symlink()
+            or not receipt_dir.is_dir()
+            or receipt_path.is_symlink()
+            or not receipt_path.is_file()
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal task-claim release receipt escapes its exact root"
+            )
+        root_fd = receipt_dir_fd = receipt_fd = -1
+        try:
+            directory_flags = (
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+            )
+            root_fd = os.open(paths.root, directory_flags)
+            root_identity = os.fstat(root_fd)
+            root_published = os.stat(paths.root, follow_symlinks=False)
+            if (
+                not stat.S_ISDIR(root_identity.st_mode)
+                or root_identity.st_uid != os.geteuid()
+                or root_identity.st_gid != os.getegid()
+                or stat.S_IMODE(root_identity.st_mode) != 0o700
+                or self._authority_fingerprint(root_identity)
+                != self._authority_fingerprint(root_published)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal task-claim release root is not exact"
+                )
+            receipt_dir_fd = os.open(
+                receipt_dir.name,
+                directory_flags,
+                dir_fd=root_fd,
+            )
+            directory_identity = os.fstat(receipt_dir_fd)
+            directory_published = os.stat(
+                receipt_dir.name,
+                dir_fd=root_fd,
+                follow_symlinks=False,
+            )
+            if (
+                not stat.S_ISDIR(directory_identity.st_mode)
+                or directory_identity.st_uid != os.geteuid()
+                or directory_identity.st_gid != os.getegid()
+                or int(directory_identity.st_nlink) != 2
+                or stat.S_IMODE(directory_identity.st_mode)
+                not in {0o700, 0o775}
+                or self._authority_fingerprint(directory_identity)
+                != self._authority_fingerprint(directory_published)
+                or sorted(os.listdir(receipt_dir_fd)) != [receipt_path.name]
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal task-claim release population is ambiguous"
+                )
+            receipt_fd = os.open(
+                receipt_path.name,
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0),
+                dir_fd=receipt_dir_fd,
+            )
+            receipt_identity = os.fstat(receipt_fd)
+            receipt_published = os.stat(
+                receipt_path.name,
+                dir_fd=receipt_dir_fd,
+                follow_symlinks=False,
+            )
+            if (
+                not stat.S_ISREG(receipt_identity.st_mode)
+                or receipt_identity.st_uid != os.geteuid()
+                or receipt_identity.st_gid != os.getegid()
+                or int(receipt_identity.st_nlink) != 1
+                or (
+                    stat.S_IMODE(directory_identity.st_mode),
+                    stat.S_IMODE(receipt_identity.st_mode),
+                )
+                not in {(0o700, 0o600), (0o775, 0o664)}
+                or int(receipt_identity.st_size) > 262_144
+                or self._authority_fingerprint(receipt_identity)
+                != self._authority_fingerprint(receipt_published)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal task-claim release receipt is not private"
+                )
+            chunks: list[bytes] = []
+            remaining = int(receipt_identity.st_size)
+            while remaining:
+                chunk = os.read(receipt_fd, min(remaining, 64 * 1024))
+                if not chunk:
+                    raise DatabasePortalBridgeError(
+                        "database Portal task-claim release receipt is truncated"
+                    )
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+            if (
+                os.read(receipt_fd, 1)
+                or self._authority_fingerprint(os.fstat(receipt_fd))
+                != self._authority_fingerprint(receipt_identity)
+                or self._authority_fingerprint(
+                    os.stat(
+                        receipt_path.name,
+                        dir_fd=receipt_dir_fd,
+                        follow_symlinks=False,
+                    )
+                )
+                != self._authority_fingerprint(receipt_identity)
+                or sorted(os.listdir(receipt_dir_fd)) != [receipt_path.name]
+                or self._authority_fingerprint(
+                    os.stat(
+                        receipt_dir.name,
+                        dir_fd=root_fd,
+                        follow_symlinks=False,
+                    )
+                )
+                != self._authority_fingerprint(directory_identity)
+                or self._authority_fingerprint(
+                    os.stat(paths.root, follow_symlinks=False)
+                )
+                != self._authority_fingerprint(root_identity)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal task-claim release authority changed"
+                )
+            value = self._strict_json_object_bytes(
+                raw,
+                authority="task-claim release receipt",
+            )
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "database Portal task-claim release receipt is unreadable"
+            ) from exc
+        finally:
+            for descriptor in (receipt_fd, receipt_dir_fd, root_fd):
+                if descriptor >= 0:
+                    with suppress(OSError):
+                        os.close(descriptor)
+
+        common_fields = {
+            "schema",
+            "operation",
+            "task_id",
+            "canonical_task_cid",
+            "attempt",
+            "task_status",
+            "claim",
+            "worktree_lifecycle",
+            "task_source_identity",
+            "operation_id",
+            "phase",
+            "prepared_at",
+            "released_at",
+            "receipt_id",
+        }
+        unfinished_fields = common_fields | {
+            "released_unfinished_attempt",
+            "released_unfinished_retry_id",
+        }
+        stale_intent_fields = common_fields | {
+            "stale_dispatch_intent_released_for_retry",
+        }
+        unsigned = dict(value)
+        receipt_id = str(unsigned.pop("receipt_id", "") or "")
+        if (
+            frozenset(value)
+            not in {frozenset(unfinished_fields), frozenset(stale_intent_fields)}
+            or value.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "quiesced-implementation-task-claim-release@1"
+            )
+            or value.get("operation")
+            != "release_quiesced_implementation_task_claim"
+            or value.get("phase") != "released"
+            or value.get("task_status") != "todo"
+            or value.get("task_source_identity") is not None
+            or not re.fullmatch(r"baguqeera[a-z2-7]{52}", receipt_id)
+            or content_identity(unsigned) != receipt_id
+            or receipt_id != claim_release.get("receipt_id")
+            or any(
+                value.get(name) != claim_release.get(name)
+                for name in (
+                    "task_id",
+                    "canonical_task_cid",
+                    "attempt",
+                    "task_status",
+                    "released_at",
+                )
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal task-claim release receipt is not exact"
+            )
+        claim = value.get("claim")
+        lifecycle = value.get("worktree_lifecycle")
+        claim_fields = {
+            "path",
+            "claim_id",
+            "lease_id",
+            "owner_pid",
+            "state_dir",
+            "state_path",
+            "legacy_worktree_root_missing",
+        }
+        lifecycle_fields = {
+            "record_id",
+            "lease_id",
+            "fence",
+            "state",
+            "workspace_path",
+            "terminal_reason",
+        }
+        try:
+            prepared_at = datetime.fromisoformat(str(value["prepared_at"]))
+            released_at = datetime.fromisoformat(str(value["released_at"]))
+        except (KeyError, TypeError, ValueError):
+            prepared_at = released_at = None
+        operation_basis = {
+            name: field_value
+            for name, field_value in value.items()
+            if name
+            not in {
+                "operation_id",
+                "phase",
+                "prepared_at",
+                "released_at",
+                "receipt_id",
+            }
+        }
+        if (
+            not isinstance(claim, Mapping)
+            or set(claim) != claim_fields
+            or claim.get("path") != claim_release.get("claim_path")
+            or claim.get("claim_id") != claim_release.get("claim_id")
+            or claim.get("lease_id") != claim_release.get("claim_lease_id")
+            or claim.get("owner_pid") != claim_release.get("owner_pid")
+            or claim.get("state_dir") != claim_release.get("state_dir")
+            or claim.get("state_dir") != str(paths.root)
+            or claim.get("state_path") != str(paths.state)
+            or claim.get("legacy_worktree_root_missing") is not False
+            or type(claim.get("owner_pid")) is not int
+            or int(claim.get("owner_pid") or 0) <= 0
+            or re.fullmatch(
+                r"baguqeera[a-z2-7]{52}",
+                str(claim.get("claim_id") or ""),
+            )
+            is None
+            or re.fullmatch(r"[0-9a-f]{40}", str(claim.get("lease_id") or ""))
+            is None
+            or not PurePosixPath(str(claim.get("path") or "")).is_absolute()
+            or PurePosixPath(str(claim.get("path") or "")).parent.name
+            != "implementation-task-claims"
+            or PurePosixPath(str(claim.get("path") or "")).name
+            != (
+                "canonical-task-"
+                + hashlib.sha1(
+                    str(value.get("canonical_task_cid") or "").encode("utf-8")
+                ).hexdigest()[:20]
+                + ".lock"
+            )
+            or not isinstance(lifecycle, Mapping)
+            or set(lifecycle) != lifecycle_fields
+            or lifecycle.get("record_id")
+            != claim_release.get("lifecycle_record_id")
+            or lifecycle.get("fence") != claim_release.get("lifecycle_fence")
+            or re.fullmatch(
+                r"baguqeera[a-z2-7]{52}",
+                str(lifecycle.get("record_id") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"[0-9a-f]{40}", str(lifecycle.get("lease_id") or "")
+            )
+            is None
+            or type(lifecycle.get("fence")) is not int
+            or int(lifecycle.get("fence") or 0) < 1
+            or lifecycle.get("state") != "terminal"
+            or lifecycle.get("terminal_reason")
+            != "controlled_restart_dead_owner"
+            or not PurePosixPath(
+                str(lifecycle.get("workspace_path") or "")
+            ).is_absolute()
+            or not isinstance(prepared_at, datetime)
+            or prepared_at.tzinfo is None
+            or prepared_at.utcoffset() is None
+            or not isinstance(released_at, datetime)
+            or released_at.tzinfo is None
+            or released_at.utcoffset() is None
+            or re.fullmatch(
+                r"baguqeera[a-z2-7]{52}",
+                str(value.get("operation_id") or ""),
+            )
+            is None
+            or content_identity(operation_basis) != value.get("operation_id")
+            or value.get("operation_id") != claim_release.get("operation_id")
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal task-claim release receipt changed identity"
+            )
+        expected_name_digest = hashlib.sha256(
+            (
+                f"{value['canonical_task_cid']}\0{value['attempt']}\0"
+                f"{claim['lease_id']}"
+            ).encode("utf-8")
+        ).hexdigest()[:24]
+        expected_name = (
+            f"canonical-task-{expected_name_digest}-a{value['attempt']}.json"
+        )
+        unfinished_variant = "released_unfinished_attempt" in value
+        released_attempt = value.get("released_unfinished_attempt")
+        released_attempt_fields = {
+            "board_namespace",
+            "branch",
+            "canonical_task_key",
+            "claim_started_at",
+            "event_id",
+            "released_from",
+            "released_to",
+            "sequence",
+            "snapshot_id",
+            "start_event_id",
+            "start_sequence",
+            "started_at",
+            "stream_id",
+            "timestamp",
+            "worktree_path",
+        }
+        released_timestamps: list[datetime] = []
+        if isinstance(released_attempt, Mapping):
+            for name in ("claim_started_at", "started_at", "timestamp"):
+                try:
+                    parsed = datetime.fromisoformat(str(released_attempt[name]))
+                except (KeyError, TypeError, ValueError):
+                    released_timestamps = []
+                    break
+                if parsed.tzinfo is None or parsed.utcoffset() is None:
+                    released_timestamps = []
+                    break
+                released_timestamps.append(parsed)
+        unfinished_attempt_exact = bool(
+            isinstance(released_attempt, Mapping)
+            and set(released_attempt) == released_attempt_fields
+            and type(released_attempt.get("released_from")) is int
+            and released_attempt.get("released_from") == value.get("attempt")
+            and type(released_attempt.get("released_to")) is int
+            and released_attempt.get("released_to")
+            == int(value.get("attempt") or 0) - 1
+            and type(released_attempt.get("sequence")) is int
+            and type(released_attempt.get("start_sequence")) is int
+            and 0 < int(released_attempt.get("start_sequence") or 0)
+            < int(released_attempt.get("sequence") or 0)
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(released_attempt.get("event_id") or ""),
+            )
+            is not None
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(released_attempt.get("start_event_id") or ""),
+            )
+            is not None
+            and re.fullmatch(
+                r"event-log:sha256:[0-9a-f]{64}",
+                str(released_attempt.get("stream_id") or ""),
+            )
+            is not None
+            and re.fullmatch(
+                r"event-log-snapshot:sha256:[0-9a-f]{64}",
+                str(released_attempt.get("snapshot_id") or ""),
+            )
+            is not None
+            and str(released_attempt.get("stream_id") or "").removeprefix(
+                "event-log:"
+            )
+            == str(released_attempt.get("snapshot_id") or "").removeprefix(
+                "event-log-snapshot:"
+            )
+            and re.fullmatch(
+                r"task/v1/[0-9a-f]{64}",
+                str(released_attempt.get("canonical_task_key") or ""),
+            )
+            is not None
+            and isinstance(released_attempt.get("board_namespace"), str)
+            and bool(str(released_attempt.get("board_namespace") or ""))
+            and isinstance(released_attempt.get("branch"), str)
+            and bool(str(released_attempt.get("branch") or ""))
+            and released_attempt.get("worktree_path")
+            == lifecycle.get("workspace_path")
+            and len(released_timestamps) == 3
+            and released_timestamps[0]
+            <= released_timestamps[1]
+            <= released_timestamps[2]
+        )
+        if (
+            receipt_path.name != expected_name
+            or (unfinished_variant and released_at > prepared_at)
+            or (not unfinished_variant and prepared_at > released_at)
+            or (
+                unfinished_variant
+                and (
+                    not unfinished_attempt_exact
+                    or re.fullmatch(
+                        r"baguqeera[a-z2-7]{52}",
+                        str(value.get("released_unfinished_retry_id") or ""),
+                    )
+                    is None
+                )
+            )
+            or (
+                not unfinished_variant
+                and value.get("stale_dispatch_intent_released_for_retry")
+                is not True
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal task-claim release producer basis is not exact"
+            )
+        return value
+
+    @contextmanager
+    def _pinned_quiesced_release_artifact_population(
+        self,
+        attempt: Any,
+        attempt_fd: int,
+        *,
+        expected_evidence: Mapping[str, Any],
+    ) -> Any:
+        """Pin the exact migration receipts through the outer status CAS.
+
+        Reconciliation publication cooperates with the directory lock, while
+        the older claim-release producer does not.  Retained child descriptors,
+        published-entry fingerprints, and pre/post-CAS population verification
+        therefore close non-cooperating atomic replacement too; any detected
+        change raises into the existing fenced compensation saga.  This is
+        deliberately local to the versioned migration proof.  The generic
+        reconciliation loader remains a repairing, path-oriented API and is
+        not safe to call in the terminal-claim window.
+        """
+
+        directory_specs = (
+            (
+                "database-attempt-reconciliations",
+                re.compile(r"[0-9a-f]{64}[.]json"),
+                frozenset({(0o700, 0o600)}),
+                12,
+            ),
+            (
+                "implementation-task-claim-release-receipts",
+                re.compile(r"canonical-task-[0-9a-f]{24}-a[1-9][0-9]*[.]json"),
+                frozenset({(0o700, 0o600), (0o775, 0o664)}),
+                1,
+            ),
+        )
+        directory_fds: dict[str, int] = {}
+        directory_fingerprints: dict[str, tuple[int, ...]] = {}
+        directory_names: dict[str, tuple[str, ...]] = {}
+        file_records: dict[
+            tuple[str, str], tuple[int, tuple[int, ...], str, int]
+        ] = {}
+        opened: list[int] = []
+        locked: list[int] = []
+
+        def read_exact(descriptor: int, size: int) -> bytes:
+            offset = 0
+            chunks: list[bytes] = []
+            while offset < size:
+                block = os.pread(descriptor, min(65_536, size - offset), offset)
+                if not block:
+                    break
+                chunks.append(block)
+                offset += len(block)
+            if offset != size:
+                raise DatabasePortalBridgeError(
+                    "quiesced release artifact read was incomplete"
+                )
+            return b"".join(chunks)
+
+        try:
+            # Acquire in a fixed lexical order.  If a writer already owns
+            # either receipt authority, fail immediately rather than invert
+            # the receipt -> event ordering used below.
+            for (
+                directory_name,
+                name_pattern,
+                mode_profiles,
+                maximum_count,
+            ) in directory_specs:
+                descriptor = os.open(
+                    directory_name,
+                    os.O_RDONLY
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_NONBLOCK", 0),
+                    dir_fd=attempt_fd,
+                )
+                opened.append(descriptor)
+                metadata = os.fstat(descriptor)
+                published_directory = os.stat(
+                    directory_name,
+                    dir_fd=attempt_fd,
+                    follow_symlinks=False,
+                )
+                if (
+                    not stat.S_ISDIR(metadata.st_mode)
+                    or metadata.st_uid != os.geteuid()
+                    or metadata.st_gid != os.getegid()
+                    or int(metadata.st_nlink) != 2
+                    or stat.S_IMODE(metadata.st_mode)
+                    not in {profile[0] for profile in mode_profiles}
+                    or self._authority_fingerprint(metadata)
+                    != self._authority_fingerprint(published_directory)
+                ):
+                    raise DatabasePortalBridgeError(
+                        "quiesced release artifact directory is not private"
+                    )
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                except (BlockingIOError, PermissionError) as exc:
+                    raise DatabasePortalBridgeError(
+                        "quiesced release artifact publication is active"
+                    ) from exc
+                locked.append(descriptor)
+                names = tuple(sorted(os.listdir(descriptor)))
+                if (
+                    not names
+                    or len(names) > maximum_count
+                    or any(name_pattern.fullmatch(name) is None for name in names)
+                    or (
+                        directory_name
+                        == "implementation-task-claim-release-receipts"
+                        and len(names) != 1
+                    )
+                ):
+                    raise DatabasePortalBridgeError(
+                        "quiesced release artifact population is not closed"
+                    )
+                directory_fds[directory_name] = descriptor
+                directory_fingerprints[directory_name] = self._authority_fingerprint(
+                    metadata
+                )
+                directory_names[directory_name] = names
+                for name in names:
+                    child_fd = os.open(
+                        name,
+                        os.O_RDONLY
+                        | getattr(os, "O_CLOEXEC", 0)
+                        | getattr(os, "O_NOFOLLOW", 0)
+                        | getattr(os, "O_NONBLOCK", 0),
+                        dir_fd=descriptor,
+                    )
+                    opened.append(child_fd)
+                    child = os.fstat(child_fd)
+                    if (
+                        not stat.S_ISREG(child.st_mode)
+                        or child.st_uid != os.geteuid()
+                        or child.st_gid != os.getegid()
+                        or child.st_nlink != 1
+                        or (
+                            stat.S_IMODE(metadata.st_mode),
+                            stat.S_IMODE(child.st_mode),
+                        )
+                        not in mode_profiles
+                        or not 1 <= child.st_size <= 262_144
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "quiesced release artifact child is not an immutable regular file"
+                        )
+                    payload = read_exact(child_fd, int(child.st_size))
+                    published = os.stat(
+                        name,
+                        dir_fd=descriptor,
+                        follow_symlinks=False,
+                    )
+                    if self._authority_fingerprint(published) != (
+                        self._authority_fingerprint(child)
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "quiesced release artifact child was retargeted"
+                        )
+                    file_records[(directory_name, name)] = (
+                        child_fd,
+                        self._authority_fingerprint(child),
+                        hashlib.sha256(payload).hexdigest(),
+                        int(child.st_size),
+                    )
+
+            reconciliation_names = directory_names[
+                "database-attempt-reconciliations"
+            ]
+            receipt_ids = tuple(
+                "sha256:" + name.removesuffix(".json")
+                for name in reconciliation_names
+            )
+            expected_count = expected_evidence.get(
+                "reconciliation_receipt_count"
+            )
+            expected_ids_digest = expected_evidence.get(
+                "reconciliation_receipt_ids_digest"
+            )
+            if (
+                type(expected_count) is not int
+                or int(expected_count) != len(receipt_ids)
+                or expected_ids_digest
+                != _sha256_bytes(_canonical_json(sorted(receipt_ids)))
+            ):
+                raise DatabasePortalBridgeError(
+                    "quiesced release reconciliation population changed"
+                )
+            release_name = directory_names[
+                "implementation-task-claim-release-receipts"
+            ][0]
+            if release_name != expected_evidence.get(
+                "task_claim_release_receipt_name"
+            ):
+                raise DatabasePortalBridgeError(
+                    "quiesced release receipt filename changed"
+                )
+            release_record = file_records[
+                ("implementation-task-claim-release-receipts", release_name)
+            ]
+            release_payload = read_exact(release_record[0], release_record[3])
+            release_receipt = self._strict_json_object_bytes(
+                release_payload,
+                authority="task-claim release receipt",
+            )
+            unsigned_release = dict(release_receipt)
+            release_receipt_id = str(
+                unsigned_release.pop("receipt_id", "") or ""
+            )
+            if (
+                release_receipt_id
+                != expected_evidence.get("task_claim_release_receipt_id")
+                or content_identity(unsigned_release) != release_receipt_id
+            ):
+                raise DatabasePortalBridgeError(
+                    "quiesced release receipt identity changed"
+                )
+
+            # Revalidate every reconciliation object's self-CID from the
+            # retained bytes.  This prevents a same-name replacement between
+            # initial proof construction and the final fenced window.
+            paths = self._paths(attempt)
+            exact_authority = {
+                "schema": DATABASE_PORTAL_ATTEMPT_RECONCILIATION_SCHEMA,
+                "interface": self.INTERFACE,
+                "attempt_id": str(attempt.attempt_id),
+                "claim_id": str(attempt.claim_id),
+                "task_cid": str(attempt.task_cid),
+                "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+                "attempt_number": int(attempt.attempt_number),
+                "owner_session_id": str(attempt.owner_session_id),
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+                "attempt_root": str(paths.root),
+            }
+            for name, receipt_id in zip(reconciliation_names, receipt_ids):
+                record = file_records[
+                    ("database-attempt-reconciliations", name)
+                ]
+                payload = read_exact(record[0], record[3])
+                decoded = self._strict_json_object_bytes(
+                    payload,
+                    authority="reconciliation receipt",
+                )
+                if (
+                    set(decoded) - _ATTEMPT_RECONCILIATION_FIELDS
+                    or decoded.get("receipt_id") != receipt_id
+                    or any(
+                        type(decoded.get(field)) is not type(value)
+                        or decoded.get(field) != value
+                        for field, value in exact_authority.items()
+                    )
+                    or decoded.get("stage")
+                    not in {"blocked", "prepared", "commit_barrier", "terminal"}
+                ):
+                    raise DatabasePortalBridgeError(
+                        "quiesced release reconciliation receipt changed authority"
+                    )
+                unsigned = dict(decoded)
+                unsigned.pop("receipt_id", None)
+                if _sha256_bytes(_canonical_json(unsigned)) != receipt_id:
+                    raise DatabasePortalBridgeError(
+                        "quiesced release reconciliation receipt identity changed"
+                    )
+
+            def verify() -> None:
+                for directory_name, descriptor in directory_fds.items():
+                    published_directory = os.stat(
+                        directory_name,
+                        dir_fd=attempt_fd,
+                        follow_symlinks=False,
+                    )
+                    if (
+                        self._authority_fingerprint(os.fstat(descriptor))
+                        != directory_fingerprints[directory_name]
+                        or self._authority_fingerprint(published_directory)
+                        != directory_fingerprints[directory_name]
+                        or tuple(sorted(os.listdir(descriptor)))
+                        != directory_names[directory_name]
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "quiesced release artifact directory changed during admission"
+                        )
+                for (directory_name, name), (
+                    child_fd,
+                    fingerprint,
+                    expected_sha256,
+                    expected_size,
+                ) in file_records.items():
+                    child = os.fstat(child_fd)
+                    named = os.stat(
+                        name,
+                        dir_fd=directory_fds[directory_name],
+                        follow_symlinks=False,
+                    )
+                    if (
+                        self._authority_fingerprint(child) != fingerprint
+                        or self._authority_fingerprint(named) != fingerprint
+                        or hashlib.sha256(
+                            read_exact(child_fd, expected_size)
+                        ).hexdigest()
+                        != expected_sha256
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "quiesced release artifact child changed during admission"
+                        )
+
+            yield {
+                "verify": verify,
+                "reconciliation_receipt_ids": receipt_ids,
+                "release_receipt_id": release_receipt_id,
+                "directory_fds": dict(directory_fds),
+            }
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "quiesced release artifact authority is unreadable"
+            ) from exc
+        finally:
+            for descriptor in reversed(locked):
+                with suppress(OSError):
+                    fcntl.flock(descriptor, fcntl.LOCK_UN)
+            for descriptor in reversed(opened):
+                with suppress(OSError):
+                    os.close(descriptor)
+
+    def _revalidate_pinned_quiesced_release_snapshot(
+        self,
+        attempt_fd: int,
+        *,
+        expected_evidence: Mapping[str, Any],
+    ) -> None:
+        """Recheck the exact nested snapshot using only the pinned root fd.
+
+        The caller holds the event writer's shared lock.  This routine does
+        not resolve paths, invoke recovery, consult mutable adapters, or take
+        another lock; it only verifies content-addressed children selected
+        through ``attempt_fd``.
+        """
+
+        names = tuple(sorted(os.listdir(attempt_fd)))
+        if expected_evidence.get("attempt_directory_names_digest") != (
+            _sha256_bytes(_canonical_json(list(names)))
+        ):
+            raise DatabasePortalBridgeError(
+                "quiesced stale-dispatch release root population changed"
+            )
+
+        manifest_raw, _manifest_fingerprint = self._read_exact_private_child(
+            attempt_fd,
+            "portal-events.jsonl.manifest.json",
+            maximum_bytes=2 * 1024 * 1024,
+        )
+        manifest, records = self._strict_sealed_event_manifest(manifest_raw)
+        event_count = 0
+        total_bytes = 0
+        for record in records:
+            name = str(record.get("path") or "")
+            payload, fingerprint = self._read_exact_private_child(
+                attempt_fd,
+                name,
+                maximum_bytes=16 * 1024 * 1024,
+            )
+            total_bytes += len(payload)
+            event_count += int(record.get("event_count") or 0)
+            physical_digest = str(record.get("sha256") or "")
+            if (
+                total_bytes > 16 * 1024 * 1024
+                or len(payload) != int(record.get("size_bytes") or -1)
+                or fingerprint[0] != int(record.get("device") or -1)
+                or fingerprint[1] != int(record.get("inode") or -1)
+                or fingerprint[7] != int(record.get("mtime_ns") or -1)
+                or (
+                    physical_digest
+                    and hashlib.sha256(payload).hexdigest()
+                    != physical_digest
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "quiesced stale-dispatch release event source changed"
+                )
+
+        binding_raw, _binding_fingerprint = self._read_exact_private_child(
+            attempt_fd,
+            "database-attempt-binding.json",
+            maximum_bytes=256 * 1024,
+        )
+        binding = self._strict_json_object_bytes(
+            binding_raw,
+            authority="attempt binding",
+        )
+        projection_raw, _projection_fingerprint = self._read_exact_private_child(
+            attempt_fd,
+            "task-projection.md",
+            maximum_bytes=2 * 1024 * 1024,
+        )
+        try:
+            projection = projection_raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise DatabasePortalBridgeError(
+                "quiesced stale-dispatch release projection changed"
+            ) from exc
+        state_raw, _state_fingerprint = self._read_exact_private_child(
+            attempt_fd,
+            "portal-task-state.json",
+            maximum_bytes=2 * 1024 * 1024,
+        )
+        _state, state_digest = self._strict_portal_state_bytes(state_raw)
+        expected = {
+            "binding_id": binding.get("binding_id"),
+            "projection_immutable_digest": _projection_immutable_digest(
+                projection
+            ),
+            "state_digest": state_digest,
+            "event_stream_id": manifest.get("stream_id"),
+            "event_snapshot_id": manifest.get("snapshot_id"),
+            "event_manifest_digest": manifest.get("manifest_digest"),
+            "event_count": event_count,
+            "event_head_sequence": manifest.get("latest_sequence"),
+            "event_head_id": manifest.get("last_event_id"),
+        }
+        if any(
+            type(expected_evidence.get(name)) is not type(value)
+            or expected_evidence.get(name) != value
+            for name, value in expected.items()
+        ):
+            raise DatabasePortalBridgeError(
+                "quiesced stale-dispatch release snapshot advanced"
+            )
+
+    def _quiesced_stale_dispatch_release_rearm_evidence(
+        self,
+        attempt: Any,
+        receipt: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Prove a sealed, already-quiesced dispatch-claim release.
+
+        This read-only successor exists because the producer facts may be
+        split across reconciliation passes: the exact runner birth was fenced
+        first, a non-consuming attempt-recovery was recorded later, and only a
+        subsequent quiescent pass released the stale dispatch claim.  It also
+        covers the older producer shape where those first two facts share one
+        receipt.  No reconciliation callback is replayed here.
+        """
+
+        link = receipt.get("terminal_reconciliation")
+        if type(link) is not dict:
+            return None
+        link = dict(link)
+        exact_attempt = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        unsigned_link = dict(link)
+        link_evidence_id = str(unsigned_link.pop("evidence_id", "") or "")
+        if (
+            set(link) != set(DATABASE_PORTAL_TERMINAL_RECONCILIATION_LINK_FIELDS)
+            or link.get("schema")
+            != DATABASE_PORTAL_TERMINAL_RECONCILIATION_LINK_SCHEMA
+            or not _strict_attempt_integer_fields(link)
+            or any(
+                type(link.get(name)) is not type(value)
+                or link.get(name) != value
+                for name, value in exact_attempt.items()
+            )
+            or link.get("nested_reason") != "nested_portal_attempt_reconciled"
+            or link.get("nested_reconciled") is not True
+            or link.get("intended_database_disposition")
+            != "blocked_unknown_outcome"
+            or not re.fullmatch(r"baguqeera[a-z2-7]{52}", link_evidence_id)
+            or content_identity(unsigned_link) != link_evidence_id
+        ):
+            return None
+
+        paths = self._paths(attempt)
+        expected_root = self.attempt_root / hashlib.sha256(
+            str(attempt.attempt_id).encode("utf-8")
+        ).hexdigest()[:24]
+        if paths.root != expected_root:
+            return None
+        try:
+            sealed = self._pinned_no_provider_snapshot(
+                paths,
+                reject_duplicate_physical_events=True,
+            )
+            binding = dict(sealed["binding"])
+            self._verify_binding_identity(binding)
+            durable_binding = (
+                self._binding_lookup(attempt)
+                if self._binding_lookup is not None
+                else None
+            )
+            projection = str(sealed["projection"])
+            if (
+                _projection_immutable_digest(projection)
+                != binding.get("projection_immutable_digest")
+                or _HEADER.findall(projection)
+                != [str(binding.get("task_alias") or "")]
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal task projection identity changed"
+                )
+            identity = self._projection_task_identity(paths, binding, projection)
+            state = dict(sealed["state"])
+            state_digest = str(sealed["state_digest"])
+            verified_current = self._verify_nested_state_identity(
+                paths,
+                binding,
+                identity,
+                payload=state,
+                state_digest=state_digest,
+            )
+            events = list(sealed["events"])
+            manifest = dict(sealed["manifest"])
+            directory_names = list(sealed["directory_names"])
+            if not _quiesced_stale_dispatch_release_event_population_is_closed(
+                events
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal quiesced release event population is not closed"
+                )
+            prepared = self.load_reconciliation_receipt(
+                attempt,
+                str(link["prepared_reconciliation_receipt_id"]),
+                required_stage="prepared",
+            )
+            commit_barrier = self.load_reconciliation_receipt(
+                attempt,
+                str(link["commit_barrier_receipt_id"]),
+                required_stage="commit_barrier",
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if not isinstance(durable_binding, Mapping):
+            return None
+
+        task_alias = str(binding.get("task_alias") or "")
+        nested_task_cid = str(identity.get("canonical_task_cid") or "")
+        if not _quiesced_stale_dispatch_release_event_roles_are_exact(
+            events,
+            task_alias=task_alias,
+        ):
+            return None
+        binding_expected = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        durable_expected = {
+            **exact_attempt,
+            "binding_id": str(binding.get("binding_id") or ""),
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "stage": "portal_entered",
+        }
+        if (
+            any(
+                type(binding.get(name)) is not type(value)
+                or binding.get(name) != value
+                for name, value in binding_expected.items()
+            )
+            or any(
+                type(durable_binding.get(name)) is not type(value)
+                or durable_binding.get(name) != value
+                for name, value in durable_expected.items()
+            )
+            or not re.fullmatch(
+                r"baguqeera[a-z2-7]{52}",
+                str(durable_binding.get("record_id") or ""),
+            )
+            or link.get("binding_id") != binding.get("binding_id")
+            or _projection_status(projection) != "ready"
+            or not self._nested_state_is_exactly_quiescent(
+                state,
+                verified_current,
+            )
+            or (
+                isinstance(state.get("task_statuses"), Mapping)
+                and state["task_statuses"].get(task_alias) != "ready"
+            )
+        ):
+            return None
+
+        prepared_core = {
+            name: value
+            for name, value in prepared.items()
+            if name not in {"stage", "receipt_id"}
+        }
+        barrier_core = {
+            name: value
+            for name, value in commit_barrier.items()
+            if name
+            not in {"stage", "receipt_id", "prepared_reconciliation_receipt_id"}
+        }
+        nested_state = prepared.get("nested_state")
+        provider_fence = prepared.get("provider_runner_fence")
+        recovery = prepared.get("portal_reconciliation")
+        if not isinstance(recovery, Mapping):
+            return None
+        recovery = dict(recovery)
+        claim_release = recovery.get("task_claim_reconciliation")
+        forbidden_terminal = recovery.get("provider_forbidden_terminal_recovery")
+        if (
+            prepared.get("receipt_id")
+            != link.get("prepared_reconciliation_receipt_id")
+            or commit_barrier.get("receipt_id")
+            != link.get("commit_barrier_receipt_id")
+            or commit_barrier.get("prepared_reconciliation_receipt_id")
+            != prepared.get("receipt_id")
+            or _canonical_json(prepared_core) != _canonical_json(barrier_core)
+            or prepared.get("binding_id") != binding.get("binding_id")
+            or prepared.get("reason") != "nested_portal_attempt_reconciled"
+            or prepared.get("reconciled") is not True
+            or prepared.get("blocked") is not False
+            or prepared.get("intended_database_disposition")
+            != "blocked_unknown_outcome"
+            or prepared.get("trigger") != link.get("trigger")
+            or prepared.get("terminal_provider_evidence") is not False
+            or prepared.get("terminal_provider_receipt_id") != ""
+            or not isinstance(nested_state, Mapping)
+            or nested_state.get("present") is not True
+            or nested_state.get("active") is not False
+            or nested_state.get("active_task_id") != ""
+            or type(nested_state.get("active_attempt")) is not int
+            or nested_state.get("active_attempt") != 0
+            or nested_state.get("active_phase") != ""
+            or nested_state.get("state_path") != str(paths.state)
+            or nested_state.get("state_digest")
+            != link.get("nested_state_digest")
+            or not _closed_typed_record_matches(
+                provider_fence,
+                {
+                    "applicable": False,
+                    "fenced": False,
+                    "reason": "ordinary_provider_runner_receipt_absent",
+                    "safe_to_restart": True,
+                },
+            )
+            or not _closed_typed_record_matches(
+                forbidden_terminal,
+                {
+                    "applicable": False,
+                    "blocked": False,
+                    "implementation_dispatched": False,
+                    "provider_dispatched": False,
+                    "reason": "provider_forbidden_terminal_recovery_not_applicable",
+                    "reconciled": False,
+                },
+            )
+            or not isinstance(claim_release, Mapping)
+            or claim_release.get("reconciled") is not True
+            or claim_release.get("blocked") is not False
+            or claim_release.get("reason") != "quiesced_task_claim_released"
+            or claim_release.get("task_id") != task_alias
+            or claim_release.get("canonical_task_cid") != nested_task_cid
+            or type(claim_release.get("attempt")) is not int
+            or int(claim_release.get("attempt") or 0) < 1
+            or claim_release.get("task_status") != "todo"
+        ):
+            return None
+
+        nested_attempt = int(claim_release["attempt"])
+        if any(
+            (
+                "task_id" in event
+                and event.get("task_id") not in {"", task_alias}
+            )
+            or (
+                "canonical_task_cid" in event
+                and event.get("canonical_task_cid")
+                not in {"", nested_task_cid}
+            )
+            or (
+                "attempt" in event
+                and type(event.get("attempt")) is int
+                and event.get("attempt") not in {0, nested_attempt}
+            )
+            for event in events
+        ):
+            return None
+        released_attempt = claim_release.get("released_unfinished_attempt")
+        released_retry_id = str(
+            claim_release.get("released_unfinished_retry_id") or ""
+        )
+        old_unfinished_release = bool(
+            recovery.get("reason")
+            == "interrupted_implementation_recovered_for_retry"
+            and recovery.get("provider_dispatched") is False
+            and recovery.get("implementation_dispatched") is False
+            and recovery.get("acceptance_inferred") is False
+            and recovery.get("retained_candidate_disposition")
+            == "preserved_unvalidated"
+            and isinstance(released_attempt, Mapping)
+            and released_attempt.get("released_from") == nested_attempt
+            and released_attempt.get("released_to") == nested_attempt - 1
+            and nested_attempt == 1
+            and re.fullmatch(r"baguqeera[a-z2-7]{52}", released_retry_id)
+            is not None
+            and "stale_dispatch_intent_released_for_retry"
+            not in claim_release
+        )
+        stale_intent_release = bool(
+            recovery.get("reason") == "already_quiesced"
+            and claim_release.get("stale_dispatch_intent_released_for_retry")
+            is True
+            and released_attempt is None
+            and not released_retry_id
+        )
+        if old_unfinished_release is stale_intent_release:
+            return None
+        release_variant = (
+            "released_unfinished_attempt_1_to_0"
+            if old_unfinished_release
+            else "stale_dispatch_intent_released_for_retry"
+        )
+
+        try:
+            release_receipt = self._strict_quiesced_task_claim_release_receipt(
+                paths,
+                claim_release,
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if old_unfinished_release:
+            if (
+                release_receipt.get("released_unfinished_attempt")
+                != released_attempt
+                or release_receipt.get("released_unfinished_retry_id")
+                != released_retry_id
+            ):
+                return None
+        elif release_receipt.get(
+            "stale_dispatch_intent_released_for_retry"
+        ) is not True:
+            return None
+        release_receipt_name = Path(
+            str(claim_release.get("receipt_path") or "")
+        ).name
+        if re.fullmatch(
+            r"canonical-task-[0-9a-f]{24}-a[1-9][0-9]*[.]json",
+            release_receipt_name,
+        ) is None:
+            return None
+
+        if paths.reconciliation.is_symlink() or not paths.reconciliation.is_dir():
+            return None
+        implementing_receipts: list[dict[str, Any]] = []
+        recovery_receipts: list[dict[str, Any]] = []
+        reconciliation_receipts: list[dict[str, Any]] = []
+        try:
+            reconciliation_paths = sorted(paths.reconciliation.iterdir())
+            for reconciliation_path in reconciliation_paths:
+                match = re.fullmatch(r"([0-9a-f]{64})[.]json", reconciliation_path.name)
+                if match is None:
+                    raise DatabasePortalBridgeError(
+                        "database Portal reconciliation evidence name is malformed"
+                    )
+                candidate = self.load_reconciliation_receipt(
+                    attempt,
+                    "sha256:" + match.group(1),
+                )
+                reconciliation_receipts.append(candidate)
+                if candidate.get("stage") != "blocked":
+                    continue
+                nested = candidate.get("nested_state")
+                fence = candidate.get("provider_runner_fence")
+                portal = candidate.get("portal_reconciliation")
+                common = bool(
+                    candidate.get("binding_id") == binding.get("binding_id")
+                    and candidate.get("task_alias") == task_alias
+                    and candidate.get("blocked") is True
+                    and candidate.get("reconciled") is False
+                    and candidate.get("reason")
+                    == "nested_portal_attempt_reconciliation_blocked"
+                    and candidate.get("terminal_provider_evidence") is False
+                    and candidate.get("provider_runner_reconciliation_authority")
+                    == "ordinary_provider_runner_fence"
+                    and isinstance(nested, Mapping)
+                    and isinstance(fence, Mapping)
+                    and fence.get("applicable") is True
+                    and fence.get("fenced") is True
+                    and fence.get("safe_to_restart") is True
+                    and fence.get("reason")
+                    == "ordinary_provider_runner_exact_birth_fenced"
+                    and type(fence.get("pid")) is int
+                    and int(fence.get("pid") or 0) > 0
+                    and isinstance(portal, Mapping)
+                    and portal.get("blocked") is True
+                    and portal.get("reconciled") is False
+                )
+                if not common:
+                    continue
+                if (
+                    nested.get("active") is True
+                    and nested.get("active_phase") == "implementing"
+                    and nested.get("active_task_id") == task_alias
+                    and type(nested.get("active_attempt")) is int
+                    and nested.get("active_attempt") == nested_attempt
+                    and nested.get("state_path") == str(paths.state)
+                ):
+                    implementing_receipts.append(candidate)
+                portal_claim = portal.get("task_claim_reconciliation")
+                portal_recovery = portal.get("attempt_recovery")
+                lifecycle = portal.get("worktree_lifecycle_reconciliation")
+                protected = portal.get("protected_path_reconciliation")
+                nested_identity_ok = bool(
+                    (
+                        nested.get("active") is True
+                        and nested.get("active_task_id") == task_alias
+                        and nested.get("active_attempt") == nested_attempt
+                    )
+                    or (
+                        nested.get("active") is False
+                        and nested.get("active_task_id") == ""
+                        and nested.get("active_attempt") == 0
+                    )
+                )
+                if (
+                    portal.get("reason") == "task_claim_reconciliation_blocked"
+                    and portal.get("task_id") == task_alias
+                    and portal.get("attempt") == nested_attempt
+                    and nested_identity_ok
+                    and isinstance(protected, Mapping)
+                    and protected.get("blocked") is False
+                    and isinstance(lifecycle, Mapping)
+                    and lifecycle.get("reconciled") is True
+                    and lifecycle.get("blocked") is False
+                    and lifecycle.get("state") == "terminal"
+                    and lifecycle.get("task_id") == task_alias
+                    and lifecycle.get("attempt") == nested_attempt
+                    and isinstance(portal_claim, Mapping)
+                    and portal_claim.get("reconciled") is False
+                    and portal_claim.get("blocked") is True
+                    and portal_claim.get("reason")
+                    == "canonical_task_not_terminal"
+                    and portal_claim.get("observed_task_status") == "todo"
+                    and portal_claim.get("task_id") == task_alias
+                    and portal_claim.get("canonical_task_cid") == nested_task_cid
+                    and isinstance(portal_recovery, Mapping)
+                    and portal_recovery.get("consumed") is False
+                    and portal_recovery.get("attempt") == nested_attempt
+                    and portal_recovery.get("task_id") == task_alias
+                    and portal_recovery.get("canonical_task_cid")
+                    == nested_task_cid
+                    and portal_recovery.get("previous_display_count")
+                    == nested_attempt
+                    and portal_recovery.get("previous_cid_count")
+                    == nested_attempt
+                ):
+                    recovery_receipts.append(candidate)
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        if not _quiesced_stale_dispatch_release_receipt_population_is_closed(
+            reconciliation_receipts,
+            task_alias=task_alias,
+        ):
+            return None
+        terminal_receipts = [
+            candidate
+            for candidate in reconciliation_receipts
+            if candidate.get("stage") == "terminal"
+        ]
+        terminal_receipt = terminal_receipts[0]
+        terminal_core = {
+            name: value
+            for name, value in terminal_receipt.items()
+            if name
+            not in {
+                "stage",
+                "receipt_id",
+                "prepared_reconciliation_receipt_id",
+                "database_attempt_phase",
+                "database_attempt_status",
+                "database_disposition",
+                "terminal_reconciliation_evidence_id",
+            }
+        }
+        if (
+            terminal_receipt.get("prepared_reconciliation_receipt_id")
+            != prepared.get("receipt_id")
+            or terminal_receipt.get("database_attempt_phase") != "failed"
+            or terminal_receipt.get("database_attempt_status") != "failed"
+            or terminal_receipt.get("database_disposition")
+            != "blocked_unknown_outcome"
+            or terminal_receipt.get("terminal_reconciliation_evidence_id")
+            != link_evidence_id
+            or _canonical_json(terminal_core) != _canonical_json(prepared_core)
+        ):
+            return None
+        if (
+            not 1 <= len(implementing_receipts) <= 8
+            or len(recovery_receipts) != 1
+        ):
+            return None
+        recovery_receipt = recovery_receipts[0]
+        recovery_portal = recovery_receipt.get("portal_reconciliation")
+        recovery_claim = (
+            recovery_portal.get("task_claim_reconciliation")
+            if isinstance(recovery_portal, Mapping)
+            else None
+        )
+        recovery_lifecycle = (
+            recovery_portal.get("worktree_lifecycle_reconciliation")
+            if isinstance(recovery_portal, Mapping)
+            else None
+        )
+        release_claim = release_receipt.get("claim")
+        release_lifecycle = release_receipt.get("worktree_lifecycle")
+        if (
+            not isinstance(recovery_claim, Mapping)
+            or not isinstance(recovery_lifecycle, Mapping)
+            or not isinstance(release_claim, Mapping)
+            or not isinstance(release_lifecycle, Mapping)
+            or recovery_claim.get("claim_path") != release_claim.get("path")
+            or recovery_lifecycle.get("record_id")
+            != release_lifecycle.get("record_id")
+            or recovery_lifecycle.get("fence")
+            != release_lifecycle.get("fence")
+            or recovery_lifecycle.get("state") != release_lifecycle.get("state")
+            or recovery_lifecycle.get("workspace_path")
+            != release_lifecycle.get("workspace_path")
+        ):
+            return None
+
+        envelope_fields = {
+            "sequence",
+            "timestamp",
+            "event_id",
+            "type",
+            "stream_id",
+            "snapshot_id",
+            "previous_event_id",
+        }
+
+        def event_core(event: Mapping[str, Any]) -> dict[str, Any]:
+            return {
+                name: value
+                for name, value in event.items()
+                if name not in envelope_fields
+            }
+
+        release_events = [
+            event
+            for event in events
+            if event.get("type") == "implementation_task_claim_released"
+            and event_core(event) == dict(claim_release)
+        ]
+        recovery_events = [
+            event
+            for event in events
+            if event.get("type")
+            == "implementation_shutdown_reconciliation_blocked"
+            and event_core(event)
+            == dict(recovery_receipt.get("portal_reconciliation") or {})
+        ]
+        implementing_portals = {
+            _canonical_json(dict(candidate.get("portal_reconciliation") or {}))
+            for candidate in implementing_receipts
+        }
+        implementing_events = [
+            event
+            for event in events
+            if event.get("type")
+            == "implementation_shutdown_reconciliation_blocked"
+            and _canonical_json(event_core(event)) in implementing_portals
+        ]
+        minimal_worker_events = [
+            event
+            for event in events
+            if event.get("type")
+            == "implementation_shutdown_reconciliation_blocked"
+            and set(event_core(event))
+            == {
+                "task_id",
+                "attempt",
+                "worktree_path",
+                "reconciled",
+                "blocked",
+                "reason",
+            }
+            and event.get("task_id") == task_alias
+            and event.get("attempt") == nested_attempt
+            and event.get("reconciled") is False
+            and event.get("blocked") is True
+            and event.get("reason") == "implementation_worker_still_active"
+            and isinstance(event.get("worktree_path"), str)
+            and PurePosixPath(str(event.get("worktree_path") or "")).is_absolute()
+        ]
+
+        def valid_observation_timestamp(value: Any) -> bool:
+            try:
+                parsed = datetime.fromisoformat(str(value))
+            except (TypeError, ValueError):
+                return False
+            return parsed.tzinfo is not None and parsed.utcoffset() is not None
+
+        def no_active_claim_blocked_core(core: Any) -> bool:
+            if (
+                not isinstance(core, Mapping)
+                or set(core)
+                != {
+                    "attempt",
+                    "attempt_recovery",
+                    "blocked",
+                    "protected_path_reconciliation",
+                    "reason",
+                    "reconciled",
+                    "reconciled_at",
+                    "task_claim_reconciliation",
+                    "task_id",
+                    "worktree_lifecycle_reconciliation",
+                }
+                or core.get("task_id") != task_alias
+                or type(core.get("attempt")) is not int
+                or core.get("attempt") != nested_attempt
+                or core.get("reconciled") is not False
+                or core.get("blocked") is not True
+                or core.get("reason") != "task_claim_reconciliation_blocked"
+                or not valid_observation_timestamp(core.get("reconciled_at"))
+                or core.get("attempt_recovery") != {}
+                or not _closed_typed_record_matches(
+                    core.get("protected_path_reconciliation"),
+                    {
+                        "blocked": False,
+                        "critical_section_entered": False,
+                        "reason": "no_active_snapshot",
+                        "scan_outside_lease": True,
+                    },
+                )
+                or not _closed_typed_record_matches(
+                    core.get("worktree_lifecycle_reconciliation"),
+                    {
+                        "blocked": False,
+                        "reason": "no_active_worktree",
+                        "reconciled": False,
+                    },
+                )
+            ):
+                return False
+            return _closed_typed_record_matches(
+                core.get("task_claim_reconciliation"),
+                {
+                    "blocked": True,
+                    "canonical_task_cid": nested_task_cid,
+                    "claim_path": str(release_claim.get("path") or ""),
+                    "observed_task_status": "todo",
+                    "reason": "canonical_task_not_terminal",
+                    "reconciled": False,
+                    "task_id": task_alias,
+                },
+            )
+
+        inactive_claim_events = [
+            event
+            for event in events
+            if event.get("type")
+            == "implementation_shutdown_reconciliation_blocked"
+            and no_active_claim_blocked_core(event_core(event))
+        ]
+        inactive_claim_portals = {
+            _canonical_json(event_core(event)) for event in inactive_claim_events
+        }
+        inactive_claim_receipts = []
+        for candidate in reconciliation_receipts:
+            if candidate.get("stage") != "blocked":
+                continue
+            nested = candidate.get("nested_state")
+            fence = candidate.get("provider_runner_fence")
+            portal = candidate.get("portal_reconciliation")
+            if (
+                candidate.get("binding_id") == binding.get("binding_id")
+                and candidate.get("task_alias") == task_alias
+                and candidate.get("blocked") is True
+                and candidate.get("reconciled") is False
+                and candidate.get("reason")
+                == "nested_portal_attempt_reconciliation_blocked"
+                and candidate.get("terminal_provider_evidence") is False
+                and "terminal_provider_receipt_id" not in candidate
+                and candidate.get("provider_runner_reconciliation_authority")
+                == "not_applicable"
+                and isinstance(nested, Mapping)
+                and set(nested)
+                == {
+                    "active",
+                    "active_attempt",
+                    "active_branch",
+                    "active_phase",
+                    "active_phase_detail",
+                    "active_task_id",
+                    "active_worktree_path",
+                    "present",
+                    "state_digest",
+                    "state_path",
+                }
+                and nested.get("active") is False
+                and type(nested.get("active_attempt")) is int
+                and nested.get("active_attempt") == 0
+                and all(
+                    nested.get(name) == ""
+                    for name in (
+                        "active_branch",
+                        "active_phase",
+                        "active_phase_detail",
+                        "active_task_id",
+                        "active_worktree_path",
+                    )
+                )
+                and nested.get("present") is True
+                and nested.get("state_path") == str(paths.state)
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(nested.get("state_digest") or ""),
+                )
+                is not None
+                and _closed_typed_record_matches(
+                    fence,
+                    {
+                        "applicable": False,
+                        "fenced": False,
+                        "reason": "ordinary_provider_runner_receipt_absent",
+                        "safe_to_restart": True,
+                    },
+                )
+                and no_active_claim_blocked_core(portal)
+                and _canonical_json(dict(portal)) in inactive_claim_portals
+                and candidate.get("trigger")
+                in {"database_daemon_startup", "supervisor_signal_shutdown"}
+            ):
+                inactive_claim_receipts.append(candidate)
+        expected_inactive_receipts = 2 if stale_intent_release else 0
+        expected_inactive_events = 252 if stale_intent_release else 0
+        if (
+            len(inactive_claim_receipts) != expected_inactive_receipts
+            or len(inactive_claim_events) != expected_inactive_events
+            or (
+                stale_intent_release
+                and {
+                    str(candidate.get("trigger") or "")
+                    for candidate in inactive_claim_receipts
+                }
+                != {"database_daemon_startup", "supervisor_signal_shutdown"}
+            )
+        ):
+            return None
+        blocked_event_ids = {
+            str(event.get("event_id") or "")
+            for event in events
+            if event.get("type")
+            == "implementation_shutdown_reconciliation_blocked"
+        }
+        classified_event_ids = {
+            str(event.get("event_id") or "")
+            for event in (
+                *recovery_events,
+                *implementing_events,
+                *minimal_worker_events,
+                *inactive_claim_events,
+            )
+        }
+        blocked_receipt_ids = {
+            str(candidate.get("receipt_id") or "")
+            for candidate in reconciliation_receipts
+            if candidate.get("stage") == "blocked"
+        }
+        classified_receipt_ids = {
+            str(candidate.get("receipt_id") or "")
+            for candidate in (
+                *implementing_receipts,
+                *recovery_receipts,
+                *inactive_claim_receipts,
+            )
+        }
+        if (
+            len(release_events) != 1
+            or len(recovery_events) != 1
+            or not implementing_events
+            or blocked_event_ids != classified_event_ids
+            or blocked_receipt_ids != classified_receipt_ids
+            or len(reconciliation_receipts) != len(blocked_receipt_ids) + 3
+        ):
+            return None
+        release_event = release_events[0]
+        release_sequence = int(release_event["sequence"])
+        if (
+            any(int(event["sequence"]) >= release_sequence for event in recovery_events)
+            or any(
+                int(event["sequence"]) >= release_sequence
+                for event in implementing_events
+            )
+            or any(
+                int(event["sequence"]) >= release_sequence
+                for event in inactive_claim_events
+            )
+            or min(int(event["sequence"]) for event in recovery_events)
+            < min(int(event["sequence"]) for event in implementing_events)
+        ):
+            return None
+
+        state_recovery_event_id = ""
+        if old_unfinished_release:
+            state_recovery_event_id = str(released_attempt.get("event_id") or "")
+            state_recovery_events = [
+                event
+                for event in events
+                if event.get("event_id") == state_recovery_event_id
+                and event.get("type") == "implementation_state_recovered"
+                and event.get("sequence") == released_attempt.get("sequence")
+                and event.get("attempt") == nested_attempt
+                and event.get("task_id") == task_alias
+                and event.get("canonical_task_cid") == nested_task_cid
+            ]
+            retry_preparations = [
+                event
+                for event in events
+                if event.get("type")
+                == "interrupted_implementation_retry_prepared"
+                and event.get("interrupted_retry_id") == released_retry_id
+            ]
+            if (
+                len(state_recovery_events) != 1
+                or len(retry_preparations) != 1
+                or not (
+                    max(int(event["sequence"]) for event in recovery_events)
+                    < int(retry_preparations[0]["sequence"])
+                    < int(state_recovery_events[0]["sequence"])
+                    < release_sequence
+                )
+            ):
+                return None
+
+        post_release = [
+            event for event in events if int(event["sequence"]) > release_sequence
+        ]
+        shutdown_count = 0
+        shutdown_core = dict(recovery)
+        shutdown_core.pop("provider_forbidden_terminal_recovery", None)
+        no_claim_shutdown_core = {
+            "attempt": nested_attempt,
+            "attempt_recovery": {},
+            "blocked": False,
+            "protected_path_reconciliation": {
+                "blocked": False,
+                "critical_section_entered": False,
+                "reason": "no_active_snapshot",
+                "scan_outside_lease": True,
+            },
+            "reason": "already_quiesced",
+            "reconciled": True,
+            "stale_lock_cleared": False,
+            "task_claim_reconciliation": {
+                "blocked": False,
+                "canonical_task_cid": nested_task_cid,
+                "claim_path": claim_release.get("claim_path"),
+                "reason": "no_task_claim",
+                "reconciled": False,
+                "task_id": task_alias,
+            },
+            "task_id": task_alias,
+            "worktree_lifecycle_reconciliation": {
+                "blocked": False,
+                "reason": "no_active_worktree",
+                "reconciled": False,
+            },
+        }
+        release_shutdown_seen = False
+        no_claim_shutdown_seen = False
+        lock_clear_seen = False
+        for event in post_release:
+            event_type = str(event.get("type") or "")
+            core = event_core(event)
+            if event_type == "implementation_lock_cleared":
+                if (
+                    lock_clear_seen
+                    or release_shutdown_seen
+                    or no_claim_shutdown_seen
+                    or core.get("task_id") != task_alias
+                    or core.get("branch") != ""
+                    or core.get("lock_path")
+                    != str(paths.root / "implementation.lock")
+                    or type(core.get("lock_owner_pid")) is not int
+                    or int(core.get("lock_owner_pid") or 0) <= 0
+                ):
+                    return None
+                lock_clear_seen = True
+            elif event_type == "implementation_shutdown_reconciled":
+                observed_reconciled_at = core.pop("reconciled_at", None)
+                expected_shutdown_core = dict(shutdown_core)
+                expected_reconciled_at = expected_shutdown_core.pop(
+                    "reconciled_at", None
+                )
+                if (
+                    not isinstance(observed_reconciled_at, str)
+                    or not observed_reconciled_at
+                ):
+                    return None
+                if (
+                    core == expected_shutdown_core
+                    and observed_reconciled_at == expected_reconciled_at
+                    and not release_shutdown_seen
+                    and not no_claim_shutdown_seen
+                ):
+                    release_shutdown_seen = True
+                elif core == no_claim_shutdown_core and release_shutdown_seen:
+                    no_claim_shutdown_seen = True
+                else:
+                    return None
+                shutdown_count += 1
+            else:
+                return None
+        if stale_intent_release and not release_shutdown_seen:
+            return None
+        if (
+            len(events) != int(manifest.get("latest_sequence") or 0)
+            or int(manifest.get("latest_sequence") or 0)
+            != int(manifest.get("files", [{}])[-1].get("last_sequence") or 0)
+            or str(events[-1].get("event_id") or "")
+            != str(manifest.get("last_event_id") or "")
+        ):
+            return None
+
+        authorization = {
+            "schema": (
+                DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_AUTHORIZATION_SCHEMA
+            ),
+            **exact_attempt,
+            "binding_id": str(binding.get("binding_id") or ""),
+            "binding_admission_id": str(durable_binding.get("record_id") or ""),
+            "binding_admission_digest": _sha256_bytes(
+                _canonical_json(dict(durable_binding))
+            ),
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "nested_task_cid": nested_task_cid,
+            "nested_attempt": nested_attempt,
+            "release_variant": release_variant,
+            "terminal_reconciliation_evidence_id": link_evidence_id,
+            "prepared_reconciliation_receipt_id": str(prepared["receipt_id"]),
+            "commit_barrier_receipt_id": str(commit_barrier["receipt_id"]),
+            "terminal_reconciliation_receipt_id": str(
+                terminal_receipt["receipt_id"]
+            ),
+            "reconciliation_receipt_count": len(reconciliation_receipts),
+            "reconciliation_receipt_ids_digest": _sha256_bytes(
+                _canonical_json(
+                    sorted(
+                        str(candidate["receipt_id"])
+                        for candidate in reconciliation_receipts
+                    )
+                )
+            ),
+            "claim_recovery_receipt_id": str(recovery_receipt["receipt_id"]),
+            "task_claim_release_receipt_id": str(release_receipt["receipt_id"]),
+            "task_claim_release_receipt_name": release_receipt_name,
+            "task_claim_release_event_id": str(release_event["event_id"]),
+            "prepared_state_digest": str(nested_state.get("state_digest") or ""),
+            "state_digest": state_digest,
+            "outer_block_receipt_digest": _sha256_bytes(
+                _canonical_json(dict(receipt))
+            ),
+        }
+        authorization_id = _sha256_bytes(_canonical_json(authorization))
+
+        evidence: dict[str, Any] = {
+            "schema": (
+                DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA
+            ),
+            **exact_attempt,
+            "task_alias": task_alias,
+            "attempt_root_key": paths.root.name,
+            "attempt_authority_root_digest": _sha256_bytes(
+                str(self.attempt_root).encode("utf-8")
+            ),
+            "attempt_root_digest": _sha256_bytes(str(paths.root).encode("utf-8")),
+            "attempt_directory_names_digest": _sha256_bytes(
+                _canonical_json(directory_names)
+            ),
+            "binding_id": str(binding.get("binding_id") or ""),
+            "binding_admission_id": str(durable_binding.get("record_id") or ""),
+            "binding_admission_digest": authorization["binding_admission_digest"],
+            "projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "task_revision": int(binding.get("task_revision") or 0),
+            "board_namespace": str(identity.get("board_namespace") or ""),
+            "nested_task_cid": nested_task_cid,
+            "nested_attempt": nested_attempt,
+            "release_variant": release_variant,
+            "terminal_reconciliation_evidence_id": link_evidence_id,
+            "prepared_reconciliation_receipt_id": str(prepared["receipt_id"]),
+            "commit_barrier_receipt_id": str(commit_barrier["receipt_id"]),
+            "terminal_reconciliation_receipt_id": str(
+                terminal_receipt["receipt_id"]
+            ),
+            "reconciliation_receipt_count": len(reconciliation_receipts),
+            "reconciliation_receipt_ids_digest": authorization[
+                "reconciliation_receipt_ids_digest"
+            ],
+            "implementing_fence_receipt_count": len(implementing_receipts),
+            "implementing_fence_receipt_ids_digest": _sha256_bytes(
+                _canonical_json(sorted(str(item["receipt_id"]) for item in implementing_receipts))
+            ),
+            "implementing_fence_event_count": len(implementing_events),
+            "implementing_fence_event_ids_digest": _sha256_bytes(
+                _canonical_json(sorted(str(item["event_id"]) for item in implementing_events))
+            ),
+            "claim_recovery_receipt_id": str(recovery_receipt["receipt_id"]),
+            "claim_recovery_event_count": len(recovery_events),
+            "claim_recovery_event_ids_digest": _sha256_bytes(
+                _canonical_json(sorted(str(item["event_id"]) for item in recovery_events))
+            ),
+            "task_claim_release_receipt_id": str(release_receipt["receipt_id"]),
+            "task_claim_release_receipt_name": release_receipt_name,
+            "task_claim_release_event_id": str(release_event["event_id"]),
+            "released_unfinished_retry_id": released_retry_id,
+            "state_recovery_event_id": state_recovery_event_id,
+            "post_release_event_count": len(post_release),
+            "post_release_event_ids_digest": _sha256_bytes(
+                _canonical_json([str(item["event_id"]) for item in post_release])
+            ),
+            "post_release_shutdown_reconciliation_count": shutdown_count,
+            "event_stream_id": str(manifest.get("stream_id") or ""),
+            "event_snapshot_id": str(manifest.get("snapshot_id") or ""),
+            "event_manifest_digest": str(manifest.get("manifest_digest") or ""),
+            "event_count": len(events),
+            "event_head_sequence": int(manifest.get("latest_sequence") or 0),
+            "event_head_id": str(manifest.get("last_event_id") or ""),
+            "prepared_state_digest": str(nested_state.get("state_digest") or ""),
+            "state_digest": state_digest,
+            "outer_block_receipt_digest": authorization["outer_block_receipt_digest"],
+            "rearm_authorization_id": authorization_id,
+            "provider_dispatched": False,
+            "implementation_dispatched": False,
+            "attempt_consumed": False,
+            "validation_attempted": False,
+            "commit_created": False,
+            "merge_attempted": False,
+            "acceptance_inferred": False,
+            "recovery_terminal": True,
+            "retained_candidate_disposition": "preserved_unvalidated",
+            "nested_state_quiescent": True,
+        }
+        if set(evidence) != (
+            DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_FIELDS
+            - {"evidence_id"}
+        ):
+            raise DatabasePortalBridgeError(
+                "quiesced stale-dispatch release evidence field construction drifted"
+            )
+        evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
+        return evidence
+
+    def revalidate_quiesced_stale_dispatch_release_rearm_evidence(
+        self,
+        attempt: Any,
+        *,
+        outer_block_receipt: Mapping[str, Any],
+        expected_evidence: Mapping[str, Any],
+    ) -> bool:
+        """Re-pin the exact occurrence immediately before the outer CAS.
+
+        This is intentionally schema-specific.  It never invokes Portal
+        recovery, a provider, or a mutable adapter, and it does not treat a
+        later benign diagnostic head as equivalent to the originally pinned
+        occurrence.  A head advance simply makes this admission attempt stale
+        so a later supervisor pass can construct a fresh proof.
+        """
+
+        if (
+            not isinstance(expected_evidence, Mapping)
+            or expected_evidence.get("schema")
+            != DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA
+        ):
+            return False
+        try:
+            current = self._quiesced_stale_dispatch_release_rearm_evidence(
+                attempt,
+                dict(outer_block_receipt),
+            )
+            return bool(
+                isinstance(current, Mapping)
+                and _canonical_json(dict(current))
+                == _canonical_json(dict(expected_evidence))
+                and current.get("evidence_id")
+                == expected_evidence.get("evidence_id")
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return False
+
+    def execute_with_revalidated_quiesced_stale_dispatch_release(
+        self,
+        attempt: Any,
+        *,
+        outer_block_receipt: Mapping[str, Any],
+        expected_evidence: Mapping[str, Any],
+        callback: Callable[[], Any],
+    ) -> Any:
+        """Hold the nested event fence from exact revalidation through CAS.
+
+        The callback is the outer authoritative status CAS.  Acquiring the
+        nested writer's lock non-blockingly inside the coordinator's terminal
+        claim barrier closes the last proof-to-CAS event-head race without
+        introducing a blocking lock-order cycle.
+        """
+
+        if not callable(callback):
+            raise TypeError("revalidated quiesced release callback must be callable")
+        if not self.revalidate_quiesced_stale_dispatch_release_rearm_evidence(
+            attempt,
+            outer_block_receipt=outer_block_receipt,
+            expected_evidence=expected_evidence,
+        ):
+            raise DatabasePortalBridgeError(
+                "quiesced stale-dispatch release occurrence advanced"
+            )
+        paths = self._paths(attempt)
+        parent_fd = authority_fd = attempt_fd = -1
+        pinned: tuple[Any, ...] = ()
+        try:
+            parent_fd, authority_fd, attempt_fd, pinned = (
+                self._open_pinned_private_attempt_directory(
+                    authority_root=self.attempt_root,
+                    attempt_key=paths.root.name,
+                )
+            )
+            names_before = set(os.listdir(attempt_fd))
+            directory_before = self._authority_fingerprint(os.fstat(attempt_fd))
+            if ".portal-events.jsonl.lock" not in names_before:
+                raise DatabasePortalBridgeError(
+                    "quiesced stale-dispatch release event fence is absent"
+                )
+            # Fixed lock order: immutable reconciliation population, immutable
+            # claim-release population, then event stream.  All acquisitions
+            # are non-blocking, so a writer holding the inverse prefix cannot
+            # deadlock this terminal-claim barrier.
+            with self._pinned_quiesced_release_artifact_population(
+                attempt,
+                attempt_fd,
+                expected_evidence=expected_evidence,
+            ) as artifacts:
+                with self._shared_private_event_lock(attempt_fd, names_before):
+                    verify_artifacts = artifacts["verify"]
+                    verify_artifacts()
+                    self._revalidate_pinned_quiesced_release_snapshot(
+                        attempt_fd,
+                        expected_evidence=expected_evidence,
+                    )
+                    if (
+                        set(os.listdir(attempt_fd)) != names_before
+                        or self._authority_fingerprint(os.fstat(attempt_fd))
+                        != directory_before
+                    ):
+                        raise DatabasePortalBridgeError(
+                            "quiesced stale-dispatch release root changed before CAS"
+                        )
+                    result = callback()
+                    # Verify all three pinned authorities before releasing any
+                    # lock.  A successful outer CAS can therefore never be
+                    # followed by a false stale-proof error caused by a later
+                    # benign shutdown append.
+                    verify_artifacts()
+                    self._revalidate_pinned_quiesced_release_snapshot(
+                        attempt_fd,
+                        expected_evidence=expected_evidence,
+                    )
+                    self._verify_pinned_private_attempt_directory(
+                        parent_fd=parent_fd,
+                        authority_fd=authority_fd,
+                        attempt_fd=attempt_fd,
+                        snapshot=pinned,
+                    )
+                    pinned = ()
+                    return result
+        finally:
+            try:
+                if pinned:
+                    self._verify_pinned_private_attempt_directory(
+                        parent_fd=parent_fd,
+                        authority_fd=authority_fd,
+                        attempt_fd=attempt_fd,
+                        snapshot=pinned,
+                    )
+            finally:
+                for descriptor in (attempt_fd, authority_fd, parent_fd):
+                    if descriptor >= 0:
+                        with suppress(OSError):
+                            os.close(descriptor)
+
     def no_provider_dispatch_rearm_evidence(
         self,
         attempt: Any,
@@ -8679,6 +11255,14 @@ class DatabasePortalExecutionBridge:
                     )
                     if historical_transition is not None:
                         return historical_transition
+                quiesced_release = (
+                    self._quiesced_stale_dispatch_release_rearm_evidence(
+                        attempt,
+                        receipt,
+                    )
+                )
+                if quiesced_release is not None:
+                    return quiesced_release
                 return self._terminal_quiescent_deferred_rearm_evidence(
                     attempt,
                     receipt,
@@ -11025,6 +13609,9 @@ __all__ = (
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_FIELDS",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_PIN",
+    "DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_AUTHORIZATION_SCHEMA",
+    "DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_FIELDS",
+    "DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA",
     "DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_FIELDS",
     "DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA",
     "DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_FIELDS",

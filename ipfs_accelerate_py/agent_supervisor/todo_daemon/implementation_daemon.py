@@ -76152,6 +76152,14 @@ _DATABASE_PORTAL_HISTORICAL_INTERRUPTED_STATE_TRANSITION_BUDGET = (
     1,
     0,
 )
+_DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_HISTORICAL_BUDGETS = frozenset(
+    {
+        ("PCTDD-005", 3, 1, 0),
+        ("PCTDD-006", 4, 1, 1),
+        ("PCTDD-007", 4, 1, 1),
+        ("PCTDD-034", 8, 1, 0),
+    }
+)
 # This is one-shot predecessor compatibility, not a reusable refund policy.
 # Its non-replay property relies on monotonic authenticated Quack state plus
 # the existing fenced CAS/journal transition.  Rollback of both canonical
@@ -76193,6 +76201,25 @@ def _database_portal_historical_interrupted_state_transition_budget_matches(
         and type(rearm_count) is int
         and (task_alias, attempt_number, attempts_used, rearm_count)
         == _DATABASE_PORTAL_HISTORICAL_INTERRUPTED_STATE_TRANSITION_BUDGET
+    )
+
+
+def _database_portal_quiesced_stale_dispatch_release_budget_matches(
+    *,
+    task_alias: Any,
+    attempt_number: Any,
+    attempts_used: Any,
+    rearm_count: Any,
+) -> bool:
+    """Match only the four sealed terminal-linked release occurrences."""
+
+    return bool(
+        type(task_alias) is str
+        and type(attempt_number) is int
+        and type(attempts_used) is int
+        and type(rearm_count) is int
+        and (task_alias, attempt_number, attempts_used, rearm_count)
+        in _DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_HISTORICAL_BUDGETS
     )
 
 
@@ -82809,6 +82836,9 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_FIELDS,
             DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_AUTHORIZATION_SCHEMA,
+            DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_FIELDS,
+            DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_AUTHORIZATION_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_FIELDS,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
@@ -83326,6 +83356,250 @@ class DatabaseImplementationDaemon:
                 and record.get("outer_block_receipt_digest")
                 == DatabaseImplementationDaemon._database_no_provider_rearm_digest(
                     original
+                )
+            )
+        if (
+            record.get("schema")
+            == DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA
+        ):
+            digest_fields = {
+                "attempt_authority_root_digest",
+                "attempt_root_digest",
+                "attempt_directory_names_digest",
+                "binding_admission_digest",
+                "projection_immutable_digest",
+                "prepared_reconciliation_receipt_id",
+                "commit_barrier_receipt_id",
+                "terminal_reconciliation_receipt_id",
+                "reconciliation_receipt_ids_digest",
+                "implementing_fence_receipt_ids_digest",
+                "implementing_fence_event_ids_digest",
+                "claim_recovery_receipt_id",
+                "claim_recovery_event_ids_digest",
+                "task_claim_release_event_id",
+                "post_release_event_ids_digest",
+                "event_manifest_digest",
+                "event_head_id",
+                "prepared_state_digest",
+                "state_digest",
+                "outer_block_receipt_digest",
+                "rearm_authorization_id",
+            }
+            integer_fields = {
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+                "task_revision",
+                "nested_attempt",
+                "reconciliation_receipt_count",
+                "implementing_fence_receipt_count",
+                "implementing_fence_event_count",
+                "claim_recovery_event_count",
+                "post_release_event_count",
+                "post_release_shutdown_reconciliation_count",
+                "event_count",
+                "event_head_sequence",
+            }
+            authorization = {
+                "schema": (
+                    DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_AUTHORIZATION_SCHEMA
+                ),
+                **{
+                    name: record.get(name)
+                    for name in (
+                        "attempt_id",
+                        "claim_id",
+                        "task_cid",
+                        "attempt_number",
+                        "owner_session_id",
+                        "lease_id",
+                        "fencing_token",
+                        "fence_epoch",
+                        "binding_id",
+                        "binding_admission_id",
+                        "binding_admission_digest",
+                        "projection_immutable_digest",
+                        "nested_task_cid",
+                        "nested_attempt",
+                        "release_variant",
+                        "terminal_reconciliation_evidence_id",
+                        "prepared_reconciliation_receipt_id",
+                        "commit_barrier_receipt_id",
+                        "terminal_reconciliation_receipt_id",
+                        "reconciliation_receipt_count",
+                        "reconciliation_receipt_ids_digest",
+                        "claim_recovery_receipt_id",
+                        "task_claim_release_receipt_id",
+                        "task_claim_release_receipt_name",
+                        "task_claim_release_event_id",
+                        "prepared_state_digest",
+                        "state_digest",
+                        "outer_block_receipt_digest",
+                    )
+                },
+            }
+            calculated_authorization_id = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    authorization,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+            release_variant = record.get("release_variant")
+            terminal_link = original.get("terminal_reconciliation")
+            board_namespace = record.get("board_namespace")
+            return bool(
+                set(record)
+                == set(
+                    DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_FIELDS
+                )
+                and re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id)
+                and evidence_id == expected_evidence_id
+                and calculated_id == evidence_id
+                and all(
+                    re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(record.get(name) or ""),
+                    )
+                    for name in digest_fields
+                )
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(record.get("binding_id") or ""),
+                )
+                and all(
+                    re.fullmatch(
+                        r"baguqeera[a-z2-7]{52}",
+                        str(record.get(name) or ""),
+                    )
+                    for name in (
+                        "binding_admission_id",
+                        "nested_task_cid",
+                        "terminal_reconciliation_evidence_id",
+                        "task_claim_release_receipt_id",
+                    )
+                )
+                and all(type(record.get(name)) is int for name in integer_fields)
+                and re.fullmatch(
+                    r"canonical-task-[0-9a-f]{24}-a[1-9][0-9]*[.]json",
+                    str(record.get("task_claim_release_receipt_name") or ""),
+                )
+                is not None
+                and int(record["attempt_number"]) >= 1
+                and int(record["fencing_token"]) >= 0
+                and int(record["fence_epoch"]) >= 0
+                and int(record["task_revision"]) >= 0
+                and int(record["nested_attempt"]) == 1
+                and int(record["reconciliation_receipt_count"])
+                == {
+                    "PCTDD-005": 4,
+                    "PCTDD-006": 4,
+                    "PCTDD-007": 8,
+                    "PCTDD-034": 5,
+                }.get(str(record.get("task_alias") or ""), -1)
+                and 1 <= int(record["implementing_fence_receipt_count"]) <= 8
+                and 1 <= int(record["implementing_fence_event_count"]) <= 4096
+                and int(record["claim_recovery_event_count"]) == 1
+                and int(record["implementing_fence_event_count"])
+                >= int(record["implementing_fence_receipt_count"])
+                and 0 <= int(record["post_release_event_count"]) <= 4096
+                and 0
+                <= int(record["post_release_shutdown_reconciliation_count"])
+                <= int(record["post_release_event_count"])
+                and 1 <= int(record["event_count"]) <= 4096
+                and record.get("event_head_sequence") == record.get("event_count")
+                and release_variant
+                in {
+                    "released_unfinished_attempt_1_to_0",
+                    "stale_dispatch_intent_released_for_retry",
+                }
+                and (
+                    (
+                        release_variant == "released_unfinished_attempt_1_to_0"
+                        and re.fullmatch(
+                            r"baguqeera[a-z2-7]{52}",
+                            str(record.get("released_unfinished_retry_id") or ""),
+                        )
+                        and re.fullmatch(
+                            r"sha256:[0-9a-f]{64}",
+                            str(record.get("state_recovery_event_id") or ""),
+                        )
+                        and int(record["post_release_event_count"]) in {0, 1}
+                        and int(
+                            record[
+                                "post_release_shutdown_reconciliation_count"
+                            ]
+                        )
+                        == 0
+                    )
+                    or (
+                        release_variant
+                        == "stale_dispatch_intent_released_for_retry"
+                        and record.get("released_unfinished_retry_id") == ""
+                        and record.get("state_recovery_event_id") == ""
+                        and int(
+                            record["post_release_shutdown_reconciliation_count"]
+                        )
+                        >= 1
+                        and int(record["post_release_event_count"])
+                        == int(
+                            record[
+                                "post_release_shutdown_reconciliation_count"
+                            ]
+                        )
+                        + 1
+                    )
+                )
+                and record.get("rearm_authorization_id")
+                == calculated_authorization_id
+                and record.get("attempt_root_key")
+                == hashlib.sha256(
+                    str(record.get("attempt_id") or "").encode("utf-8")
+                ).hexdigest()[:24]
+                and board_namespace
+                == "parallel-content-sealing-proof-carrying-tdd-v1"
+                and record.get("provider_dispatched") is False
+                and record.get("implementation_dispatched") is False
+                and record.get("attempt_consumed") is False
+                and record.get("validation_attempted") is False
+                and record.get("commit_created") is False
+                and record.get("merge_attempted") is False
+                and record.get("acceptance_inferred") is False
+                and record.get("recovery_terminal") is True
+                and record.get("retained_candidate_disposition")
+                == "preserved_unvalidated"
+                and record.get("nested_state_quiescent") is True
+                and record.get("task_cid")
+                == str(getattr(task, "task_cid", "") or "")
+                and record.get("task_alias")
+                == str(getattr(task, "task_alias", "") or "")
+                and record.get("attempt_id") == original.get("attempt_id")
+                and record.get("claim_id") == original.get("claim_id")
+                and record.get("attempt_number") == original.get("attempt_number")
+                and record.get("owner_session_id")
+                == original.get("owner_session_id")
+                and record.get("lease_id") == original.get("lease_id")
+                and record.get("fencing_token") == original.get("fencing_token")
+                and record.get("fence_epoch") == original.get("fence_epoch")
+                and isinstance(terminal_link, Mapping)
+                and bool(terminal_link)
+                and record.get("terminal_reconciliation_evidence_id")
+                == terminal_link.get("evidence_id")
+                and record.get("prepared_reconciliation_receipt_id")
+                == terminal_link.get("prepared_reconciliation_receipt_id")
+                and record.get("commit_barrier_receipt_id")
+                == terminal_link.get("commit_barrier_receipt_id")
+                and record.get("outer_block_receipt_digest")
+                == DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                    original
+                )
+                and _database_portal_quiesced_stale_dispatch_release_budget_matches(
+                    task_alias=str(getattr(task, "task_alias", "") or ""),
+                    attempt_number=original.get("attempt_number"),
+                    attempts_used=original.get("attempts_used"),
+                    rearm_count=original.get("unknown_outcome_rearm_count", 0),
                 )
             )
         if (
@@ -83863,6 +84137,7 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
@@ -83923,6 +84198,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
@@ -83931,6 +84207,7 @@ class DatabaseImplementationDaemon:
         terminal_recovery_refund = rearm_evidence_schema in {
             DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
         }
@@ -83945,6 +84222,10 @@ class DatabaseImplementationDaemon:
         historical_interrupted_state_transition_refund = (
             rearm_evidence_schema
             == DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
+        )
+        quiesced_stale_dispatch_release_refund = (
+            rearm_evidence_schema
+            == DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA
         )
         try:
             original_bytes = canonical_json(dict(original)).encode("utf-8")
@@ -84016,9 +84297,19 @@ class DatabaseImplementationDaemon:
                     )
                 )
                 or (
+                    quiesced_stale_dispatch_release_refund
+                    and _database_portal_quiesced_stale_dispatch_release_budget_matches(
+                        task_alias=str(getattr(task, "task_alias", "") or ""),
+                        attempt_number=raw_original_attempt_number,
+                        attempts_used=raw_original_attempts_used,
+                        rearm_count=prior_rearms,
+                    )
+                )
+                or (
                     terminal_recovery_refund
                     and not stale_dispatch_migration_refund
                     and not historical_interrupted_state_transition_refund
+                    and not quiesced_stale_dispatch_release_refund
                     and _database_terminal_claim_ordinal_lower_bound(
                         attempt_number=raw_original_attempt_number,
                         attempts_used=raw_original_attempts_used,
@@ -85781,6 +86072,7 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
@@ -85792,6 +86084,7 @@ class DatabaseImplementationDaemon:
             in {
                 DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             }
@@ -85802,6 +86095,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
@@ -85818,6 +86112,10 @@ class DatabaseImplementationDaemon:
         historical_interrupted_state_transition = bool(
             evidence_schema
             == DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
+        )
+        quiesced_stale_dispatch_release = bool(
+            evidence_schema
+            == DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA
         )
         terminal_quiescent_deferred = bool(
             evidence_schema
@@ -85866,9 +86164,19 @@ class DatabaseImplementationDaemon:
                 )
             )
             or (
+                quiesced_stale_dispatch_release
+                and _database_portal_quiesced_stale_dispatch_release_budget_matches(
+                    task_alias=str(attempt.task_alias),
+                    attempt_number=attempt.attempt_number,
+                    attempts_used=raw_attempts_used,
+                    rearm_count=raw_rearm_count,
+                )
+            )
+            or (
                 terminal_recovery
                 and not stale_dispatch_migration
                 and not historical_interrupted_state_transition
+                and not quiesced_stale_dispatch_release
                 and _database_terminal_claim_ordinal_lower_bound(
                     attempt_number=attempt.attempt_number,
                     attempts_used=raw_attempts_used,
@@ -86258,6 +86566,7 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
@@ -86299,6 +86608,7 @@ class DatabaseImplementationDaemon:
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
@@ -87587,6 +87897,7 @@ class DatabaseImplementationDaemon:
 
         from .database_portal_bridge import (
             DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
         )
@@ -87696,6 +88007,7 @@ class DatabaseImplementationDaemon:
                         "rearm-evidence@1"
                     ),
                     DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
+                    DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
                     DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
                     DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
                 }
@@ -87846,6 +88158,46 @@ class DatabaseImplementationDaemon:
                 evidence_id = str(
                     no_provider_evidence.get("evidence_id") or ""
                 )
+                quiesced_release_revalidation = bool(
+                    no_provider_evidence.get("schema")
+                    == DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA
+                )
+                revalidation_attempt = (
+                    self.get_attempt(str(receipt.get("attempt_id") or ""))
+                    if quiesced_release_revalidation
+                    else None
+                )
+                revalidation_attempt_before = (
+                    revalidation_attempt.to_dict()
+                    if revalidation_attempt is not None
+                    else None
+                )
+                revalidation_provider_dispatch = (
+                    self._dispatch_journal_entry(
+                        revalidation_attempt,
+                        dispatch_kind="provider",
+                        idempotency_key=(
+                            f"provider:{revalidation_attempt.attempt_id}"
+                        ),
+                    )
+                    if revalidation_attempt is not None
+                    else None
+                )
+                revalidation_phases = (
+                    tuple(
+                        MappingProxyType(dict(item))
+                        for item in self.phase_history(
+                            str(revalidation_attempt.attempt_id)
+                        )
+                    )
+                    if revalidation_attempt is not None
+                    else ()
+                )
+                if (
+                    quiesced_release_revalidation
+                    and revalidation_attempt_before is None
+                ):
+                    continue
                 blocked_receipt_digest = (
                     self._database_no_provider_rearm_digest(receipt)
                 )
@@ -87924,7 +88276,124 @@ class DatabaseImplementationDaemon:
                     receipt: Mapping[str, Any] = MappingProxyType(
                         dict(rearm_receipt)
                     ),
+                    outer_block_receipt: Mapping[str, Any] = MappingProxyType(
+                        dict(receipt)
+                    ),
+                    expected_evidence: Mapping[str, Any] = MappingProxyType(
+                        dict(no_provider_evidence)
+                    ),
+                    expected_attempt: Any = revalidation_attempt,
+                    expected_attempt_record: Mapping[str, Any] | None = (
+                        MappingProxyType(dict(revalidation_attempt_before))
+                        if revalidation_attempt_before is not None
+                        else None
+                    ),
+                    expected_provider_dispatch: Mapping[str, Any] | None = (
+                        MappingProxyType(dict(revalidation_provider_dispatch))
+                        if isinstance(revalidation_provider_dispatch, Mapping)
+                        else None
+                    ),
+                    expected_phases: tuple[Mapping[str, Any], ...] = (
+                        revalidation_phases
+                    ),
                 ) -> Any:
+                    if quiesced_release_revalidation:
+                        current_attempt = self.get_attempt(
+                            str(outer_block_receipt.get("attempt_id") or "")
+                        )
+                        fenced_revalidation = getattr(
+                            self._database_portal_bridge,
+                            "execute_with_revalidated_quiesced_stale_dispatch_release",
+                            None,
+                        )
+                        if (
+                            expected_attempt is None
+                            or expected_attempt_record is None
+                            or current_attempt is None
+                            or not _canonical_mapping_matches(
+                                current_attempt.to_dict(),
+                                expected_attempt_record,
+                            )
+                            or not callable(fenced_revalidation)
+                        ):
+                            raise DatabaseImplementationConflictError(
+                                "quiesced stale-dispatch release evidence advanced before control CAS"
+                            )
+
+                        def exact_control_cas() -> Any:
+                            current_attempt = self.get_attempt(
+                                str(expected_attempt.attempt_id)
+                            )
+                            current_provider_dispatch = (
+                                self._dispatch_journal_entry(
+                                    expected_attempt,
+                                    dispatch_kind="provider",
+                                    idempotency_key=(
+                                        f"provider:{expected_attempt.attempt_id}"
+                                    ),
+                                )
+                            )
+                            if (
+                                current_attempt is None
+                                or not _canonical_mapping_matches(
+                                    current_attempt.to_dict(),
+                                    expected_attempt_record,
+                                )
+                                or self.phase_history(
+                                    str(expected_attempt.attempt_id)
+                                )
+                                != [dict(item) for item in expected_phases]
+                                or (
+                                    dict(current_provider_dispatch)
+                                    if isinstance(
+                                        current_provider_dispatch, Mapping
+                                    )
+                                    else None
+                                )
+                                != (
+                                    dict(expected_provider_dispatch)
+                                    if expected_provider_dispatch is not None
+                                    else None
+                                )
+                                or self.provider_invocation_recorded(
+                                    str(expected_attempt.attempt_id),
+                                    idempotency_key=(
+                                        f"provider:{expected_attempt.attempt_id}"
+                                    ),
+                                )
+                                is not None
+                                or self.effect_claim_recorded(
+                                    str(expected_attempt.attempt_id),
+                                    idempotency_key=(
+                                        f"effect:{expected_attempt.attempt_id}"
+                                    ),
+                                )
+                                is not None
+                                or self._dispatch_journal_entry(
+                                    expected_attempt,
+                                    dispatch_kind="effect",
+                                    idempotency_key=(
+                                        f"effect:{expected_attempt.attempt_id}"
+                                    ),
+                                )
+                                is not None
+                            ):
+                                raise DatabaseImplementationConflictError(
+                                    "quiesced stale-dispatch release control authority advanced before CAS"
+                                )
+                            return self._cas_task_status_database(
+                                task_cid,
+                                expected_revision=expected_revision,
+                                new_status="retrying",
+                                receipt=receipt,
+                            )
+
+                        return fenced_revalidation(
+                            expected_attempt,
+                            outer_block_receipt=outer_block_receipt,
+                            expected_evidence=expected_evidence,
+                            callback=exact_control_cas,
+                        )
                     return self._cas_task_status_database(
                         task_cid,
                         expected_revision=expected_revision,

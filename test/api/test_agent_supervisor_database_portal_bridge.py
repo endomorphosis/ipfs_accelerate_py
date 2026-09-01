@@ -46,6 +46,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+    DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
     DatabasePortalBridgeDeferred,
@@ -1196,6 +1197,808 @@ def _seed_terminal_quiescent_resource_deferral(
         task.body["completion_receipt"],
     )
     return daemon, bridge, terminal, paths, outer_receipt
+
+
+def _append_quiesced_stale_release_history(
+    paths: object,
+    *,
+    mutation: str = "",
+) -> None:
+    """Append the closed producer shapes in the growing PCTDD-007 history."""
+
+    def append(events: list[dict[str, object]]) -> None:
+        previous = events[-1]
+        cid = "baguqeera" + "a" * 52
+        root = str(Path(paths.root))
+        claim_path = str(Path(root).parent / "claims" / "claim.lock")
+        receipt_path = str(
+            Path(root)
+            / "implementation-task-claim-release-receipts"
+            / "canonical-task-0123456789abcdef01234567-a1.json"
+        )
+        common_envelope = {
+            "timestamp": "2026-09-01T17:06:04.694680+00:00",
+            "event_id": "sha256:" + "0" * 64,
+            "stream_id": str(previous["stream_id"]),
+            "snapshot_id": str(previous["snapshot_id"]),
+            "previous_event_id": str(previous["event_id"]),
+        }
+        merged_cleanup = {
+            **common_envelope,
+            "type": "merged_worktree_cleanup",
+            "attempted": True,
+            "max_cleanups": 25,
+            "prune_returncode": 0,
+            "prune_stderr": "",
+            "prune_stdout": "",
+            "removed": [],
+            "removed_count": 0,
+            "skipped": [],
+            "skipped_count": 0,
+            "target_branch": "agent/test",
+            "worktree_root": str(Path(root).parent / "worktrees"),
+        }
+        active_block = {
+            **common_envelope,
+            "type": "implementation_shutdown_reconciliation_blocked",
+            "attempt": 1,
+            "blocked": True,
+            "reason": "implementation_worker_still_active",
+            "reconciled": False,
+            "task_id": "PCTDD-007",
+            "worktree_path": str(Path(root).parent / "worktrees" / "active"),
+        }
+        stale_claim: dict[str, object] = {
+            "attempt": 1,
+            "blocked": False,
+            "canonical_task_cid": cid,
+            "claim_id": cid,
+            "claim_lease_id": "a" * 40,
+            "claim_path": claim_path,
+            "lifecycle_fence": 4,
+            "lifecycle_record_id": cid,
+            "operation_id": cid,
+            "owner_pid": 2_765_210,
+            "reason": "quiesced_task_claim_released",
+            "receipt_id": cid,
+            "receipt_path": receipt_path,
+            "reconciled": True,
+            "released_at": "2026-09-01T17:06:04.694304+00:00",
+            "stale_dispatch_intent_released_for_retry": True,
+            "state_dir": root,
+            "task_id": "PCTDD-007",
+            "task_status": "todo",
+        }
+        release = {
+            **common_envelope,
+            "type": "implementation_task_claim_released",
+            **stale_claim,
+        }
+        lock_clear = {
+            **common_envelope,
+            "type": "implementation_lock_cleared",
+            "task_id": "PCTDD-007",
+            "lock_path": str(Path(root) / "implementation.lock"),
+            "branch": "",
+            "lock_owner_pid": 2_765_210,
+        }
+        shutdown_common = {
+            **common_envelope,
+            "type": "implementation_shutdown_reconciled",
+            "attempt": 1,
+            "attempt_recovery": {},
+            "blocked": False,
+            "protected_path_reconciliation": {
+                "blocked": False,
+                "critical_section_entered": False,
+                "reason": "no_active_snapshot",
+                "scan_outside_lease": True,
+            },
+            "reason": "already_quiesced",
+            "reconciled": True,
+            "reconciled_at": "2026-09-01T15:37:53.668137+00:00",
+            "stale_lock_cleared": True,
+            "task_id": "PCTDD-007",
+            "worktree_lifecycle_reconciliation": {
+                "blocked": False,
+                "reason": "no_active_worktree",
+                "reconciled": False,
+            },
+        }
+        release_shutdown = {
+            **shutdown_common,
+            "task_claim_reconciliation": dict(stale_claim),
+        }
+        no_claim_shutdown = {
+            **shutdown_common,
+            "stale_lock_cleared": False,
+            "task_claim_reconciliation": {
+                "blocked": False,
+                "canonical_task_cid": cid,
+                "claim_path": claim_path,
+                "reason": "no_task_claim",
+                "reconciled": False,
+                "task_id": "PCTDD-007",
+            },
+        }
+        appended = [
+            merged_cleanup,
+            active_block,
+            release,
+            lock_clear,
+            release_shutdown,
+            no_claim_shutdown,
+            json.loads(json.dumps(no_claim_shutdown)),
+        ]
+        if mutation == "release_extra_key":
+            release["unexpected"] = "authority widening"
+        elif mutation == "release_stale_flag_type":
+            release["stale_dispatch_intent_released_for_retry"] = 1
+        elif mutation == "worker_reason":
+            active_block["reason"] = "different_reason"
+        elif mutation == "lock_owner_bool":
+            lock_clear["lock_owner_pid"] = True
+        elif mutation == "release_shutdown_reason":
+            release_shutdown["reason"] = "different_reason"
+        elif mutation == "no_claim_extra_key":
+            no_claim = dict(no_claim_shutdown["task_claim_reconciliation"])
+            no_claim["claim_id"] = cid
+            no_claim_shutdown["task_claim_reconciliation"] = no_claim
+        first_sequence = int(previous["sequence"]) + 1
+        for offset, event in enumerate(appended):
+            event["sequence"] = first_sequence + offset
+        events.extend(appended)
+
+    _rewrite_active_event_chain(paths, append)
+
+
+def _seed_quiesced_release_artifact_population(paths: object) -> dict[str, object]:
+    """Create a minimal self-authenticating release file for fd-pin tests."""
+
+    reconciliation = Path(paths.reconciliation)
+    receipt_ids = sorted(
+        "sha256:" + child.stem
+        for child in reconciliation.iterdir()
+        if child.suffix == ".json"
+    )
+    release_dir = (
+        Path(paths.root) / "implementation-task-claim-release-receipts"
+    )
+    release_dir.mkdir(mode=0o700)
+    os.chmod(release_dir, 0o700)
+    release: dict[str, object] = {
+        "schema": "test/quiesced-release-artifact@1",
+        "operation": "release",
+    }
+    release["receipt_id"] = content_identity(release)
+    release_path = (
+        release_dir / "canonical-task-0123456789abcdef01234567-a1.json"
+    )
+    release_path.write_text(
+        json.dumps(release, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.chmod(release_path, 0o600)
+    return {
+        "reconciliation_receipt_count": len(receipt_ids),
+        "reconciliation_receipt_ids_digest": (
+            database_portal_bridge_module._sha256_bytes(
+                database_portal_bridge_module._canonical_json(receipt_ids)
+            )
+        ),
+        "task_claim_release_receipt_id": release["receipt_id"],
+        "task_claim_release_receipt_name": release_path.name,
+    }
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "",
+        "release_extra_key",
+        "release_stale_flag_type",
+        "worker_reason",
+        "lock_owner_bool",
+        "release_shutdown_reason",
+        "no_claim_extra_key",
+    ),
+)
+def test_pinned_snapshot_closes_full_quiesced_stale_release_history(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    daemon, bridge, _attempt, paths, _receipt = (
+        _seed_terminal_quiescent_resource_deferral(
+            tmp_path,
+            monkeypatch,
+            shutdown_event_count=1,
+        )
+    )
+    try:
+        _append_quiesced_stale_release_history(paths, mutation=mutation)
+        if mutation and mutation != "unfinished_variant":
+            with pytest.raises(DatabasePortalBridgeError):
+                bridge._pinned_no_provider_snapshot(
+                    paths,
+                    reject_duplicate_physical_events=True,
+                )
+        else:
+            snapshot = bridge._pinned_no_provider_snapshot(
+                paths,
+                reject_duplicate_physical_events=True,
+            )
+            assert [event["type"] for event in snapshot["events"][-5:]] == [
+                "implementation_task_claim_released",
+                "implementation_lock_cleared",
+                "implementation_shutdown_reconciled",
+                "implementation_shutdown_reconciled",
+                "implementation_shutdown_reconciled",
+            ]
+            assert snapshot["events"][-1]["task_claim_reconciliation"][
+                "reason"
+            ] == "no_task_claim"
+    finally:
+        daemon.close()
+
+
+def test_quiesced_release_fence_revalidates_before_callback_and_holds_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, bridge, attempt, paths, outer_receipt = (
+        _seed_terminal_quiescent_resource_deferral(
+            tmp_path,
+            monkeypatch,
+            shutdown_event_count=1,
+        )
+    )
+    expected = {
+        "schema": DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
+        "evidence_id": "sha256:" + "1" * 64,
+        **_seed_quiesced_release_artifact_population(paths),
+    }
+    release_dir = (
+        Path(paths.root) / "implementation-task-claim-release-receipts"
+    )
+    release_file = release_dir / str(
+        expected["task_claim_release_receipt_name"]
+    )
+    callback_calls: list[bool] = []
+    try:
+        monkeypatch.setattr(
+            bridge,
+            "_quiesced_stale_dispatch_release_rearm_evidence",
+            lambda *_args, **_kwargs: dict(expected),
+        )
+        monkeypatch.setattr(
+            bridge,
+            "_revalidate_pinned_quiesced_release_snapshot",
+            lambda *_args, **_kwargs: None,
+        )
+        def forbidden_path_authority(*_args: object, **_kwargs: object) -> object:
+            raise AssertionError("path/recovery authority reopened in final window")
+
+        monkeypatch.setattr(Path, "read_bytes", forbidden_path_authority)
+        monkeypatch.setattr(Path, "iterdir", forbidden_path_authority)
+        monkeypatch.setattr(
+            database_portal_bridge_module,
+            "_recover_immutable_link_publication",
+            forbidden_path_authority,
+        )
+        monkeypatch.setattr(
+            bridge,
+            "load_reconciliation_receipt",
+            forbidden_path_authority,
+        )
+        monkeypatch.setattr(bridge, "_binding_lookup", forbidden_path_authority)
+
+        def callback() -> str:
+            import fcntl
+
+            for lock_path in (
+                Path(paths.root) / ".portal-events.jsonl.lock",
+                Path(paths.root) / "database-attempt-reconciliations",
+                Path(paths.root)
+                / "implementation-task-claim-release-receipts",
+            ):
+                descriptor = os.open(
+                    lock_path,
+                    os.O_RDONLY
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | (
+                        getattr(os, "O_DIRECTORY", 0)
+                        if lock_path.is_dir()
+                        else 0
+                    ),
+                )
+                try:
+                    with pytest.raises(BlockingIOError):
+                        fcntl.flock(
+                            descriptor,
+                            fcntl.LOCK_EX | fcntl.LOCK_NB,
+                        )
+                finally:
+                    os.close(descriptor)
+            callback_calls.append(True)
+            return "cas-committed"
+
+        assert bridge.execute_with_revalidated_quiesced_stale_dispatch_release(
+            attempt,
+            outer_block_receipt=outer_receipt,
+            expected_evidence=expected,
+            callback=callback,
+        ) == "cas-committed"
+        assert callback_calls == [True]
+
+        def replacement_after_cas() -> str:
+            with open(release_file, "rb") as source:
+                raw = source.read()
+            replacement = release_dir / ".producer-replacement"
+            replacement.write_bytes(raw)
+            os.chmod(replacement, 0o600)
+            os.replace(replacement, release_file)
+            callback_calls.append(False)
+            return "cas-committed-before-postcheck"
+
+        with pytest.raises(DatabasePortalBridgeError):
+            bridge.execute_with_revalidated_quiesced_stale_dispatch_release(
+                attempt,
+                outer_block_receipt=outer_receipt,
+                expected_evidence=expected,
+                callback=replacement_after_cas,
+            )
+        assert callback_calls == [True, False]
+
+        advanced = {**expected, "event_head_id": "sha256:" + "2" * 64}
+        monkeypatch.setattr(
+            bridge,
+            "_quiesced_stale_dispatch_release_rearm_evidence",
+            lambda *_args, **_kwargs: advanced,
+        )
+        with pytest.raises(DatabasePortalBridgeError):
+            bridge.execute_with_revalidated_quiesced_stale_dispatch_release(
+                attempt,
+                outer_block_receipt=outer_receipt,
+                expected_evidence=expected,
+                callback=lambda: callback_calls.append(True),
+            )
+        assert callback_calls == [True, False]
+    finally:
+        daemon.close()
+
+
+def test_quiesced_release_artifact_pin_rejects_mixed_modes_swap_and_fifo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, bridge, attempt, paths, _outer_receipt = (
+        _seed_terminal_quiescent_resource_deferral(
+            tmp_path,
+            monkeypatch,
+            shutdown_event_count=1,
+        )
+    )
+    expected = _seed_quiesced_release_artifact_population(paths)
+    release_dir = (
+        Path(paths.root) / "implementation-task-claim-release-receipts"
+    )
+    release_file = next(release_dir.iterdir())
+    parent_fd = authority_fd = attempt_fd = -1
+    try:
+        parent_fd, authority_fd, attempt_fd, _pinned = (
+            bridge._open_pinned_private_attempt_directory(
+                authority_root=bridge.attempt_root,
+                attempt_key=Path(paths.root).name,
+            )
+        )
+
+        with bridge._pinned_quiesced_release_artifact_population(
+            attempt,
+            attempt_fd,
+            expected_evidence=expected,
+        ) as artifacts:
+            artifacts["verify"]()
+
+        renamed_release = (
+            release_dir / "canonical-task-ffffffffffffffffffffffff-a1.json"
+        )
+        os.replace(release_file, renamed_release)
+        with pytest.raises(DatabasePortalBridgeError):
+            with bridge._pinned_quiesced_release_artifact_population(
+                attempt,
+                attempt_fd,
+                expected_evidence=expected,
+            ):
+                pass
+        os.replace(renamed_release, release_file)
+
+        os.chmod(release_file, 0o664)
+        with pytest.raises(DatabasePortalBridgeError):
+            with bridge._pinned_quiesced_release_artifact_population(
+                attempt,
+                attempt_fd,
+                expected_evidence=expected,
+            ):
+                pass
+        os.chmod(release_dir, 0o775)
+        os.chmod(release_file, 0o600)
+        with pytest.raises(DatabasePortalBridgeError):
+            with bridge._pinned_quiesced_release_artifact_population(
+                attempt,
+                attempt_fd,
+                expected_evidence=expected,
+            ):
+                pass
+        os.chmod(release_file, 0o664)
+        with bridge._pinned_quiesced_release_artifact_population(
+            attempt,
+            attempt_fd,
+            expected_evidence=expected,
+        ) as artifacts:
+            # A non-cooperating same-name inode swap cannot preserve the
+            # retained published-entry fingerprint.
+            replacement = release_dir / ".replacement"
+            replacement.write_bytes(release_file.read_bytes())
+            os.chmod(replacement, 0o664)
+            os.replace(replacement, release_file)
+            with pytest.raises(DatabasePortalBridgeError):
+                artifacts["verify"]()
+
+        os.chmod(release_dir, 0o700)
+        release_file.unlink()
+        os.mkfifo(release_file, mode=0o600)
+        started = time.monotonic()
+        with pytest.raises(DatabasePortalBridgeError):
+            with bridge._pinned_quiesced_release_artifact_population(
+                attempt,
+                attempt_fd,
+                expected_evidence=expected,
+            ):
+                pass
+        assert time.monotonic() - started < 1.0
+    finally:
+        for descriptor in (attempt_fd, authority_fd, parent_fd):
+            if descriptor >= 0:
+                os.close(descriptor)
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "",
+        "claim_extra_key",
+        "claim_owner_bool",
+        "lifecycle_extra_key",
+        "operation_id",
+        "receipt_name",
+        "unfinished_variant",
+        "unfinished_attempt_extra_key",
+    ),
+)
+def test_quiesced_release_receipt_closes_producer_basis_and_filename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    daemon, bridge, _attempt, paths, _outer_receipt = (
+        _seed_terminal_quiescent_resource_deferral(
+            tmp_path,
+            monkeypatch,
+            shutdown_event_count=1,
+        )
+    )
+    release_dir = (
+        Path(paths.root) / "implementation-task-claim-release-receipts"
+    )
+    release_dir.mkdir(mode=0o700)
+    canonical_task_cid = "baguqeera" + "b" * 52
+    claim_name_digest = hashlib.sha1(canonical_task_cid.encode()).hexdigest()[:20]
+    claim: dict[str, object] = {
+        "path": str(
+            Path(paths.root).parent
+            / "implementation-task-claims"
+            / f"canonical-task-{claim_name_digest}.lock"
+        ),
+        "claim_id": "baguqeera" + "c" * 52,
+        "lease_id": "a" * 40,
+        "owner_pid": 17,
+        "state_dir": str(Path(paths.root)),
+        "state_path": str(Path(paths.state)),
+        "legacy_worktree_root_missing": False,
+    }
+    lifecycle: dict[str, object] = {
+        "record_id": "baguqeera" + "d" * 52,
+        "lease_id": "b" * 40,
+        "fence": 4,
+        "state": "terminal",
+        "workspace_path": str(Path(paths.root).parent / "worktrees" / "exact"),
+        "terminal_reason": "controlled_restart_dead_owner",
+    }
+    if mutation == "claim_extra_key":
+        claim["unexpected"] = False
+    elif mutation == "claim_owner_bool":
+        claim["owner_pid"] = True
+    elif mutation == "lifecycle_extra_key":
+        lifecycle["unexpected"] = False
+    unfinished_variant = mutation in {
+        "unfinished_variant",
+        "unfinished_attempt_extra_key",
+    }
+    basis: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "quiesced-implementation-task-claim-release@1"
+        ),
+        "operation": "release_quiesced_implementation_task_claim",
+        "task_id": "PCTDD-007",
+        "canonical_task_cid": canonical_task_cid,
+        "attempt": 1,
+        "task_status": "todo",
+        "claim": claim,
+        "worktree_lifecycle": lifecycle,
+        "task_source_identity": None,
+    }
+    released_attempt: dict[str, object] | None = None
+    if unfinished_variant:
+        authority_digest = "1" * 64
+        released_attempt = {
+            "board_namespace": "parallel-content-sealing-proof-carrying-tdd-v1",
+            "branch": "implementation/pctdd-007-exact-attempt-1-1",
+            "canonical_task_key": "task/v1/" + "2" * 64,
+            "claim_started_at": "2026-09-01T17:00:00+00:00",
+            "event_id": "sha256:" + "3" * 64,
+            "released_from": 1,
+            "released_to": 0,
+            "sequence": 23,
+            "snapshot_id": "event-log-snapshot:sha256:" + authority_digest,
+            "start_event_id": "sha256:" + "4" * 64,
+            "start_sequence": 17,
+            "started_at": "2026-09-01T17:01:00+00:00",
+            "stream_id": "event-log:sha256:" + authority_digest,
+            "timestamp": "2026-09-01T17:06:04.694304+00:00",
+            "worktree_path": lifecycle["workspace_path"],
+        }
+        if mutation == "unfinished_attempt_extra_key":
+            released_attempt["unexpected"] = False
+        basis["released_unfinished_attempt"] = released_attempt
+        basis["released_unfinished_retry_id"] = "baguqeera" + "e" * 52
+    else:
+        basis["stale_dispatch_intent_released_for_retry"] = True
+    operation_id = content_identity(basis)
+    if mutation == "operation_id":
+        operation_id = "baguqeera" + "z" * 52
+    body = {
+        **basis,
+        "operation_id": operation_id,
+        "phase": "released",
+        "prepared_at": (
+            "2026-09-01T17:06:04.700000+00:00"
+            if unfinished_variant
+            else "2026-09-01T17:06:04.693618+00:00"
+        ),
+        "released_at": "2026-09-01T17:06:04.694304+00:00",
+    }
+    receipt = {**body, "receipt_id": content_identity(body)}
+    name_digest = hashlib.sha256(
+        f"{canonical_task_cid}\0{body['attempt']}\0{claim['lease_id']}".encode()
+    ).hexdigest()[:24]
+    if mutation == "receipt_name":
+        name_digest = "f" * 24
+    receipt_path = release_dir / f"canonical-task-{name_digest}-a1.json"
+    receipt_path.write_text(
+        json.dumps(receipt, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.chmod(receipt_path, 0o600)
+    claim_release = {
+        "reconciled": True,
+        "blocked": False,
+        "reason": "quiesced_task_claim_released",
+        "task_id": "PCTDD-007",
+        "canonical_task_cid": canonical_task_cid,
+        "attempt": 1,
+        "task_status": "todo",
+        "claim_path": claim["path"],
+        "claim_id": claim["claim_id"],
+        "claim_lease_id": claim["lease_id"],
+        "owner_pid": claim["owner_pid"],
+        "state_dir": claim["state_dir"],
+        "lifecycle_record_id": lifecycle["record_id"],
+        "lifecycle_fence": lifecycle["fence"],
+        "operation_id": operation_id,
+        "released_at": body["released_at"],
+        "receipt_id": receipt["receipt_id"],
+        "receipt_path": str(receipt_path),
+    }
+    if unfinished_variant:
+        claim_release["released_unfinished_attempt"] = released_attempt
+        claim_release["released_unfinished_retry_id"] = basis[
+            "released_unfinished_retry_id"
+        ]
+    else:
+        claim_release["stale_dispatch_intent_released_for_retry"] = True
+    try:
+        if mutation and mutation != "unfinished_variant":
+            with pytest.raises(DatabasePortalBridgeError):
+                bridge._strict_quiesced_task_claim_release_receipt(
+                    paths,
+                    claim_release,
+                )
+        else:
+            assert bridge._strict_quiesced_task_claim_release_receipt(
+                paths,
+                claim_release,
+            ) == receipt
+    finally:
+        daemon.close()
+
+
+def test_quiesced_release_occurrence_rejects_duplicate_physical_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, bridge, _attempt, paths, _outer_receipt = (
+        _seed_terminal_quiescent_resource_deferral(
+            tmp_path,
+            monkeypatch,
+            shutdown_event_count=2,
+        )
+    )
+    try:
+        rotation = rotate_event_log_if_needed(
+            Path(paths.events),
+            max_bytes=1,
+            retain_recent=1,
+            max_archives=2,
+        )
+        assert rotation["rotated"] is True
+        active = Path(paths.events)
+        archive = Path(str(rotation["archive_path"]))
+        duplicate = active.read_bytes()
+        archive.write_bytes(archive.read_bytes() + duplicate)
+        duplicate_event = json.loads(duplicate.decode("utf-8"))
+        manifest_path = active.with_name(active.name + ".manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        archive_record = next(
+            item for item in manifest["files"] if item["path"] == archive.name
+        )
+        active_record = next(
+            item for item in manifest["files"] if item["path"] == active.name
+        )
+        archive_stat = archive.stat()
+        archive_record.update(
+            {
+                "device": int(archive_stat.st_dev),
+                "inode": int(archive_stat.st_ino),
+                "mtime_ns": int(archive_stat.st_mtime_ns),
+                "size_bytes": int(archive_stat.st_size),
+                "event_count": int(archive_record["event_count"]) + 1,
+                "last_sequence": int(duplicate_event["sequence"]),
+                "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+            }
+        )
+        active_record["start_previous_event_id"] = str(
+            duplicate_event["event_id"]
+        )
+        unsigned = dict(manifest)
+        unsigned.pop("manifest_digest", None)
+        manifest["manifest_digest"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                unsigned,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+        # The compatibility snapshot coalesces the byte-identical sequence;
+        # the versioned occurrence proof must not.
+        assert bridge._pinned_no_provider_snapshot(paths)["events"]
+        with pytest.raises(DatabasePortalBridgeError):
+            bridge._pinned_no_provider_snapshot(
+                paths,
+                reject_duplicate_physical_events=True,
+            )
+    finally:
+        daemon.close()
+
+
+def test_quiesced_release_population_rejects_effect_event_and_receipt() -> None:
+    closed_events = [
+        {"type": "task_selected"},
+        {"type": "implementation_shutdown_reconciliation_blocked"},
+        {"type": "implementation_task_claim_released"},
+    ]
+    closed_receipts = [
+        {
+            "stage": stage,
+            "terminal_provider_evidence": False,
+            "terminal_provider_receipt_id": "",
+        }
+        for stage in ("blocked", "prepared", "commit_barrier", "terminal")
+    ]
+    assert (
+        database_portal_bridge_module._quiesced_stale_dispatch_release_event_population_is_closed(
+            closed_events
+        )
+    )
+    exact_role_events = [
+        {"type": event_type}
+        for event_type, count in {
+            "dirty_submodule_reset_deferred": 1,
+            "implementation_protected_path_snapshot_cleared": 1,
+            "implementation_protected_path_snapshot_reconciled": 1,
+            "implementation_protected_path_snapshot_recorded": 1,
+            "implementation_shutdown_reconciliation_blocked": 1,
+            "implementation_started": 1,
+            "implementation_state_recovered": 1,
+            "implementation_task_claim_released": 1,
+            "interrupted_implementation_retry_prepared": 1,
+            "local_submodule_source_discovered": 7,
+            "nested_submodule_initialization_guarded": 6,
+            "pre_implementation_kernel_evaluated": 1,
+            "task_selected": 1,
+        }.items()
+        for _ in range(count)
+    ]
+    assert (
+        database_portal_bridge_module._quiesced_stale_dispatch_release_event_roles_are_exact(
+            exact_role_events,
+            task_alias="PCTDD-005",
+        )
+    )
+    assert not (
+        database_portal_bridge_module._quiesced_stale_dispatch_release_event_roles_are_exact(
+            [*exact_role_events, {"type": "task_selected"}],
+            task_alias="PCTDD-005",
+        )
+    )
+    assert (
+        database_portal_bridge_module._quiesced_stale_dispatch_release_receipt_population_is_closed(
+            closed_receipts,
+            task_alias="PCTDD-005",
+        )
+    )
+
+    assert not (
+        database_portal_bridge_module._quiesced_stale_dispatch_release_event_population_is_closed(
+            [*closed_events, {"type": "implementation_finished"}]
+        )
+    )
+    assert not (
+        database_portal_bridge_module._quiesced_stale_dispatch_release_receipt_population_is_closed(
+            [
+                *closed_receipts,
+                {
+                    "stage": "validated",
+                    "terminal_provider_evidence": False,
+                    "terminal_provider_receipt_id": "",
+                },
+            ],
+            task_alias="PCTDD-005",
+        )
+    )
+    forged = [dict(receipt) for receipt in closed_receipts]
+    forged[-1]["terminal_provider_evidence"] = True
+    forged[-1]["terminal_provider_receipt_id"] = "sha256:" + "f" * 64
+    assert not (
+        database_portal_bridge_module._quiesced_stale_dispatch_release_receipt_population_is_closed(
+            forged,
+            task_alias="PCTDD-005",
+        )
+    )
+    assert not (
+        database_portal_bridge_module._quiesced_stale_dispatch_release_receipt_population_is_closed(
+            [closed_receipts[0], *closed_receipts],
+            task_alias="PCTDD-005",
+        )
+    )
 
 
 def _set_terminal_submodule_cleanup(
