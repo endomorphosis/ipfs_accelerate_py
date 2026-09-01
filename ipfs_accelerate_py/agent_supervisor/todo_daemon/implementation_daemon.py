@@ -72474,6 +72474,7 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "[Errno 28] No space left on device",
         "bwrap: setting up uid map: Permission denied",
         "bwrap: setting up gid map: Permission denied",
+        "grok_quota_exhausted",
     }
 )
 # Grok/wrapper deaths and Quack attach races are retryable, but they are not
@@ -72493,6 +72494,7 @@ _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
         "[Errno 28] No space left on device",
         "bwrap: setting up uid map: Permission denied",
         "bwrap: setting up gid map: Permission denied",
+        "grok_quota_exhausted",
     }
 )
 _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
@@ -72508,6 +72510,7 @@ _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
         "implementation_protected_path_mutated",
         "validation_project_dependency_preflight_failed",
         "typed_portal_deferral_budget_exhausted",
+        "grok_quota_exhausted",
     }
 )
 _SANDBOX_HOST_FAILURE_REOPEN_SCHEMA = (
@@ -79902,6 +79905,12 @@ class DatabaseImplementationDaemon:
             return "bwrap: setting up uid map: Permission denied"
         if "bwrap: setting up gid map" in reason.lower():
             return "bwrap: setting up gid map: Permission denied"
+        if (
+            "grok build usage balance exhausted" in lowered
+            or "quota_or_balance_exhausted" in lowered
+            or lowered == "grok_quota_exhausted"
+        ):
+            return "grok_quota_exhausted"
         if (
             "could not connect to server" in lowered
             and "41487" in reason
@@ -87640,12 +87649,21 @@ class DatabaseImplementationDaemon:
                     self.max_task_attempts > 0
                     and int(attempt.attempt_number) < self.max_task_attempts
                 )
+                grok_quota = self._implementation_logs_show_grok_quota(
+                    str(getattr(task, "task_alias", "") or "")
+                )
                 # Checkout contention never dispatched a provider, so it must
                 # rearm even when the misclassified attempt sat at the cap.
+                # Grok 402 quota is infrastructure, not a spent model attempt.
                 if (
                     not dedicated_recovery_pending
                     and (
                         (reason == "portal_provider_failed" and remaining_budget)
+                        or (
+                            reason == "portal_provider_failed"
+                            and grok_quota
+                        )
+                        or reason == "grok_quota_exhausted"
                         or checkout_contention
                     )
                 ):
@@ -87657,12 +87675,16 @@ class DatabaseImplementationDaemon:
                         reason=(
                             "portal_checkout_contention_retry"
                             if checkout_contention
+                            else "grok_quota_exhausted"
+                            if grok_quota or reason == "grok_quota_exhausted"
                             else "portal_candidate_retry"
                         ),
                         backoff_ms=0,
                         evidence_source=(
                             "portal_checkout_contention_reclassified"
                             if checkout_contention
+                            else "grok_quota_exhausted_reclassified"
+                            if grok_quota or reason == "grok_quota_exhausted"
                             else "portal_provider_failed_reclassified"
                         ),
                         coordination_evidence=coordination,
@@ -90268,6 +90290,36 @@ class DatabaseImplementationDaemon:
         except (TypeError, ValueError):
             blob = str(receipt)
         return grok_stderr_is_sandbox_host_failure(blob)
+
+    def _implementation_logs_show_grok_quota(self, task_alias: str) -> bool:
+        """True when the latest implementer log is a typed Grok 402 envelope."""
+
+        from ..runtime.grok_cli_runner import parse_grok_quota_error
+
+        alias = str(task_alias or "").strip().lower()
+        if not alias or self.repo_root is None:
+            return False
+        root = Path(self.repo_root) / "data" / "aseh" / "state"
+        if not root.is_dir():
+            return False
+        needle = f"{alias}-attempt-"
+        logs = sorted(
+            (
+                path
+                for path in root.glob("**/implementation-logs/*.log")
+                if needle in path.name.lower()
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for path in logs[:4]:
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if parse_grok_quota_error(text[-262144:]):
+                return True
+        return False
 
     def _reopen_sandbox_host_failure_task(
         self,

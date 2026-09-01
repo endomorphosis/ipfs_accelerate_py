@@ -160,8 +160,19 @@ def parse_grok_quota_error(text: str) -> dict[str, object]:
     stripped = text.strip()
     if _GROK_USAGE_LIMIT_PATTERN.fullmatch(stripped):
         return {"kind": "usage_limit", "http_status": None}
+    marker_at = stripped.find(_GROK_BALANCE_MESSAGE)
+    if marker_at >= 0:
+        start = stripped.rfind("{", 0, marker_at + 1)
+        if start >= 0:
+            try:
+                payload, _end = json.JSONDecoder().raw_decode(stripped[start:])
+            except (json.JSONDecodeError, TypeError, ValueError):
+                payload = None
+            found = _grok_balance_payload(payload)
+            if found:
+                return found
     lowered = stripped.lower()
-    prefixes = ("internal error:", "error:")
+    prefixes = ("error: internal error:", "internal error:", "error:")
     prefix = next((item for item in prefixes if lowered.startswith(item)), "")
     if not prefix:
         return {}
@@ -170,7 +181,11 @@ def parse_grok_quota_error(text: str) -> dict[str, object]:
         payload = json.loads(payload_text)
     except (json.JSONDecodeError, TypeError, ValueError):
         return {}
-    if not isinstance(payload, dict) or set(payload) != {"message", "http_status"}:
+    return _grok_balance_payload(payload)
+
+
+def _grok_balance_payload(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
         return {}
     status = payload.get("http_status")
     message = payload.get("message")
@@ -12369,10 +12384,12 @@ class _BoundedStderrTee:
     def write(self, data: str) -> int:
         text = str(data)
         self._destination.write(text)
-        if self._size < self._limit and text:
-            remain = self._limit - self._size
-            self._chunks.append(text[:remain])
-            self._size += min(len(text), remain)
+        if text:
+            self._chunks.append(text)
+            self._size += len(text)
+            while self._size > self._limit and len(self._chunks) > 1:
+                dropped = self._chunks.pop(0)
+                self._size -= len(dropped)
         return len(text)
 
     def flush(self) -> None:
@@ -12388,10 +12405,12 @@ def _run_grok_with_typed_failure_capture(
     env: dict[str, str],
     provider_stdin: socket.socket | None = None,
     stderr_capture: list[str] | None = None,
+    stdout_capture: list[str] | None = None,
 ) -> int:
     """Run Grok with live output; stdout never grants fallback authority."""
 
-    stderr_tee = _BoundedStderrTee(sys.stderr)
+    stdout_tee = _BoundedStderrTee(sys.stdout, limit=MAX_GROK_ERROR_BYTES)
+    stderr_tee = _BoundedStderrTee(sys.stderr, limit=MAX_GROK_ERROR_BYTES)
     try:
         process = subprocess.Popen(
             list(command),
@@ -12411,7 +12430,7 @@ def _run_grok_with_typed_failure_capture(
     assert process.stderr is not None
     stdout_thread = threading.Thread(
         target=_stream_pipe,
-        args=(process.stdout, sys.stdout),
+        args=(process.stdout, stdout_tee),
         daemon=True,
     )
     stderr_thread = threading.Thread(
@@ -12424,6 +12443,8 @@ def _run_grok_with_typed_failure_capture(
     returncode = int(process.wait())
     stdout_thread.join()
     stderr_thread.join()
+    if stdout_capture is not None:
+        stdout_capture.append(stdout_tee.getvalue())
     if stderr_capture is not None:
         stderr_capture.append(stderr_tee.getvalue())
     return returncode
@@ -14868,11 +14889,13 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
 
         try:
             captured_stderr: list[str] = []
+            captured_stdout: list[str] = []
             primary_returncode = _run_grok_with_typed_failure_capture(
                 cmd,
                 env=grok_launch_env,
                 provider_stdin=docker_provider_stdin,
                 stderr_capture=captured_stderr,
+                stdout_capture=captured_stdout,
             )
             if (
                 docker_lease is None
@@ -14890,11 +14913,13 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 isolation_backend = GROK_ISOLATION_WORKTREE
                 _clear_custom_grok_sandbox_profile(Path(isolated_home.name))
                 captured_stderr = []
+                captured_stdout = []
                 primary_returncode = _run_grok_with_typed_failure_capture(
                     cmd,
                     env=grok_launch_env,
                     provider_stdin=None,
                     stderr_capture=captured_stderr,
+                    stdout_capture=captured_stdout,
                 )
             if docker_fence_thread is not None:
                 docker_fence_thread.join(timeout=6.0)
@@ -14923,6 +14948,23 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             return 127
         if primary_returncode == 0:
             return primary_returncode
+        quota_error = parse_grok_quota_error(
+            "".join(captured_stdout) + "".join(captured_stderr)
+        )
+        if quota_error:
+            receipt = {
+                "schema": GROK_QUOTA_RECEIPT_SCHEMA,
+                "provider": "grok_cli",
+                "model": model,
+                "failure_kind": "quota_or_balance_exhausted",
+                "message": "Grok Build usage balance exhausted",
+                **quota_error,
+            }
+            print(
+                json.dumps(receipt, sort_keys=True, separators=(",", ":")),
+                file=sys.stderr,
+            )
+            return GROK_QUOTA_EXHAUSTED_EXIT_CODE
 
         if preflight_nonce:
             print(

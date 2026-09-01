@@ -1480,6 +1480,21 @@ def test_quota_classifier_accepts_exact_balance_exhausted_envelope() -> None:
     assert parsed["http_status"] == 402
 
 
+def test_quota_classifier_accepts_live_prompt_usage_envelope() -> None:
+    transcript = (
+        'num_turns":45,"total_cost_usd":0.580093Error: Internal error: '
+        '{"message":"API error (status 402 Payment Required): '
+        'Grok Build usage balance exhausted","http_status":402,'
+        '"promptUsage":{"inputTokens":1,"outputTokens":1}}'
+    )
+    assert grok_cli_runner._grok_quota_exhausted(transcript) is True
+    parsed = grok_cli_runner.parse_grok_quota_error(transcript)
+    assert parsed == {
+        "kind": "usage_balance_exhausted",
+        "http_status": 402,
+    }
+
+
 def test_direct_no_nonce_native_quota_cannot_cross_providers(
     tmp_path: Path,
     monkeypatch,
