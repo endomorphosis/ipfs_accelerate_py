@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "test_compatibility_and_control_hash_successor_materialization",
     "live_quack_catalog_compatibility_successor_materialization",
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization",
     "post_m48_successor_report_fix_materialization",
@@ -5216,7 +5217,7 @@ def test_m39_dispatch_precedes_m38_and_requires_receipt_last() -> None:
     assert "event_cursor != _M39_TARGET_EVENT_WATERMARK" in core
 
 
-def test_m48_current_stale_owner_recovery_requires_generation_35_successor() -> None:
+def test_m51_current_stale_owner_recovery_requires_generation_37_successor() -> None:
     operator = _load(
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         "sawm_operator_m39_stale_recovery_test",
@@ -5231,8 +5232,8 @@ def test_m48_current_stale_owner_recovery_requires_generation_35_successor() -> 
     with pytest.raises(
         operator.OperatorError,
         match=(
-            "M48 binds a cleanly stopped generation-34 owner; use the sealed "
-            "generation-35 quack-start path instead of stale-owner recovery"
+            "M51 binds a cleanly stopped generation-36 owner; use the sealed "
+            "generation-37 quack-start path instead of stale-owner recovery"
         ),
     ):
         operator._recover_stale_quack(config)
@@ -8157,6 +8158,10 @@ def test_m47_presence_masks_m46_across_all_dispatchers(
             REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json"
         ).read_text(encoding="utf-8")
     )
+    historical_scheduler, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m47_key, scheduler, migration, seal)
+    )
+    assert historical_migration is not None and historical_seal is not None
     dependency_calls: list[str] = []
     monkeypatch.setattr(
         dependencies,
@@ -8171,7 +8176,10 @@ def test_m47_presence_masks_m46_across_all_dispatchers(
         ),
     )
     effective, dependency_errors = dependencies._effective_nested_source_authorities(
-        seal["source_authorities"], scheduler, migration, seal
+        historical_seal["source_authorities"],
+        historical_scheduler,
+        historical_migration,
+        historical_seal,
     )
     assert dependency_errors == []
     assert dependency_calls == ["M47"]
@@ -14845,9 +14853,9 @@ def test_m31_authority_pins_dead_pid_event_281_and_generation_29() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    # M31 remains immutable history while M48 is the current generation-35
+    # M31 remains immutable history while M51 is the current generation-37
     # restart authority.
-    assert scheduler["database_program"]["store_generation"] == "35"
+    assert scheduler["database_program"]["store_generation"] == "37"
     assert authority["migration_revision"] == "SAWM-R2-M31"
     assert authority["prior_authority"]["event_watermark"] == 281
     assert authority["target_event_watermark"] == 282
@@ -15023,8 +15031,8 @@ def test_m30_authority_pins_stopped_event_280_and_generation_28() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    # M30 remains immutable history while the current M48 owner is generation 35.
-    assert scheduler["database_program"]["store_generation"] == "35"
+    # M30 remains immutable history while the current M51 owner is generation 37.
+    assert scheduler["database_program"]["store_generation"] == "37"
     assert authority["schema"].endswith("authorization@2")
     assert authority["authorization_revision"] == 2
     assert authority["control_recorded_at"] == "2026-08-31T15:59:48Z"
@@ -16259,7 +16267,7 @@ def test_m27_dead_owner_resume_authority_runtime_and_source_chain_are_exact(
     assert config["database_program"]["store_id"].endswith(
         "run-r2-m27/control.duckdb"
     )
-    assert config["database_program"]["store_generation"] == "35"
+    assert config["database_program"]["store_generation"] == "37"
     assert m27_config["database_program"]["store_generation"] == "26"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
@@ -18509,9 +18517,9 @@ def test_m22_scheduler_authority_is_preserved_under_m27_runtime() -> None:
     assert config["database_program"]["store_id"] == (
         f"{current_runtime}/control.duckdb"
     )
-    # M48 advances the owner to generation 35 without changing the M27
+    # M51 advances the owner to generation 37 without changing the M27
     # runtime namespace.
-    assert config["database_program"]["store_generation"] == "35"
+    assert config["database_program"]["store_generation"] == "37"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
     )
@@ -21571,9 +21579,9 @@ def test_m17_namespace_is_preserved_as_historical_under_m27() -> None:
     assert authority["target_generation"] == 18
     assert authority["target_quack_port"] == 24_060
     assert config["runtime_paths"]["root"].endswith("run-r2-m27")
-    # The M17 authority remains historical while M48 owns generation 35 in the
+    # The M17 authority remains historical while M51 owns generation 37 in the
     # M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "35"
+    assert config["database_program"]["store_generation"] == "37"
     assert config["quack_owner"]["port"] == 24_070
 
 
@@ -22693,9 +22701,9 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m27() -> None:
         "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
     )
     assert config["runtime_paths"] != historical_runtime
-    # The M15 authority remains historical while M48 owns generation 35 in the
+    # The M15 authority remains historical while M51 owns generation 37 in the
     # M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "35"
+    assert config["database_program"]["store_generation"] == "37"
     assert config["quack_owner"]["port"] == 24_070
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 
