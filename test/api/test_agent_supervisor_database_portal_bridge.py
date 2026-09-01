@@ -18,8 +18,11 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_repository_id,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    WORKTREE_LIFECYCLE_QUARANTINE_SCHEMA,
+    CleanupDisposition,
     ProcessBirthIdentity,
     WorktreeLifecycleStore,
+    current_process_birth,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
@@ -35,6 +38,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA_V2,
     CROSS_ATTEMPT_IGNORED_RUNTIME_ARTIFACT_OBSERVATION_SCHEMA,
     CROSS_ATTEMPT_LIFECYCLE_AUTHORITY_SCHEMA,
+    CROSS_ATTEMPT_LIFECYCLE_QUARANTINE_FENCE_SCHEMA,
     CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME,
     CROSS_ATTEMPT_PROTECTED_STATE_CLEARANCE_SCHEMA,
     CROSS_ATTEMPT_PROTECTED_STATE_RETIREMENT_SCHEMA,
@@ -1654,6 +1658,87 @@ def _cross_attempt_recovery_fixture(
     return bridge, current_attempt, store, workspace, portals
 
 
+def _add_prior_recovery_candidate(
+    bridge: DatabasePortalExecutionBridge,
+    store: WorktreeLifecycleStore,
+    *,
+    attempt: DatabaseTaskAttempt,
+    workspace_name: str,
+    branch: str,
+    lifecycle_attempt: int,
+) -> tuple[Path, object]:
+    repository = store.repo_root
+    workspace = Path(store.repo_root).parent / "worktrees" / workspace_name
+    subprocess.run(
+        ["git", "branch", branch],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "worktree", "add", "-q", str(workspace), branch],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    prior_record = _record()
+    prior_record.revision = 10
+    paths = bridge._paths(attempt)
+    seed = bridge._render_projection(attempt, prior_record)
+    binding = bridge._binding(attempt, prior_record, seed)
+    paths.root.mkdir(parents=True)
+    paths.task_projection.write_text(seed, encoding="utf-8")
+    paths.binding.write_text(
+        json.dumps(binding, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    identity = bridge._prior_projection_identity(paths, binding)
+    paths.state.write_text(
+        json.dumps(
+            {
+                "implementation_in_progress": True,
+                "active_task_id": identity["task_id"],
+                "active_task_cid": identity["canonical_task_cid"],
+                "active_task_key": identity["canonical_task_key"],
+                "active_attempt": lifecycle_attempt,
+                "active_worktree_path": str(workspace.resolve()),
+                "active_branch": branch,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    lifecycle = store.begin_preparing(
+        task_id=attempt.task_alias,
+        canonical_task_cid=identity["canonical_task_cid"],
+        attempt=lifecycle_attempt,
+        lane_id=f"{paths.root.resolve()}:lane-{lifecycle_attempt}",
+        workspace_path=workspace,
+        branch=branch,
+        merge_target="main",
+        state_dir=str(paths.root.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=999_990 + lifecycle_attempt,
+            start_time_ticks=lifecycle_attempt,
+            boot_id="test-boot",
+            parent_pid=1,
+        ),
+    )
+    lifecycle = store.mark_active(
+        workspace,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    lifecycle = store.mark_settling(
+        workspace,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    return workspace, lifecycle
+
+
 @pytest.mark.parametrize("prior_task_revision", [10, 11])
 def test_bridge_exactly_retires_preserved_superseded_attempt_lifecycle(
     tmp_path: Path,
@@ -3186,6 +3271,7 @@ def test_bridge_rejects_lifecycle_record_replacement_after_inventory(
 
     record = store.load_workspace(workspace)
     assert record is not None and record.is_nonterminal
+    assert store.load_quarantine(workspace) is None
     assert portals and portals[0].run_count == 0
 
 
@@ -3291,6 +3377,7 @@ def test_bridge_fails_closed_when_workspace_process_is_active(
 
     record = store.load_workspace(workspace)
     assert record is not None and record.is_nonterminal
+    assert store.load_quarantine(workspace) is None
     assert portals and portals[0].run_count == 0
 
 
@@ -3566,6 +3653,720 @@ def test_process_scan_keeps_arbitrary_unreadable_process_fail_closed(
             SimpleNamespace(proc_root=proc_root),
             workspace,
         )
+
+
+@pytest.mark.parametrize("denied_errno", [errno.EACCES, errno.EPERM])
+def test_bridge_quarantines_unreadable_expired_worktree_without_reusing_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    denied_errno: int,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path, protected_marker=True)
+    )
+    record = store.load_workspace(workspace)
+    assert record is not None and record.is_nonterminal
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=record.canonical_task_cid,
+        task_id=record.task_id,
+        attempt=record.attempt,
+    )
+    record_bytes = record_path.read_bytes()
+    index_bytes = index_path.read_bytes()
+    active_marker = (
+        Path(record.state_dir) / "implementation-protected-path-active.json"
+    )
+    active_marker_bytes = active_marker.read_bytes()
+    branch_head = subprocess.run(
+        [
+            "git",
+            "rev-parse",
+            f"refs/heads/{record.branch}",
+        ],
+        cwd=store.repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    process = _write_fake_user_manager_process(
+        store.proc_root,
+        pid=424_270,
+        name="python3",
+        comm="(python3)",
+        parent_pid=1,
+        process_group=424_270,
+        session=424_270,
+        command=b"python3\0worker.py\0",
+    )
+    original_readlink = os.readlink
+
+    def deny_process_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == process / "cwd":
+            raise PermissionError(denied_errno, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_process_cwd)
+
+    first = bridge.run_provider(attempt)
+
+    assert first["accepted"] is True
+    receipt = store.load_quarantine(workspace)
+    assert receipt is not None
+    assert receipt["lifecycle_record"] == record.to_dict()
+    assert all(
+        receipt[field] is False
+        for field in (
+            "worktree_deleted",
+            "branch_deleted",
+            "cleanup_allowed",
+            "reuse_allowed",
+            "evidence_reuse_allowed",
+            "terminalized",
+        )
+    )
+    assert all(
+        receipt["fence_authority"][field] is False
+        for field in (
+            "provider_dispatched",
+            "prior_execution_evidence_reused",
+            "effect_evidence_reused",
+            "worktree_mutation_authority",
+            "cleanup_authority",
+            "reuse_authority",
+            "adoption_authority",
+            "completion_authority",
+        )
+    )
+    assert record_path.read_bytes() == record_bytes
+    assert index_path.read_bytes() == index_bytes
+    assert store.load_workspace(workspace) == record
+    assert workspace.is_dir()
+    assert active_marker.read_bytes() == active_marker_bytes
+    assert subprocess.run(
+        [
+            "git",
+            "rev-parse",
+            f"refs/heads/{record.branch}",
+        ],
+        cwd=store.repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == branch_head
+    assert not os.path.lexists(
+        bridge._paths(attempt).root
+        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    cleanup = store.authorize_cleanup(
+        workspace_path=workspace,
+        branch=record.branch,
+        caller_lease_id=record.lease_id,
+        expected_state_dir=record.state_dir,
+    )
+    assert cleanup.disposition is CleanupDisposition.DENY
+    assert cleanup.reason == "quarantined_worktree_retained"
+    assert portals and portals[0].run_count == 1
+    assert portals[0].checkout_lease_released is True
+
+    second = bridge.run_provider(attempt)
+
+    assert second["accepted"] is True
+    assert len(portals) == 2
+    assert portals[1].run_count == 0
+    assert store.load_workspace(workspace) == record
+    assert store.load_quarantine(workspace) == receipt
+
+    prior_authority = bridge.prior_attempt_authority
+    assert prior_authority is not None
+    reproof_calls = 0
+
+    def count_reproofs(
+        attempt_value: object,
+        current_binding: object,
+        prior_binding: object,
+    ) -> object:
+        nonlocal reproof_calls
+        reproof_calls += 1
+        return prior_authority(
+            attempt_value,
+            current_binding,
+            prior_binding,
+        )
+
+    bridge.prior_attempt_authority = count_reproofs
+    successor_attempt = replace(
+        attempt,
+        attempt_id="attempt:successor-after-quarantine",
+        claim_id="claim:successor-after-quarantine",
+        attempt_number=int(attempt.attempt_number) + 1,
+        fencing_token=int(attempt.fencing_token) + 1,
+        fence_epoch=int(attempt.fence_epoch) + 1,
+        lease_id="lease:successor-after-quarantine",
+    )
+    successor = bridge.run_provider(successor_attempt)
+
+    assert successor["accepted"] is True
+    assert len(portals) == 3
+    assert portals[2].run_count == 1
+    assert reproof_calls == 2
+    assert store.load_workspace(workspace) == record
+    assert store.load_quarantine(workspace) == receipt
+
+
+def test_bridge_quarantines_multiple_expired_predecessors_before_attempt_ten(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, base_attempt, store, prior_eight_workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    current_attempt = replace(
+        base_attempt,
+        attempt_id="attempt:current-10",
+        claim_id="claim:current-10",
+        attempt_number=10,
+        fencing_token=10,
+        fence_epoch=10,
+        lease_id="lease:current-10",
+    )
+    repository = store.repo_root
+    worktree_root = prior_eight_workspace.parent
+    prior_nine_workspace = worktree_root / "prior-nine"
+    prior_nine_branch = "implementation/lgswf-004-attempt-9"
+    subprocess.run(
+        ["git", "branch", prior_nine_branch],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "worktree",
+            "add",
+            "-q",
+            str(prior_nine_workspace),
+            prior_nine_branch,
+        ],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+    )
+    prior_nine_attempt = DatabaseTaskAttempt(
+        attempt_id="attempt:prior-9",
+        claim_id="claim:prior-9",
+        task_cid=current_attempt.task_cid,
+        task_alias=current_attempt.task_alias,
+        attempt_number=9,
+        owner_session_id="session:prior-9",
+        fencing_token=9,
+        fence_epoch=9,
+        lease_id="lease:prior-9",
+        committed_phase="failed",
+        status="failed",
+        started_at_ms=9,
+    )
+    prior_nine_record = _record()
+    prior_nine_record.revision = 10
+    prior_nine_paths = bridge._paths(prior_nine_attempt)
+    prior_nine_seed = bridge._render_projection(
+        prior_nine_attempt,
+        prior_nine_record,
+    )
+    prior_nine_binding = bridge._binding(
+        prior_nine_attempt,
+        prior_nine_record,
+        prior_nine_seed,
+    )
+    prior_nine_paths.root.mkdir(parents=True)
+    prior_nine_paths.task_projection.write_text(
+        prior_nine_seed,
+        encoding="utf-8",
+    )
+    prior_nine_paths.binding.write_text(
+        json.dumps(prior_nine_binding, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    prior_nine_identity = bridge._prior_projection_identity(
+        prior_nine_paths,
+        prior_nine_binding,
+    )
+    prior_nine_paths.state.write_text(
+        json.dumps(
+            {
+                "implementation_in_progress": True,
+                "active_task_id": prior_nine_identity["task_id"],
+                "active_task_cid": prior_nine_identity[
+                    "canonical_task_cid"
+                ],
+                "active_task_key": prior_nine_identity[
+                    "canonical_task_key"
+                ],
+                "active_attempt": 2,
+                "active_worktree_path": str(prior_nine_workspace.resolve()),
+                "active_branch": prior_nine_branch,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    prior_nine_lifecycle = store.begin_preparing(
+        task_id=current_attempt.task_alias,
+        canonical_task_cid=prior_nine_identity["canonical_task_cid"],
+        attempt=2,
+        lane_id=f"{prior_nine_paths.root.resolve()}:lane-2",
+        workspace_path=prior_nine_workspace,
+        branch=prior_nine_branch,
+        merge_target="main",
+        state_dir=str(prior_nine_paths.root.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=999_998,
+            start_time_ticks=2,
+            boot_id="test-boot",
+            parent_pid=1,
+        ),
+    )
+    prior_nine_lifecycle = store.mark_active(
+        prior_nine_workspace,
+        lease_id=prior_nine_lifecycle.lease_id,
+        expected_fence=prior_nine_lifecycle.fence,
+    )
+    prior_nine_lifecycle = store.mark_settling(
+        prior_nine_workspace,
+        lease_id=prior_nine_lifecycle.lease_id,
+        expected_fence=prior_nine_lifecycle.fence,
+    )
+    prior_eight = store.load_workspace(prior_eight_workspace)
+    assert prior_eight is not None and prior_eight.is_nonterminal
+    lifecycle_bytes = {
+        prior_eight_workspace: store.workspace_path_for(
+            prior_eight_workspace
+        ).read_bytes(),
+        prior_nine_workspace: store.workspace_path_for(
+            prior_nine_workspace
+        ).read_bytes(),
+    }
+    prior_number_by_attempt = {
+        "attempt:prior": 8,
+        prior_nine_attempt.attempt_id: 9,
+    }
+
+    def authority(
+        attempt_value: object,
+        current_binding: object,
+        old_binding: object,
+    ) -> dict[str, object]:
+        assert isinstance(current_binding, dict)
+        assert isinstance(old_binding, dict)
+        prior_number = prior_number_by_attempt[old_binding["attempt_id"]]
+        return {
+            "schema": CROSS_ATTEMPT_LIFECYCLE_AUTHORITY_SCHEMA,
+            "authorized": True,
+            "task_cid": current_binding["task_cid"],
+            "task_alias": current_binding["task_alias"],
+            "current_attempt_id": current_binding["attempt_id"],
+            "prior_attempt_id": old_binding["attempt_id"],
+            "current_attempt_number": int(attempt_value.attempt_number),
+            "prior_attempt_number": prior_number,
+            "current_binding_id": current_binding["binding_id"],
+            "prior_binding_id": old_binding["binding_id"],
+            "current_fencing_token": current_binding["fencing_token"],
+            "prior_fencing_token": old_binding["fencing_token"],
+            "current_control_binding_id": "sha256:control-current",
+            "prior_control_binding_id": f"sha256:control-prior-{prior_number}",
+            "current_control_task_projection_cid": (
+                "sha256:projection-current"
+            ),
+            "prior_control_task_projection_cid": (
+                f"sha256:projection-prior-{prior_number}"
+            ),
+            "current_control_expected_revision": current_binding[
+                "task_revision"
+            ],
+            "prior_control_expected_revision": old_binding["task_revision"],
+            "prior_execution_status": "failed",
+            "prior_claim_state": "expired",
+            "prior_coordination_status": "failed",
+            "legacy_current_binding": True,
+            "legacy_prior_binding": True,
+            "mutation_authority": False,
+            "completion_authority": False,
+        }
+
+    bridge.prior_attempt_authority = authority
+    process = _write_fake_user_manager_process(
+        store.proc_root,
+        pid=424_271,
+        name="python3",
+        comm="(python3)",
+        parent_pid=1,
+        process_group=424_271,
+        session=424_271,
+        command=b"python3\0worker.py\0",
+    )
+    original_readlink = os.readlink
+
+    def deny_process_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == process / "cwd":
+            raise PermissionError(errno.EACCES, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_process_cwd)
+
+    first = bridge.run_provider(current_attempt)
+
+    assert first["accepted"] is True
+    receipts = [
+        store.load_quarantine(prior_eight_workspace),
+        store.load_quarantine(prior_nine_workspace),
+    ]
+    assert all(receipt is not None for receipt in receipts)
+    assert {
+        receipt["fence_authority"]["prior_attempt_number"]
+        for receipt in receipts
+        if receipt is not None
+    } == {8, 9}
+    assert store.load_workspace(prior_eight_workspace) == prior_eight
+    assert store.load_workspace(prior_nine_workspace) == prior_nine_lifecycle
+    assert store.workspace_path_for(
+        prior_eight_workspace
+    ).read_bytes() == lifecycle_bytes[prior_eight_workspace]
+    assert store.workspace_path_for(
+        prior_nine_workspace
+    ).read_bytes() == lifecycle_bytes[prior_nine_workspace]
+    assert prior_eight_workspace.is_dir()
+    assert prior_nine_workspace.is_dir()
+    assert not os.path.lexists(
+        bridge._paths(current_attempt).root
+        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    assert portals and portals[0].run_count == 1
+
+    second = bridge.run_provider(current_attempt)
+
+    assert second["accepted"] is True
+    assert len(portals) == 2
+    assert portals[1].run_count == 0
+    assert store.load_workspace(prior_eight_workspace) == prior_eight
+    assert store.load_workspace(prior_nine_workspace) == prior_nine_lifecycle
+
+
+def test_bridge_reproves_existing_quarantine_and_blocks_active_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    process = _write_fake_user_manager_process(
+        store.proc_root,
+        pid=424_272,
+        name="python3",
+        comm="(python3)",
+        parent_pid=1,
+        process_group=424_272,
+        session=424_272,
+        command=b"python3\0worker.py\0",
+    )
+    original_readlink = os.readlink
+
+    def deny_process_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == process / "cwd":
+            raise PermissionError(errno.EACCES, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_process_cwd)
+    first = bridge.run_provider(attempt)
+    receipt = store.load_quarantine(workspace)
+    assert first["accepted"] is True
+    assert receipt is not None
+    assert portals and portals[0].run_count == 1
+
+    monkeypatch.setattr(os, "readlink", original_readlink)
+    (process / "cwd").unlink()
+    (process / "cwd").symlink_to(workspace)
+    successor_attempt = replace(
+        attempt,
+        attempt_id="attempt:active-successor",
+        claim_id="claim:active-successor",
+        attempt_number=int(attempt.attempt_number) + 1,
+        fencing_token=int(attempt.fencing_token) + 1,
+        fence_epoch=int(attempt.fence_epoch) + 1,
+        lease_id="lease:active-successor",
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_worktree_process_active",
+    ):
+        bridge.run_provider(successor_attempt)
+
+    assert len(portals) == 2
+    assert portals[1].run_count == 0
+    assert store.load_quarantine(workspace) == receipt
+    record = store.load_workspace(workspace)
+    assert record is not None and record.is_nonterminal
+
+
+def test_bridge_forged_canonical_quarantine_cannot_hide_live_owner(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    record = store.load_workspace(workspace)
+    assert record is not None and record.is_nonterminal
+    store.proc_root = Path("/proc")
+    live_record = replace(
+        record,
+        owner=current_process_birth(proc_root=store.proc_root),
+    )
+    store.workspace_path_for(workspace).write_text(
+        json.dumps(live_record.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    prior_binding_paths = tuple(
+        bridge.attempt_root.glob("*/database-attempt-binding.json")
+    )
+    assert len(prior_binding_paths) == 1
+    prior_binding = json.loads(
+        prior_binding_paths[0].read_text(encoding="utf-8")
+    )
+
+    def identity(payload: object) -> str:
+        canonical = (
+            json.dumps(
+                payload,
+                allow_nan=False,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        ).encode("utf-8")
+        return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+
+    fence_authority = {
+        "schema": CROSS_ATTEMPT_LIFECYCLE_QUARANTINE_FENCE_SCHEMA,
+        "task_cid": prior_binding["task_cid"],
+        "task_alias": live_record.task_id,
+        "current_attempt_id": "attempt:forged-successor",
+        "prior_attempt_id": prior_binding["attempt_id"],
+        "current_attempt_number": 2,
+        "prior_attempt_number": 1,
+        "current_binding_id": "sha256:forged-current-binding",
+        "prior_binding_id": prior_binding["binding_id"],
+        "current_fencing_token": int(prior_binding["fencing_token"]) + 1,
+        "prior_fencing_token": int(prior_binding["fencing_token"]),
+        "database_authority_id": f"sha256:{'1' * 64}",
+        "prior_execution_status": "failed",
+        "prior_claim_state": "expired",
+        "prior_coordination_status": "failed",
+        "provider_dispatched": False,
+        "prior_execution_evidence_reused": False,
+        "effect_evidence_reused": False,
+        "worktree_mutation_authority": False,
+        "cleanup_authority": False,
+        "reuse_authority": False,
+        "adoption_authority": False,
+        "completion_authority": False,
+    }
+    body = {
+        "schema": WORKTREE_LIFECYCLE_QUARANTINE_SCHEMA,
+        "lifecycle_record": live_record.to_dict(),
+        "lifecycle_authority_id": identity(live_record.to_dict()),
+        "reason": "process_inventory_unavailable_retained",
+        "fence_authority": fence_authority,
+        "fence_authority_id": identity(fence_authority),
+        "quarantined_at": 1.0,
+        "worktree_deleted": False,
+        "branch_deleted": False,
+        "cleanup_allowed": False,
+        "reuse_allowed": False,
+        "evidence_reuse_allowed": False,
+        "terminalized": False,
+    }
+    forged = {**body, "quarantine_id": identity(body)}
+    marker = store.quarantine_path_for(workspace)
+    marker.write_text(
+        json.dumps(forged, allow_nan=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    marker.chmod(0o600)
+    assert store.load_quarantine(workspace) == forged
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_quarantine_authority_rejected",
+    ):
+        bridge.run_provider(attempt)
+
+    assert store.load_workspace(workspace) == live_record
+    assert store.load_quarantine(workspace) == forged
+    assert portals and portals[0].run_count == 0
+
+
+def test_bridge_restart_allows_older_quarantine_beside_prepared_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, base_attempt, store, older_workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    newer_workspace, newer_lifecycle = _add_prior_recovery_candidate(
+        bridge,
+        store,
+        attempt=base_attempt,
+        workspace_name="newer-prior",
+        branch="implementation/lgswf-004-attempt-2",
+        lifecycle_attempt=2,
+    )
+    current_attempt = replace(
+        base_attempt,
+        attempt_id="attempt:prepared-current",
+        claim_id="claim:prepared-current",
+        attempt_number=3,
+        fencing_token=8,
+        fence_epoch=4,
+        lease_id="lease:prepared-current",
+    )
+    prior_numbers = {
+        "attempt:prior": 1,
+        base_attempt.attempt_id: 2,
+    }
+    calls: dict[str, int] = {}
+    reject_newer_finalize = True
+
+    def authority(
+        attempt_value: object,
+        current_binding: object,
+        prior_binding: object,
+    ) -> dict[str, object]:
+        assert isinstance(current_binding, dict)
+        assert isinstance(prior_binding, dict)
+        prior_attempt_id = prior_binding["attempt_id"]
+        calls[prior_attempt_id] = calls.get(prior_attempt_id, 0) + 1
+        authorized = not (
+            reject_newer_finalize
+            and prior_attempt_id == base_attempt.attempt_id
+            and calls[prior_attempt_id] == 2
+        )
+        prior_number = prior_numbers[prior_attempt_id]
+        return {
+            "schema": CROSS_ATTEMPT_LIFECYCLE_AUTHORITY_SCHEMA,
+            "authorized": authorized,
+            "task_cid": current_binding["task_cid"],
+            "task_alias": current_binding["task_alias"],
+            "current_attempt_id": current_binding["attempt_id"],
+            "prior_attempt_id": prior_attempt_id,
+            "current_attempt_number": int(attempt_value.attempt_number),
+            "prior_attempt_number": prior_number,
+            "current_binding_id": current_binding["binding_id"],
+            "prior_binding_id": prior_binding["binding_id"],
+            "current_fencing_token": current_binding["fencing_token"],
+            "prior_fencing_token": prior_binding["fencing_token"],
+            "current_control_binding_id": "sha256:control-current",
+            "prior_control_binding_id": (
+                f"sha256:control-prior-{prior_number}"
+            ),
+            "current_control_task_projection_cid": (
+                "sha256:projection-current"
+            ),
+            "prior_control_task_projection_cid": (
+                f"sha256:projection-prior-{prior_number}"
+            ),
+            "current_control_expected_revision": current_binding[
+                "task_revision"
+            ],
+            "prior_control_expected_revision": prior_binding[
+                "task_revision"
+            ],
+            "prior_execution_status": "failed",
+            "prior_claim_state": "expired",
+            "prior_coordination_status": "failed",
+            "legacy_current_binding": True,
+            "legacy_prior_binding": True,
+            "mutation_authority": False,
+            "completion_authority": False,
+        }
+
+    bridge.prior_attempt_authority = authority
+    original_scan = bridge._strict_workspace_process_scan
+
+    def selective_scan(
+        lifecycle_store: object,
+        workspace: Path,
+    ) -> dict[str, object]:
+        if workspace == older_workspace.resolve():
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_process_inventory_unavailable"
+            )
+        return original_scan(lifecycle_store, workspace)
+
+    monkeypatch.setattr(
+        bridge,
+        "_strict_workspace_process_scan",
+        selective_scan,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_database_authority_rejected",
+    ):
+        bridge.run_provider(current_attempt)
+
+    older_quarantine = store.load_quarantine(older_workspace)
+    assert older_quarantine is not None
+    receipt_path = (
+        bridge._paths(current_attempt).root
+        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    prepared = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert prepared["phase"] == "prepared"
+    assert prepared["prior_attempt_id"] == base_attempt.attempt_id
+    assert store.load_workspace(newer_workspace) == newer_lifecycle
+    assert portals and portals[0].run_count == 0
+
+    reject_newer_finalize = False
+    calls.clear()
+    restarted = bridge.run_provider(current_attempt)
+
+    assert restarted["accepted"] is True
+    assert store.load_quarantine(older_workspace) == older_quarantine
+    older_record = store.load_workspace(older_workspace)
+    assert older_record is not None and older_record.is_nonterminal
+    newer_record = store.load_workspace(newer_workspace)
+    assert newer_record is not None and newer_record.is_terminal
+    committed = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert committed["phase"] == "committed"
+    assert len(portals) == 2
+    assert portals[1].run_count == 1
+
+
+def test_bridge_rejects_malformed_quarantine_before_provider_dispatch(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    record = store.load_workspace(workspace)
+    assert record is not None and record.is_nonterminal
+    record_bytes = store.workspace_path_for(workspace).read_bytes()
+    marker = store.quarantine_path_for(workspace)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("{}\n", encoding="utf-8")
+    marker.chmod(0o600)
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_quarantine_receipt_invalid",
+    ):
+        bridge.run_provider(attempt)
+
+    assert store.workspace_path_for(workspace).read_bytes() == record_bytes
+    assert store.load_workspace(workspace) == record
+    assert portals and portals[0].run_count == 0
 
 
 def test_bridge_fails_closed_when_container_inventory_is_unavailable(

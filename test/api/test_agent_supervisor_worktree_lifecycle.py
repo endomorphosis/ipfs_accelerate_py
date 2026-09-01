@@ -1785,6 +1785,406 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
     assert len(list(store.store_dir.glob(".task-*.json.update.lock"))) == 1
 
 
+def _quarantine_fixture(
+    tmp_path: Path,
+) -> tuple[
+    WorktreeLifecycleStore,
+    Path,
+    object,
+    dict[str, object],
+    dict[str, object],
+]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=10.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+        proc_root=proc_root,
+    )
+    workspace = tmp_path / "worktrees" / "attempt-8"
+    state_dir = tmp_path / "attempt-state-8"
+    record = store.begin_preparing(
+        task_id="QUARANTINE",
+        canonical_task_cid="cid:quarantine",
+        attempt=8,
+        lane_id=f"{state_dir}:lane",
+        workspace_path=workspace,
+        branch="implementation/quarantine-attempt-8",
+        merge_target="main",
+        state_dir=str(state_dir),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 17,
+            start_time_ticks=1,
+            boot_id="dead-test-boot",
+            parent_pid=1,
+        ),
+    )
+    record = store.mark_active(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+    record = store.mark_settling(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+    exact: dict[str, object] = {
+        "expected_record_id": record.record_id,
+        "expected_fence": record.fence,
+        "expected_lease_id": record.lease_id,
+        "expected_task_id": record.task_id,
+        "expected_canonical_task_cid": record.canonical_task_cid,
+        "expected_attempt": record.attempt,
+        "expected_branch": record.branch,
+        "expected_merge_target": record.merge_target,
+        "expected_repo_root": record.repo_root,
+        "expected_state_dir": record.state_dir,
+    }
+    fence_authority: dict[str, object] = {
+        "schema": "test-database-worktree-quarantine-fence@1",
+        "current_attempt": 9,
+        "prior_attempt": 8,
+        "provider_dispatched": False,
+        "evidence_reused": False,
+    }
+    return store, workspace, record, exact, fence_authority
+
+
+def test_exact_dead_owner_quarantine_is_immutable_and_denies_lifecycle_reuse(
+    tmp_path: Path,
+) -> None:
+    store, workspace, record, exact, fence_authority = (
+        _quarantine_fixture(tmp_path)
+    )
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=record.canonical_task_cid,
+        task_id=record.task_id,
+        attempt=record.attempt,
+    )
+    record_bytes = record_path.read_bytes()
+    index_bytes = index_path.read_bytes()
+
+    receipt = store.quarantine_exact_dead_owner(
+        workspace,
+        fence_authority=fence_authority,
+        **exact,
+    )
+    receipt_bytes = store.quarantine_path_for(workspace).read_bytes()
+    repeated = store.quarantine_exact_dead_owner(
+        workspace,
+        fence_authority=fence_authority,
+        **exact,
+    )
+
+    assert repeated == receipt == store.load_quarantine(workspace)
+    assert store.quarantine_path_for(workspace).read_bytes() == receipt_bytes
+    with pytest.raises(WorktreeLifecycleError, match="conflicts"):
+        store.quarantine_exact_dead_owner(
+            workspace,
+            fence_authority={
+                **fence_authority,
+                "current_attempt": 10,
+            },
+            **exact,
+        )
+    assert store.quarantine_path_for(workspace).read_bytes() == receipt_bytes
+    assert receipt["lifecycle_record"] == record.to_dict()
+    assert all(
+        receipt[field] is False
+        for field in (
+            "worktree_deleted",
+            "branch_deleted",
+            "cleanup_allowed",
+            "reuse_allowed",
+            "evidence_reuse_allowed",
+            "terminalized",
+        )
+    )
+    for decision in (
+        store.evaluate_cleanup(
+            workspace_path=workspace,
+            caller_lease_id=record.lease_id,
+            expected_state_dir=record.state_dir,
+            now=10_000.0,
+        ),
+        store.evaluate_cleanup(branch=record.branch, now=10_000.0),
+        store.authorize_cleanup(
+            workspace_path=workspace,
+            branch=record.branch,
+            caller_lease_id=record.lease_id,
+            expected_state_dir=record.state_dir,
+        ),
+    ):
+        assert decision.disposition is CleanupDisposition.DENY
+        assert decision.reason == "quarantined_worktree_retained"
+        assert decision.provider_call_allowed is False
+        assert decision.attempt_consumed is False
+
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.mark_terminal(
+            workspace,
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+        )
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.renew_lease(
+            workspace,
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+        )
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.adopt_dead_owner(
+            workspace,
+            lane_id="replacement",
+            **exact,
+        )
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.finalize_exact_dead_owner(
+            workspace,
+            expected_owner=record.owner,
+            reason="must-not-terminalize",
+            **exact,
+        )
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.rebind_workspace(
+            workspace,
+            tmp_path / "worktrees" / "rebound",
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+        )
+    assert store.reclaim_stale(workspace, now=10_000.0) is None
+    assert (
+        store.reclaim_dead_owner_for_controlled_restart(
+            workspace,
+            expected_state_dir=record.state_dir,
+            now=10_000.0,
+        )
+        is None
+    )
+    assert store.compare_and_delete(
+        workspace,
+        expected_fence=record.fence,
+        lease_id=record.lease_id,
+    ) is False
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.begin_preparing(
+            task_id="QUARANTINE",
+            canonical_task_cid="cid:quarantine",
+            attempt=8,
+            lane_id="replacement",
+            workspace_path=workspace,
+            branch=record.branch,
+            merge_target="main",
+        )
+
+    assert record_path.read_bytes() == record_bytes
+    assert index_path.read_bytes() == index_bytes
+    assert store.load_workspace(workspace) == record
+    record_path.unlink()
+    index_path.unlink()
+    missing_record_decision = store.evaluate_cleanup(
+        workspace_path=workspace,
+        branch=record.branch,
+    )
+    assert missing_record_decision.disposition is CleanupDisposition.DENY
+    assert missing_record_decision.reason == "quarantined_worktree_retained"
+    branch_only_decision = store.evaluate_cleanup(branch=record.branch)
+    assert branch_only_decision.disposition is CleanupDisposition.DENY
+    assert branch_only_decision.reason == "quarantined_worktree_retained"
+    qualified_branch_decision = store.evaluate_cleanup(
+        branch=f"refs/heads/{record.branch.removeprefix('refs/heads/')}"
+    )
+    assert qualified_branch_decision.disposition is CleanupDisposition.DENY
+    assert qualified_branch_decision.reason == "quarantined_worktree_retained"
+    with pytest.raises(DuplicateAttemptError, match="quarantined"):
+        store.begin_preparing(
+            task_id=record.task_id,
+            canonical_task_cid=record.canonical_task_cid,
+            attempt=record.attempt,
+            lane_id="lost-index-replacement",
+            workspace_path=tmp_path / "worktrees" / "lost-index-replacement",
+            branch="implementation/quarantine-attempt-8-lost-index",
+            merge_target="main",
+            state_dir=str(tmp_path / "lost-index-replacement-state"),
+        )
+    with pytest.raises(DuplicateAttemptError, match="quarantined"):
+        store.begin_preparing(
+            task_id="RENAMED-QUARANTINE-ALIAS",
+            canonical_task_cid=record.canonical_task_cid,
+            attempt=record.attempt,
+            lane_id="renamed-alias-replacement",
+            workspace_path=tmp_path / "worktrees" / "renamed-alias",
+            branch="implementation/quarantine-renamed-alias",
+            merge_target="main",
+            state_dir=str(tmp_path / "renamed-alias-state"),
+        )
+
+    newer_same_branch = store.begin_preparing(
+        task_id="OTHER-TASK",
+        canonical_task_cid="cid:other-task",
+        attempt=1,
+        lane_id="other-lane",
+        workspace_path=tmp_path / "worktrees" / "other-task",
+        branch=record.branch,
+        merge_target="main",
+        state_dir=str(tmp_path / "other-state"),
+    )
+    assert newer_same_branch.is_nonterminal
+    hidden_by_newer_decision = store.evaluate_cleanup(branch=record.branch)
+    assert hidden_by_newer_decision.disposition is CleanupDisposition.DENY
+    assert hidden_by_newer_decision.reason == "quarantined_worktree_retained"
+
+
+def test_quarantine_requires_fresh_successor_workspace_and_attempt(
+    tmp_path: Path,
+) -> None:
+    store, old_workspace, old_record, exact, fence_authority = (
+        _quarantine_fixture(tmp_path)
+    )
+    store.quarantine_exact_dead_owner(
+        old_workspace,
+        fence_authority=fence_authority,
+        **exact,
+    )
+    same_attempt_workspace = tmp_path / "worktrees" / "attempt-8-replacement"
+    with pytest.raises(DuplicateAttemptError, match="quarantined"):
+        store.begin_preparing(
+            task_id=old_record.task_id,
+            canonical_task_cid=old_record.canonical_task_cid,
+            attempt=old_record.attempt,
+            lane_id="same-attempt-replacement",
+            workspace_path=same_attempt_workspace,
+            branch="implementation/quarantine-attempt-8-replacement",
+            merge_target="main",
+            state_dir=str(tmp_path / "replacement-state-8"),
+        )
+    assert store.load_workspace(same_attempt_workspace) is None
+    fresh_workspace = tmp_path / "worktrees" / "attempt-9"
+    successor = store.begin_preparing(
+        task_id=old_record.task_id,
+        canonical_task_cid=old_record.canonical_task_cid,
+        attempt=9,
+        lane_id="fresh-lane",
+        workspace_path=fresh_workspace,
+        branch="implementation/quarantine-attempt-9",
+        merge_target="main",
+        state_dir=str(tmp_path / "attempt-state-9"),
+    )
+
+    assert successor.attempt == old_record.attempt + 1
+    assert successor.workspace_path != old_record.workspace_path
+    assert store.load_workspace(old_workspace) == old_record
+    assert store.load_workspace(fresh_workspace) == successor
+    with pytest.raises(WorktreeLifecycleError, match="quarantined"):
+        store.rebind_workspace(
+            fresh_workspace,
+            old_workspace,
+            lease_id=successor.lease_id,
+            expected_fence=successor.fence,
+        )
+
+
+@pytest.mark.parametrize("corruption", ["symlink", "mode", "duplicate_key"])
+def test_quarantine_marker_corruption_fails_cleanup_closed(
+    tmp_path: Path,
+    corruption: str,
+) -> None:
+    store, workspace, record, exact, fence_authority = (
+        _quarantine_fixture(tmp_path)
+    )
+    receipt = store.quarantine_exact_dead_owner(
+        workspace,
+        fence_authority=fence_authority,
+        **exact,
+    )
+    marker = store.quarantine_path_for(workspace)
+    if corruption == "symlink":
+        payload = marker.read_bytes()
+        marker.unlink()
+        target = tmp_path / "attacker-quarantine.json"
+        target.write_bytes(payload)
+        marker.symlink_to(target)
+    elif corruption == "mode":
+        marker.chmod(0o644)
+    else:
+        payload = marker.read_text(encoding="utf-8")
+        marker.write_text(
+            payload.replace(
+                "{\n",
+                '{\n  "schema": "duplicate",\n',
+                1,
+            ),
+            encoding="utf-8",
+        )
+        marker.chmod(0o600)
+
+    with pytest.raises(WorktreeLifecycleError, match="quarantine"):
+        store.load_quarantine(workspace)
+    with pytest.raises(WorktreeLifecycleError, match="quarantine"):
+        store.evaluate_cleanup(
+            workspace_path=workspace,
+            caller_lease_id=record.lease_id,
+        )
+    with pytest.raises(WorktreeLifecycleError, match="quarantine"):
+        store.evaluate_cleanup(branch=record.branch)
+    assert receipt["terminalized"] is False
+    assert store.load_workspace(workspace) == record
+
+
+def test_quarantine_refuses_alive_owner_and_fence_mismatch(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "live").mkdir()
+    live_store = _store(tmp_path / "live", proc_root=Path("/proc"))
+    live_workspace = tmp_path / "live-workspace"
+    live_record = live_store.begin_preparing(
+        task_id="LIVE",
+        attempt=1,
+        lane_id="lane",
+        workspace_path=live_workspace,
+        branch="implementation/live",
+        merge_target="main",
+        state_dir=str(tmp_path / "live-state"),
+    )
+    live_exact = {
+        "expected_record_id": live_record.record_id,
+        "expected_fence": live_record.fence,
+        "expected_lease_id": live_record.lease_id,
+        "expected_task_id": live_record.task_id,
+        "expected_canonical_task_cid": live_record.canonical_task_cid,
+        "expected_attempt": live_record.attempt,
+        "expected_branch": live_record.branch,
+        "expected_merge_target": live_record.merge_target,
+        "expected_repo_root": live_record.repo_root,
+        "expected_state_dir": live_record.state_dir,
+    }
+    with pytest.raises(OwnershipError, match="still alive"):
+        live_store.quarantine_exact_dead_owner(
+            live_workspace,
+            fence_authority={"schema": "test-fence@1"},
+            **live_exact,
+        )
+    assert live_store.load_quarantine(live_workspace) is None
+
+    store, workspace, _record, exact, fence_authority = (
+        _quarantine_fixture(tmp_path / "mismatch")
+    )
+    exact["expected_fence"] = int(exact["expected_fence"]) + 1
+    with pytest.raises(FenceMismatchError):
+        store.quarantine_exact_dead_owner(
+            workspace,
+            fence_authority=fence_authority,
+            **exact,
+        )
+    assert store.load_quarantine(workspace) is None
+
+
 def test_compare_and_delete_requires_matching_fence(tmp_path: Path) -> None:
     store = _store(tmp_path)
     workspace = tmp_path / "cad"

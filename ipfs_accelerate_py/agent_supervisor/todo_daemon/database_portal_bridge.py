@@ -32,6 +32,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 from ..merge.checkout_lock import checkout_repository_id
+from ..merge.worktree_lifecycle import (
+    WorkspaceLifecycleRecord,
+    WorktreeLifecycleError,
+)
 from ..proof.formal_verification_contracts import content_identity
 from ..task_sources.task_identity import canonical_task_identity
 
@@ -116,6 +120,37 @@ CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA: Final[str] = (
 )
 CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME: Final[str] = (
     "cross-attempt-lifecycle-recovery.json"
+)
+CROSS_ATTEMPT_LIFECYCLE_QUARANTINE_FENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-cross-attempt-lifecycle-quarantine-fence@1"
+)
+_LIFECYCLE_QUARANTINE_FENCE_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "task_cid",
+        "task_alias",
+        "current_attempt_id",
+        "prior_attempt_id",
+        "current_attempt_number",
+        "prior_attempt_number",
+        "current_binding_id",
+        "prior_binding_id",
+        "current_fencing_token",
+        "prior_fencing_token",
+        "database_authority_id",
+        "prior_execution_status",
+        "prior_claim_state",
+        "prior_coordination_status",
+        "provider_dispatched",
+        "prior_execution_evidence_reused",
+        "effect_evidence_reused",
+        "worktree_mutation_authority",
+        "cleanup_authority",
+        "reuse_authority",
+        "adoption_authority",
+        "completion_authority",
+    }
 )
 CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -5651,6 +5686,168 @@ class DatabasePortalExecutionBridge:
         return authority
 
     @staticmethod
+    def _quarantine_fence_authority(
+        authority: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Project a closed DB fence that can retain, but never adopt, bytes."""
+
+        if (
+            authority.get("prior_execution_status")
+            not in {"failed", "expired"}
+            or authority.get("prior_claim_state") != "expired"
+            or authority.get("prior_coordination_status")
+            not in {"failed", "expired"}
+            or authority.get("current_attempt_number", 0)
+            <= authority.get("prior_attempt_number", 0)
+            or authority.get("current_fencing_token", 0)
+            <= authority.get("prior_fencing_token", 0)
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_quarantine_authority_rejected"
+            )
+        return {
+            "schema": CROSS_ATTEMPT_LIFECYCLE_QUARANTINE_FENCE_SCHEMA,
+            "task_cid": authority["task_cid"],
+            "task_alias": authority["task_alias"],
+            "current_attempt_id": authority["current_attempt_id"],
+            "prior_attempt_id": authority["prior_attempt_id"],
+            "current_attempt_number": authority["current_attempt_number"],
+            "prior_attempt_number": authority["prior_attempt_number"],
+            "current_binding_id": authority["current_binding_id"],
+            "prior_binding_id": authority["prior_binding_id"],
+            "current_fencing_token": authority["current_fencing_token"],
+            "prior_fencing_token": authority["prior_fencing_token"],
+            "database_authority_id": _sha256_bytes(
+                _canonical_json(authority)
+            ),
+            "prior_execution_status": authority["prior_execution_status"],
+            "prior_claim_state": authority["prior_claim_state"],
+            "prior_coordination_status": authority[
+                "prior_coordination_status"
+            ],
+            "provider_dispatched": False,
+            "prior_execution_evidence_reused": False,
+            "effect_evidence_reused": False,
+            "worktree_mutation_authority": False,
+            "cleanup_authority": False,
+            "reuse_authority": False,
+            "adoption_authority": False,
+            "completion_authority": False,
+        }
+
+    @classmethod
+    def _validated_lifecycle_quarantine(
+        cls,
+        receipt: Any,
+        *,
+        record: Any,
+        prior_binding: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Bind a lifecycle quarantine to exact retained predecessor bytes."""
+
+        if type(receipt) is not dict:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_quarantine_receipt_invalid"
+            )
+        lifecycle_record = receipt.get("lifecycle_record")
+        authority = receipt.get("fence_authority")
+        false_fields = (
+            "worktree_deleted",
+            "branch_deleted",
+            "cleanup_allowed",
+            "reuse_allowed",
+            "evidence_reuse_allowed",
+            "terminalized",
+        )
+        if (
+            type(lifecycle_record) is not dict
+            or lifecycle_record != record.to_dict()
+            or record.is_terminal
+            or type(authority) is not dict
+            or set(authority) != _LIFECYCLE_QUARANTINE_FENCE_FIELDS
+            or authority.get("schema")
+            != CROSS_ATTEMPT_LIFECYCLE_QUARANTINE_FENCE_SCHEMA
+            or authority.get("task_alias") != record.task_id
+            or authority.get("prior_attempt_id") == authority.get(
+                "current_attempt_id"
+            )
+            or type(authority.get("current_attempt_number")) is not int
+            or type(authority.get("prior_attempt_number")) is not int
+            or authority["current_attempt_number"]
+            <= authority["prior_attempt_number"]
+            or type(authority.get("current_fencing_token")) is not int
+            or type(authority.get("prior_fencing_token")) is not int
+            or authority["current_fencing_token"]
+            <= authority["prior_fencing_token"]
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(authority.get("database_authority_id") or ""),
+            )
+            is None
+            or authority.get("prior_execution_status")
+            not in {"failed", "expired"}
+            or authority.get("prior_claim_state") != "expired"
+            or authority.get("prior_coordination_status")
+            not in {"failed", "expired"}
+            or any(
+                authority.get(field) is not False
+                for field in (
+                    "provider_dispatched",
+                    "prior_execution_evidence_reused",
+                    "effect_evidence_reused",
+                    "worktree_mutation_authority",
+                    "cleanup_authority",
+                    "reuse_authority",
+                    "adoption_authority",
+                    "completion_authority",
+                )
+            )
+            or any(receipt.get(field) is not False for field in false_fields)
+            or receipt.get("reason")
+            != "process_inventory_unavailable_retained"
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_quarantine_receipt_invalid"
+            )
+        if prior_binding is not None and (
+            authority["task_cid"] != prior_binding["task_cid"]
+            or authority["task_alias"] != prior_binding["task_alias"]
+            or authority["prior_attempt_id"] != prior_binding["attempt_id"]
+            or authority["prior_binding_id"] != prior_binding["binding_id"]
+            or authority["prior_fencing_token"]
+            != prior_binding["fencing_token"]
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_quarantine_receipt_unbound"
+            )
+        return dict(receipt)
+
+    @classmethod
+    def _load_lifecycle_quarantine(
+        cls,
+        lifecycle_store: Any,
+        record: Any,
+        *,
+        prior_binding: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        loader = getattr(lifecycle_store, "load_quarantine", None)
+        if not callable(loader):
+            return None
+        try:
+            receipt = loader(record.workspace_path)
+        except Exception as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_quarantine_receipt_invalid"
+            ) from exc
+        if receipt is None:
+            return None
+        return cls._validated_lifecycle_quarantine(
+            receipt,
+            record=record,
+            prior_binding=prior_binding,
+        )
+
+    @staticmethod
     def _recovery_id(receipt: Mapping[str, Any]) -> str:
         body = {
             field: receipt[field]
@@ -6794,6 +6991,336 @@ class DatabasePortalExecutionBridge:
             "adoption_receipt_path": str(prior_paths.root / adoption_filename),
         }
 
+    def _quarantine_protected_state_binding(
+        self,
+        *,
+        daemon: Any,
+        prior_paths: DatabasePortalAttemptPaths,
+        record: Any,
+        workspace: Path,
+    ) -> dict[str, Any]:
+        """Authenticate protected-state markers without retiring any bytes."""
+
+        incident = (
+            prior_paths.root / "implementation-protected-path-incident.json"
+        )
+        active = prior_paths.root / "implementation-protected-path-active.json"
+        if os.path.lexists(incident):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_incident_active"
+            )
+        if not os.path.lexists(active):
+            return {
+                "incident_marker": "absent",
+                "active_marker": "absent",
+            }
+        _marker, raw, identity = self._strict_active_protected_marker(
+            path=active,
+            daemon=daemon,
+            record=record,
+            workspace=workspace,
+        )
+        return {
+            "incident_marker": "absent",
+            "active_marker": f"sha256:{hashlib.sha256(raw).hexdigest()}",
+            "active_marker_device": int(identity.st_dev),
+            "active_marker_inode": int(identity.st_ino),
+            "active_marker_mode": int(identity.st_mode),
+            "active_marker_size": int(identity.st_size),
+            "active_marker_mtime_ns": int(identity.st_mtime_ns),
+        }
+
+    def _quarantine_superseded_attempt_on_process_inventory_failure(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        daemon: Any,
+        prior_paths: DatabasePortalAttemptPaths,
+        prior_binding: Mapping[str, Any],
+        record: Any,
+    ) -> dict[str, Any] | None:
+        """Retain an expired predecessor when global proc cwd proof is denied.
+
+        The fallback never terminalizes, adopts, cleans, or reuses the prior
+        workspace.  It is entered only for the exact fail-closed procfs
+        inventory error, under the existing checkout mutation lease, after
+        both database and lifecycle fences are independently revalidated.
+        """
+
+        lifecycle_store = daemon.worktree_lifecycle
+        existing = self._load_lifecycle_quarantine(
+            lifecycle_store,
+            record,
+            prior_binding=prior_binding,
+        )
+        acquire = getattr(daemon, "_acquire_checkout_mutation_lease", None)
+        release = getattr(daemon, "_release_checkout_mutation_lease", None)
+        publisher = getattr(
+            lifecycle_store,
+            "quarantine_exact_dead_owner",
+            None,
+        )
+        if not callable(acquire) or not callable(release) or not callable(publisher):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_quarantine_authority_unavailable"
+            )
+        try:
+            lease_result = acquire(
+                task_id=record.task_id,
+                attempt=int(record.attempt),
+                branch=record.branch,
+                operation="cross_attempt_lifecycle_quarantine",
+                timeout_seconds=0.0,
+                extra={
+                    "current_binding_id": binding["binding_id"],
+                    "prior_binding_id": prior_binding["binding_id"],
+                },
+                preserve_existing=True,
+            )
+        except Exception as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_checkout_lock_unavailable"
+            ) from exc
+        if (
+            not isinstance(lease_result, tuple)
+            or len(lease_result) != 4
+            or lease_result[0] is None
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_checkout_lock_contended"
+            )
+        checkout_lease = lease_result[0]
+        result: dict[str, Any] | None = None
+        try:
+            if existing is None and os.path.lexists(
+                paths.root / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_quarantine_recovery_already_prepared"
+                )
+            try:
+                current_directory_identity = self._seal_attempt_directory(
+                    paths,
+                    attempt_id=binding["attempt_id"],
+                    create=False,
+                )
+                prior_directory_identity = self._seal_attempt_directory(
+                    prior_paths,
+                    attempt_id=prior_binding["attempt_id"],
+                    create=False,
+                )
+                if self._strict_binding(paths.binding) != dict(binding):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_current_binding_changed"
+                    )
+                if self._strict_binding(prior_paths.binding) != dict(
+                    prior_binding
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_prior_binding_changed"
+                    )
+                authority = self._validated_prior_authority(
+                    self.prior_attempt_authority(
+                        attempt,
+                        binding,
+                        prior_binding,
+                    ),
+                    current_binding=binding,
+                    prior_binding=prior_binding,
+                )
+                fence_authority = self._quarantine_fence_authority(authority)
+                portal_state = self._prior_portal_state_binding(
+                    daemon,
+                    prior_paths,
+                    prior_binding,
+                    record,
+                )
+                portal_state["attempt_directory_identity"] = (
+                    prior_directory_identity
+                )
+                exact_dead = lifecycle_store.require_exact_dead_owner(
+                    record.workspace_path,
+                    **self._lifecycle_expected(record),
+                )
+            except DatabasePortalBridgeDeferred:
+                raise
+            except Exception as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_quarantine_authority_rejected"
+                ) from exc
+            if exact_dead != record:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_record_changed"
+                )
+            if self.repo_root is None:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_repository_unbound"
+                )
+            try:
+                repository = self.repo_root.resolve(strict=True)
+                workspace = Path(record.workspace_path).resolve(strict=True)
+                worktree_root = Path(daemon.worktree_root).resolve(strict=True)
+                workspace.relative_to(worktree_root)
+            except (AttributeError, OSError, RuntimeError, ValueError) as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_worktree_unbound"
+                ) from exc
+            if (
+                workspace == repository
+                or str(Path(record.repo_root).resolve(strict=False))
+                != str(repository)
+                or str(Path(record.state_dir).resolve(strict=False))
+                != str(prior_paths.root.resolve(strict=True))
+                or str(record.merge_target).removeprefix("refs/heads/")
+                != self.merge_target_branch.removeprefix("refs/heads/")
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_quarantine_binding_mismatch"
+                )
+            protected_state = self._quarantine_protected_state_binding(
+                daemon=daemon,
+                prior_paths=prior_paths,
+                record=record,
+                workspace=workspace,
+            )
+            try:
+                self._strict_workspace_process_scan(
+                    lifecycle_store,
+                    workspace,
+                )
+            except DatabasePortalBridgeDeferred as exc:
+                if str(exc) != (
+                    "cross_attempt_lifecycle_process_inventory_unavailable"
+                ):
+                    raise
+            else:
+                if existing is None:
+                    return None
+
+            # The inventory failure is the sole fallback trigger.  Repeat all
+            # authority reads and the failed scan immediately before immutable
+            # publication; a now-readable scan simply returns to normal
+            # recovery instead of weakening its verdict.
+            if (
+                self._seal_attempt_directory(
+                    paths,
+                    attempt_id=binding["attempt_id"],
+                    create=False,
+                )
+                != current_directory_identity
+                or self._seal_attempt_directory(
+                    prior_paths,
+                    attempt_id=prior_binding["attempt_id"],
+                    create=False,
+                )
+                != prior_directory_identity
+                or self._strict_binding(paths.binding) != dict(binding)
+                or self._strict_binding(prior_paths.binding)
+                != dict(prior_binding)
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_binding_changed_before_quarantine"
+                )
+            second_authority = self._validated_prior_authority(
+                self.prior_attempt_authority(
+                    attempt,
+                    binding,
+                    prior_binding,
+                ),
+                current_binding=binding,
+                prior_binding=prior_binding,
+            )
+            second_portal_state = self._prior_portal_state_binding(
+                daemon,
+                prior_paths,
+                prior_binding,
+                record,
+            )
+            second_portal_state["attempt_directory_identity"] = (
+                prior_directory_identity
+            )
+            second_protected_state = self._quarantine_protected_state_binding(
+                daemon=daemon,
+                prior_paths=prior_paths,
+                record=record,
+                workspace=workspace,
+            )
+            try:
+                second_dead = lifecycle_store.require_exact_dead_owner(
+                    record.workspace_path,
+                    **self._lifecycle_expected(record),
+                )
+            except Exception as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_exact_dead_owner_unproven"
+                ) from exc
+            if (
+                second_authority != authority
+                or second_portal_state != portal_state
+                or second_protected_state != protected_state
+                or second_dead != record
+                or self._quarantine_fence_authority(second_authority)
+                != fence_authority
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_evidence_changed_before_quarantine"
+                )
+            try:
+                self._strict_workspace_process_scan(
+                    lifecycle_store,
+                    workspace,
+                )
+            except DatabasePortalBridgeDeferred as exc:
+                if str(exc) != (
+                    "cross_attempt_lifecycle_process_inventory_unavailable"
+                ):
+                    raise
+            else:
+                if existing is None:
+                    return None
+            if existing is not None:
+                # The marker is deny-only.  It cannot authorize this newer
+                # attempt or be rewritten with a new successor fence.  Only
+                # the independently repeated DB, lifecycle, repository,
+                # Portal, and process observations above permit the isolated
+                # successor to ignore the retained predecessor bytes.
+                result = self._validated_lifecycle_quarantine(
+                    existing,
+                    record=record,
+                    prior_binding=prior_binding,
+                )
+                return result
+            try:
+                receipt = publisher(
+                    record.workspace_path,
+                    fence_authority=fence_authority,
+                    reason="process_inventory_unavailable_retained",
+                    **self._lifecycle_expected(record),
+                )
+            except Exception as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_quarantine_publish_failed"
+                ) from exc
+            result = self._validated_lifecycle_quarantine(
+                receipt,
+                record=record,
+                prior_binding=prior_binding,
+            )
+        finally:
+            try:
+                released = bool(release(checkout_lease))
+            except Exception as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_checkout_lock_release_failed"
+                ) from exc
+            if not released:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_checkout_lock_release_failed"
+                )
+        return result
+
     def _recover_superseded_attempt_lifecycle(
         self,
         *,
@@ -6850,12 +7377,118 @@ class DatabasePortalExecutionBridge:
             str(prior_paths.root.resolve(strict=True))
             for prior_paths, _prior_binding in candidates
         }
+        candidate_by_root = {
+            str(prior_paths.root.resolve(strict=True)): (
+                prior_paths,
+                prior_binding,
+            )
+            for prior_paths, prior_binding in candidates
+        }
+        quarantine_inventory = getattr(
+            lifecycle_store,
+            "iter_quarantines",
+            None,
+        )
+        try:
+            quarantine_receipts = (
+                tuple(quarantine_inventory())
+                if callable(quarantine_inventory)
+                else ()
+            )
+        except Exception as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_quarantine_receipt_invalid"
+            ) from exc
+        revalidated_quarantines: dict[str, dict[str, Any]] = {}
+        for quarantine_receipt in quarantine_receipts:
+            try:
+                quarantine_record = WorkspaceLifecycleRecord.from_dict(
+                    quarantine_receipt["lifecycle_record"]
+                )
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                WorktreeLifecycleError,
+            ) as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_quarantine_receipt_invalid"
+                ) from exc
+            if (
+                quarantine_record.task_id != binding["task_alias"]
+                or quarantine_record.is_terminal
+            ):
+                continue
+            lexical_state_dir = Path(
+                os.path.abspath(str(quarantine_record.state_dir or ""))
+            )
+            if (
+                lexical_state_dir.parent != lexical_attempt_root
+                or _ATTEMPT_DIRECTORY.fullmatch(lexical_state_dir.name)
+                is None
+                or lexical_state_dir == paths.root
+            ):
+                continue
+            try:
+                resolved_state_dir = str(
+                    lexical_state_dir.resolve(strict=True)
+                )
+            except OSError as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_relevant_binding_invalid"
+                ) from exc
+            candidate = candidate_by_root.get(resolved_state_dir)
+            if candidate is None:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_relevant_binding_invalid"
+                )
+            live_matches = [
+                lifecycle_record
+                for lifecycle_record in records
+                if lifecycle_record.workspace_path
+                == quarantine_record.workspace_path
+            ]
+            if len(live_matches) != 1 or live_matches[0] != quarantine_record:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_quarantine_record_changed"
+                )
+            prior_paths, prior_binding = candidate
+            verified_receipt = self._load_lifecycle_quarantine(
+                lifecycle_store,
+                quarantine_record,
+                prior_binding=prior_binding,
+            )
+            if verified_receipt != quarantine_receipt:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_quarantine_receipt_invalid"
+                )
+            revalidated = (
+                self._quarantine_superseded_attempt_on_process_inventory_failure(
+                    attempt=attempt,
+                    paths=paths,
+                    binding=binding,
+                    daemon=daemon,
+                    prior_paths=prior_paths,
+                    prior_binding=prior_binding,
+                    record=quarantine_record,
+                )
+            )
+            if revalidated != quarantine_receipt:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_quarantine_reproof_failed"
+                )
+            revalidated_quarantines[quarantine_record.record_id] = revalidated
+        quarantined_record_ids = set(revalidated_quarantines)
         adopted = self._resume_abandoned_recovery_transaction(
             attempt=attempt,
             binding=binding,
             daemon=daemon,
             candidates=candidates,
-            records=records,
+            records=tuple(
+                lifecycle_record
+                for lifecycle_record in records
+                if lifecycle_record.record_id not in quarantined_record_ids
+            ),
         )
         if adopted is not None:
             return adopted
@@ -6969,11 +7602,112 @@ class DatabasePortalExecutionBridge:
                 )
             if bound:
                 matches.append((prior_paths, prior_binding, bound[0]))
+
+        quarantined: list[dict[str, Any]] = []
+        if existing_receipt is None and matches:
+            remaining_matches: list[
+                tuple[DatabasePortalAttemptPaths, dict[str, Any], Any]
+            ] = []
+            for prior_paths, prior_binding, lifecycle_record in sorted(
+                matches,
+                key=lambda item: (
+                    item[1]["attempt_id"],
+                    item[1]["binding_id"],
+                    item[2].record_id,
+                ),
+            ):
+                existing_quarantine = revalidated_quarantines.get(
+                    lifecycle_record.record_id
+                )
+                if existing_quarantine is None:
+                    observed_quarantine = self._load_lifecycle_quarantine(
+                        lifecycle_store,
+                        lifecycle_record,
+                        prior_binding=prior_binding,
+                    )
+                    if observed_quarantine is not None:
+                        existing_quarantine = (
+                            self._quarantine_superseded_attempt_on_process_inventory_failure(
+                                attempt=attempt,
+                                paths=paths,
+                                binding=binding,
+                                daemon=daemon,
+                                prior_paths=prior_paths,
+                                prior_binding=prior_binding,
+                                record=lifecycle_record,
+                            )
+                        )
+                        if existing_quarantine != observed_quarantine:
+                            raise DatabasePortalBridgeDeferred(
+                                "cross_attempt_lifecycle_quarantine_reproof_failed"
+                            )
+                if existing_quarantine is not None:
+                    quarantined.append(existing_quarantine)
+                    continue
+                try:
+                    candidate_workspace = Path(
+                        lifecycle_record.workspace_path
+                    ).resolve(strict=True)
+                except (OSError, RuntimeError) as exc:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_worktree_unbound"
+                    ) from exc
+                try:
+                    self._strict_workspace_process_scan(
+                        lifecycle_store,
+                        candidate_workspace,
+                    )
+                except DatabasePortalBridgeDeferred as exc:
+                    if str(exc) != (
+                        "cross_attempt_lifecycle_process_inventory_unavailable"
+                    ):
+                        raise
+                else:
+                    # Preserve the established normal-recovery sequence: its
+                    # first DB read prepares the receipt and its second read
+                    # immediately reauthorizes the lifecycle CAS.  Quarantine
+                    # authority is consulted only after the exact fail-closed
+                    # procfs condition has actually been observed.
+                    remaining_matches.append(
+                        (prior_paths, prior_binding, lifecycle_record)
+                    )
+                    continue
+                quarantine = (
+                    self._quarantine_superseded_attempt_on_process_inventory_failure(
+                        attempt=attempt,
+                        paths=paths,
+                        binding=binding,
+                        daemon=daemon,
+                        prior_paths=prior_paths,
+                        prior_binding=prior_binding,
+                        record=lifecycle_record,
+                    )
+                )
+                if quarantine is None:
+                    remaining_matches.append(
+                        (prior_paths, prior_binding, lifecycle_record)
+                    )
+                else:
+                    quarantined.append(quarantine)
+            matches = remaining_matches
         if not matches:
             if existing_receipt is not None:
                 raise DatabasePortalBridgeDeferred(
                     "cross_attempt_lifecycle_terminal_evidence_missing"
                 )
+            if quarantined:
+                return {
+                    "attempted": True,
+                    "recovered": False,
+                    "quarantined": True,
+                    "quarantine_ids": sorted(
+                        str(receipt["quarantine_id"])
+                        for receipt in quarantined
+                    ),
+                    "provider_dispatched": False,
+                    "prior_execution_evidence_reused": False,
+                    "effect_evidence_reused": False,
+                }
             return {"attempted": False, "reason": "no_prior_lifecycle"}
         if len(matches) != 1:
             raise DatabasePortalBridgeDeferred(
@@ -8618,6 +9352,7 @@ __all__ = (
     "DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA",
     "DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA",
     "DATABASE_PORTAL_TARGET_ADVANCED_SOURCE_TRANSITION_SCHEMA",
+    "CROSS_ATTEMPT_LIFECYCLE_QUARANTINE_FENCE_SCHEMA",
     "DatabasePortalAttemptPaths",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeError",
