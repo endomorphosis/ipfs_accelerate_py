@@ -1571,7 +1571,6 @@ def test_publish_live_projection_skips_live_query_birth_retry(
         generation=1,
         schema_revision=1,
     )
-    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: True)
     monkeypatch.setattr(
         materializer,
         "_task_status",

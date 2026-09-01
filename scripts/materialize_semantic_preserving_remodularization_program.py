@@ -2154,11 +2154,11 @@ def _owner_identity_snapshot(server: Any) -> dict[str, Any]:
 
 
 def _publish_live_projection(server: Any, paths: Mapping[str, Path]) -> dict[str, Any]:
-    # Periodic projection must not call server.ready(): that holds
-    # `_owner_transaction_lock` across a sidecar quack_query and starves
-    # typed load_store_generation, so SPAR-018 never gets claimed.
-    if not _owner_listener_ready(server):
-        raise OperatorError("SPAR Quack listener is not bound")
+    # Periodic projection must not call server.ready() or TCP-probe the
+    # listener. ready() holds `_owner_transaction_lock` across quack_query;
+    # a false ECONNREFUSED probe force-recovers and rebinds quack_serve.
+    # Either path starves typed load_store_generation, so SPAR-018 never
+    # gets claimed. Identity plus a local task SELECT is enough.
     ready = _owner_identity_snapshot(server)
     task_projection = _owner_task_projection(server)
     unsigned = {
