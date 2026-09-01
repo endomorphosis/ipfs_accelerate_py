@@ -2034,6 +2034,36 @@ def _owner_connection_unusable(connection: Any) -> bool:
     )
 
 
+def _recoverable_owner_control_error(exc: BaseException) -> bool:
+    """Return whether owner poison should reconnect instead of SIGTERM.
+
+    Recovered exclusive-handle reconnect used to be followed by grant renewal
+    or persist failing on the same poison marker, which fail-fast SIGTERM'd
+    SPAR before SPAR-018 could be claimed.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        DuckDBConnectionPolicyError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TypedStateOwnerAuthorizationError,
+    )
+
+    if isinstance(exc, (DuckDBConnectionPolicyError, TypedStateOwnerAuthorizationError)):
+        return True
+    text = str(exc)
+    name = type(exc).__name__
+    return name in {
+        "DuckDBConnectionPolicyError",
+        "TypedStateOwnerAuthorizationError",
+        "QuackClientError",
+        "TransactionError",
+    } or (
+        "unusable after an uncertain transaction" in text
+        or "typed Quack authority binding is no longer live" in text
+    )
+
+
 def _restart_owner_transport(server: Any, *, previous: Any, replacement: Any) -> None:
     transport_connection = getattr(server, "_transport_connection", None)
     if transport_connection not in {previous, None, replacement}:
@@ -2577,12 +2607,31 @@ class _SparStateOwnerBootstrapBroker:
     def enable_fail_fast(self) -> None:
         self.fail_fast_enabled.set()
 
-    def _terminal_failure(self, exc: BaseException) -> None:
+    def _terminal_failure(self, exc: BaseException) -> bool:
+        """Return True when the broker must stop the owner process.
+
+        Recoverable exclusive-owner poison is reconnected in place.  SIGTERM
+        here previously killed SPAR after a successful projection recover and
+        starved SPAR-018.
+        """
+
+        recoverable = (
+            _recoverable_owner_control_error(exc)
+            and self.fail_fast_enabled.is_set()
+            and not self.stopping.is_set()
+        )
+        if recoverable:
+            try:
+                _recover_poisoned_owner_connection(self.server, force=False)
+            except Exception:
+                pass
+            return False
         with self._lock:
             self.failure = self.failure or type(exc).__name__
         self.ready.set()
         if self.fail_fast_enabled.is_set() and not self.stopping.is_set():
             os.kill(os.getpid(), signal.SIGTERM)
+        return True
 
     def stop(self) -> None:
         self.stopping.set()
@@ -2964,6 +3013,13 @@ class _SparStateOwnerBootstrapBroker:
             except TypedStateOwnerAuthorizationError:
                 if owner_liveness(daemon_birth) is OwnerLiveness.DEAD:
                     continue
+                if _recover_poisoned_owner_connection(self.server, force=False):
+                    continue
+                raise
+            except Exception as exc:
+                if _recoverable_owner_control_error(exc):
+                    _recover_poisoned_owner_connection(self.server, force=False)
+                    continue
                 raise
             with self._lock:
                 if self.active_grants.get(session) != grant_id:
@@ -2998,6 +3054,13 @@ class _SparStateOwnerBootstrapBroker:
             try:
                 self._renew_due_grants()
             except BaseException as exc:
+                if _recoverable_owner_control_error(exc) and not self.stopping.is_set():
+                    try:
+                        _recover_poisoned_owner_connection(self.server, force=False)
+                    except Exception:
+                        pass
+                    self.stopping.wait(0.25)
+                    continue
                 self._terminal_failure(exc)
                 return
             try:
@@ -3030,17 +3093,20 @@ class _SparStateOwnerBootstrapBroker:
                     try:
                         self._persist()
                     except BaseException as persist_exc:
-                        self._terminal_failure(persist_exc)
-                        return
+                        if self._terminal_failure(persist_exc):
+                            return
                 continue
             except OSError as exc:
                 if not self.stopping.is_set() and accepted is None:
-                    self._terminal_failure(exc)
-                    return
+                    if self._terminal_failure(exc):
+                        return
+                    self.stopping.wait(0.25)
                 continue
             except BaseException as exc:
-                self._terminal_failure(exc)
-                return
+                if self._terminal_failure(exc):
+                    return
+                self.stopping.wait(0.25)
+                continue
             finally:
                 if accepted is not None:
                     with self._lock:

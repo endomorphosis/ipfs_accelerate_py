@@ -1955,7 +1955,8 @@ def test_post_merge_completion_recovery_claim_fences_preclaim_and_toctou(
                 tasks=(plausible_history_candidate,)
             ),
         )
-        assert daemon._automatic_claim_exclusions() == {task.task_cid}
+        # Incomplete history on open ready/todo work is not a crash fence.
+        assert task.task_cid not in daemon._automatic_claim_exclusions()
         monkeypatch.setattr(
             daemon.task_source,
             "ready_tasks",
@@ -2044,19 +2045,14 @@ def test_post_merge_completion_recovery_claim_fences_preclaim_and_toctou(
             "_post_merge_completion_crash_recovery_context",
             history_unavailable_after_local_claim,
         )
-        assert daemon.claim_next() is None
+        claimed = daemon.claim_next()
+        assert claimed is not None
+        assert claimed.task_cid == task.task_cid
         assert authority_observations == 2
-        assert len(released) == 2
-        claim_id, lease_id, reason = released[-1]
-        assert reason == (
-            "shared_board_post_merge_completion_history_unavailable"
+        assert not any(
+            reason == "shared_board_post_merge_completion_history_unavailable"
+            for _claim_id, _lease_id, reason in released
         )
-        released_claim = daemon.coordinator.get_task_claim(claim_id)
-        released_lease = daemon.coordinator.get_lease(lease_id)
-        assert released_claim is not None
-        assert released_claim.to_dict()["state"] == "released"
-        assert released_lease is not None
-        assert released_lease.to_dict()["state"] == "released"
     finally:
         daemon.close()
 

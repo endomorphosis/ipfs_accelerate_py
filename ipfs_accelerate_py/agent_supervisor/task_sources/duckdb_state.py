@@ -807,6 +807,33 @@ class DuckDBConnection:
             self._execution_condition.notify_all()
         self._evict_poisoned_pool_entry(uri)
 
+    def _maybe_reconnect_exclusive_owner(self, exc: BaseException) -> bool:
+        """Reopen a poisoned exclusive file owner so SPAR/claim work continues.
+
+        An interrupted typed-client transaction marks the shared wrapper
+        unusable.  Read-only Quack sessions already reconnect; exclusive
+        owners previously stayed poisoned until an outer monitor SIGTERM'd
+        the whole supervise loop.
+        """
+
+        if (
+            self.path is None
+            or self._lock_context is None
+            or self._pooled
+            or str(self._quack_uri or "").strip()
+            or self._transaction_active
+            or not isinstance(exc, DuckDBConnectionPolicyError)
+            or str(exc)
+            != "DuckDB connection is unusable after an uncertain transaction"
+            or not (self._poisoned or self._connection is None)
+        ):
+            return False
+        try:
+            self.reconnect_exclusive_owner()
+        except Exception:
+            return False
+        return True
+
     def execute(
         self,
         sql: str,
@@ -824,6 +851,8 @@ class DuckDBConnection:
         try:
             return self._execute_once(sql, parameters)
         except BaseException as exc:
+            if self._maybe_reconnect_exclusive_owner(exc):
+                return self._execute_once(sql, parameters)
             if not read_only_retry or not _is_quack_session_dead(exc):
                 raise
             uri = str(self._quack_uri or "").strip()

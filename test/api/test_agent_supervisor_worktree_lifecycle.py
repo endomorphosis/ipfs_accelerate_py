@@ -1472,6 +1472,92 @@ def test_owner_may_cleanup_nonterminal_claim(tmp_path: Path) -> None:
     assert decision.reason == "caller_is_record_owner"
 
 
+def test_reclaim_stale_publishes_terminal_task_index(tmp_path: Path) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(tmp_path, lease_seconds=10.0, clock=clock)
+    workspace = tmp_path / "stale-index"
+    record = store.begin_preparing(
+        task_id="SPAR-018",
+        canonical_task_cid="cid:spar-018",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=workspace,
+        branch="implementation/spar-018",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 11,
+            start_time_ticks=1,
+            boot_id="dead-spar-018",
+        ),
+    )
+    clock.advance(11.0)
+    terminal = store.reclaim_stale(workspace, reason="stale_owner_lease_expired")
+    assert terminal is not None
+    assert terminal.is_terminal
+    index = json.loads(
+        store.task_index_path_for(
+            canonical_task_cid="cid:spar-018",
+            task_id="SPAR-018",
+            attempt=1,
+        ).read_text(encoding="utf-8")
+    )
+    assert index["state"] == WorkspaceLifecycleState.TERMINAL.value
+    successor = tmp_path / "successor-018"
+    claimed = store.begin_preparing(
+        task_id="SPAR-018",
+        canonical_task_cid="cid:spar-018",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=successor,
+        branch="implementation/spar-018-retry",
+        merge_target="main",
+        allow_replace_stale=False,
+    )
+    assert claimed.workspace_path == str(successor.resolve())
+    assert claimed.state is WorkspaceLifecycleState.PREPARING
+
+
+def test_heal_stale_task_indexes_rewrites_active_index_for_terminal_workspace(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    workspace = tmp_path / "split-brain"
+    record = store.begin_preparing(
+        task_id="SPAR-018",
+        canonical_task_cid="cid:spar-018",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=workspace,
+        branch="implementation/spar-018",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 13,
+            start_time_ticks=1,
+            boot_id="dead-split",
+        ),
+    )
+    terminal = store.mark_terminal(
+        workspace,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+        reason="stale_owner_lease_expired",
+    )
+    index_path = store.task_index_path_for(
+        canonical_task_cid="cid:spar-018",
+        task_id="SPAR-018",
+        attempt=1,
+    )
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    payload["state"] = WorkspaceLifecycleState.ACTIVE.value
+    index_path.write_text(json.dumps(payload), encoding="utf-8")
+    healed = store.heal_stale_task_indexes()
+    assert [item.task_id for item in healed] == ["SPAR-018"]
+    assert json.loads(index_path.read_text(encoding="utf-8"))["state"] == (
+        WorkspaceLifecycleState.TERMINAL.value
+    )
+    assert store.load_workspace(workspace) == terminal
+
+
 def _barrier_worker(
     store_dir: str,
     repo_root: str,

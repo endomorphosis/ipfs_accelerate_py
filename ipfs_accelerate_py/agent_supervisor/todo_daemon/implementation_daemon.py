@@ -68775,7 +68775,18 @@ class PortalImplementationDaemon:
             }
         )
         if record.is_terminal:
-            return {**base, "reason": "task_attempt_claim_already_terminal"}
+            # reclaim_stale used to leave the task-index active. Heal that
+            # split-brain and admit the successor retry: a terminal claim is
+            # not a live leftover wait.
+            try:
+                self.worktree_lifecycle._publish_task_index(record)
+            except OSError:
+                pass
+            return {
+                **base,
+                "finalized": True,
+                "reason": "task_attempt_claim_already_terminal",
+            }
 
         current_repo_root = str(self.repo_root.resolve(strict=False))
         current_merge_target = self._main_branch_name().removeprefix(
@@ -94950,11 +94961,13 @@ class DatabaseImplementationDaemon:
                     )
                 )
             except DatabaseImplementationAuthorityError:
-                # This history read is a denial-only discovery fence.  A
-                # legacy task whose canonical revision history is incomplete
-                # must remain unclaimable, but it must not prevent unrelated
-                # tasks with intact authority from reaching another lane.
-                excluded.add(task_cid)
+                # Incomplete history denies crash-recovery recognition.  It
+                # must not starve ordinary todo/ready/retrying implement work
+                # (SPAR-018 was the only ready task and stayed unclaimable).
+                # Blocked crash-recovery candidates stay fenced fail-closed.
+                status = str(getattr(task, "status", "") or "").strip().lower()
+                if status not in _DATABASE_CLAIMABLE_CONTROL_STATUSES:
+                    excluded.add(task_cid)
                 continue
             if recovery_context is not None:
                 excluded.add(task_cid)
@@ -96179,20 +96192,26 @@ class DatabaseImplementationDaemon:
                     is not None
                 )
             except DatabaseImplementationAuthorityError:
-                self._release_unadmitted_claim(
-                    claim,
-                    reason=(
-                        "shared_board_post_merge_completion_history_"
-                        "unavailable"
-                    ),
-                )
-                # The projection changed (or proved incomplete) after the
-                # local lease was taken.  Release that lease, quarantine only
-                # this candidate for the current bounded claim pass, and keep
-                # looking.  No recovery or execution authority is derived
-                # from the unavailable history.
-                excluded.add(str(claim.task_cid))
-                continue
+                if task_status in _DATABASE_CLAIMABLE_CONTROL_STATUSES:
+                    # Open implement work with incomplete history is not a
+                    # lost-completion crash candidate.  Claiming it must not
+                    # wait for a crash fence that will never form.
+                    completion_recovery_fenced = False
+                else:
+                    self._release_unadmitted_claim(
+                        claim,
+                        reason=(
+                            "shared_board_post_merge_completion_history_"
+                            "unavailable"
+                        ),
+                    )
+                    # The projection changed (or proved incomplete) after the
+                    # local lease was taken.  Release that lease, quarantine
+                    # only this candidate for the current bounded claim pass,
+                    # and keep looking.  No recovery or execution authority
+                    # is derived from the unavailable history.
+                    excluded.add(str(claim.task_cid))
+                    continue
             ready = (
                 task is not None
                 and projection_matches

@@ -552,6 +552,62 @@ class WorktreeLifecycleStore:
             attempt=attempt,
         )
 
+    @staticmethod
+    def _task_index_payload(record: WorkspaceLifecycleRecord) -> dict[str, Any]:
+        return {
+            "schema": WORKTREE_LIFECYCLE_SCHEMA,
+            "workspace_path": record.workspace_path,
+            "record_id": record.record_id,
+            "task_id": record.task_id,
+            "canonical_task_cid": record.canonical_task_cid,
+            "attempt": record.attempt,
+            "fence": record.fence,
+            "lease_id": record.lease_id,
+            "state": record.state.value,
+        }
+
+    def _publish_task_index(self, record: WorkspaceLifecycleRecord) -> None:
+        _atomic_write_json(
+            self.task_index_path_for(
+                canonical_task_cid=record.canonical_task_cid,
+                task_id=record.task_id,
+                attempt=record.attempt,
+            ),
+            self._task_index_payload(record),
+        )
+
+    def heal_stale_task_indexes(self) -> list[WorkspaceLifecycleRecord]:
+        """Rewrite leftover active indexes whose workspace is already terminal.
+
+        ``reclaim_stale`` used to terminalize the workspace record without
+        publishing the matching task-index. Successor claim_next then saw an
+        active index, raised DuplicateAttemptError, and treated already-
+        terminal predecessor recovery as a leftover wait forever.
+        """
+
+        healed: list[WorkspaceLifecycleRecord] = []
+        assert self.store_dir is not None
+        if not self.store_dir.is_dir():
+            return healed
+        for path in sorted(self.store_dir.glob("task-*.json")):
+            payload = _load_json_dict(path)
+            if not isinstance(payload, dict):
+                continue
+            workspace = str(payload.get("workspace_path") or "")
+            if not workspace:
+                continue
+            record = self.load_workspace(workspace)
+            if record is None or record.is_nonterminal:
+                continue
+            if str(payload.get("state") or "") == record.state.value:
+                continue
+            try:
+                self._publish_task_index(record)
+            except OSError:
+                continue
+            healed.append(record)
+        return healed
+
     # ---------------------------------------------------------------- loading
 
     def load_workspace(
@@ -594,6 +650,14 @@ class WorktreeLifecycleStore:
                 return WorkspaceLifecycleRecord.from_dict(payload)
             except (TypeError, ValueError, WorktreeLifecycleError):
                 return None
+        if (
+            record.is_terminal
+            and str(payload.get("state") or "") != record.state.value
+        ):
+            try:
+                self._publish_task_index(record)
+            except OSError:
+                pass
         return record
 
     def iter_records(self) -> Iterable[WorkspaceLifecycleRecord]:
@@ -1698,6 +1762,7 @@ class WorktreeLifecycleStore:
                 lease_id=reclaimer_lease_id or current.lease_id,
             )
             _atomic_write_json(record_path, updated.to_dict())
+            self._publish_task_index(updated)
             return updated
 
     def reclaim_dead_owner_for_controlled_restart(
@@ -1799,6 +1864,7 @@ class WorktreeLifecycleStore:
             )
             if updated is not None:
                 recovered.append(updated)
+        recovered.extend(self.heal_stale_task_indexes())
         return recovered
 
     def compare_and_delete(

@@ -1458,6 +1458,78 @@ def test_reconnect_exclusive_owner_keeps_usable_handle(tmp_path: Path) -> None:
         owner.close()
 
 
+def test_exclusive_owner_execute_reconnects_after_uncertain_transaction(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        DuckDBConnection,
+    )
+
+    path = tmp_path / "control.duckdb"
+    owner = DuckDBConnection(path)
+    try:
+        owner.execute("CREATE TABLE t(id INTEGER)")
+        owner.execute("INSERT INTO t VALUES (7)")
+        with owner._execution_condition:
+            owner._poison_locked()
+        probe = owner.execute("SELECT id FROM t").fetchone()
+        assert probe is not None
+        assert int(probe[0]) == 7
+        assert owner._poisoned is False
+    finally:
+        owner.close()
+
+
+def test_recoverable_owner_control_error_does_not_sigterm(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+    killed: list[int] = []
+    monkeypatch.setattr(
+        materializer.os,
+        "kill",
+        lambda pid, sig: killed.append(sig),
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        DuckDBConnectionPolicyError,
+    )
+
+    class _Server:
+        pass
+
+    broker = materializer._SparStateOwnerBootstrapBroker.__new__(
+        materializer._SparStateOwnerBootstrapBroker
+    )
+    broker.server = _Server()
+    broker._lock = threading.Lock()
+    broker.failure = ""
+    broker.ready = threading.Event()
+    broker.fail_fast_enabled = threading.Event()
+    broker.stopping = threading.Event()
+    broker.fail_fast_enabled.set()
+    recovered: list[bool] = []
+
+    def recover(_server: object, *, force: bool = False) -> bool:
+        recovered.append(force)
+        return True
+
+    monkeypatch.setattr(
+        materializer,
+        "_recover_poisoned_owner_connection",
+        recover,
+    )
+    fatal = broker._terminal_failure(
+        DuckDBConnectionPolicyError(
+            "DuckDB connection is unusable after an uncertain transaction"
+        )
+    )
+    assert fatal is False
+    assert killed == []
+    assert broker.failure == ""
+    assert recovered == [False]
+
+
 def test_process_mutations_skips_signed_owner_command_requests(
     tmp_path: Path,
 ) -> None:
