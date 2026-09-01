@@ -1692,6 +1692,134 @@ def test_ordinary_grok_orphan_fence_fails_closed_on_authority_drift(
     assert not any("rm" in command for command in commands)
 
 
+@pytest.mark.parametrize(
+    "failure",
+    (
+        "lease_drift",
+        "inspection_drift",
+        "pid_reused_before_rm",
+        "rm_failed",
+        "post_rm_present",
+        "ambiguous",
+    ),
+)
+def test_ordinary_grok_orphan_cleanup_fails_closed_across_removal_races(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    status = _ordinary_fence_status(tmp_path)
+    container_id = "8" * 64
+    lease = _ordinary_grok_orphan_lease(
+        suffix=f"race-{failure}",
+        container_id=container_id,
+    )
+    inspections = {
+        container_id: _ordinary_grok_inspection(
+            status,
+            lease,
+            container_id,
+        )
+    }
+    if failure == "ambiguous":
+        second_id = "9" * 64
+        second_lease = _ordinary_grok_orphan_lease(
+            suffix="race-ambiguous-second",
+            container_id=second_id,
+        )
+        inspections[second_id] = _ordinary_grok_inspection(
+            status,
+            second_lease,
+            second_id,
+        )
+
+    commands: list[list[str]] = []
+    inspect_counts: dict[str, int] = {}
+
+    def docker_query(command: list[str]) -> tuple[int, bytes, bytes]:
+        commands.append(command)
+        if command[-3:-1] == ["container", "inspect"]:
+            inspected_id = command[-1]
+            inspect_counts[inspected_id] = inspect_counts.get(inspected_id, 0) + 1
+            inspection = json.loads(json.dumps(inspections[inspected_id]))
+            if failure == "lease_drift" and inspected_id == container_id:
+                lease["cidfile"].write_text("a" * 64, encoding="ascii")
+            if (
+                failure == "inspection_drift"
+                and inspect_counts[inspected_id] == 2
+            ):
+                inspection[0]["Name"] = "/drifted-before-removal"
+            return 0, json.dumps(inspection).encode(), b""
+        if "rm" in command:
+            return (1 if failure == "rm_failed" else 0), b"", b""
+        if "ls" in command:
+            listed = container_id.encode() if failure == "post_rm_present" else b""
+            return 0, listed, b""
+        raise AssertionError(command)
+
+    if failure == "pid_reused_before_rm":
+        receipt = status["active_provider_runner"]
+        exact = (
+            receipt["boot_id"],
+            (
+                receipt["owner_pid"],
+                receipt["process_group_id"],
+                receipt["session_id"],
+                receipt["start_time_ticks"],
+            ),
+            receipt["argv_sha256"],
+        )
+        observations = 0
+
+        def observe(_pid: int):
+            nonlocal observations
+            observations += 1
+            if observations <= 2:
+                return exact
+            if observations <= 5:
+                return receipt["boot_id"], None, None
+            return (
+                receipt["boot_id"],
+                (
+                    1,
+                    receipt["process_group_id"],
+                    receipt["session_id"],
+                    receipt["start_time_ticks"] + 1,
+                ),
+                "replacement-argv",
+            )
+
+        monkeypatch.setattr(
+            supervisor,
+            "_ordinary_provider_runner_observation",
+            observe,
+        )
+        monkeypatch.setattr(
+            supervisor,
+            "terminate_pid_tree",
+            lambda *_args, **_kwargs: True,
+        )
+    else:
+        _mock_exact_ordinary_host_fence(status, monkeypatch)
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_grok_docker_query",
+        docker_query,
+    )
+
+    result = supervisor.fence_ordinary_provider_runner(status)
+
+    assert result["safe_to_restart"] is False
+    assert result["fenced"] is False
+    assert result["host_fenced"] is True
+    assert result["reason"] == "ordinary_grok_orphan_container_fence_unproven"
+    rm_commands = [command for command in commands if "rm" in command]
+    if failure in {"rm_failed", "post_rm_present"}:
+        assert len(rm_commands) == 1
+    else:
+        assert rm_commands == []
+
+
 def test_sealed_runner_fence_never_enters_ordinary_grok_recovery(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
