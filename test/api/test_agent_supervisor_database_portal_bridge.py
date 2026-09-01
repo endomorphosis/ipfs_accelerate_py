@@ -774,6 +774,85 @@ def test_nested_setup_failure_rearm_binds_sealed_projection_track(
         daemon.close()
 
 
+@pytest.mark.parametrize(
+    ("terminal_link", "expected_interrupted_calls"),
+    (
+        ({"schema": "malformed-populated-terminal-link"}, 1),
+        (None, 0),
+        ([], 0),
+    ),
+)
+def test_terminal_rearm_candidate_never_downgrades_to_setup_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_link: object,
+    expected_interrupted_calls: int,
+) -> None:
+    attempt = SimpleNamespace(
+        task_cid="task:terminal-route",
+        attempt_id="attempt:terminal-route",
+        claim_id="claim:terminal-route",
+        lease_id="lease:terminal-route",
+        attempt_number=2,
+        owner_session_id="session:terminal-route",
+        fencing_token=7,
+        fence_epoch=3,
+        status="failed",
+        committed_phase="failed",
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+    )
+    receipt = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/database-retry-budget@1",
+        "operation": "database_unknown_outcome_blocked",
+        "reason": "callback_authority_incomplete_blocked",
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "attempt_number": attempt.attempt_number,
+        "owner_session_id": attempt.owner_session_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "retry_exhausted": True,
+        "forced_block": True,
+        "authority_outcome": "unknown",
+        "process_instance_id": "process:terminal-route",
+        "terminal_reconciliation": terminal_link,
+    }
+    interrupted_calls: list[str] = []
+
+    def reject_interrupted(
+        _attempt: object,
+        _receipt: object,
+    ) -> None:
+        interrupted_calls.append("interrupted")
+        return None
+
+    def forbidden_setup_fallback(_paths: object) -> object:
+        pytest.fail("terminal evidence fell back to setup-failure authority")
+
+    monkeypatch.setattr(
+        bridge,
+        "_interrupted_implementation_rearm_evidence",
+        reject_interrupted,
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_pinned_no_provider_snapshot",
+        forbidden_setup_fallback,
+    )
+
+    assert bridge.no_provider_dispatch_rearm_evidence(
+        attempt,
+        outer_block_receipt=receipt,
+    ) is None
+    assert len(interrupted_calls) == expected_interrupted_calls
+
+
 def test_nested_setup_failure_rearm_rejects_track_not_matching_projection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2666,24 +2745,37 @@ def _seed_terminal_repair_history(
                 json.dumps(saga, sort_keys=True),
             ],
         )
+        prepared_core = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": link["nested_reason"],
+            "binding_id": link["binding_id"],
+            "trigger": link["trigger"],
+            "intended_database_disposition": disposition,
+            "nested_state": {
+                "state_digest": link["nested_state_digest"],
+            },
+        }
         receipts[attempt.attempt_id] = {
             "prepared": {
+                **prepared_core,
                 "receipt_id": prepared_id,
-                "reconciled": True,
-                "blocked": False,
             },
             "commit_barrier": {
+                **prepared_core,
                 "receipt_id": barrier_id,
                 "prepared_reconciliation_receipt_id": prepared_id,
-                "intended_database_disposition": disposition,
             },
             "terminal": {
+                **prepared_core,
                 "receipt_id": terminal_id,
+                "stage": "terminal",
                 "terminal_reconciliation_evidence_id": link["evidence_id"],
                 "prepared_reconciliation_receipt_id": prepared_id,
                 "database_disposition": disposition,
                 "database_attempt_status": "failed",
                 "database_attempt_phase": "failed",
+                "reconciled_at": "",
             },
         }
     return receipts
@@ -7199,6 +7291,67 @@ def _seed_terminal_blocked_landed_candidate(
     return daemon, bridge, current_attempt, paths
 
 
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_terminal_repair_rejects_contradictory_immutable_barrier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, bridge, attempt, _paths = (
+        _seed_terminal_blocked_landed_candidate(tmp_path)
+    )
+    real_load = bridge.load_reconciliation_receipt
+    try:
+        saga = daemon._database_portal_terminal_reconciliation_saga(attempt)
+        assert saga is not None and saga["stage"] == "terminal"
+
+        def contradictory_load(
+            selected_attempt: DatabaseTaskAttempt,
+            receipt_id: str,
+            *,
+            required_stage: str,
+        ) -> dict[str, object]:
+            receipt = real_load(
+                selected_attempt,
+                receipt_id,
+                required_stage=required_stage,
+            )
+            if required_stage == "commit_barrier":
+                receipt = {**receipt, "blocked": True}
+            return receipt
+
+        monkeypatch.setattr(
+            bridge,
+            "load_reconciliation_receipt",
+            contradictory_load,
+        )
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="terminal reconciliation saga barriers changed disposition",
+        ):
+            daemon._terminal_reconciliation_evidence_from_saga(
+                attempt=attempt,
+                saga=saga,
+                bridge=bridge,
+            )
+
+        repairs = daemon._repair_database_portal_terminal_receipts(
+            bridge=bridge,
+            trigger="contradictory_immutable_barrier",
+            exact_attempt=attempt,
+        )
+
+        assert len(repairs) == 1
+        assert repairs[0]["blocked"] is True
+        assert repairs[0]["reason"] == (
+            "terminal_reconciliation_receipt_repair_failed"
+        )
+        assert repairs[0]["error"] == (
+            "terminal phase barrier changed disposition"
+        )
+    finally:
+        daemon.close()
+
+
 def _landed_reconciliation_fixture(
     expected_task_identity: Mapping[str, str],
 ) -> dict[str, object]:
@@ -7390,8 +7543,17 @@ def test_blocked_terminal_selector_completes_landed_candidate_once(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    ("malformed_field", "malformed_value"),
+    (
+        ("attempts_used", {"not": "an integer"}),
+        ("unknown_outcome_rearm_count", 0),
+    ),
+)
 def test_blocked_terminal_selector_contains_malformed_retry_budget(
     tmp_path: Path,
+    malformed_field: str,
+    malformed_value: object,
 ) -> None:
     daemon, bridge, attempt, paths = _seed_terminal_blocked_landed_candidate(
         tmp_path
@@ -7399,7 +7561,7 @@ def test_blocked_terminal_selector_contains_malformed_retry_budget(
     task = daemon.task_source.get_task(attempt.task_cid)
     assert task is not None
     tampered = dict(task.body["completion_receipt"])
-    tampered["attempts_used"] = {"not": "an integer"}
+    tampered[malformed_field] = malformed_value
     tampered_body = dict(task.body)
     tampered_body["completion_receipt"] = tampered
     with daemon.task_source._intent._connection(write=True) as connection:
@@ -7430,6 +7592,118 @@ def test_blocked_terminal_selector_contains_malformed_retry_budget(
         current = daemon.task_source.get_task(attempt.task_cid)
         assert current is not None and current.status == "blocked"
         assert calls == []
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    ("target", "field", "alias_kind"),
+    (
+        ("outer", "attempt_number", "bool"),
+        ("outer", "fencing_token", "float"),
+        ("link", "attempt_number", "bool"),
+        ("link", "fence_epoch", "float"),
+    ),
+)
+def test_blocked_terminal_selector_rejects_numeric_type_aliases(
+    tmp_path: Path,
+    target: str,
+    field: str,
+    alias_kind: str,
+) -> None:
+    daemon, bridge, attempt, paths = _seed_terminal_blocked_landed_candidate(
+        tmp_path
+    )
+    task = daemon.task_source.get_task(attempt.task_cid)
+    assert task is not None
+    tampered = dict(task.body["completion_receipt"])
+    if target == "link":
+        link = dict(tampered["terminal_reconciliation"])
+        original = link[field]
+        assert type(original) is int
+        link[field] = True if alias_kind == "bool" else float(original)
+        if alias_kind == "bool":
+            link.pop("evidence_id")
+            link["evidence_id"] = content_identity(link)
+        tampered["terminal_reconciliation"] = link
+    else:
+        original = tampered[field]
+        assert type(original) is int
+        tampered[field] = True if alias_kind == "bool" else float(original)
+    tampered_body = {
+        **dict(task.body),
+        "completion_receipt": tampered,
+    }
+    with daemon.task_source._intent._connection(write=True) as connection:
+        connection.execute(
+            "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+            [
+                json.dumps(
+                    tampered_body,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                attempt.task_cid,
+            ],
+        )
+    calls: list[str] = []
+    bridge.portal_factory = lambda _paths, _alias: _landed_recovery_portal(
+        paths,
+        calls=calls,
+    )
+    try:
+        rejected = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(rejected) == 1
+        assert rejected[0]["blocked"] is True
+        assert rejected[0]["reason"] == (
+            "terminal_landed_candidate_recovery_blocked"
+        )
+        current = daemon.task_source.get_task(attempt.task_cid)
+        assert current is not None and current.status == "blocked"
+        assert calls == []
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_empty_terminal_link_remains_on_legacy_generic_rearm_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _bridge, attempt, _paths = (
+        _seed_terminal_blocked_landed_candidate(tmp_path)
+    )
+    task = daemon.task_source.get_task(attempt.task_cid)
+    assert task is not None
+    receipt = {
+        **dict(task.body["completion_receipt"]),
+        "terminal_reconciliation": {},
+    }
+    body = {**dict(task.body), "completion_receipt": receipt}
+    with daemon.task_source._intent._connection(write=True) as connection:
+        connection.execute(
+            "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+            [
+                json.dumps(body, separators=(",", ":"), sort_keys=True),
+                attempt.task_cid,
+            ],
+        )
+    generic_calls: list[str] = []
+
+    def nominate_legacy(*_args: object, **_kwargs: object) -> None:
+        generic_calls.append(attempt.task_cid)
+        return None
+
+    monkeypatch.setattr(
+        daemon,
+        "_database_portal_no_provider_rearm_evidence",
+        nominate_legacy,
+    )
+    try:
+        assert daemon.reconcile_blocked_unknown_outcome_tasks() == []
+        assert generic_calls == [attempt.task_cid]
     finally:
         daemon.close()
 

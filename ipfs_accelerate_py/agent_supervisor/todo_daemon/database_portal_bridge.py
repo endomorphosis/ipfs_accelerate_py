@@ -53,6 +53,16 @@ DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-no-provider-rearm-evidence@1"
 )
+DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-interrupted-implementation-rearm-evidence@1"
+)
+DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_AUTHORIZATION_SCHEMA: Final[
+    str
+] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-interrupted-implementation-rearm-authorization@1"
+)
 DATABASE_PORTAL_TERMINAL_RECONCILIATION_LINK_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-terminal-reconciliation-link@1"
@@ -125,6 +135,51 @@ DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_FIELDS: Final[frozenset[str]] = (
             "evidence_id",
         }
     )
+)
+DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "schema",
+        "attempt_id",
+        "claim_id",
+        "task_cid",
+        "task_alias",
+        "attempt_number",
+        "owner_session_id",
+        "lease_id",
+        "fencing_token",
+        "fence_epoch",
+        "attempt_root_key",
+        "attempt_authority_root_digest",
+        "attempt_root_digest",
+        "binding_id",
+        "binding_admission_id",
+        "binding_admission_digest",
+        "projection_immutable_digest",
+        "nested_task_cid",
+        "nested_attempt",
+        "terminal_reconciliation_evidence_id",
+        "first_clear_receipt_id",
+        "interrupted_retry_evidence_id",
+        "interrupted_retry_id",
+        "state_recovery_event_id",
+        "claim_release_receipt_id",
+        "prepared_reconciliation_receipt_id",
+        "commit_barrier_receipt_id",
+        "state_digest",
+        "outer_block_receipt_digest",
+        "rearm_authorization_id",
+        "provider_dispatched",
+        "implementation_dispatched",
+        "validation_attempted",
+        "commit_created",
+        "merge_attempted",
+        "acceptance_inferred",
+        "recovery_terminal",
+        "retained_candidate_disposition",
+        "evidence_id",
+    }
 )
 _EVENT_MANIFEST_FIELDS: Final[frozenset[str]] = frozenset(
     {
@@ -359,6 +414,43 @@ _SETUP_EVENT_FIELD_VARIANTS: Final[
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {"completed", "complete", "done"}
 )
+_ATTEMPT_INTEGER_FIELDS: Final[tuple[str, str, str]] = (
+    "attempt_number",
+    "fencing_token",
+    "fence_epoch",
+)
+
+
+def _strict_attempt_integer_fields(record: Mapping[str, Any]) -> bool:
+    """Reject bool/float aliases for JSON attempt authority integers."""
+
+    return bool(
+        type(record.get("attempt_number")) is int
+        and int(record["attempt_number"]) >= 1
+        and type(record.get("fencing_token")) is int
+        and int(record["fencing_token"]) >= 0
+        and type(record.get("fence_epoch")) is int
+        and int(record["fence_epoch"]) >= 0
+    )
+
+
+def _closed_typed_record_matches(
+    observed: Any,
+    expected: Mapping[str, Any],
+) -> bool:
+    """Compare a closed JSON object without Python numeric type coercion."""
+
+    return bool(
+        isinstance(observed, Mapping)
+        and set(observed) == set(expected)
+        and all(
+            type(observed.get(name)) is type(value)
+            and observed.get(name) == value
+            for name, value in expected.items()
+        )
+    )
+
+
 _MUTABLE_PROJECTION_LINE = re.compile(r"(?mi)^-\s*status\s*:\s*.*$")
 _HEADER = re.compile(r"(?m)^##\s+([^\s]+)(?:\s+.*)?$")
 _VALIDATION_REPRESENTATIONS: Final[frozenset[str]] = frozenset(
@@ -3516,7 +3608,7 @@ class DatabasePortalExecutionBridge:
         attempt: Any,
         receipt: Mapping[str, Any],
     ) -> dict[str, Any] | None:
-        """Prove an exact implementing crash was refunded before dispatch.
+        """Prove exact implementing-crash recovery without redispatch/completion.
 
         This successor proof is intentionally distinct from the setup-failure
         evidence below.  It binds the immutable first-clear receipt, the
@@ -3565,12 +3657,17 @@ class DatabasePortalExecutionBridge:
         link_evidence_id = str(unsigned_link.pop("evidence_id", "") or "")
         if (
             set(link) != link_fields
+            or not _strict_attempt_integer_fields(link)
             or link.get("schema")
             != (
                 "ipfs_accelerate_py/agent-supervisor/"
                 "database-portal-terminal-reconciliation-link@1"
             )
-            or any(link.get(name) != value for name, value in exact_attempt.items())
+            or any(
+                type(link.get(name)) is not type(value)
+                or link.get(name) != value
+                for name, value in exact_attempt.items()
+            )
             or link.get("nested_reason") != "nested_portal_attempt_reconciled"
             or link.get("nested_reconciled") is not True
             or link.get("intended_database_disposition")
@@ -3646,7 +3743,8 @@ class DatabasePortalExecutionBridge:
         }
         if (
             any(
-                durable_binding.get(name) != value
+                type(durable_binding.get(name)) is not type(value)
+                or durable_binding.get(name) != value
                 for name, value in durable_expected.items()
             )
             or prepared.get("binding_id") != binding.get("binding_id")
@@ -3666,6 +3764,7 @@ class DatabasePortalExecutionBridge:
             or current_nested.get("present") is not True
             or current_nested.get("active") is not False
             or current_nested.get("active_task_id") != ""
+            or type(current_nested.get("active_attempt")) is not int
             or current_nested.get("active_attempt") != 0
             or current_nested.get("active_phase") != ""
             or current_nested.get("state_path") != str(paths.state)
@@ -3675,13 +3774,15 @@ class DatabasePortalExecutionBridge:
             != link.get("commit_barrier_receipt_id")
             or commit_barrier.get("prepared_reconciliation_receipt_id")
             != prepared.get("receipt_id")
-            or commit_barrier_core != prepared_barrier_core
+            or _canonical_json(commit_barrier_core)
+            != _canonical_json(prepared_barrier_core)
             or commit_barrier.get("intended_database_disposition")
             != "blocked_unknown_outcome"
             or commit_barrier.get("trigger") != link.get("trigger")
             or not isinstance(state_before, Mapping)
             or state_before.get("implementation_in_progress") is not False
             or state_before.get("active_task_id") != ""
+            or type(state_before.get("active_attempt")) is not int
             or state_before.get("active_attempt") != 0
             or state_before.get("active_phase") != ""
             or not isinstance(provider_fence, Mapping)
@@ -3751,20 +3852,32 @@ class DatabasePortalExecutionBridge:
             if isinstance(claim_release, Mapping)
             else None
         )
+        replay_attempt = replay.get("attempt")
+        released_from = (
+            released_attempt.get("released_from")
+            if isinstance(released_attempt, Mapping)
+            else None
+        )
+        released_to = (
+            released_attempt.get("released_to")
+            if isinstance(released_attempt, Mapping)
+            else None
+        )
         if (
-            recovery_core != replay_core
+            _canonical_json(recovery_core) != _canonical_json(replay_core)
             or not isinstance(original_lock_clear, bool)
             or not isinstance(replay_lock_clear, bool)
-            or not isinstance(forbidden_terminal, Mapping)
-            or dict(forbidden_terminal)
-            != {
+            or not _closed_typed_record_matches(
+                forbidden_terminal,
+                {
                 "applicable": False,
                 "blocked": False,
                 "implementation_dispatched": False,
                 "provider_dispatched": False,
                 "reason": "provider_forbidden_terminal_recovery_not_applicable",
                 "reconciled": False,
-            }
+                },
+            )
             or replay.get("reconciled") is not True
             or replay.get("blocked") is not False
             or replay.get("reason")
@@ -3781,10 +3894,12 @@ class DatabasePortalExecutionBridge:
             or claim_release.get("task_id") != binding.get("task_alias")
             or claim_release.get("task_status") != "todo"
             or not isinstance(released_attempt, Mapping)
-            or released_attempt.get("released_from")
-            != replay.get("attempt")
-            or released_attempt.get("released_to")
-            != int(replay.get("attempt") or 0) - 1
+            or type(replay_attempt) is not int
+            or int(replay_attempt) < 1
+            or type(released_from) is not int
+            or released_from != replay_attempt
+            or type(released_to) is not int
+            or released_to != replay_attempt - 1
         ):
             return None
 
@@ -3804,7 +3919,7 @@ class DatabasePortalExecutionBridge:
                 binding.get("projection_immutable_digest") or ""
             ),
             "nested_task_cid": str(replay.get("canonical_task_cid") or ""),
-            "nested_attempt": int(replay.get("attempt") or 0),
+            "nested_attempt": replay_attempt,
             "terminal_reconciliation_evidence_id": link_evidence_id,
             "first_clear_receipt_id": str(
                 source_receipt.get("receipt_id") or ""
@@ -3856,7 +3971,7 @@ class DatabasePortalExecutionBridge:
                 binding.get("projection_immutable_digest") or ""
             ),
             "nested_task_cid": str(replay.get("canonical_task_cid") or ""),
-            "nested_attempt": int(replay.get("attempt") or 0),
+            "nested_attempt": replay_attempt,
             "terminal_reconciliation_evidence_id": link_evidence_id,
             "first_clear_receipt_id": str(
                 source_receipt.get("receipt_id") or ""
@@ -3900,14 +4015,12 @@ class DatabasePortalExecutionBridge:
         *,
         outer_block_receipt: Mapping[str, Any],
     ) -> Mapping[str, Any] | None:
-        """Prove one nested setup failure ended before provider entry.
+        """Prove one exact nested recovery is eligible for bounded rearm.
 
-        This is deliberately narrower than provider-result recovery.  It does
-        not infer safety from a missing receipt or an empty directory.  The
-        exact outer attempt, admitted projection binding, terminal nested
-        state, cleanup receipts, and complete content-addressed Portal event
-        chain must all agree that worktree setup failed before any provider,
-        validation, commit, or merge boundary was crossed.
+        A populated terminal-reconciliation link is owned exclusively by the
+        interrupted-implementation verifier.  It may not fall back to the
+        legacy setup-failure proof when that stricter verifier rejects it.
+        Neither route infers safety from a missing receipt or empty directory.
         """
 
         receipt = dict(outer_block_receipt)
@@ -3933,10 +4046,28 @@ class DatabasePortalExecutionBridge:
         if (
             str(getattr(attempt, "status", "") or "") != "failed"
             or str(getattr(attempt, "committed_phase", "") or "") != "failed"
-            or any(receipt.get(key) != value for key, value in expected_receipt.items())
+            or any(
+                type(receipt.get(key)) is not type(value)
+                or receipt.get(key) != value
+                for key, value in expected_receipt.items()
+            )
             or not str(receipt.get("process_instance_id") or "").strip()
         ):
             return None
+
+        terminal_link_missing = object()
+        terminal_link = receipt.get(
+            "terminal_reconciliation",
+            terminal_link_missing,
+        )
+        if terminal_link is not terminal_link_missing:
+            if type(terminal_link) is not dict:
+                return None
+            if terminal_link:
+                return self._interrupted_implementation_rearm_evidence(
+                    attempt,
+                    receipt,
+                )
 
         paths = self._paths(attempt)
         expected_root = self.attempt_root / hashlib.sha256(
@@ -4020,8 +4151,16 @@ class DatabasePortalExecutionBridge:
             "fence_epoch": int(attempt.fence_epoch),
         }
         if (
-            any(durable_binding.get(key) != value for key, value in durable_expected.items())
-            or any(binding.get(key) != value for key, value in binding_expected.items())
+            any(
+                type(durable_binding.get(key)) is not type(value)
+                or durable_binding.get(key) != value
+                for key, value in durable_expected.items()
+            )
+            or any(
+                type(binding.get(key)) is not type(value)
+                or binding.get(key) != value
+                for key, value in binding_expected.items()
+            )
         ):
             return None
 
@@ -5355,8 +5494,24 @@ class DatabasePortalExecutionBridge:
             terminal_recovery = reconciliation.get(
                 "provider_forbidden_terminal_recovery"
             )
-            if (
+            terminal_recovery_not_applicable = _closed_typed_record_matches(
+                terminal_recovery,
+                {
+                    "applicable": False,
+                    "blocked": False,
+                    "implementation_dispatched": False,
+                    "provider_dispatched": False,
+                    "reason": (
+                        "provider_forbidden_terminal_recovery_not_applicable"
+                    ),
+                    "reconciled": False,
+                },
+            )
+            if terminal_recovery_not_applicable:
+                terminal_provider_evidence = None
+            elif (
                 not isinstance(terminal_recovery, Mapping)
+                or terminal_recovery.get("applicable") is not True
                 or terminal_recovery.get("reconciled") is not True
                 or terminal_recovery.get("blocked") is True
                 or terminal_recovery.get("provider_dispatched") is not False
@@ -5367,12 +5522,13 @@ class DatabasePortalExecutionBridge:
                     "blocked terminal landed recovery lacked exact provider-free "
                     "completion"
                 )
-            terminal_provider_evidence = self._acceptance_receipt(
-                attempt=attempt,
-                paths=paths,
-                binding=expected,
-                summaries=(),
-            )
+            else:
+                terminal_provider_evidence = self._acceptance_receipt(
+                    attempt=attempt,
+                    paths=paths,
+                    binding=expected,
+                    summaries=(),
+                )
         else:
             terminal_provider_evidence = (
                 None
@@ -5614,7 +5770,8 @@ class DatabasePortalExecutionBridge:
         mismatched = [
             field
             for field, expected in authoritative.items()
-            if receipt.get(field) != expected
+            if type(receipt.get(field)) is not type(expected)
+            or receipt.get(field) != expected
         ]
         if mismatched:
             raise DatabasePortalBridgeError(
@@ -5744,6 +5901,7 @@ class DatabasePortalExecutionBridge:
                 and lifecycle.get("state") == "terminal"
                 and lifecycle.get("task_id") == task_alias
                 and lifecycle.get("workspace_path") == workspace
+                and type(lifecycle.get("attempt")) is int
                 and lifecycle.get("attempt") == active_attempt
                 and isinstance(claim, Mapping)
                 and claim.get("blocked") is True
@@ -5752,6 +5910,7 @@ class DatabasePortalExecutionBridge:
                 and claim.get("task_id") == task_alias
                 and isinstance(attempt_recovery, Mapping)
                 and attempt_recovery.get("consumed") is False
+                and type(attempt_recovery.get("attempt")) is int
                 and attempt_recovery.get("attempt") == active_attempt
                 and attempt_recovery.get("task_id") == task_alias
             ):
@@ -5843,7 +6002,11 @@ class DatabasePortalExecutionBridge:
             fence = receipt.get("provider_runner_fence")
             if not (
                 receipt.get("stage") == "blocked"
+                and receipt.get("blocked") is True
+                and receipt.get("reconciled") is False
                 and receipt.get("binding_id") == binding.get("binding_id")
+                and receipt.get("task_alias")
+                == binding.get("task_alias")
                 and receipt.get("reason")
                 == "nested_portal_attempt_reconciliation_blocked"
                 and receipt.get("terminal_provider_evidence") is False
@@ -5867,6 +6030,8 @@ class DatabasePortalExecutionBridge:
                 and fence.get("reason")
                 == "ordinary_provider_runner_exact_birth_fenced"
                 and isinstance(portal, Mapping)
+                and portal.get("blocked") is True
+                and portal.get("reconciled") is False
                 and portal.get("reason")
                 == "task_claim_reconciliation_blocked"
             ):
@@ -5877,21 +6042,42 @@ class DatabasePortalExecutionBridge:
             recovery = portal.get("attempt_recovery")
             if not (
                 isinstance(protected, Mapping)
+                and protected.get("blocked") is False
                 and protected.get("reason") == "crash_reconciliation_unchanged"
+                and protected.get("task_id") == nested.get("active_task_id")
+                and protected.get("workspace_path")
+                == nested.get("active_worktree_path")
                 and isinstance(lifecycle, Mapping)
+                and lifecycle.get("blocked") is False
+                and lifecycle.get("reconciled") is True
                 and lifecycle.get("state") == "terminal"
+                and lifecycle.get("task_id") == nested.get("active_task_id")
+                and type(lifecycle.get("attempt")) is int
+                and lifecycle.get("attempt") == nested.get("active_attempt")
+                and lifecycle.get("workspace_path")
+                == nested.get("active_worktree_path")
                 and lifecycle.get("record_id")
                 and isinstance(lifecycle.get("fence"), int)
                 and not isinstance(lifecycle.get("fence"), bool)
                 and int(lifecycle.get("fence") or 0) > 0
                 and isinstance(claim, Mapping)
+                and claim.get("blocked") is True
+                and claim.get("reconciled") is False
                 and claim.get("reason") == "canonical_task_not_terminal"
+                and claim.get("task_id") == nested.get("active_task_id")
                 and claim.get("observed_task_status") == "todo"
                 and claim.get("canonical_task_cid")
                 and isinstance(recovery, Mapping)
                 and recovery.get("consumed") is False
+                and type(recovery.get("attempt")) is int
+                and recovery.get("attempt") == nested.get("active_attempt")
+                and recovery.get("task_id") == nested.get("active_task_id")
+                and recovery.get("canonical_task_cid")
+                == claim.get("canonical_task_cid")
+                and type(recovery.get("previous_display_count")) is int
                 and recovery.get("previous_display_count")
                 == nested.get("active_attempt")
+                and type(recovery.get("previous_cid_count")) is int
                 and recovery.get("previous_cid_count")
                 == nested.get("active_attempt")
             ):

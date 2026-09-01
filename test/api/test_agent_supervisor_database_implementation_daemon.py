@@ -12,11 +12,17 @@ not duplicate provider/effect work.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Callable
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationError,
     open_database_coordinator,
@@ -49,12 +55,15 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
+    _canonical_mapping_matches,
     is_database_authority_mode,
     open_database_implementation_daemon,
     parse_args,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
     DatabasePortalBridgeError,
+    DatabasePortalExecutionBridge,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_database_implementation_daemon_from_args,
@@ -1189,6 +1198,8 @@ def test_interrupted_rearm_evidence_binds_terminal_barrier_and_recovery_identity
         lease_id="lease:interrupted:exact",
         fencing_token=7,
         fence_epoch=3,
+        status="failed",
+        committed_phase="failed",
     )
     bridge = DatabasePortalExecutionBridge(
         task_source=object(),
@@ -1317,8 +1328,27 @@ def test_interrupted_rearm_evidence_binds_terminal_barrier_and_recovery_identity
     }
     link["evidence_id"] = content_identity(link)
     calls: list[str] = []
+    replay_holder: dict[str, object] = {}
 
     class RetryOnlyPortal:
+        def reconcile_quiesced_active_attempt(self) -> dict[str, object]:
+            return dict(replay_holder)
+
+        def reconcile_provider_forbidden_terminal_result(
+            self,
+            **_kwargs: object,
+        ) -> dict[str, object]:
+            return {
+                "applicable": False,
+                "blocked": False,
+                "implementation_dispatched": False,
+                "provider_dispatched": False,
+                "reason": (
+                    "provider_forbidden_terminal_recovery_not_applicable"
+                ),
+                "reconciled": False,
+            }
+
         def reconcile_interrupted_database_implementation_attempt(
             self,
             evidence: object,
@@ -1374,6 +1404,48 @@ def test_interrupted_rearm_evidence_binds_terminal_barrier_and_recovery_identity
         task=attempt,
         original=outer_receipt,
         expected_evidence_id=evidence["evidence_id"],
+    )
+
+    for numeric_field in ("attempt_number", "fencing_token", "fence_epoch"):
+        numeric_alias = dict(link)
+        numeric_alias[numeric_field] = float(numeric_alias[numeric_field])
+        assert bridge._interrupted_implementation_rearm_evidence(
+            attempt,
+            {**exact_attempt, "terminal_reconciliation": numeric_alias},
+        ) is None
+    assert calls == ["recovery"]
+
+    malformed_nested = {
+        **prepared,
+        "nested_state": {
+            **dict(prepared["nested_state"]),
+            "active_attempt": False,
+        },
+    }
+    monkeypatch.setattr(
+        bridge,
+        "load_reconciliation_receipt",
+        lambda _attempt, receipt_id, required_stage="": (
+            dict(malformed_nested)
+            if receipt_id == prepared_id
+            else {
+                **dict(malformed_nested),
+                "receipt_id": barrier_id,
+                "prepared_reconciliation_receipt_id": prepared_id,
+            }
+        ),
+    )
+    assert bridge._interrupted_implementation_rearm_evidence(
+        attempt,
+        outer_receipt,
+    ) is None
+    assert calls == ["recovery"]
+    monkeypatch.setattr(
+        bridge,
+        "load_reconciliation_receipt",
+        lambda _attempt, receipt_id, required_stage="": (
+            dict(prepared) if receipt_id == prepared_id else dict(barrier)
+        ),
     )
 
     tampered_link = {**link, "trigger": "tampered-trigger"}
@@ -1554,6 +1626,24 @@ def test_interrupted_rearm_uses_production_run_once_link_and_terminal_saga(
     recovery_calls: list[str] = []
 
     class RetryOnlyPortal:
+        def reconcile_quiesced_active_attempt(self) -> dict[str, object]:
+            return dict(replay_holder)
+
+        def reconcile_provider_forbidden_terminal_result(
+            self,
+            **_kwargs: object,
+        ) -> dict[str, object]:
+            return {
+                "applicable": False,
+                "blocked": False,
+                "implementation_dispatched": False,
+                "provider_dispatched": False,
+                "reason": (
+                    "provider_forbidden_terminal_recovery_not_applicable"
+                ),
+                "reconciled": False,
+            }
+
         def reconcile_interrupted_database_implementation_attempt(
             self,
             evidence: object,
@@ -1645,6 +1735,7 @@ def test_interrupted_rearm_uses_production_run_once_link_and_terminal_saga(
                 "blocked": True,
                 "reason": "nested_portal_attempt_reconciliation_blocked",
                 "binding_id": binding["binding_id"],
+                "task_alias": attempt.task_alias,
                 "nested_state": {
                     "present": True,
                     "active": True,
@@ -1667,23 +1758,40 @@ def test_interrupted_rearm_uses_production_run_once_link_and_terminal_saga(
                     "ordinary_provider_runner_fence"
                 ),
                 "portal_reconciliation": {
+                    "blocked": True,
+                    "reconciled": False,
                     "reason": "task_claim_reconciliation_blocked",
                     "reconciled_at": "2026-01-01T00:00:00+00:00",
                     "protected_path_reconciliation": {
+                        "blocked": False,
                         "reason": "crash_reconciliation_unchanged",
+                        "task_id": attempt.task_alias,
+                        "attempt": nested_attempt,
+                        "workspace_path": workspace,
                     },
                     "worktree_lifecycle_reconciliation": {
+                        "blocked": False,
+                        "reconciled": True,
                         "state": "terminal",
+                        "task_id": attempt.task_alias,
+                        "attempt": nested_attempt,
+                        "workspace_path": workspace,
                         "record_id": content_identity({"lifecycle": "terminal"}),
                         "fence": 1,
                     },
                     "task_claim_reconciliation": {
+                        "blocked": True,
+                        "reconciled": False,
                         "reason": "canonical_task_not_terminal",
                         "observed_task_status": "todo",
+                        "task_id": attempt.task_alias,
                         "canonical_task_cid": nested_task_cid,
                     },
                     "attempt_recovery": {
                         "consumed": False,
+                        "attempt": nested_attempt,
+                        "task_id": attempt.task_alias,
+                        "canonical_task_cid": nested_task_cid,
                         "previous_display_count": nested_attempt,
                         "previous_cid_count": nested_attempt,
                     },
@@ -2042,6 +2150,180 @@ def test_later_process_rearms_exhausted_portal_provider_failure(
         assert successor_calls == ["task:cid:001"]
     finally:
         successor.close()
+
+
+def test_malformed_terminal_candidate_does_not_starve_unrelated_rearm(
+    tmp_path: Path,
+) -> None:
+    seed = _open_daemon(
+        tmp_path,
+        session="session:terminal-selector-liveness-seed",
+        max_task_attempts=2,
+    )
+    try:
+        seed.materialize_population(_population(2))
+        terminal_task = seed.task_source.get("task:cid:001")
+        generic_task = seed.task_source.get("task:cid:002")
+        assert terminal_task is not None and generic_task is not None
+        terminal_receipt = seed._retry_budget_receipt(
+            terminal_task,
+            attempts_used=2,
+            operation="database_unknown_outcome_blocked",
+            reason="callback_authority_incomplete_blocked",
+        )
+        terminal_receipt.update(
+            {
+                "authority_outcome": "unknown",
+                "forced_block": True,
+                "terminal_reconciliation": "malformed",
+            }
+        )
+        seed._cas_task_status_database(
+            terminal_task.task_cid,
+            expected_revision=int(terminal_task.revision),
+            new_status="blocked",
+            receipt=terminal_receipt,
+        )
+        generic_receipt = seed._retry_budget_receipt(
+            generic_task,
+            attempts_used=2,
+            operation="database_retry_exhausted",
+            reason="portal_provider_failed",
+        )
+        generic_receipt["retry_exhausted"] = True
+        seed._cas_task_status_database(
+            generic_task.task_cid,
+            expected_revision=int(generic_task.revision),
+            new_status="blocked",
+            receipt=generic_receipt,
+        )
+    finally:
+        seed.close()
+
+    successor = _open_daemon(
+        tmp_path,
+        session="session:terminal-selector-liveness-successor",
+        max_task_attempts=2,
+    )
+    try:
+        # The malformed link is rejected before this sentinel can be used.
+        successor._database_portal_bridge = object()
+        outcomes = successor.reconcile_blocked_unknown_outcome_tasks()
+
+        assert any(
+            item.get("task_cid") == "task:cid:001"
+            and item.get("reason") == "terminal_landed_candidate_link_invalid"
+            and item.get("blocked") is True
+            for item in outcomes
+        )
+        assert any(
+            item.get("task_cid") == "task:cid:002"
+            and item.get("operation") == "database_unknown_outcome_rearmed"
+            for item in outcomes
+        )
+        terminal = successor.task_source.get("task:cid:001")
+        generic = successor.task_source.get("task:cid:002")
+        assert terminal is not None and terminal.status == "blocked"
+        assert generic is not None and generic.status == "retrying"
+    finally:
+        successor.close()
+
+
+def test_terminal_candidate_quarantine_covers_full_bounded_page(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:terminal-selector-full-page",
+        max_task_attempts=2,
+    )
+    terminal_tasks = []
+    for index in range(128):
+        task_cid = f"task:cid:terminal:{index:03d}"
+        terminal_tasks.append(
+            SimpleNamespace(
+                task_cid=task_cid,
+                task_alias=f"PCTDD-TERMINAL-{index:03d}",
+                revision=1,
+                status="blocked",
+                body={
+                    "completion_receipt": {
+                        "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                        "operation": "database_unknown_outcome_blocked",
+                        "reason": "callback_authority_incomplete_blocked",
+                        "forced_block": True,
+                        "authority_outcome": "unknown",
+                        "terminal_reconciliation": {"schema": "candidate"},
+                    }
+                },
+            )
+        )
+    overflow = SimpleNamespace(
+        task_cid="task:cid:terminal:overflow",
+        task_alias="PCTDD-TERMINAL-OVERFLOW",
+        revision=1,
+        status="blocked",
+        body={
+            "completion_receipt": {
+                "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                "operation": "database_retry_exhausted",
+                "reason": "portal_provider_failed",
+                "retry_exhausted": True,
+                "terminal_reconciliation": {"schema": "malformed"},
+            }
+        },
+    )
+    tasks = (*terminal_tasks, overflow)
+    cas_calls: list[str] = []
+    try:
+        daemon._database_portal_bridge = object()
+        monkeypatch.setattr(
+            daemon.task_source,
+            "list_tasks",
+            lambda **_kwargs: SimpleNamespace(tasks=tasks),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_automatic_claim_forbidden",
+            lambda _task: False,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_reconcile_one_blocked_terminal_landed_task",
+            lambda *, task, bridge: {
+                "task_cid": str(task.task_cid),
+                "task_alias": str(task.task_alias),
+                "operation": "database_terminal_landed_completion",
+                "recovered": False,
+                "rearmed": False,
+                "blocked": True,
+                "reason": "terminal_landed_candidate_recovery_blocked",
+            },
+        )
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            lambda task_cid, **_kwargs: cas_calls.append(str(task_cid)),
+        )
+
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(outcomes) == 129
+        overflow_outcomes = [
+            item
+            for item in outcomes
+            if item.get("task_cid") == overflow.task_cid
+        ]
+        assert len(overflow_outcomes) == 1
+        assert overflow_outcomes[0]["reason"] == (
+            "terminal_landed_candidate_policy_invalid"
+        )
+        assert overflow_outcomes[0]["rearmed"] is False
+        assert overflow.task_cid not in cas_calls
+    finally:
+        daemon.close()
 
 
 def test_post_effect_dispatch_journal_failure_blocks_without_reapplying(
@@ -2569,6 +2851,51 @@ def test_replacement_task_body_revokes_old_claim_before_provider(
         assert calls == [old.task_cid]
     finally:
         daemon.close()
+
+
+def test_attempt_control_claim_rejects_numeric_revision_aliases(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:control-claim-numeric-alias",
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        claim = dict(attempt.body["control_claim"])
+        assert daemon._database_attempt_has_exact_control(attempt, task)
+        for numeric_alias in (True, float(claim["revision"])):
+            tampered = SimpleNamespace(
+                task_cid=attempt.task_cid,
+                body={
+                    **dict(attempt.body),
+                    "control_claim": {
+                        **claim,
+                        "revision": numeric_alias,
+                    },
+                },
+            )
+            assert not daemon._database_attempt_has_exact_control(
+                tampered,
+                task,
+            )
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("numeric_alias", (True, 1.0))
+def test_rearm_snapshot_comparison_rejects_numeric_aliases(
+    numeric_alias: object,
+) -> None:
+    assert not _canonical_mapping_matches(
+        {"body": {"revision": 1}},
+        {"body": {"revision": numeric_alias}},
+    )
 
 
 def test_old_validation_epoch_failure_cannot_charge_replacement_claim(

@@ -255,6 +255,9 @@ def _seed_interrupted_implementation(
         ),
         "stage": "blocked",
         "binding_id": "sha256:" + "b" * 64,
+        "task_alias": task.task_id,
+        "blocked": True,
+        "reconciled": False,
         "reason": "nested_portal_attempt_reconciliation_blocked",
         "terminal_provider_evidence": False,
         "provider_runner_reconciliation_authority": (
@@ -289,6 +292,52 @@ def _seed_interrupted_implementation(
     }
     evidence["evidence_id"] = daemon._database_recovery_sha256(evidence)
     return daemon, evidence, claim_path, dirty_candidate
+
+
+def _mutate_first_clear_authority(
+    receipt: dict[str, Any],
+    mutation: str,
+) -> None:
+    portal = receipt["portal_reconciliation"]
+    if mutation == "receipt_blocked_false":
+        receipt["blocked"] = False
+    elif mutation == "receipt_reconciled_true":
+        receipt["reconciled"] = True
+    elif mutation == "portal_blocked_false":
+        portal["blocked"] = False
+    elif mutation == "portal_reconciled_true":
+        portal["reconciled"] = True
+    elif mutation == "protected_blocked_true":
+        portal["protected_path_reconciliation"]["blocked"] = True
+    elif mutation == "lifecycle_blocked_true":
+        portal["worktree_lifecycle_reconciliation"]["blocked"] = True
+    elif mutation == "lifecycle_reconciled_false":
+        portal["worktree_lifecycle_reconciliation"]["reconciled"] = False
+    elif mutation == "claim_blocked_false":
+        portal["task_claim_reconciliation"]["blocked"] = False
+    elif mutation == "claim_reconciled_true":
+        portal["task_claim_reconciliation"]["reconciled"] = True
+    elif mutation == "claim_task_id_wrong":
+        portal["task_claim_reconciliation"]["task_id"] = "PCTDD-WRONG"
+    elif mutation == "protected_attempt_bool":
+        portal["protected_path_reconciliation"]["attempt"] = True
+    elif mutation == "lifecycle_attempt_float":
+        lifecycle = portal["worktree_lifecycle_reconciliation"]
+        lifecycle["attempt"] = float(lifecycle["attempt"])
+    elif mutation == "lifecycle_fence_float":
+        lifecycle = portal["worktree_lifecycle_reconciliation"]
+        lifecycle["fence"] = float(lifecycle["fence"])
+    elif mutation == "recovery_attempt_bool":
+        portal["attempt_recovery"]["attempt"] = True
+    elif mutation == "recovery_display_float":
+        recovery = portal["attempt_recovery"]
+        recovery["previous_display_count"] = float(
+            recovery["previous_display_count"]
+        )
+    elif mutation == "recovery_cid_bool":
+        portal["attempt_recovery"]["previous_cid_count"] = True
+    else:  # pragma: no cover - closed test vocabulary
+        raise AssertionError(mutation)
 
 
 def test_interrupted_implementation_releases_once_and_is_idempotent(
@@ -361,6 +410,1002 @@ def test_interrupted_implementation_releases_once_and_is_idempotent(
         }
         for event in events
     )
+
+
+def test_interrupted_release_replays_after_empty_identity_cache_restart(
+    tmp_path: Path,
+) -> None:
+    daemon, evidence, _claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    daemon._register_task_identities(daemon._load_tasks())
+    assert daemon._task_identity_by_display_id
+    first = daemon.reconcile_interrupted_database_implementation_attempt(
+        evidence
+    )
+    assert first["reconciled"] is True, first
+    restarted = _restart_daemon(daemon)
+    assert not restarted._task_identity_by_display_id
+
+    replay = restarted.reconcile_interrupted_database_implementation_attempt(
+        evidence
+    )
+
+    assert replay["reconciled"] is True, replay
+    assert replay["blocked"] is False
+
+
+def test_interrupted_writer_revalidates_release_event_before_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, _claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    original_record = daemon._record_event
+    original_iter = daemon._iter_merge_lifecycle_events
+    emitted = {"release": False}
+
+    def emit_then_corrupt_projection(
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        original_record(event_type, payload)
+        if event_type == "implementation_task_claim_released":
+            emitted["release"] = True
+
+    def projected_events() -> list[dict[str, Any]]:
+        current = [dict(event) for event in original_iter()]
+        if emitted["release"]:
+            for event in current:
+                if event.get("type") == "implementation_task_claim_released":
+                    event["timestamp"] = "2000-01-01T00:00:00Z"
+        return current
+
+    monkeypatch.setattr(daemon, "_record_event", emit_then_corrupt_projection)
+    monkeypatch.setattr(
+        daemon,
+        "_iter_merge_lifecycle_events",
+        projected_events,
+    )
+
+    rejected = daemon.reconcile_interrupted_database_implementation_attempt(
+        evidence
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reconciled"] is False
+    claim_release = rejected["task_claim_reconciliation"]
+    assert claim_release["reason"] == "task_claim_release_event_not_durable"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "receipt_blocked_false",
+        "receipt_reconciled_true",
+        "portal_blocked_false",
+        "portal_reconciled_true",
+        "protected_blocked_true",
+        "lifecycle_blocked_true",
+        "lifecycle_reconciled_false",
+        "claim_blocked_false",
+        "claim_reconciled_true",
+        "claim_task_id_wrong",
+        "protected_attempt_bool",
+        "lifecycle_attempt_float",
+        "lifecycle_fence_float",
+        "recovery_attempt_bool",
+        "recovery_display_float",
+        "recovery_cid_bool",
+    ),
+)
+def test_interrupted_implementation_rejects_malformed_authority(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    daemon, evidence, claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    candidate = json.loads(json.dumps(evidence))
+    receipt = candidate["reconciliation_receipt"]
+    _mutate_first_clear_authority(receipt, mutation)
+    receipt.pop("receipt_id")
+    receipt["receipt_id"] = daemon._database_recovery_sha256(receipt)
+    candidate.pop("evidence_id")
+    candidate["evidence_id"] = daemon._database_recovery_sha256(candidate)
+
+    result = daemon.reconcile_interrupted_database_implementation_attempt(
+        candidate
+    )
+
+    assert result["blocked"] is True
+    expected_reason = (
+        "interrupted_implementation_receipt_invalid"
+        if mutation
+        in {
+            "receipt_blocked_false",
+            "receipt_reconciled_true",
+            "portal_blocked_false",
+            "portal_reconciled_true",
+        }
+        else "interrupted_implementation_receipt_authority_invalid"
+    )
+    assert result["reason"] == expected_reason
+    assert claim_path.exists()
+    assert not any(
+        event["type"] == "interrupted_implementation_retry_prepared"
+        for event in _events(daemon)
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "receipt_blocked_false",
+        "receipt_reconciled_true",
+        "portal_blocked_false",
+        "portal_reconciled_true",
+        "protected_blocked_true",
+        "lifecycle_blocked_true",
+        "lifecycle_reconciled_false",
+        "claim_blocked_false",
+        "claim_reconciled_true",
+        "claim_task_id_wrong",
+    ),
+)
+def test_bridge_selector_rejects_rehashed_malformed_first_clear(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    _daemon, evidence, _claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    attempt = SimpleNamespace(
+        attempt_id="database-attempt:selector",
+        claim_id="database-claim:selector",
+        task_cid="database-task:selector",
+        task_alias="PCTDD-034",
+        attempt_number=1,
+        owner_session_id="database-session:selector",
+        fencing_token=7,
+        fence_epoch=3,
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "database-attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    paths = bridge._paths(attempt)
+    receipt = json.loads(json.dumps(evidence["reconciliation_receipt"]))
+    receipt.pop("receipt_id")
+    receipt["trigger"] = "database_daemon_startup"
+    receipt["reconciled_at"] = _timestamp(-1)
+    receipt["nested_state"]["state_path"] = str(paths.state)
+    _mutate_first_clear_authority(receipt, mutation)
+    bridge.persist_reconciliation_receipt(attempt, receipt)
+
+    assert bridge._interrupted_implementation_retry_evidence(
+        attempt,
+        {
+            "binding_id": receipt["binding_id"],
+            "task_alias": attempt.task_alias,
+        },
+    ) is None
+
+
+def test_interrupted_claim_release_replay_rejects_numeric_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    original = daemon_module.write_json_atomic
+    injected = {"raised": False}
+
+    def crash_after_unlink(path: Path, payload: Any) -> None:
+        if (
+            isinstance(payload, dict)
+            and payload.get("phase") == "released"
+            and not injected["raised"]
+        ):
+            injected["raised"] = True
+            raise RuntimeError("crash after claim unlink")
+        original(path, payload)
+
+    monkeypatch.setattr(daemon_module, "write_json_atomic", crash_after_unlink)
+    with pytest.raises(RuntimeError, match="crash after claim unlink"):
+        daemon.reconcile_interrupted_database_implementation_attempt(evidence)
+    assert not claim_path.exists()
+    monkeypatch.setattr(daemon_module, "write_json_atomic", original)
+    events = _events(daemon)
+    preparation = next(
+        event
+        for event in events
+        if event["type"] == "interrupted_implementation_retry_prepared"
+    )
+    recovery_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_state_recovered"
+    )
+    restarted = _restart_daemon(daemon)
+    aliased_preparation = {**preparation, "attempt": True}
+    rejected_preparation = (
+        restarted._replay_interrupted_implementation_claim_release(
+            preparation=aliased_preparation,
+            recovery_event=recovery_event,
+        )
+    )
+    assert rejected_preparation["blocked"] is True
+    assert rejected_preparation["reason"] == (
+        "interrupted_claim_release_preparation_invalid"
+    )
+
+    receipt_path = restarted._task_claim_release_receipt_path(
+        canonical_task_cid=preparation["canonical_task_cid"],
+        attempt=preparation["attempt"],
+        lease_id=preparation["claim_lease_id"],
+    )
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["released_unfinished_attempt"]["released_from"] = True
+    basis = {
+        key: value
+        for key, value in receipt.items()
+        if key
+        not in {
+            "operation_id",
+            "phase",
+            "prepared_at",
+            "released_at",
+            "receipt_id",
+        }
+    }
+    receipt["operation_id"] = content_identity(basis)
+    daemon_module.write_json_atomic(receipt_path, receipt)
+    rejected_receipt = (
+        restarted._replay_interrupted_implementation_claim_release(
+            preparation=preparation,
+            recovery_event=recovery_event,
+        )
+    )
+    assert rejected_receipt["blocked"] is True
+    assert rejected_receipt["reason"] == (
+        "interrupted_claim_release_receipt_invalid"
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "operation",
+        "claim_path",
+        "claim_owner_pid",
+        "claim_legacy_worktree_root_missing",
+        "lifecycle_state",
+        "released_start_event_id",
+        "released_claim_started_at",
+    ),
+)
+def test_interrupted_claim_release_replay_rejects_rehashed_basis_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    daemon, evidence, claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    original = daemon_module.write_json_atomic
+    injected = {"raised": False}
+
+    def crash_after_unlink(path: Path, payload: Any) -> None:
+        if (
+            isinstance(payload, dict)
+            and payload.get("phase") == "released"
+            and not injected["raised"]
+        ):
+            injected["raised"] = True
+            raise RuntimeError("crash after claim unlink")
+        original(path, payload)
+
+    monkeypatch.setattr(daemon_module, "write_json_atomic", crash_after_unlink)
+    with pytest.raises(RuntimeError, match="crash after claim unlink"):
+        daemon.reconcile_interrupted_database_implementation_attempt(evidence)
+    assert not claim_path.exists()
+    monkeypatch.setattr(daemon_module, "write_json_atomic", original)
+    events = _events(daemon)
+    preparation = next(
+        event
+        for event in events
+        if event["type"] == "interrupted_implementation_retry_prepared"
+    )
+    recovery_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_state_recovered"
+    )
+    restarted = _restart_daemon(daemon)
+    receipt_path = restarted._task_claim_release_receipt_path(
+        canonical_task_cid=preparation["canonical_task_cid"],
+        attempt=preparation["attempt"],
+        lease_id=preparation["claim_lease_id"],
+    )
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if mutation == "operation":
+        receipt["operation"] = "malicious-authority"
+    elif mutation == "claim_path":
+        receipt["claim"]["path"] = "/wrong"
+    elif mutation == "claim_owner_pid":
+        receipt["claim"]["owner_pid"] += 1
+    elif mutation == "claim_legacy_worktree_root_missing":
+        receipt["claim"]["legacy_worktree_root_missing"] = not receipt[
+            "claim"
+        ]["legacy_worktree_root_missing"]
+    elif mutation == "lifecycle_state":
+        receipt["worktree_lifecycle"]["state"] = "active"
+    elif mutation == "released_start_event_id":
+        receipt["released_unfinished_attempt"]["start_event_id"] = (
+            "sha256:" + "f" * 64
+        )
+    elif mutation == "released_claim_started_at":
+        receipt["released_unfinished_attempt"]["claim_started_at"] = (
+            "2020-01-01T00:00:00Z"
+        )
+    else:  # pragma: no cover - closed parametrization
+        raise AssertionError(mutation)
+    basis = {
+        key: value
+        for key, value in receipt.items()
+        if key
+        not in {
+            "operation_id",
+            "phase",
+            "prepared_at",
+            "released_at",
+            "receipt_id",
+        }
+    }
+    receipt["operation_id"] = content_identity(basis)
+    daemon_module.write_json_atomic(receipt_path, receipt)
+
+    rejected = restarted._replay_interrupted_implementation_claim_release(
+        preparation=preparation,
+        recovery_event=recovery_event,
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reconciled"] is False
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "task_id",
+        "canonical_task_cid",
+        "attempt_bool",
+        "reason",
+        "attempt_recovery_released_false",
+    ),
+)
+def test_interrupted_replay_rejects_malformed_recovery_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    daemon, evidence, claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    original = daemon_module.write_json_atomic
+    injected = {"raised": False}
+
+    def crash_after_unlink(path: Path, payload: Any) -> None:
+        if (
+            isinstance(payload, dict)
+            and payload.get("phase") == "released"
+            and not injected["raised"]
+        ):
+            injected["raised"] = True
+            raise RuntimeError("crash after claim unlink")
+        original(path, payload)
+
+    monkeypatch.setattr(daemon_module, "write_json_atomic", crash_after_unlink)
+    with pytest.raises(RuntimeError, match="crash after claim unlink"):
+        daemon.reconcile_interrupted_database_implementation_attempt(evidence)
+    assert not claim_path.exists()
+    monkeypatch.setattr(daemon_module, "write_json_atomic", original)
+    events = _events(daemon)
+    preparation = next(
+        event
+        for event in events
+        if event["type"] == "interrupted_implementation_retry_prepared"
+    )
+    recovery_event = dict(
+        next(
+            event
+            for event in events
+            if event["type"] == "implementation_state_recovered"
+        )
+    )
+    recovery_event["attempt_recovery"] = dict(
+        recovery_event["attempt_recovery"]
+    )
+    if mutation == "task_id":
+        recovery_event["task_id"] = "PCTDD-WRONG"
+    elif mutation == "canonical_task_cid":
+        recovery_event["canonical_task_cid"] = "wrong:cid"
+    elif mutation == "attempt_bool":
+        recovery_event["attempt"] = True
+    elif mutation == "reason":
+        recovery_event["reason"] = "wrong-reason"
+    elif mutation == "attempt_recovery_released_false":
+        recovery_event["attempt_recovery"]["released"] = False
+    else:  # pragma: no cover - closed parametrization
+        raise AssertionError(mutation)
+    restarted = _restart_daemon(daemon)
+
+    rejected = restarted._replay_interrupted_implementation_claim_release(
+        preparation=preparation,
+        recovery_event=recovery_event,
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reason"] == (
+        "interrupted_claim_release_recovery_event_invalid"
+    )
+
+
+def test_interrupted_selector_rejects_malformed_recovery_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    original = daemon_module.write_json_atomic
+    injected = {"raised": False}
+
+    def crash_after_unlink(path: Path, payload: Any) -> None:
+        if (
+            isinstance(payload, dict)
+            and payload.get("phase") == "released"
+            and not injected["raised"]
+        ):
+            injected["raised"] = True
+            raise RuntimeError("crash after claim unlink")
+        original(path, payload)
+
+    monkeypatch.setattr(daemon_module, "write_json_atomic", crash_after_unlink)
+    with pytest.raises(RuntimeError, match="crash after claim unlink"):
+        daemon.reconcile_interrupted_database_implementation_attempt(evidence)
+    assert not claim_path.exists()
+    monkeypatch.setattr(daemon_module, "write_json_atomic", original)
+    events = _events(daemon)
+    malformed = []
+    for event in events:
+        candidate = dict(event)
+        if candidate.get("type") == "implementation_state_recovered":
+            candidate["attempt"] = True
+        malformed.append(candidate)
+    restarted = _restart_daemon(daemon)
+    monkeypatch.setattr(
+        restarted,
+        "_iter_merge_lifecycle_events",
+        lambda: list(malformed),
+    )
+
+    rejected = restarted.reconcile_interrupted_database_implementation_attempt(
+        evidence
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reason"] == "interrupted_implementation_recovery_invalid"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("attempt_bool", "unknown_field", "forged_task_source"),
+)
+def test_interrupted_retry_preparation_rejects_noncanonical_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    daemon, evidence, _claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+
+    def crash_after_preparation(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError("crash after retry preparation")
+
+    monkeypatch.setattr(
+        daemon,
+        "_release_unfinished_active_attempt",
+        crash_after_preparation,
+    )
+    with pytest.raises(RuntimeError, match="crash after retry preparation"):
+        daemon.reconcile_interrupted_database_implementation_attempt(evidence)
+    malformed = []
+    for event in _events(daemon):
+        candidate = dict(event)
+        if candidate.get("type") == "interrupted_implementation_retry_prepared":
+            if mutation == "attempt_bool":
+                candidate["attempt"] = True
+            elif mutation == "unknown_field":
+                candidate["completion_authorized"] = True
+            elif mutation == "forged_task_source":
+                candidate["task_source_identity"] = {"forged": True}
+            else:  # pragma: no cover - closed parametrization
+                raise AssertionError(mutation)
+        malformed.append(candidate)
+    restarted = _restart_daemon(daemon)
+    monkeypatch.setattr(
+        restarted,
+        "_iter_merge_lifecycle_events",
+        lambda: list(malformed),
+    )
+
+    rejected = restarted.reconcile_interrupted_database_implementation_attempt(
+        evidence
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reason"] == "interrupted_implementation_preparation_invalid"
+
+
+@pytest.mark.parametrize("mutation", ("task_id", "task_cid", "attempt_bool"))
+def test_interrupted_retry_preparation_quarantines_malformed_sibling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    daemon, evidence, _claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+
+    def crash_after_preparation(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError("crash after retry preparation")
+
+    monkeypatch.setattr(
+        daemon,
+        "_release_unfinished_active_attempt",
+        crash_after_preparation,
+    )
+    with pytest.raises(RuntimeError, match="crash after retry preparation"):
+        daemon.reconcile_interrupted_database_implementation_attempt(evidence)
+    events = _events(daemon)
+    sibling = dict(
+        next(
+            event
+            for event in events
+            if event["type"] == "interrupted_implementation_retry_prepared"
+        )
+    )
+    sibling["event_id"] = "sha256:" + "c" * 64
+    if mutation == "task_id":
+        sibling["task_id"] = "PCTDD-WRONG"
+    elif mutation == "task_cid":
+        sibling["canonical_task_cid"] = "sha256:" + "b" * 64
+    elif mutation == "attempt_bool":
+        sibling["attempt"] = True
+    else:  # pragma: no cover - closed parametrization
+        raise AssertionError(mutation)
+    restarted = _restart_daemon(daemon)
+    monkeypatch.setattr(
+        restarted,
+        "_iter_merge_lifecycle_events",
+        lambda: [*events, sibling],
+    )
+
+    rejected = restarted.reconcile_interrupted_database_implementation_attempt(
+        evidence
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reason"] == "interrupted_implementation_preparation_ambiguous"
+
+
+def test_interrupted_claim_release_rejects_malformed_existing_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, _claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    completed = daemon.reconcile_interrupted_database_implementation_attempt(
+        evidence
+    )
+    assert completed["reconciled"] is True
+    events = _events(daemon)
+    preparation = next(
+        event
+        for event in events
+        if event["type"] == "interrupted_implementation_retry_prepared"
+    )
+    recovery_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_state_recovered"
+    )
+    malformed = []
+    for event in events:
+        candidate = dict(event)
+        if candidate.get("type") == "implementation_task_claim_released":
+            candidate["task_id"] = "PCTDD-WRONG"
+        malformed.append(candidate)
+    restarted = _restart_daemon(daemon)
+    monkeypatch.setattr(
+        restarted,
+        "_iter_merge_lifecycle_events",
+        lambda: list(malformed),
+    )
+
+    rejected = restarted._replay_interrupted_implementation_claim_release(
+        preparation=preparation,
+        recovery_event=recovery_event,
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reason"] == "interrupted_claim_release_event_conflict"
+
+
+def test_interrupted_claim_release_rejects_early_existing_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, _claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    completed = daemon.reconcile_interrupted_database_implementation_attempt(
+        evidence
+    )
+    assert completed["reconciled"] is True
+    events = _events(daemon)
+    preparation = next(
+        event
+        for event in events
+        if event["type"] == "interrupted_implementation_retry_prepared"
+    )
+    recovery_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_state_recovered"
+    )
+    early = []
+    for event in events:
+        candidate = dict(event)
+        if candidate.get("type") == "implementation_task_claim_released":
+            candidate["timestamp"] = "2000-01-01T00:00:00Z"
+        early.append(candidate)
+    restarted = _restart_daemon(daemon)
+    monkeypatch.setattr(
+        restarted,
+        "_iter_merge_lifecycle_events",
+        lambda: list(early),
+    )
+
+    rejected = restarted._replay_interrupted_implementation_claim_release(
+        preparation=preparation,
+        recovery_event=recovery_event,
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reason"] == "interrupted_claim_release_event_conflict"
+
+
+def test_interrupted_claim_release_revalidates_new_event_before_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    original_record = daemon._record_event
+
+    def crash_before_release_event(
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        if event_type == "implementation_task_claim_released":
+            raise RuntimeError("crash before claim release event")
+        original_record(event_type, payload)
+
+    monkeypatch.setattr(daemon, "_record_event", crash_before_release_event)
+    with pytest.raises(RuntimeError, match="before claim release event"):
+        daemon.reconcile_interrupted_database_implementation_attempt(evidence)
+    assert not claim_path.exists()
+    events = _events(daemon)
+    preparation = next(
+        event
+        for event in events
+        if event["type"] == "interrupted_implementation_retry_prepared"
+    )
+    recovery_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_state_recovered"
+    )
+    restarted = _restart_daemon(daemon)
+    original_restarted_record = restarted._record_event
+    original_iter = restarted._iter_merge_lifecycle_events
+    emitted = {"release": False}
+
+    def emit_then_corrupt_projection(
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        original_restarted_record(event_type, payload)
+        if event_type == "implementation_task_claim_released":
+            emitted["release"] = True
+
+    def projected_events() -> list[dict[str, Any]]:
+        current = [dict(event) for event in original_iter()]
+        if emitted["release"]:
+            for event in current:
+                if event.get("type") == "implementation_task_claim_released":
+                    event["timestamp"] = "2000-01-01T00:00:00Z"
+        return current
+
+    monkeypatch.setattr(restarted, "_record_event", emit_then_corrupt_projection)
+    monkeypatch.setattr(
+        restarted,
+        "_iter_merge_lifecycle_events",
+        projected_events,
+    )
+
+    rejected = restarted._replay_interrupted_implementation_claim_release(
+        preparation=preparation,
+        recovery_event=recovery_event,
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reason"] == "interrupted_claim_release_event_not_durable"
+
+
+@pytest.mark.parametrize("attempt_value", (True, 1.0, "1", None))
+def test_interrupted_claim_release_rejects_malformed_sibling_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    attempt_value: Any,
+) -> None:
+    daemon, evidence, _claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    completed = daemon.reconcile_interrupted_database_implementation_attempt(
+        evidence
+    )
+    assert completed["reconciled"] is True
+    events = _events(daemon)
+    preparation = next(
+        event
+        for event in events
+        if event["type"] == "interrupted_implementation_retry_prepared"
+    )
+    recovery_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_state_recovered"
+    )
+    released = next(
+        event
+        for event in events
+        if event["type"] == "implementation_task_claim_released"
+    )
+    sibling = dict(released)
+    sibling["event_id"] = "sha256:" + "e" * 64
+    sibling["receipt_id"] = "sha256:" + "d" * 64
+    if attempt_value is None:
+        sibling.pop("attempt")
+    else:
+        sibling["attempt"] = attempt_value
+    restarted = _restart_daemon(daemon)
+    monkeypatch.setattr(
+        restarted,
+        "_iter_merge_lifecycle_events",
+        lambda: [*events, sibling],
+    )
+
+    rejected = restarted._replay_interrupted_implementation_claim_release(
+        preparation=preparation,
+        recovery_event=recovery_event,
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reason"] == "interrupted_claim_release_event_ambiguous"
+
+
+def test_interrupted_claim_release_replay_missing_lifecycle_is_typed_blocker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    original = daemon_module.write_json_atomic
+    injected = {"raised": False}
+
+    def crash_after_unlink(path: Path, payload: Any) -> None:
+        if (
+            isinstance(payload, dict)
+            and payload.get("phase") == "released"
+            and not injected["raised"]
+        ):
+            injected["raised"] = True
+            raise RuntimeError("crash after claim unlink")
+        original(path, payload)
+
+    monkeypatch.setattr(daemon_module, "write_json_atomic", crash_after_unlink)
+    with pytest.raises(RuntimeError, match="crash after claim unlink"):
+        daemon.reconcile_interrupted_database_implementation_attempt(evidence)
+    assert not claim_path.exists()
+    monkeypatch.setattr(daemon_module, "write_json_atomic", original)
+    events = _events(daemon)
+    preparation = dict(
+        next(
+            event
+            for event in events
+            if event["type"] == "interrupted_implementation_retry_prepared"
+        )
+    )
+    recovery_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_state_recovered"
+    )
+    preparation["workspace_path"] = str(tmp_path / "missing-workspace")
+
+    rejected = _restart_daemon(
+        daemon
+    )._replay_interrupted_implementation_claim_release(
+        preparation=preparation,
+        recovery_event=recovery_event,
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reconciled"] is False
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "preparation_after_recovery",
+        "preparation_timestamp_future",
+        "preparation_release_epoch_future",
+        "receipt_prepared_before_start",
+    ),
+)
+def test_interrupted_claim_release_rejects_contradictory_event_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    daemon, evidence, claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    original = daemon_module.write_json_atomic
+    injected = {"raised": False}
+
+    def crash_after_unlink(path: Path, payload: Any) -> None:
+        if (
+            isinstance(payload, dict)
+            and payload.get("phase") == "released"
+            and not injected["raised"]
+        ):
+            injected["raised"] = True
+            raise RuntimeError("crash after claim unlink")
+        original(path, payload)
+
+    monkeypatch.setattr(daemon_module, "write_json_atomic", crash_after_unlink)
+    with pytest.raises(RuntimeError, match="crash after claim unlink"):
+        daemon.reconcile_interrupted_database_implementation_attempt(evidence)
+    assert not claim_path.exists()
+    monkeypatch.setattr(daemon_module, "write_json_atomic", original)
+    events = _events(daemon)
+    preparation = dict(
+        next(
+            event
+            for event in events
+            if event["type"] == "interrupted_implementation_retry_prepared"
+        )
+    )
+    recovery_event = dict(
+        next(
+            event
+            for event in events
+            if event["type"] == "implementation_state_recovered"
+        )
+    )
+    restarted = _restart_daemon(daemon)
+    if mutation == "preparation_after_recovery":
+        preparation["sequence"] = recovery_event["sequence"] + 1
+    elif mutation == "preparation_timestamp_future":
+        preparation["timestamp"] = "2099-01-01T00:00:00Z"
+    elif mutation == "preparation_release_epoch_future":
+        preparation["release_epoch"] = "2099-01-01T00:00:00Z"
+        retry_basis = {
+            field: preparation[field]
+            for field in daemon_module._INTERRUPTED_RETRY_PREPARATION_FIELDS
+        }
+        retry_id = content_identity(retry_basis)
+        preparation["interrupted_retry_id"] = retry_id
+        recovery_event["interrupted_retry_id"] = retry_id
+        receipt_path = restarted._task_claim_release_receipt_path(
+            canonical_task_cid=preparation["canonical_task_cid"],
+            attempt=preparation["attempt"],
+            lease_id=preparation["claim_lease_id"],
+        )
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        receipt["released_unfinished_retry_id"] = retry_id
+        basis = {
+            key: value
+            for key, value in receipt.items()
+            if key
+            not in {
+                "operation_id",
+                "phase",
+                "prepared_at",
+                "released_at",
+                "receipt_id",
+            }
+        }
+        receipt["operation_id"] = content_identity(basis)
+        daemon_module.write_json_atomic(receipt_path, receipt)
+    elif mutation == "receipt_prepared_before_start":
+        receipt_path = restarted._task_claim_release_receipt_path(
+            canonical_task_cid=preparation["canonical_task_cid"],
+            attempt=preparation["attempt"],
+            lease_id=preparation["claim_lease_id"],
+        )
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        receipt["prepared_at"] = "2000-01-01T00:00:00Z"
+        daemon_module.write_json_atomic(receipt_path, receipt)
+    else:  # pragma: no cover - closed parametrization
+        raise AssertionError(mutation)
+
+    rejected = restarted._replay_interrupted_implementation_claim_release(
+        preparation=preparation,
+        recovery_event=recovery_event,
+    )
+
+    assert rejected["blocked"] is True
+    assert rejected["reconciled"] is False
+
+
+def test_interrupted_claim_release_replays_legacy_missing_worktree_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    claim = json.loads(claim_path.read_text(encoding="utf-8"))
+    claim.pop("worktree_root", None)
+    daemon_module.write_json_atomic(claim_path, claim)
+    original = daemon_module.write_json_atomic
+    injected = {"raised": False}
+
+    def crash_after_unlink(path: Path, payload: Any) -> None:
+        if (
+            isinstance(payload, dict)
+            and payload.get("phase") == "released"
+            and not injected["raised"]
+        ):
+            injected["raised"] = True
+            raise RuntimeError("crash after claim unlink")
+        original(path, payload)
+
+    monkeypatch.setattr(daemon_module, "write_json_atomic", crash_after_unlink)
+    with pytest.raises(RuntimeError, match="crash after claim unlink"):
+        daemon.reconcile_interrupted_database_implementation_attempt(evidence)
+    assert not claim_path.exists()
+    monkeypatch.setattr(daemon_module, "write_json_atomic", original)
+
+    replay = _restart_daemon(
+        daemon
+    ).reconcile_interrupted_database_implementation_attempt(evidence)
+
+    assert replay["reconciled"] is True, replay
+    assert replay["blocked"] is False
 
 
 def test_interrupted_implementation_replays_prepared_claim_release(
@@ -789,6 +1834,7 @@ def test_historical_bridge_routes_only_to_interrupted_retry_adapter(
             "blocked": True,
             "reason": "nested_portal_attempt_reconciliation_blocked",
             "binding_id": binding["binding_id"],
+            "task_alias": attempt.task_alias,
             "nested_state": nested,
             "provider_runner_fence": {
                 "applicable": True,
@@ -826,6 +1872,7 @@ def test_historical_bridge_routes_only_to_interrupted_retry_adapter(
                     "reconciled": False,
                     "reason": "canonical_task_not_terminal",
                     "observed_task_status": "todo",
+                    "task_id": attempt.task_alias,
                     "canonical_task_cid": "nested-current-cid",
                 },
                 "attempt_recovery": {
