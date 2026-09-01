@@ -62021,13 +62021,9 @@ def _verify_m38_live_materialization(
         != expected_evidence[6]
         or event is None
         or list(_m38_row_values(event)[:9]) != expected_event[:9]
-        or _canonical(
-            _m38_parse_json(list(_m38_row_values(event))[9]).get("body")
-            if isinstance(_m38_parse_json(list(_m38_row_values(event))[9]), Mapping)
-            and "body"
-            in _m38_parse_json(list(_m38_row_values(event))[9])
-            else _m38_parse_json(list(_m38_row_values(event))[9])
-        ).decode("utf-8")
+        or _canonical(_m38_parse_json(list(_m38_row_values(event))[9])).decode(
+            "utf-8"
+        )
         != expected_event[9]
         or m36_prefix
         != (_M37_M36_EVENT_PREFIX_SHA256, _M37_M36_EVENT_WATERMARK)
