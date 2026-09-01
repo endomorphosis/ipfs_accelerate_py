@@ -77,6 +77,20 @@ _M49_TARGET_PROJECTION_CID = (
 _M49_M48_RECEIPT_CID = (
     "sha256:72bbd190a41c137d579c6f9372cd85aa8e8b469dc910ebed78be2db28bd09698"
 )
+_M50_AUTHORITY_CID = (
+    "sha256:57e54164eb55a8015c9324db6a414981446a2a455c0308cd65f6a8e219563ea9"
+)
+_M50_AUTHORITY_SIZE = 29_249
+_M50_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M50_FINAL_CONTROL_AUTHORITY_CID"
+_M50_SUCCESSOR_KEY = (
+    "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
+)
+_M50_TARGET_PROJECTION_CID = (
+    "baguqeeradyejswcdsx6tnmfgrvglwhvqkuewvpynydwrhlvtenacf3xg2pfa"
+)
+_M50_M49_RECEIPT_CID = (
+    "sha256:d5bfeb6dd987b05c2407d93f66d73c6a70bcd2b4f17e8381a93a2bb265acae47"
+)
 _M47_AUTHORITY_CID = (
     "sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444"
 )
@@ -482,6 +496,27 @@ def _m39_migration_errors(
         )
     except Exception as exc:
         return [f"M39 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m50_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse M50's exact generation-36 fenced recovery source contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m50_post_m49_fenced_recovery_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+            )
+        )
+    except Exception as exc:
+        return [f"M50 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _m49_migration_errors(
@@ -1261,12 +1296,52 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M49 before every historical successor. Consequently
+    Key presence selects M50 before every historical successor. Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m50_key = _M50_SUCCESSOR_KEY
+    m50_presence = (
+        m50_key in scheduler,
+        m50_key in migration,
+        f"{m50_key}_cid" in seal,
+    )
+    if any(m50_presence):
+        errors = _m50_migration_errors(scheduler, seal, migration)
+        if not all(m50_presence):
+            errors.append("M50 successor authority is only partially declared")
+        if errors:
+            return errors
+        for validator in (
+            _m36_migration_errors,
+            _m35_migration_errors,
+            _m34_migration_errors,
+            _m33_migration_errors,
+            _m32_migration_errors,
+            _m31_migration_errors,
+            _m30_migration_errors,
+            _m29_migration_errors,
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(scheduler, seal, migration, require_active_runtime=False)
+            )
+        return errors
 
     m49_key = _M49_SUCCESSOR_KEY
     m49_presence = (
@@ -4416,6 +4491,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m50_key = _M50_SUCCESSOR_KEY
+    m50_selected = any(
+        (
+            m50_key in config,
+            m50_key in migration,
+            f"{m50_key}_cid" in seal,
+        )
+    )
     m49_key = _M49_SUCCESSOR_KEY
     m49_selected = any(
         (
@@ -4876,6 +4959,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m50_selected
+        else "run-r2-m27"
         if m48_selected
         else "run-r2-m27"
         if m47_selected
@@ -4959,7 +5044,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "35"
+        "36"
+        if m50_selected
+        else "35"
         if m48_selected
         else "34"
         if m47_selected
@@ -5044,6 +5131,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m50_selected
+        else 24070
         if m48_selected
         else 24070
         if m47_selected
@@ -5141,7 +5230,145 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m49_selected:
+    if m50_selected:
+        successor = config.get(m50_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m50_post_m49_fenced_worktree_quarantine_recovery_authority()
+            )
+            contract = materializer._validated_m50_live_preflight_contract(expected)
+            reference = dict(materializer._m50_authority_reference())
+            configured_cid = str(materializer._M50_AUTHORITY_CID)
+            receipt = expected.get("preserved_m49_receipt", {})
+            stopped = expected.get("stopped_owner", {})
+            repair = expected.get("accepted_control_plane_repair", {})
+            rejected = expected.get("rejected_unsafe_historical_attempt", {})
+            revert = expected.get("transparent_revert", {})
+            target = expected.get("target_authority", {})
+            chain = expected.get("source_chain", {})
+            changes = expected.get("exact_changes", {})
+            preservation = expected.get("preservation", {})
+            zero_baseline = expected.get("claimed_zero_authority_baseline", {})
+            receipt_policy = expected.get("receipt_policy", {})
+            m50_errors = module._m50_post_m49_fenced_recovery_errors(
+                config, seal, migration, root=root
+            )
+            if (
+                successor != reference
+                or migration.get(m50_key) != reference
+                or seal.get(f"{m50_key}_cid") != configured_cid
+                or configured_cid != _M50_AUTHORITY_CID
+                or configured_cid == _M50_UNSEALED_AUTHORITY_CID
+                or materializer._identity(expected) != configured_cid
+                or len(materializer._canonical(expected)) != _M50_AUTHORITY_SIZE
+                or m50_errors
+                or expected.get("schema")
+                != "sawm/post-m49-fenced-worktree-quarantine-recovery-authorization@1"
+                or expected.get("migration_revision") != "SAWM-R2-M50"
+                or expected.get("migration_kind") != m50_key
+                or expected.get("authorized") is not True
+                or expected.get("authority") != "operator_control_plane"
+                or int(expected.get("target_generation") or 0) != 36
+                or int(expected.get("target_event_watermark") or 0) != 311
+                or int(expected.get("target_plan_revision") or 0) != 28
+                or expected.get("target_projection_cid")
+                != _M50_TARGET_PROJECTION_CID
+                or receipt.get("receipt_cid") != _M50_M49_RECEIPT_CID
+                or receipt.get("created_or_rewritten") is not False
+                or stopped.get("generation") != 35
+                or stopped.get("target_generation") != 36
+                or stopped.get("prior_owner_process_must_be_dead") is not True
+                or stopped.get("process_birth_identity_must_be_present") is not True
+                or stopped.get("process_birth_owner_uid_must_match") is not True
+                or stopped.get("prior_listener_must_be_absent") is not True
+                or stopped.get("unknown_process_liveness_is_rejected") is not True
+                or repair.get("repair_commit")
+                != "cca184ec40dffad195f9df95f95540cdd3b9c02e"
+                or repair.get("arbitrary_unreadable_procfs_exemption") is not False
+                or repair.get("authority_weakened") is not False
+                or rejected.get("accepted_authority") is not False
+                or revert.get("restored_m49_exactly") is not True
+                or target.get("event_watermark") != 311
+                or target.get("projection_cid") != _M50_TARGET_PROJECTION_CID
+                or chain.get("final_control_parent")
+                != "cca184ec40dffad195f9df95f95540cdd3b9c02e"
+                or chain.get("rejected_commit_count") != 1
+                or chain.get("transparent_revert_commit_count") != 1
+                or chain.get("accepted_repair_commit_count") != 1
+                or chain.get("final_control_commit_count") != 1
+                or chain.get("current_commit_identity_embedded_in_authority")
+                is not False
+                or expected.get("ordinary_source_changes") != 4
+                or contract.get("prior_generation") != 35
+                or contract.get("target_generation") != 36
+                or contract.get("prior_event_watermark") != 310
+                or contract.get("target_event_watermark") != 311
+                or contract.get("same_live_owner_required") is not False
+                or contract.get("generation_restart_authorized") is not True
+                or changes.get("event_suffix_length") != 1
+                or changes.get("evidence_node_changes") != 1
+                or changes.get("evidence_event_changes") != 1
+                or changes.get("validation_event_changes") != 0
+                or changes.get("implementation_provider_invocations") != 0
+                or changes.get("provider_call_changes") != 0
+                or changes.get("provider_response_changes") != 0
+                or changes.get("effect_claim_changes") != 0
+                or changes.get("merge_attempt_changes") != 0
+                or changes.get("merge_base_changes") != 0
+                or changes.get("merge_queue_entry_changes") != 0
+                or changes.get("task_revision_changes") != 0
+                or changes.get("task_status_changes") != 0
+                or changes.get("accepted_completion_changes") != 0
+                or zero_baseline.get("counts")
+                != dict(materializer._M50_ZERO_ROW_AUTHORITY_COUNTS)
+                or zero_baseline.get(
+                    "persistence_through_receipt_publication_claimed"
+                )
+                is not False
+                or zero_baseline.get(
+                    "fresh_live_revalidation_required_after_receipt_read"
+                )
+                is not True
+                or receipt_policy.get("authoritative") is not False
+                or receipt_policy.get("completion_authority") is not False
+                or receipt_policy.get("launch_authority") is not False
+                or receipt_policy.get("deny_only_without_fresh_live_revalidation")
+                is not True
+                or receipt_policy.get(
+                    "fresh_live_revalidation_required_after_receipt_read"
+                )
+                is not True
+                or preservation.get("m49_authority_preserved_exactly") is not True
+                or preservation.get("m49_receipt_preserved_exactly") is not True
+                or preservation.get("generation_bearing_owner_restart") is not True
+                or preservation.get(
+                    "claimed_zero_operational_authorities_observed_at_post_append_snapshot"
+                )
+                is not True
+                or preservation.get("worker_self_approval") is not False
+            ):
+                config_errors.append(
+                    "M50 fenced generation-36 recovery authority/source seal differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M50 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M50 active runtime paths are not exactly preserved")
+    if m49_selected and not m50_selected:
         successor = config.get(m49_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"

@@ -2803,7 +2803,78 @@ and the canonical body is 17,098 bytes. `m49-source-successor-receipt.json`
 is published mode `0600` only after authenticated event append and full live
 verification. M49 grants no direct DuckDB writer or worker self-approval.
 
-## 58. Current limitations at seal time
+## 58. M50 post-M49 fenced worktree-quarantine recovery
+
+`SAWM-R2-M50` is the generation-bearing source successor for the exact
+stopped generation-35/event-310 authority. It admits only the reviewed
+four-file repair commit `cca184ec40dffad195f9df95f95540cdd3b9c02e`, whose
+parent is the transparent revert
+`6ffe8b73fadf075ef423f6bc400ed2df4dfe5451`, tree is
+`22c09e847e1279ce8c2e5ec5432e22d67c41c9af`, and binary diff SHA-256 is
+`3002f1a9c42e46c6c9665a7c4cfe1fc2e2dec1229c6a37cdcbb47b215f8a4a7c`.
+The repair quarantines exact expired-worktree lifecycle evidence under its
+workspace and lifecycle fence. It does not grant a blanket exemption to an
+arbitrary unreadable procfs process, weaken cleanup authority, or accept a
+worker's own result.
+
+The rejected credential-reissue/durable-launch attempt at
+`9b86cb5309ce5cb9f8520d3794ed8baa7afcca22` remains immutable historical
+source evidence but has no runtime, task, validation, completion, or release
+authority. Its child `6ffe8b73fadf075ef423f6bc400ed2df4dfe5451`
+restores M49 tree `e7008dfbc3e9cace00e1a225ee0f70cbb85243e7`
+exactly before the accepted repair. Neither historical commit is hidden or
+rewritten.
+
+M50 preserves M49 event 306 and the accepted operational task events 307
+through 310. The stopped authority binds generation 35 owner
+`server:b37f1c63-76ff-42e1-8404-10e15952f472`, process birth
+`birth:8067c25fb34a40bbfa92ff287a4c7441`, start
+`2026-09-01T15:45:32Z`, stop `2026-09-01T17:33:37Z`, cursor 310, event-prefix
+SHA-256 `e9f287485f0276e757c86f71d331b8d6706abafe66e75821005fe1c9969f733f`,
+and semantic-authority digest
+`sha256:f5321d1355f76098b864b20618ea6f43cf2478f56e979a23658e0ed919ee2837`.
+SAWM-006 is `in_progress` revision 15 and SAWM-008 is `in_progress` revision
+17; all other exact task heads, plan revision 28, 55 evidence nodes, 44
+evidence events, and 11 passed validation events are retained.
+
+The immutable stopped control store is 43,528,192 bytes with SHA-256
+`fd8fd1c32aa1fa1d2c2e50dc04be2ef058b38445c61688703d869573e72020e0`;
+the coordination store is 18,362,368 bytes with SHA-256
+`abb95e946e27e7fa5cbe199233e52a308e73f2d3112fb00fa8c642d4a23d1257`;
+and the 2,408-byte stopped status has SHA-256
+`71b69c35eb5426c4340fecf1fd94d2af5b6f40577bc5ae029fa7ae5e37313302`.
+The generation-35 owner marker, stop control, token handoff, and WALs are
+absent. Its sealed process-birth identity must resolve strictly to dead under
+the landed same-UID `/proc` liveness authority, and the prior listener must be
+absent; unknown, inaccessible, malformed, or still-live identity fails closed.
+M49's mode-`0600`, 6,395-byte receipt remains byte-exact with SHA-256
+`bd48cd09388dcd39237111fd0611b05e8304c1ceebe3378f1bd4fa92dbe43a1c`
+and CID
+`sha256:d5bfeb6dd987b05c2407d93f66d73c6a70bcd2b4f17e8381a93a2bb265acae47`.
+
+Exactly one direct nine-control child of the accepted repair may authorize a
+runtime-generated generation-36 owner and append one operator evidence record
+at event 311. Its task projection must be
+`baguqeeradyejswcdsx6tnmfgrvglwhvqkuewvpynydwrhlvtenacf3xg2pfa`.
+Task, goal, plan, validation, coordination, provider, effect, implementation,
+merge, and accepted-completion semantics do not change in the admitted M50
+append. Exact prestart, pre-append, and post-append counts for the seven
+schema-qualified provider, effect, and merge authority tables must be zero at
+each live observation. The post-append observation is point-in-time and does
+not claim that those rows remain zero through filesystem receipt publication.
+The M50 authority
+excludes the final control commit/tree/blob identities to break recursive
+identity; those identities are bound by the receipt and post-commit verifier.
+The M50 receipt is published mode `0600` only after authenticated Quack
+event-311 append and full generation-36 verification. It is explicitly
+non-authoritative, has neither completion nor launch authority, and is deny-only
+without a fresh full live M50 verification after each receipt read. Materialize,
+check, preflight, and launch therefore reject an intervening Quack mutation,
+including any row in a claimed-zero provider, effect, or merge table. The
+29,249-byte canonical M50 authority body has CID
+`sha256:57e54164eb55a8015c9324db6a414981446a2a455c0308cd65f6a8e219563ea9`.
+
+## 59. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

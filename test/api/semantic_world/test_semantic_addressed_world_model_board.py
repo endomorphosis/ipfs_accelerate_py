@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "post_m49_fenced_worktree_quarantine_recovery_successor_materialization",
     "post_m48_successor_report_fix_materialization",
     "post_m47_clean_shutdown_restart_successor_materialization",
     "ignored_python_cache_preservation_and_recovery_successor_materialization",
@@ -425,6 +426,38 @@ def test_historical_successor_controls_include_m49_before_m48() -> None:
     assert historical_migration is not None and m49_key not in historical_migration
     assert historical_seal is not None
     assert f"{m49_key}_cid" not in historical_seal
+
+
+def test_historical_successor_controls_include_m50_before_m49() -> None:
+    """M49 fixtures remove M50 while current M50 remains presence-first."""
+
+    m50_key = (
+        "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
+    )
+    m49_key = "post_m48_successor_report_fix_materialization"
+    scheduler = {m50_key: {"revision": "M50"}, m49_key: {"revision": "M49"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m50_key}_cid": "sha256:" + "e" * 64,
+        f"{m49_key}_cid": "sha256:" + "d" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m50_key, scheduler, migration, seal
+    )
+    assert current[m50_key] == scheduler[m50_key]
+    assert current_migration is not None
+    assert current_migration[m50_key] == migration[m50_key]
+    assert current_seal is not None
+    assert current_seal[f"{m50_key}_cid"] == seal[f"{m50_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m49_key, scheduler, migration, seal)
+    )
+    assert m50_key not in historical
+    assert historical_migration is not None and m50_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m50_key}_cid" not in historical_seal
 
 
 def _load(relative: str, name: str) -> ModuleType:
@@ -6220,6 +6253,533 @@ def test_m49_presence_masks_m48_across_all_dispatchers(
     assert "unexpected = []" in source_status_branch
     assert dependency_source.index("m49_declared = _m49_successor_declared") < (
         dependency_source.index("m48_declared = _m48_successor_declared")
+    )
+
+
+def test_m50_authority_binds_fenced_generation_36_and_zero_authorities() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m50_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m50_post_m49_fenced_worktree_quarantine_recovery_authority()
+    )
+    contract = materializer._validated_m50_live_preflight_contract(authority)
+
+    assert materializer._identity(authority) == materializer._M50_AUTHORITY_CID
+    assert len(materializer._canonical(authority)) == materializer._M50_AUTHORITY_SIZE
+    assert materializer._m50_authority_reference() == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M50",
+        "authority_cid": materializer._M50_AUTHORITY_CID,
+    }
+    assert authority["target_generation"] == 36
+    assert authority["target_event_watermark"] == 311
+    assert authority["target_projection_cid"] == materializer._M50_TARGET_PROJECTION_CID
+    assert contract["prior_generation"] == 35
+    assert contract["target_generation"] == 36
+    assert contract["prior_event_watermark"] == 310
+    assert contract["target_event_watermark"] == 311
+    assert contract["generation_restart_authorized"] is True
+    assert contract["same_live_owner_required"] is False
+
+    stopped = authority["stopped_owner"]
+    assert stopped["prior_owner_process_must_be_dead"] is True
+    assert stopped["process_birth_identity_must_be_present"] is True
+    assert stopped["process_birth_owner_uid_must_match"] is True
+    assert stopped["prior_listener_must_be_absent"] is True
+    assert stopped["unknown_process_liveness_is_rejected"] is True
+
+    zero_baseline = authority["claimed_zero_authority_baseline"]
+    assert zero_baseline["counts"] == dict(
+        materializer._M50_ZERO_ROW_AUTHORITY_COUNTS
+    )
+    assert set(zero_baseline["counts"]) == {
+        "main.provider_calls",
+        "main.provider_invocations",
+        "main.provider_responses",
+        "main.effect_claims",
+        "main.merge_attempts",
+        "main.merge_bases",
+        "main.merge_queue_entries",
+    }
+    assert zero_baseline["must_match_before_restart"] is True
+    assert zero_baseline["must_match_before_event_append"] is True
+    assert zero_baseline["must_match_after_event_append"] is True
+    assert (
+        zero_baseline["observation_scope"]
+        == "point_in_time_post_append_before_receipt_publication"
+    )
+    assert zero_baseline["persistence_through_receipt_publication_claimed"] is False
+    assert zero_baseline["fresh_live_revalidation_required_after_receipt_read"] is True
+    receipt_policy = authority["receipt_policy"]
+    assert receipt_policy["authoritative"] is False
+    assert receipt_policy["completion_authority"] is False
+    assert receipt_policy["launch_authority"] is False
+    assert receipt_policy["deny_only_without_fresh_live_revalidation"] is True
+    assert receipt_policy["fresh_live_revalidation_required_after_receipt_read"] is True
+    assert receipt_policy["zero_persistence_through_publication_claimed"] is False
+
+    rejected = authority["rejected_unsafe_historical_attempt"]
+    assert rejected["commit"] == materializer._M50_REJECTED_COMMIT
+    assert rejected["accepted_authority"] is False
+    assert rejected["runtime_mutation_authority"] is False
+    assert authority["transparent_revert"]["commit"] == materializer._M50_REVERT_COMMIT
+    repair = authority["accepted_control_plane_repair"]
+    assert repair["repair_parent"] == materializer._M50_REPAIR_PARENT
+    assert repair["repair_commit"] == materializer._M50_REPAIR_COMMIT
+    assert repair["repair_tree"] == materializer._M50_REPAIR_TREE
+    assert repair["repair_diff_sha256"] == materializer._M50_REPAIR_DIFF_SHA256
+    assert repair["arbitrary_unreadable_procfs_exemption"] is False
+    assert authority["source_chain"]["final_control_parent"] == materializer._M50_REPAIR_COMMIT
+    assert authority["source_chain"]["current_commit_identity_embedded_in_authority"] is False
+
+
+@pytest.mark.parametrize(
+    "qualified_name",
+    (
+        "main.provider_calls",
+        "main.provider_invocations",
+        "main.provider_responses",
+        "main.effect_claims",
+        "main.merge_attempts",
+        "main.merge_bases",
+        "main.merge_queue_entries",
+    ),
+)
+def test_m50_claimed_zero_authorities_reject_every_nonzero_table(
+    qualified_name: str,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m50_zero_rows_" + qualified_name.rsplit(".", 1)[1],
+    )
+    authority = (
+        materializer
+        ._expected_m50_post_m49_fenced_worktree_quarantine_recovery_authority()
+    )
+    connection = duckdb.connect(":memory:")
+    try:
+        for table in materializer._M50_ZERO_ROW_AUTHORITY_COUNTS:
+            connection.execute(
+                f'CREATE TABLE "main"."{table.split(".", 1)[1]}" (value INTEGER)'
+            )
+        verified = materializer._m50_assert_zero_row_authorities(
+            connection, authority
+        )
+        assert verified["claimed_zero_authority_counts"] == dict(
+            materializer._M50_ZERO_ROW_AUTHORITY_COUNTS
+        )
+        table_name = qualified_name.split(".", 1)[1]
+        connection.execute(f'INSERT INTO "main"."{table_name}" VALUES (1)')
+        with pytest.raises(
+            materializer.MigrationRequired,
+            match="claimed-zero operational authority differs",
+        ):
+            materializer._m50_assert_zero_row_authorities(connection, authority)
+    finally:
+        connection.close()
+
+
+def test_m50_receipt_refuses_unverified_zero_authority_claims() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m50_receipt_zero_guard_test",
+    )
+    authority = (
+        materializer
+        ._expected_m50_post_m49_fenced_worktree_quarantine_recovery_authority()
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="receipt requires exact claimed-zero operational authorities",
+    ):
+        materializer._expected_m50_source_successor_receipt(
+            {
+                "program_definition_cid": "sha256:" + "1" * 64,
+                "source_binding": {"source_binding_cid": "sha256:" + "2" * 64},
+            },
+            authority,
+            "sha256:" + "3" * 64,
+            {},
+        )
+
+
+def test_m50_post_receipt_mutation_fails_fresh_facade_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A published point-in-time receipt cannot mask a later Quack mutation."""
+
+    duckdb = pytest.importorskip("duckdb")
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m50_post_receipt_interleaving_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m50_post_receipt_interleaving_test",
+    )
+    authority = (
+        materializer
+        ._expected_m50_post_m49_fenced_worktree_quarantine_recovery_authority()
+    )
+    check_source = inspect.getsource(materializer._check_m50_materialized)
+    assert check_source.index("observed, _ = _load_nofollow_json") < (
+        check_source.index("with _m28_live_source")
+    )
+    materialize_source = inspect.getsource(materializer._materialize_m50)
+    assert materialize_source.index("_ensure_m50_source_successor_receipt") < (
+        materialize_source.index("checked = _check_m50_materialized")
+    )
+    marker_source = inspect.getsource(operator._require_m50_source_successor_marker)
+    assert marker_source.index("observed, _ = materializer._load_nofollow_json") < (
+        marker_source.index("checked = materializer._check_m50_materialized")
+    )
+    config = {
+        materializer._M50_SUPERSESSION_REASON: materializer._m50_authority_reference()
+    }
+    runtime = (tmp_path / materializer._M50_STORE_ID).resolve().parent
+    runtime.mkdir(parents=True)
+    m50_path = runtime / "m50-source-successor-receipt.json"
+    m49_path = runtime / "m49-source-successor-receipt.json"
+    for path in (m50_path, m49_path):
+        path.write_text("{}\n", encoding="utf-8")
+        path.chmod(0o600)
+
+    connection = duckdb.connect(":memory:")
+    try:
+        for table in materializer._M50_ZERO_ROW_AUTHORITY_COUNTS:
+            connection.execute(
+                f'CREATE TABLE "main"."{table.split(".", 1)[1]}" (value INTEGER)'
+            )
+        materializer._m50_assert_zero_row_authorities(connection, authority)
+        state = {"receipt_read": False, "mutation_injected": False}
+
+        def load_after_publication(path: Path, **_kwargs: object):
+            if path.name == m50_path.name:
+                state["receipt_read"] = True
+                connection.execute('INSERT INTO "main"."provider_calls" VALUES (1)')
+                state["mutation_injected"] = True
+            return ({}, materializer._M50_M49_RECEIPT_SHA256)
+
+        def fresh_live_check(*_args: object, **_kwargs: object):
+            assert state == {"receipt_read": True, "mutation_injected": True}
+            return materializer._m50_assert_zero_row_authorities(connection, authority)
+
+        monkeypatch.setattr(operator, "REPO_ROOT", tmp_path)
+        monkeypatch.setattr(operator, "CONFIG_PATH", tmp_path / "scheduler.json")
+        monkeypatch.setattr(materializer, "_load_nofollow_json", load_after_publication)
+        monkeypatch.setattr(materializer, "_check_m50_materialized", fresh_live_check)
+        with pytest.raises(
+            operator.OperatorError,
+            match="fresh live verification after receipt read",
+        ):
+            operator._require_m50_source_successor_marker(
+                config,
+                authority,
+                materializer,
+                checked={"valid": True, "event_watermark": 311},
+            )
+    finally:
+        connection.close()
+
+
+def test_m50_stopped_process_liveness_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m50_process_liveness_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.merge import worktree_lifecycle
+
+    identity = {
+        "process_birth": {
+            "pid": 424242,
+            "start_time_ticks": 12345,
+            "boot_id": "boot-m50",
+            "parent_pid": 1,
+        }
+    }
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="process-birth identity is unavailable",
+    ):
+        materializer._m50_assert_stopped_process_dead({})
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            materializer.os,
+            "stat",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError(errno.EACCES)),
+        )
+        with pytest.raises(
+            materializer.MigrationRequired,
+            match="process ownership cannot be verified",
+        ):
+            materializer._m50_assert_stopped_process_dead(identity)
+
+    for liveness in (
+        worktree_lifecycle.OwnerLiveness.ALIVE,
+        worktree_lifecycle.OwnerLiveness.UNKNOWN,
+    ):
+        with monkeypatch.context() as scoped:
+            scoped.setattr(
+                materializer.os,
+                "stat",
+                lambda *_args, **_kwargs: SimpleNamespace(st_uid=os.geteuid()),
+            )
+            scoped.setattr(
+                worktree_lifecycle,
+                "owner_liveness",
+                lambda _owner, observed=liveness: observed,
+            )
+            scoped.setattr(materializer, "_m18_prior_listener_is_active", lambda _port: False)
+            with pytest.raises(
+                materializer.MigrationRequired,
+                match="process or listener remains active",
+            ):
+                materializer._m50_assert_stopped_process_dead(identity)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            materializer.os,
+            "stat",
+            lambda *_args, **_kwargs: SimpleNamespace(st_uid=os.geteuid() + 1),
+        )
+        scoped.setattr(
+            worktree_lifecycle,
+            "owner_liveness",
+            lambda _owner: worktree_lifecycle.OwnerLiveness.DEAD,
+        )
+        with pytest.raises(
+            materializer.MigrationRequired, match="process owner UID differs"
+        ):
+            materializer._m50_assert_stopped_process_dead(identity)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            materializer.os,
+            "stat",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(FileNotFoundError()),
+        )
+        scoped.setattr(
+            worktree_lifecycle,
+            "owner_liveness",
+            lambda _owner: worktree_lifecycle.OwnerLiveness.DEAD,
+        )
+        scoped.setattr(materializer, "_m18_prior_listener_is_active", lambda _port: False)
+        assert materializer._m50_assert_stopped_process_dead(identity) == {
+            "prior_process_birth_verified_dead": True,
+            "prior_process_owner_uid_verified": True,
+            "prior_listener_absent": True,
+        }
+
+
+def test_m50_dependency_and_board_validators_are_exact_with_mocked_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m50_validator_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m50_validator_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m50_validator_test",
+    )
+    key = materializer._M50_SUPERSESSION_REASON
+    reference = materializer._m50_authority_reference()
+    scheduler = {key: reference}
+    migration = {key: reference}
+    seal = {f"{key}_cid": materializer._M50_AUTHORITY_CID}
+    fake_spec = SimpleNamespace(loader=SimpleNamespace(exec_module=lambda _module: None))
+    monkeypatch.setattr(
+        dependencies.importlib.util,
+        "spec_from_file_location",
+        lambda *_args, **_kwargs: fake_spec,
+    )
+    monkeypatch.setattr(
+        dependencies.importlib.util,
+        "module_from_spec",
+        lambda _spec: materializer,
+    )
+    monkeypatch.setattr(materializer, "build_population", lambda _root: {})
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m50_historical_m49_controls",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        materializer, "_assert_m50_source_delta", lambda *_args, **_kwargs: None
+    )
+    assert dependencies._m50_post_m49_fenced_recovery_errors(
+        scheduler, seal, migration, root=REPO_ROOT
+    ) == []
+    partial = dependencies._m50_post_m49_fenced_recovery_errors(
+        scheduler, {}, migration, root=REPO_ROOT
+    )
+    assert "M50 successor authority is only partially declared" in partial
+    monkeypatch.setattr(board, "_dependency_validator_module", lambda _root: dependencies)
+    assert board._m50_migration_errors(scheduler, seal, migration) == []
+
+
+def test_m50_presence_masks_m49_across_dispatchers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m50_presence_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m50_presence_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m50_presence_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m50_presence_test",
+    )
+    m50_key = materializer._M50_SUPERSESSION_REASON
+    m49_key = materializer._M49_SUPERSESSION_REASON
+
+    monkeypatch.setattr(materializer, "_load_json", lambda _path: {m50_key: None})
+    monkeypatch.setattr(
+        materializer,
+        "_m50_successor_configured_on_any_surface",
+        lambda *_args, **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_m49_successor_configured_on_any_surface",
+        lambda *_args, **_kwargs: pytest.fail("M49 materializer route must stay masked"),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_check_m50_materialized",
+        lambda *_args, **_kwargs: {"selected": "M50-check"},
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_materialize_m50",
+        lambda *_args, **_kwargs: {"selected": "M50-materialize"},
+    )
+    assert materializer.check_materialized(REPO_ROOT) == {"selected": "M50-check"}
+    assert materializer.materialize(REPO_ROOT) == {"selected": "M50-materialize"}
+
+    monkeypatch.setattr(board, "_m50_migration_errors", lambda *_args: ["m50-invalid"])
+    monkeypatch.setattr(
+        board,
+        "_m49_migration_errors",
+        lambda *_args: pytest.fail("M49 board route must stay masked"),
+    )
+    assert board._active_successor_migration_errors(
+        {m50_key: None, m49_key: {}},
+        {f"{m50_key}_cid": "bad", f"{m49_key}_cid": "historical"},
+        {m50_key: None, m49_key: {}},
+    ) == ["m50-invalid"]
+    monkeypatch.setattr(board, "_m49_migration_errors", lambda *_args: ["m49-only"])
+    assert board._active_successor_migration_errors(
+        {m49_key: None},
+        {f"{m49_key}_cid": "bad"},
+        {m49_key: None},
+    ) == ["m49-only"]
+
+    monkeypatch.setattr(
+        operator,
+        "_require_m50_source_successor_marker",
+        lambda *_args, **_kwargs: MappingProxyType({"selected": "M50"}),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_require_m49_source_successor_marker",
+        lambda *_args, **_kwargs: pytest.fail("M49 facade route must stay masked"),
+    )
+    assert operator._require_active_final_pair_marker(
+        {m50_key: None, m49_key: {}}, {}, object(), checked={}
+    ) == {"selected": "M50"}
+
+    reference = materializer._m50_authority_reference()
+    fake_spec = SimpleNamespace(loader=SimpleNamespace(exec_module=lambda _module: None))
+    monkeypatch.setattr(
+        dependencies.importlib.util,
+        "spec_from_file_location",
+        lambda *_args, **_kwargs: fake_spec,
+    )
+    monkeypatch.setattr(
+        dependencies.importlib.util,
+        "module_from_spec",
+        lambda _spec: materializer,
+    )
+    monkeypatch.setattr(materializer, "build_population", lambda _root: {})
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m50_historical_m49_controls",
+        lambda *_args, **_kwargs: None,
+    )
+    source_routes: list[str] = []
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m50_source_delta",
+        lambda *_args, **_kwargs: source_routes.append("M50"),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m49_source_delta",
+        lambda *_args, **_kwargs: pytest.fail("M49 nested route must stay masked"),
+    )
+    authority = (
+        materializer
+        ._expected_m50_post_m49_fenced_worktree_quarantine_recovery_authority()
+    )
+    source_authorities = [
+        {
+            "package": "ipfs_datasets_py",
+            "head": authority["current_datasets_gitlink"],
+            "gitlink_commit": authority["current_datasets_gitlink"],
+            "tree": authority["current_datasets_tree"],
+        },
+        {
+            "package": "ipfs_kit_py",
+            "head": authority["current_kit_gitlink"],
+            "gitlink_commit": authority["current_kit_gitlink"],
+            "tree": authority["current_kit_tree"],
+        },
+    ]
+    scheduler = {m50_key: reference, m49_key: {}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m50_key}_cid": materializer._M50_AUTHORITY_CID,
+        f"{m49_key}_cid": materializer._M49_AUTHORITY_CID,
+    }
+    effective, nested_errors = dependencies._effective_nested_source_authorities(
+        source_authorities, scheduler, migration, seal
+    )
+    assert nested_errors == []
+    assert source_routes == ["M50"]
+    assert effective["ipfs_datasets_py"]["head"] == authority[
+        "current_datasets_gitlink"
+    ]
+    partial, partial_errors = dependencies._effective_nested_source_authorities(
+        source_authorities,
+        {m50_key: reference, m49_key: {}},
+        {m50_key: reference, m49_key: {}},
+        {f"{m49_key}_cid": materializer._M49_AUTHORITY_CID},
+    )
+    assert partial == {item["package"]: item for item in source_authorities}
+    assert partial_errors == ["active M50 nested-source authority is partial"]
+
+    dependency_source = inspect.getsource(dependencies.validate_dependencies)
+    assert dependency_source.index("if any(m50_presence)") < dependency_source.index(
+        "elif any(m49_presence)"
     )
 
 
