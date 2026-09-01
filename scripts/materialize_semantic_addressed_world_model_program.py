@@ -60303,6 +60303,8 @@ def _m43_projection_cid_on(connection: Any, watermark: int) -> str:
 def _verify_m43_preserved_m42_projection(
     connection: Any,
     receipt: Mapping[str, Any],
+    *,
+    expected_successor_evidence_row: tuple[Any, ...] | None = None,
 ) -> dict[str, Any]:
     """Verify M42's evidence/event from its exact receipt and M42 helper."""
 
@@ -60419,7 +60421,9 @@ def _verify_m43_preserved_m42_projection(
     ):
         raise MigrationRequired("M43 preserved M42 event/evidence differs")
     legacy = _verify_m42_exact_legacy_projection(
-        connection, expected_target_evidence_row=tuple(normalized_evidence)
+        connection,
+        expected_target_evidence_row=tuple(normalized_evidence),
+        expected_successor_evidence_row=expected_successor_evidence_row,
     )
     if (
         legacy.get("total_evidence_node_count")
@@ -67524,6 +67528,7 @@ def _verify_m42_exact_legacy_projection(
     connection: Any,
     *,
     expected_target_evidence_row: tuple[Any, ...] | None = None,
+    expected_successor_evidence_row: tuple[Any, ...] | None = None,
 ) -> dict[str, Any]:
     """Verify the closed legacy projection and, optionally, exact event 292.
 
@@ -67701,6 +67706,44 @@ def _verify_m42_exact_legacy_projection(
             or inner != expected_inner
         ):
             raise MigrationRequired("M42 target event/evidence binding differs")
+    normalized_successor: list[tuple[Any, ...]] = []
+    if expected_successor_evidence_row is not None:
+        if not isinstance(expected_successor_evidence_row, tuple):
+            raise MigrationRequired(
+                "M42 successor evidence row must be one tuple"
+            )
+        normalized_successor = _m42_normalized_projection_rows(
+            [expected_successor_evidence_row],
+            columns=evidence_columns,
+            noun="successor evidence projection",
+        )
+        successor_row = normalized_successor[0]
+        try:
+            successor_body = _m38_parse_json(successor_row[6])
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise MigrationRequired(
+                "M42 successor evidence body is invalid"
+            ) from exc
+        if (
+            successor_row[1] != ""
+            or not all(
+                isinstance(value, str) and value
+                for value in successor_row[2:6]
+            )
+            or not isinstance(successor_body, Mapping)
+            or _canonical(successor_body).decode("utf-8") != successor_row[6]
+            or content_identity(
+                {
+                    "task_cid": successor_row[2],
+                    "evidence_kind": successor_row[3],
+                    "digest": successor_row[4],
+                    "body": successor_body,
+                }
+            )
+            != successor_row[0]
+        ):
+            raise MigrationRequired("M42 successor evidence identity differs")
+
     expected_by_id = {str(row[0]): row for row in prior_rows}
     if len(expected_by_id) != len(prior_rows):
         raise MaterializationError("M42 transformed evidence identities duplicate")
@@ -67709,12 +67752,18 @@ def _verify_m42_exact_legacy_projection(
         if evidence_id in expected_by_id:
             raise MigrationRequired("M42 additional evidence identity collides")
         expected_by_id[evidence_id] = row
+    exact_physical_by_id = dict(expected_by_id)
+    for row in normalized_successor:
+        evidence_id = str(row[0])
+        if evidence_id in exact_physical_by_id:
+            raise MigrationRequired("M42 successor evidence identity collides")
+        exact_physical_by_id[evidence_id] = row
     actual_by_id = {str(row[0]): row for row in actual_rows}
     if len(actual_by_id) != len(actual_rows):
         raise MigrationRequired("M42 actual evidence identities duplicate")
-    if set(actual_by_id) != set(expected_by_id):
+    if set(actual_by_id) != set(exact_physical_by_id):
         raise MigrationRequired("M42 exact evidence projection membership differs")
-    if actual_by_id != expected_by_id:
+    if actual_by_id != exact_physical_by_id:
         raise MigrationRequired("M42 exact evidence projection rows differ")
 
     validation = _m42_legacy_validation_table_projection(connection)
@@ -69075,7 +69124,11 @@ def _verify_m43_live_materialization(
         prefix = _event_prefix_digest(connection, _M43_TARGET_EVENT_WATERMARK)
         semantic = _semantic_authority_digest_on(connection)
         suffix = _m43_operational_suffix_on(connection)
-        legacy = _verify_m43_preserved_m42_projection(connection, m42_receipt)
+        legacy = _verify_m43_preserved_m42_projection(
+            connection,
+            m42_receipt,
+            expected_successor_evidence_row=expected_evidence,
+        )
         evidence_count = int(
             connection.execute("SELECT COUNT(*) FROM evidence_nodes").fetchone()[0]
         )

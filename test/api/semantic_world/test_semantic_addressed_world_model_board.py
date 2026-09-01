@@ -6000,6 +6000,12 @@ def test_m43_dispatch_is_newest_and_receipt_follows_live_verification(
     )
     assert "snapshot.event_cursor == _M43_PRIOR_EVENT_WATERMARK" in core
     assert "snapshot.event_cursor != _M43_TARGET_EVENT_WATERMARK" in core
+    live_verifier = inspect.getsource(
+        materializer._verify_m43_live_materialization
+    )
+    assert (
+        "expected_successor_evidence_row=expected_evidence" in live_verifier
+    )
 
     configured = inspect.getsource(operator._successor_materialization_configured)
     assert configured.index("_M43_SUCCESSOR_KEY") < configured.index(
@@ -8398,6 +8404,62 @@ def test_m42_exact_target_requires_event_identity_session_and_membership(
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
         content_identity,
     )
+
+    successor_body = {"bounded": True, "source": "M43"}
+    successor_digest = materializer._identity(successor_body)
+    successor_id = content_identity(
+        {
+            "task_cid": "task:successor",
+            "evidence_kind": "operator_control_successor",
+            "digest": successor_digest,
+            "body": successor_body,
+        }
+    )
+    successor = (
+        successor_id,
+        "",
+        "task:successor",
+        "operator_control_successor",
+        successor_digest,
+        "2026-09-01T10:00:00Z",
+        materializer._canonical(successor_body).decode("utf-8"),
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="exact evidence projection membership differs",
+    ):
+        materializer._verify_m42_exact_legacy_projection(
+            _M42ExactTargetConnection([prior, target, successor], event),
+            expected_target_evidence_row=target,
+        )
+    successor_verified = materializer._verify_m42_exact_legacy_projection(
+        _M42ExactTargetConnection([prior, target, successor], event),
+        expected_target_evidence_row=target,
+        expected_successor_evidence_row=successor,
+    )
+    assert successor_verified["total_evidence_node_count"] == 2
+    assert successor_verified["additional_evidence_node_count"] == 1
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="successor evidence identity differs",
+    ):
+        materializer._verify_m42_exact_legacy_projection(
+            _M42ExactTargetConnection([prior, target, successor], event),
+            expected_target_evidence_row=target,
+            expected_successor_evidence_row=("not-a-cid",) + successor[1:],
+        )
+    wrong_successor = successor[:4] + ("sha256:wrong",) + successor[5:]
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="exact evidence projection rows differ",
+    ):
+        materializer._verify_m42_exact_legacy_projection(
+            _M42ExactTargetConnection(
+                [prior, target, wrong_successor], event
+            ),
+            expected_target_evidence_row=target,
+            expected_successor_evidence_row=successor,
+        )
 
     arbitrary_body = json.loads(str(target[6]))
     arbitrary_id = content_identity(
