@@ -2610,17 +2610,29 @@ class _SparStateOwnerBootstrapBroker:
     def _terminal_failure(self, exc: BaseException) -> bool:
         """Return True when the broker must stop the owner process.
 
-        Recoverable exclusive-owner poison is reconnected in place.  SIGTERM
-        here previously killed SPAR after a successful projection recover and
-        starved SPAR-018.
+        After lanes are live, exclusive-owner poison and grant-renewal races
+        must reconnect in place.  SIGTERM here killed SPAR ~20s after ready
+        (generation 51) before SPAR-018 could be claimed.
         """
 
-        recoverable = (
-            _recoverable_owner_control_error(exc)
-            and self.fail_fast_enabled.is_set()
-            and not self.stopping.is_set()
+        print(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "spar-owner-broker-failure@1"
+                    ),
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[-1000:],
+                    "recoverable": _recoverable_owner_control_error(exc),
+                    "fail_fast_enabled": self.fail_fast_enabled.is_set(),
+                    "stopping": self.stopping.is_set(),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
         )
-        if recoverable:
+        if self.fail_fast_enabled.is_set() and not self.stopping.is_set():
             try:
                 _recover_poisoned_owner_connection(self.server, force=False)
             except Exception:
@@ -2629,8 +2641,6 @@ class _SparStateOwnerBootstrapBroker:
         with self._lock:
             self.failure = self.failure or type(exc).__name__
         self.ready.set()
-        if self.fail_fast_enabled.is_set() and not self.stopping.is_set():
-            os.kill(os.getpid(), signal.SIGTERM)
         return True
 
     def stop(self) -> None:
