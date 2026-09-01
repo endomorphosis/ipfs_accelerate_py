@@ -5417,6 +5417,9 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     artifacts = authority["stopped_prestart_artifacts"]
     receipt = authority["preserved_m42_receipt"]
     repair = authority["accepted_lifecycle_repair"]
+    failed_validation = authority["failed_pre_authoritative_control_validation"]
+    fixture_repair = authority["accepted_historical_fixture_repair"]
+    prior_control = authority["prior_control_authorization"]
     source_chain = authority["source_chain"]
     changes = authority["exact_changes"]
 
@@ -5424,9 +5427,27 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
         "schema": "sawm/operator-control-authority-reference@1",
         "migration_revision": "SAWM-R2-M43",
         "authority_cid": (
-            "sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5"
+            "sha256:f0db2f708316ad8ef58cb78886b5df74872d80c6147a1ed6e1d51faeeac35049"
         ),
     }
+    assert authority["authorization_revision"] == 2
+    assert authority["control_recorded_at"] == "2026-09-01T09:00:00Z"
+    assert authority["authorization_amended_at"] == "2026-09-01T09:00:00Z"
+    assert authority["prior_authorization_cid"] == (
+        "sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5"
+    )
+    assert prior_control == {
+        "authorization_cid": authority["prior_authorization_cid"],
+        "control_recorded_at": "2026-09-01T08:00:00Z",
+        "control_commit": "f2f4bafe8952b6fe25d93c1dc145c0298234e2c2",
+        "control_tree": "4c49141b84d714954ca5410dc7fbc807f82be4eb",
+        "superseded_before_event_297": True,
+        "event_297_appended": False,
+        "receipt_published": False,
+    }
+    assert authority["authorization_amendment_paths"] == sorted(
+        materializer._M43_OPERATOR_CONTROL_PATHS
+    )
     assert authority["target_generation"] == 31
     assert authority["target_event_watermark"] == 297
     assert authority["target_projection_cid"] == (
@@ -5549,9 +5570,98 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     assert source_chain["initial_control_modes"] == {
         path: "100644" for path in source_chain["initial_control_blobs"]
     }
-    assert source_chain["final_reseal_parent"] == (
+    assert failed_validation == {
+        **failed_validation,
+        "authority_cid": authority["prior_authorization_cid"],
+        "control_commit": "f2f4bafe8952b6fe25d93c1dc145c0298234e2c2",
+        "control_tree": "4c49141b84d714954ca5410dc7fbc807f82be4eb",
+        "collected_tests": 280,
+        "passed_tests": 271,
+        "failed_tests": 9,
+        "failed_test_ids": list(materializer._M43_FAILED_TEST_IDS),
+        "production_runtime_defect": False,
+        "materializer_invoked": False,
+        "quack_started": False,
+        "authenticated_mutation_request_created": False,
+        "event_297_rows_created": 0,
+        "m43_receipt_created": False,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    assert failed_validation["control_blobs"] == {
+        path: materializer._M43_FAILED_PRE_AUTHORITATIVE_CONTROL_BLOBS[path]
+        for path in materializer._M43_OPERATOR_CONTROL_PATHS
+    }
+    assert all(
+        failed_validation[name] == 0
+        for name in (
+            "evidence_node_changes",
+            "evidence_event_changes",
+            "validation_event_changes",
+            "store_generation_row_changes",
+            "state_server_row_changes",
+            "credential_row_changes",
+            "server_epoch_row_changes",
+            "capability_snapshot_row_changes",
+            "task_revision_changes",
+            "task_status_changes",
+            "goal_revision_changes",
+            "plan_revision_changes",
+            "effect_claim_changes",
+            "merge_attempt_changes",
+            "implementation_provider_invocations",
+            "coordination_semantic_changes",
+            "accepted_completion_changes",
+        )
+    )
+    assert fixture_repair == {
+        **fixture_repair,
+        "repair_parent": failed_validation["control_commit"],
+        "repair_commit": "7361c38dfdeaa6578876f23c431593942accc74f",
+        "repair_tree": "a25f9f9e1b2b617012a46799b369b3ed09a97728",
+        "changed_paths": [
+            "test/api/semantic_world/"
+            "test_semantic_addressed_world_model_board.py"
+        ],
+        "focused_former_failures_replayed": 9,
+        "focused_former_failures_passed": 9,
+        "focused_replay_is_full_suite": False,
+        "production_code_changes": 0,
+        "fixture_collection_or_selection_logic_changed": False,
+        "validation_weakened": False,
+        "authority_weakened": False,
+        "worker_self_approval": False,
+    }
+    assert fixture_repair["blob_oids"] == {
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "cf9e119747ff01835a2cf70565052cc77d6e402a"
+        )
+    }
+    assert source_chain["failed_pre_authoritative_control_parent"] == (
         source_chain["initial_control_commit"]
     )
+    assert source_chain["failed_pre_authoritative_control_commit"] == (
+        failed_validation["control_commit"]
+    )
+    assert source_chain["failed_pre_authoritative_control_tree"] == (
+        failed_validation["control_tree"]
+    )
+    assert source_chain["historical_fixture_repair_parent"] == (
+        failed_validation["control_commit"]
+    )
+    assert source_chain["historical_fixture_repair_commit"] == (
+        fixture_repair["repair_commit"]
+    )
+    assert source_chain["historical_fixture_repair_tree"] == (
+        fixture_repair["repair_tree"]
+    )
+    assert source_chain["final_reseal_parent"] == (
+        fixture_repair["repair_commit"]
+    )
+    assert source_chain["failed_pre_authoritative_control_commit_count"] == 1
+    assert source_chain["historical_fixture_repair_commit_count"] == 1
+    assert source_chain["final_reseal_commit_count"] == 1
+    assert source_chain["final_control_commit_count"] == 2
     assert authority["ordinary_source_changes"] == len(repair["changed_paths"])
     assert repair["repair_path_set_finalized"] is True
     assert repair["newest_first_attempt_selection"] is True
@@ -5566,6 +5676,36 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
         materializer._M43_M42_AUTHORITY_CID
     )
     assert materializer._identity(authority) == reference["authority_cid"]
+
+    tampered_prior = copy.deepcopy(authority)
+    tampered_prior["prior_control_authorization"]["event_297_appended"] = True
+    with pytest.raises(
+        materializer.MaterializationError, match="M43 live preflight contract differs"
+    ):
+        materializer._validated_m43_live_preflight_contract(tampered_prior)
+
+    tampered_repair = copy.deepcopy(authority)
+    tampered_repair["accepted_historical_fixture_repair"]["blob_oids"] = {}
+    with pytest.raises(
+        materializer.MaterializationError, match="M43 live preflight contract differs"
+    ):
+        materializer._validated_m43_live_preflight_contract(tampered_repair)
+
+    tampered_zero_effect = copy.deepcopy(authority)
+    tampered_zero_effect["failed_pre_authoritative_control_validation"][
+        "event_297_rows_created"
+    ] = 1
+    with pytest.raises(
+        materializer.MaterializationError, match="M43 live preflight contract differs"
+    ):
+        materializer._validated_m43_live_preflight_contract(tampered_zero_effect)
+
+    tampered_count = copy.deepcopy(authority)
+    tampered_count["source_chain"]["final_control_commit_count"] = 1
+    with pytest.raises(
+        materializer.MaterializationError, match="M43 live preflight contract differs"
+    ):
+        materializer._validated_m43_live_preflight_contract(tampered_count)
 
 
 def test_m43_current_seal_rejects_a_synthetic_unsealed_authority(
@@ -5590,6 +5730,20 @@ def test_m43_current_seal_rejects_a_synthetic_unsealed_authority(
     ):
         materializer._assert_m43_source_delta(
             REPO_ROOT, {"source_binding": {"head": "unused"}}, authority
+        )
+
+    control_path = sorted(materializer._M43_OPERATOR_CONTROL_PATHS)[0]
+    monkeypatch.setattr(
+        materializer,
+        "_git",
+        lambda *_args: f"100755 blob {'0' * 40}\t{control_path}",
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M43 final-control mode differs",
+    ):
+        materializer._assert_m43_current_control_modes(
+            REPO_ROOT, "synthetic-current", (control_path,)
         )
 
 

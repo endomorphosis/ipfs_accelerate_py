@@ -2277,8 +2277,26 @@ boundary.  Changed, linked, foreign, live, unproven, or ambiguously owned
 attempt state fails closed.  The initial nine-control seal is commit
 `21c2a72f0e9d23d86ac990d4320cf1d80a05a044`, tree
 `3efca4759e083b1615b6ac092e0b40054f233452`, with the exact `100644` Git blobs
-bound by the M43 source-chain manifest.  The canonical M43 authority CID is
-`sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5`.
+bound by the M43 source-chain manifest.  Its first sealed control commit
+`f2f4bafe8952b6fe25d93c1dc145c0298234e2c2`, tree
+`4c49141b84d714954ca5410dc7fbc807f82be4eb`, and authority CID
+`sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5`
+remain immutable pre-authoritative history.  No materializer, Quack start,
+authenticated mutation, event 297, M43 receipt, task transition, or completion
+occurred under that authority.  Its full 280-test control suite exposed nine
+stale historical generation fixtures after 271 passes.
+
+The bounded fixture-only repair is commit
+`7361c38dfdeaa6578876f23c431593942accc74f`, tree
+`a25f9f9e1b2b617012a46799b369b3ed09a97728`, and changes only
+`test/api/semantic_world/test_semantic_addressed_world_model_board.py` at mode
+`100644` to blob `cf9e119747ff01835a2cf70565052cc77d6e402a`.  It replays all nine
+failures without changing production code, test selection, validation,
+authority, or completion semantics.  The canonical authorization-revision-2
+control and amendment time is `2026-09-01T09:00:00Z`, after the repair commit;
+the revision-1 `2026-09-01T08:00:00Z` authorization remains nested immutable
+history.  The canonical authorization-revision-2 M43 authority CID is
+`sha256:f0db2f708316ad8ef58cb78886b5df74872d80c6147a1ed6e1d51faeeac35049`.
 No repair, initial-control, or final-authority sentinel remains in the current
 control declaration.
 

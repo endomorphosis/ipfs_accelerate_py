@@ -25,7 +25,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from types import MappingProxyType
@@ -1606,9 +1606,10 @@ _M40_DATABASE_UUID = _M39_DATABASE_UUID
 _M40_EXTENSION_FINGERPRINT = _M39_EXTENSION_FINGERPRINT
 
 # M43 is the generation-bearing successor to the cleanly stopped generation-30
-# run.  Its separately reviewed four-path implementation repair and its initial
-# nine-control seal are exact immutable predecessors.  The final source-chain
-# gate admits only one nine-control reseal over that initial seal.
+# run.  Its separately reviewed four-path implementation repair, initial
+# nine-control seal, failed pre-authoritative full-suite seal, and bounded
+# historical-fixture repair are exact immutable predecessors.  The final
+# source-chain gate admits only one nine-control reseal over that repair.
 _M43_MIGRATION_REVISION = "SAWM-R2-M43"
 _M43_SUPERSESSION_MODE = (
     "generation_bearing_dead_attempt_lifecycle_recovery_restart_source_seal"
@@ -1616,7 +1617,9 @@ _M43_SUPERSESSION_MODE = (
 _M43_SUPERSESSION_REASON = (
     "dead_attempt_lifecycle_recovery_restart_successor_materialization"
 )
-_M43_CONTROL_RECORDED_AT = "2026-09-01T08:00:00Z"
+_M43_PRIOR_CONTROL_RECORDED_AT = "2026-09-01T08:00:00Z"
+_M43_CONTROL_RECORDED_AT = "2026-09-01T09:00:00Z"
+_M43_AUTHORIZATION_AMENDED_AT = _M43_CONTROL_RECORDED_AT
 _M43_PRIOR_GENERATION = 30
 _M43_TARGET_GENERATION = 31
 _M43_PRIOR_EVENT_WATERMARK = 296
@@ -1645,7 +1648,7 @@ _M43_EVIDENCE_KIND = (
     "operator_control_plane_dead_attempt_lifecycle_recovery_restart_successor"
 )
 _M43_AUTHORITY_CID = (
-    "sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5"
+    "sha256:f0db2f708316ad8ef58cb78886b5df74872d80c6147a1ed6e1d51faeeac35049"
 )
 _M43_M42_AUTHORITY_CID = (
     "sha256:1e1df3ea3d6b1805dc32f6dd43c61bb95d99e2d08da4c96872441dbc9fdbf587"
@@ -1741,6 +1744,86 @@ _M43_INITIAL_CONTROL_BLOBS = MappingProxyType(
 )
 _M43_INITIAL_CONTROL_MODES = MappingProxyType(
     {path: "100644" for path in _M43_INITIAL_CONTROL_BLOBS}
+)
+_M43_PRE_AUTHORITATIVE_AUTHORITY_CID = (
+    "sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5"
+)
+_M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT = (
+    "f2f4bafe8952b6fe25d93c1dc145c0298234e2c2"
+)
+_M43_FAILED_PRE_AUTHORITATIVE_CONTROL_TREE = (
+    "4c49141b84d714954ca5410dc7fbc807f82be4eb"
+)
+_M43_FAILED_PRE_AUTHORITATIVE_CONTROL_BLOBS = MappingProxyType(
+    {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "66c2c3e3bdbce324e637f5d76a993ddb793c29a9"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "0dbf93262e84d338bf4fc2ab391205c548dd8f1a"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "ed14155f797f2ab572dcee6756e8fddbe2c128f8"
+        ),
+        "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json": (
+            "0317a028e21a371f74215b9159c8a557c86daa1e"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "9a952f744ea5a1db248c7cb9b3352368ff5cba0d"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "fdd406a95ebdac2a639f6cd101e954937cddaf6e"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "df1fc88cc117a32d68d4c3fb5bea3f3a1dca02d3"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "9eca8d6418d8cee17c4f68eb4e7e6cae304a9c99"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "509c042354ce1149690ecac23217d413a36cf755"
+        ),
+    }
+)
+_M43_FAILED_PRE_AUTHORITATIVE_CONTROL_MODES = MappingProxyType(
+    {path: "100644" for path in _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_BLOBS}
+)
+_M43_HISTORICAL_FIXTURE_REPAIR_COMMIT = (
+    "7361c38dfdeaa6578876f23c431593942accc74f"
+)
+_M43_HISTORICAL_FIXTURE_REPAIR_TREE = (
+    "a25f9f9e1b2b617012a46799b369b3ed09a97728"
+)
+_M43_HISTORICAL_FIXTURE_REPAIR_BLOBS = MappingProxyType(
+    {
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "cf9e119747ff01835a2cf70565052cc77d6e402a"
+        )
+    }
+)
+_M43_HISTORICAL_FIXTURE_REPAIR_MODES = MappingProxyType(
+    {path: "100644" for path in _M43_HISTORICAL_FIXTURE_REPAIR_BLOBS}
+)
+_M43_FAILED_TEST_IDS = (
+    "test/api/semantic_world/test_semantic_addressed_world_model_board.py::"
+    "test_m39_stale_owner_recovery_requires_a_generation_31_successor",
+    "test/api/semantic_world/test_semantic_addressed_world_model_board.py::"
+    "test_m40_operator_selects_newest_authority_by_key_presence",
+    "test/api/semantic_world/test_semantic_addressed_world_model_board.py::"
+    "test_m41_operator_selects_newest_authority_by_key_presence",
+    "test/api/semantic_world/test_semantic_addressed_world_model_board.py::"
+    "test_m31_authority_pins_dead_pid_event_281_and_generation_29",
+    "test/api/semantic_world/test_semantic_addressed_world_model_board.py::"
+    "test_m30_authority_pins_stopped_event_280_and_generation_28",
+    "test/api/semantic_world/test_semantic_addressed_world_model_board.py::"
+    "test_m27_dead_owner_resume_authority_runtime_and_source_chain_are_exact",
+    "test/api/semantic_world/test_semantic_addressed_world_model_board.py::"
+    "test_m22_scheduler_authority_is_preserved_under_m27_runtime",
+    "test/api/semantic_world/test_semantic_addressed_world_model_board.py::"
+    "test_m17_namespace_is_preserved_as_historical_under_m27",
+    "test/api/semantic_world/test_semantic_addressed_world_model_board.py::"
+    "test_m15_historical_authority_preserves_fresh_namespace_under_m27",
 )
 
 # M41 preserves M40's complete control declaration and failed sealed-suite
@@ -8688,7 +8771,10 @@ def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[st
         "generation_restart_authorized": True,
     }
     return {
-        "schema": "sawm/dead-attempt-lifecycle-recovery-restart-authorization@1",
+        "schema": "sawm/dead-attempt-lifecycle-recovery-restart-authorization@2",
+        "authorization_revision": 2,
+        "authorization_amended_at": _M43_AUTHORIZATION_AMENDED_AT,
+        "prior_authorization_cid": _M43_PRE_AUTHORITATIVE_AUTHORITY_CID,
         "authorized": True,
         "authority": "operator_control_plane",
         "migration_revision": _M43_MIGRATION_REVISION,
@@ -8718,6 +8804,16 @@ def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[st
             "target_event_watermark": _M43_TARGET_EVENT_WATERMARK,
             "database_uuid": _M43_DATABASE_UUID,
         },
+        "prior_control_authorization": {
+            "authorization_cid": _M43_PRE_AUTHORITATIVE_AUTHORITY_CID,
+            "control_commit": _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+            "control_tree": _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_TREE,
+            "control_recorded_at": _M43_PRIOR_CONTROL_RECORDED_AT,
+            "superseded_before_event_297": True,
+            "event_297_appended": False,
+            "receipt_published": False,
+        },
+        "authorization_amendment_paths": sorted(_M43_OPERATOR_CONTROL_PATHS),
         "prior_authority": prior,
         "prior_m42_authority": m42,
         "prior_m42_reference": {
@@ -8778,6 +8874,69 @@ def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[st
             "authority_weakened": False,
             "worker_self_approval": False,
         },
+        "failed_pre_authoritative_control_validation": {
+            "schema": "sawm/failed-pre-authoritative-control-validation@1",
+            "authority_cid": _M43_PRE_AUTHORITATIVE_AUTHORITY_CID,
+            "control_commit": _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+            "control_tree": _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_TREE,
+            "control_blobs": dict(
+                _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_BLOBS
+            ),
+            "control_modes": dict(
+                _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_MODES
+            ),
+            "validation_command": (
+                "/usr/bin/python3.12 -m pytest -q "
+                "test/api/semantic_world/"
+                "test_semantic_addressed_world_model_board.py"
+            ),
+            "collected_tests": 280,
+            "passed_tests": 271,
+            "failed_tests": 9,
+            "failed_test_ids": list(_M43_FAILED_TEST_IDS),
+            "failure_class": "stale_historical_generation_fixtures",
+            "production_runtime_defect": False,
+            "materializer_invoked": False,
+            "quack_started": False,
+            "authenticated_mutation_request_created": False,
+            "event_297_rows_created": 0,
+            "m43_receipt_created": False,
+            "evidence_node_changes": 0,
+            "evidence_event_changes": 0,
+            "validation_event_changes": 0,
+            "store_generation_row_changes": 0,
+            "state_server_row_changes": 0,
+            "credential_row_changes": 0,
+            "server_epoch_row_changes": 0,
+            "capability_snapshot_row_changes": 0,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "goal_revision_changes": 0,
+            "plan_revision_changes": 0,
+            "effect_claim_changes": 0,
+            "merge_attempt_changes": 0,
+            "implementation_provider_invocations": 0,
+            "coordination_semantic_changes": 0,
+            "accepted_completion_changes": 0,
+            "worker_self_approval": False,
+        },
+        "accepted_historical_fixture_repair": {
+            "schema": "sawm/historical-generation-fixture-repair@1",
+            "repair_parent": _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+            "repair_commit": _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT,
+            "repair_tree": _M43_HISTORICAL_FIXTURE_REPAIR_TREE,
+            "changed_paths": sorted(_M43_HISTORICAL_FIXTURE_REPAIR_BLOBS),
+            "blob_oids": dict(_M43_HISTORICAL_FIXTURE_REPAIR_BLOBS),
+            "path_modes": dict(_M43_HISTORICAL_FIXTURE_REPAIR_MODES),
+            "focused_former_failures_replayed": 9,
+            "focused_former_failures_passed": 9,
+            "focused_replay_is_full_suite": False,
+            "production_code_changes": 0,
+            "fixture_collection_or_selection_logic_changed": False,
+            "validation_weakened": False,
+            "authority_weakened": False,
+            "worker_self_approval": False,
+        },
         "source_chain": {
             "m42_final_control_commit": _M43_BASE_CONTROL_COMMIT,
             "m42_final_control_tree": _M43_BASE_CONTROL_TREE,
@@ -8794,8 +8953,41 @@ def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[st
             "initial_control_tree": _M43_INITIAL_CONTROL_TREE,
             "initial_control_blobs": dict(_M43_INITIAL_CONTROL_BLOBS),
             "initial_control_modes": dict(_M43_INITIAL_CONTROL_MODES),
-            "final_reseal_parent": _M43_INITIAL_CONTROL_COMMIT,
-            "final_control_commit_count": 1,
+            "failed_pre_authoritative_control_parent": (
+                _M43_INITIAL_CONTROL_COMMIT
+            ),
+            "failed_pre_authoritative_control_commit": (
+                _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT
+            ),
+            "failed_pre_authoritative_control_tree": (
+                _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_TREE
+            ),
+            "failed_pre_authoritative_control_blobs": dict(
+                _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_BLOBS
+            ),
+            "failed_pre_authoritative_control_modes": dict(
+                _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_MODES
+            ),
+            "historical_fixture_repair_parent": (
+                _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT
+            ),
+            "historical_fixture_repair_commit": (
+                _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT
+            ),
+            "historical_fixture_repair_tree": (
+                _M43_HISTORICAL_FIXTURE_REPAIR_TREE
+            ),
+            "historical_fixture_repair_blobs": dict(
+                _M43_HISTORICAL_FIXTURE_REPAIR_BLOBS
+            ),
+            "historical_fixture_repair_modes": dict(
+                _M43_HISTORICAL_FIXTURE_REPAIR_MODES
+            ),
+            "final_reseal_parent": _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT,
+            "failed_pre_authoritative_control_commit_count": 1,
+            "historical_fixture_repair_commit_count": 1,
+            "final_reseal_commit_count": 1,
+            "final_control_commit_count": 2,
         },
         "expected_task_heads": task_heads,
         "operator_control_paths": sorted(_M43_OPERATOR_CONTROL_PATHS),
@@ -8832,6 +9024,9 @@ def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[st
             "same_runtime_root": True,
             "same_store_path": True,
             "generation_bearing_owner_restart": True,
+            "failed_pre_authoritative_authority_preserved": True,
+            "failed_pre_authoritative_attempt_created_no_runtime_state": True,
+            "historical_fixture_repair_changed_no_production_code": True,
             "coordination_semantic_changes": 0,
             "worker_self_approval": False,
         },
@@ -8860,12 +9055,36 @@ def _validated_m43_live_preflight_contract(
     expected = _expected_m43_dead_attempt_lifecycle_recovery_restart_authority()
     contract = authority.get("live_preflight_contract")
     repair = authority.get("accepted_lifecycle_repair")
+    failed_validation = authority.get(
+        "failed_pre_authoritative_control_validation"
+    )
+    fixture_repair = authority.get("accepted_historical_fixture_repair")
+    prior_control = authority.get("prior_control_authorization")
     receipt = authority.get("preserved_m42_receipt")
     if (
         dict(authority) != expected
         or not isinstance(contract, Mapping)
         or not isinstance(repair, Mapping)
+        or not isinstance(failed_validation, Mapping)
+        or not isinstance(fixture_repair, Mapping)
+        or not isinstance(prior_control, Mapping)
         or not isinstance(receipt, Mapping)
+        or authority.get("authorization_revision") != 2
+        or authority.get("authorization_amended_at")
+        != _M43_AUTHORIZATION_AMENDED_AT
+        or authority.get("prior_authorization_cid")
+        != _M43_PRE_AUTHORITATIVE_AUTHORITY_CID
+        or authority.get("authorization_amendment_paths")
+        != sorted(_M43_OPERATOR_CONTROL_PATHS)
+        or prior_control.get("authorization_cid")
+        != _M43_PRE_AUTHORITATIVE_AUTHORITY_CID
+        or prior_control.get("control_recorded_at")
+        != _M43_PRIOR_CONTROL_RECORDED_AT
+        or prior_control.get("control_commit")
+        != _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT
+        or prior_control.get("superseded_before_event_297") is not True
+        or prior_control.get("event_297_appended") is not False
+        or prior_control.get("receipt_published") is not False
         or contract.get("migration_revision") != _M43_MIGRATION_REVISION
         or contract.get("prior_generation") != _M43_PRIOR_GENERATION
         or contract.get("target_generation") != _M43_TARGET_GENERATION
@@ -8878,6 +9097,16 @@ def _validated_m43_live_preflight_contract(
         or receipt.get("receipt_cid") != _M43_M42_RECEIPT_CID
         or repair.get("newest_first_attempt_selection") is not True
         or repair.get("authority_weakened") is not False
+        or failed_validation.get("failed_test_ids")
+        != list(_M43_FAILED_TEST_IDS)
+        or failed_validation.get("authenticated_mutation_request_created")
+        is not False
+        or fixture_repair.get("focused_replay_is_full_suite") is not False
+        or fixture_repair.get(
+            "fixture_collection_or_selection_logic_changed"
+        )
+        is not False
+        or fixture_repair.get("validation_weakened") is not False
     ):
         raise MaterializationError("M43 live preflight contract differs")
     return contract
@@ -56332,7 +56561,7 @@ def _assert_m43_source_delta(
     population: Mapping[str, Any],
     authority: Mapping[str, Any],
 ) -> None:
-    """Require M42 -> reviewed repair -> initial M43 -> one reseal."""
+    """Require M42 -> lifecycle repair -> failed seal -> fixture repair -> reseal."""
 
     identities = (
         _M43_LIFECYCLE_REPAIR_COMMIT,
@@ -56341,6 +56570,12 @@ def _assert_m43_source_delta(
         _M43_INITIAL_CONTROL_COMMIT,
         _M43_INITIAL_CONTROL_TREE,
         *tuple(_M43_INITIAL_CONTROL_BLOBS.values()),
+        _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+        _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_TREE,
+        *tuple(_M43_FAILED_PRE_AUTHORITATIVE_CONTROL_BLOBS.values()),
+        _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT,
+        _M43_HISTORICAL_FIXTURE_REPAIR_TREE,
+        *tuple(_M43_HISTORICAL_FIXTURE_REPAIR_BLOBS.values()),
     )
     if any(
         value.startswith("INITIAL_M43_CONTROL")
@@ -56352,6 +56587,7 @@ def _assert_m43_source_delta(
     chain = authority.get("source_chain")
     controls = set(authority.get("operator_control_paths") or ())
     repairs = set(_M43_LIFECYCLE_REPAIR_BLOBS)
+    fixture_repairs = set(_M43_HISTORICAL_FIXTURE_REPAIR_BLOBS)
     base_parents = _git(
         root, "rev-list", "--parents", "-n", "1", _M43_BASE_CONTROL_COMMIT
     ).split()
@@ -56361,6 +56597,22 @@ def _assert_m43_source_delta(
     initial_parents = _git(
         root, "rev-list", "--parents", "-n", "1", _M43_INITIAL_CONTROL_COMMIT
     ).split()
+    failed_control_parents = _git(
+        root,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+    ).split()
+    fixture_repair_parents = _git(
+        root,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT,
+    ).split()
     current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
     if (
         current
@@ -56368,6 +56620,8 @@ def _assert_m43_source_delta(
             _M43_BASE_CONTROL_COMMIT,
             _M43_LIFECYCLE_REPAIR_COMMIT,
             _M43_INITIAL_CONTROL_COMMIT,
+            _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+            _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT,
         }
         or not isinstance(chain, Mapping)
         or controls != set(_M43_OPERATOR_CONTROL_PATHS)
@@ -56387,20 +56641,69 @@ def _assert_m43_source_delta(
         or chain.get("initial_control_tree") != _M43_INITIAL_CONTROL_TREE
         or chain.get("initial_control_blobs") != dict(_M43_INITIAL_CONTROL_BLOBS)
         or chain.get("initial_control_modes") != dict(_M43_INITIAL_CONTROL_MODES)
-        or chain.get("final_reseal_parent") != _M43_INITIAL_CONTROL_COMMIT
-        or int(chain.get("final_control_commit_count") or 0) != 1
+        or chain.get("failed_pre_authoritative_control_parent")
+        != _M43_INITIAL_CONTROL_COMMIT
+        or chain.get("failed_pre_authoritative_control_commit")
+        != _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT
+        or chain.get("failed_pre_authoritative_control_tree")
+        != _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_TREE
+        or chain.get("failed_pre_authoritative_control_blobs")
+        != dict(_M43_FAILED_PRE_AUTHORITATIVE_CONTROL_BLOBS)
+        or chain.get("failed_pre_authoritative_control_modes")
+        != dict(_M43_FAILED_PRE_AUTHORITATIVE_CONTROL_MODES)
+        or chain.get("historical_fixture_repair_parent")
+        != _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT
+        or chain.get("historical_fixture_repair_commit")
+        != _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT
+        or chain.get("historical_fixture_repair_tree")
+        != _M43_HISTORICAL_FIXTURE_REPAIR_TREE
+        or chain.get("historical_fixture_repair_blobs")
+        != dict(_M43_HISTORICAL_FIXTURE_REPAIR_BLOBS)
+        or chain.get("historical_fixture_repair_modes")
+        != dict(_M43_HISTORICAL_FIXTURE_REPAIR_MODES)
+        or chain.get("final_reseal_parent")
+        != _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT
+        or int(
+            chain.get("failed_pre_authoritative_control_commit_count") or 0
+        )
+        != 1
+        or int(chain.get("historical_fixture_repair_commit_count") or 0) != 1
+        or int(chain.get("final_reseal_commit_count") or 0) != 1
+        or int(chain.get("final_control_commit_count") or 0) != 2
         or base_parents[0:1] != [_M43_BASE_CONTROL_COMMIT]
         or repair_parents
         != [_M43_LIFECYCLE_REPAIR_COMMIT, _M43_BASE_CONTROL_COMMIT]
         or initial_parents
         != [_M43_INITIAL_CONTROL_COMMIT, _M43_LIFECYCLE_REPAIR_COMMIT]
-        or current_parents != [current, _M43_INITIAL_CONTROL_COMMIT]
+        or failed_control_parents
+        != [
+            _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+            _M43_INITIAL_CONTROL_COMMIT,
+        ]
+        or fixture_repair_parents
+        != [
+            _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT,
+            _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+        ]
+        or current_parents != [current, _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT]
         or _git(root, "rev-parse", f"{_M43_BASE_CONTROL_COMMIT}^{{tree}}")
         != _M43_BASE_CONTROL_TREE
         or _git(root, "rev-parse", f"{_M43_LIFECYCLE_REPAIR_COMMIT}^{{tree}}")
         != _M43_LIFECYCLE_REPAIR_TREE
         or _git(root, "rev-parse", f"{_M43_INITIAL_CONTROL_COMMIT}^{{tree}}")
         != _M43_INITIAL_CONTROL_TREE
+        or _git(
+            root,
+            "rev-parse",
+            f"{_M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT}^{{tree}}",
+        )
+        != _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_TREE
+        or _git(
+            root,
+            "rev-parse",
+            f"{_M43_HISTORICAL_FIXTURE_REPAIR_COMMIT}^{{tree}}",
+        )
+        != _M43_HISTORICAL_FIXTURE_REPAIR_TREE
         or _m27_name_status(
             root, _M43_BASE_CONTROL_COMMIT, _M43_LIFECYCLE_REPAIR_COMMIT
         )
@@ -56409,7 +56712,21 @@ def _assert_m43_source_delta(
             root, _M43_LIFECYCLE_REPAIR_COMMIT, _M43_INITIAL_CONTROL_COMMIT
         )
         != {path: "M" for path in controls}
-        or _m27_name_status(root, _M43_INITIAL_CONTROL_COMMIT, current)
+        or _m27_name_status(
+            root,
+            _M43_INITIAL_CONTROL_COMMIT,
+            _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+        )
+        != {path: "M" for path in controls}
+        or _m27_name_status(
+            root,
+            _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+            _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT,
+        )
+        != {path: "M" for path in fixture_repairs}
+        or _m27_name_status(
+            root, _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT, current
+        )
         != {path: "M" for path in controls}
         or population["source_binding"].get("tree")
         != _git(root, "rev-parse", f"{current}^{{tree}}")
@@ -56429,6 +56746,18 @@ def _assert_m43_source_delta(
             _M43_INITIAL_CONTROL_MODES,
             "initial-control",
         ),
+        (
+            _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+            _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_BLOBS,
+            _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_MODES,
+            "failed-pre-authoritative-control",
+        ),
+        (
+            _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT,
+            _M43_HISTORICAL_FIXTURE_REPAIR_BLOBS,
+            _M43_HISTORICAL_FIXTURE_REPAIR_MODES,
+            "historical-fixture-repair",
+        ),
     ):
         for path, oid in blobs.items():
             if _git(root, "rev-parse", f"{commit}:{path}") != oid:
@@ -56437,6 +56766,7 @@ def _assert_m43_source_delta(
                 root, "ls-tree", commit, "--", path
             ) != f"{modes[path]} blob {oid}\t{path}":
                 raise MaterializationError(f"M43 {noun} mode differs: {path}")
+    _assert_m43_current_control_modes(root, current, controls)
     for dependency, gitlink_key, tree_key, population_key in (
         (
             "ipfs_datasets_py",
@@ -56454,6 +56784,8 @@ def _assert_m43_source_delta(
                     _M43_BASE_CONTROL_COMMIT,
                     _M43_LIFECYCLE_REPAIR_COMMIT,
                     _M43_INITIAL_CONTROL_COMMIT,
+                    _M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT,
+                    _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT,
                     current,
                 )
             )
@@ -56462,6 +56794,19 @@ def _assert_m43_source_delta(
             != authority[tree_key]
         ):
             raise MaterializationError(f"M43 {dependency} authority differs")
+
+
+def _assert_m43_current_control_modes(
+    root: Path,
+    current: str,
+    controls: Collection[str],
+) -> None:
+    """Reject a final control successor with executable or non-blob controls."""
+
+    for path in sorted(controls):
+        entry = _git(root, "ls-tree", current, "--", path)
+        if re.fullmatch(rf"100644 blob [0-9a-f]{{40}}\t{re.escape(path)}", entry) is None:
+            raise MaterializationError(f"M43 final-control mode differs: {path}")
 
 
 def _m43_target_paths(
@@ -56508,11 +56853,14 @@ def _m43_migration_body(
 ) -> dict[str, Any]:
     authority = _expected_m43_dead_attempt_lifecycle_recovery_restart_authority()
     return {
-        "schema": "sawm/dead-attempt-lifecycle-recovery-restart-source-seal@1",
+        "schema": "sawm/dead-attempt-lifecycle-recovery-restart-source-seal@2",
         "authority": "operator_control_plane",
         "migration_revision": _M43_MIGRATION_REVISION,
         "migration_kind": _M43_SUPERSESSION_REASON,
         "supersession_mode": _M43_SUPERSESSION_MODE,
+        "authorization_revision": authority["authorization_revision"],
+        "authorization_amended_at": authority["authorization_amended_at"],
+        "prior_authorization_cid": authority["prior_authorization_cid"],
         "program_definition_cid": population["program_definition_cid"],
         "current_source_binding_cid": population["source_binding"][
             "source_binding_cid"
@@ -56522,6 +56870,12 @@ def _m43_migration_body(
         "validation_digest": validation_digest,
         "authorization_cid": _identity(authority),
         "runtime_binding": authority["runtime_binding"],
+        "prior_control_authorization": authority[
+            "prior_control_authorization"
+        ],
+        "authorization_amendment_paths": authority[
+            "authorization_amendment_paths"
+        ],
         "prior_authority": authority["prior_authority"],
         "prior_m42_reference": authority["prior_m42_reference"],
         "preserved_m42_receipt": authority["preserved_m42_receipt"],
@@ -56531,6 +56885,12 @@ def _m43_migration_body(
         "live_preflight_contract": authority["live_preflight_contract"],
         "target_authority": authority["target_authority"],
         "accepted_lifecycle_repair": authority["accepted_lifecycle_repair"],
+        "failed_pre_authoritative_control_validation": authority[
+            "failed_pre_authoritative_control_validation"
+        ],
+        "accepted_historical_fixture_repair": authority[
+            "accepted_historical_fixture_repair"
+        ],
         "source_chain": authority["source_chain"],
         "exact_changes": authority["exact_changes"],
         "preservation": authority["preservation"],
@@ -68660,7 +69020,7 @@ def _expected_m43_source_successor_receipt(
     result = {
         "schema": (
             "sawm/non-authoritative-dead-attempt-lifecycle-recovery-"
-            "restart-receipt@1"
+            "restart-receipt@2"
         ),
         "authoritative": False,
         "control_database_is_authority": True,
@@ -68669,12 +69029,27 @@ def _expected_m43_source_successor_receipt(
         "migration_revision": _M43_MIGRATION_REVISION,
         "migration_kind": _M43_SUPERSESSION_REASON,
         "supersession_mode": _M43_SUPERSESSION_MODE,
+        "authorization_revision": authority["authorization_revision"],
+        "authorization_amended_at": authority["authorization_amended_at"],
+        "prior_authorization_cid": authority["prior_authorization_cid"],
         f"{_M43_SUPERSESSION_REASON}_cid": _identity(authority),
+        "prior_control_authorization": dict(
+            authority["prior_control_authorization"]
+        ),
+        "authorization_amendment_paths": list(
+            authority["authorization_amendment_paths"]
+        ),
         "prior_m42_authority": dict(authority["prior_m42_reference"]),
         "prior_m42_receipt_cid": _M43_M42_RECEIPT_CID,
         "prior_m42_receipt_sha256": _M43_M42_RECEIPT_SHA256,
         "prior_m42_receipt_size": _M43_M42_RECEIPT_SIZE,
         "accepted_lifecycle_repair": dict(authority["accepted_lifecycle_repair"]),
+        "failed_pre_authoritative_control_validation": dict(
+            authority["failed_pre_authoritative_control_validation"]
+        ),
+        "accepted_historical_fixture_repair": dict(
+            authority["accepted_historical_fixture_repair"]
+        ),
         "program_definition_cid": population["program_definition_cid"],
         "current_source_binding_cid": population["source_binding"][
             "source_binding_cid"
