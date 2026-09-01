@@ -9146,6 +9146,233 @@ class PortalImplementationSupervisor:
         control_plane_status = self._control_plane_status_projection()
         self._set_loop_status_fields(_loop, control_plane_status)
         if control_plane_status["control_plane_update_pending"]:
+            required_source_identity_fields = (
+                "control_plane_source_id",
+                "control_plane_source_revision",
+                "control_plane_source_tree_id",
+                "control_plane_current_source_id",
+                "control_plane_current_source_revision",
+                "control_plane_current_source_tree_id",
+            )
+            missing_source_identity_fields = [
+                field
+                for field in required_source_identity_fields
+                if not str(control_plane_status.get(field) or "").strip()
+            ]
+            if missing_source_identity_fields:
+                current_source_incomplete = any(
+                    field.startswith("control_plane_current_source_")
+                    for field in missing_source_identity_fields
+                )
+                deferred = {
+                    **control_plane_status,
+                    "control_plane_reload_deferred": True,
+                    "control_plane_reload_deferred_reason": (
+                        "control_plane_current_source_incomplete"
+                        if current_source_incomplete
+                        else "control_plane_loaded_source_incomplete"
+                    ),
+                    "control_plane_source_identity_missing_fields": (
+                        missing_source_identity_fields
+                    ),
+                    "control_plane_reload_quiescence": {
+                        "attempted": False,
+                        "quiesced": False,
+                        "reason": "pre_quiescence_source_gate_deferred",
+                    },
+                }
+                self._set_loop_status_fields(_loop, deferred)
+                self._record_event(
+                    "supervisor_control_plane_reload_deferred",
+                    deferred,
+                )
+                return SupervisorLoopDecision.keep_running()
+
+            quiescence: dict[str, Any] | None = None
+
+            def defer_reload(
+                reason: str,
+                *,
+                database_projection: Mapping[str, Any] | None = None,
+                active_task_id: str = "",
+            ) -> SupervisorLoopDecision:
+                child_was_quiesced = bool(
+                    quiescence is not None
+                    and quiescence.get("quiesced") is True
+                )
+                deferred = {
+                    **control_plane_status,
+                    "control_plane_reload_deferred": True,
+                    "control_plane_reload_deferred_reason": str(reason),
+                    "control_plane_reload_deferred_task_id": str(
+                        active_task_id or ""
+                    ),
+                    "control_plane_reload_quiescence": (
+                        dict(quiescence)
+                        if quiescence is not None
+                        else {
+                            "attempted": False,
+                            "quiesced": False,
+                            "reason": "pre_quiescence_portal_gate_deferred",
+                        }
+                    ),
+                }
+                if database_projection is not None:
+                    deferred["database_portal_reload_projection"] = dict(
+                        database_projection
+                    )
+                self._set_loop_status_fields(_loop, deferred)
+                self._record_event(
+                    "supervisor_control_plane_reload_deferred",
+                    deferred,
+                )
+                if not child_was_quiesced:
+                    return SupervisorLoopDecision.keep_running()
+                # The exact child was already fenced.  Recycle resumes the
+                # accepted control plane only for plan-bound dispatch, whose
+                # child imports the sealed descriptor.  A normal ``python
+                # -m`` recycle would import the changed checkout; stop at a
+                # typed terminal instead of misrepresenting it as the prior
+                # accepted generation.
+                if self.config.plan_bound_dispatch:
+                    return SupervisorLoopDecision.recycle(
+                        "control_plane_reload_deferred",
+                        detail=deferred,
+                    )
+                return SupervisorLoopDecision.stop(
+                    "control_plane_reload_deferred_unsealed",
+                    status=CONTROL_PLANE_RELOAD_DEFERRED_UNSEALED_STATUS,
+                )
+
+            def finish_reload(
+                database_projection: Mapping[str, Any],
+            ) -> SupervisorLoopDecision:
+                detail = {
+                    **control_plane_status,
+                    "control_plane_reload_deferred": False,
+                    "control_plane_reload_attempt_budget_consumed": False,
+                    "control_plane_reload_provider_invocation_consumed": False,
+                    "control_plane_reload_quiescence": dict(quiescence or {}),
+                    "database_portal_reload_projection": dict(
+                        database_projection
+                    ),
+                }
+                self._set_loop_status_fields(_loop, detail)
+                self._record_event(
+                    "supervisor_control_plane_update_detected",
+                    detail,
+                )
+                return SupervisorLoopDecision.stop(
+                    "control_plane_source_changed",
+                    status=CONTROL_PLANE_RELOAD_STATUS,
+                )
+
+            if self._database_portal_is_configured():
+                try:
+                    with self._database_portal_reload_mutation_fence() as program:
+                        database_projection = (
+                            self._database_portal_reload_projection_fenced(
+                                program
+                            )
+                        )
+                        if not self._database_portal_reload_projection_is_idle(
+                            database_projection
+                        ):
+                            reason = str(
+                                database_projection.get("reason") or ""
+                            )
+                            if not reason or (
+                                database_projection.get("defer_reload")
+                                is not True
+                            ):
+                                reason = (
+                                    "database_portal_projection_not_admitted"
+                                )
+                            return defer_reload(
+                                reason,
+                                database_projection=database_projection,
+                            )
+
+                        # Preserve lock order: the owner mutation fence is
+                        # outermost, so no compliant claim can appear between
+                        # this authenticated idle projection and quiescence.
+                        with serialized_lock_update(
+                            self._managed_daemon_launch_lock_path()
+                        ):
+                            quiescence = (
+                                self._quiesce_supervised_child_for_control_gate(
+                                    _child,
+                                    reason="control_plane_source_changed",
+                                    _launch_lock_held=True,
+                                )
+                            )
+                            if quiescence.get("quiesced") is not True:
+                                return defer_reload(
+                                    "managed_child_quiescence_unproven",
+                                    database_projection=database_projection,
+                                )
+
+                            # Verify again under the same owner mutation fence.
+                            # This catches an inconsistent/read-race projection
+                            # without allowing it to authorize source reload.
+                            database_projection = (
+                                self._database_portal_reload_projection_fenced(
+                                    program
+                                )
+                            )
+                            state = PortalTaskState.load(
+                                self.config.state_path
+                            )
+                            residual_active_state = bool(
+                                state.active_task_id
+                                or state.implementation_in_progress
+                                or self._active_agent_worker_processes()
+                                or self._active_validation_subprocess_exists()
+                            )
+                            post_projection_is_idle = (
+                                self._database_portal_reload_projection_is_idle(
+                                    database_projection
+                                )
+                            )
+                            if (
+                                not post_projection_is_idle
+                                or residual_active_state
+                            ):
+                                reason = (
+                                    str(
+                                        database_projection.get("reason")
+                                        or ""
+                                    )
+                                    if not post_projection_is_idle
+                                    else "residual_active_task_or_phase"
+                                )
+                                if not reason or (
+                                    not residual_active_state
+                                    and database_projection.get("defer_reload")
+                                    is not True
+                                ):
+                                    reason = (
+                                        "database_portal_projection_not_admitted"
+                                    )
+                                return defer_reload(
+                                    reason,
+                                    database_projection=database_projection,
+                                    active_task_id=state.active_task_id,
+                                )
+                            return finish_reload(database_projection)
+                except Exception as exc:
+                    database_projection = (
+                        self._database_portal_reload_inconclusive_projection(
+                            exc
+                        )
+                    )
+                    return defer_reload(
+                        "database_portal_projection_inconclusive",
+                        database_projection=database_projection,
+                    )
+
+            # Legacy non-Quack paths have no database mutation authority to
+            # fence.  Preserve their existing quiesce-then-inspect behavior.
             with serialized_lock_update(
                 self._managed_daemon_launch_lock_path()
             ):
@@ -9155,20 +9382,8 @@ class PortalImplementationSupervisor:
                     _launch_lock_held=True,
                 )
                 if quiescence.get("quiesced") is not True:
-                    deferred = {
-                        **control_plane_status,
-                        "control_plane_reload_deferred": True,
-                        "control_plane_reload_deferred_reason": (
-                            "managed_child_quiescence_unproven"
-                        ),
-                        "control_plane_reload_quiescence": quiescence,
-                    }
-                    self._set_loop_status_fields(_loop, deferred)
-                    return SupervisorLoopDecision.keep_running()
-
-                database_projection = (
-                    self._database_portal_reload_projection()
-                )
+                    return defer_reload("managed_child_quiescence_unproven")
+                database_projection = self._database_portal_reload_projection()
                 state = PortalTaskState.load(self.config.state_path)
                 residual_active_state = bool(
                     state.active_task_id
@@ -9185,57 +9400,12 @@ class PortalImplementationSupervisor:
                         if database_projection.get("defer_reload") is True
                         else "residual_active_task_or_phase"
                     )
-                    deferred = {
-                        **control_plane_status,
-                        "control_plane_reload_deferred": True,
-                        "control_plane_reload_deferred_reason": reason,
-                        "control_plane_reload_deferred_task_id": (
-                            state.active_task_id
-                        ),
-                        "control_plane_reload_quiescence": quiescence,
-                        "database_portal_reload_projection": (
-                            database_projection
-                        ),
-                    }
-                    self._set_loop_status_fields(_loop, deferred)
-                    self._record_event(
-                        "supervisor_control_plane_reload_deferred",
-                        deferred,
+                    return defer_reload(
+                        reason,
+                        database_projection=database_projection,
+                        active_task_id=state.active_task_id,
                     )
-                    # The exact child was already fenced.  Recycle resumes the
-                    # accepted control plane only for plan-bound dispatch,
-                    # whose child imports the sealed descriptor.  A normal
-                    # ``python -m`` recycle would import the changed checkout;
-                    # stop at a typed terminal instead of misrepresenting it
-                    # as the prior accepted generation.
-                    if self.config.plan_bound_dispatch:
-                        return SupervisorLoopDecision.recycle(
-                            "control_plane_reload_deferred",
-                            detail=deferred,
-                        )
-                    return SupervisorLoopDecision.stop(
-                        "control_plane_reload_deferred_unsealed",
-                        status=(
-                            CONTROL_PLANE_RELOAD_DEFERRED_UNSEALED_STATUS
-                        ),
-                    )
-                detail = {
-                    **control_plane_status,
-                    "control_plane_reload_deferred": False,
-                    "control_plane_reload_attempt_budget_consumed": False,
-                    "control_plane_reload_provider_invocation_consumed": False,
-                    "control_plane_reload_quiescence": quiescence,
-                    "database_portal_reload_projection": database_projection,
-                }
-                self._set_loop_status_fields(_loop, detail)
-                self._record_event(
-                    "supervisor_control_plane_update_detected",
-                    detail,
-                )
-                return SupervisorLoopDecision.stop(
-                    "control_plane_source_changed",
-                    status=CONTROL_PLANE_RELOAD_STATUS,
-                )
+                return finish_reload(database_projection)
         now_monotonic = time.monotonic()
         min_interval = max(1.0, float(self.config.check_interval))
         if now_monotonic - self._last_supervisor_maintenance_at < min_interval:
@@ -14632,10 +14802,11 @@ class PortalImplementationSupervisor:
             ),
         }
 
-    def _database_portal_reload_projection(self) -> dict[str, Any]:
-        """Project reload safety from one authenticated Quack generation."""
+    @staticmethod
+    def _database_portal_reload_projection_base() -> dict[str, Any]:
+        """Return the closed fail-closed shape for one reload projection."""
 
-        base = {
+        return {
             "schema": DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA,
             "applicable": False,
             "authority_available": False,
@@ -14652,13 +14823,121 @@ class PortalImplementationSupervisor:
             "post_provider_recovery_saga_count": 0,
             "quack_owner": {},
         }
+
+    @classmethod
+    def _database_portal_reload_inconclusive_projection(
+        cls,
+        exc: BaseException,
+    ) -> dict[str, Any]:
+        projection = cls._database_portal_reload_projection_base()
+        projection.update(
+            {
+                "applicable": True,
+                "authority_available": False,
+                "integrity_verified": False,
+                "activity_detected": False,
+                "defer_reload": True,
+                "defer_maintenance": True,
+                "reason": "database_portal_projection_inconclusive",
+                "error_type": type(exc).__name__,
+            }
+        )
+        return projection
+
+    def _database_portal_is_configured(self) -> bool:
+        program = self.config.database_program
+        return bool(
+            program is not None
+            and program.authority_mode == "quack"
+            and program.task_source_kind == "duckdb"
+        )
+
+    @classmethod
+    def _database_portal_reload_projection_is_idle(
+        cls,
+        projection: Mapping[str, Any],
+    ) -> bool:
+        """Admit only an exact authenticated, complete idle projection."""
+
+        owner = projection.get("quack_owner")
+        expected_fields = set(cls._database_portal_reload_projection_base())
+        try:
+            normalized_owner = cls._normalized_quack_owner_binding(owner)
+        except Exception:
+            return False
+        return bool(
+            set(projection) == expected_fields
+            and projection.get("schema")
+            == DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA
+            and projection.get("applicable") is True
+            and projection.get("authority_available") is True
+            and projection.get("integrity_verified") is True
+            and projection.get("activity_detected") is False
+            and projection.get("defer_reload") is False
+            and projection.get("defer_maintenance") is False
+            and projection.get("reason")
+            == "database_portal_population_idle"
+            and not str(projection.get("error_type") or "")
+            and type(projection.get("task_source_revision")) is int
+            and projection.get("task_source_revision") >= 0
+            and isinstance(projection.get("task_ids"), list)
+            and not projection.get("task_ids")
+            and isinstance(projection.get("attempts"), list)
+            and not projection.get("attempts")
+            and type(projection.get("nonterminal_attempt_count")) is int
+            and projection.get("nonterminal_attempt_count") == 0
+            and type(
+                projection.get("post_provider_recovery_saga_count")
+            )
+            is int
+            and projection.get("post_provider_recovery_saga_count") == 0
+            and isinstance(owner, Mapping)
+            and set(owner) == set(_QUACK_OWNER_BINDING_FIELDS)
+            and dict(owner) == normalized_owner
+        )
+
+    @contextmanager
+    def _database_portal_reload_mutation_fence(
+        self,
+    ) -> Any:
+        """Fence Quack owner mutations across reload admission and quiescence.
+
+        A point-in-time idle read cannot authorize terminating the managed
+        daemon: a new claim could otherwise be written after the read and
+        before process-tree quiescence.  The existing owner mutation lock is
+        the single write authority, so retain it across the precheck,
+        quiescence, and postcheck instead of introducing another lock.
+        """
+
         program = self.config.database_program
         if (
             program is None
             or program.authority_mode != "quack"
             or program.task_source_kind != "duckdb"
         ):
-            return base
+            raise RuntimeError("Quack database portal is not configured")
+        from ..task_sources.duckdb_state import (
+            exclusive_file_lock,
+            quack_owner_mutation_write_lock_path,
+        )
+
+        with self._database_reconciliation_program_environment(
+            program,
+            preserve_live_binding=True,
+        ):
+            lock_path = quack_owner_mutation_write_lock_path(program.store_id)
+            if lock_path is None:
+                raise RuntimeError("Quack projection lacks its owner lock")
+            with exclusive_file_lock(lock_path, timeout_seconds=2.0):
+                yield program
+
+    def _database_portal_reload_projection_fenced(
+        self,
+        program: DatabaseProgramConfig,
+    ) -> dict[str, Any]:
+        """Project one Quack generation while its mutation fence is held."""
+
+        base = self._database_portal_reload_projection_base()
         base.update(
             {
                 "applicable": True,
@@ -14673,116 +14952,89 @@ class PortalImplementationSupervisor:
             from ..task_sources.database_task_source import DatabaseTaskSource
             from ..task_sources.duckdb_state import (
                 _resolve_quack_token_handle,
-                exclusive_file_lock,
                 open_quack_transport_connection,
-                quack_owner_mutation_write_lock_path,
             )
 
-            with self._database_reconciliation_program_environment(
-                program,
-                preserve_live_binding=True,
-            ):
-                lock_path = quack_owner_mutation_write_lock_path(program.store_id)
-                if lock_path is None:
-                    raise RuntimeError("Quack projection lacks its owner lock")
-                with exclusive_file_lock(lock_path, timeout_seconds=2.0):
-                    secret, raw_owner_before = _resolve_quack_token_handle(
-                        uri=program.quack_endpoint
-                    )
-                    owner_before = self._normalized_quack_owner_binding(
-                        raw_owner_before
-                    )
-                    connection = open_quack_transport_connection(
-                        program.quack_endpoint,
-                        token=secret,
-                    )
-                    try:
-                        connection_before = (
-                            self._normalized_quack_owner_binding(
-                                getattr(
-                                    connection,
-                                    "_quack_mutation_binding",
-                                    None,
-                                )
-                            )
-                        )
-                        if owner_before != connection_before:
-                            raise RuntimeError(
-                                "Quack connection differs from published owner"
-                            )
-                        connection.execute("BEGIN TRANSACTION")
-                        transaction_started = True
-                        intent = _PinnedReadIntentRepository(connection)
-                        task_source = DatabaseTaskSource(
-                            intent=intent,
-                            owner_id="database-portal-reload-projection",
-                        )
-                        projection = self._database_portal_claim_projection(
-                            task_source
-                        )
-                        connection.execute("COMMIT")
-                        transaction_started = False
-                        connection_after = (
-                            self._normalized_quack_owner_binding(
-                                getattr(
-                                    connection,
-                                    "_quack_mutation_binding",
-                                    None,
-                                )
-                            )
-                        )
-                        _secret, raw_owner_after = (
-                            _resolve_quack_token_handle(
-                                uri=program.quack_endpoint
-                            )
-                        )
-                        owner_after = self._normalized_quack_owner_binding(
-                            raw_owner_after
-                        )
-                        if not (
-                            dict(raw_owner_before) == dict(raw_owner_after)
-                            and owner_before
-                            == connection_before
-                            == connection_after
-                            == owner_after
-                        ):
-                            raise RuntimeError(
-                                "Quack owner generation changed during projection"
-                            )
-                        base.update(
-                            {
-                                **projection,
-                                "authority_available": True,
-                                "integrity_verified": True,
-                                "quack_owner": owner_after,
-                                "error_type": "",
-                            }
-                        )
-                    finally:
-                        if transaction_started:
-                            try:
-                                connection.execute("ROLLBACK")
-                            except Exception:
-                                pass
-                            transaction_started = False
-                        try:
-                            connection.close()
-                        finally:
-                            connection = None
-                    return base
-        except Exception as exc:
-            base.update(
-                {
-                    "authority_available": False,
-                    "integrity_verified": False,
-                    "activity_detected": False,
-                    "defer_reload": True,
-                    "defer_maintenance": True,
-                    "reason": "database_portal_projection_inconclusive",
-                    "error_type": type(exc).__name__,
-                }
+            secret, raw_owner_before = _resolve_quack_token_handle(
+                uri=program.quack_endpoint
             )
+            owner_before = self._normalized_quack_owner_binding(
+                raw_owner_before
+            )
+            connection = open_quack_transport_connection(
+                program.quack_endpoint,
+                token=secret,
+            )
+            try:
+                connection_before = self._normalized_quack_owner_binding(
+                    getattr(
+                        connection,
+                        "_quack_mutation_binding",
+                        None,
+                    )
+                )
+                if owner_before != connection_before:
+                    raise RuntimeError(
+                        "Quack connection differs from published owner"
+                    )
+                connection.execute("BEGIN TRANSACTION")
+                transaction_started = True
+                intent = _PinnedReadIntentRepository(connection)
+                task_source = DatabaseTaskSource(
+                    intent=intent,
+                    owner_id="database-portal-reload-projection",
+                )
+                projection = self._database_portal_claim_projection(
+                    task_source
+                )
+                connection.execute("COMMIT")
+                transaction_started = False
+                connection_after = self._normalized_quack_owner_binding(
+                    getattr(
+                        connection,
+                        "_quack_mutation_binding",
+                        None,
+                    )
+                )
+                _secret, raw_owner_after = _resolve_quack_token_handle(
+                    uri=program.quack_endpoint
+                )
+                owner_after = self._normalized_quack_owner_binding(
+                    raw_owner_after
+                )
+                if not (
+                    dict(raw_owner_before) == dict(raw_owner_after)
+                    and owner_before
+                    == connection_before
+                    == connection_after
+                    == owner_after
+                ):
+                    raise RuntimeError(
+                        "Quack owner generation changed during projection"
+                    )
+                base.update(
+                    {
+                        **projection,
+                        "authority_available": True,
+                        "integrity_verified": True,
+                        "quack_owner": owner_after,
+                        "error_type": "",
+                    }
+                )
+            finally:
+                if transaction_started:
+                    try:
+                        connection.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    transaction_started = False
+                try:
+                    connection.close()
+                finally:
+                    connection = None
             return base
+        except Exception as exc:
+            return self._database_portal_reload_inconclusive_projection(exc)
         finally:
             if connection is not None:
                 if transaction_started:
@@ -14795,6 +15047,17 @@ class PortalImplementationSupervisor:
                 except Exception:
                     pass
 
+    def _database_portal_reload_projection(self) -> dict[str, Any]:
+        """Project reload safety from one authenticated Quack generation."""
+
+        if not self._database_portal_is_configured():
+            return self._database_portal_reload_projection_base()
+        try:
+            with self._database_portal_reload_mutation_fence() as program:
+                return self._database_portal_reload_projection_fenced(program)
+        except Exception as exc:
+            return self._database_portal_reload_inconclusive_projection(exc)
+
     @contextmanager
     def _database_reconciliation_program_environment(
         self,
@@ -14804,12 +15067,13 @@ class PortalImplementationSupervisor:
     ) -> Any:
         """Adapt one accepted program to the legacy Quack environment API.
 
-        The direct reconciliation daemon is opened only after managed daemon
-        cleanup proved quiescence.  Its existing Quack transport resolves an
-        opaque endpoint handle and exact live store binding from environment
-        variables, so bind those non-secret values for this shutdown-only
-        scope and restore every prior value before returning.  Raw tokens are
-        explicitly unavailable inside the scope.
+        Mutating reconciliation still runs only after managed-daemon cleanup.
+        A read-only reload projection may enter with ``preserve_live_binding``
+        while the child is live, under the Quack owner-mutation fence.  The
+        existing transport resolves an opaque endpoint handle and exact live
+        store binding from environment variables, so bind those non-secret
+        values for this bounded scope and restore every prior value before
+        returning.  Raw tokens are explicitly unavailable inside the scope.
         """
 
         bindings = dict(program.environment())

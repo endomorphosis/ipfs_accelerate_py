@@ -179,27 +179,224 @@ def _inconclusive_watchdog_projection() -> dict[str, object]:
     }
 
 
+def _changed_control_plane_projection() -> dict[str, object]:
+    return {
+        "control_plane_source_schema": "control-plane-source@1",
+        "control_plane_source_id": "loaded-source",
+        "control_plane_current_source_id": "current-source",
+        "control_plane_source_tree_id": "loaded-tree",
+        "control_plane_current_source_tree_id": "current-tree",
+        "control_plane_source_revision": "loaded-revision",
+        "control_plane_current_source_revision": "current-revision",
+        "control_plane_update_pending": True,
+        "control_plane_update_detected_at": "2026-09-01T21:09:42Z",
+        "control_plane_reload_deferred": False,
+        "control_plane_reload_deferred_reason": "",
+        "control_plane_reload_deferred_task_id": "",
+    }
+
+
 @pytest.mark.parametrize(
-    ("claim_appears", "sealed_dispatch"),
-    [(False, False), (True, True), (True, False)],
+    ("missing_fields", "expected_reason"),
+    [
+        (
+            (
+                "control_plane_current_source_revision",
+                "control_plane_current_source_tree_id",
+            ),
+            "control_plane_current_source_incomplete",
+        ),
+        (
+            (
+                "control_plane_source_revision",
+                "control_plane_source_tree_id",
+            ),
+            "control_plane_loaded_source_incomplete",
+        ),
+    ],
+    ids=("current-source", "loaded-source"),
 )
-def test_source_reload_quiesces_before_post_idle_claim_recheck(
+def test_source_reload_defers_incomplete_source_identity_before_portal_or_quiescence(
     tmp_path,
     monkeypatch,
-    claim_appears,
-    sealed_dispatch,
+    missing_fields,
+    expected_reason,
 ):
-    supervisor = PortalImplementationSupervisor(_config(tmp_path))
-    supervisor.config.plan_bound_dispatch = sealed_dispatch
-    order: list[str] = []
-    claim_visible = False
+    config = _config(tmp_path)
+    PortalTaskState().save(config.state_path)
+    supervisor = PortalImplementationSupervisor(config)
+    status = _changed_control_plane_projection()
+    for field in missing_fields:
+        status[field] = ""
+    events: list[tuple[str, dict[str, object]]] = []
 
     monkeypatch.setattr(
         supervisor,
         "_control_plane_status_projection",
-        lambda: {"control_plane_update_pending": True},
+        lambda: status,
     )
-    monkeypatch.setattr(supervisor, "_set_loop_status_fields", lambda *_: None)
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda name, detail: events.append((name, detail)),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        lambda: pytest.fail(
+            "incomplete source must fail before portal lock acquisition"
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: pytest.fail(
+            "incomplete source must not quiesce the managed child"
+        ),
+    )
+
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=987654),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_deferred_reason"
+    ] == expected_reason
+    assert loop.config.status_extra_fields[
+        "control_plane_source_identity_missing_fields"
+    ] == list(missing_fields)
+    assert events[0][0] == "supervisor_control_plane_reload_deferred"
+
+
+@pytest.mark.parametrize(
+    ("projection", "expected_reason"),
+    [
+        (
+            _authenticated_watchdog_projection(active=True),
+            "database_portal_claim_or_recovery_saga",
+        ),
+        (
+            _inconclusive_watchdog_projection(),
+            "database_portal_projection_inconclusive",
+        ),
+        (
+            {
+                **_authenticated_watchdog_projection(active=False),
+                "unexpected": "not-closed",
+            },
+            "database_portal_projection_not_admitted",
+        ),
+        (
+            {
+                **_authenticated_watchdog_projection(active=False),
+                "reason": "unrecognized-idle-claim",
+            },
+            "database_portal_projection_not_admitted",
+        ),
+        (
+            {
+                **_authenticated_watchdog_projection(active=False),
+                "quack_owner": {
+                    key: value
+                    for key, value in _owner_binding(41).items()
+                    if key != "process_birth_id"
+                },
+            },
+            "database_portal_projection_not_admitted",
+        ),
+    ],
+    ids=(
+        "active",
+        "inconclusive",
+        "open-field-set",
+        "unrecognized-idle-reason",
+        "incomplete-owner-binding",
+    ),
+)
+def test_source_reload_defers_unsafe_portal_before_quiescence(
+    tmp_path,
+    monkeypatch,
+    projection,
+    expected_reason,
+):
+    config = _config(tmp_path)
+    PortalTaskState().save(config.state_path)
+    supervisor = PortalImplementationSupervisor(config)
+    order: list[str] = []
+
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        _changed_control_plane_projection,
+    )
+    monkeypatch.setattr(supervisor, "_record_event", lambda *_: None)
+
+    @contextmanager
+    def portal_fence():
+        order.append("portal_fence_enter")
+        try:
+            yield config.database_program
+        finally:
+            order.append("portal_fence_exit")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection_fenced",
+        lambda _program: order.append("pre_projection") or projection,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unsafe portal projection must not quiesce the managed child"
+        ),
+    )
+
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=987654),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert order == [
+        "portal_fence_enter",
+        "pre_projection",
+        "portal_fence_exit",
+    ]
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_deferred_reason"
+    ] == expected_reason
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_quiescence"
+    ]["attempted"] is False
+
+
+def test_source_reload_holds_portal_mutation_fence_across_idle_quiescence_and_postcheck(
+    tmp_path,
+    monkeypatch,
+):
+    config = _config(tmp_path)
+    PortalTaskState().save(config.state_path)
+    supervisor = PortalImplementationSupervisor(config)
+    order: list[str] = []
+    projection_count = 0
+
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        _changed_control_plane_projection,
+    )
     monkeypatch.setattr(supervisor, "_record_event", lambda *_: None)
     monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
     monkeypatch.setattr(
@@ -208,36 +405,37 @@ def test_source_reload_quiesces_before_post_idle_claim_recheck(
         lambda: False,
     )
 
-    def quiesce(*_args, **_kwargs):
-        nonlocal claim_visible
-        order.append("quiesce")
-        claim_visible = claim_appears
-        return {"quiesced": True, "supervised_child_alive": False}
+    @contextmanager
+    def portal_fence():
+        order.append("portal_fence_enter")
+        try:
+            yield config.database_program
+        finally:
+            order.append("portal_fence_exit")
 
-    def project():
-        order.append("project")
-        assert claim_visible is claim_appears
-        projection = _idle_projection()
-        if claim_visible:
-            projection.update(
-                {
-                    "activity_detected": True,
-                    "defer_reload": True,
-                    "defer_maintenance": True,
-                    "reason": "database_portal_claim_or_recovery_saga",
-                }
-            )
-        return projection
+    def project(_program):
+        nonlocal projection_count
+        projection_count += 1
+        order.append(f"projection_{projection_count}")
+        return _authenticated_watchdog_projection(active=False)
 
     monkeypatch.setattr(
         supervisor,
-        "_quiesce_supervised_child_for_control_gate",
-        quiesce,
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
     )
     monkeypatch.setattr(
         supervisor,
-        "_database_portal_reload_projection",
+        "_database_portal_reload_projection_fenced",
         project,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: (
+            order.append("quiesce")
+            or {"quiesced": True, "supervised_child_alive": False}
+        ),
     )
 
     decision = supervisor._supervisor_loop_watchdog_decision(
@@ -246,20 +444,156 @@ def test_source_reload_quiesces_before_post_idle_claim_recheck(
         {},
     )
 
-    assert order == ["quiesce", "project"]
-    if claim_appears:
-        if sealed_dispatch:
-            assert decision.action == "recycle"
-            assert decision.reason == "control_plane_reload_deferred"
-        else:
-            assert decision.action == "stop"
-            assert decision.reason == "control_plane_reload_deferred_unsealed"
-            assert decision.status == (
-                CONTROL_PLANE_RELOAD_DEFERRED_UNSEALED_STATUS
-            )
+    assert order == [
+        "portal_fence_enter",
+        "projection_1",
+        "quiesce",
+        "projection_2",
+        "portal_fence_exit",
+    ]
+    assert decision.action == "stop"
+    assert decision.reason == "control_plane_source_changed"
+    assert decision.status == CONTROL_PLANE_RELOAD_STATUS
+
+
+@pytest.mark.parametrize("sealed_dispatch", [True, False])
+def test_source_reload_postcheck_race_never_authorizes_reload(
+    tmp_path,
+    monkeypatch,
+    sealed_dispatch,
+):
+    config = _config(tmp_path)
+    config.plan_bound_dispatch = sealed_dispatch
+    PortalTaskState().save(config.state_path)
+    supervisor = PortalImplementationSupervisor(config)
+    projections = iter(
+        (
+            _authenticated_watchdog_projection(active=False),
+            _authenticated_watchdog_projection(active=True),
+        )
+    )
+    order: list[str] = []
+
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        _changed_control_plane_projection,
+    )
+    monkeypatch.setattr(supervisor, "_record_event", lambda *_: None)
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+
+    @contextmanager
+    def portal_fence():
+        order.append("portal_fence_enter")
+        try:
+            yield config.database_program
+        finally:
+            order.append("portal_fence_exit")
+
+    def project(_program):
+        order.append("project")
+        return next(projections)
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection_fenced",
+        project,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: (
+            order.append("quiesce") or {"quiesced": True}
+        ),
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        SimpleNamespace(config=SimpleNamespace(status_extra_fields={})),
+        SimpleNamespace(pid=987654),
+        {},
+    )
+
+    assert order == [
+        "portal_fence_enter",
+        "project",
+        "quiesce",
+        "project",
+        "portal_fence_exit",
+    ]
+    assert decision.reason != "control_plane_source_changed"
+    if sealed_dispatch:
+        assert decision.action == "recycle"
+        assert decision.reason == "control_plane_reload_deferred"
     else:
         assert decision.action == "stop"
-        assert decision.status == CONTROL_PLANE_RELOAD_STATUS
+        assert decision.reason == "control_plane_reload_deferred_unsealed"
+        assert decision.status == CONTROL_PLANE_RELOAD_DEFERRED_UNSEALED_STATUS
+
+
+def test_source_reload_owner_mutation_lock_contention_defers_without_quiescence(
+    tmp_path,
+    monkeypatch,
+):
+    config = _config(tmp_path)
+    PortalTaskState().save(config.state_path)
+    supervisor = PortalImplementationSupervisor(config)
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state
+
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        _changed_control_plane_projection,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_reconciliation_program_environment",
+        lambda *_args, **_kwargs: nullcontext(),
+    )
+    monkeypatch.setattr(
+        duckdb_state,
+        "quack_owner_mutation_write_lock_path",
+        lambda _store: tmp_path / "contended-owner.lock",
+    )
+
+    @contextmanager
+    def contended_lock(_path, *, timeout_seconds):
+        assert timeout_seconds == 2.0
+        raise TimeoutError("owner mutation lock remains active")
+        yield
+
+    monkeypatch.setattr(duckdb_state, "exclusive_file_lock", contended_lock)
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: pytest.fail(
+            "lock contention must not quiesce the managed child"
+        ),
+    )
+
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=987654),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_deferred_reason"
+    ] == "database_portal_projection_inconclusive"
+    assert loop.config.status_extra_fields[
+        "database_portal_reload_projection"
+    ]["error_type"] == "TimeoutError"
 
 
 @pytest.mark.parametrize(

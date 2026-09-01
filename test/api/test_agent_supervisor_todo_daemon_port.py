@@ -15548,6 +15548,7 @@ def test_implementation_supervisor_idle_source_drift_requests_process_reload(
     supervisor._loaded_control_plane_source = {
         "source_id": "loaded-source",
         "repository_revision": "loaded-revision",
+        "control_plane_tree_id": "loaded-tree",
     }
     monkeypatch.setattr(
         supervisor,
@@ -15555,6 +15556,7 @@ def test_implementation_supervisor_idle_source_drift_requests_process_reload(
         lambda: {
             "source_id": "current-source",
             "repository_revision": "current-revision",
+            "control_plane_tree_id": "current-tree",
         },
     )
     loop = SimpleNamespace(
@@ -15612,6 +15614,7 @@ def test_implementation_supervisor_active_source_drift_defers_without_attempt_ch
     supervisor._loaded_control_plane_source = {
         "source_id": "loaded-source",
         "repository_revision": "loaded-revision",
+        "control_plane_tree_id": "loaded-tree",
     }
     monkeypatch.setattr(
         supervisor,
@@ -15619,6 +15622,7 @@ def test_implementation_supervisor_active_source_drift_defers_without_attempt_ch
         lambda: {
             "source_id": "current-source",
             "repository_revision": "current-revision",
+            "control_plane_tree_id": "current-tree",
         },
     )
     loop = SimpleNamespace(
@@ -15665,6 +15669,7 @@ def test_implementation_supervisor_stale_phase_does_not_defer_source_reload(
     supervisor._loaded_control_plane_source = {
         "source_id": "loaded-source",
         "repository_revision": "loaded-revision",
+        "control_plane_tree_id": "loaded-tree",
     }
     monkeypatch.setattr(
         supervisor,
@@ -15672,6 +15677,7 @@ def test_implementation_supervisor_stale_phase_does_not_defer_source_reload(
         lambda: {
             "source_id": "current-source",
             "repository_revision": "current-revision",
+            "control_plane_tree_id": "current-tree",
         },
     )
 
