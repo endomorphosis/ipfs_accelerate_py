@@ -63740,6 +63740,271 @@ def _m38_parse_json(value: Any) -> Any:
     return json.loads(str(value))
 
 
+# M41's pre-authoritative materialization exposed two closed historical
+# overlays in the otherwise event-derived generation-30 projection.  Keep the
+# default M38 verifier strict.  M42 alone may opt into this exact manifest,
+# whose source and target row identities make the exception non-extensible.
+_M42_LEGACY_PROJECTION_MANIFEST_SCHEMA = (
+    "sawm/m42-exact-legacy-projection-manifest@1"
+)
+_M42_LEGACY_EVIDENCE_PROJECTION_SCHEMA = (
+    "sawm/m42-exact-legacy-evidence-projection@1"
+)
+_M42_LEGACY_VALIDATION_PROJECTION_SCHEMA = (
+    "sawm/m42-legacy-validation-table-projection@1"
+)
+_M42_LEGACY_PROJECTION_WATERMARK = 291
+_M42_LEGACY_EVIDENCE_NODE_COUNT = 48
+_M42_LEGACY_EVIDENCE_EVENT_COUNT = 37
+_M42_LEGACY_VALIDATION_EVENT_COUNT = 11
+_M42_LEGACY_PASSED_VALIDATION_EVENT_COUNT = 11
+_M42_LEGACY_VALIDATION_EVIDENCE_NODE_COUNT = 11
+_M42_LEGACY_EVIDENCE_REFRESHED_AT = "2026-08-28T18:09:34Z"
+_M42_LEGACY_EVIDENCE_REFRESH_ROWS = MappingProxyType(
+    {
+        "baguqeera64g62wvhcztxa4gkhrk56nefwyokjkewqryq42xudkppzbcedyfa": MappingProxyType(
+            {
+                "source_created_at": "2026-08-28T06:02:14Z",
+                "source_row_cid": "sha256:abe8d53783389513be9fed38d3d68638a6d84461d7a148f0a3e7bbcfb33e769b",
+                "target_row_cid": "sha256:f47342705cb7cfa63e1c7f67728761432d5698e146d544aad731f6ac740b93d9",
+            }
+        ),
+        "baguqeera67miu7o4o3jkpc5uym5tg5jyhowndxslfpaxpijjckkuxqaqfzea": MappingProxyType(
+            {
+                "source_created_at": "2026-08-28T05:38:54Z",
+                "source_row_cid": "sha256:b8ef296803d1de6693de825fd2dd39adc04fcfb99a0b1c072dddf4b259f26644",
+                "target_row_cid": "sha256:02b02fbd6547d3eaea58288e44c29f0f7685e281c6997c0786eb93c07e0d9e24",
+            }
+        ),
+        "baguqeerabehvcbt2vipax25xxe3s4mxrt3fziiptvlqehphz7x7dq5bkxxbq": MappingProxyType(
+            {
+                "source_created_at": "2026-08-28T15:21:37Z",
+                "source_row_cid": "sha256:0e3127ff56af7dd40bcfbd3eeb635e1f7b80b892c44463a0af1119d69009b99a",
+                "target_row_cid": "sha256:7125ce472bc7c1bf5143d134947089726b442cfe9277aa3d0890dcb3df246ed6",
+            }
+        ),
+        "baguqeeraiubji6kqfztynxvvlr3dblpbmjmnih2r3eog6giku7tkuka7jw2q": MappingProxyType(
+            {
+                "source_created_at": "2026-08-28T00:58:15Z",
+                "source_row_cid": "sha256:c00b0df624b8ff5f01776c9f24fdf7f724ae73e4a1ffbdb1e6f7513c811403ee",
+                "target_row_cid": "sha256:77b39dfba97c47ce6cbc8301f8f69f98079e76fdeb39e90eef86d2c1047297c4",
+            }
+        ),
+        "baguqeeraqobntgsuhtwiymnapetjhqxviswrpzm3ur7sthj6jevkqnddjwoa": MappingProxyType(
+            {
+                "source_created_at": "2026-08-28T17:51:44Z",
+                "source_row_cid": "sha256:a4b48f3fd162d782f702029c95d01539daa343f8ba6568dd52af67e35344ee1c",
+                "target_row_cid": "sha256:99accbcdbdda36c9e1bada3ca1eacf88f38160532464ea088a70836cf9851128",
+            }
+        ),
+        "baguqeerarlklpa7u2ouvpfzay4g6pq3bofeu2zsal6wjdwf6xwa4gfnda6ca": MappingProxyType(
+            {
+                "source_created_at": "2026-08-28T16:47:48Z",
+                "source_row_cid": "sha256:bc76c808ca7ad145eaa9050f0c14c59993558a7c72e24a2ded3010b0b54ddaf8",
+                "target_row_cid": "sha256:93a90ccd7d166a046be75808858012815b80eed5d9f2dfb0f4ad7b4cdb9bd7ed",
+            }
+        ),
+        "baguqeeras265rcsre2ghlhd55dpyqoy5nac62f5skzqcouqcwctb6jodueia": MappingProxyType(
+            {
+                "source_created_at": "2026-08-28T07:52:00Z",
+                "source_row_cid": "sha256:802a2087d8b4e314c268143cd1889a103ab65d8ae3dccfc0ce563888bffbcc73",
+                "target_row_cid": "sha256:50d9e8959a86428cb2fbe623cfe7cb9d906ed8f1863cc477ba250be1ba58b990",
+            }
+        ),
+        "baguqeeras7gwvwpzs5hrwkpp7xpilohs7r7gwvvi54vlmrlhqbzwagboyvfq": MappingProxyType(
+            {
+                "source_created_at": "2026-08-28T06:30:28Z",
+                "source_row_cid": "sha256:c16695353c01b03f015fd27baf41586244e7da9b2d16b9b66dd0ce2fabc5b6d5",
+                "target_row_cid": "sha256:a20a80de786182cc5bc6ed9581f399fa612efecf31e10653becc4fdc2388bf78",
+            }
+        ),
+        "baguqeerayajru4bzdvejwck3pb63hxr2b5htybq3gzmbblhbf5rojnqwz7tq": MappingProxyType(
+            {
+                "source_created_at": "2026-08-28T02:38:42Z",
+                "source_row_cid": "sha256:0b9e5e105bd87f51ac285f64ca884497f042dcdefe41ef123bbe11fb10336512",
+                "target_row_cid": "sha256:a1eb822a5d2b2c134cad688157a35058725d81e7708fc11d8efb7bad0a4f7ffc",
+            }
+        ),
+    }
+)
+_M42_LEGACY_COMPACT_VALIDATION_EVIDENCE = MappingProxyType(
+    {
+        "evidence_id": "baguqeerahry3vxlounemhcsylqj7vkhgk62b7jotdea6q6sxnkqrflki2pmq",
+        "source_body_cid": "sha256:6581b965b2404afa6cba17ef181756c8690da1bc48a621470cbe227334a03004",
+        "target_body": MappingProxyType(
+            {
+                "result_id": "baguqeerah3puw2ytaju7fxammm5jeiefb5ll5uyk47qn2dknu4ydf4cpscca",
+                "run_id": "baguqeeraj54p4vgrv3n7xwniimorcjlmsuj2qbeygxssiegv5iagl6weq2oq",
+            }
+        ),
+        "target_body_cid": "sha256:0ed5d606633ca935301604f53a0f57e52b0bebeb7e8c48b38a6914e48fd566e8",
+        "source_row_cid": "sha256:29df92d674ba3265fa44362a7ea4fe93c38bfa5b080cdd377b435653e98fdc07",
+        "target_row_cid": "sha256:247eec0b4d8dad4b8dc8dcda2bf87f91988fb0ec8ba0868138667ba1d3e9fc6b",
+    }
+)
+_M42_LEGACY_VALIDATION_RUN_OVERLAY = MappingProxyType(
+    {
+        "global_sequence": 106,
+        "run_id": "baguqeeraj54p4vgrv3n7xwniimorcjlmsuj2qbeygxssiegv5iagl6weq2oq",
+        "source_attempt_id": "SAWM-000-operator-bootstrap",
+        "target_attempt_id": "",
+        "source_row_cid": "sha256:9500a0e00fa77b882342f205240e738f282215488eb115d9db6133757a0f3428",
+        "target_row_cid": "sha256:ff305b797033982d05af3b9e7579bce518bc7beee46ff0653b70611987df0e14",
+    }
+)
+_M42_LEGACY_PROJECTION_MANIFEST_CID = (
+    "sha256:b634a4ec5a3adbf04874443a779161defe183991e263eea9c76edc867bb5ff04"
+)
+_M42_LEGACY_EVIDENCE_PROJECTION_DIGEST = (
+    "sha256:f3b5f2d9c2c2b1a78b81c2a90b4b60bcf727dbe9272c7c6213441a2c5a3839c9"
+)
+_M42_LEGACY_VALIDATION_RUNS_DIGEST = (
+    "sha256:a025721f25ddf3db874f15b6e5f401760d6437fe41d9f7d5b33995600ceb4ac3"
+)
+_M42_LEGACY_VALIDATION_RESULTS_DIGEST = (
+    "sha256:17e1297bc906f35e2450a45eebb520806495f8d84e97ad3a081b9cb5db7b70ff"
+)
+
+
+def _m42_projection_row_identity(
+    schema: str,
+    columns: tuple[str, ...],
+    row: tuple[Any, ...],
+) -> str:
+    if len(columns) != len(row):
+        raise MigrationRequired("M42 legacy projection row shape is invalid")
+    return _identity({"schema": schema, **dict(zip(columns, row, strict=True))})
+
+
+def _m42_legacy_projection_manifest() -> dict[str, Any]:
+    return {
+        "schema": _M42_LEGACY_PROJECTION_MANIFEST_SCHEMA,
+        "event_watermark": _M42_LEGACY_PROJECTION_WATERMARK,
+        "evidence_node_count": _M42_LEGACY_EVIDENCE_NODE_COUNT,
+        "evidence_event_count": _M42_LEGACY_EVIDENCE_EVENT_COUNT,
+        "validation_event_count": _M42_LEGACY_VALIDATION_EVENT_COUNT,
+        "passed_validation_event_count": (
+            _M42_LEGACY_PASSED_VALIDATION_EVENT_COUNT
+        ),
+        "validation_evidence_node_count": (
+            _M42_LEGACY_VALIDATION_EVIDENCE_NODE_COUNT
+        ),
+        "evidence_refresh_rows": [
+            {
+                "evidence_id": evidence_id,
+                "source_created_at": control["source_created_at"],
+                "target_created_at": _M42_LEGACY_EVIDENCE_REFRESHED_AT,
+                "source_row_cid": control["source_row_cid"],
+                "target_row_cid": control["target_row_cid"],
+            }
+            for evidence_id, control in sorted(
+                _M42_LEGACY_EVIDENCE_REFRESH_ROWS.items()
+            )
+        ],
+        "compact_validation_evidence": {
+            key: (
+                dict(value)
+                if isinstance(value, Mapping)
+                else value
+            )
+            for key, value in _M42_LEGACY_COMPACT_VALIDATION_EVIDENCE.items()
+        },
+        "validation_run_overlay": dict(_M42_LEGACY_VALIDATION_RUN_OVERLAY),
+    }
+
+
+def _m42_apply_exact_legacy_evidence_overlay(
+    rows: Sequence[tuple[Any, ...]],
+    *,
+    watermark: int,
+) -> list[tuple[Any, ...]]:
+    """Apply only M42's sealed ten-row historical evidence overlay."""
+
+    if int(watermark) != _M42_LEGACY_PROJECTION_WATERMARK:
+        raise MigrationRequired("M42 legacy evidence overlay watermark differs")
+    if _identity(_m42_legacy_projection_manifest()) != (
+        _M42_LEGACY_PROJECTION_MANIFEST_CID
+    ):
+        raise MaterializationError("M42 legacy projection manifest CID differs")
+    evidence_columns = (
+        "evidence_id",
+        "parent_evidence_id",
+        "task_cid",
+        "evidence_kind",
+        "digest",
+        "created_at",
+        "body_json",
+    )
+    if len(rows) != _M42_LEGACY_EVIDENCE_NODE_COUNT:
+        raise MigrationRequired("M42 legacy evidence source count differs")
+    if any(len(row) != len(evidence_columns) for row in rows):
+        raise MigrationRequired("M42 legacy evidence source row shape differs")
+    by_id = {str(row[0]): tuple(row) for row in rows}
+    if len(by_id) != len(rows):
+        raise MigrationRequired("M42 legacy evidence source identities duplicate")
+    required = set(_M42_LEGACY_EVIDENCE_REFRESH_ROWS) | {
+        str(_M42_LEGACY_COMPACT_VALIDATION_EVIDENCE["evidence_id"])
+    }
+    if not required.issubset(by_id):
+        raise MigrationRequired("M42 legacy evidence overlay is partial")
+
+    transformed = dict(by_id)
+    for evidence_id, control in _M42_LEGACY_EVIDENCE_REFRESH_ROWS.items():
+        source = transformed[evidence_id]
+        if (
+            source[5] != control["source_created_at"]
+            or _m42_projection_row_identity(
+                "sawm/evidence-projection-row@1", evidence_columns, source
+            )
+            != control["source_row_cid"]
+        ):
+            raise MigrationRequired(
+                "M42 legacy evidence refresh source row differs"
+            )
+        target = source[0:5] + (_M42_LEGACY_EVIDENCE_REFRESHED_AT,) + source[6:]
+        if _m42_projection_row_identity(
+            "sawm/evidence-projection-row@1", evidence_columns, target
+        ) != control["target_row_cid"]:
+            raise MaterializationError(
+                "M42 legacy evidence refresh target row differs"
+            )
+        transformed[evidence_id] = target
+
+    compact = _M42_LEGACY_COMPACT_VALIDATION_EVIDENCE
+    compact_id = str(compact["evidence_id"])
+    source = transformed[compact_id]
+    try:
+        source_body = _m38_parse_json(source[6])
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise MigrationRequired(
+            "M42 compact validation evidence source body is invalid"
+        ) from exc
+    if (
+        _identity(source_body) != compact["source_body_cid"]
+        or _m42_projection_row_identity(
+            "sawm/evidence-projection-row@1", evidence_columns, source
+        )
+        != compact["source_row_cid"]
+    ):
+        raise MigrationRequired(
+            "M42 compact validation evidence source row differs"
+        )
+    target_body = dict(compact["target_body"])
+    if _identity(target_body) != compact["target_body_cid"]:
+        raise MaterializationError(
+            "M42 compact validation evidence target body differs"
+        )
+    target = source[0:6] + (_canonical(target_body).decode("utf-8"),)
+    if _m42_projection_row_identity(
+        "sawm/evidence-projection-row@1", evidence_columns, target
+    ) != compact["target_row_cid"]:
+        raise MaterializationError(
+            "M42 compact validation evidence target row differs"
+        )
+    transformed[compact_id] = target
+    return sorted(transformed.values(), key=lambda row: str(row[0]))
+
+
 def _m39_exact_row_matches(
     row: Any,
     columns: tuple[str, ...],
@@ -64022,6 +64287,12 @@ def _m38_evidence_projection_from_events(
 
         if event_type == "intent.evidence_recorded":
             evidence_event_count += 1
+            # ``record_evidence`` samples the evidence-node ``created_at``
+            # before ``_append_event`` independently samples the outer event
+            # ``recorded_at``.  A second boundary between those calls is
+            # legitimate.  The inner time remains bound by the event CID and
+            # is exact-matched to the projected evidence row below; the outer
+            # time is independently bound to the domain-event row above.
             if (
                 set(inner)
                 != {
@@ -64037,7 +64308,6 @@ def _m38_evidence_projection_from_events(
                 or type(inner.get("revision")) is not int
                 or inner.get("revision") != 0
                 or attempt_id != ""
-                or envelope.get("recorded_at") != inner.get("created_at")
             ):
                 raise MigrationRequired("M38 evidence event envelope differs")
             evidence_id = require_text(inner.get("evidence_id"), field="evidence_id")
@@ -64111,13 +64381,17 @@ def _m38_evidence_projection_from_events(
         recorded_at = require_text(inner.get("recorded_at"), field="recorded_at")
         argv = inner.get("argv")
         validation_body = inner.get("body")
+        # ``record_validation_result`` similarly samples the validation-run
+        # time before ``_append_event`` samples the outer event time.  Bind
+        # the former through ``run_id`` and the latter through the event CID;
+        # do not require the two independently authoritative observations to
+        # be textually equal.
         if (
             outcome not in {"passed", "failed", "error", "skipped"}
             or not isinstance(argv, list)
             or any(not isinstance(argument, str) for argument in argv)
             or not isinstance(validation_body, Mapping)
             or not isinstance(attempt_id, str)
-            or envelope.get("recorded_at") != recorded_at
             or envelope.get("subject_id") != result_id
             or task_cid != inner_task_cid
             or run_id
@@ -64264,6 +64538,320 @@ def _verify_m38_evidence_projection(
             }
         ),
         "complete_evidence_projection_verified": True,
+    }
+
+
+def _m42_normalized_projection_rows(
+    raw_rows: Sequence[Any],
+    *,
+    columns: tuple[str, ...],
+    noun: str,
+) -> list[tuple[Any, ...]]:
+    """Normalize named Quack rows without weakening canonical JSON checks."""
+
+    normalized: list[tuple[Any, ...]] = []
+    for raw_row in raw_rows:
+        if isinstance(raw_row, Mapping):
+            if set(raw_row) != set(columns):
+                raise MigrationRequired(f"M42 {noun} row shape differs")
+            row = tuple(raw_row[column] for column in columns)
+        else:
+            try:
+                row = tuple(raw_row[index] for index in range(len(columns)))
+            except (IndexError, KeyError, TypeError) as exc:
+                raise MigrationRequired(f"M42 {noun} row shape differs") from exc
+            if len(raw_row) != len(columns):
+                raise MigrationRequired(f"M42 {noun} row shape differs")
+        encoded = row[-1]
+        if isinstance(encoded, Mapping):
+            canonical = _canonical(encoded).decode("utf-8")
+        else:
+            if isinstance(encoded, bytes):
+                try:
+                    text = encoded.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise MigrationRequired(f"M42 {noun} body is invalid") from exc
+            elif isinstance(encoded, str):
+                text = encoded
+            else:
+                raise MigrationRequired(f"M42 {noun} body is invalid")
+            try:
+                canonical = _canonical(_m38_parse_json(text)).decode("utf-8")
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise MigrationRequired(f"M42 {noun} body is invalid") from exc
+            if text != canonical:
+                raise MigrationRequired(f"M42 {noun} body is not canonical")
+        normalized.append(row[:-1] + (canonical,))
+    return normalized
+
+
+def _m42_legacy_validation_table_projection(
+    connection: Any,
+) -> dict[str, Any]:
+    """Verify all eleven validation rows plus the sole sealed attempt overlay."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    raw_events = connection.execute(
+        "SELECT global_sequence,attempt_id,body_json FROM domain_events "
+        "WHERE global_sequence<=? AND event_type='intent.validation_recorded' "
+        "ORDER BY global_sequence",
+        [_M42_LEGACY_PROJECTION_WATERMARK],
+    ).fetchall()
+    event_rows = _m42_normalized_projection_rows(
+        raw_events,
+        columns=("global_sequence", "attempt_id", "body_json"),
+        noun="validation event projection",
+    )
+    if len(event_rows) != _M42_LEGACY_VALIDATION_EVENT_COUNT:
+        raise MigrationRequired("M42 validation event projection count differs")
+
+    run_columns = (
+        "run_id",
+        "task_cid",
+        "attempt_id",
+        "started_at",
+        "finished_at",
+        "status",
+        "command_digest",
+        "body_json",
+    )
+    result_columns = (
+        "result_id",
+        "run_id",
+        "task_cid",
+        "ordinal",
+        "outcome",
+        "evidence_digest",
+        "body_json",
+    )
+    expected_runs: list[tuple[Any, ...]] = []
+    expected_results: list[tuple[Any, ...]] = []
+    overlay_seen = 0
+    overlay = _M42_LEGACY_VALIDATION_RUN_OVERLAY
+    for global_sequence, attempt_id, encoded_envelope in event_rows:
+        envelope = _m38_parse_json(encoded_envelope)
+        inner = envelope.get("body") if isinstance(envelope, Mapping) else None
+        if not isinstance(inner, Mapping):
+            raise MigrationRequired("M42 validation event body differs")
+        argv = inner.get("argv")
+        body = inner.get("body")
+        if not isinstance(argv, list) or not isinstance(body, Mapping):
+            raise MigrationRequired("M42 validation event body differs")
+        source_run = (
+            inner.get("run_id"),
+            inner.get("task_cid"),
+            attempt_id,
+            inner.get("recorded_at"),
+            inner.get("recorded_at"),
+            inner.get("outcome"),
+            content_identity({"argv": argv}),
+            _canonical({"argv": argv, **dict(body)}).decode("utf-8"),
+        )
+        if int(global_sequence) == int(overlay["global_sequence"]):
+            if (
+                source_run[0] != overlay["run_id"]
+                or source_run[2] != overlay["source_attempt_id"]
+                or _m42_projection_row_identity(
+                    "sawm/validation-run-projection-row@1",
+                    run_columns,
+                    source_run,
+                )
+                != overlay["source_row_cid"]
+            ):
+                raise MigrationRequired(
+                    "M42 legacy validation-run source row differs"
+                )
+            source_run = source_run[0:2] + (overlay["target_attempt_id"],) + source_run[3:]
+            if _m42_projection_row_identity(
+                "sawm/validation-run-projection-row@1", run_columns, source_run
+            ) != overlay["target_row_cid"]:
+                raise MaterializationError(
+                    "M42 legacy validation-run target row differs"
+                )
+            overlay_seen += 1
+        expected_runs.append(source_run)
+        expected_results.append(
+            (
+                inner.get("result_id"),
+                inner.get("run_id"),
+                inner.get("task_cid"),
+                0,
+                inner.get("outcome"),
+                inner.get("evidence_digest"),
+                _canonical(body).decode("utf-8"),
+            )
+        )
+    if overlay_seen != 1:
+        raise MigrationRequired("M42 legacy validation-run overlay is incomplete")
+
+    actual_runs = _m42_normalized_projection_rows(
+        connection.execute(
+            "SELECT run_id,task_cid,attempt_id,started_at,finished_at,status,"
+            "command_digest,body_json FROM validation_runs ORDER BY run_id"
+        ).fetchall(),
+        columns=run_columns,
+        noun="validation_runs",
+    )
+    actual_results = _m42_normalized_projection_rows(
+        connection.execute(
+            "SELECT result_id,run_id,task_cid,ordinal,outcome,evidence_digest,"
+            "body_json FROM validation_results ORDER BY result_id"
+        ).fetchall(),
+        columns=result_columns,
+        noun="validation_results",
+    )
+    expected_runs.sort(key=lambda row: str(row[0]))
+    expected_results.sort(key=lambda row: str(row[0]))
+    if (
+        len({str(row[0]) for row in actual_runs}) != len(actual_runs)
+        or len({str(row[0]) for row in actual_results}) != len(actual_results)
+        or actual_runs != expected_runs
+        or actual_results != expected_results
+    ):
+        raise MigrationRequired("M42 exact validation table projection differs")
+
+    runs_digest = _identity(
+        {
+            "schema": _M42_LEGACY_VALIDATION_PROJECTION_SCHEMA,
+            "manifest_cid": _M42_LEGACY_PROJECTION_MANIFEST_CID,
+            "event_watermark": _M42_LEGACY_PROJECTION_WATERMARK,
+            "table": "validation_runs",
+            "row_count": len(actual_runs),
+            "rows": actual_runs,
+        }
+    )
+    results_digest = _identity(
+        {
+            "schema": _M42_LEGACY_VALIDATION_PROJECTION_SCHEMA,
+            "manifest_cid": _M42_LEGACY_PROJECTION_MANIFEST_CID,
+            "event_watermark": _M42_LEGACY_PROJECTION_WATERMARK,
+            "table": "validation_results",
+            "row_count": len(actual_results),
+            "rows": actual_results,
+        }
+    )
+    if (
+        runs_digest != _M42_LEGACY_VALIDATION_RUNS_DIGEST
+        or results_digest != _M42_LEGACY_VALIDATION_RESULTS_DIGEST
+    ):
+        raise MigrationRequired("M42 validation table projection digest differs")
+    return {
+        "validation_run_count": len(actual_runs),
+        "validation_result_count": len(actual_results),
+        "validation_runs_digest": runs_digest,
+        "validation_results_digest": results_digest,
+        "legacy_validation_attempt_overlay_count": 1,
+        "complete_validation_table_projection_verified": True,
+    }
+
+
+def _verify_m42_exact_legacy_projection(
+    connection: Any,
+    *,
+    additional_evidence_rows: Sequence[tuple[Any, ...]] = (),
+) -> dict[str, Any]:
+    """Verify M42's prior projection through one closed historical overlay."""
+
+    projection = _m38_evidence_projection_from_events(
+        connection, watermark=_M42_LEGACY_PROJECTION_WATERMARK
+    )
+    if (
+        projection["evidence_node_count"] != _M42_LEGACY_EVIDENCE_NODE_COUNT
+        or projection["evidence_event_count"]
+        != _M42_LEGACY_EVIDENCE_EVENT_COUNT
+        or projection["validation_event_count"]
+        != _M42_LEGACY_VALIDATION_EVENT_COUNT
+        or projection["passed_validation_event_count"]
+        != _M42_LEGACY_PASSED_VALIDATION_EVENT_COUNT
+        or projection["validation_evidence_node_count"]
+        != _M42_LEGACY_VALIDATION_EVIDENCE_NODE_COUNT
+    ):
+        raise MigrationRequired("M42 legacy event-derived projection shape differs")
+    prior_rows = _m42_apply_exact_legacy_evidence_overlay(
+        projection["rows"], watermark=_M42_LEGACY_PROJECTION_WATERMARK
+    )
+    evidence_digest = _identity(
+        {
+            "schema": _M42_LEGACY_EVIDENCE_PROJECTION_SCHEMA,
+            "manifest_cid": _M42_LEGACY_PROJECTION_MANIFEST_CID,
+            "event_watermark": _M42_LEGACY_PROJECTION_WATERMARK,
+            "evidence_node_count": len(prior_rows),
+            "evidence_event_count": projection["evidence_event_count"],
+            "validation_event_count": projection["validation_event_count"],
+            "passed_validation_event_count": projection[
+                "passed_validation_event_count"
+            ],
+            "validation_evidence_node_count": projection[
+                "validation_evidence_node_count"
+            ],
+            "rows": prior_rows,
+        }
+    )
+    if evidence_digest != _M42_LEGACY_EVIDENCE_PROJECTION_DIGEST:
+        raise MigrationRequired("M42 legacy evidence projection digest differs")
+
+    evidence_columns = (
+        "evidence_id",
+        "parent_evidence_id",
+        "task_cid",
+        "evidence_kind",
+        "digest",
+        "created_at",
+        "body_json",
+    )
+    actual_rows = _m42_normalized_projection_rows(
+        connection.execute(
+            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+            "created_at,body_json FROM evidence_nodes ORDER BY evidence_id"
+        ).fetchall(),
+        columns=evidence_columns,
+        noun="legacy evidence projection",
+    )
+    normalized_additional = _m42_normalized_projection_rows(
+        list(additional_evidence_rows),
+        columns=evidence_columns,
+        noun="additional evidence projection",
+    )
+    expected_by_id = {str(row[0]): row for row in prior_rows}
+    if len(expected_by_id) != len(prior_rows):
+        raise MaterializationError("M42 transformed evidence identities duplicate")
+    for row in normalized_additional:
+        evidence_id = str(row[0])
+        if evidence_id in expected_by_id:
+            raise MigrationRequired("M42 additional evidence identity collides")
+        expected_by_id[evidence_id] = row
+    actual_by_id = {str(row[0]): row for row in actual_rows}
+    if len(actual_by_id) != len(actual_rows):
+        raise MigrationRequired("M42 actual evidence identities duplicate")
+    if set(actual_by_id) != set(expected_by_id):
+        raise MigrationRequired("M42 exact evidence projection membership differs")
+    if actual_by_id != expected_by_id:
+        raise MigrationRequired("M42 exact evidence projection rows differ")
+
+    validation = _m42_legacy_validation_table_projection(connection)
+    return {
+        "event_watermark": _M42_LEGACY_PROJECTION_WATERMARK,
+        "evidence_node_count": len(prior_rows),
+        "evidence_event_count": projection["evidence_event_count"],
+        "validation_event_count": projection["validation_event_count"],
+        "passed_validation_event_count": projection[
+            "passed_validation_event_count"
+        ],
+        "validation_evidence_node_count": projection[
+            "validation_evidence_node_count"
+        ],
+        "legacy_evidence_refresh_overlay_count": len(
+            _M42_LEGACY_EVIDENCE_REFRESH_ROWS
+        ),
+        "legacy_compact_validation_evidence_overlay_count": 1,
+        "additional_evidence_node_count": len(normalized_additional),
+        "legacy_projection_manifest_cid": _M42_LEGACY_PROJECTION_MANIFEST_CID,
+        "legacy_evidence_projection_digest": evidence_digest,
+        "exact_legacy_evidence_overlay_verified": True,
+        **validation,
     }
 
 

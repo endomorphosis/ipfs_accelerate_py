@@ -6395,6 +6395,7 @@ def _m38_projection_event(
     event_type: str,
     inner: dict[str, object],
     attempt_id: str = "",
+    event_recorded_at: str | None = None,
 ) -> tuple[object, ...]:
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
         content_identity,
@@ -6410,7 +6411,12 @@ def _m38_projection_event(
         if event_type == "intent.evidence_recorded"
         else "recorded_at"
     )
-    recorded_at = str(inner[inner_time_field])
+    inner_recorded_at = str(inner[inner_time_field])
+    recorded_at = (
+        inner_recorded_at
+        if event_recorded_at is None
+        else str(event_recorded_at)
+    )
     envelope = {
         "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
         "event_type": event_type,
@@ -6600,6 +6606,514 @@ def test_m38_evidence_projection_derives_validation_and_folds_last_write() -> No
     assert result["passed_validation_event_count"] == 1
     assert result["validation_evidence_node_count"] == 1
     assert result["complete_evidence_projection_verified"] is True
+
+
+def test_m38_evidence_projection_binds_split_evidence_and_event_times() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m38_split_evidence_event_times_test",
+    )
+    inner = {
+        "evidence_id": "",
+        "parent_evidence_id": "",
+        "task_cid": "task:split-evidence-time",
+        "evidence_kind": "operator_control",
+        "digest": "sha256:split-evidence-time",
+        "body": {"bounded": True},
+        "created_at": "2026-09-01T01:10:00Z",
+        "revision": 0,
+    }
+    inner["evidence_id"] = _m38_evidence_id(inner)
+    evidence_row = (
+        inner["evidence_id"],
+        inner["parent_evidence_id"],
+        inner["task_cid"],
+        inner["evidence_kind"],
+        inner["digest"],
+        inner["created_at"],
+        materializer._canonical(inner["body"]).decode("utf-8"),
+    )
+    event = _m38_projection_event(
+        materializer,
+        sequence=1,
+        event_type="intent.evidence_recorded",
+        inner=inner,
+        event_recorded_at="2026-09-01T01:10:01Z",
+    )
+
+    result = materializer._verify_m38_evidence_projection(
+        _M38ProjectionConnection([event], [evidence_row]), watermark=1
+    )
+
+    assert result["evidence_node_count"] == 1
+    assert event[8] != inner["created_at"]
+
+    outer_row_tamper = list(event)
+    outer_row_tamper[8] = "2026-09-01T01:10:02Z"
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M38 evidence event envelope differs",
+    ):
+        materializer._verify_m38_evidence_projection(
+            _M38ProjectionConnection([tuple(outer_row_tamper)], [evidence_row]),
+            watermark=1,
+        )
+
+    inner_time_tamper = {
+        **inner,
+        "created_at": "2026-09-01T01:10:02Z",
+    }
+    inner_tampered_event = _m38_projection_event(
+        materializer,
+        sequence=1,
+        event_type="intent.evidence_recorded",
+        inner=inner_time_tamper,
+        event_recorded_at="2026-09-01T01:10:01Z",
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M38 evidence-node/event projection conflicts",
+    ):
+        materializer._verify_m38_evidence_projection(
+            _M38ProjectionConnection([inner_tampered_event], [evidence_row]),
+            watermark=1,
+        )
+
+
+def test_m38_evidence_projection_binds_split_validation_and_event_times() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m38_split_validation_event_times_test",
+    )
+    inner, evidence_row = _m38_validation_projection(
+        materializer,
+        task_cid="task:split-validation-time",
+        outcome="passed",
+        digest="sha256:split-validation-time",
+        recorded_at="2026-09-01T01:11:00Z",
+        attempt_id="attempt:split-validation-time",
+        argv=["python", "-m", "pytest"],
+    )
+    assert evidence_row is not None
+    event = _m38_projection_event(
+        materializer,
+        sequence=1,
+        event_type="intent.validation_recorded",
+        inner=inner,
+        attempt_id="attempt:split-validation-time",
+        event_recorded_at="2026-09-01T01:11:01Z",
+    )
+
+    result = materializer._verify_m38_evidence_projection(
+        _M38ProjectionConnection([event], [evidence_row]), watermark=1
+    )
+
+    assert result["validation_event_count"] == 1
+    assert result["passed_validation_event_count"] == 1
+    assert event[8] != inner["recorded_at"]
+
+    outer_row_tamper = list(event)
+    outer_row_tamper[8] = "2026-09-01T01:11:02Z"
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M38 evidence event envelope differs",
+    ):
+        materializer._verify_m38_evidence_projection(
+            _M38ProjectionConnection([tuple(outer_row_tamper)], [evidence_row]),
+            watermark=1,
+        )
+
+    inner_time_tamper = {
+        **inner,
+        "recorded_at": "2026-09-01T01:11:02Z",
+    }
+    inner_tampered_event = _m38_projection_event(
+        materializer,
+        sequence=1,
+        event_type="intent.validation_recorded",
+        inner=inner_time_tamper,
+        attempt_id="attempt:split-validation-time",
+        event_recorded_at="2026-09-01T01:11:01Z",
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M38 validation event envelope differs",
+    ):
+        materializer._verify_m38_evidence_projection(
+            _M38ProjectionConnection([inner_tampered_event], [evidence_row]),
+            watermark=1,
+        )
+
+
+def _install_synthetic_m42_evidence_overlay(
+    monkeypatch: pytest.MonkeyPatch,
+    materializer: ModuleType,
+) -> tuple[list[tuple[object, ...]], list[tuple[object, ...]]]:
+    columns = (
+        "evidence_id",
+        "parent_evidence_id",
+        "task_cid",
+        "evidence_kind",
+        "digest",
+        "created_at",
+        "body_json",
+    )
+    refresh_source = (
+        "evidence:refresh",
+        "",
+        "task:refresh",
+        "operator_control",
+        "sha256:refresh",
+        "2026-09-01T01:20:00Z",
+        "{}",
+    )
+    refresh_target = refresh_source[0:5] + (
+        "2026-09-01T01:20:01Z",
+    ) + refresh_source[6:]
+    full_body = {
+        "argv": ["python", "-m", "pytest"],
+        "outcome": "passed",
+        "result_id": "result:compact",
+        "run_id": "run:compact",
+    }
+    compact_body = {
+        "result_id": "result:compact",
+        "run_id": "run:compact",
+    }
+    compact_source = (
+        "evidence:compact",
+        "",
+        "task:compact",
+        "validation",
+        "sha256:compact",
+        "2026-09-01T01:21:00Z",
+        materializer._canonical(full_body).decode("utf-8"),
+    )
+    compact_target = compact_source[0:6] + (
+        materializer._canonical(compact_body).decode("utf-8"),
+    )
+    row_id = lambda row: materializer._m42_projection_row_identity(
+        "sawm/evidence-projection-row@1", columns, row
+    )
+    monkeypatch.setattr(materializer, "_M42_LEGACY_PROJECTION_WATERMARK", 1)
+    monkeypatch.setattr(materializer, "_M42_LEGACY_EVIDENCE_NODE_COUNT", 2)
+    monkeypatch.setattr(
+        materializer,
+        "_M42_LEGACY_EVIDENCE_REFRESHED_AT",
+        refresh_target[5],
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_M42_LEGACY_EVIDENCE_REFRESH_ROWS",
+        MappingProxyType(
+            {
+                refresh_source[0]: MappingProxyType(
+                    {
+                        "source_created_at": refresh_source[5],
+                        "source_row_cid": row_id(refresh_source),
+                        "target_row_cid": row_id(refresh_target),
+                    }
+                )
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_M42_LEGACY_COMPACT_VALIDATION_EVIDENCE",
+        MappingProxyType(
+            {
+                "evidence_id": compact_source[0],
+                "source_body_cid": materializer._identity(full_body),
+                "target_body": MappingProxyType(compact_body),
+                "target_body_cid": materializer._identity(compact_body),
+                "source_row_cid": row_id(compact_source),
+                "target_row_cid": row_id(compact_target),
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_M42_LEGACY_PROJECTION_MANIFEST_CID",
+        materializer._identity(materializer._m42_legacy_projection_manifest()),
+    )
+    return [refresh_source, compact_source], [refresh_target, compact_target]
+
+
+def test_m42_exact_legacy_evidence_overlay_is_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m42_exact_legacy_evidence_overlay_test",
+    )
+    source, target = _install_synthetic_m42_evidence_overlay(
+        monkeypatch, materializer
+    )
+
+    assert materializer._m42_apply_exact_legacy_evidence_overlay(
+        source, watermark=1
+    ) == sorted(target)
+
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M42 legacy evidence source count differs",
+    ):
+        materializer._m42_apply_exact_legacy_evidence_overlay(
+            [*source, source[0]], watermark=1
+        )
+
+    partial = [
+        ("evidence:other", *source[0][1:]),
+        source[1],
+    ]
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M42 legacy evidence overlay is partial",
+    ):
+        materializer._m42_apply_exact_legacy_evidence_overlay(
+            partial, watermark=1
+        )
+
+    wrong_timestamp = [
+        source[0][0:5] + ("2026-09-01T01:20:02Z",) + source[0][6:],
+        source[1],
+    ]
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M42 legacy evidence refresh source row differs",
+    ):
+        materializer._m42_apply_exact_legacy_evidence_overlay(
+            wrong_timestamp, watermark=1
+        )
+
+    wrong_kind = [
+        source[0][0:3] + ("validation",) + source[0][4:],
+        source[1],
+    ]
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M42 legacy evidence refresh source row differs",
+    ):
+        materializer._m42_apply_exact_legacy_evidence_overlay(
+            wrong_kind, watermark=1
+        )
+
+    wrong_body = [
+        source[0],
+        source[1][0:6] + ('{"run_id":"run:other"}',),
+    ]
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M42 compact validation evidence source row differs",
+    ):
+        materializer._m42_apply_exact_legacy_evidence_overlay(
+            wrong_body, watermark=1
+        )
+
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M42 legacy evidence overlay watermark differs",
+    ):
+        materializer._m42_apply_exact_legacy_evidence_overlay(
+            source, watermark=2
+        )
+
+
+class _M42ValidationProjectionConnection:
+    def __init__(
+        self,
+        event: tuple[object, ...],
+        runs: list[tuple[object, ...]],
+        results: list[tuple[object, ...]],
+    ) -> None:
+        self.event = event
+        self.runs = runs
+        self.results = results
+
+    def execute(
+        self, query: str, _parameters: object = None
+    ) -> _M38ProjectionResult:
+        if "FROM domain_events" in query:
+            return _M38ProjectionResult(
+                [(self.event[3], self.event[6], self.event[9])]
+            )
+        if "FROM validation_runs" in query:
+            return _M38ProjectionResult(sorted(self.runs))
+        if "FROM validation_results" in query:
+            return _M38ProjectionResult(sorted(self.results))
+        raise AssertionError(f"unexpected query: {query}")
+
+
+def test_m42_validation_tables_bind_the_exact_attempt_overlay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m42_exact_validation_table_overlay_test",
+    )
+    attempt_id = "attempt:source"
+    inner, _evidence = _m38_validation_projection(
+        materializer,
+        task_cid="task:validation-overlay",
+        outcome="passed",
+        digest="sha256:validation-overlay",
+        recorded_at="2026-09-01T01:22:00Z",
+        attempt_id=attempt_id,
+        argv=["python", "-m", "pytest"],
+    )
+    event = _m38_projection_event(
+        materializer,
+        sequence=1,
+        event_type="intent.validation_recorded",
+        inner=inner,
+        attempt_id=attempt_id,
+        event_recorded_at="2026-09-01T01:22:01Z",
+    )
+    run_columns = (
+        "run_id",
+        "task_cid",
+        "attempt_id",
+        "started_at",
+        "finished_at",
+        "status",
+        "command_digest",
+        "body_json",
+    )
+    source_run = (
+        inner["run_id"],
+        inner["task_cid"],
+        attempt_id,
+        inner["recorded_at"],
+        inner["recorded_at"],
+        inner["outcome"],
+        content_identity({"argv": inner["argv"]}),
+        materializer._canonical(
+            {"argv": inner["argv"], **inner["body"]}
+        ).decode("utf-8"),
+    )
+    target_run = source_run[0:2] + ("",) + source_run[3:]
+    result = (
+        inner["result_id"],
+        inner["run_id"],
+        inner["task_cid"],
+        0,
+        inner["outcome"],
+        inner["evidence_digest"],
+        materializer._canonical(inner["body"]).decode("utf-8"),
+    )
+    row_id = lambda row: materializer._m42_projection_row_identity(
+        "sawm/validation-run-projection-row@1", run_columns, row
+    )
+    monkeypatch.setattr(materializer, "_M42_LEGACY_PROJECTION_WATERMARK", 1)
+    monkeypatch.setattr(materializer, "_M42_LEGACY_VALIDATION_EVENT_COUNT", 1)
+    monkeypatch.setattr(
+        materializer,
+        "_M42_LEGACY_VALIDATION_RUN_OVERLAY",
+        MappingProxyType(
+            {
+                "global_sequence": 1,
+                "run_id": source_run[0],
+                "source_attempt_id": attempt_id,
+                "target_attempt_id": "",
+                "source_row_cid": row_id(source_run),
+                "target_row_cid": row_id(target_run),
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        materializer, "_M42_LEGACY_PROJECTION_MANIFEST_CID", "sha256:test"
+    )
+    connection = _M42ValidationProjectionConnection(
+        event, [target_run], [result]
+    )
+    runs_digest = materializer._identity(
+        {
+            "schema": materializer._M42_LEGACY_VALIDATION_PROJECTION_SCHEMA,
+            "manifest_cid": "sha256:test",
+            "event_watermark": 1,
+            "table": "validation_runs",
+            "row_count": 1,
+            "rows": [target_run],
+        }
+    )
+    results_digest = materializer._identity(
+        {
+            "schema": materializer._M42_LEGACY_VALIDATION_PROJECTION_SCHEMA,
+            "manifest_cid": "sha256:test",
+            "event_watermark": 1,
+            "table": "validation_results",
+            "row_count": 1,
+            "rows": [result],
+        }
+    )
+    monkeypatch.setattr(
+        materializer, "_M42_LEGACY_VALIDATION_RUNS_DIGEST", runs_digest
+    )
+    monkeypatch.setattr(
+        materializer, "_M42_LEGACY_VALIDATION_RESULTS_DIGEST", results_digest
+    )
+
+    verified = materializer._m42_legacy_validation_table_projection(connection)
+
+    assert verified["validation_run_count"] == 1
+    assert verified["validation_result_count"] == 1
+    assert verified["legacy_validation_attempt_overlay_count"] == 1
+
+    connection.runs = [source_run]
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M42 exact validation table projection differs",
+    ):
+        materializer._m42_legacy_validation_table_projection(connection)
+
+
+def test_m42_production_legacy_projection_manifest_is_closed() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m42_production_legacy_manifest_test",
+    )
+    manifest = materializer._m42_legacy_projection_manifest()
+
+    assert materializer._identity(manifest) == (
+        materializer._M42_LEGACY_PROJECTION_MANIFEST_CID
+    )
+    assert manifest["event_watermark"] == 291
+    assert manifest["evidence_node_count"] == 48
+    assert len(manifest["evidence_refresh_rows"]) == 9
+    assert len(
+        {
+            row["evidence_id"]
+            for row in manifest["evidence_refresh_rows"]
+        }
+    ) == 9
+    assert all(
+        row["source_row_cid"] != row["target_row_cid"]
+        for row in manifest["evidence_refresh_rows"]
+    )
+    assert manifest["compact_validation_evidence"]["source_row_cid"] != (
+        manifest["compact_validation_evidence"]["target_row_cid"]
+    )
+    assert manifest["validation_run_overlay"]["global_sequence"] == 106
+    assert manifest["validation_run_overlay"]["source_attempt_id"]
+    assert manifest["validation_run_overlay"]["target_attempt_id"] == ""
+    assert materializer._M42_LEGACY_EVIDENCE_PROJECTION_DIGEST.startswith(
+        "sha256:"
+    )
+    assert materializer._M42_LEGACY_VALIDATION_RUNS_DIGEST.startswith(
+        "sha256:"
+    )
+    assert materializer._M42_LEGACY_VALIDATION_RESULTS_DIGEST.startswith(
+        "sha256:"
+    )
+
+    strict = inspect.getsource(materializer._verify_m38_evidence_projection)
+    m42 = inspect.getsource(materializer._verify_m42_exact_legacy_projection)
+    assert "_m42_apply_exact_legacy_evidence_overlay" not in strict
+    assert "_m42_apply_exact_legacy_evidence_overlay" in m42
 
 
 def test_m38_evidence_projection_normalizes_named_quack_rows() -> None:
@@ -6920,7 +7434,7 @@ def test_m38_evidence_projection_rejects_malformed_event_row_binding(
         )
 
 
-def test_m38_evidence_projection_binds_outer_and_inner_recorded_at() -> None:
+def test_m38_evidence_projection_allows_independent_outer_and_inner_recorded_at() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
         content_identity,
     )
@@ -6962,13 +7476,21 @@ def test_m38_evidence_projection_binds_outer_and_inner_recorded_at() -> None:
         }
     )
 
-    with pytest.raises(
-        materializer.MigrationRequired,
-        match="M38 evidence event envelope differs",
-    ):
-        materializer._verify_m38_evidence_projection(
-            _M38ProjectionConnection([tuple(event)], []), watermark=1
-        )
+    evidence_row = (
+        inner["evidence_id"],
+        inner["parent_evidence_id"],
+        inner["task_cid"],
+        inner["evidence_kind"],
+        inner["digest"],
+        inner["created_at"],
+        materializer._canonical(inner["body"]).decode("utf-8"),
+    )
+    verified = materializer._verify_m38_evidence_projection(
+        _M38ProjectionConnection([tuple(event)], [evidence_row]), watermark=1
+    )
+
+    assert verified["evidence_node_count"] == 1
+    assert event[8] != inner["created_at"]
 
 
 @pytest.mark.parametrize(
