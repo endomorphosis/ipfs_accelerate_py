@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import resource
 import time
 from collections.abc import Iterable, Mapping, MutableMapping, Sequence
@@ -59,6 +60,10 @@ HARDWARE_PROFILE_SCHEMA: Final[str] = (
 PROVIDER_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/benchmark-provider-binding@1"
 )
+PROVIDER_USAGE_RECORD_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/benchmark-provider-usage@1"
+)
+PROVIDER_USAGE_RECORD_INTERFACE: Final[str] = "BenchmarkProviderUsage@1"
 SPAN_REPLAY_CERTIFICATE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/benchmark-span-replay-certificate@1"
 )
@@ -108,6 +113,37 @@ TOKEN_METRIC_NAMES: Final[tuple[str, ...]] = (
     "deterministic_llm_avoidance_ratio",
 )
 
+PROVIDER_USAGE_METRIC_NAMES: Final[tuple[str, ...]] = (
+    "provider_model_revision",
+    "safe_provider_request_id",
+    "provider_native_input_tokens",
+    "provider_native_output_tokens",
+    "provider_native_cached_tokens",
+    "provider_native_reasoning_tokens",
+    "model_call_count",
+    "model_call_class",
+    "provider_reported_charge",
+    "token_based_estimated_charge",
+)
+
+MODEL_CLASS_NAMES: Final[tuple[str, ...]] = (
+    "deterministic",
+    "local_small_model",
+    "local_medium_model",
+    "remote_standard_model",
+    "remote_frontier_model",
+    "human",
+)
+CALLS_BY_MODEL_CLASS_METRIC_NAMES: Final[tuple[str, ...]] = tuple(
+    f"calls_{name}" for name in MODEL_CLASS_NAMES
+)
+ESTIMATOR_METHODS: Final[tuple[str, ...]] = (
+    "token_price_snapshot",
+    "provider_quote",
+    "local_compute_model",
+    "manual_audit",
+)
+
 PROCESS_TREE_METRIC_NAMES: Final[tuple[str, ...]] = (
     "user_cpu_seconds",
     "system_cpu_seconds",
@@ -151,6 +187,7 @@ class BenchmarkTelemetryError(ValueError):
 
 class SampleStatus(str, Enum):
     MEASURED = "measured"
+    ESTIMATED = "estimated"
     UNAVAILABLE = "unavailable"
 
 
@@ -160,6 +197,36 @@ class UnavailableReason(str, Enum):
     HARDWARE_ABSENT = "hardware-absent"
     PROVIDER_OMITTED = "provider-omitted"
     COLLECTION_FAILED = "collection-failed"
+    NOT_REPORTED = "not-reported"
+    CREDENTIAL_UNSAFE = "credential-unsafe"
+
+
+class ModelClass(str, Enum):
+    DETERMINISTIC = "deterministic"
+    LOCAL_SMALL_MODEL = "local_small_model"
+    LOCAL_MEDIUM_MODEL = "local_medium_model"
+    REMOTE_STANDARD_MODEL = "remote_standard_model"
+    REMOTE_FRONTIER_MODEL = "remote_frontier_model"
+    HUMAN = "human"
+
+
+class EstimateMethod(str, Enum):
+    TOKEN_PRICE_SNAPSHOT = "token_price_snapshot"
+    PROVIDER_QUOTE = "provider_quote"
+    LOCAL_COMPUTE_MODEL = "local_compute_model"
+    MANUAL_AUDIT = "manual_audit"
+
+
+class ProviderUsageDisposition(str, Enum):
+    ADMITTED = "admitted"
+    QUARANTINED = "quarantined"
+
+
+class ProviderUsageQuarantineReason(str, Enum):
+    UNBOUND_USAGE = "unbound-usage"
+    CREDENTIAL_LEAKAGE = "credential-leakage"
+    ESTIMATED_AS_MEASURED = "estimated-as-measured"
+    MISSING_CAUSAL_IDENTITY = "missing-causal-identity"
 
 
 class SpanKind(str, Enum):
@@ -268,10 +335,18 @@ def _sensor_id(*parts: str) -> str:
 
 
 def _identity_digest(value: str) -> int:
-    """Map free-form identity text to a stable non-negative integer digest."""
+    """Map free-form identity text to a stable non-negative integer digest.
+
+    Integer-only samples are bounded by ``MAX_INTEGER``.  An 8-byte unsigned
+    prefix can exceed that bound, so the SHA-256 digest is folded into the
+    closed interval ``[0, MAX_INTEGER]``.
+    """
 
     digest = hashlib.sha256(value.encode("utf-8")).digest()
-    return int.from_bytes(digest[:8], "big")
+    return _integer(
+        int.from_bytes(digest, "big") % (MAX_INTEGER + 1),
+        "identity_digest",
+    )
 
 
 def seconds_to_millionths(seconds: float | int) -> int:
@@ -307,7 +382,7 @@ class _TelemetryContract(CanonicalContract):
 
 @dataclass(frozen=True)
 class TelemetrySample(_TelemetryContract):
-    """One metric observation: measured with receipt, or unavailable."""
+    """One metric observation: measured, labeled-estimated, or unavailable."""
 
     SCHEMA: ClassVar[str] = TELEMETRY_SAMPLE_SCHEMA
 
@@ -317,6 +392,9 @@ class TelemetrySample(_TelemetryContract):
     unit: str = ""
     value: int = 0
     reason_code: str = ""
+    estimator_id: str = ""
+    method: str = ""
+    price_snapshot_identity: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -339,6 +417,23 @@ class TelemetrySample(_TelemetryContract):
             "reason_code",
             _text(self.reason_code, "reason_code", required=False),
         )
+        object.__setattr__(
+            self,
+            "estimator_id",
+            _text(self.estimator_id, "estimator_id", required=False),
+        )
+        object.__setattr__(
+            self, "method", _text(self.method, "method", required=False)
+        )
+        object.__setattr__(
+            self,
+            "price_snapshot_identity",
+            _text(
+                self.price_snapshot_identity,
+                "price_snapshot_identity",
+                required=False,
+            ),
+        )
         if self.status is SampleStatus.MEASURED:
             if not self.unit:
                 raise BenchmarkTelemetryError(
@@ -348,6 +443,33 @@ class TelemetrySample(_TelemetryContract):
                 raise BenchmarkTelemetryError(
                     "measured sample cannot carry an unavailable reason"
                 )
+            if self.estimator_id or self.method or self.price_snapshot_identity:
+                raise BenchmarkTelemetryError(
+                    "measured sample cannot carry estimate labels"
+                )
+        elif self.status is SampleStatus.ESTIMATED:
+            if not self.unit:
+                raise BenchmarkTelemetryError(
+                    "estimated sample requires a unit"
+                )
+            if self.reason_code:
+                raise BenchmarkTelemetryError(
+                    "estimated sample cannot carry an unavailable reason"
+                )
+            if not self.estimator_id:
+                raise BenchmarkTelemetryError(
+                    "estimated sample requires estimator_id"
+                )
+            if not self.method:
+                raise BenchmarkTelemetryError(
+                    "estimated sample requires a labeled method"
+                )
+            try:
+                EstimateMethod(self.method)
+            except ValueError as exc:
+                raise BenchmarkTelemetryError(
+                    "method is not a supported estimate method"
+                ) from exc
         else:
             if not self.reason_code:
                 raise BenchmarkTelemetryError(
@@ -363,6 +485,10 @@ class TelemetrySample(_TelemetryContract):
             if self.value != 0 or self.unit:
                 raise BenchmarkTelemetryError(
                     "unavailable sample must not encode a numeric value or unit"
+                )
+            if self.estimator_id or self.method or self.price_snapshot_identity:
+                raise BenchmarkTelemetryError(
+                    "unavailable sample cannot carry estimate labels"
                 )
 
     @classmethod
@@ -380,6 +506,29 @@ class TelemetrySample(_TelemetryContract):
             sensor_id=sensor_id,
             unit=unit,
             value=_integer(value, "value"),
+        )
+
+    @classmethod
+    def estimated(
+        cls,
+        metric_name: str,
+        value: int,
+        *,
+        unit: str,
+        sensor_id: str,
+        estimator_id: str,
+        method: str,
+        price_snapshot_identity: str = "",
+    ) -> "TelemetrySample":
+        return cls(
+            metric_name=metric_name,
+            status=SampleStatus.ESTIMATED,
+            sensor_id=sensor_id,
+            unit=unit,
+            value=_integer(value, "value"),
+            estimator_id=estimator_id,
+            method=method,
+            price_snapshot_identity=price_snapshot_identity,
         )
 
     @classmethod
@@ -411,12 +560,19 @@ class TelemetrySample(_TelemetryContract):
         if self.status is SampleStatus.MEASURED:
             payload["unit"] = self.unit
             payload["value"] = self.value
+        elif self.status is SampleStatus.ESTIMATED:
+            payload["unit"] = self.unit
+            payload["value"] = self.value
+            payload["estimator_id"] = self.estimator_id
+            payload["method"] = self.method
+            if self.price_snapshot_identity:
+                payload["price_snapshot_identity"] = self.price_snapshot_identity
         else:
             payload["reason_code"] = self.reason_code
         return payload
 
     def to_envelope(self) -> dict[str, Any]:
-        """Telemetry contract sample envelope (measured | unavailable)."""
+        """Telemetry contract sample envelope (measured | estimated | unavailable)."""
 
         if self.status is SampleStatus.MEASURED:
             return {
@@ -425,6 +581,18 @@ class TelemetrySample(_TelemetryContract):
                 "unit": self.unit,
                 "sensor_id": self.sensor_id,
             }
+        if self.status is SampleStatus.ESTIMATED:
+            envelope: dict[str, Any] = {
+                "status": SampleStatus.ESTIMATED.value,
+                "value": self.value,
+                "unit": self.unit,
+                "sensor_id": self.sensor_id,
+                "estimator_id": self.estimator_id,
+                "method": self.method,
+            }
+            if self.price_snapshot_identity:
+                envelope["price_snapshot_identity"] = self.price_snapshot_identity
+            return envelope
         return {
             "status": SampleStatus.UNAVAILABLE.value,
             "reason_code": self.reason_code,
@@ -443,6 +611,9 @@ class TelemetrySample(_TelemetryContract):
             "unit",
             "value",
             "reason_code",
+            "estimator_id",
+            "method",
+            "price_snapshot_identity",
             "content_id",
         }
         _closed(
@@ -458,6 +629,18 @@ class TelemetrySample(_TelemetryContract):
                 int(payload.get("value", 0)),
                 unit=str(payload.get("unit", "")),
                 sensor_id=str(payload.get("sensor_id", "")),
+            )
+        elif status is SampleStatus.ESTIMATED:
+            result = cls.estimated(
+                str(payload.get("metric_name", "")),
+                int(payload.get("value", 0)),
+                unit=str(payload.get("unit", "")),
+                sensor_id=str(payload.get("sensor_id", "")),
+                estimator_id=str(payload.get("estimator_id", "")),
+                method=str(payload.get("method", "")),
+                price_snapshot_identity=str(
+                    payload.get("price_snapshot_identity", "")
+                ),
             )
         else:
             result = cls.unavailable(
@@ -1248,6 +1431,1134 @@ def reject_self_certified_counters(
 
 
 # ---------------------------------------------------------------------------
+# Provider response -> admitted causal span mapping
+# ---------------------------------------------------------------------------
+
+_SAFE_REQUEST_ID: Final[re.Pattern[str]] = re.compile(
+    r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+)
+_SECRET_KEY_NAME: Final[re.Pattern[str]] = re.compile(
+    r"(?:^|[_-])(?:api[_-]?key|access[_-]?key|secret|password|passwd|token|"
+    r"credential|private[_-]?key|auth|authorization|bearer)(?:$|[_-])",
+    re.IGNORECASE,
+)
+_SECRET_VALUE: Final[re.Pattern[str]] = re.compile(
+    r"(?:bearer\s+\S{12,}|sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|"
+    r"hf_[A-Za-z0-9]{24,}|xox[baprs]-[A-Za-z0-9-]{20,})",
+    re.IGNORECASE,
+)
+_BEARER_OR_URL_SECRET: Final[re.Pattern[str]] = re.compile(
+    r"(?i)(?:[a-z][a-z0-9+.-]*://[^/\s]*@|"
+    r"[?&#](?:api[_-]?key|access[_-]?token|token|secret|password|auth)=[^&#\s]+|"
+    r"bearer\s+[A-Za-z0-9._\-]{8,})"
+)
+_CONTENT_SKIP_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "prompt",
+        "prompts",
+        "message",
+        "messages",
+        "content",
+        "text",
+        "completion",
+        "completions",
+        "output",
+        "output_text",
+        "input_text",
+        "choices",
+        "delta",
+        "media",
+        "image_data",
+        "audio_data",
+        "video_data",
+        "raw_body",
+        "response_body",
+        "response_text",
+    }
+)
+_INPUT_TOKEN_KEYS: Final[tuple[str, ...]] = (
+    "input_tokens",
+    "prompt_tokens",
+    "input_token_count",
+)
+_OUTPUT_TOKEN_KEYS: Final[tuple[str, ...]] = (
+    "output_tokens",
+    "completion_tokens",
+    "output_token_count",
+)
+_CACHED_TOKEN_KEYS: Final[tuple[str, ...]] = (
+    "cached_tokens",
+    "cached_input_tokens",
+    "cache_read_input_tokens",
+    "prompt_cache_hit_tokens",
+    "cache_creation_input_tokens",
+)
+_REASONING_TOKEN_KEYS: Final[tuple[str, ...]] = (
+    "reasoning_tokens",
+    "reasoning_output_tokens",
+    "thought_tokens",
+)
+_REPORTED_CHARGE_KEYS: Final[tuple[str, ...]] = (
+    "reported_charge_microusd",
+    "provider_reported_charge",
+    "billed_microusd",
+    "invoice_microusd",
+    "charge_microusd",
+)
+_ESTIMATED_CHARGE_KEYS: Final[tuple[str, ...]] = (
+    "token_based_estimated_charge",
+    "estimated_charge_microusd",
+    "estimated_cost_microusd",
+)
+_REQUEST_ID_KEYS: Final[tuple[str, ...]] = (
+    "request_id",
+    "safe_provider_request_id",
+    "provider_request_id",
+    "response_id",
+    "x-request-id",
+    "id",
+)
+
+
+def _nested_mapping(payload: Mapping[str, Any], *keys: str) -> Mapping[str, Any] | None:
+    current: Any = payload
+    for key in keys:
+        if not isinstance(current, Mapping) or key not in current:
+            return None
+        current = current[key]
+    return current if isinstance(current, Mapping) else None
+
+
+def _first_key(payload: Mapping[str, Any], keys: Sequence[str]) -> str | None:
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return key
+    return None
+
+
+def _optional_reported_int(
+    payload: Mapping[str, Any] | None, keys: Sequence[str]
+) -> int | None:
+    if not isinstance(payload, Mapping):
+        return None
+    key = _first_key(payload, keys)
+    if key is None:
+        return None
+    return _integer(payload[key], key)
+
+
+def _looks_secret_key(name: str) -> bool:
+    folded = name.casefold()
+    if folded.endswith("pseudonym") or folded.endswith("fingerprint"):
+        return False
+    if folded in {"tokenizer_id", "idempotency_key", "endpoint_id"}:
+        return False
+    return bool(_SECRET_KEY_NAME.search(name))
+
+
+def _looks_secret_value(value: str) -> bool:
+    text = value.strip()
+    if not text:
+        return False
+    return bool(_SECRET_VALUE.search(text) or _BEARER_OR_URL_SECRET.search(text))
+
+
+def _credential_leakage(payload: Mapping[str, Any]) -> bool:
+    """True when persisted identity/usage fields would expose credentials."""
+
+    stack: list[Any] = [payload]
+    seen = 0
+    while stack:
+        current = stack.pop()
+        seen += 1
+        if seen > 4_096:
+            break
+        if isinstance(current, Mapping):
+            for key, item in current.items():
+                name = str(key)
+                if name.casefold() in _CONTENT_SKIP_KEYS:
+                    continue
+                if _looks_secret_key(name):
+                    return True
+                if isinstance(item, str) and _looks_secret_value(item):
+                    return True
+                if isinstance(item, (Mapping, list, tuple)):
+                    stack.append(item)
+        elif isinstance(current, (list, tuple)):
+            stack.extend(current)
+    return False
+
+
+def _safe_request_id(value: Any) -> str | None:
+    """Return a persistable request id, or None if absent.
+
+    Unsafe values raise so the mapper can quarantine without storing them.
+    """
+
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise BenchmarkTelemetryError("request_id must be text")
+    text = value.strip()
+    if not text:
+        return None
+    if _looks_secret_value(text) or not _SAFE_REQUEST_ID.fullmatch(text):
+        raise BenchmarkTelemetryError("request_id is unsafe to persist")
+    return _text(text, "request_id")
+
+
+def _truth_state_of(node: Any) -> str:
+    if not isinstance(node, Mapping):
+        return ""
+    raw = node.get("truth_state", node.get("status", ""))
+    return str(raw or "").strip().casefold()
+
+
+def _estimated_as_measured(payload: Mapping[str, Any]) -> bool:
+    """Detect estimate nodes labeled as measured, or measured nodes labeled estimated."""
+
+    estimate_nodes: list[Any] = [
+        payload.get("estimate"),
+        payload.get("estimated_charge"),
+        payload.get("token_based_estimated_charge"),
+    ]
+    cost = payload.get("cost")
+    if isinstance(cost, Mapping):
+        estimate_nodes.extend(
+            cost.get(key) for key in _ESTIMATED_CHARGE_KEYS
+        )
+        reported = cost.get("provider_reported_charge")
+        if _truth_state_of(reported) == SampleStatus.ESTIMATED.value:
+            return True
+        if cost.get("estimated_as_measured") is True:
+            return True
+    usage = payload.get("usage")
+    if isinstance(usage, Mapping):
+        estimate_nodes.append(usage.get("estimated_charge_microusd"))
+    for node in estimate_nodes:
+        state = _truth_state_of(node)
+        if state == SampleStatus.MEASURED.value:
+            return True
+        if isinstance(node, Mapping) and node.get("estimated_as_measured") is True:
+            return True
+    if payload.get("estimated_as_measured") is True:
+        return True
+    return False
+
+
+def _span_causal_identity_missing(span: BenchmarkCausalSpan | None) -> bool:
+    if span is None:
+        return True
+    return not (span.span_id and span.run_id and span.task_id)
+
+
+def _provider_usage_sensor(span_id: str, metric_name: str) -> str:
+    return _sensor_id("provider-usage", span_id or "unbound", metric_name)
+
+
+def _reported_or_unavailable(
+    metric_name: str,
+    value: int | None,
+    *,
+    unit: str,
+    span_id: str,
+    reason: UnavailableReason = UnavailableReason.NOT_REPORTED,
+) -> TelemetrySample:
+    sensor_id = _provider_usage_sensor(span_id, metric_name)
+    if value is None:
+        return TelemetrySample.unavailable(
+            metric_name, reason, sensor_id=sensor_id
+        )
+    return TelemetrySample.measured(
+        metric_name, value, unit=unit, sensor_id=sensor_id
+    )
+
+
+def _identity_or_unavailable(
+    metric_name: str,
+    identity: str,
+    *,
+    span_id: str,
+    reason: UnavailableReason = UnavailableReason.NOT_REPORTED,
+) -> TelemetrySample:
+    sensor_id = _provider_usage_sensor(span_id, metric_name)
+    if not identity:
+        return TelemetrySample.unavailable(
+            metric_name, reason, sensor_id=sensor_id
+        )
+    return TelemetrySample.measured(
+        metric_name,
+        _identity_digest(identity),
+        unit=UNIT_IDENTITY,
+        sensor_id=sensor_id,
+    )
+
+
+def _extract_usage_mapping(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    for key in ("usage", "token_usage", "provider_reported_usage"):
+        nested = payload.get(key)
+        if isinstance(nested, Mapping):
+            return nested
+    return payload
+
+
+def _extract_cached_tokens(usage: Mapping[str, Any]) -> int | None:
+    direct = _optional_reported_int(usage, _CACHED_TOKEN_KEYS)
+    if direct is not None:
+        return direct
+    for parent in (
+        "prompt_tokens_details",
+        "input_tokens_details",
+        "prompt_tokens_detail",
+    ):
+        details = _nested_mapping(usage, parent)
+        cached = _optional_reported_int(details, ("cached_tokens", "cached"))
+        if cached is not None:
+            return cached
+    return None
+
+
+def _extract_reasoning_tokens(usage: Mapping[str, Any]) -> int | None:
+    direct = _optional_reported_int(usage, _REASONING_TOKEN_KEYS)
+    if direct is not None:
+        return direct
+    for parent in (
+        "output_tokens_details",
+        "completion_tokens_details",
+        "completion_tokens_detail",
+    ):
+        details = _nested_mapping(usage, parent)
+        reasoning = _optional_reported_int(
+            details, ("reasoning_tokens", "reasoning")
+        )
+        if reasoning is not None:
+            return reasoning
+    return None
+
+
+def _extract_reported_charge(
+    payload: Mapping[str, Any], usage: Mapping[str, Any]
+) -> int | None:
+    cost = payload.get("cost") if isinstance(payload.get("cost"), Mapping) else None
+    for source in (cost, usage, payload):
+        if not isinstance(source, Mapping):
+            continue
+        value = _optional_reported_int(source, _REPORTED_CHARGE_KEYS)
+        if value is not None:
+            return value
+        # Provider-native cost fields that are not labeled estimates.
+        if "total_cost_microusd" in source and source["total_cost_microusd"] is not None:
+            return _integer(source["total_cost_microusd"], "total_cost_microusd")
+        if "cost_microusd" in source and source.get("estimated") is not True:
+            if source["cost_microusd"] is not None and "estimate" not in source:
+                return _integer(source["cost_microusd"], "cost_microusd")
+    return None
+
+
+def _extract_estimate(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    for key in ("estimate", "estimated_charge"):
+        node = payload.get(key)
+        if isinstance(node, Mapping):
+            return node
+    cost = payload.get("cost")
+    if isinstance(cost, Mapping):
+        for key in _ESTIMATED_CHARGE_KEYS:
+            node = cost.get(key)
+            if isinstance(node, Mapping):
+                return node
+        node = cost.get("estimate")
+        if isinstance(node, Mapping):
+            return node
+    return None
+
+
+def _extract_request_ids(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    collected: list[str] = []
+    seen: set[str] = set()
+
+    def _add(raw: Any) -> None:
+        request_id = _safe_request_id(raw)
+        if request_id and request_id not in seen:
+            seen.add(request_id)
+            collected.append(request_id)
+
+    headers = payload.get("headers")
+    sources: list[Mapping[str, Any]] = [payload]
+    if isinstance(headers, Mapping):
+        sources.append(headers)
+    for source in sources:
+        key = _first_key(source, _REQUEST_ID_KEYS)
+        if key is not None:
+            value = source[key]
+            if isinstance(value, (list, tuple)):
+                for item in value:
+                    _add(item)
+            else:
+                _add(value)
+    nested = payload.get("safe_provider_request_ids")
+    if isinstance(nested, (list, tuple)):
+        for item in nested:
+            _add(item)
+    return tuple(collected)
+
+
+def _extract_model_class(payload: Mapping[str, Any]) -> str:
+    raw = payload.get("model_class", payload.get("call_class", ""))
+    if raw in (None, ""):
+        return ""
+    return _enum(raw, ModelClass, "model_class").value
+
+
+def _extract_revision(payload: Mapping[str, Any]) -> str:
+    for key in ("model_revision", "revision", "model_version", "system_fingerprint"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return _text(value, key)
+    return ""
+
+
+@dataclass(frozen=True)
+class ProviderUsageRecord(_TelemetryContract):
+    """Provider/model usage bound to one admitted causal span.
+
+    Interface: BenchmarkProviderUsage@1
+
+    Absent usage and cost fields stay ``unavailable`` and are never numeric
+    zero.  Unbound usage, credential leakage, estimated-as-measured data, and
+    missing causal identity quarantine the record instead of admitting it.
+    """
+
+    SCHEMA: ClassVar[str] = PROVIDER_USAGE_RECORD_SCHEMA
+    INTERFACE: ClassVar[str] = PROVIDER_USAGE_RECORD_INTERFACE
+
+    usage_id: str
+    disposition: ProviderUsageDisposition
+    span: BenchmarkCausalSpan | None
+    provider_id: str = ""
+    model_id: str = ""
+    model_revision: str = ""
+    model_class: str = ""
+    safe_request_ids: tuple[str, ...] = ()
+    samples: tuple[TelemetrySample, ...] = ()
+    price_snapshot_identity: str = ""
+    quarantine_reasons: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "usage_id", _text(self.usage_id, "usage_id"))
+        object.__setattr__(
+            self,
+            "disposition",
+            _enum(self.disposition, ProviderUsageDisposition, "disposition"),
+        )
+        span = self.span
+        if isinstance(span, Mapping):
+            span = BenchmarkCausalSpan.from_dict(span)
+        if span is not None and not isinstance(span, BenchmarkCausalSpan):
+            raise BenchmarkTelemetryError("span must be BenchmarkCausalSpan")
+        object.__setattr__(self, "span", span)
+        for name in ("provider_id", "model_id", "model_revision", "model_class"):
+            object.__setattr__(
+                self, name, _text(getattr(self, name), name, required=False)
+            )
+        if self.model_class:
+            object.__setattr__(
+                self,
+                "model_class",
+                _enum(self.model_class, ModelClass, "model_class").value,
+            )
+        request_ids = tuple(
+            _text(item, "request_id") for item in (self.safe_request_ids or ())
+        )
+        if len(request_ids) != len(set(request_ids)):
+            raise BenchmarkTelemetryError("safe_request_ids contains duplicates")
+        for item in request_ids:
+            if _looks_secret_value(item) or not _SAFE_REQUEST_ID.fullmatch(item):
+                raise BenchmarkTelemetryError(
+                    "safe_request_ids cannot persist credential-shaped values"
+                )
+        object.__setattr__(self, "safe_request_ids", request_ids)
+
+        samples: list[TelemetrySample] = []
+        for item in self.samples or ():
+            if isinstance(item, Mapping):
+                samples.append(TelemetrySample.from_dict(item))
+            elif isinstance(item, TelemetrySample):
+                samples.append(item)
+            else:
+                raise BenchmarkTelemetryError(
+                    "samples must be TelemetrySample records"
+                )
+        names = [item.metric_name for item in samples]
+        if len(names) != len(set(names)):
+            raise BenchmarkTelemetryError(
+                "provider usage contains duplicate metric names"
+            )
+        object.__setattr__(self, "samples", tuple(samples))
+        object.__setattr__(
+            self,
+            "price_snapshot_identity",
+            _text(
+                self.price_snapshot_identity,
+                "price_snapshot_identity",
+                required=False,
+            ),
+        )
+        reasons = tuple(
+            _text(item, "quarantine_reason")
+            for item in (self.quarantine_reasons or ())
+        )
+        for reason in reasons:
+            try:
+                ProviderUsageQuarantineReason(reason)
+            except ValueError as exc:
+                raise BenchmarkTelemetryError(
+                    "quarantine_reason is not a supported reason"
+                ) from exc
+        object.__setattr__(self, "quarantine_reasons", reasons)
+
+        if self.disposition is ProviderUsageDisposition.ADMITTED:
+            if reasons:
+                raise BenchmarkTelemetryError(
+                    "admitted provider usage cannot carry quarantine reasons"
+                )
+            if span is None or _span_causal_identity_missing(span):
+                raise BenchmarkTelemetryError(
+                    "admitted provider usage requires a causal span identity"
+                )
+            if not self.samples:
+                raise BenchmarkTelemetryError(
+                    "admitted provider usage requires usage samples"
+                )
+            for item in self.samples:
+                if (
+                    item.status is SampleStatus.ESTIMATED
+                    and item.metric_name == "provider_reported_charge"
+                ):
+                    raise BenchmarkTelemetryError(
+                        "estimated-as-measured data cannot be admitted"
+                    )
+                if (
+                    item.status is SampleStatus.MEASURED
+                    and item.metric_name == "token_based_estimated_charge"
+                ):
+                    raise BenchmarkTelemetryError(
+                        "estimated-as-measured data cannot be admitted"
+                    )
+        else:
+            if not reasons:
+                raise BenchmarkTelemetryError(
+                    "quarantined provider usage requires quarantine_reasons"
+                )
+
+    @property
+    def admitted(self) -> bool:
+        return self.disposition is ProviderUsageDisposition.ADMITTED
+
+    @property
+    def quarantined(self) -> bool:
+        return self.disposition is ProviderUsageDisposition.QUARANTINED
+
+    def sample(self, metric_name: str) -> TelemetrySample | None:
+        for item in self.samples:
+            if item.metric_name == metric_name:
+                return item
+        return None
+
+    def require_sample(self, metric_name: str) -> TelemetrySample:
+        item = self.sample(metric_name)
+        if item is None:
+            raise BenchmarkTelemetryError(
+                f"provider usage is missing metric {metric_name!r}"
+            )
+        return item
+
+    def to_envelopes(self) -> dict[str, dict[str, Any]]:
+        return {item.metric_name: item.to_envelope() for item in self.samples}
+
+    def to_measurement(
+        self, *, measurement_id: str | None = None
+    ) -> BenchmarkResourceMeasurement:
+        """Project admitted usage onto a resource measurement for the bound span."""
+
+        if not self.admitted or self.span is None:
+            raise BenchmarkTelemetryError(
+                "quarantined or unbound usage cannot become a measurement"
+            )
+        return build_resource_measurement(
+            measurement_id=measurement_id or f"meas:{self.usage_id}",
+            span=self.span,
+            samples=self.samples,
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": BENCHMARK_TELEMETRY_CONTRACT_VERSION,
+            "interface": self.INTERFACE,
+            "usage_id": self.usage_id,
+            "disposition": self.disposition.value,
+            "span": None if self.span is None else self.span.to_record(),
+            "provider_id": self.provider_id,
+            "model_id": self.model_id,
+            "model_revision": self.model_revision,
+            "model_class": self.model_class,
+            "safe_request_ids": list(self.safe_request_ids),
+            "samples": [item.to_record() for item in self.samples],
+            "price_snapshot_identity": self.price_snapshot_identity,
+            "quarantine_reasons": list(self.quarantine_reasons),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProviderUsageRecord":
+        allowed = {
+            "schema",
+            "schema_version",
+            "contract_version",
+            "interface",
+            "usage_id",
+            "disposition",
+            "span",
+            "provider_id",
+            "model_id",
+            "model_revision",
+            "model_class",
+            "safe_request_ids",
+            "samples",
+            "price_snapshot_identity",
+            "quarantine_reasons",
+            "content_id",
+        }
+        _closed(
+            payload,
+            schema=cls.SCHEMA,
+            allowed=allowed,
+            name="provider usage record",
+        )
+        result = cls(
+            usage_id=payload.get("usage_id", ""),
+            disposition=payload.get("disposition", ""),
+            span=payload.get("span"),
+            provider_id=payload.get("provider_id", ""),
+            model_id=payload.get("model_id", ""),
+            model_revision=payload.get("model_revision", ""),
+            model_class=payload.get("model_class", ""),
+            safe_request_ids=tuple(payload.get("safe_request_ids") or ()),
+            samples=tuple(payload.get("samples") or ()),
+            price_snapshot_identity=payload.get("price_snapshot_identity", ""),
+            quarantine_reasons=tuple(payload.get("quarantine_reasons") or ()),
+        )
+        if payload.get("interface", result.INTERFACE) != result.INTERFACE:
+            raise BenchmarkTelemetryError("provider usage interface mismatch")
+        _claim(payload, result.content_id, "content_id")
+        return result
+
+
+def _quarantined_usage(
+    *,
+    usage_id: str,
+    reasons: Sequence[ProviderUsageQuarantineReason | str],
+    span: BenchmarkCausalSpan | None = None,
+    provider_id: str = "",
+    model_id: str = "",
+) -> ProviderUsageRecord:
+    normalized = tuple(
+        item.value if isinstance(item, ProviderUsageQuarantineReason) else str(item)
+        for item in reasons
+    )
+    return ProviderUsageRecord(
+        usage_id=usage_id,
+        disposition=ProviderUsageDisposition.QUARANTINED,
+        span=span,
+        provider_id=_text(provider_id, "provider_id", required=False),
+        model_id=_text(model_id, "model_id", required=False),
+        quarantine_reasons=normalized,
+    )
+
+
+def _provider_usage_id(
+    span: BenchmarkCausalSpan | None,
+    *,
+    provider_id: str,
+    model_id: str,
+    request_ids: Sequence[str],
+) -> str:
+    body = json.dumps(
+        {
+            "span_id": "" if span is None else span.span_id,
+            "task_id": "" if span is None else span.task_id,
+            "run_id": "" if span is None else span.run_id,
+            "provider_id": provider_id,
+            "model_id": model_id,
+            "request_ids": list(request_ids),
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    return f"usage:sha256:{digest}"
+
+
+def map_provider_response_to_span(
+    response: Mapping[str, Any],
+    span: BenchmarkCausalSpan | None,
+    *,
+    session: "BenchmarkTelemetrySession | None" = None,
+    admitted_span_ids: Sequence[str] | None = None,
+    usage_id: str | None = None,
+) -> ProviderUsageRecord:
+    """Map one provider response onto an admitted task span.
+
+    Missing usage and cost fields become ``unavailable`` rather than zero.
+    Unbound usage, credential leakage, estimated-as-measured data, and missing
+    causal identity quarantine the record.
+    """
+
+    if not isinstance(response, Mapping):
+        raise BenchmarkTelemetryError("provider response must be an object")
+
+    provider_id = _text(
+        str(response.get("provider_id") or response.get("provider") or ""),
+        "provider_id",
+        required=False,
+    )
+    model_id = _text(
+        str(response.get("model_id") or response.get("model") or ""),
+        "model_id",
+        required=False,
+    )
+    record_id = usage_id or _provider_usage_id(
+        span, provider_id=provider_id, model_id=model_id, request_ids=()
+    )
+
+    reasons: list[ProviderUsageQuarantineReason] = []
+    if span is None:
+        reasons.append(ProviderUsageQuarantineReason.UNBOUND_USAGE)
+    elif _span_causal_identity_missing(span):
+        reasons.append(ProviderUsageQuarantineReason.MISSING_CAUSAL_IDENTITY)
+    if session is not None:
+        if span is None or span.span_id not in session._spans:
+            if ProviderUsageQuarantineReason.UNBOUND_USAGE not in reasons:
+                reasons.append(ProviderUsageQuarantineReason.UNBOUND_USAGE)
+    if admitted_span_ids is not None:
+        admitted = set(admitted_span_ids)
+        if span is None or span.span_id not in admitted:
+            if ProviderUsageQuarantineReason.UNBOUND_USAGE not in reasons:
+                reasons.append(ProviderUsageQuarantineReason.UNBOUND_USAGE)
+    if span is not None and span.provider is not None and span.provider.is_bound:
+        bound_mismatch = False
+        if provider_id and provider_id != span.provider.provider_id:
+            bound_mismatch = True
+        if model_id and model_id != span.provider.model_id:
+            bound_mismatch = True
+        if (
+            bound_mismatch
+            and ProviderUsageQuarantineReason.UNBOUND_USAGE not in reasons
+        ):
+            reasons.append(ProviderUsageQuarantineReason.UNBOUND_USAGE)
+
+    request_ids: tuple[str, ...] = ()
+    leaked = False
+    try:
+        leaked = _credential_leakage(response)
+        request_ids = _extract_request_ids(response)
+    except BenchmarkTelemetryError:
+        leaked = True
+        request_ids = ()
+    if leaked:
+        reasons.append(ProviderUsageQuarantineReason.CREDENTIAL_LEAKAGE)
+
+    if _estimated_as_measured(response):
+        reasons.append(ProviderUsageQuarantineReason.ESTIMATED_AS_MEASURED)
+
+    if reasons:
+        # Never persist request ids or revisions from a quarantined payload.
+        unique_reasons: list[ProviderUsageQuarantineReason] = []
+        seen_reasons: set[ProviderUsageQuarantineReason] = set()
+        for reason in reasons:
+            if reason not in seen_reasons:
+                seen_reasons.add(reason)
+                unique_reasons.append(reason)
+        return _quarantined_usage(
+            usage_id=record_id,
+            reasons=unique_reasons,
+            span=span if span is not None and not _span_causal_identity_missing(span) else None,
+            provider_id=provider_id,
+            model_id=model_id,
+        )
+
+    assert span is not None
+    span_id = span.span_id
+    if not provider_id and span.provider is not None:
+        provider_id = span.provider.provider_id
+    if not model_id and span.provider is not None:
+        model_id = span.provider.model_id
+    revision = _extract_revision(response)
+    model_class = _extract_model_class(response)
+    usage = _extract_usage_mapping(response)
+
+    input_tokens = _optional_reported_int(usage, _INPUT_TOKEN_KEYS)
+    if input_tokens is None:
+        input_tokens = _optional_reported_int(response, _INPUT_TOKEN_KEYS)
+    output_tokens = _optional_reported_int(usage, _OUTPUT_TOKEN_KEYS)
+    if output_tokens is None:
+        output_tokens = _optional_reported_int(response, _OUTPUT_TOKEN_KEYS)
+    cached_tokens = _extract_cached_tokens(usage)
+    reasoning_tokens = _extract_reasoning_tokens(usage)
+    reported_charge = _extract_reported_charge(response, usage)
+
+    samples: dict[str, TelemetrySample] = {
+        "provider_model_revision": _identity_or_unavailable(
+            "provider_model_revision", revision, span_id=span_id
+        ),
+        "safe_provider_request_id": _identity_or_unavailable(
+            "safe_provider_request_id",
+            request_ids[0] if request_ids else "",
+            span_id=span_id,
+        ),
+        "provider_native_input_tokens": _reported_or_unavailable(
+            "provider_native_input_tokens",
+            input_tokens,
+            unit=UNIT_TOKENS,
+            span_id=span_id,
+        ),
+        "provider_native_output_tokens": _reported_or_unavailable(
+            "provider_native_output_tokens",
+            output_tokens,
+            unit=UNIT_TOKENS,
+            span_id=span_id,
+        ),
+        "provider_native_cached_tokens": _reported_or_unavailable(
+            "provider_native_cached_tokens",
+            cached_tokens,
+            unit=UNIT_TOKENS,
+            span_id=span_id,
+        ),
+        "provider_native_reasoning_tokens": _reported_or_unavailable(
+            "provider_native_reasoning_tokens",
+            reasoning_tokens,
+            unit=UNIT_TOKENS,
+            span_id=span_id,
+        ),
+        "model_call_count": TelemetrySample.measured(
+            "model_call_count",
+            1,
+            unit=UNIT_COUNT,
+            sensor_id=_provider_usage_sensor(span_id, "model_call_count"),
+        ),
+        "model_call_class": _identity_or_unavailable(
+            "model_call_class", model_class, span_id=span_id
+        ),
+        "provider_reported_charge": _reported_or_unavailable(
+            "provider_reported_charge",
+            reported_charge,
+            unit=UNIT_MICROUSD,
+            span_id=span_id,
+        ),
+    }
+
+    estimate = _extract_estimate(response)
+    estimate_sensor = _provider_usage_sensor(
+        span_id, "token_based_estimated_charge"
+    )
+    if estimate is None:
+        samples["token_based_estimated_charge"] = TelemetrySample.unavailable(
+            "token_based_estimated_charge",
+            UnavailableReason.NOT_REPORTED,
+            sensor_id=estimate_sensor,
+        )
+        price_snapshot_identity = ""
+    else:
+        amount = _optional_reported_int(
+            estimate,
+            (
+                "charge_microusd",
+                "value",
+                "estimated_charge_microusd",
+                "cost_microusd",
+            ),
+        )
+        method = str(estimate.get("method") or "")
+        estimator_id = str(
+            estimate.get("estimator_id") or estimate.get("sensor_id") or ""
+        )
+        price_snapshot_identity = str(
+            estimate.get("price_snapshot_identity") or ""
+        )
+        if amount is None or not method or not estimator_id:
+            samples["token_based_estimated_charge"] = TelemetrySample.unavailable(
+                "token_based_estimated_charge",
+                UnavailableReason.NOT_REPORTED,
+                sensor_id=estimate_sensor,
+            )
+            price_snapshot_identity = ""
+        else:
+            samples["token_based_estimated_charge"] = TelemetrySample.estimated(
+                "token_based_estimated_charge",
+                amount,
+                unit=UNIT_MICROUSD,
+                sensor_id=estimate_sensor,
+                estimator_id=estimator_id,
+                method=method,
+                price_snapshot_identity=price_snapshot_identity,
+            )
+
+    if model_class:
+        for name in MODEL_CLASS_NAMES:
+            samples[f"calls_{name}"] = TelemetrySample.measured(
+                f"calls_{name}",
+                1 if name == model_class else 0,
+                unit=UNIT_COUNT,
+                sensor_id=_provider_usage_sensor(span_id, f"calls_{name}"),
+            )
+    else:
+        for name in MODEL_CLASS_NAMES:
+            samples[f"calls_{name}"] = TelemetrySample.unavailable(
+                f"calls_{name}",
+                UnavailableReason.NOT_REPORTED,
+                sensor_id=_provider_usage_sensor(span_id, f"calls_{name}"),
+            )
+
+    record_id = usage_id or _provider_usage_id(
+        span,
+        provider_id=provider_id,
+        model_id=model_id,
+        request_ids=request_ids,
+    )
+    return ProviderUsageRecord(
+        usage_id=record_id,
+        disposition=ProviderUsageDisposition.ADMITTED,
+        span=span,
+        provider_id=provider_id,
+        model_id=model_id,
+        model_revision=revision,
+        model_class=model_class,
+        safe_request_ids=request_ids,
+        samples=tuple(samples[name] for name in sorted(samples)),
+        price_snapshot_identity=price_snapshot_identity,
+    )
+
+
+def map_provider_responses_to_span(
+    responses: Sequence[Mapping[str, Any]],
+    span: BenchmarkCausalSpan | None,
+    *,
+    session: "BenchmarkTelemetrySession | None" = None,
+    admitted_span_ids: Sequence[str] | None = None,
+    usage_id: str | None = None,
+) -> ProviderUsageRecord:
+    """Map many provider responses onto one admitted span.
+
+    A quarantined constituent quarantines the aggregate.  A metric that is
+    unavailable on any constituent stays unavailable rather than summing as
+    zero.
+    """
+
+    if not responses:
+        raise BenchmarkTelemetryError("provider responses must not be empty")
+    records = [
+        map_provider_response_to_span(
+            item,
+            span,
+            session=session,
+            admitted_span_ids=admitted_span_ids,
+        )
+        for item in responses
+    ]
+    quarantined = [item for item in records if item.quarantined]
+    if quarantined:
+        reasons: list[str] = []
+        seen: set[str] = set()
+        for item in quarantined:
+            for reason in item.quarantine_reasons:
+                if reason not in seen:
+                    seen.add(reason)
+                    reasons.append(reason)
+        return _quarantined_usage(
+            usage_id=usage_id
+            or _provider_usage_id(
+                span, provider_id="", model_id="", request_ids=()
+            ),
+            reasons=reasons,
+            span=span if span is not None and not _span_causal_identity_missing(span) else None,
+        )
+
+    assert span is not None
+    span_id = span.span_id
+    provider_ids = {item.provider_id for item in records if item.provider_id}
+    model_ids = {item.model_id for item in records if item.model_id}
+    revisions = {item.model_revision for item in records if item.model_revision}
+    classes = {item.model_class for item in records if item.model_class}
+    request_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for item in records:
+        for request_id in item.safe_request_ids:
+            if request_id not in seen_ids:
+                seen_ids.add(request_id)
+                request_ids.append(request_id)
+    snapshots = {
+        item.price_snapshot_identity
+        for item in records
+        if item.price_snapshot_identity
+    }
+
+    def _sum_measured(metric_name: str, unit: str) -> TelemetrySample:
+        values: list[int] = []
+        for item in records:
+            sample = item.require_sample(metric_name)
+            if sample.status is not SampleStatus.MEASURED:
+                return TelemetrySample.unavailable(
+                    metric_name,
+                    UnavailableReason.NOT_REPORTED
+                    if sample.status is SampleStatus.UNAVAILABLE
+                    else UnavailableReason.COLLECTION_FAILED,
+                    sensor_id=_provider_usage_sensor(span_id, metric_name),
+                )
+            values.append(sample.value)
+        return TelemetrySample.measured(
+            metric_name,
+            sum(values),
+            unit=unit,
+            sensor_id=_provider_usage_sensor(span_id, metric_name),
+        )
+
+    samples: dict[str, TelemetrySample] = {
+        "provider_native_input_tokens": _sum_measured(
+            "provider_native_input_tokens", UNIT_TOKENS
+        ),
+        "provider_native_output_tokens": _sum_measured(
+            "provider_native_output_tokens", UNIT_TOKENS
+        ),
+        "provider_native_cached_tokens": _sum_measured(
+            "provider_native_cached_tokens", UNIT_TOKENS
+        ),
+        "provider_native_reasoning_tokens": _sum_measured(
+            "provider_native_reasoning_tokens", UNIT_TOKENS
+        ),
+        "provider_reported_charge": _sum_measured(
+            "provider_reported_charge", UNIT_MICROUSD
+        ),
+        "model_call_count": TelemetrySample.measured(
+            "model_call_count",
+            len(records),
+            unit=UNIT_COUNT,
+            sensor_id=_provider_usage_sensor(span_id, "model_call_count"),
+        ),
+        "provider_model_revision": _identity_or_unavailable(
+            "provider_model_revision",
+            next(iter(revisions)) if len(revisions) == 1 else "",
+            span_id=span_id,
+        ),
+        "safe_provider_request_id": _identity_or_unavailable(
+            "safe_provider_request_id",
+            request_ids[0] if len(request_ids) == 1 else "",
+            span_id=span_id,
+        ),
+        "model_call_class": _identity_or_unavailable(
+            "model_call_class",
+            next(iter(classes)) if len(classes) == 1 else "",
+            span_id=span_id,
+        ),
+    }
+
+    estimate_values: list[int] = []
+    estimate_meta: tuple[str, str, str] | None = None
+    estimate_unavailable = False
+    for item in records:
+        sample = item.require_sample("token_based_estimated_charge")
+        if sample.status is SampleStatus.UNAVAILABLE:
+            estimate_unavailable = True
+            break
+        if sample.status is not SampleStatus.ESTIMATED:
+            estimate_unavailable = True
+            break
+        estimate_values.append(sample.value)
+        meta = (
+            sample.estimator_id,
+            sample.method,
+            sample.price_snapshot_identity,
+        )
+        if estimate_meta is None:
+            estimate_meta = meta
+        elif estimate_meta != meta:
+            estimate_unavailable = True
+            break
+    if estimate_unavailable or estimate_meta is None:
+        samples["token_based_estimated_charge"] = TelemetrySample.unavailable(
+            "token_based_estimated_charge",
+            UnavailableReason.NOT_REPORTED,
+            sensor_id=_provider_usage_sensor(
+                span_id, "token_based_estimated_charge"
+            ),
+        )
+        price_snapshot_identity = ""
+    else:
+        samples["token_based_estimated_charge"] = TelemetrySample.estimated(
+            "token_based_estimated_charge",
+            sum(estimate_values),
+            unit=UNIT_MICROUSD,
+            sensor_id=_provider_usage_sensor(
+                span_id, "token_based_estimated_charge"
+            ),
+            estimator_id=estimate_meta[0],
+            method=estimate_meta[1],
+            price_snapshot_identity=estimate_meta[2],
+        )
+        price_snapshot_identity = estimate_meta[2]
+
+    if all(item.model_class for item in records):
+        counts = {name: 0 for name in MODEL_CLASS_NAMES}
+        for item in records:
+            counts[item.model_class] += 1
+        for name, count in counts.items():
+            samples[f"calls_{name}"] = TelemetrySample.measured(
+                f"calls_{name}",
+                count,
+                unit=UNIT_COUNT,
+                sensor_id=_provider_usage_sensor(span_id, f"calls_{name}"),
+            )
+    else:
+        for name in MODEL_CLASS_NAMES:
+            samples[f"calls_{name}"] = TelemetrySample.unavailable(
+                f"calls_{name}",
+                UnavailableReason.NOT_REPORTED,
+                sensor_id=_provider_usage_sensor(span_id, f"calls_{name}"),
+            )
+
+    return ProviderUsageRecord(
+        usage_id=usage_id
+        or _provider_usage_id(
+            span,
+            provider_id=next(iter(provider_ids), ""),
+            model_id=next(iter(model_ids), ""),
+            request_ids=request_ids,
+        ),
+        disposition=ProviderUsageDisposition.ADMITTED,
+        span=span,
+        provider_id=next(iter(provider_ids), "") if len(provider_ids) <= 1 else "",
+        model_id=next(iter(model_ids), "") if len(model_ids) <= 1 else "",
+        model_revision=next(iter(revisions), "") if len(revisions) == 1 else "",
+        model_class=next(iter(classes), "") if len(classes) == 1 else "",
+        safe_request_ids=tuple(request_ids),
+        samples=tuple(samples[name] for name in sorted(samples)),
+        price_snapshot_identity=(
+            next(iter(snapshots)) if len(snapshots) == 1 else price_snapshot_identity
+        ),
+    )
+
+
+def admit_provider_usage(record: ProviderUsageRecord) -> ProviderUsageRecord:
+    """Fail closed unless the usage record is admitted onto a causal span."""
+
+    if not isinstance(record, ProviderUsageRecord):
+        raise BenchmarkTelemetryError("record must be ProviderUsageRecord")
+    if record.quarantined:
+        raise BenchmarkTelemetryError(
+            "quarantined provider usage cannot be admitted: "
+            + ",".join(record.quarantine_reasons)
+        )
+    return record
+
+
+# ---------------------------------------------------------------------------
 # Exactly-once attribution session
 # ---------------------------------------------------------------------------
 
@@ -1263,6 +2574,8 @@ class BenchmarkTelemetrySession:
         self._process_owners: dict[str, str] = {}
         self._measurement_owners: dict[str, str] = {}
         self._measurements: dict[str, BenchmarkResourceMeasurement] = {}
+        self._provider_usages: dict[str, ProviderUsageRecord] = {}
+        self._quarantined_provider_usages: dict[str, ProviderUsageRecord] = {}
         if root.process_id:
             self._process_owners[root.process_id] = root.span_id
 
@@ -1278,6 +2591,19 @@ class BenchmarkTelemetrySession:
     def measurements(self) -> tuple[BenchmarkResourceMeasurement, ...]:
         return tuple(
             self._measurements[key] for key in sorted(self._measurements)
+        )
+
+    @property
+    def provider_usages(self) -> tuple[ProviderUsageRecord, ...]:
+        return tuple(
+            self._provider_usages[key] for key in sorted(self._provider_usages)
+        )
+
+    @property
+    def quarantined_provider_usages(self) -> tuple[ProviderUsageRecord, ...]:
+        return tuple(
+            self._quarantined_provider_usages[key]
+            for key in sorted(self._quarantined_provider_usages)
         )
 
     def register_span(self, span: BenchmarkCausalSpan) -> BenchmarkCausalSpan:
@@ -1363,6 +2689,43 @@ class BenchmarkTelemetrySession:
             return prior
         self._measurements[measurement.measurement_id] = measurement
         return measurement
+
+    def record_provider_usage(
+        self, record: ProviderUsageRecord
+    ) -> ProviderUsageRecord:
+        """Attribute provider usage exactly once; quarantined records stay unbound."""
+
+        if not isinstance(record, ProviderUsageRecord):
+            raise BenchmarkTelemetryError(
+                "record must be ProviderUsageRecord"
+            )
+        if record.quarantined:
+            prior = self._quarantined_provider_usages.get(record.usage_id)
+            if prior is not None and prior.content_id != record.content_id:
+                raise BenchmarkTelemetryError(
+                    "usage_id collides with a different quarantined body"
+                )
+            self._quarantined_provider_usages[record.usage_id] = record
+            return record
+        if record.span is None or record.span.span_id not in self._spans:
+            raise BenchmarkTelemetryError(
+                "admitted provider usage must bind a registered span"
+            )
+        existing = self._spans[record.span.span_id]
+        if existing.content_id != record.span.content_id:
+            raise BenchmarkTelemetryError(
+                "provider usage span does not match registered span"
+            )
+        prior_usage = self._provider_usages.get(record.usage_id)
+        if prior_usage is not None:
+            if prior_usage.content_id != record.content_id:
+                raise BenchmarkTelemetryError(
+                    "usage_id collides with a different body"
+                )
+            return prior_usage
+        self._provider_usages[record.usage_id] = record
+        self.record_measurement(record.to_measurement())
+        return record
 
     def seal_receipt(self) -> "BenchmarkTelemetryReceipt":
         return BenchmarkTelemetryReceipt(
@@ -2745,10 +4108,22 @@ __all__ = [
     "BenchmarkTelemetryError",
     "BenchmarkTelemetryReceipt",
     "BenchmarkTelemetrySession",
+    "CALLS_BY_MODEL_CLASS_METRIC_NAMES",
     "CLOCK_METRIC_NAMES",
+    "ESTIMATOR_METHODS",
+    "EstimateMethod",
     "GPU_METRIC_NAMES",
+    "MAX_INTEGER",
     "MILLIONTHS",
+    "MODEL_CLASS_NAMES",
+    "ModelClass",
     "PROCESS_TREE_METRIC_NAMES",
+    "PROVIDER_USAGE_METRIC_NAMES",
+    "PROVIDER_USAGE_RECORD_INTERFACE",
+    "PROVIDER_USAGE_RECORD_SCHEMA",
+    "ProviderUsageDisposition",
+    "ProviderUsageQuarantineReason",
+    "ProviderUsageRecord",
     "SCHEMA_VERSION",
     "SPAN_REPLAY_CERTIFICATE_SCHEMA",
     "SampleStatus",
@@ -2768,10 +4143,13 @@ __all__ = [
     "UNIT_SECONDS_MILLIONTHS",
     "UNIT_TOKENS",
     "UnavailableReason",
+    "admit_provider_usage",
     "build_resource_measurement",
     "build_span_joined_measurement",
     "certify_measurement_from_source_spans",
     "collect_descendant_pids",
+    "map_provider_response_to_span",
+    "map_provider_responses_to_span",
     "mono_ns",
     "observe_wall_seconds_millionths",
     "project_scheduler_clock_samples",
