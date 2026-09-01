@@ -1512,11 +1512,14 @@ class DatabaseTaskSource:
         *,
         now: Any = None,
         stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+        orphan_previous_generation: bool = False,
     ) -> dict[str, Any]:
         """Retry leftover in_progress gates through the intent authority."""
 
         return self._intent.unstall_stale_in_progress_tasks(
-            now=now, stale_seconds=stale_seconds
+            now=now,
+            stale_seconds=stale_seconds,
+            orphan_previous_generation=orphan_previous_generation,
         )
 
     def rearm_blocked_task(

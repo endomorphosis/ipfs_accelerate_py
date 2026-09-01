@@ -5211,7 +5211,9 @@ class QuackStateServer:
                     "board projection recovery "
                     f"candidates={len(candidates)} event_id={recovery.event_id}"
                 )
-            result = repository.unstall_stale_in_progress_tasks()
+            result = repository.unstall_stale_in_progress_tasks(
+                orphan_previous_generation=True
+            )
             repository.assert_projection_matches_events()
         finally:
             repository.close()

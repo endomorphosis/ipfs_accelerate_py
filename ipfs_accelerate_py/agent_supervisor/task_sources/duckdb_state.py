@@ -2522,6 +2522,7 @@ def unstall_stale_in_progress_tasks(
     stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
     canonical_transition: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
     allow_projection_only: bool = False,
+    orphan_previous_generation: bool = False,
 ) -> dict[str, Any]:
     """Return in_progress tasks that have been idle longer than a live attempt.
 
@@ -2529,6 +2530,10 @@ def unstall_stale_in_progress_tasks(
     crashed implementer, leftover CAS) cannot freeze the rest of the board.
     Live implementations heartbeat ``updated_at`` on claim; a run still under
     ``implementation_max_timeout`` is left alone.
+
+    ``orphan_previous_generation`` is for exclusive-owner restart only: the
+    previous implementers died with the owner, so leftover ``in_progress``
+    rows are orphans even when they are still inside the live-attempt window.
     """
 
     if stale_seconds <= 0:
@@ -2557,7 +2562,7 @@ def unstall_stale_in_progress_tasks(
             )
             continue
         age = (clock - updated).total_seconds()
-        if age < float(stale_seconds):
+        if not orphan_previous_generation and age < float(stale_seconds):
             skipped.append(
                 {
                     "task_cid": str(task_cid),
@@ -2589,6 +2594,11 @@ def unstall_stale_in_progress_tasks(
                 "status": "retrying",
                 "age_seconds": int(age),
                 "recorded_at": stamp,
+                "reason": (
+                    "orphaned_previous_owner_generation"
+                    if orphan_previous_generation
+                    else "stale_idle_in_progress"
+                ),
             }
             if canonical_transition is None:
                 updated = connection.execute(
