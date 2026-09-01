@@ -5423,7 +5423,13 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     verifier_repair = authority[
         "accepted_bounded_materializer_verifier_repair"
     ]
+    revision3 = authority["prior_revision3_authority"]
+    validation_attempts = authority["revision4_validation_attempts"]
+    successor_evidence_repair = authority[
+        "accepted_successor_evidence_verifier_repair"
+    ]
     prior_control = authority["prior_control_authorization"]
+    revision2_control = revision3["prior_control_authorization"]
     source_chain = authority["source_chain"]
     changes = authority["exact_changes"]
 
@@ -5431,18 +5437,42 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
         "schema": "sawm/operator-control-authority-reference@1",
         "migration_revision": "SAWM-R2-M43",
         "authority_cid": (
-            "sha256:1c1c16ed284a0176a2244bddd79847934ba6a369e9ab46c674a109853d2d67d8"
+            "sha256:6ddc11cb9e37da82023e5a89124298f532cfc943cc347fa5ea67ff13bcd1eb43"
         ),
     }
-    assert authority["schema"].endswith("authorization@3")
-    assert authority["authorization_revision"] == 3
-    assert authority["control_recorded_at"] == "2026-09-01T10:00:00Z"
-    assert authority["authorization_amended_at"] == "2026-09-01T10:00:00Z"
+    assert authority["schema"].endswith("authorization@4")
+    assert authority["authorization_revision"] == 4
+    assert authority["control_recorded_at"] == "2026-09-01T11:00:00Z"
+    assert authority["authorization_amended_at"] == "2026-09-01T11:00:00Z"
     assert authority["prior_authorization_cid"] == (
-        "sha256:f0db2f708316ad8ef58cb78886b5df74872d80c6147a1ed6e1d51faeeac35049"
+        "sha256:1c1c16ed284a0176a2244bddd79847934ba6a369e9ab46c674a109853d2d67d8"
     )
     assert prior_control == {
         "authorization_cid": authority["prior_authorization_cid"],
+        "authorization_revision": 3,
+        "prior_authorization_cid": (
+            "sha256:f0db2f708316ad8ef58cb78886b5df74872d80c6147a1ed6e1d51faeeac35049"
+        ),
+        "control_recorded_at": "2026-09-01T10:00:00Z",
+        "control_commit": "8c22185c66f2250732071e789e69a0cd42cf9a7d",
+        "control_tree": "754e49e85310f96d6709f515328c27ce7bc9b43f",
+        "superseded_before_authoritative_event_297": True,
+        "event_297_appended": False,
+        "receipt_published": False,
+    }
+    assert materializer._identity(revision3) == authority[
+        "prior_authorization_cid"
+    ]
+    assert revision3 == materializer._expected_m43_revision3_authority()
+    assert revision3["schema"].endswith("authorization@3")
+    assert revision3["authorization_revision"] == 3
+    assert revision3["control_recorded_at"] == "2026-09-01T10:00:00Z"
+    assert revision3["authorization_amended_at"] == "2026-09-01T10:00:00Z"
+    assert revision3["prior_authorization_cid"] == (
+        "sha256:f0db2f708316ad8ef58cb78886b5df74872d80c6147a1ed6e1d51faeeac35049"
+    )
+    assert revision2_control == {
+        "authorization_cid": revision3["prior_authorization_cid"],
         "authorization_revision": 2,
         "prior_authorization_cid": materializer._M43_PRE_AUTHORITATIVE_AUTHORITY_CID,
         "control_recorded_at": "2026-09-01T09:00:00Z",
@@ -5646,9 +5676,9 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     }
     assert failed_reseal == {
         **failed_reseal,
-        "authority_cid": authority["prior_authorization_cid"],
-        "control_commit": prior_control["control_commit"],
-        "control_tree": prior_control["control_tree"],
+        "authority_cid": revision3["prior_authorization_cid"],
+        "control_commit": revision2_control["control_commit"],
+        "control_tree": revision2_control["control_tree"],
         "observed_failure_count": 2,
         "authoritative_materializer_invoked": False,
         "authoritative_quack_started": False,
@@ -5660,8 +5690,8 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     }
     assert failed_reseal["isolated_live_rehearsal"] == {
         **failed_reseal["isolated_live_rehearsal"],
-        "source_head": prior_control["control_commit"],
-        "source_tree": prior_control["control_tree"],
+        "source_head": revision2_control["control_commit"],
+        "source_tree": revision2_control["control_tree"],
         "prestart_admission_valid": True,
         "disposable_generation_31_started": True,
         "disposable_generation_31_ready": True,
@@ -5719,7 +5749,7 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     )
     assert verifier_repair == {
         **verifier_repair,
-        "repair_parent": prior_control["control_commit"],
+        "repair_parent": revision2_control["control_commit"],
         "repair_commit": "c5ca423d74e27fe9156c4ce9b476851f565cb7cd",
         "repair_tree": "502eeb8cb5be1ea926df40975486823879e8c3b9",
         "repair_class_count": 2,
@@ -5757,6 +5787,191 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
         "m43_live_postappend_event_type_counts",
         "m6_recovery_revision_recorded_at",
     ]
+    assert validation_attempts == materializer._m43_revision4_validation_attempts()
+    assert validation_attempts["schema"] == (
+        "sawm/m43-revision-4-validation-attempts@1"
+    )
+    assert validation_attempts["worker_self_approval"] is False
+    full_suite, disposable = validation_attempts["attempts"]
+    assert full_suite == {
+        **full_suite,
+        "ordinal": 1,
+        "kind": "authoritative_current_tree_full_suite",
+        "source_commit": "8c22185c66f2250732071e789e69a0cd42cf9a7d",
+        "source_tree": "754e49e85310f96d6709f515328c27ce7bc9b43f",
+        "result": "passed",
+        "collected": 280,
+        "passed": 280,
+        "failed": 0,
+        "duration_seconds": "546.92",
+        "python": "3.12.3",
+        "pytest": "9.1.1",
+        "completed_at_from_log_mtime": "2026-09-01T10:28:56.012371110Z",
+        "authoritative_state_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "provider_invocation_changes": 0,
+        "merge_attempt_changes": 0,
+    }
+    assert full_suite["retained_log"] == {
+        "authority": "non_authoritative_retained_validation_log",
+        "path": "/tmp/m43-semantic-world-pytest.SFTF0v.log",
+        "sha256": (
+            "c2004ef842570e2f2345caff606efed078842e71725a1d942e2e93ed4a80034d"
+        ),
+        "size_bytes": 2_674_942,
+        "mode": "0600",
+    }
+    assert disposable == {
+        **disposable,
+        "ordinal": 2,
+        "kind": "fresh_disposable_clone_partial_append_rehearsal",
+        "disposable": True,
+        "authoritative": False,
+        "source_commit": "8c22185c66f2250732071e789e69a0cd42cf9a7d",
+        "source_tree": "754e49e85310f96d6709f515328c27ce7bc9b43f",
+        "source_binding_cid": (
+            "sha256:baa52e8efe025b0c3e8cbafc2ac0bdf3f64cc630e4e12cecdd12259adda88f67"
+        ),
+        "authorization_cid": authority["prior_authorization_cid"],
+        "validation_digest": (
+            "sha256:583d4480426d92035848a83d730c8ca0ab867f1f8f1ac7cd332240313a97d2d1"
+        ),
+        "result": "failed_after_authenticated_append_before_receipt",
+        "typed_error": (
+            "MigrationRequired: M42 exact evidence projection membership differs"
+        ),
+        "successful_append_observed_at": "2026-09-01T10:34:22.338Z",
+        "stopped_at": "2026-09-01T10:34:42Z",
+        "post_stop_lifecycle": "stopped",
+        "post_stop_generation": 31,
+        "event_changes": 1,
+        "evidence_node_changes": 1,
+        "task_status_changes": 0,
+        "task_revision_changes": 0,
+        "goal_revision_changes": 0,
+        "accepted_completion_changes": 0,
+        "provider_invocation_changes": 0,
+        "merge_attempt_changes": 0,
+        "owner_marker_present_after_stop": False,
+        "credential_handoff_present_after_stop": False,
+    }
+    assert disposable["post_control_store"] == {
+        "sha256": (
+            "22fe8e92031317551c0b036d1c2a49ccc927c9536a987e57ac3ca7e6bb0720b8"
+        ),
+        "size_bytes": 43_528_192,
+        "mode": "0664",
+    }
+    assert disposable["post_status"] == {
+        "sha256": (
+            "c339f4d048ea54cf1e3a47df0095860b31665da2ce07040ca9109c659988f765"
+        ),
+        "size_bytes": 2_257,
+        "mode": "0600",
+        "lifecycle": "stopped",
+        "identity_status": "stopped",
+        "generation": 31,
+    }
+    assert disposable["mutation_result"] == {
+        "operation": "evidence_record@1",
+        "ok": True,
+        "rowcounts": [0, 1, 1],
+        "sha256": (
+            "03adb834891d0e72a410d3641bb21501c98ae59d090b1ff176d73d66bd1f3a07"
+        ),
+        "size_bytes": 2_285,
+        "mode": "0600",
+    }
+    assert disposable["partial_append"] == {
+        "event_watermark_before": 296,
+        "event_watermark_after": 297,
+        "evidence_count_before": 49,
+        "evidence_count_after": 50,
+        "event_id": (
+            "baguqeerach3itwdabnwmogqhgwqxadvbu536nfgm2frptrk3oo7kqdjm3moa"
+        ),
+        "evidence_id": (
+            "baguqeeray4agdk7scb6l43obebi535l5estjwswf5eifgawz5clhfgyvapsq"
+        ),
+        "event_rehashed": True,
+        "evidence_rehashed": True,
+        "event_evidence_binding_verified": True,
+        "m43_receipt_present": False,
+    }
+    assert validation_attempts["authoritative_anchors_after_both_attempts"] == {
+        "unchanged": True,
+        "control_store": {
+            "sha256": (
+                "6798563648545b3fc05f1b7638ad2d0448c743d3a788bf78208a5d28a76a95f7"
+            ),
+            "size_bytes": 43_528_192,
+        },
+        "coordination_store": {
+            "sha256": (
+                "ddbdf352e6a41452c6584cfa06fc760b90a94f1ff6473ff2c5eeb93de7551785"
+            ),
+            "size_bytes": 16_789_504,
+        },
+        "m42_receipt": {
+            "sha256": (
+                "ff9a24d339cf06eacb3573cd2825e0648a558efe5ec9539c0c4f489002ca609d"
+            ),
+            "size_bytes": 14_112,
+        },
+        "stopped_status": {
+            "sha256": (
+                "3f8c1227e7bc29c3057d238e550880cdfb6144a3687a73dea12e3ca063148a4c"
+            ),
+            "size_bytes": 2_408,
+        },
+        "authoritative_event_watermark": 296,
+        "authoritative_evidence_count": 49,
+        "authoritative_generation": 30,
+    }
+    assert successor_evidence_repair == (
+        materializer._m43_successor_evidence_verifier_repair()
+    )
+    assert successor_evidence_repair == {
+        **successor_evidence_repair,
+        "schema": "sawm/bounded-successor-evidence-verifier-repair@1",
+        "repair_parent": prior_control["control_commit"],
+        "repair_commit": "93c806cecb6c4929acdc8ccd2702f11d72585ffc",
+        "repair_tree": "9d852330f8c100450889f055e9e58b94e4b35294",
+        "failure_kind": "post_append_predecessor_whole_table_scope_mismatch",
+        "permitted_successor_evidence_row_count": 1,
+        "successor_row_is_caller_bound": True,
+        "successor_row_content_identity_rehashed": True,
+        "successor_row_canonical_body_required": True,
+        "successor_row_collision_rejected": True,
+        "unlisted_extra_evidence_rejected": True,
+        "wrong_successor_evidence_rejected": True,
+        "preappend_default_behavior_changed": False,
+        "m42_return_fields_changed": False,
+        "m42_return_counts_changed": False,
+        "receipt_schema_weakened": False,
+        "authority_weakened": False,
+        "database_mutations": 0,
+        "event_append_changes": 0,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    assert successor_evidence_repair["blob_oids"] == {
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "db4da6dcbf979972b0bc6564534ae15d6f2708b5"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "2b412f977c1cfe19acbb15c96b73b35a44306252"
+        ),
+    }
+    assert successor_evidence_repair["changed_paths"] == sorted(
+        successor_evidence_repair["blob_oids"]
+    )
+    assert successor_evidence_repair["path_modes"] == {
+        path: "100644" for path in successor_evidence_repair["blob_oids"]
+    }
     assert source_chain["failed_pre_authoritative_control_parent"] == (
         source_chain["initial_control_commit"]
     )
@@ -5778,10 +5993,10 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     assert source_chain["prior_final_control_parent"] == fixture_repair[
         "repair_commit"
     ]
-    assert source_chain["prior_final_control_commit"] == prior_control[
+    assert source_chain["prior_final_control_commit"] == revision2_control[
         "control_commit"
     ]
-    assert source_chain["prior_final_control_tree"] == prior_control[
+    assert source_chain["prior_final_control_tree"] == revision2_control[
         "control_tree"
     ]
     assert source_chain["prior_final_control_blobs"] == dict(
@@ -5791,7 +6006,7 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
         materializer._M43_PRIOR_FINAL_CONTROL_MODES
     )
     assert source_chain["bounded_materializer_verifier_repair_parent"] == (
-        prior_control["control_commit"]
+        revision2_control["control_commit"]
     )
     assert source_chain["bounded_materializer_verifier_repair_commit"] == (
         verifier_repair["repair_commit"]
@@ -5805,12 +6020,75 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     assert source_chain["bounded_materializer_verifier_repair_modes"] == dict(
         materializer._M43_VERIFIER_REPAIR_MODES
     )
-    assert source_chain["final_reseal_parent"] == verifier_repair["repair_commit"]
+    assert source_chain["revision3_final_control_parent"] == verifier_repair[
+        "repair_commit"
+    ]
+    assert source_chain["revision3_final_control_commit"] == prior_control[
+        "control_commit"
+    ]
+    assert source_chain["revision3_final_control_tree"] == prior_control[
+        "control_tree"
+    ]
+    assert source_chain["revision3_final_control_blobs"] == {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "176952af29363272dd4d597c1e8961301abafe21"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "3fec38ba8c0cd960cfb3379158ee03961b12218b"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "547538605c1e6f43b11082e7f9a1593ab240bbba"
+        ),
+        "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json": (
+            "7f0a2e3c17cd90861f5e7cb924a3ebf236b7e1d4"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "8a87b56ecadeed8a2b780bcee0ab3f26fed62780"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "128c70ea5193d2fb5c652606884034c3aafdad8f"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "5e9ad70bba6d67aa2985bc4907149c4986538511"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "456f7da65356d929a580b1117e06ce6686ff58d7"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "a01f3d160ea379c3d3abe1b7b4e237281b123b12"
+        ),
+    }
+    assert source_chain["revision3_final_control_modes"] == {
+        path: "100644"
+        for path in source_chain["revision3_final_control_blobs"]
+    }
+    assert source_chain["successor_evidence_verifier_repair_parent"] == (
+        prior_control["control_commit"]
+    )
+    assert source_chain["successor_evidence_verifier_repair_commit"] == (
+        successor_evidence_repair["repair_commit"]
+    )
+    assert source_chain["successor_evidence_verifier_repair_tree"] == (
+        successor_evidence_repair["repair_tree"]
+    )
+    assert source_chain["successor_evidence_verifier_repair_blobs"] == (
+        successor_evidence_repair["blob_oids"]
+    )
+    assert source_chain["successor_evidence_verifier_repair_modes"] == (
+        successor_evidence_repair["path_modes"]
+    )
+    assert source_chain["final_reseal_parent"] == successor_evidence_repair[
+        "repair_commit"
+    ]
     assert source_chain["failed_pre_authoritative_control_commit_count"] == 2
     assert source_chain["historical_fixture_repair_commit_count"] == 1
     assert source_chain["bounded_materializer_verifier_repair_commit_count"] == 1
-    assert source_chain["final_reseal_commit_count"] == 2
-    assert source_chain["final_control_commit_count"] == 3
+    assert source_chain["revision3_final_control_commit_count"] == 1
+    assert source_chain["successor_evidence_verifier_repair_commit_count"] == 1
+    assert source_chain["failed_disposable_partial_append_count"] == 1
+    assert source_chain["final_reseal_commit_count"] == 3
+    assert source_chain["final_control_commit_count"] == 4
     assert not any(
         name in authority
         for name in (
@@ -5827,11 +6105,17 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     assert hardening["current_commit_identity_embedded_in_authority"] is False
     assert hardening["current_tree_identity_embedded_in_authority"] is False
     assert hardening["current_blob_identities_embedded_in_authority"] is False
+    assert hardening["schema"].endswith("hardening@2")
+    assert hardening[
+        "exact_successor_evidence_is_the_only_postappend_allowance"
+    ] is True
+    assert hardening["m42_return_contract_preserved"] is True
+    assert hardening["unlisted_physical_evidence_still_fails_closed"] is True
     assert hardening["authority_weakened"] is False
-    assert 'restart-source-seal@3' in inspect.getsource(
+    assert 'restart-source-seal@4' in inspect.getsource(
         materializer._m43_migration_body
     )
-    assert 'restart-receipt@3' in inspect.getsource(
+    assert 'restart-receipt@4' in inspect.getsource(
         materializer._expected_m43_source_successor_receipt
     )
     assert not any(
@@ -5849,6 +6133,16 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     assert repair["marker_retirement_is_no_replace"] is True
     assert changes["task_status_changes"] == 0
     assert changes["accepted_completion_changes"] == 0
+    preservation = authority["preservation"]
+    assert preservation["revision3_authority_preserved_exactly"] is True
+    assert preservation["revision3_full_suite_evidence_preserved"] is True
+    assert preservation[
+        "disposable_partial_append_preserved_as_non_authoritative"
+    ] is True
+    assert preservation["authoritative_event_297_remained_absent"] is True
+    assert preservation[
+        "successor_evidence_verifier_repair_changed_no_task_authority"
+    ] is True
     assert materializer._validated_m43_live_preflight_contract(authority) == (
         authority["live_preflight_contract"]
     )
@@ -5863,6 +6157,46 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
         materializer.MaterializationError, match="M43 live preflight contract differs"
     ):
         materializer._validated_m43_live_preflight_contract(tampered_prior)
+
+    tampered_revision3 = copy.deepcopy(authority)
+    tampered_revision3["prior_revision3_authority"]["authorized"] = False
+    with pytest.raises(
+        materializer.MaterializationError, match="M43 live preflight contract differs"
+    ):
+        materializer._validated_m43_live_preflight_contract(tampered_revision3)
+
+    tampered_validation_attempt = copy.deepcopy(authority)
+    tampered_validation_attempt["revision4_validation_attempts"]["attempts"][
+        0
+    ]["passed"] = 279
+    with pytest.raises(
+        materializer.MaterializationError, match="M43 live preflight contract differs"
+    ):
+        materializer._validated_m43_live_preflight_contract(
+            tampered_validation_attempt
+        )
+
+    tampered_disposable_authority = copy.deepcopy(authority)
+    tampered_disposable_authority["revision4_validation_attempts"][
+        "authoritative_anchors_after_both_attempts"
+    ]["authoritative_event_watermark"] = 297
+    with pytest.raises(
+        materializer.MaterializationError, match="M43 live preflight contract differs"
+    ):
+        materializer._validated_m43_live_preflight_contract(
+            tampered_disposable_authority
+        )
+
+    tampered_successor_repair = copy.deepcopy(authority)
+    tampered_successor_repair[
+        "accepted_successor_evidence_verifier_repair"
+    ]["unlisted_extra_evidence_rejected"] = False
+    with pytest.raises(
+        materializer.MaterializationError, match="M43 live preflight contract differs"
+    ):
+        materializer._validated_m43_live_preflight_contract(
+            tampered_successor_repair
+        )
 
     tampered_repair = copy.deepcopy(authority)
     tampered_repair["accepted_historical_fixture_repair"]["blob_oids"] = {}
@@ -5886,6 +6220,17 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
         materializer.MaterializationError, match="M43 live preflight contract differs"
     ):
         materializer._validated_m43_live_preflight_contract(tampered_count)
+
+    tampered_revision3_chain = copy.deepcopy(authority)
+    tampered_revision3_chain["source_chain"][
+        "revision3_final_control_commit"
+    ] = "0" * 40
+    with pytest.raises(
+        materializer.MaterializationError, match="M43 live preflight contract differs"
+    ):
+        materializer._validated_m43_live_preflight_contract(
+            tampered_revision3_chain
+        )
 
     tampered_reseal_failure = copy.deepcopy(authority)
     tampered_reseal_failure["failed_pre_authoritative_reseal_validation"][

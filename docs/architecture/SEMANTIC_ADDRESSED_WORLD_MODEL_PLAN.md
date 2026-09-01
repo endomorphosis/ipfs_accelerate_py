@@ -2325,7 +2325,54 @@ task, or completion state.  Authorization revision 3 is recorded at
 `sha256:1c1c16ed284a0176a2244bddd79847934ba6a369e9ab46c674a109853d2d67d8`, bound to the exact revision-3 authority body before the
 nine-control successor is frozen and independently authorized.
 
-Under the final revision-3 reseal, M43 authorizes exactly one stopped-generation restart from 30
+The immutable revision-3 control is commit
+`8c22185c66f2250732071e789e69a0cd42cf9a7d`, tree
+`754e49e85310f96d6709f515328c27ce7bc9b43f`, and a direct nine-control
+child of `c5ca423d74e27fe9156c4ce9b476851f565cb7cd`. Its full current-tree
+suite passed all 280 tests in 546.92 seconds. The retained mode-`0600`
+validation log `/tmp/m43-semantic-world-pytest.SFTF0v.log` is
+non-authoritative, 2,674,942 bytes, and has SHA-256
+`c2004ef842570e2f2345caff606efed078842e71725a1d942e2e93ed4a80034d`.
+That validation changed no authoritative row, task, goal, plan, provider, or
+merge state.
+
+A subsequent rehearsal used a fresh disposable copy bound to that exact
+commit, tree, revision-3 authority, and source binding
+`sha256:baa52e8efe025b0c3e8cbafc2ac0bdf3f64cc630e4e12cecdd12259adda88f67`.
+The copied owner reached generation 31 and its authenticated append advanced
+only the copy from event 296 and 49 evidence nodes to event 297 and 50 evidence
+nodes. It then failed before an M43 receipt with the typed error
+`MigrationRequired: M42 exact evidence projection membership differs` and
+stopped cleanly. The copied event and evidence remain non-authoritative and
+non-reusable. The authoritative DuckDB, Quack owner, generation 30, event 296,
+49 evidence nodes, task/goal/plan heads, coordination store, and M42 receipt
+were never opened for mutation and remained exact.
+
+The bounded successor-evidence verifier repair is commit
+`93c806cecb6c4929acdc8ccd2702f11d72585ffc`, tree
+`9d852330f8c100450889f055e9e58b94e4b35294`, a direct child of the
+revision-3 control. Its binary diff has SHA-256
+`54ff55407449eca08a70563b9b085338e4a9ec02f2bed611d10e62de0b3ba840`
+and changes exactly the materializer and its board test. It permits a
+caller-bound singular exact successor evidence row only after canonical-body,
+content-identity, and collision checks; the complete physical evidence table
+must still equal the sealed predecessor plus that named row. Unlisted or wrong
+successors fail closed, while the M42 verifier's default behavior and return
+counts remain unchanged. Two independent control reviews admitted this repair;
+it changed no database, event, task, goal, plan, completion, or authority row.
+
+Authorization revision 4 is recorded at `2026-09-01T11:00:00Z`. It preserves
+revision 3 and the failed disposable append as immutable history, binds the
+exact successor-evidence repair, and seals one direct nine-control child of
+`93c806cecb6c4929acdc8ccd2702f11d72585ffc`. The revision-4 canonical
+authority CID
+`sha256:6ddc11cb9e37da82023e5a89124298f532cfc943cc347fa5ea67ff13bcd1eb43`
+is mirrored by the scheduler, dependency seal, migration
+inventory, materializer, operator facade, validators, and board test; the
+current commit, tree, blobs, and source-binding identity remain outside that
+canonical authority body to avoid a recursive seal.
+
+Under the final revision-4 reseal, M43 authorizes exactly one stopped-generation restart from 30
 to 31 through the existing Quack owner path and exactly one evidence append,
 event 297.  The live result must retain plan revision 28 and task heads
 SAWM-006 `in_progress` revision 11 and SAWM-008 `in_progress` revision 13,

@@ -40,7 +40,7 @@ _M42_AUTHORITY_CID = (
     "sha256:1e1df3ea3d6b1805dc32f6dd43c61bb95d99e2d08da4c96872441dbc9fdbf587"
 )
 _M43_AUTHORITY_CID = (
-    "sha256:1c1c16ed284a0176a2244bddd79847934ba6a369e9ab46c674a109853d2d67d8"
+    "sha256:6ddc11cb9e37da82023e5a89124298f532cfc943cc347fa5ea67ff13bcd1eb43"
 )
 _M43_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
 _HISTORICAL_VALIDATION_PYTHON = "/home/barberb/.local/bin/python"
@@ -3234,6 +3234,10 @@ def _m43_source_chain_errors(
         verifier_repair_blobs = chain.get(
             "bounded_materializer_verifier_repair_blobs", {}
         )
+        revision3_final_blobs = chain.get("revision3_final_control_blobs", {})
+        successor_verifier_repair_blobs = chain.get(
+            "successor_evidence_verifier_repair_blobs", {}
+        )
         expected_repair_paths = {
             "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
             "database_portal_bridge.py",
@@ -3250,6 +3254,8 @@ def _m43_source_chain_errors(
             or not isinstance(fixture_repair_blobs, Mapping)
             or not isinstance(prior_final_blobs, Mapping)
             or not isinstance(verifier_repair_blobs, Mapping)
+            or not isinstance(revision3_final_blobs, Mapping)
+            or not isinstance(successor_verifier_repair_blobs, Mapping)
             or chain.get("m42_final_control_commit")
             != materializer._M43_BASE_CONTROL_COMMIT
             or chain.get("m42_final_control_tree")
@@ -3316,8 +3322,28 @@ def _m43_source_chain_errors(
             != dict(materializer._M43_VERIFIER_REPAIR_BLOBS)
             or chain.get("bounded_materializer_verifier_repair_modes")
             != dict(materializer._M43_VERIFIER_REPAIR_MODES)
-            or chain.get("final_reseal_parent")
+            or chain.get("revision3_final_control_parent")
             != materializer._M43_VERIFIER_REPAIR_COMMIT
+            or chain.get("revision3_final_control_commit")
+            != materializer._M43_REVISION3_FINAL_CONTROL_COMMIT
+            or chain.get("revision3_final_control_tree")
+            != materializer._M43_REVISION3_FINAL_CONTROL_TREE
+            or dict(revision3_final_blobs)
+            != dict(materializer._M43_REVISION3_FINAL_CONTROL_BLOBS)
+            or chain.get("revision3_final_control_modes")
+            != dict(materializer._M43_REVISION3_FINAL_CONTROL_MODES)
+            or chain.get("successor_evidence_verifier_repair_parent")
+            != materializer._M43_REVISION3_FINAL_CONTROL_COMMIT
+            or chain.get("successor_evidence_verifier_repair_commit")
+            != materializer._M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT
+            or chain.get("successor_evidence_verifier_repair_tree")
+            != materializer._M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_TREE
+            or dict(successor_verifier_repair_blobs)
+            != dict(materializer._M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS)
+            or chain.get("successor_evidence_verifier_repair_modes")
+            != dict(materializer._M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_MODES)
+            or chain.get("final_reseal_parent")
+            != materializer._M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT
             or int(
                 chain.get("failed_pre_authoritative_control_commit_count") or 0
             )
@@ -3329,8 +3355,14 @@ def _m43_source_chain_errors(
                 or 0
             )
             != 1
-            or int(chain.get("final_reseal_commit_count") or 0) != 2
-            or int(chain.get("final_control_commit_count") or 0) != 3
+            or int(chain.get("revision3_final_control_commit_count") or 0) != 1
+            or int(
+                chain.get("successor_evidence_verifier_repair_commit_count") or 0
+            )
+            != 1
+            or int(chain.get("failed_disposable_partial_append_count") or 0) != 1
+            or int(chain.get("final_reseal_commit_count") or 0) != 3
+            or int(chain.get("final_control_commit_count") or 0) != 4
             or set(authority.get("operator_control_paths", ()))
             != set(materializer._M43_OPERATOR_CONTROL_PATHS)
             or set(control_blobs) != set(materializer._M43_OPERATOR_CONTROL_PATHS)
@@ -3342,6 +3374,10 @@ def _m43_source_chain_errors(
             != set(materializer._M43_OPERATOR_CONTROL_PATHS)
             or set(verifier_repair_blobs)
             != set(materializer._M43_VERIFIER_REPAIR_BLOBS)
+            or set(revision3_final_blobs)
+            != set(materializer._M43_OPERATOR_CONTROL_PATHS)
+            or set(successor_verifier_repair_blobs)
+            != set(materializer._M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS)
         ):
             raise RuntimeError("M43 sealed source-chain identity fields differ")
         if not hasattr(materializer, "_assert_m43_source_delta"):
@@ -3445,6 +3481,27 @@ def _m43_dead_attempt_lifecycle_recovery_restart_successor_errors(
         )
         final_hardening = expected.get("final_control_hardening", {})
         prior_control = expected.get("prior_control_authorization", {})
+        prior_revision3 = expected.get("prior_revision3_authority", {})
+        revision4_validation = expected.get("revision4_validation_attempts", {})
+        revision4_attempts = revision4_validation.get("attempts", ())
+        revision3_suite = (
+            revision4_attempts[0]
+            if isinstance(revision4_attempts, Sequence)
+            and len(revision4_attempts) == 2
+            else {}
+        )
+        disposable_rehearsal = (
+            revision4_attempts[1]
+            if isinstance(revision4_attempts, Sequence)
+            and len(revision4_attempts) == 2
+            else {}
+        )
+        authoritative_anchors = revision4_validation.get(
+            "authoritative_anchors_after_both_attempts", {}
+        )
+        successor_verifier_repair = expected.get(
+            "accepted_successor_evidence_verifier_repair", {}
+        )
         changes = expected.get("exact_changes", {})
         preservation = expected.get("preservation", {})
         required_functions = (
@@ -3460,29 +3517,41 @@ def _m43_dead_attempt_lifecycle_recovery_restart_successor_errors(
         )
         if (
             expected.get("schema")
-            != "sawm/dead-attempt-lifecycle-recovery-restart-authorization@3"
-            or expected.get("authorization_revision") != 3
+            != "sawm/dead-attempt-lifecycle-recovery-restart-authorization@4"
+            or expected.get("authorization_revision") != 4
             or expected.get("authorization_amended_at")
             != materializer._M43_AUTHORIZATION_AMENDED_AT
             or expected.get("prior_authorization_cid")
-            != materializer._M43_PRIOR_FINAL_AUTHORITY_CID
-            or expected.get("control_recorded_at") != "2026-09-01T10:00:00Z"
+            != materializer._M43_REVISION3_AUTHORITY_CID
+            or expected.get("control_recorded_at") != "2026-09-01T11:00:00Z"
             or expected.get("authorization_amendment_paths")
             != sorted(materializer._M43_OPERATOR_CONTROL_PATHS)
             or prior_control.get("authorization_cid")
-            != materializer._M43_PRIOR_FINAL_AUTHORITY_CID
-            or prior_control.get("authorization_revision") != 2
+            != materializer._M43_REVISION3_AUTHORITY_CID
+            or prior_control.get("authorization_revision") != 3
             or prior_control.get("prior_authorization_cid")
-            != materializer._M43_PRE_AUTHORITATIVE_AUTHORITY_CID
+            != materializer._M43_PRIOR_FINAL_AUTHORITY_CID
             or prior_control.get("control_recorded_at")
-            != "2026-09-01T09:00:00Z"
+            != "2026-09-01T10:00:00Z"
             or prior_control.get("control_commit")
-            != materializer._M43_PRIOR_FINAL_CONTROL_COMMIT
+            != materializer._M43_REVISION3_FINAL_CONTROL_COMMIT
             or prior_control.get("control_tree")
-            != materializer._M43_PRIOR_FINAL_CONTROL_TREE
-            or prior_control.get("superseded_before_event_297") is not True
+            != materializer._M43_REVISION3_FINAL_CONTROL_TREE
+            or prior_control.get("superseded_before_authoritative_event_297")
+            is not True
             or prior_control.get("event_297_appended") is not False
             or prior_control.get("receipt_published") is not False
+            or prior_revision3
+            != materializer._expected_m43_revision3_authority()
+            or materializer._identity(prior_revision3)
+            != materializer._M43_REVISION3_AUTHORITY_CID
+            or prior_revision3.get("schema")
+            != "sawm/dead-attempt-lifecycle-recovery-restart-authorization@3"
+            or prior_revision3.get("authorization_revision") != 3
+            or prior_revision3.get("control_recorded_at")
+            != "2026-09-01T10:00:00Z"
+            or prior_revision3.get("prior_authorization_cid")
+            != materializer._M43_PRIOR_FINAL_AUTHORITY_CID
             or expected.get("migration_revision") != "SAWM-R2-M43"
             or expected.get("migration_kind") != key
             or expected.get("target_generation") != 31
@@ -3680,6 +3749,96 @@ def _m43_dead_attempt_lifecycle_recovery_restart_successor_errors(
             ]
             or verifier_repair.get("validation_weakened") is not False
             or verifier_repair.get("authority_weakened") is not False
+            or revision4_validation
+            != materializer._m43_revision4_validation_attempts()
+            or revision4_validation.get("schema")
+            != "sawm/m43-revision-4-validation-attempts@1"
+            or not isinstance(revision4_attempts, Sequence)
+            or len(revision4_attempts) != 2
+            or revision3_suite.get("kind")
+            != "authoritative_current_tree_full_suite"
+            or revision3_suite.get("source_commit")
+            != materializer._M43_REVISION3_FINAL_CONTROL_COMMIT
+            or revision3_suite.get("source_tree")
+            != materializer._M43_REVISION3_FINAL_CONTROL_TREE
+            or revision3_suite.get("result") != "passed"
+            or revision3_suite.get("collected") != 280
+            or revision3_suite.get("passed") != 280
+            or revision3_suite.get("failed") != 0
+            or revision3_suite.get("retained_log", {}).get("sha256")
+            != materializer._M43_REVISION3_FULL_SUITE_LOG_SHA256
+            or revision3_suite.get("retained_log", {}).get("size_bytes")
+            != materializer._M43_REVISION3_FULL_SUITE_LOG_SIZE
+            or disposable_rehearsal.get("kind")
+            != "fresh_disposable_clone_partial_append_rehearsal"
+            or disposable_rehearsal.get("disposable") is not True
+            or disposable_rehearsal.get("authoritative") is not False
+            or disposable_rehearsal.get("source_commit")
+            != materializer._M43_REVISION3_FINAL_CONTROL_COMMIT
+            or disposable_rehearsal.get("source_tree")
+            != materializer._M43_REVISION3_FINAL_CONTROL_TREE
+            or disposable_rehearsal.get("authorization_cid")
+            != materializer._M43_REVISION3_AUTHORITY_CID
+            or disposable_rehearsal.get("result")
+            != "failed_after_authenticated_append_before_receipt"
+            or disposable_rehearsal.get("typed_error")
+            != "MigrationRequired: M42 exact evidence projection membership differs"
+            or disposable_rehearsal.get("post_stop_generation") != 31
+            or disposable_rehearsal.get("partial_append", {}).get(
+                "event_watermark_after"
+            )
+            != 297
+            or disposable_rehearsal.get("partial_append", {}).get(
+                "evidence_count_after"
+            )
+            != 50
+            or disposable_rehearsal.get("partial_append", {}).get(
+                "m43_receipt_present"
+            )
+            is not False
+            or disposable_rehearsal.get("task_status_changes") != 0
+            or disposable_rehearsal.get("accepted_completion_changes") != 0
+            or authoritative_anchors.get("unchanged") is not True
+            or authoritative_anchors.get("authoritative_event_watermark") != 296
+            or authoritative_anchors.get("authoritative_evidence_count") != 49
+            or authoritative_anchors.get("authoritative_generation") != 30
+            or revision4_validation.get("worker_self_approval") is not False
+            or successor_verifier_repair
+            != materializer._m43_successor_evidence_verifier_repair()
+            or successor_verifier_repair.get("schema")
+            != "sawm/bounded-successor-evidence-verifier-repair@1"
+            or successor_verifier_repair.get("repair_parent")
+            != materializer._M43_REVISION3_FINAL_CONTROL_COMMIT
+            or successor_verifier_repair.get("repair_commit")
+            != materializer._M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT
+            or successor_verifier_repair.get("repair_tree")
+            != materializer._M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_TREE
+            or successor_verifier_repair.get("blob_oids")
+            != dict(materializer._M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS)
+            or successor_verifier_repair.get("path_modes")
+            != dict(materializer._M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_MODES)
+            or successor_verifier_repair.get(
+                "permitted_successor_evidence_row_count"
+            )
+            != 1
+            or successor_verifier_repair.get("successor_row_is_caller_bound")
+            is not True
+            or successor_verifier_repair.get(
+                "successor_row_content_identity_rehashed"
+            )
+            is not True
+            or successor_verifier_repair.get("unlisted_extra_evidence_rejected")
+            is not True
+            or successor_verifier_repair.get("wrong_successor_evidence_rejected")
+            is not True
+            or successor_verifier_repair.get("preappend_default_behavior_changed")
+            is not False
+            or successor_verifier_repair.get("m42_return_fields_changed")
+            is not False
+            or successor_verifier_repair.get("m42_return_counts_changed")
+            is not False
+            or successor_verifier_repair.get("authority_weakened") is not False
+            or successor_verifier_repair.get("worker_self_approval") is not False
             or final_hardening.get(
                 "operational_suffix_malformed_rows_are_typed_conflicts"
             )
@@ -3687,6 +3846,13 @@ def _m43_dead_attempt_lifecycle_recovery_restart_successor_errors(
             or final_hardening.get(
                 "pending_authority_rejected_by_operator_facade"
             )
+            is not True
+            or final_hardening.get(
+                "exact_successor_evidence_is_the_only_postappend_allowance"
+            )
+            is not True
+            or final_hardening.get("m42_return_contract_preserved") is not True
+            or final_hardening.get("unlisted_physical_evidence_still_fails_closed")
             is not True
             or final_hardening.get("authority_weakened") is not False
             or expected.get("ordinary_source_changes")

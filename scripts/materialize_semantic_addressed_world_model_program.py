@@ -1606,12 +1606,11 @@ _M40_DATABASE_UUID = _M39_DATABASE_UUID
 _M40_EXTENSION_FINGERPRINT = _M39_EXTENSION_FINGERPRINT
 
 # M43 is the generation-bearing successor to the cleanly stopped generation-30
-# run.  Its separately reviewed four-path implementation repair, initial
-# nine-control seal, first failed pre-authoritative control, bounded historical
-# fixture repair, revision-2 reseal, two pre-authoritative revision-2 failures,
-# and bounded materializer/verifier repair are exact immutable predecessors.
-# The final source-chain gate admits only one revision-3 nine-control child of
-# that verifier repair.
+# run.  Its separately reviewed four-path implementation repair, three prior
+# control revisions, bounded historical and verifier repairs, sealed full-suite
+# validation, failed disposable partial append, and exact successor-evidence
+# verifier repair are immutable predecessors.  The final source-chain gate
+# admits only one revision-4 nine-control child of that last repair.
 _M43_MIGRATION_REVISION = "SAWM-R2-M43"
 _M43_SUPERSESSION_MODE = (
     "generation_bearing_dead_attempt_lifecycle_recovery_restart_source_seal"
@@ -1621,7 +1620,8 @@ _M43_SUPERSESSION_REASON = (
 )
 _M43_PRIOR_CONTROL_RECORDED_AT = "2026-09-01T08:00:00Z"
 _M43_PRIOR_FINAL_CONTROL_RECORDED_AT = "2026-09-01T09:00:00Z"
-_M43_CONTROL_RECORDED_AT = "2026-09-01T10:00:00Z"
+_M43_REVISION3_CONTROL_RECORDED_AT = "2026-09-01T10:00:00Z"
+_M43_CONTROL_RECORDED_AT = "2026-09-01T11:00:00Z"
 _M43_AUTHORIZATION_AMENDED_AT = _M43_CONTROL_RECORDED_AT
 _M43_PRIOR_GENERATION = 30
 _M43_TARGET_GENERATION = 31
@@ -1651,6 +1651,9 @@ _M43_EVIDENCE_KIND = (
     "operator_control_plane_dead_attempt_lifecycle_recovery_restart_successor"
 )
 _M43_AUTHORITY_CID = (
+    "sha256:6ddc11cb9e37da82023e5a89124298f532cfc943cc347fa5ea67ff13bcd1eb43"
+)
+_M43_REVISION3_AUTHORITY_CID = (
     "sha256:1c1c16ed284a0176a2244bddd79847934ba6a369e9ab46c674a109853d2d67d8"
 )
 _M43_PRIOR_FINAL_AUTHORITY_CID = (
@@ -1890,6 +1893,79 @@ _M43_FAILED_TEST_IDS = (
     "test_m17_namespace_is_preserved_as_historical_under_m27",
     "test/api/semantic_world/test_semantic_addressed_world_model_board.py::"
     "test_m15_historical_authority_preserves_fresh_namespace_under_m27",
+)
+_M43_REVISION3_FINAL_CONTROL_COMMIT = (
+    "8c22185c66f2250732071e789e69a0cd42cf9a7d"
+)
+_M43_REVISION3_FINAL_CONTROL_TREE = (
+    "754e49e85310f96d6709f515328c27ce7bc9b43f"
+)
+_M43_REVISION3_FINAL_CONTROL_BLOBS = MappingProxyType(
+    {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "176952af29363272dd4d597c1e8961301abafe21"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "3fec38ba8c0cd960cfb3379158ee03961b12218b"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "547538605c1e6f43b11082e7f9a1593ab240bbba"
+        ),
+        "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json": (
+            "7f0a2e3c17cd90861f5e7cb924a3ebf236b7e1d4"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "8a87b56ecadeed8a2b780bcee0ab3f26fed62780"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "128c70ea5193d2fb5c652606884034c3aafdad8f"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "5e9ad70bba6d67aa2985bc4907149c4986538511"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "456f7da65356d929a580b1117e06ce6686ff58d7"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "a01f3d160ea379c3d3abe1b7b4e237281b123b12"
+        ),
+    }
+)
+_M43_REVISION3_FINAL_CONTROL_MODES = MappingProxyType(
+    {path: "100644" for path in _M43_REVISION3_FINAL_CONTROL_BLOBS}
+)
+_M43_REVISION3_FULL_SUITE_LOG_SHA256 = (
+    "c2004ef842570e2f2345caff606efed078842e71725a1d942e2e93ed4a80034d"
+)
+_M43_REVISION3_FULL_SUITE_LOG_SIZE = 2_674_942
+_M43_REVISION3_SOURCE_BINDING_CID = (
+    "sha256:baa52e8efe025b0c3e8cbafc2ac0bdf3f64cc630e4e12cecdd12259adda88f67"
+)
+_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT = (
+    "93c806cecb6c4929acdc8ccd2702f11d72585ffc"
+)
+_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_TREE = (
+    "9d852330f8c100450889f055e9e58b94e4b35294"
+)
+_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_DIFF_SHA256 = (
+    "54ff55407449eca08a70563b9b085338e4a9ec02f2bed611d10e62de0b3ba840"
+)
+_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS = MappingProxyType(
+    {
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "db4da6dcbf979972b0bc6564534ae15d6f2708b5"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "2b412f977c1cfe19acbb15c96b73b35a44306252"
+        ),
+    }
+)
+_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_MODES = MappingProxyType(
+    {
+        path: "100644"
+        for path in _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS
+    }
 )
 
 # M41 preserves M40's complete control declaration and failed sealed-suite
@@ -8779,8 +8855,8 @@ def _m43_post_m42_operational_suffix() -> dict[str, Any]:
     }
 
 
-def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[str, Any]:
-    """Return M43's closed stopped-generation restart authorization."""
+def _expected_m43_revision3_authority() -> dict[str, Any]:
+    """Reconstruct M43's immutable revision-3 authorization."""
 
     m42 = (
         _expected_m42_failed_pre_authoritative_m41_evidence_projection_successor_authority()
@@ -8839,14 +8915,14 @@ def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[st
     return {
         "schema": "sawm/dead-attempt-lifecycle-recovery-restart-authorization@3",
         "authorization_revision": 3,
-        "authorization_amended_at": _M43_AUTHORIZATION_AMENDED_AT,
+        "authorization_amended_at": _M43_REVISION3_CONTROL_RECORDED_AT,
         "prior_authorization_cid": _M43_PRIOR_FINAL_AUTHORITY_CID,
         "authorized": True,
         "authority": "operator_control_plane",
         "migration_revision": _M43_MIGRATION_REVISION,
         "migration_kind": _M43_SUPERSESSION_REASON,
         "supersession_mode": _M43_SUPERSESSION_MODE,
-        "control_recorded_at": _M43_CONTROL_RECORDED_AT,
+        "control_recorded_at": _M43_REVISION3_CONTROL_RECORDED_AT,
         "target_store_id": _M43_STORE_ID,
         "target_coordination_store_id": _M43_COORDINATION_STORE_ID,
         "target_runtime_root": _M43_RUNTIME_ROOT,
@@ -9247,6 +9323,290 @@ def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[st
     }
 
 
+def _m43_revision4_validation_attempts() -> dict[str, Any]:
+    """Return sealed evidence for the rev3 suite and disposable append failure."""
+
+    return {
+        "schema": "sawm/m43-revision-4-validation-attempts@1",
+        "attempts": [
+            {
+                "ordinal": 1,
+                "kind": "authoritative_current_tree_full_suite",
+                "source_commit": _M43_REVISION3_FINAL_CONTROL_COMMIT,
+                "source_tree": _M43_REVISION3_FINAL_CONTROL_TREE,
+                "result": "passed",
+                "collected": 280,
+                "passed": 280,
+                "failed": 0,
+                "duration_seconds": "546.92",
+                "python": "3.12.3",
+                "pytest": "9.1.1",
+                "completed_at_from_log_mtime": (
+                    "2026-09-01T10:28:56.012371110Z"
+                ),
+                "retained_log": {
+                    "authority": "non_authoritative_retained_validation_log",
+                    "path": "/tmp/m43-semantic-world-pytest.SFTF0v.log",
+                    "sha256": _M43_REVISION3_FULL_SUITE_LOG_SHA256,
+                    "size_bytes": _M43_REVISION3_FULL_SUITE_LOG_SIZE,
+                    "mode": "0600",
+                },
+                "authoritative_state_changes": 0,
+                "task_status_changes": 0,
+                "goal_revision_changes": 0,
+                "provider_invocation_changes": 0,
+                "merge_attempt_changes": 0,
+            },
+            {
+                "ordinal": 2,
+                "kind": "fresh_disposable_clone_partial_append_rehearsal",
+                "disposable": True,
+                "authoritative": False,
+                "source_commit": _M43_REVISION3_FINAL_CONTROL_COMMIT,
+                "source_tree": _M43_REVISION3_FINAL_CONTROL_TREE,
+                "source_binding_cid": _M43_REVISION3_SOURCE_BINDING_CID,
+                "authorization_cid": _M43_REVISION3_AUTHORITY_CID,
+                "validation_digest": (
+                    "sha256:583d4480426d92035848a83d730c8ca0ab867f1f8f1ac7cd332240313a97d2d1"
+                ),
+                "result": "failed_after_authenticated_append_before_receipt",
+                "typed_error": (
+                    "MigrationRequired: M42 exact evidence projection "
+                    "membership differs"
+                ),
+                "successful_append_observed_at": "2026-09-01T10:34:22.338Z",
+                "stopped_at": "2026-09-01T10:34:42Z",
+                "post_stop_lifecycle": "stopped",
+                "post_stop_generation": 31,
+                "post_control_store": {
+                    "sha256": (
+                        "22fe8e92031317551c0b036d1c2a49ccc927c9536a987e57ac3ca7e6bb0720b8"
+                    ),
+                    "size_bytes": 43_528_192,
+                    "mode": "0664",
+                },
+                "post_status": {
+                    "sha256": (
+                        "c339f4d048ea54cf1e3a47df0095860b31665da2ce07040ca9109c659988f765"
+                    ),
+                    "size_bytes": 2_257,
+                    "mode": "0600",
+                    "lifecycle": "stopped",
+                    "identity_status": "stopped",
+                    "generation": 31,
+                },
+                "mutation_result": {
+                    "operation": "evidence_record@1",
+                    "ok": True,
+                    "rowcounts": [0, 1, 1],
+                    "sha256": (
+                        "03adb834891d0e72a410d3641bb21501c98ae59d090b1ff176d73d66bd1f3a07"
+                    ),
+                    "size_bytes": 2_285,
+                    "mode": "0600",
+                },
+                "partial_append": {
+                    "event_watermark_before": 296,
+                    "event_watermark_after": 297,
+                    "evidence_count_before": 49,
+                    "evidence_count_after": 50,
+                    "event_id": (
+                        "baguqeerach3itwdabnwmogqhgwqxadvbu536nfgm2frptrk3oo7kqdjm3moa"
+                    ),
+                    "evidence_id": (
+                        "baguqeeray4agdk7scb6l43obebi535l5estjwswf5eifgawz5clhfgyvapsq"
+                    ),
+                    "event_rehashed": True,
+                    "evidence_rehashed": True,
+                    "event_evidence_binding_verified": True,
+                    "m43_receipt_present": False,
+                },
+                "disposable_copy_effects": {
+                    "authenticated_mutation_request_created": True,
+                    "event_changes": 1,
+                    "evidence_node_changes": 1,
+                    "restart_row_family_changes": 1,
+                    "event_watermark_before": 296,
+                    "event_watermark_after": 297,
+                    "evidence_count_before": 49,
+                    "evidence_count_after": 50,
+                    "m43_receipt_created": False,
+                },
+                "authoritative_effects": {
+                    "authenticated_mutation_request_created": False,
+                    "event_changes": 0,
+                    "evidence_node_changes": 0,
+                    "restart_row_family_changes": 0,
+                    "task_status_changes": 0,
+                    "task_revision_changes": 0,
+                    "goal_revision_changes": 0,
+                    "accepted_completion_changes": 0,
+                    "provider_invocation_changes": 0,
+                    "merge_attempt_changes": 0,
+                },
+                "effect_scope": "disposable_copy_only",
+                "event_changes": 1,
+                "evidence_node_changes": 1,
+                "task_status_changes": 0,
+                "task_revision_changes": 0,
+                "goal_revision_changes": 0,
+                "accepted_completion_changes": 0,
+                "provider_invocation_changes": 0,
+                "merge_attempt_changes": 0,
+                "owner_marker_present_after_stop": False,
+                "credential_handoff_present_after_stop": False,
+                "copied_event_is_authoritative": False,
+                "copied_event_is_reusable": False,
+            },
+        ],
+        "observed_failure_count": 1,
+        "authoritative_anchors_after_both_attempts": {
+            "unchanged": True,
+            "control_store": {
+                "sha256": _M43_PRIOR_CONTROL_SHA256,
+                "size_bytes": _M43_PRIOR_CONTROL_SIZE,
+            },
+            "coordination_store": {
+                "sha256": _M43_PRIOR_COORDINATION_SHA256,
+                "size_bytes": _M43_PRIOR_COORDINATION_SIZE,
+            },
+            "m42_receipt": {
+                "sha256": _M43_M42_RECEIPT_SHA256,
+                "size_bytes": _M43_M42_RECEIPT_SIZE,
+            },
+            "stopped_status": {
+                "sha256": _M43_STOPPED_STATUS_SHA256,
+                "size_bytes": _M43_STOPPED_STATUS_SIZE,
+            },
+            "authoritative_event_watermark": _M43_PRIOR_EVENT_WATERMARK,
+            "authoritative_evidence_count": _M43_PRIOR_EVIDENCE_NODE_COUNT,
+            "authoritative_generation": _M43_PRIOR_GENERATION,
+        },
+        "worker_self_approval": False,
+    }
+
+
+def _m43_successor_evidence_verifier_repair() -> dict[str, Any]:
+    """Return the exact repair for post-append M42/M43 composition."""
+
+    return {
+        "schema": "sawm/bounded-successor-evidence-verifier-repair@1",
+        "repair_parent": _M43_REVISION3_FINAL_CONTROL_COMMIT,
+        "repair_commit": _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT,
+        "repair_tree": _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_TREE,
+        "binary_diff_sha256": (
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_DIFF_SHA256
+        ),
+        "changed_paths": sorted(
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS
+        ),
+        "blob_oids": dict(_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS),
+        "path_modes": dict(_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_MODES),
+        "failure_kind": "post_append_predecessor_whole_table_scope_mismatch",
+        "permitted_successor_evidence_row_count": 1,
+        "successor_row_is_caller_bound": True,
+        "successor_row_content_identity_rehashed": True,
+        "successor_row_canonical_body_required": True,
+        "successor_row_collision_rejected": True,
+        "unlisted_extra_evidence_rejected": True,
+        "wrong_successor_evidence_rejected": True,
+        "preappend_default_behavior_changed": False,
+        "m42_return_fields_changed": False,
+        "m42_return_counts_changed": False,
+        "receipt_schema_weakened": False,
+        "authority_weakened": False,
+        "database_mutations": 0,
+        "event_append_changes": 0,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+        "independent_review_count": 2,
+        "independent_reviews_passed": 2,
+    }
+
+
+def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[str, Any]:
+    """Return M43's closed revision-4 stopped-generation authorization."""
+
+    prior = _expected_m43_revision3_authority()
+    source_chain = {
+        **prior["source_chain"],
+        "revision3_final_control_parent": _M43_VERIFIER_REPAIR_COMMIT,
+        "revision3_final_control_commit": _M43_REVISION3_FINAL_CONTROL_COMMIT,
+        "revision3_final_control_tree": _M43_REVISION3_FINAL_CONTROL_TREE,
+        "revision3_final_control_blobs": dict(
+            _M43_REVISION3_FINAL_CONTROL_BLOBS
+        ),
+        "revision3_final_control_modes": dict(
+            _M43_REVISION3_FINAL_CONTROL_MODES
+        ),
+        "successor_evidence_verifier_repair_parent": (
+            _M43_REVISION3_FINAL_CONTROL_COMMIT
+        ),
+        "successor_evidence_verifier_repair_commit": (
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT
+        ),
+        "successor_evidence_verifier_repair_tree": (
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_TREE
+        ),
+        "successor_evidence_verifier_repair_blobs": dict(
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS
+        ),
+        "successor_evidence_verifier_repair_modes": dict(
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_MODES
+        ),
+        "final_reseal_parent": _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT,
+        "revision3_final_control_commit_count": 1,
+        "successor_evidence_verifier_repair_commit_count": 1,
+        "failed_disposable_partial_append_count": 1,
+        "final_reseal_commit_count": 3,
+        "final_control_commit_count": 4,
+    }
+    hardening = {
+        **prior["final_control_hardening"],
+        "schema": "sawm/m43-final-control-verifier-hardening@2",
+        "exact_successor_evidence_is_the_only_postappend_allowance": True,
+        "m42_return_contract_preserved": True,
+        "unlisted_physical_evidence_still_fails_closed": True,
+    }
+    preservation = {
+        **prior["preservation"],
+        "revision3_authority_preserved_exactly": True,
+        "revision3_full_suite_evidence_preserved": True,
+        "disposable_partial_append_preserved_as_non_authoritative": True,
+        "authoritative_event_297_remained_absent": True,
+        "successor_evidence_verifier_repair_changed_no_task_authority": True,
+    }
+    return {
+        **prior,
+        "schema": "sawm/dead-attempt-lifecycle-recovery-restart-authorization@4",
+        "authorization_revision": 4,
+        "authorization_amended_at": _M43_AUTHORIZATION_AMENDED_AT,
+        "prior_authorization_cid": _M43_REVISION3_AUTHORITY_CID,
+        "control_recorded_at": _M43_CONTROL_RECORDED_AT,
+        "prior_control_authorization": {
+            "authorization_cid": _M43_REVISION3_AUTHORITY_CID,
+            "authorization_revision": 3,
+            "prior_authorization_cid": _M43_PRIOR_FINAL_AUTHORITY_CID,
+            "control_commit": _M43_REVISION3_FINAL_CONTROL_COMMIT,
+            "control_tree": _M43_REVISION3_FINAL_CONTROL_TREE,
+            "control_recorded_at": _M43_REVISION3_CONTROL_RECORDED_AT,
+            "superseded_before_authoritative_event_297": True,
+            "event_297_appended": False,
+            "receipt_published": False,
+        },
+        "prior_revision3_authority": prior,
+        "revision4_validation_attempts": _m43_revision4_validation_attempts(),
+        "accepted_successor_evidence_verifier_repair": (
+            _m43_successor_evidence_verifier_repair()
+        ),
+        "final_control_hardening": hardening,
+        "source_chain": source_chain,
+        "preservation": preservation,
+    }
+
+
 def _m43_authority_reference() -> dict[str, Any]:
     """Return M43's sealed authority reference and reject body drift."""
 
@@ -9279,6 +9639,11 @@ def _validated_m43_live_preflight_contract(
     verifier_repair = authority.get(
         "accepted_bounded_materializer_verifier_repair"
     )
+    prior_revision3 = authority.get("prior_revision3_authority")
+    validation_attempts = authority.get("revision4_validation_attempts")
+    successor_verifier_repair = authority.get(
+        "accepted_successor_evidence_verifier_repair"
+    )
     final_hardening = authority.get("final_control_hardening")
     prior_control = authority.get("prior_control_authorization")
     receipt = authority.get("preserved_m42_receipt")
@@ -9290,31 +9655,60 @@ def _validated_m43_live_preflight_contract(
         or not isinstance(fixture_repair, Mapping)
         or not isinstance(failed_reseal_validation, Mapping)
         or not isinstance(verifier_repair, Mapping)
+        or not isinstance(prior_revision3, Mapping)
+        or not isinstance(validation_attempts, Mapping)
+        or not isinstance(successor_verifier_repair, Mapping)
         or not isinstance(final_hardening, Mapping)
         or not isinstance(prior_control, Mapping)
         or not isinstance(receipt, Mapping)
         or authority.get("schema")
-        != "sawm/dead-attempt-lifecycle-recovery-restart-authorization@3"
-        or authority.get("authorization_revision") != 3
+        != "sawm/dead-attempt-lifecycle-recovery-restart-authorization@4"
+        or authority.get("authorization_revision") != 4
         or authority.get("authorization_amended_at")
         != _M43_AUTHORIZATION_AMENDED_AT
         or authority.get("prior_authorization_cid")
-        != _M43_PRIOR_FINAL_AUTHORITY_CID
+        != _M43_REVISION3_AUTHORITY_CID
         or authority.get("authorization_amendment_paths")
         != sorted(_M43_OPERATOR_CONTROL_PATHS)
         or prior_control.get("authorization_cid")
-        != _M43_PRIOR_FINAL_AUTHORITY_CID
-        or prior_control.get("authorization_revision") != 2
+        != _M43_REVISION3_AUTHORITY_CID
+        or prior_control.get("authorization_revision") != 3
         or prior_control.get("prior_authorization_cid")
-        != _M43_PRE_AUTHORITATIVE_AUTHORITY_CID
+        != _M43_PRIOR_FINAL_AUTHORITY_CID
         or prior_control.get("control_recorded_at")
-        != _M43_PRIOR_FINAL_CONTROL_RECORDED_AT
+        != _M43_REVISION3_CONTROL_RECORDED_AT
         or prior_control.get("control_commit")
-        != _M43_PRIOR_FINAL_CONTROL_COMMIT
-        or prior_control.get("control_tree") != _M43_PRIOR_FINAL_CONTROL_TREE
-        or prior_control.get("superseded_before_event_297") is not True
+        != _M43_REVISION3_FINAL_CONTROL_COMMIT
+        or prior_control.get("control_tree")
+        != _M43_REVISION3_FINAL_CONTROL_TREE
+        or prior_control.get("superseded_before_authoritative_event_297")
+        is not True
         or prior_control.get("event_297_appended") is not False
         or prior_control.get("receipt_published") is not False
+        or dict(prior_revision3) != _expected_m43_revision3_authority()
+        or _identity(prior_revision3) != _M43_REVISION3_AUTHORITY_CID
+        or dict(validation_attempts) != _m43_revision4_validation_attempts()
+        or validation_attempts.get("observed_failure_count") != 1
+        or validation_attempts.get("worker_self_approval") is not False
+        or dict(successor_verifier_repair)
+        != _m43_successor_evidence_verifier_repair()
+        or successor_verifier_repair.get("repair_parent")
+        != _M43_REVISION3_FINAL_CONTROL_COMMIT
+        or successor_verifier_repair.get("repair_commit")
+        != _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT
+        or successor_verifier_repair.get("repair_tree")
+        != _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_TREE
+        or successor_verifier_repair.get("binary_diff_sha256")
+        != _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_DIFF_SHA256
+        or successor_verifier_repair.get("blob_oids")
+        != dict(_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS)
+        or successor_verifier_repair.get("path_modes")
+        != dict(_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_MODES)
+        or successor_verifier_repair.get("unlisted_extra_evidence_rejected")
+        is not True
+        or successor_verifier_repair.get("m42_return_counts_changed")
+        is not False
+        or successor_verifier_repair.get("authority_weakened") is not False
         or contract.get("migration_revision") != _M43_MIGRATION_REVISION
         or contract.get("prior_generation") != _M43_PRIOR_GENERATION
         or contract.get("target_generation") != _M43_TARGET_GENERATION
@@ -9394,6 +9788,15 @@ def _validated_m43_live_preflight_contract(
         )
         is not True
         or final_hardening.get("pending_authority_rejected_by_operator_facade")
+        is not True
+        or final_hardening.get(
+            "exact_successor_evidence_is_the_only_postappend_allowance"
+        )
+        is not True
+        or final_hardening.get("m42_return_contract_preserved") is not True
+        or final_hardening.get(
+            "unlisted_physical_evidence_still_fails_closed"
+        )
         is not True
         or final_hardening.get("current_commit_identity_embedded_in_authority")
         is not False
@@ -56892,6 +57295,12 @@ def _assert_m43_source_delta(
         _M43_VERIFIER_REPAIR_COMMIT,
         _M43_VERIFIER_REPAIR_TREE,
         *tuple(_M43_VERIFIER_REPAIR_BLOBS.values()),
+        _M43_REVISION3_FINAL_CONTROL_COMMIT,
+        _M43_REVISION3_FINAL_CONTROL_TREE,
+        *tuple(_M43_REVISION3_FINAL_CONTROL_BLOBS.values()),
+        _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT,
+        _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_TREE,
+        *tuple(_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS.values()),
     )
     if any(
         value.startswith("INITIAL_M43_CONTROL")
@@ -56905,6 +57314,9 @@ def _assert_m43_source_delta(
     repairs = set(_M43_LIFECYCLE_REPAIR_BLOBS)
     fixture_repairs = set(_M43_HISTORICAL_FIXTURE_REPAIR_BLOBS)
     verifier_repairs = set(_M43_VERIFIER_REPAIR_BLOBS)
+    successor_verifier_repairs = set(
+        _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS
+    )
     base_parents = _git(
         root, "rev-list", "--parents", "-n", "1", _M43_BASE_CONTROL_COMMIT
     ).split()
@@ -56946,6 +57358,22 @@ def _assert_m43_source_delta(
         "1",
         _M43_VERIFIER_REPAIR_COMMIT,
     ).split()
+    revision3_final_parents = _git(
+        root,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        _M43_REVISION3_FINAL_CONTROL_COMMIT,
+    ).split()
+    successor_verifier_repair_parents = _git(
+        root,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT,
+    ).split()
     current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
     if (
         current
@@ -56957,6 +57385,8 @@ def _assert_m43_source_delta(
             _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT,
             _M43_PRIOR_FINAL_CONTROL_COMMIT,
             _M43_VERIFIER_REPAIR_COMMIT,
+            _M43_REVISION3_FINAL_CONTROL_COMMIT,
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT,
         }
         or not isinstance(chain, Mapping)
         or controls != set(_M43_OPERATOR_CONTROL_PATHS)
@@ -57016,8 +57446,28 @@ def _assert_m43_source_delta(
         != dict(_M43_VERIFIER_REPAIR_BLOBS)
         or chain.get("bounded_materializer_verifier_repair_modes")
         != dict(_M43_VERIFIER_REPAIR_MODES)
-        or chain.get("final_reseal_parent")
+        or chain.get("revision3_final_control_parent")
         != _M43_VERIFIER_REPAIR_COMMIT
+        or chain.get("revision3_final_control_commit")
+        != _M43_REVISION3_FINAL_CONTROL_COMMIT
+        or chain.get("revision3_final_control_tree")
+        != _M43_REVISION3_FINAL_CONTROL_TREE
+        or chain.get("revision3_final_control_blobs")
+        != dict(_M43_REVISION3_FINAL_CONTROL_BLOBS)
+        or chain.get("revision3_final_control_modes")
+        != dict(_M43_REVISION3_FINAL_CONTROL_MODES)
+        or chain.get("successor_evidence_verifier_repair_parent")
+        != _M43_REVISION3_FINAL_CONTROL_COMMIT
+        or chain.get("successor_evidence_verifier_repair_commit")
+        != _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT
+        or chain.get("successor_evidence_verifier_repair_tree")
+        != _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_TREE
+        or chain.get("successor_evidence_verifier_repair_blobs")
+        != dict(_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS)
+        or chain.get("successor_evidence_verifier_repair_modes")
+        != dict(_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_MODES)
+        or chain.get("final_reseal_parent")
+        != _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT
         or int(
             chain.get("failed_pre_authoritative_control_commit_count") or 0
         )
@@ -57027,8 +57477,14 @@ def _assert_m43_source_delta(
             chain.get("bounded_materializer_verifier_repair_commit_count") or 0
         )
         != 1
-        or int(chain.get("final_reseal_commit_count") or 0) != 2
-        or int(chain.get("final_control_commit_count") or 0) != 3
+        or int(chain.get("revision3_final_control_commit_count") or 0) != 1
+        or int(
+            chain.get("successor_evidence_verifier_repair_commit_count") or 0
+        )
+        != 1
+        or int(chain.get("failed_disposable_partial_append_count") or 0) != 1
+        or int(chain.get("final_reseal_commit_count") or 0) != 3
+        or int(chain.get("final_control_commit_count") or 0) != 4
         or base_parents[0:1] != [_M43_BASE_CONTROL_COMMIT]
         or repair_parents
         != [_M43_LIFECYCLE_REPAIR_COMMIT, _M43_BASE_CONTROL_COMMIT]
@@ -57051,7 +57507,15 @@ def _assert_m43_source_delta(
         ]
         or verifier_repair_parents
         != [_M43_VERIFIER_REPAIR_COMMIT, _M43_PRIOR_FINAL_CONTROL_COMMIT]
-        or current_parents != [current, _M43_VERIFIER_REPAIR_COMMIT]
+        or revision3_final_parents
+        != [_M43_REVISION3_FINAL_CONTROL_COMMIT, _M43_VERIFIER_REPAIR_COMMIT]
+        or successor_verifier_repair_parents
+        != [
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT,
+            _M43_REVISION3_FINAL_CONTROL_COMMIT,
+        ]
+        or current_parents
+        != [current, _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT]
         or _git(root, "rev-parse", f"{_M43_BASE_CONTROL_COMMIT}^{{tree}}")
         != _M43_BASE_CONTROL_TREE
         or _git(root, "rev-parse", f"{_M43_LIFECYCLE_REPAIR_COMMIT}^{{tree}}")
@@ -57076,6 +57540,18 @@ def _assert_m43_source_delta(
         != _M43_PRIOR_FINAL_CONTROL_TREE
         or _git(root, "rev-parse", f"{_M43_VERIFIER_REPAIR_COMMIT}^{{tree}}")
         != _M43_VERIFIER_REPAIR_TREE
+        or _git(
+            root,
+            "rev-parse",
+            f"{_M43_REVISION3_FINAL_CONTROL_COMMIT}^{{tree}}",
+        )
+        != _M43_REVISION3_FINAL_CONTROL_TREE
+        or _git(
+            root,
+            "rev-parse",
+            f"{_M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT}^{{tree}}",
+        )
+        != _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_TREE
         or _m27_name_status(
             root, _M43_BASE_CONTROL_COMMIT, _M43_LIFECYCLE_REPAIR_COMMIT
         )
@@ -57106,7 +57582,19 @@ def _assert_m43_source_delta(
             root, _M43_PRIOR_FINAL_CONTROL_COMMIT, _M43_VERIFIER_REPAIR_COMMIT
         )
         != {path: "M" for path in verifier_repairs}
-        or _m27_name_status(root, _M43_VERIFIER_REPAIR_COMMIT, current)
+        or _m27_name_status(
+            root, _M43_VERIFIER_REPAIR_COMMIT, _M43_REVISION3_FINAL_CONTROL_COMMIT
+        )
+        != {path: "M" for path in controls}
+        or _m27_name_status(
+            root,
+            _M43_REVISION3_FINAL_CONTROL_COMMIT,
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT,
+        )
+        != {path: "M" for path in successor_verifier_repairs}
+        or _m27_name_status(
+            root, _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT, current
+        )
         != {path: "M" for path in controls}
         or population["source_binding"].get("tree")
         != _git(root, "rev-parse", f"{current}^{{tree}}")
@@ -57150,6 +57638,18 @@ def _assert_m43_source_delta(
             _M43_VERIFIER_REPAIR_MODES,
             "bounded-materializer-verifier-repair",
         ),
+        (
+            _M43_REVISION3_FINAL_CONTROL_COMMIT,
+            _M43_REVISION3_FINAL_CONTROL_BLOBS,
+            _M43_REVISION3_FINAL_CONTROL_MODES,
+            "revision3-final-control",
+        ),
+        (
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT,
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_BLOBS,
+            _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_MODES,
+            "successor-evidence-verifier-repair",
+        ),
     ):
         for path, oid in blobs.items():
             if _git(root, "rev-parse", f"{commit}:{path}") != oid:
@@ -57180,6 +57680,8 @@ def _assert_m43_source_delta(
                     _M43_HISTORICAL_FIXTURE_REPAIR_COMMIT,
                     _M43_PRIOR_FINAL_CONTROL_COMMIT,
                     _M43_VERIFIER_REPAIR_COMMIT,
+                    _M43_REVISION3_FINAL_CONTROL_COMMIT,
+                    _M43_SUCCESSOR_EVIDENCE_VERIFIER_REPAIR_COMMIT,
                     current,
                 )
             )
@@ -57247,7 +57749,7 @@ def _m43_migration_body(
 ) -> dict[str, Any]:
     authority = _expected_m43_dead_attempt_lifecycle_recovery_restart_authority()
     return {
-        "schema": "sawm/dead-attempt-lifecycle-recovery-restart-source-seal@3",
+        "schema": "sawm/dead-attempt-lifecycle-recovery-restart-source-seal@4",
         "authority": "operator_control_plane",
         "migration_revision": _M43_MIGRATION_REVISION,
         "migration_kind": _M43_SUPERSESSION_REASON,
@@ -57267,6 +57769,8 @@ def _m43_migration_body(
         "prior_control_authorization": authority[
             "prior_control_authorization"
         ],
+        "prior_revision3_authority_cid": _M43_REVISION3_AUTHORITY_CID,
+        "prior_revision3_authority": authority["prior_revision3_authority"],
         "authorization_amendment_paths": authority[
             "authorization_amendment_paths"
         ],
@@ -57290,6 +57794,12 @@ def _m43_migration_body(
         ],
         "accepted_bounded_materializer_verifier_repair": authority[
             "accepted_bounded_materializer_verifier_repair"
+        ],
+        "revision4_validation_attempts": authority[
+            "revision4_validation_attempts"
+        ],
+        "accepted_successor_evidence_verifier_repair": authority[
+            "accepted_successor_evidence_verifier_repair"
         ],
         "final_control_hardening": authority["final_control_hardening"],
         "source_chain": authority["source_chain"],
@@ -69505,7 +70015,7 @@ def _expected_m43_source_successor_receipt(
     result = {
         "schema": (
             "sawm/non-authoritative-dead-attempt-lifecycle-recovery-"
-            "restart-receipt@3"
+            "restart-receipt@4"
         ),
         "authoritative": False,
         "control_database_is_authority": True,
@@ -69520,6 +70030,10 @@ def _expected_m43_source_successor_receipt(
         f"{_M43_SUPERSESSION_REASON}_cid": _identity(authority),
         "prior_control_authorization": dict(
             authority["prior_control_authorization"]
+        ),
+        "prior_revision3_authority_cid": _M43_REVISION3_AUTHORITY_CID,
+        "prior_revision3_authority": dict(
+            authority["prior_revision3_authority"]
         ),
         "authorization_amendment_paths": list(
             authority["authorization_amendment_paths"]
@@ -69540,6 +70054,12 @@ def _expected_m43_source_successor_receipt(
         ),
         "accepted_bounded_materializer_verifier_repair": dict(
             authority["accepted_bounded_materializer_verifier_repair"]
+        ),
+        "revision4_validation_attempts": dict(
+            authority["revision4_validation_attempts"]
+        ),
+        "accepted_successor_evidence_verifier_repair": dict(
+            authority["accepted_successor_evidence_verifier_repair"]
         ),
         "final_control_hardening": dict(authority["final_control_hardening"]),
         "program_definition_cid": population["program_definition_cid"],
