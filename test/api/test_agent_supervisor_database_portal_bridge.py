@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -2913,6 +2914,280 @@ def test_bridge_fails_closed_when_workspace_process_is_active(
     record = store.load_workspace(workspace)
     assert record is not None and record.is_nonterminal
     assert portals and portals[0].run_count == 0
+
+
+def _write_fake_user_manager_process(
+    proc_root: Path,
+    *,
+    pid: int,
+    name: str,
+    comm: str,
+    parent_pid: int,
+    process_group: int,
+    session: int,
+    command: bytes,
+) -> Path:
+    process = proc_root / str(pid)
+    process.mkdir()
+    uid = os.geteuid()
+    (process / "status").write_text(
+        (
+            f"Name:\t{name}\n"
+            f"Pid:\t{pid}\n"
+            f"PPid:\t{parent_pid}\n"
+            f"Uid:\t{uid}\t{uid}\t{uid}\t{uid}\n"
+        ),
+        encoding="ascii",
+    )
+    (process / "cmdline").write_bytes(command)
+    (process / "cgroup").write_text(
+        (
+            f"0::/user.slice/user-{uid}.slice/"
+            f"user@{uid}.service/init.scope\n"
+        ),
+        encoding="ascii",
+    )
+    stat_fields = [
+        "S",
+        str(parent_pid),
+        str(process_group),
+        str(session),
+        *("0" for _ in range(15)),
+        "424242",
+    ]
+    (process / "stat").write_text(
+        f"{pid} {comm} {' '.join(stat_fields)}\n",
+        encoding="ascii",
+    )
+    (process / "cwd").symlink_to("/")
+    return process
+
+
+@pytest.mark.parametrize("denied_errno", [errno.EACCES, errno.EPERM])
+@pytest.mark.parametrize(
+    "manager_command",
+    [
+        b"/usr/lib/systemd/systemd\0--user\0",
+        b"/lib/systemd/systemd\0--user\0",
+    ],
+)
+def test_process_scan_admits_only_exact_unreadable_user_manager_tuple(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    denied_errno: int,
+    manager_command: bytes,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    manager_pid = 424_240
+    manager = _write_fake_user_manager_process(
+        proc_root,
+        pid=manager_pid,
+        name="systemd",
+        comm="(systemd)",
+        parent_pid=1,
+        process_group=manager_pid,
+        session=manager_pid,
+        command=manager_command,
+    )
+    pam = _write_fake_user_manager_process(
+        proc_root,
+        pid=manager_pid + 1,
+        name="(sd-pam)",
+        comm="((sd-pam))",
+        parent_pid=manager_pid,
+        process_group=manager_pid,
+        session=manager_pid,
+        command=b"(sd-pam)\0",
+    )
+    original_readlink = os.readlink
+    unreadable = {manager / "cwd", pam / "cwd"}
+
+    def deny_manager_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) in unreadable:
+            raise PermissionError(denied_errno, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_manager_cwd)
+
+    result = DatabasePortalExecutionBridge._strict_workspace_process_scan(
+        SimpleNamespace(proc_root=proc_root),
+        workspace,
+    )
+
+    assert result == {"same_uid_processes_inspected": 2}
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    ["command", "cgroup", "parent"],
+)
+def test_process_scan_rejects_unreadable_user_manager_near_miss(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    pid = 424_250
+    process = _write_fake_user_manager_process(
+        proc_root,
+        pid=pid,
+        name="systemd",
+        comm="(systemd)",
+        parent_pid=1,
+        process_group=pid,
+        session=pid,
+        command=b"/usr/lib/systemd/systemd\0--user\0",
+    )
+    if tamper == "command":
+        (process / "cmdline").write_bytes(
+            b"/usr/lib/systemd/systemd\0--user\0--deserialize=9\0"
+        )
+    elif tamper == "cgroup":
+        uid = os.geteuid()
+        (process / "cgroup").write_text(
+            (
+                f"0::/user.slice/user-{uid}.slice/"
+                f"user@{uid}.service/app.slice\n"
+            ),
+            encoding="ascii",
+        )
+    else:
+        status = (process / "status").read_text(encoding="ascii")
+        (process / "status").write_text(
+            status.replace("PPid:\t1\n", "PPid:\t2\n"),
+            encoding="ascii",
+        )
+    original_readlink = os.readlink
+
+    def deny_manager_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == process / "cwd":
+            raise PermissionError(errno.EACCES, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_manager_cwd)
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_process_inventory_unavailable",
+    ):
+        DatabasePortalExecutionBridge._strict_workspace_process_scan(
+            SimpleNamespace(proc_root=proc_root),
+            workspace,
+        )
+
+
+def test_process_scan_exact_manager_never_masks_later_workspace_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    manager = _write_fake_user_manager_process(
+        proc_root,
+        pid=424_270,
+        name="systemd",
+        comm="(systemd)",
+        parent_pid=1,
+        process_group=424_270,
+        session=424_270,
+        command=b"/usr/lib/systemd/systemd\0--user\0",
+    )
+    worker = proc_root / "424271"
+    worker.mkdir()
+    (worker / "cwd").symlink_to(workspace)
+    (worker / "cmdline").write_bytes(b"python3\0worker.py\0")
+    original_readlink = os.readlink
+
+    def deny_manager_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == manager / "cwd":
+            raise PermissionError(errno.EACCES, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_manager_cwd)
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_worktree_process_active",
+    ):
+        DatabasePortalExecutionBridge._strict_workspace_process_scan(
+            SimpleNamespace(proc_root=proc_root),
+            workspace,
+        )
+
+
+def test_process_scan_exact_manager_with_readable_workspace_cwd_is_active(
+    tmp_path: Path,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    manager = _write_fake_user_manager_process(
+        proc_root,
+        pid=424_280,
+        name="systemd",
+        comm="(systemd)",
+        parent_pid=1,
+        process_group=424_280,
+        session=424_280,
+        command=b"/usr/lib/systemd/systemd\0--user\0",
+    )
+    (manager / "cwd").unlink()
+    (manager / "cwd").symlink_to(workspace)
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_worktree_process_active",
+    ):
+        DatabasePortalExecutionBridge._strict_workspace_process_scan(
+            SimpleNamespace(proc_root=proc_root),
+            workspace,
+        )
+
+
+def test_process_scan_keeps_arbitrary_unreadable_process_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    process = _write_fake_user_manager_process(
+        proc_root,
+        pid=424_260,
+        name="python3",
+        comm="(python3)",
+        parent_pid=1,
+        process_group=424_260,
+        session=424_260,
+        command=b"python3\0worker.py\0",
+    )
+    original_readlink = os.readlink
+
+    def deny_process_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == process / "cwd":
+            raise PermissionError(errno.EACCES, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_process_cwd)
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_process_inventory_unavailable",
+    ):
+        DatabasePortalExecutionBridge._strict_workspace_process_scan(
+            SimpleNamespace(proc_root=proc_root),
+            workspace,
+        )
 
 
 def test_bridge_fails_closed_when_container_inventory_is_unavailable(

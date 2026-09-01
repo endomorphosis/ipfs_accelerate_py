@@ -2406,6 +2406,20 @@ class DatabasePortalExecutionBridge:
             except OSError as exc:
                 if exc.errno in {errno.ENOENT, errno.ESRCH}:
                     raw_cwd = ""
+                elif (
+                    exc.errno in {errno.EACCES, errno.EPERM}
+                    and DatabasePortalExecutionBridge._exact_user_manager_process(
+                        proc_root,
+                        entry,
+                        workspace_bytes=workspace_bytes,
+                    )
+                ):
+                    # A normal systemd user manager and its sd-pam child live
+                    # in the user's init.scope.  Hardened procfs commonly
+                    # denies their cwd links even to the same UID.  Admit only
+                    # those two exact, stable identities; every other
+                    # unreadable process remains a fail-closed deferral.
+                    continue
                 else:
                     raise DatabasePortalBridgeDeferred(
                         "cross_attempt_lifecycle_process_inventory_unavailable"
@@ -2459,6 +2473,196 @@ class DatabasePortalExecutionBridge:
                     "cross_attempt_lifecycle_worktree_process_active"
                 )
         return {"same_uid_processes_inspected": inspected}
+
+    @staticmethod
+    def _bounded_proc_file(path: Path, *, limit: int) -> bytes:
+        """Read one procfs record without following a substituted symlink."""
+
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+            os,
+            "O_NOFOLLOW",
+            0,
+        )
+        descriptor = os.open(path, flags)
+        try:
+            payload = bytearray()
+            while len(payload) <= limit:
+                block = os.read(
+                    descriptor,
+                    min(65_536, limit + 1 - len(payload)),
+                )
+                if not block:
+                    break
+                payload.extend(block)
+        finally:
+            os.close(descriptor)
+        if len(payload) > limit:
+            raise OSError(errno.EFBIG, "procfs record exceeds bound", path)
+        return bytes(payload)
+
+    @staticmethod
+    def _proc_status_fields(payload: bytes) -> dict[bytes, bytes] | None:
+        """Parse the closed status fields used by the user-manager profile."""
+
+        selected: dict[bytes, bytes] = {}
+        for line in payload.splitlines():
+            name, separator, value = line.partition(b":")
+            if not separator or name not in {b"Name", b"Pid", b"PPid", b"Uid"}:
+                continue
+            if name in selected:
+                return None
+            selected[name] = value.strip()
+        if set(selected) != {b"Name", b"Pid", b"PPid", b"Uid"}:
+            return None
+        return selected
+
+    @staticmethod
+    def _proc_stat_identity(
+        payload: bytes,
+        *,
+        expected_pid: int,
+        expected_comm: bytes,
+    ) -> tuple[int, int, int, int] | None:
+        """Return PPID, process-group, session, and birth tick from /proc/stat."""
+
+        prefix = str(expected_pid).encode("ascii") + b" " + expected_comm + b" "
+        if not payload.startswith(prefix):
+            return None
+        fields = payload[len(prefix) :].split()
+        # Remaining fields start at Linux proc stat field 3 (state); starttime
+        # is field 22 and therefore index 19 in this suffix.
+        if len(fields) <= 19 or len(fields[0]) != 1:
+            return None
+        try:
+            return (
+                int(fields[1]),
+                int(fields[2]),
+                int(fields[3]),
+                int(fields[19]),
+            )
+        except (ValueError, IndexError):
+            return None
+
+    @staticmethod
+    def _exact_user_manager_process(
+        proc_root: Path,
+        entry: Path,
+        *,
+        workspace_bytes: bytes,
+        allow_sd_pam: bool = True,
+    ) -> bool:
+        """Recognize only the stable systemd user-manager init-scope tuple.
+
+        This is deliberately narrower than a process-name allow-list.  The
+        PID, UID tuple, parent, process group, session, cgroup, argv, comm, and
+        start time must all agree across bounded procfs reads.  Any missing,
+        changing, or unfamiliar fact returns ``False`` so the caller retains
+        its original fail-closed behavior.
+        """
+
+        if not entry.name.isdigit():
+            return False
+        try:
+            pid = int(entry.name)
+        except ValueError:
+            return False
+        uid = os.geteuid()
+        expected_cgroup = (
+            f"0::/user.slice/user-{uid}.slice/"
+            f"user@{uid}.service/init.scope\n"
+        ).encode("ascii")
+        try:
+            identity = entry.lstat()
+            if not stat.S_ISDIR(identity.st_mode) or identity.st_uid != uid:
+                return False
+            first_stat = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "stat",
+                limit=16 * 1024,
+            )
+            status_payload = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "status",
+                limit=64 * 1024,
+            )
+            command = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "cmdline",
+                limit=4 * 1024,
+            )
+            cgroup = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "cgroup",
+                limit=64 * 1024,
+            )
+            second_stat = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "stat",
+                limit=16 * 1024,
+            )
+        except (OSError, ValueError):
+            return False
+        if workspace_bytes in command or cgroup != expected_cgroup:
+            return False
+        status_fields = DatabasePortalExecutionBridge._proc_status_fields(
+            status_payload
+        )
+        if status_fields is None:
+            return False
+        try:
+            status_pid = int(status_fields[b"Pid"])
+            status_parent = int(status_fields[b"PPid"])
+            status_uids = tuple(
+                int(value) for value in status_fields[b"Uid"].split()
+            )
+        except (ValueError, KeyError):
+            return False
+        if status_pid != pid or status_uids != (uid, uid, uid, uid):
+            return False
+
+        name = status_fields[b"Name"]
+        if name == b"systemd":
+            if command not in {
+                b"/usr/lib/systemd/systemd\0--user\0",
+                b"/lib/systemd/systemd\0--user\0",
+            }:
+                return False
+            expected_comm = b"(systemd)"
+            expected_parent = 1
+            expected_group = pid
+            expected_session = pid
+        elif name == b"(sd-pam)" and allow_sd_pam:
+            if command != b"(sd-pam)\0" or status_parent <= 1:
+                return False
+            expected_comm = b"((sd-pam))"
+            expected_parent = status_parent
+            expected_group = status_parent
+            expected_session = status_parent
+            parent = proc_root / str(status_parent)
+            if not DatabasePortalExecutionBridge._exact_user_manager_process(
+                proc_root,
+                parent,
+                workspace_bytes=workspace_bytes,
+                allow_sd_pam=False,
+            ):
+                return False
+        else:
+            return False
+
+        first_identity = DatabasePortalExecutionBridge._proc_stat_identity(
+            first_stat,
+            expected_pid=pid,
+            expected_comm=expected_comm,
+        )
+        second_identity = DatabasePortalExecutionBridge._proc_stat_identity(
+            second_stat,
+            expected_pid=pid,
+            expected_comm=expected_comm,
+        )
+        return bool(
+            first_identity is not None
+            and first_identity == second_identity
+            and first_identity[0] == expected_parent
+            and first_identity[1] == expected_group
+            and first_identity[2] == expected_session
+            and first_identity[3] > 0
+            and status_parent == expected_parent
+        )
 
     @staticmethod
     def _mount_source_overlaps_workspace(
