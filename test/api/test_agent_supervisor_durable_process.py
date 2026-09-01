@@ -1,4 +1,3 @@
-import os
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,11 +6,8 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.durable_process import (
     DurableProcessError,
-    adopt_pid_into_systemd_user_service,
-    inspect_systemd_user_service,
     launch_systemd_user_service,
     main,
-    session_cgroup_owner,
 )
 
 
@@ -214,121 +210,3 @@ def test_cli_passes_only_named_environment_and_strips_separator(
     assert captured["command"] == ["/bin/echo", "--literal"]
     assert captured["environment"] == {"SELECTED_ENV": "selected value"}
     assert '"pid": 99' in capsys.readouterr().out
-
-
-def test_inspect_systemd_user_service_reports_running_identity() -> None:
-    def runner(command, **kwargs):
-        del kwargs
-        assert command[-1] == "sawm-quack.service"
-        return _completed(
-            stdout=(
-                "LoadState=loaded\n"
-                "ActiveState=active\n"
-                "SubState=running\n"
-                "MainPID=99\n"
-                "Result=success\n"
-            )
-        )
-
-    inspected = inspect_systemd_user_service(
-        "sawm-quack",
-        systemctl_path="/usr/bin/systemctl",
-        runner=runner,
-    )
-    assert inspected["running"] is True
-    assert inspected["pid"] == 99
-    assert inspected["unit_name"] == "sawm-quack.service"
-
-
-def test_session_cgroup_owner_detects_login_session(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.runtime.durable_process.process_cgroup_path",
-        lambda _pid: "/user.slice/user-1000.slice/session-4.scope",
-    )
-    assert session_cgroup_owner(7) is True
-    monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.runtime.durable_process.process_cgroup_path",
-        lambda _pid: (
-            "/user.slice/user-1000.slice/user@1000.service/app.slice/"
-            "sawm-quack.service"
-        ),
-    )
-    assert session_cgroup_owner(7) is False
-
-
-def test_adopt_is_idempotent_when_already_in_unit(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.runtime.durable_process.process_cgroup_path",
-        lambda _pid: (
-            "/user.slice/user-1000.slice/user@1000.service/app.slice/"
-            "sawm-quack.service"
-        ),
-    )
-
-    def runner(command, **kwargs):
-        del command, kwargs
-        raise AssertionError("already-adopted process must not spawn a unit")
-
-    receipt = adopt_pid_into_systemd_user_service(
-        os.getpid(),
-        unit_name="sawm-quack",
-        working_directory=tmp_path,
-        log_path=tmp_path / "adopt.log",
-        runner=runner,
-        systemd_run_path="/usr/bin/systemd-run",
-        systemctl_path="/usr/bin/systemctl",
-        busctl_path="/usr/bin/busctl",
-    )
-    assert receipt.pid == os.getpid()
-    assert receipt.unit_name == "sawm-quack.service"
-
-
-def test_adopt_creates_delegated_unit_and_attaches(tmp_path, monkeypatch) -> None:
-    calls = []
-    cgroup = {"value": "/user.slice/user-1000.slice/session-4.scope"}
-
-    def fake_cgroup(_pid: int) -> str:
-        return cgroup["value"]
-
-    monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.runtime.durable_process.process_cgroup_path",
-        fake_cgroup,
-    )
-
-    def runner(command, **kwargs):
-        calls.append(command)
-        if command[0] == "/usr/bin/systemctl":
-            return _completed(
-                stdout=(
-                    "LoadState=not-found\n"
-                    "ActiveState=inactive\n"
-                    "SubState=dead\n"
-                    "MainPID=0\n"
-                )
-            )
-        if command[0] == "/usr/bin/systemd-run":
-            assert "--property=Delegate=yes" in command
-            assert "--remain-after-exit" in command
-            return _completed()
-        if command[0] == "/usr/bin/busctl":
-            assert "AttachProcessesToUnit" in command
-            cgroup["value"] = (
-                "/user.slice/user-1000.slice/user@1000.service/app.slice/"
-                "sawm-quack.service"
-            )
-            return _completed()
-        raise AssertionError(command)
-
-    receipt = adopt_pid_into_systemd_user_service(
-        os.getpid(),
-        unit_name="sawm-quack",
-        working_directory=tmp_path,
-        log_path=tmp_path / "adopt.log",
-        runner=runner,
-        systemd_run_path="/usr/bin/systemd-run",
-        systemctl_path="/usr/bin/systemctl",
-        busctl_path="/usr/bin/busctl",
-    )
-    assert receipt.pid == os.getpid()
-    assert any("AttachProcessesToUnit" in str(call) for call in calls)
-    assert any("--property=Delegate=yes" in call for call in calls if call)

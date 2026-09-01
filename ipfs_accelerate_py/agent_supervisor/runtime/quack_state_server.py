@@ -108,16 +108,6 @@ OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
 STATUS_FILENAME: Final = "quack-state-server.status.json"
 CONTROL_STOP_FILENAME: Final = "quack-state-server.stop"
-CONTROL_REISSUE_FILENAME: Final = "quack-state-server.reissue-handoff"
-HANDOFF_REISSUE_REQUEST_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/quack-handoff-reissue-request@1"
-)
-HANDOFF_REISSUE_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/quack-handoff-reissue-receipt@1"
-)
-_HANDOFF_REISSUE_REQUEST_KEYS: Final[frozenset[str]] = frozenset(
-    {"schema", "requested_at", "server_id"}
-)
 PROVISIONAL_OWNER_MARKER_GENERATION: Final[int] = 1
 
 LOOPBACK_HOSTS: Final[frozenset[str]] = frozenset(
@@ -349,8 +339,6 @@ def _read_stable_regular_json(
     *,
     noun: str,
     maximum_bytes: int = 4 * 1024 * 1024,
-    required_mode: int | None = None,
-    require_owner: bool = False,
 ) -> dict[str, Any]:
     """Read one privileged control JSON file through a stable no-follow fd."""
 
@@ -368,11 +356,6 @@ def _read_stable_regular_json(
             or before.st_nlink != 1
             or before.st_size < 0
             or before.st_size > maximum_bytes
-            or (require_owner and before.st_uid != os.geteuid())
-            or (
-                required_mode is not None
-                and stat_module.S_IMODE(before.st_mode) != int(required_mode)
-            )
         ):
             raise QuackStateServerControlError(
                 f"{noun} is not a bounded regular file"
@@ -1090,23 +1073,6 @@ class TokenVault:
             raise QuackStateServerTokenError("token is not available for handle")
         return self._token
 
-    def reissue_handoff(self) -> Path:
-        """Rewrite the coordinator handoff from the in-memory credential.
-
-        Launch retires the provider-readable file.  The live owner still holds
-        the token and can republish it for a later trusted coordinator without
-        minting a new generation.
-        """
-
-        handle = self._handle
-        token = self._token
-        if not handle or not token:
-            raise QuackStateServerTokenError("token is not available for handle")
-        path = self.state_dir / _token_handoff_filename(handle)
-        _atomic_write_text(path, token, mode=0o600)
-        self._path = path
-        return path
-
     def destroy(self) -> None:
         self._token = None
         if self._path is not None:
@@ -1269,193 +1235,6 @@ def retire_token_handoff(
         }
     finally:
         os.close(directory_fd)
-
-
-def honor_handoff_reissue_request(
-    *,
-    state_dir: Path | str,
-    vault: TokenVault | None,
-    request_path: Path | str,
-    expected_server_id: str | None = None,
-) -> dict[str, Any] | None:
-    """Republish the coordinator handoff when a confined request is present.
-
-    Returns ``None`` when no request file exists.  A present file is honored
-    only after regular-file, owner, mode, link-count, schema, and
-    token-absence checks.  The live owner rewrites the one-time handoff from
-    the in-memory credential; it does not mint a new generation.
-    """
-
-    path = Path(request_path)
-    try:
-        path.lstat()
-    except FileNotFoundError:
-        return None
-    except OSError as exc:
-        raise QuackStateServerControlError(
-            "handoff reissue request is unavailable"
-        ) from exc
-    try:
-        runtime = Path(state_dir).resolve()
-        if path.resolve().parent != runtime:
-            raise QuackStateServerControlError(
-                "handoff reissue request is outside the owner state directory"
-            )
-    except QuackStateServerControlError:
-        raise
-    except OSError as exc:
-        raise QuackStateServerControlError(
-            "handoff reissue request is unavailable"
-        ) from exc
-
-    payload = _read_stable_regular_json(
-        path,
-        noun="handoff reissue request",
-        maximum_bytes=4096,
-        required_mode=0o600,
-        require_owner=True,
-    )
-    unexpected = set(payload) - _HANDOFF_REISSUE_REQUEST_KEYS
-    if unexpected:
-        raise QuackStateServerControlError(
-            "handoff reissue request has unexpected keys"
-        )
-    if any(key in _TOKEN_BEARING_KEYS for key in payload):
-        raise QuackStateServerTokenError(
-            "handoff reissue request contains a token-bearing key"
-        )
-    if payload.get("schema") != HANDOFF_REISSUE_REQUEST_SCHEMA:
-        raise QuackStateServerControlError(
-            "handoff reissue request schema is invalid"
-        )
-    requested_at = payload.get("requested_at")
-    if not isinstance(requested_at, str) or not requested_at.strip():
-        raise QuackStateServerControlError(
-            "handoff reissue request timestamp is invalid"
-        )
-    server_id = payload.get("server_id")
-    if server_id is None:
-        server_id = ""
-    if not isinstance(server_id, str):
-        raise QuackStateServerControlError(
-            "handoff reissue request server_id is invalid"
-        )
-    expected = str(expected_server_id or "")
-    if expected and server_id != expected:
-        raise QuackStateServerControlError(
-            "handoff reissue request server_id does not match live owner"
-        )
-    if vault is None:
-        raise QuackStateServerTokenError("token is not available for handle")
-    vault.assert_absent_from(payload, surface_name="handoff reissue request")
-    handoff_path = vault.reissue_handoff()
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
-    receipt = {
-        "schema": HANDOFF_REISSUE_RECEIPT_SCHEMA,
-        "reissued": True,
-        "already_present": False,
-        "secret_handle": vault.secret_handle,
-        "handoff_path": str(handoff_path),
-        "server_id": expected or server_id,
-    }
-    vault.assert_absent_from(receipt, surface_name="handoff reissue receipt")
-    return receipt
-
-
-def request_handoff_reissue(
-    *,
-    state_dir: Path | str,
-    secret_handle: str,
-    server_id: str,
-    timeout_seconds: float = 5.0,
-    poll_interval_seconds: float = 0.05,
-    clock: Callable[[], float] | None = None,
-    sleep: Callable[[float], None] | None = None,
-) -> dict[str, Any]:
-    """Ask the live owner to republish the coordinator handoff.
-
-    The request body never carries the auth token.  If the handoff file is
-    already present, this is an idempotent success and no control file is
-    written.
-    """
-
-    if timeout_seconds <= 0:
-        raise QuackStateServerControlError("handoff reissue timeout must be positive")
-    if poll_interval_seconds <= 0:
-        raise QuackStateServerControlError(
-            "handoff reissue poll interval must be positive"
-        )
-    runtime = Path(state_dir)
-    if not runtime.is_dir():
-        raise QuackStateServerControlError(
-            "handoff reissue state directory is unavailable"
-        )
-    identity = str(server_id or "").strip()
-    if not identity:
-        raise QuackStateServerControlError(
-            "handoff reissue requires the live owner server_id"
-        )
-    filename = _token_handoff_filename(secret_handle)
-    handoff_path = runtime / filename
-    request_path = runtime / CONTROL_REISSUE_FILENAME
-    if handoff_path.is_file():
-        return {
-            "schema": HANDOFF_REISSUE_RECEIPT_SCHEMA,
-            "reissued": False,
-            "already_present": True,
-            "secret_handle": secret_handle,
-            "handoff_path": str(handoff_path),
-            "server_id": identity,
-        }
-    payload = {
-        "schema": HANDOFF_REISSUE_REQUEST_SCHEMA,
-        "server_id": identity,
-        "requested_at": _utc_iso(),
-    }
-    _atomic_write_json(request_path, payload, mode=0o600)
-    now = clock or time.time
-    nap = sleep or time.sleep
-    deadline = float(now()) + float(timeout_seconds)
-    while float(now()) < deadline:
-        if handoff_path.is_file():
-            return {
-                "schema": HANDOFF_REISSUE_RECEIPT_SCHEMA,
-                "reissued": True,
-                "already_present": False,
-                "secret_handle": secret_handle,
-                "handoff_path": str(handoff_path),
-                "server_id": identity,
-            }
-        nap(float(poll_interval_seconds))
-    raise QuackStateServerControlError(
-        "live owner did not reissue the coordinator handoff"
-    )
-
-
-def recover_coordinator_handoff(
-    *,
-    state_dir: Path | str,
-    secret_handle: str,
-    server_id: str,
-    timeout_seconds: float = 5.0,
-    poll_interval_seconds: float = 0.05,
-    clock: Callable[[], float] | None = None,
-    sleep: Callable[[float], None] | None = None,
-) -> dict[str, Any]:
-    """Return the existing coordinator handoff or request a live-owner reissue."""
-
-    return request_handoff_reissue(
-        state_dir=state_dir,
-        secret_handle=secret_handle,
-        server_id=server_id,
-        timeout_seconds=timeout_seconds,
-        poll_interval_seconds=poll_interval_seconds,
-        clock=clock,
-        sleep=sleep,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1773,23 +1552,6 @@ class QuackStateServer:
 
     def stop_control_path(self) -> Path:
         return self.config.state_dir / CONTROL_STOP_FILENAME
-
-    def reissue_handoff_control_path(self) -> Path:
-        return self.config.state_dir / CONTROL_REISSUE_FILENAME
-
-    def honor_handoff_reissue_request(self) -> dict[str, Any] | None:
-        """Republish the coordinator handoff when a confined request is present."""
-
-        with self._lock:
-            identity = self._identity
-            return honor_handoff_reissue_request(
-                state_dir=self.config.state_dir,
-                vault=self._vault,
-                request_path=self.reissue_handoff_control_path(),
-                expected_server_id=(
-                    identity.server_id if identity is not None else None
-                ),
-            )
 
     # -- capability + migration -------------------------------------------
 
@@ -3042,12 +2804,9 @@ __all__ = (
     "TokenVault",
     "assert_bind_admitted",
     "build_server",
-    "honor_handoff_reissue_request",
     "listen_uri",
     "provider_safe_environment",
     "reclaim_stale_owner_marker",
-    "recover_coordinator_handoff",
-    "request_handoff_reissue",
     "retire_token_handoff",
     "sanitize_for_export",
 )

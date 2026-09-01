@@ -25,9 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     ProcessBirthIdentity,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
-    CONTROL_REISSUE_FILENAME,
     DEFAULT_LOOPBACK_HOST,
-    HANDOFF_REISSUE_REQUEST_SCHEMA,
     QUACK_STATE_SERVER_INTERFACE,
     STATE_SERVER_IDENTITY_INTERFACE,
     ExclusiveOwnerLease,
@@ -37,7 +35,6 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     QuackStateServerBindError,
     QuackStateServerCapabilityError,
     QuackStateServerConfig,
-    QuackStateServerControlError,
     QuackStateServerOwnershipError,
     QuackStateServerReadyError,
     QuackStateServerTokenError,
@@ -47,14 +44,10 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     TokenVault,
     assert_bind_admitted,
     build_server,
-    honor_handoff_reissue_request,
     listen_uri,
     provider_safe_environment,
     reclaim_stale_owner_marker,
-    recover_coordinator_handoff,
     recover_stale_state_server,
-    request_handoff_reissue,
-    retire_token_handoff,
     sanitize_for_export,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
@@ -911,160 +904,3 @@ def test_config_rejects_raw_token_as_secret_handle(tmp_path: Path) -> None:
             state_dir=tmp_path / "state",
             secret_handle="raw-not-a-handle",
         )
-
-
-def _write_reissue_request(
-    path: Path,
-    *,
-    server_id: str = "server:test",
-    extra: dict[str, Any] | None = None,
-) -> None:
-    payload = {
-        "schema": HANDOFF_REISSUE_REQUEST_SCHEMA,
-        "requested_at": "2026-09-01T00:00:00Z",
-        "server_id": server_id,
-    }
-    if extra:
-        payload.update(extra)
-    path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
-    path.chmod(0o600)
-
-
-def test_token_vault_reissues_retired_handoff_without_new_generation(
-    tmp_path: Path,
-) -> None:
-    vault = TokenVault(tmp_path)
-    handle = vault.mint(secret_handle="env://SAWM_QUACK_TOKEN", generation=4)
-    token = vault.resolve()
-    handoff = next(tmp_path.glob("*.quack-token"))
-    retire_token_handoff(
-        state_dir=tmp_path,
-        secret_handle=handle.handle,
-        expected_token=token,
-    )
-    assert not handoff.exists()
-    reissued = vault.reissue_handoff()
-    assert reissued == handoff
-    assert handoff.read_text(encoding="ascii") == token
-    assert vault.generation == 4
-    vault.destroy()
-
-
-def test_honor_handoff_reissue_request_rewrites_confined_handoff(
-    tmp_path: Path,
-) -> None:
-    vault = TokenVault(tmp_path)
-    handle = vault.mint(secret_handle="env://SAWM_QUACK_TOKEN", generation=2)
-    token = vault.resolve()
-    retire_token_handoff(
-        state_dir=tmp_path,
-        secret_handle=handle.handle,
-        expected_token=token,
-    )
-    request_path = tmp_path / CONTROL_REISSUE_FILENAME
-    _write_reissue_request(request_path, server_id="server:live")
-    receipt = honor_handoff_reissue_request(
-        state_dir=tmp_path,
-        vault=vault,
-        request_path=request_path,
-        expected_server_id="server:live",
-    )
-    assert receipt is not None
-    assert receipt["reissued"] is True
-    assert token not in json.dumps(receipt)
-    assert not request_path.exists()
-    assert Path(receipt["handoff_path"]).read_text(encoding="ascii") == token
-    vault.destroy()
-
-
-def test_honor_handoff_reissue_request_rejects_world_readable_file(
-    tmp_path: Path,
-) -> None:
-    vault = TokenVault(tmp_path)
-    handle = vault.mint(secret_handle="env://SAWM_QUACK_TOKEN")
-    token = vault.resolve()
-    retire_token_handoff(
-        state_dir=tmp_path,
-        secret_handle=handle.handle,
-        expected_token=token,
-    )
-    request_path = tmp_path / CONTROL_REISSUE_FILENAME
-    _write_reissue_request(request_path, server_id="server:live")
-    request_path.chmod(0o644)
-    with pytest.raises(QuackStateServerControlError, match="bounded regular file"):
-        honor_handoff_reissue_request(
-            state_dir=tmp_path,
-            vault=vault,
-            request_path=request_path,
-            expected_server_id="server:live",
-        )
-    assert not list(tmp_path.glob("*.quack-token"))
-    vault.destroy()
-
-
-def test_recover_coordinator_handoff_waits_for_owner_rewrite(
-    tmp_path: Path,
-) -> None:
-    vault = TokenVault(tmp_path)
-    handle = vault.mint(secret_handle="env://SAWM_QUACK_TOKEN")
-    token = vault.resolve()
-    retire_token_handoff(
-        state_dir=tmp_path,
-        secret_handle=handle.handle,
-        expected_token=token,
-    )
-    ticks = {"t": 0.0}
-
-    def clock() -> float:
-        return ticks["t"]
-
-    def sleep(_interval: float) -> None:
-        honor_handoff_reissue_request(
-            state_dir=tmp_path,
-            vault=vault,
-            request_path=tmp_path / CONTROL_REISSUE_FILENAME,
-            expected_server_id="server:live",
-        )
-        ticks["t"] += 0.05
-
-    receipt = recover_coordinator_handoff(
-        state_dir=tmp_path,
-        secret_handle=handle.handle,
-        server_id="server:live",
-        clock=clock,
-        sleep=sleep,
-        timeout_seconds=1.0,
-    )
-    assert receipt["reissued"] is True
-    assert Path(receipt["handoff_path"]).read_text(encoding="ascii") == token
-    replay = request_handoff_reissue(
-        state_dir=tmp_path,
-        secret_handle=handle.handle,
-        server_id="server:live",
-    )
-    assert replay["already_present"] is True
-    vault.destroy()
-
-
-def test_started_server_honors_coordinator_reissue_after_retirement(
-    tmp_path: Path,
-) -> None:
-    server = _server(tmp_path, secret_handle="env://SAWM_QUACK_TOKEN")
-    identity = server.start()
-    token = server._vault.resolve()  # noqa: SLF001
-    retire_token_handoff(
-        state_dir=server.config.state_dir,
-        secret_handle=identity.secret_handle,
-        expected_token=token,
-    )
-    _write_reissue_request(
-        server.reissue_handoff_control_path(),
-        server_id=identity.server_id,
-    )
-    receipt = server.honor_handoff_reissue_request()
-    assert receipt is not None
-    assert receipt["reissued"] is True
-    restored = next(server.config.state_dir.glob("*.quack-token"))
-    assert restored.read_text(encoding="ascii") == token
-    assert token not in json.dumps(receipt)
-    server.stop()

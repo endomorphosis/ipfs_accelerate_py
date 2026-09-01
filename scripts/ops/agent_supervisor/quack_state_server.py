@@ -212,17 +212,9 @@ def _serve_until_stop(server: Any) -> dict[str, Any]:
     previous_term = signal.signal(signal.SIGTERM, _handle_signal)
     try:
         control_path = server.stop_control_path()
-        from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
-            QuackStateServerError,
-        )
-
         while server.lifecycle.value == "ready" and not stop_requested["value"]:
             if control_path.is_file():
                 break
-            try:
-                server.honor_handoff_reissue_request()
-            except QuackStateServerError:
-                pass
             time.sleep(0.25)
         return server.stop()
     finally:
