@@ -1996,12 +1996,21 @@ def _owner_listener_ready(server: Any) -> bool:
     """
 
     config = getattr(server, "config", None)
-    host = str(getattr(config, "container_bind_host", "") or "") if config is not None else ""
+    host = ""
     port = 0
     if config is not None:
-        port = int(getattr(config, "container_port", 0) or 0)
+        host = str(
+            getattr(config, "container_bind_host", "")
+            or getattr(config, "host", "")
+            or ""
+        ).strip()
+        port = int(
+            getattr(config, "container_port", 0) or getattr(config, "port", 0) or 0
+        )
     if port <= 0:
         port = int(getattr(server, "_bound_port", 0) or 0)
+    if host in {"", "0.0.0.0", "::", "[::]"}:
+        host = "127.0.0.1"
     if not host or port <= 0:
         return False
     try:
@@ -2107,14 +2116,17 @@ def _recover_poisoned_owner_connection(
                 gateway._connection = replacement
             native_replaced = True
         listener_down = not _owner_listener_ready(server)
-        if native_replaced or listener_down:
+        # A healthy exclusive handle plus a still-bound TCP port must not
+        # null `_transport_connection` and re-enter `transport.start()`.
+        # That rebind is what the live-query fallback used to trigger.
+        if native_replaced or (listener_down and unusable):
             _restart_owner_transport(
                 server,
                 previous=current,
                 replacement=replacement,
             )
             return True
-        return False
+        return native_replaced or unusable
 
 
 def _owner_task_projection(server: Any) -> dict[str, Any]:
@@ -2126,8 +2138,29 @@ def _owner_task_projection(server: Any) -> dict[str, Any]:
         return _task_status(connection)
 
 
+def _owner_identity_snapshot(server: Any) -> dict[str, Any]:
+    """Return ready fields without executing quack_query on the serve connection."""
+
+    identity = getattr(server, "_identity", None)
+    if identity is None:
+        raise OperatorError("state-owner identity is unavailable")
+    return {
+        "process_birth_id": str(identity.process_birth_id),
+        "server_id": str(identity.server_id),
+        "store_id": str(identity.store_id),
+        "generation": int(identity.generation),
+        "schema_revision": int(identity.schema_revision),
+        "live": True,
+    }
+
+
 def _publish_live_projection(server: Any, paths: Mapping[str, Path]) -> dict[str, Any]:
-    ready = server.ready(retry_transient_birth=False)
+    try:
+        ready = server.ready(retry_transient_birth=False)
+    except Exception:
+        if not _owner_listener_ready(server):
+            raise
+        ready = _owner_identity_snapshot(server)
     task_projection = _owner_task_projection(server)
     unsigned = {
         "schema": "spar/live-owner-projection@1",

@@ -2634,27 +2634,15 @@ class InProcessQuackTransport:
         except Exception as exc:
             last_error = exc
         if last_error is not None or rows is None:
-            # An in-memory sidecar does not share the exclusive serve
-            # connection id.  Fall back to the owner connection that called
-            # quack_serve unless that wrapper is already unusable: executing
-            # through it would replace a transport error with
-            # DuckDBConnectionPolicyError and bounce every attached lane.
-            if (
-                getattr(connection, "_poisoned", False) is True
-                or getattr(connection, "_closed", False) is True
-                or getattr(connection, "_connection", True) is None
-            ):
-                raise QuackStateServerReadyError(
-                    "authenticated remote live query failed: "
-                    f"{type(last_error).__name__ if last_error is not None else 'unusable owner connection'}"
-                ) from last_error
-            for sql, params in query_attempts:
-                try:
-                    rows = connection.execute(sql, params).fetchall()
-                    last_error = None
-                    break
-                except Exception as exc:  # pragma: no cover - extension-version path
-                    last_error = exc
+            # Never execute quack_query on the exclusive serve connection.
+            # That shares the serve connection id, raises IOException, and
+            # knocks the TCP listener down. Periodic SPAR projection then
+            # treats the port as dead, force-bounces quack_serve, and poisons
+            # every typed lane with DuckDBConnectionPolicyError.
+            raise QuackStateServerReadyError(
+                "authenticated remote live query failed: "
+                f"{type(last_error).__name__ if last_error is not None else 'sidecar live query returned no rows'}"
+            ) from last_error
         if last_error is not None:
             raise QuackStateServerReadyError(
                 f"authenticated remote live query failed: {type(last_error).__name__}"

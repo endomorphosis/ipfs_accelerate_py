@@ -1300,6 +1300,27 @@ def test_recover_force_does_not_bounce_healthy_owner_when_listener_is_up(
     assert server._transport_connection is owner
 
 
+def test_owner_listener_ready_uses_host_port_when_container_fields_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    server = SimpleNamespace(
+        config=SimpleNamespace(host="127.0.0.1", port=46731, container_bind_host="", container_port=0),
+        _bound_port=0,
+    )
+    seen: list[tuple[str, int]] = []
+
+    def connect(address: object, timeout: object = None) -> object:
+        del timeout
+        host, port = address  # type: ignore[misc]
+        seen.append((str(host), int(port)))
+        return socket.socket()
+
+    monkeypatch.setattr(materializer.socket, "create_connection", connect)
+    assert materializer._owner_listener_ready(server) is True
+    assert seen == [("127.0.0.1", 46731)]
+
+
 def test_owner_listener_ready_refuses_only_connection_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1559,6 +1580,47 @@ def test_publish_live_projection_skips_live_query_birth_retry(
     assert calls == [False]
     assert payload["quack_authenticated_live_query"] is True
     assert (tmp_path / "spar-live-projection.json").is_file()
+
+
+def test_publish_live_projection_uses_identity_when_live_query_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+
+    class _Server:
+        def ready(self, *, retry_transient_birth: bool = True) -> dict[str, object]:
+            del retry_transient_birth
+            raise RuntimeError("authenticated remote live query failed: IOException")
+
+    server = _Server()
+    server._connection = object()  # type: ignore[attr-defined]
+    server._owner_transaction_lock = threading.RLock()  # type: ignore[attr-defined]
+    server._identity = SimpleNamespace(  # type: ignore[attr-defined]
+        process_birth_id="birth:fallback",
+        server_id="server:fallback",
+        store_id="store:fallback",
+        generation=42,
+        schema_revision=3,
+    )
+    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: True)
+    monkeypatch.setattr(
+        materializer,
+        "_task_status",
+        lambda _connection: {
+            "task_count": 51,
+            "status_counts": {"completed": 18, "todo": 32, "quarantined": 1},
+            "dependency_ready_task_ids": ["SPAR-018"],
+            "active_task_ids": [],
+            "blocked_count": 0,
+            "terminal_count": 19,
+        },
+    )
+    payload = materializer._publish_live_projection(server, {"owner": tmp_path})
+    assert payload["generation"] == 42
+    assert payload["owner_process_birth_id"] == "birth:fallback"
+    assert payload["quack_authenticated_live_query"] is True
+    assert payload["task_projection"]["dependency_ready_task_ids"] == ["SPAR-018"]
 
 
 def test_owner_projection_monitor_does_not_force_bounce_when_listener_is_up(

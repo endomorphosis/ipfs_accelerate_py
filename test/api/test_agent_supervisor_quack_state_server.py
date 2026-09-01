@@ -2608,19 +2608,27 @@ def test_live_query_skips_birth_retry_when_periodic_projection(
         identity=identity,
     )
     owner = FakeConnection()
-    owner.execute = (  # type: ignore[method-assign]
-        lambda sql, params=None: _Result((1,)) if "quack_query" in str(sql) else _Result()
-    )
+    owner.executed = 0
 
-    observed = transport.live_query(
-        owner,
-        identity=identity,
-        token="isolated-periodic-token",
-        retry_transient_birth=False,
-    )
+    def _execute(sql: str, params: Any = None) -> _Result:
+        del params
+        owner.executed += 1
+        if "quack_query" in str(sql):
+            raise AssertionError("periodic live query must not use the serve connection")
+        return _Result()
 
-    assert observed["live"] is True
+    owner.execute = _execute  # type: ignore[method-assign]
+
+    with pytest.raises(QuackStateServerReadyError, match="IOException"):
+        transport.live_query(
+            owner,
+            identity=identity,
+            token="isolated-periodic-token",
+            retry_transient_birth=False,
+        )
+
     assert attempts == 1
+    assert owner.executed == 0
 
 
 def test_live_query_does_not_execute_on_unusable_owner_fallback(
