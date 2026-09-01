@@ -412,6 +412,30 @@ def _m39_migration_errors(
         return [f"M39 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m41_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Reuse the exact M41 failed-pre-authoritative-M40 validation contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m41_failed_pre_authoritative_m40_validation_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
+            )
+        )
+    except Exception as exc:
+        return [f"M41 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _m40_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -972,12 +996,62 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M40 before every historical successor. Consequently
+    Key presence selects M41 before every historical successor. Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m41_key = (
+        "failed_pre_authoritative_m40_validation_successor_materialization"
+    )
+    m41_presence = (
+        m41_key in scheduler,
+        m41_key in migration,
+        f"{m41_key}_cid" in seal,
+    )
+    if any(m41_presence):
+        errors = _m41_migration_errors(scheduler, seal, migration)
+        if not all(m41_presence):
+            errors.append("M41 successor authority is only partially declared")
+        # M40 failed its sealed suite before materialization. Mask its current-
+        # HEAD validator only after M41 verifies that no-write failure, the
+        # immutable M40 triplet, and the complete three-surface M41 seal.
+        if errors:
+            return errors
+        for validator in (
+            _m36_migration_errors,
+            _m35_migration_errors,
+            _m34_migration_errors,
+            _m33_migration_errors,
+            _m32_migration_errors,
+            _m31_migration_errors,
+            _m30_migration_errors,
+            _m29_migration_errors,
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(
+                    scheduler,
+                    seal,
+                    migration,
+                    require_active_runtime=False,
+                )
+            )
+        return errors
 
     m40_key = "failed_pre_authoritative_m39_successor_materialization"
     m40_presence = (
@@ -3695,6 +3769,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m41_key = (
+        "failed_pre_authoritative_m40_validation_successor_materialization"
+    )
+    m41_selected = any(
+        (
+            m41_key in config,
+            m41_key in migration,
+            f"{m41_key}_cid" in seal,
+        )
+    )
     m40_key = "failed_pre_authoritative_m39_successor_materialization"
     m40_selected = any(
         (
@@ -3840,7 +3924,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     multi_lane_selected = (
-        m40_selected
+        m41_selected
+        or m40_selected
         or m39_selected
         or m38_selected
         or m37_selected
@@ -3865,7 +3950,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or config.get("max_lanes") != expected_lane_count
     ):
         config_errors.append(
-            "four lanes are required for M40/M39/M38/M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
+            "four lanes are required for M41/M40/M39/M38/M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
             if multi_lane_selected
             else "one lane is required until sidecars are lane-scoped"
         )
@@ -4047,6 +4132,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m41_selected
+        else "run-r2-m27"
         if m40_selected
         else "run-r2-m27"
         if m39_selected
@@ -4115,6 +4202,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_generation = (
         "30"
+        if m41_selected
+        else "30"
         if m40_selected
         else "30"
         if m39_selected
@@ -4183,6 +4272,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m41_selected
+        else 24070
         if m40_selected
         else 24070
         if m39_selected
@@ -4264,7 +4355,102 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m40_selected:
+    if m41_selected:
+        successor = config.get(m41_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer._expected_m41_failed_pre_authoritative_m40_validation_successor_authority()
+            )
+            reference = dict(materializer._m41_authority_reference())
+            expected_seal_cid = materializer._identity(expected)
+            source_chain = expected.get("source_chain", {})
+            failed = expected.get(
+                "failed_m40_pre_authoritative_validation", {}
+            )
+            repair = expected.get(
+                "accepted_historical_test_helper_repair", {}
+            )
+            contract = expected.get("live_preflight_contract", {})
+            prior = expected.get("prior_m40_authority", {})
+            if (
+                successor != reference
+                or migration.get(m41_key) != reference
+                or seal.get(f"{m41_key}_cid") != expected_seal_cid
+                or expected_seal_cid
+                != "sha256:25ad5550b59024c8da9b4821fba2d7b1b49d2a17a781e5d4bd2cbe58cb7b0233"
+                or expected.get("schema")
+                != (
+                    "sawm/failed-pre-authoritative-m40-validation-successor-"
+                    "authorization@1"
+                )
+                or expected.get("migration_revision") != "SAWM-R2-M41"
+                or expected.get("migration_kind") != m41_key
+                or expected.get("target_generation") != 30
+                or expected.get("target_event_watermark") != 292
+                or expected.get("target_projection_cid")
+                != "baguqeera6t2s6prg5atpg4gkgrlmqclu34firbn4z2o3wsgv6btp7p6q66tq"
+                or source_chain.get("m40_final_control_commit")
+                != "7564064e191c88679f3a8b540fd5db847b0b492c"
+                or source_chain.get("m40_final_control_tree")
+                != "aa7035cc4a3bd0f0c1073b2081bcbf9928db4e4e"
+                or source_chain.get("historical_test_helper_repair_parent")
+                != "7564064e191c88679f3a8b540fd5db847b0b492c"
+                or source_chain.get("historical_test_helper_repair_commit")
+                != "599baee49905108a4361d37dcc6bd01d2829ee79"
+                or source_chain.get("historical_test_helper_repair_tree")
+                != "a96d83f1928c7482cd1d49d673744e8f4084c732"
+                or source_chain.get("final_control_parent")
+                != "599baee49905108a4361d37dcc6bd01d2829ee79"
+                or int(source_chain.get("bounded_repair_commit_count") or 0) != 1
+                or source_chain.get("final_control_commit_is_current_head") is not True
+                or failed.get("schema")
+                != "sawm/pre-authoritative-m40-validation-failure@1"
+                or failed.get("attempt") != "SAWM-R2-M40-SEALED-SUITE-A1"
+                or failed.get("phase")
+                != "sealed_semantic_world_test_suite"
+                or failed.get("failure_kind")
+                != "historical_fixture_omitted_m40_successor_control_key"
+                or failed.get("tests_passed") != 285
+                or failed.get("tests_failed") != 22
+                or len(failed.get("failed_test_node_ids") or ()) != 22
+                or failed.get("materializer_invoked") is not False
+                or repair.get("repair_commit")
+                != "599baee49905108a4361d37dcc6bd01d2829ee79"
+                or repair.get(
+                    "adds_m40_to_successor_control_keys_newest_first"
+                )
+                is not True
+                or repair.get("m40_key_index") != 0
+                or repair.get("last_failed_rerun_passed") != 22
+                or repair.get("direct_regression_passed") is not True
+                or contract.get("generation_restart_authorized") is not False
+                or not isinstance(prior, Mapping)
+                or prior.get("migration_revision") != "SAWM-R2-M40"
+                or module._m41_failed_pre_authoritative_m40_validation_successor_errors(
+                    config, seal, migration, root=root
+                )
+            ):
+                config_errors.append(
+                    "M41 failed-pre-authoritative-M40-validation authority/CID/source differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M41 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M41 active runtime paths are not exactly preserved")
+    elif m40_selected:
         successor = config.get(m40_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"

@@ -2080,7 +2080,46 @@ M39 receipt is reconstructed or published. Partial or mixed M40 declarations
 fail closed, and key presence selects M40 before M39 even when the M40 value is
 null or malformed. M40 does not grant worker self-approval or task completion.
 
-## 48. M38 pre-authoritative custody restart successor
+## 48. M41 failed-pre-authoritative-M40-validation successor
+
+`SAWM-R2-M41` is the append-only successor for M40's failed
+pre-authoritative validation attempt. The sealed semantic-world suite passed
+285 tests and failed 22 historical-overlay fixtures because the helper did not
+remove the newly active M40 key before exercising older successor controls.
+M40 was never materialized: the materializer, Quack mutation route, provider,
+task, goal, plan, event, evidence, owner, generation, and receipt authorities
+were unchanged, and event 291 remained the exact live head.
+
+M41 preserves M40's final control commit
+`7564064e191c88679f3a8b540fd5db847b0b492c` / tree
+`aa7035cc4a3bd0f0c1073b2081bcbf9928db4e4e`. The exact test-only historical
+overlay repair is `599baee49905108a4361d37dcc6bd01d2829ee79` / tree
+`a96d83f1928c7482cd1d49d673744e8f4084c732`; it changes only
+`test/api/semantic_world/test_semantic_addressed_world_model_board.py`, adds
+M40 at index zero of `_SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST`, and changes no
+production selector or authority value. The 22 prior failures then passed, as
+did the direct M40 historical-isolation regression. The final M41 control
+commit must be the direct child of that repair and modify exactly the same nine
+protected operator-control paths. Its authority CID is
+`sha256:25ad5550b59024c8da9b4821fba2d7b1b49d2a17a781e5d4bd2cbe58cb7b0233`.
+
+M41 binds the unchanged ready generation-30 owner, event-291 prefix, and prior
+projection
+`baguqeeravycbuo73fyu5mpad55qi5duk3la53lubqeu7nu6kjtnahehjtnsq`. It
+authorizes only one authenticated operator-control evidence append at event
+292, producing the already sealed target projection
+`baguqeera6t2s6prg5atpg4gkgrlmqclu34firbn4z2o3wsgv6btp7p6q66tq` and counts
+49 evidence nodes, 38 evidence events, 11 validation events, and 11 passed
+validation events. It authorizes no restart, direct DuckDB writer, ordinary
+implementation change, validation weakening, completion, or self-approval.
+
+The M37, M38, M39, and M40 successor receipts must all remain absent. Only the
+non-authoritative `m41-source-successor-receipt.json` may be published, last
+and idempotently after full event, evidence, projection, owner, and source-chain
+verification. Partial or malformed M41 declarations fail closed, and M41 key
+presence masks all older successor controls.
+
+## 49. M38 pre-authoritative custody restart successor
 
 `SAWM-R2-M38` preserves M37 as immutable source history and explicitly
 supersedes its failed, unmaterialized restart attempt. The module-form M37
@@ -2128,7 +2167,7 @@ verification compares canonical inner evidence/event bodies, including
 Quack envelope JSON. M38 is selected before M37 only when its complete
 protected-control triplet and source chain validate.
 
-## 49. Current limitations at seal time
+## 50. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

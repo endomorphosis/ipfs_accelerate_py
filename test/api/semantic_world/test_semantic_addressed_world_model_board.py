@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "failed_pre_authoritative_m40_validation_successor_materialization",
     "failed_pre_authoritative_m39_successor_materialization",
     "committed_m38_evidence_reconciliation_successor_materialization",
     "pre_authoritative_custody_restart_successor_materialization",
@@ -125,6 +126,38 @@ def test_historical_successor_controls_include_m40() -> None:
     assert historical_migration is not None and m40_key not in historical_migration
     assert historical_seal is not None
     assert f"{m40_key}_cid" not in historical_seal
+
+
+def test_historical_successor_controls_include_m41_before_m40() -> None:
+    """M40 fixtures remove M41 while current M41 remains presence-first."""
+
+    m41_key = (
+        "failed_pre_authoritative_m40_validation_successor_materialization"
+    )
+    m40_key = "failed_pre_authoritative_m39_successor_materialization"
+    scheduler = {m41_key: {"revision": "M41"}, m40_key: {"revision": "M40"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m41_key}_cid": "sha256:" + "5" * 64,
+        f"{m40_key}_cid": "sha256:" + "4" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m41_key, scheduler, migration, seal
+    )
+    assert current[m41_key] == scheduler[m41_key]
+    assert current_migration is not None
+    assert current_migration[m41_key] == migration[m41_key]
+    assert current_seal is not None
+    assert current_seal[f"{m41_key}_cid"] == seal[f"{m41_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m40_key, scheduler, migration, seal)
+    )
+    assert m41_key not in historical
+    assert historical_migration is not None and m41_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m41_key}_cid" not in historical_seal
 
 
 def _load(relative: str, name: str) -> ModuleType:
@@ -5119,7 +5152,13 @@ def test_m40_operator_selects_newest_authority_by_key_presence() -> None:
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
     )
-    active = operator._active_source_repair_materialization(config)
+    historical_config, _historical_migration, _historical_seal = (
+        _historical_successor_controls_at(
+            "failed_pre_authoritative_m39_successor_materialization",
+            config,
+        )
+    )
+    active = operator._active_source_repair_materialization(historical_config)
     assert active["migration_revision"] == "SAWM-R2-M40"
     assert active["target_event_watermark"] == 292
     assert active["failed_m39_pre_authoritative_attempt"][
@@ -5156,6 +5195,214 @@ def test_m40_operator_selects_newest_authority_by_key_presence() -> None:
     ) not in preflight
     marker = inspect.getsource(operator._require_active_final_pair_marker)
     assert marker.index("_M40_SUCCESSOR_KEY") < marker.index("_M39_SUCCESSOR_KEY")
+
+
+def test_m41_authority_seals_failed_m40_validation_and_exact_repair() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m41_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m41_failed_pre_authoritative_m40_validation_successor_authority()
+    )
+    reference = materializer._m41_authority_reference()
+    failed = authority["failed_m40_pre_authoritative_validation"]
+    repair = authority["accepted_historical_test_helper_repair"]
+    chain = authority["source_chain"]
+
+    assert reference == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M41",
+        "authority_cid": materializer._M41_AUTHORITY_CID,
+    }
+    assert materializer._identity(authority) == (
+        "sha256:25ad5550b59024c8da9b4821fba2d7b1b49d2a17a781e5d4bd2cbe58cb7b0233"
+    )
+    assert materializer._identity(authority["prior_m40_authority"]) == (
+        materializer._M41_M40_AUTHORITY_CID
+    )
+    assert failed["phase"] == "sealed_semantic_world_test_suite"
+    assert failed["tests_passed"] == 285
+    assert failed["tests_failed"] == 22
+    assert len(failed["failed_test_node_ids"]) == 22
+    assert failed["materializer_invoked"] is False
+    assert failed["quack_mutation_request_created"] is False
+    assert failed["event_292_rows_created"] == 0
+    assert failed["m40_receipt_created"] is False
+    assert repair["repair_parent"] == materializer._M41_M40_FINAL_CONTROL_COMMIT
+    assert repair["repair_commit"] == (
+        materializer._M41_HISTORICAL_TEST_HELPER_REPAIR_COMMIT
+    )
+    assert repair["blob_oids"] == dict(
+        materializer._M41_HISTORICAL_TEST_HELPER_REPAIR_BLOBS
+    )
+    assert repair["last_failed_rerun_passed"] == 22
+    assert repair["direct_regression_passed"] is True
+    assert repair["production_selection_changed"] is False
+    assert chain["final_control_parent"] == (
+        materializer._M41_HISTORICAL_TEST_HELPER_REPAIR_COMMIT
+    )
+    assert chain["final_control_commit_is_current_head"] is True
+    assert chain["final_control_commit_count"] == 1
+    assert authority["target_event_watermark"] == 292
+    assert authority["target_projection_cid"] == (
+        materializer._M40_TARGET_PROJECTION_CID
+    )
+    assert authority["target_authority"]["evidence_kind"] == (
+        "operator_control_plane_failed_pre_authoritative_m40_validation_successor"
+    )
+    assert authority["live_preflight_contract"][
+        "m40_receipt_must_be_absent"
+    ] is True
+    materializer._validated_m41_live_preflight_contract(authority)
+
+
+def test_m41_restart_rows_route_through_exact_m40_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m41_restart_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m41_failed_pre_authoritative_m40_validation_successor_authority()
+    )
+    observed: list[object] = []
+
+    def inspect_restart(
+        source: object, identity: object, prior_m40: object
+    ) -> dict[str, bool]:
+        observed.extend((source, identity, prior_m40))
+        return {"generation_29_30_restart_rows_verified": True}
+
+    monkeypatch.setattr(
+        materializer, "_inspect_m40_generation_restart_rows", inspect_restart
+    )
+    source = object()
+    identity = {"server_id": materializer._M41_LIVE_SERVER_ID}
+    assert materializer._inspect_m41_generation_restart_rows(
+        source, identity, authority
+    ) == {"generation_29_30_restart_rows_verified": True}
+    assert observed == [source, identity, authority["prior_m40_authority"]]
+
+    malformed = dict(authority)
+    malformed["prior_m40_authority"] = {}
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="historical M40 restart authority differs",
+    ):
+        materializer._inspect_m41_generation_restart_rows(
+            source, identity, malformed
+        )
+
+
+def test_m41_receipt_publication_is_last_idempotent_and_exclusive(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m41_receipt_test",
+    )
+    control = tmp_path / "control.duckdb"
+    control.write_bytes(b"test")
+    expected = {"schema": "test/m41-receipt@1", "receipt_cid": "sha256:test"}
+
+    first = materializer._ensure_m41_source_successor_receipt(
+        tmp_path, control, expected
+    )
+    second = materializer._ensure_m41_source_successor_receipt(
+        tmp_path, control, expected
+    )
+    assert first == second == expected
+    path = tmp_path / "m41-source-successor-receipt.json"
+    assert json.loads(path.read_text(encoding="utf-8")) == expected
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    for revision in ("m37", "m38", "m39", "m40", "m41"):
+        assert (
+            tmp_path / f".{revision}-source-successor-receipt.publish.lock"
+        ).exists()
+
+    path.unlink()
+    (tmp_path / "m40-source-successor-receipt.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M40 receipt unexpectedly exists",
+    ):
+        materializer._ensure_m41_source_successor_receipt(
+            tmp_path, control, expected
+        )
+
+
+def test_m41_dispatch_precedes_m40_and_receipt_follows_live_verification() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m41_dispatch_test",
+    )
+    check_source = inspect.getsource(materializer.check_materialized)
+    materialize_source = inspect.getsource(materializer.materialize)
+    m41 = "_m41_successor_configured_on_any_surface"
+    m40 = "_m40_successor_configured_on_any_surface"
+    assert check_source.index(m41) < check_source.index(m40)
+    assert materialize_source.index(m41) < materialize_source.index(m40)
+    main_source = inspect.getsource(materializer.main)
+    assert main_source.index(
+        "failed_pre_authoritative_m40_validation_successor_materialization"
+    ) < main_source.index(
+        "failed_pre_authoritative_m39_successor_materialization"
+    )
+    core = inspect.getsource(materializer._materialize_m41)
+    assert core.index("_verify_m41_live_materialization") < core.index(
+        "_ensure_m41_source_successor_receipt"
+    )
+    assert "snapshot.event_cursor == _M41_PRIOR_EVENT_WATERMARK" in core
+    assert "snapshot.event_cursor != _M41_TARGET_EVENT_WATERMARK" in core
+    assert "target_event_exists is not None" in core
+    assert 'for revision in ("m37", "m38", "m39", "m40")' in core
+
+
+def test_m41_operator_selects_newest_authority_by_key_presence() -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m41_authority_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    active = operator._active_source_repair_materialization(config)
+    assert active["migration_revision"] == "SAWM-R2-M41"
+    assert active["target_event_watermark"] == 292
+    assert active["failed_m40_pre_authoritative_validation"][
+        "materializer_invoked"
+    ] is False
+    configured = inspect.getsource(operator._successor_materialization_configured)
+    assert configured.index("_M41_SUCCESSOR_KEY") < configured.index(
+        "_M40_SUCCESSOR_KEY"
+    )
+    normalized = inspect.getsource(operator._normalized_live_preflight_contract)
+    assert normalized.index("_M41_MIGRATION_REVISION") < normalized.index(
+        "_M40_MIGRATION_REVISION"
+    )
+    preflight = inspect.getsource(operator._live_preflight)
+    assert "m41_active = active_revision == _M41_MIGRATION_REVISION" in preflight
+    assert preflight.index("m41_active,") < preflight.index("m40_active,")
+    assert preflight.index("_verify_m41_live_materialization") < preflight.index(
+        "_verify_m40_live_materialization"
+    )
+    assert preflight.index("_expected_m41_source_successor_receipt") < (
+        preflight.index("_expected_m40_source_successor_receipt")
+    )
+    assert preflight.index("_M41_SUCCESSOR_KEY in config") < preflight.index(
+        "_M40_SUCCESSOR_KEY in config"
+    )
+    marker = inspect.getsource(operator._require_active_final_pair_marker)
+    assert marker.index("_M41_SUCCESSOR_KEY") < marker.index("_M40_SUCCESSOR_KEY")
 
 
 def test_m21_generation_realization_authority_is_exact_and_presence_first() -> None:
