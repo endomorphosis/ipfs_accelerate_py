@@ -25,6 +25,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "post_reboot_generation_restart_successor_materialization",
     "operator_task_binding_correction_successor_materialization",
     "immutable_authority_identity_normalization_successor_materialization",
     "json_emission_normalization_successor_materialization",
@@ -4607,6 +4608,541 @@ def test_m29_presence_masks_m28_and_keeps_every_predecessor_historical(
     assert any("only partially declared" in error for error in errors)
 
 
+def test_m37_authority_pins_reboot_recovery_generation_and_source_chain() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m37_authority_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m37_authority_test",
+    )
+    key = "post_reboot_generation_restart_successor_materialization"
+    authority = (
+        materializer._expected_m37_post_reboot_generation_restart_authority()
+    )
+    identity_state = dependencies._m37_source_chain_identity_state(
+        materializer, authority
+    )
+    reference = dependencies._m37_authority_reference_for_source_state(
+        materializer, authority
+    )
+    scheduler = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert scheduler[key] == reference == migration[key]
+    expected_authority_cid = (
+        "sha256:PENDING_M37_AUTHORITY_CID"
+        if identity_state == "placeholder"
+        else materializer._identity(authority)
+    )
+    assert seal[f"{key}_cid"] == reference["authority_cid"] == expected_authority_cid
+    assert reference["schema"] == "sawm/operator-control-authority-reference@1"
+    assert reference["migration_revision"] == "SAWM-R2-M37"
+
+    assert authority["schema"] == (
+        "sawm/post-reboot-generation-restart-successor-authorization@1"
+    )
+    assert authority["supersession_mode"] == (
+        "generation_bearing_post_reboot_restart_source_seal"
+    )
+    assert authority["control_recorded_at"] == "2026-09-01T00:10:00Z"
+    assert authority["target_generation"] == 30
+    assert authority["runtime_binding"]["prior_event_watermark"] == 290
+    assert authority["target_event_watermark"] == 291
+    assert authority["target_projection_cid"] == (
+        "baguqeeravycbuo73fyu5mpad55qi5duk3la53lubqeu7nu6kjtnahehjtnsq"
+    )
+    prior = authority["prior_authority"]
+    assert prior["schema"] == "sawm/current-operational-head@1"
+    assert prior["event_watermark"] == 290
+    assert prior["event_prefix_sha256"] == (
+        "27ec7ecda1536d1bf7ed4b7e709b3b7284efcc84fbfb804b63db437ed31bd22c"
+    )
+    assert prior["projection_cid"] == (
+        "baguqeerahwerrrfx6cx6ukpljlp2r4i32lkac3bnhq5ej2f3hozg7cnt6shq"
+    )
+    assert prior["semantic_authority_digest"] == (
+        "sha256:f51d9cb949538441218254297e279fa2bf5884e1bdc9d20693cf8213db841dde"
+    )
+    assert prior["expected_task_heads"]["SAWM-006"] == {
+        "status": "in_progress",
+        "revision": 9,
+    }
+    assert prior["expected_task_heads"]["SAWM-008"] == {
+        "status": "in_progress",
+        "revision": 11,
+    }
+    m36_anchor = authority["m36_historical_anchor"]
+    assert m36_anchor["migration_revision"] == "SAWM-R2-M36"
+    assert m36_anchor["event_watermark"] == 286
+    assert m36_anchor["event_prefix_sha256"] == (
+        "d415613fd55f337c0142ce09ce770e73b4956006fab77cab50fbf19ea5bd9b00"
+    )
+    assert m36_anchor["receipt_cid"] == (
+        "sha256:b37bb7a32eefdb431e6bad9faec723d58b7cf1dc69fdc52bac43621da6047c1e"
+    )
+    suffix = authority["post_m36_operational_suffix"]
+    assert suffix["from_event_exclusive"] == 286
+    assert suffix["to_event_inclusive"] == 290
+    assert [event["global_sequence"] for event in suffix["events"]] == [
+        287, 288, 289, 290,
+    ]
+    assert [event["task_alias"] for event in suffix["events"]] == [
+        "SAWM-006", "SAWM-008", "SAWM-008", "SAWM-006",
+    ]
+    assert [
+        (
+            event["global_sequence"], event["event_id"],
+            event["previous_status"], event["status"], event["revision"],
+            event["operation"], event["attempt_id"], event["claim_id"],
+            event["lease_id"], event["recorded_at"],
+        )
+        for event in suffix["events"]
+    ] == [
+        (
+            287,
+            "baguqeeraeetkh52dorimsks4rwzcnogldijz3xq4qv4ooz3xrwdquuwfpsrq",
+            "in_progress", "retrying", 8,
+            "automatic_expired_attempt_requeue",
+            "attempt:64d8abb8c2244a7a94f3e7413e14e5fc",
+            "claim:1ca15c7f26e941b9a1a948fa0c1e4d33",
+            "lease:111faf11f21147b6bc0e82c9859692eb",
+            "2026-08-31T21:29:42Z",
+        ),
+        (
+            288,
+            "baguqeerai5nsslqqy4nottsoihkgnzvjuc43ug6rzbzazxdv226e2dvx5xxa",
+            "in_progress", "retrying", 10,
+            "automatic_expired_attempt_requeue",
+            "attempt:0b3c42d98c034946b05b9254bdfaa848",
+            "claim:d397d36afc9045aaaa9a79dbe613963a",
+            "lease:1cee87cc686642a185716677b0aab898",
+            "2026-08-31T21:29:50Z",
+        ),
+        (
+            289,
+            "baguqeeraw2au4vfnlmjqv7pwf5n3a7r7qbkvofenehr5pfoa7telr3626mtq",
+            "retrying", "in_progress", 11, "database_claim",
+            "attempt:a4e1157f12af486ea3db76868789b6d1",
+            "claim:698a3495a57744488e936f1b9e4c742e",
+            "lease:fcddc47abf8c4701a7a17036820dec59",
+            "2026-08-31T21:30:06Z",
+        ),
+        (
+            290,
+            "baguqeeraqyqkvcpzuyih65paddgdg3g6sgxot2ocecszo2u444fovy37fxoq",
+            "retrying", "in_progress", 9, "database_claim",
+            "attempt:8b2f351da39e4ad4b677f068d0bdb159",
+            "claim:e0d33190d99444239d7faa14e9149566",
+            "lease:15938d40060c4a50ac751ede8150385c",
+            "2026-08-31T21:30:25Z",
+        ),
+    ]
+    assert suffix["expired_attempt_provider_invocation_count"] == 0
+    assert suffix["expired_attempt_effect_claim_count"] == 0
+    assert suffix["accepted_completion_changes"] == 0
+    stopped = authority["stopped_owner"]
+    assert (stopped["generation"], stopped["target_generation"]) == (29, 30)
+    assert stopped["status"] == "stopped"
+    assert stopped["stopped_at"] == "2026-09-01T00:00:51Z"
+    recovery = authority["stale_owner_recovery"]
+    assert recovery["receipt_cid"] == (
+        "baguqeerayoxp2turydlpaytskth6jevi23wdp3iiheubcsu2q5hs3fk55dma"
+    )
+    assert recovery["owner_liveness"] == "dead"
+    assert recovery["database_bookkeeping_settled"] is True
+    assert recovery["task_completion_authority"] is False
+    assert authority["accepted_control_plane_repair"]["authority_weakened"] is False
+    assert authority["accepted_control_plane_repair"]["receipts_rewritten"] is False
+    assert authority["exact_changes"] == {
+        "event_suffix_length": 1,
+        "evidence_node_changes": 1,
+        "store_generation_row_changes": 1,
+        "state_server_row_changes": 1,
+        "server_epoch_row_changes": 1,
+        "capability_snapshot_row_changes": 1,
+        "credential_row_changes": 1,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "plan_revision_changes": 0,
+        "accepted_definition_changes": 0,
+        "accepted_completion_changes": 0,
+        "coordination_semantic_changes": 0,
+        "sidecar_semantic_changes": 0,
+        "effect_claim_changes": 0,
+        "implementation_commit_changes": 0,
+        "implementation_provider_invocations": 0,
+        "merge_attempt_changes": 0,
+    }
+    assert authority["preservation"]["m36_historical_anchor_preserved"] is True
+    assert authority["preservation"]["post_m36_operational_suffix_preserved"] is True
+    assert authority["preservation"]["generation_29_preserved_stopped"] is True
+    assert authority["preservation"]["task_heads_preserved"] is True
+    assert authority["preservation"]["plan_head_preserved"] is True
+    assert authority["preservation"]["worker_self_approval"] is False
+    assert dict(materializer._validated_m37_live_preflight_contract(authority)) == (
+        authority["live_preflight_contract"]
+    )
+
+    chain = authority["source_chain"]
+    assert chain["base_control_commit"] == (
+        "a3db1cde328c5aeba86896d4f6813821251ceb7e"
+    )
+    assert chain["base_control_tree"] == (
+        "fba8c205656afda738ac5f14c2841fb1da452ea0"
+    )
+    assert len(authority["operator_control_paths"]) == 9
+    assert set(chain["initial_control_blobs"]) == set(
+        authority["operator_control_paths"]
+    )
+
+    final = copy.deepcopy(authority)
+    final_chain = final["source_chain"]
+    final_chain["initial_control_commit"] = "1" * 40
+    final_chain["initial_control_tree"] = "2" * 40
+    final_chain["final_reseal_parent"] = "1" * 40
+    final_chain["initial_control_blobs"] = {
+        path: f"{index + 3:x}" * 40
+        for index, path in enumerate(authority["operator_control_paths"])
+    }
+    fake_materializer = SimpleNamespace(
+        _M37_INITIAL_CONTROL_COMMIT="1" * 40,
+        _M37_INITIAL_CONTROL_TREE="2" * 40,
+        _M37_INITIAL_CONTROL_BLOBS=final_chain["initial_control_blobs"],
+    )
+    assert dependencies._m37_source_chain_identity_state(
+        fake_materializer, final
+    ) == "sealed"
+    mixed = copy.deepcopy(final)
+    first_path = next(iter(mixed["source_chain"]["initial_control_blobs"]))
+    mixed["source_chain"]["initial_control_blobs"][first_path] = (
+        "PENDING_M37_MIXED_BLOB"
+    )
+    mixed_materializer = SimpleNamespace(
+        _M37_INITIAL_CONTROL_COMMIT="1" * 40,
+        _M37_INITIAL_CONTROL_TREE="2" * 40,
+        _M37_INITIAL_CONTROL_BLOBS=mixed["source_chain"]["initial_control_blobs"],
+    )
+    with pytest.raises(RuntimeError, match="mix placeholder and sealed"):
+        dependencies._m37_source_chain_identity_state(mixed_materializer, mixed)
+    noncanonical = copy.deepcopy(authority)
+    noncanonical_chain = noncanonical["source_chain"]
+    noncanonical_chain["initial_control_commit"] = "0" * 40
+    noncanonical_chain["initial_control_tree"] = "0" * 40
+    noncanonical_chain["final_reseal_parent"] = "0" * 40
+    noncanonical_chain["initial_control_blobs"] = {
+        path: "0" * 40 for path in authority["operator_control_paths"]
+    }
+    noncanonical_materializer = SimpleNamespace(
+        _M37_INITIAL_CONTROL_COMMIT="0" * 40,
+        _M37_INITIAL_CONTROL_TREE="0" * 40,
+        _M37_INITIAL_CONTROL_BLOBS=noncanonical_chain[
+            "initial_control_blobs"
+        ],
+    )
+    with pytest.raises(RuntimeError, match="noncanonical placeholder"):
+        dependencies._m37_source_chain_identity_state(
+            noncanonical_materializer, noncanonical
+        )
+
+
+def test_m37_placeholder_controls_fail_closed_at_launch_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m37_placeholder_rejection_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m37_placeholder_rejection_test",
+    )
+    key = "post_reboot_generation_restart_successor_materialization"
+    pending = {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M37",
+        "authority_cid": "sha256:PENDING_M37_AUTHORITY_CID",
+    }
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M37 post-reboot generation restart authority is invalid",
+    ):
+        materializer._m37_successor_configured({key: pending})
+    monkeypatch.setattr(
+        materializer,
+        "_M37_INITIAL_CONTROL_COMMIT",
+        "PENDING_M37_INITIAL_CONTROL_COMMIT",
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_M37_INITIAL_CONTROL_TREE",
+        "PENDING_M37_INITIAL_CONTROL_TREE",
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_M37_INITIAL_CONTROL_BLOBS",
+        MappingProxyType(
+            {
+                path: f"PENDING_M37_INITIAL_BLOB_{index:02d}"
+                for index, path in enumerate(
+                    sorted(materializer._M37_OPERATOR_CONTROL_PATHS), start=1
+                )
+            }
+        ),
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M37 source identities are not resealed",
+    ):
+        materializer._assert_m37_source_delta(
+            REPO_ROOT,
+            {},
+            materializer._expected_m37_post_reboot_generation_restart_authority(),
+        )
+    with pytest.raises(
+        operator.OperatorError,
+        match="active M37 generation restart authority is invalid",
+    ):
+        operator._active_source_repair_materialization({key: pending})
+
+
+def test_m37_presence_masks_m36_and_keeps_all_history_nonactive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dependency = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m37_presence_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m37_presence_test",
+    )
+    key = "post_reboot_generation_restart_successor_materialization"
+    reference = {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M37",
+        "authority_cid": "sha256:PENDING_M37_AUTHORITY_CID",
+    }
+    scheduler = {key: reference}
+    migration = {key: reference}
+    seal = {f"{key}_cid": "sha256:PENDING_M37_AUTHORITY_CID"}
+    assert dependency._m37_successor_declared(scheduler, {}, {}) is True
+    assert dependency._m37_successor_declared({}, seal, {}) is True
+    assert dependency._m37_successor_declared({}, {}, migration) is True
+    assert dependency._m37_successor_declared({}, {}, {}) is False
+
+    monkeypatch.setattr(
+        board, "_m37_migration_errors", lambda *_args, **_kwargs: ["M37 active"]
+    )
+    historical_calls: list[bool] = []
+
+    def historical(*_args: object, **kwargs: object) -> list[str]:
+        historical_calls.append(kwargs.get("require_active_runtime") is False)
+        return []
+
+    for name in (
+        "_m36_migration_errors", "_m35_migration_errors",
+        "_m34_migration_errors", "_m33_migration_errors",
+        "_m32_migration_errors", "_m31_migration_errors",
+        "_m30_migration_errors", "_m29_migration_errors",
+        "_m28_migration_errors", "_m27_migration_errors",
+        "_m26_migration_errors", "_m25_migration_errors",
+        "_m24_migration_errors", "_m23_migration_errors",
+        "_m22_migration_errors", "_m21_migration_errors",
+        "_m20_migration_errors", "_m19_migration_errors",
+        "_m18_migration_errors", "_m17_migration_errors",
+        "_m16_migration_errors",
+    ):
+        monkeypatch.setattr(board, name, historical)
+    assert board._active_successor_migration_errors(
+        scheduler, seal, migration
+    ) == ["M37 active"]
+    assert historical_calls == [True] * 21
+
+    historical_calls.clear()
+    partial_errors = board._active_successor_migration_errors(scheduler, {}, {})
+    assert "M37 active" in partial_errors
+    assert any("partially declared" in error for error in partial_errors)
+    assert historical_calls == [True] * 21
+
+
+def test_m37_validates_m36_source_at_preserved_historical_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m37_historical_m36_head_test",
+    )
+    scheduler = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    observed: list[str | None] = []
+
+    def source_chain(
+        _root: Path,
+        _materializer: object,
+        _authority: Mapping[str, object],
+        *,
+        current_head: str | None = None,
+    ) -> list[str]:
+        observed.append(current_head)
+        return []
+
+    monkeypatch.setattr(dependencies, "_m36_source_chain_errors", source_chain)
+    assert dependencies._m36_operator_task_binding_correction_successor_errors(
+        scheduler,
+        seal,
+        migration,
+        root=REPO_ROOT,
+        require_active_runtime=False,
+    ) == []
+    assert observed == ["a3db1cde328c5aeba86896d4f6813821251ceb7e"]
+
+
+def test_m37_prestart_live_verification_and_receipt_controls_are_closed() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m37_closed_controls_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m37_closed_controls_test",
+    )
+    prestart = inspect.getsource(materializer._check_m37_prestart_admission)
+    live = inspect.getsource(materializer._verify_m37_live_materialization)
+    receipt = inspect.getsource(materializer._expected_m37_source_successor_receipt)
+    publish = inspect.getsource(materializer._ensure_m37_source_successor_receipt)
+    materialize = inspect.getsource(materializer._materialize_m37)
+    check = inspect.getsource(materializer._check_m37_materialized)
+    dispatch = inspect.getsource(materializer.materialize)
+    check_dispatch = inspect.getsource(materializer.check_materialized)
+    cli_dispatch = inspect.getsource(materializer.main)
+    marker = inspect.getsource(operator._require_m37_source_successor_marker)
+    offline_start = inspect.getsource(operator._validate_offline_quack_start)
+
+    assert prestart.index("_assert_offline(control)") < prestart.index(
+        "if os.path.lexists(receipt_path):"
+    )
+    assert prestart.index("if os.path.lexists(receipt_path):") < prestart.index(
+        "duckdb.connect(str(control), read_only=True)"
+    )
+    assert "_verify_m37_preserved_receipts" in prestart
+    assert "_M37_PRIOR_EVENT_PREFIX_SHA256" in prestart
+    assert '"m36_historical_anchor_verified"' in prestart
+    assert '"post_m36_operational_suffix_verified": True' in prestart
+    assert '"prestart_authorization_consumed": False' in prestart
+    assert "read_only=False" not in prestart
+
+    assert "_inspect_m37_live_projection" in live
+    assert "_inspect_m37_generation_restart_rows" in live
+    assert "with source.intent._connection(write=False)" in live
+    assert "_M37_PRIOR_EVENT_PREFIX_SHA256" in live
+    assert '"full_event_and_evidence_body_verified": True' in live
+    assert '"m36_historical_anchor_verified"' in live
+    assert '"post_m36_operational_suffix_verified": True' in live
+    assert '"accepted_completion_changes": 0' in live
+    assert '"worker_self_approval": False' in live
+
+    assert '"authoritative": False' in receipt
+    assert '"control_database_is_authority": True' in receipt
+    assert '"target_generation": _M37_TARGET_GENERATION' in receipt
+    assert '"m36_receipt_cid": _M37_M36_RECEIPT_CID' in receipt
+    assert '"stale_owner_recovery_receipt_cid": _M37_RECOVERY_RECEIPT_CID' in receipt
+    assert '"m36_historical_anchor_verified"' in receipt
+    assert '"post_m36_operational_suffix_verified"' in receipt
+    assert 'result["receipt_cid"] = _identity(result)' in receipt
+    assert "fcntl.LOCK_EX" in publish
+    assert publish.index("if os.path.lexists(path):") < publish.index(
+        "os.replace(temporary, path)"
+    )
+    assert 'raise MigrationRequired("M37 source successor receipt differs")' in publish
+
+    assert materialize.index("if os.path.lexists(receipt_path):") < (
+        materialize.index("source.record_evidence(")
+    )
+    assert materialize.index("_inspect_m37_live_projection(") < (
+        materialize.index("source.record_evidence(")
+    )
+    assert materialize.index("source.record_evidence(") < materialize.index(
+        "_verify_m37_live_materialization("
+    )
+    assert materialize.index("_verify_m37_live_materialization(") < (
+        materialize.index("_ensure_m37_source_successor_receipt(")
+    )
+    assert "preserved_after != preserved" in materialize
+    assert "coordination_before" in materialize
+    assert "record_completion" not in materialize
+    assert "record_plan" not in materialize
+    assert check.index("if not os.path.lexists(receipt_path):") < check.index(
+        "_verify_m37_live_materialization("
+    )
+    assert check.index("_verify_m37_live_materialization(") < check.index(
+        "if observed != expected:"
+    )
+    assert dispatch.index(
+        "if _m37_successor_configured_on_any_surface(root, config):"
+    ) < dispatch.index(
+        "if _m36_successor_configured_on_any_surface(root, config):"
+    )
+    assert check_dispatch.index(
+        "if _m37_successor_configured_on_any_surface(root, config):"
+    ) < check_dispatch.index(
+        "if _m36_successor_configured_on_any_surface(root, config):"
+    )
+    assert (
+        '"post_reboot_generation_restart_successor_materialization"'
+        in cli_dispatch
+    )
+
+    assert "_require_m36_source_successor_marker" in marker
+    assert "m36_claimed != materializer._identity(m36_unhashed)" in marker
+    assert "checked is None" in marker
+    assert 'checked.get("m36_historical_anchor_verified") is not True' in marker
+    assert 'checked.get("post_m36_operational_suffix_verified") is not True' in marker
+    assert 'observed.get("worker_self_approval") is not False' in marker
+    assert offline_start.index("if _M37_SUCCESSOR_KEY in config:") < (
+        offline_start.index(
+            'if "operator_task_binding_correction_successor_materialization" in config:'
+        )
+    )
+    assert "_check_m37_prestart_admission" in offline_start
+    assert '"prestart_authorization_consumed") is not False' in offline_start
+
+
 def test_m36_authority_corrects_operator_task_binding_and_preserves_m35_failure() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -4767,11 +5303,22 @@ def test_m36_precedence_history_preappend_resolution_and_no_restart(
     seal = json.loads(
         (REPO_ROOT / "config/semantic_addressed_world_model_dependencies.seal.json").read_text(encoding="utf-8")
     )
+    key = "operator_task_binding_correction_successor_materialization"
+    scheduler, historical_migration, historical_seal = (
+        _historical_successor_controls_at(key, scheduler, migration, seal)
+    )
+    assert historical_migration is not None
+    assert historical_seal is not None
+    migration = historical_migration
+    seal = historical_seal
+    # M37 advances the same runtime store from generation 29 to 30.  Removing
+    # only its authority key is intentionally insufficient to synthesize M36:
+    # restore M36's exact sealed runtime generation as well.
+    scheduler["database_program"]["store_generation"] = "29"
     selected = operator._active_source_repair_materialization(scheduler)
     assert selected["migration_revision"] == "SAWM-R2-M36"
     selection_source = inspect.getsource(operator._active_source_repair_materialization)
     assert selection_source.index("if m36_key in config:") < selection_source.index("if m35_key in config:")
-    key = "operator_task_binding_correction_successor_materialization"
     assert dependencies._m36_successor_declared({key: None}, {}, {}) is True
 
     monkeypatch.setattr(board, "_m36_migration_errors", lambda *_a, **_k: ["M36 active"])
@@ -5007,6 +5554,9 @@ def test_m35_presence_history_and_no_restart_marker(
         key, scheduler, migration, seal
     )
     assert migration is not None and seal is not None
+    # M37 is the only successor that advances this store to generation 30.
+    # Removing its authority key must also restore M35's sealed generation.
+    scheduler["database_program"]["store_generation"] = "29"
     selected = operator._active_source_repair_materialization(scheduler)
     assert selected["migration_revision"] == "SAWM-R2-M35"
     selection_source = inspect.getsource(operator._active_source_repair_materialization)
@@ -5230,6 +5780,9 @@ def test_m34_presence_masks_m33_and_m33_uses_historical_head(
         seal,
     )
     assert migration is not None and seal is not None
+    # M37 is the only successor that advances this store to generation 30.
+    # Removing it restores M34's exact live-owner generation.
+    scheduler["database_program"]["store_generation"] = "29"
 
     selected = operator._active_source_repair_materialization(scheduler)
     assert selected["migration_revision"] == "SAWM-R2-M34"
@@ -5456,6 +6009,9 @@ def test_m33_presence_masks_m32_and_m32_uses_historical_head(
         seal,
     )
     assert migration is not None and seal is not None
+    # M37 is the only successor that advances this store to generation 30.
+    # Removing it restores M33's exact live-owner generation.
+    scheduler["database_program"]["store_generation"] = "29"
     selected = operator._active_source_repair_materialization(scheduler)
     assert selected["migration_revision"] == "SAWM-R2-M33"
     assert dict(selected) == materializer._expected_m33_live_preflight_contract_authority()
@@ -5668,7 +6224,9 @@ def test_m31_authority_pins_dead_pid_event_281_and_generation_29() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    assert scheduler["database_program"]["store_generation"] == "29"
+    # M31 remains immutable history while M37 is the current generation-30
+    # restart authority.
+    assert scheduler["database_program"]["store_generation"] == "30"
     assert authority["migration_revision"] == "SAWM-R2-M31"
     assert authority["prior_authority"]["event_watermark"] == 281
     assert authority["target_event_watermark"] == 282
@@ -5844,8 +6402,8 @@ def test_m30_authority_pins_stopped_event_280_and_generation_28() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    # M30 remains immutable history while the current M31+ owner is generation 29.
-    assert scheduler["database_program"]["store_generation"] == "29"
+    # M30 remains immutable history while the current M37 owner is generation 30.
+    assert scheduler["database_program"]["store_generation"] == "30"
     assert authority["schema"].endswith("authorization@2")
     assert authority["authorization_revision"] == 2
     assert authority["control_recorded_at"] == "2026-08-31T15:59:48Z"
@@ -7080,7 +7638,7 @@ def test_m27_dead_owner_resume_authority_runtime_and_source_chain_are_exact(
     assert config["database_program"]["store_id"].endswith(
         "run-r2-m27/control.duckdb"
     )
-    assert config["database_program"]["store_generation"] == "29"
+    assert config["database_program"]["store_generation"] == "30"
     assert m27_config["database_program"]["store_generation"] == "26"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
@@ -9330,9 +9888,9 @@ def test_m22_scheduler_authority_is_preserved_under_m27_runtime() -> None:
     assert config["database_program"]["store_id"] == (
         f"{current_runtime}/control.duckdb"
     )
-    # M31 restarted the owner at generation 29 without changing the M27
-    # runtime namespace; M32-M36 preserve that live generation.
-    assert config["database_program"]["store_generation"] == "29"
+    # M37 restarted the owner at generation 30 without changing the M27
+    # runtime namespace.
+    assert config["database_program"]["store_generation"] == "30"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
     )
@@ -12392,9 +12950,9 @@ def test_m17_namespace_is_preserved_as_historical_under_m27() -> None:
     assert authority["target_generation"] == 18
     assert authority["target_quack_port"] == 24_060
     assert config["runtime_paths"]["root"].endswith("run-r2-m27")
-    # The M17 authority remains historical while M31-M36 preserve the current
-    # generation-29 owner in the M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "29"
+    # The M17 authority remains historical while M37 owns generation 30 in the
+    # M27 runtime namespace.
+    assert config["database_program"]["store_generation"] == "30"
     assert config["quack_owner"]["port"] == 24_070
 
 
@@ -13514,9 +14072,9 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m27() -> None:
         "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
     )
     assert config["runtime_paths"] != historical_runtime
-    # The M15 authority remains historical while M31-M36 preserve the current
-    # generation-29 owner in the M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "29"
+    # The M15 authority remains historical while M37 owns generation 30 in the
+    # M27 runtime namespace.
+    assert config["database_program"]["store_generation"] == "30"
     assert config["quack_owner"]["port"] == 24_070
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 

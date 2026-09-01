@@ -30,6 +30,35 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_PATH = REPO_ROOT / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+_M37_SUCCESSOR_KEY = "post_reboot_generation_restart_successor_materialization"
+_M37_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.duckdb"
+)
+_M37_COORDINATION_STORE_ID = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/control.coordination.duckdb"
+)
+_M37_WORKTREE_ROOT = (
+    "data/agent_supervisor/semantic_addressed_world_model/"
+    "run-r2-m27/worktrees"
+)
+_M37_PRIOR_GENERATION = 29
+_M37_GENERATION = 30
+_M37_TARGET_PLAN_REVISION = 28
+_M37_PRIOR_EVENT_WATERMARK = 290
+_M37_TARGET_EVENT_WATERMARK = 291
+_M37_PRIOR_PROJECTION_CID = (
+    "baguqeerahwerrrfx6cx6ukpljlp2r4i32lkac3bnhq5ej2f3hozg7cnt6shq"
+)
+_M37_TARGET_PROJECTION_CID = (
+    "baguqeeravycbuo73fyu5mpad55qi5duk3la53lubqeu7nu6kjtnahehjtnsq"
+)
+_M37_TARGET_QUACK_PORT = 24_070
+_M37_BASE_CONTROL_COMMIT = "a3db1cde328c5aeba86896d4f6813821251ceb7e"
+_M37_BASE_CONTROL_TREE = "fba8c205656afda738ac5f14c2841fb1da452ea0"
+_M37_INITIAL_CONTROL_COMMIT = "PENDING_M37_INITIAL_CONTROL_COMMIT"
+_M37_INITIAL_CONTROL_TREE = "PENDING_M37_INITIAL_CONTROL_TREE"
 _M36_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
     "run-r2-m27/control.duckdb"
@@ -936,6 +965,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m37_key = _M37_SUCCESSOR_KEY
     m36_key = "operator_task_binding_correction_successor_materialization"
     m35_key = "immutable_authority_identity_normalization_successor_materialization"
     m34_key = "json_emission_normalization_successor_materialization"
@@ -966,6 +996,104 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m37_key in config:
+        authority = config.get(m37_key)
+        try:
+            materializer = _materializer()
+            expected = (
+                materializer._expected_m37_post_reboot_generation_restart_authority()
+            )
+            reference = materializer._m37_authority_reference()
+            materializer._validated_m37_live_preflight_contract(expected)
+        except Exception as exc:
+            raise OperatorError("active M37 restart authority is unavailable") from exc
+        target_root = str(Path(_M37_STORE_ID).parent)
+        expected_runtime = {
+            "root": target_root,
+            "state": f"{target_root}/state",
+            "worktrees": _M37_WORKTREE_ROOT,
+            "merge_queue": f"{target_root}/merge-queue",
+            "logs": f"{target_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        binding = expected.get("runtime_binding")
+        prior = expected.get("prior_authority")
+        m36_anchor = expected.get("m36_historical_anchor")
+        operational_suffix = expected.get("post_m36_operational_suffix")
+        stopped = expected.get("stopped_owner")
+        source_chain = expected.get("source_chain")
+        initial_blobs = (
+            source_chain.get("initial_control_blobs", {})
+            if isinstance(source_chain, Mapping)
+            else {}
+        )
+        if (
+            not isinstance(authority, Mapping)
+            or dict(authority) != reference
+            or expected.get("migration_revision") != "SAWM-R2-M37"
+            or expected.get("migration_kind") != _M37_SUCCESSOR_KEY
+            or expected.get("control_recorded_at")
+            != "2026-09-01T00:10:00Z"
+            or not isinstance(binding, Mapping)
+            or binding.get("store_id") != _M37_STORE_ID
+            or binding.get("store_generation") != _M37_GENERATION
+            or binding.get("target_event_watermark")
+            != _M37_TARGET_EVENT_WATERMARK
+            or binding.get("quack_port") != _M37_TARGET_QUACK_PORT
+            or expected.get("target_projection_cid")
+            != _M37_TARGET_PROJECTION_CID
+            or not isinstance(prior, Mapping)
+            or prior.get("schema") != "sawm/current-operational-head@1"
+            or prior.get("event_watermark") != _M37_PRIOR_EVENT_WATERMARK
+            or prior.get("projection_cid") != _M37_PRIOR_PROJECTION_CID
+            or prior.get("expected_task_heads")
+            != expected.get("expected_task_heads")
+            or not isinstance(m36_anchor, Mapping)
+            or m36_anchor.get("migration_revision") != "SAWM-R2-M36"
+            or m36_anchor.get("event_watermark")
+            != _M36_TARGET_EVENT_WATERMARK
+            or m36_anchor.get("projection_cid") != _M36_TARGET_PROJECTION_CID
+            or m36_anchor.get("receipt_cid") is None
+            or not isinstance(operational_suffix, Mapping)
+            or operational_suffix.get("schema")
+            != "sawm/post-m36-operational-event-suffix@1"
+            or operational_suffix.get("from_event_exclusive")
+            != _M36_TARGET_EVENT_WATERMARK
+            or operational_suffix.get("to_event_inclusive")
+            != _M37_PRIOR_EVENT_WATERMARK
+            or operational_suffix.get("projection_cid")
+            != _M37_PRIOR_PROJECTION_CID
+            or not isinstance(stopped, Mapping)
+            or stopped.get("generation") != _M37_PRIOR_GENERATION
+            or stopped.get("status") != "stopped"
+            or not isinstance(source_chain, Mapping)
+            or source_chain.get("base_control_commit")
+            != _M37_BASE_CONTROL_COMMIT
+            or source_chain.get("base_control_tree") != _M37_BASE_CONTROL_TREE
+            or source_chain.get("initial_control_commit")
+            != _M37_INITIAL_CONTROL_COMMIT
+            or source_chain.get("initial_control_tree")
+            != _M37_INITIAL_CONTROL_TREE
+            or not isinstance(initial_blobs, Mapping)
+            or len(initial_blobs) != 9
+            or set(initial_blobs)
+            != set(expected.get("operator_control_paths", ()))
+            or not isinstance(program, Mapping)
+            or program.get("store_id") != _M37_STORE_ID
+            or program.get("store_generation") != str(_M37_GENERATION)
+            or program.get("quack_endpoint") != "quack:127.0.0.1:24070"
+            or program.get("worktree_root") != _M37_WORKTREE_ROOT
+            or not isinstance(owner, Mapping)
+            or owner.get("database_path") != _M37_STORE_ID
+            or owner.get("store_id") != _M37_STORE_ID
+            or owner.get("port") != _M37_TARGET_QUACK_PORT
+            or owner.get("state_dir") != f"{target_root}/quack-owner"
+            or config.get("runtime_paths") != expected_runtime
+        ):
+            raise OperatorError("active M37 generation restart authority is invalid")
+        return MappingProxyType(expected)
     if m36_key in config:
         authority = config.get(m36_key)
         try:
@@ -2550,6 +2678,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            _M37_SUCCESSOR_KEY,
             "operator_task_binding_correction_successor_materialization",
             "immutable_authority_identity_normalization_successor_materialization",
             "json_emission_normalization_successor_materialization",
@@ -4932,6 +5061,171 @@ def _require_m18_final_pair_marker(
                 "M18 materializer check differs from its final pair marker"
             )
     return MappingProxyType(dict(observed))
+
+
+def _require_m37_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M37's one-shot generation-30 receipt over the exact event-290 head."""
+
+    key = _M37_SUCCESSOR_KEY
+    if key not in config:
+        return MappingProxyType({})
+    expected_authority = (
+        materializer._expected_m37_post_reboot_generation_restart_authority()
+    )
+    expected_reference = materializer._m37_authority_reference()
+    source_chain = expected_authority.get("source_chain", {})
+    initial_blobs = (
+        source_chain.get("initial_control_blobs", {})
+        if isinstance(source_chain, Mapping)
+        else {}
+    )
+    stopped = expected_authority.get("stopped_owner")
+    if (
+        dict(authority) != expected_authority
+        or config.get(key) != expected_reference
+        or not isinstance(source_chain, Mapping)
+        or source_chain.get("base_control_commit") != _M37_BASE_CONTROL_COMMIT
+        or source_chain.get("base_control_tree") != _M37_BASE_CONTROL_TREE
+        or source_chain.get("initial_control_commit")
+        != _M37_INITIAL_CONTROL_COMMIT
+        or source_chain.get("initial_control_tree") != _M37_INITIAL_CONTROL_TREE
+        or not isinstance(initial_blobs, Mapping)
+        or len(initial_blobs) != 9
+        or set(initial_blobs)
+        != set(expected_authority.get("operator_control_paths", ()))
+        or not isinstance(stopped, Mapping)
+        or stopped.get("generation") != _M37_PRIOR_GENERATION
+        or stopped.get("status") != "stopped"
+    ):
+        raise OperatorError("M37 post-reboot generation restart authority differs")
+    materializer._validated_m37_live_preflight_contract(expected_authority)
+    if checked is None:
+        raise OperatorError("M37 marker requires exact live materializer verification")
+
+    runtime_dir = (REPO_ROOT / _M37_STORE_ID).resolve().parent
+    m36_path = runtime_dir / "m36-source-successor-receipt.json"
+    try:
+        m36_observed, m36_sha256 = materializer._load_nofollow_json(
+            m36_path, root=REPO_ROOT, noun="M37 preserved M36 source receipt"
+        )
+        m36_size = m36_path.stat(follow_symlinks=False).st_size
+    except Exception as exc:
+        raise OperatorError("M37 preserved M36 source receipt is unavailable") from exc
+    m36_unhashed = dict(m36_observed)
+    m36_claimed = str(m36_unhashed.pop("receipt_cid", ""))
+    m36_anchor = expected_authority.get("m36_historical_anchor")
+    if (
+        not isinstance(m36_anchor, Mapping)
+        or m36_sha256 != m36_anchor.get("receipt_sha256")
+        or m36_size != m36_anchor.get("receipt_size")
+        or m36_claimed != m36_anchor.get("receipt_cid")
+        or m36_claimed != materializer._identity(m36_unhashed)
+        or m36_observed.get("target_event_watermark")
+        != _M36_TARGET_EVENT_WATERMARK
+        or m36_observed.get("projection_cid") != _M36_TARGET_PROJECTION_CID
+        or m36_observed.get("same_live_generation_29_owner_verified") is not True
+    ):
+        raise OperatorError("M37 preserved M36 source receipt differs")
+    m36_authority = (
+        materializer._expected_m36_operator_task_binding_correction_authority()
+    )
+    m36_marker = _require_m36_source_successor_marker(
+        config,
+        m36_authority,
+        materializer,
+        checked={
+            "valid": True,
+            "event_watermark": m36_observed.get("target_event_watermark"),
+            "projection_cid": m36_observed.get("projection_cid"),
+            "prior_event_prefix_verified": True,
+            "full_event_and_evidence_body_verified": m36_observed.get(
+                "full_event_and_evidence_body_verified"
+            ),
+            "receipt": m36_observed,
+        },
+    )
+
+    path = runtime_dir / "m37-source-successor-receipt.json"
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            path, root=REPO_ROOT, noun="M37 source successor receipt"
+        )
+    except Exception as exc:
+        raise OperatorError("M37 exact source successor receipt is unavailable") from exc
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        claimed != materializer._identity(unhashed)
+        or checked.get("valid") is not True
+        or checked.get("event_watermark") != _M37_TARGET_EVENT_WATERMARK
+        or checked.get("projection_cid") != _M37_TARGET_PROJECTION_CID
+        or checked.get("generation_29_30_restart_rows_verified") is not True
+        or checked.get("m36_historical_anchor_verified") is not True
+        or checked.get("post_m36_operational_suffix_verified") is not True
+        or checked.get("stale_owner_recovery_receipt_verified") is not True
+        or checked.get("prior_event_prefix_verified") is not True
+        or checked.get("full_event_and_evidence_body_verified") is not True
+        or checked.get("receipt") != observed
+        or observed.get("migration_revision") != "SAWM-R2-M37"
+        or observed.get(f"{key}_cid")
+        != materializer._identity(expected_authority)
+        or observed.get("target_generation") != _M37_GENERATION
+        or observed.get("target_event_watermark")
+        != _M37_TARGET_EVENT_WATERMARK
+        or observed.get("projection_cid") != _M37_TARGET_PROJECTION_CID
+        or observed.get("m36_receipt_cid") != m36_claimed
+        or observed.get("m36_historical_anchor_verified") is not True
+        or observed.get("post_m36_operational_suffix_verified") is not True
+        or observed.get("stale_owner_recovery_receipt_verified") is not True
+        or observed.get("prior_event_prefix_verified") is not True
+        or observed.get("queried_and_mutated_through_live_quack_only") is not True
+        or observed.get("direct_authoritative_file_opened") is not False
+        or observed.get("full_event_and_evidence_body_verified") is not True
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M37 exact source successor receipt differs")
+    return MappingProxyType(
+        {
+            **dict(m36_marker),
+            **dict(observed),
+            "prior_final_pair_receipt_cid": m36_marker[
+                "prior_final_pair_receipt_cid"
+            ],
+            "m29_source_successor_receipt_cid": m36_marker[
+                "m29_source_successor_receipt_cid"
+            ],
+            "m30_source_successor_receipt_cid": m36_marker[
+                "m30_source_successor_receipt_cid"
+            ],
+            "m31_source_successor_receipt_cid": m36_marker[
+                "m31_source_successor_receipt_cid"
+            ],
+            "m32_source_successor_receipt_cid": m36_marker[
+                "m32_source_successor_receipt_cid"
+            ],
+            "m33_source_successor_receipt_cid": m36_marker[
+                "m33_source_successor_receipt_cid"
+            ],
+            "m34_source_successor_receipt_cid": m36_marker[
+                "m34_source_successor_receipt_cid"
+            ],
+            "m36_source_successor_receipt_cid": m36_claimed,
+            "m37_source_successor_receipt_cid": claimed,
+            "source_successor_receipt_cid": claimed,
+            "source_successor_receipt_verified": True,
+            "source_successor_chain": {
+                **dict(m36_marker["source_successor_chain"]),
+                "m37_source_successor_receipt_cid": claimed,
+            },
+            "final_pair_commit_marker_verified": False,
+        }
+    )
 
 
 def _require_m36_source_successor_marker(
@@ -9013,6 +9307,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if _M37_SUCCESSOR_KEY in config:
+        return _require_m37_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if "operator_task_binding_correction_successor_materialization" in config:
         return _require_m36_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -10029,6 +10327,44 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
+    if _M37_SUCCESSOR_KEY in config:
+        active_materialization = _active_source_repair_materialization(config)
+        try:
+            admitted = materializer._check_m37_prestart_admission(
+                REPO_ROOT, config
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "M37 stopped generation-29 restart is not admissible"
+            ) from exc
+        if (
+            admitted.get("valid") is not True
+            or admitted.get("action")
+            != "admitted_stopped_generation_29_restart_to_generation_30"
+            or admitted.get("database_path")
+            != str((REPO_ROOT / _M37_STORE_ID).resolve())
+            or admitted.get("coordination_path")
+            != str((REPO_ROOT / _M37_COORDINATION_STORE_ID).resolve())
+            or admitted.get("prior_generation") != _M37_PRIOR_GENERATION
+            or admitted.get("target_generation") != _M37_GENERATION
+            or admitted.get("prior_event_watermark")
+            != _M37_PRIOR_EVENT_WATERMARK
+            or admitted.get("prior_projection_cid")
+            != _M37_PRIOR_PROJECTION_CID
+            or admitted.get("m36_historical_anchor_verified") is not True
+            or admitted.get("post_m36_operational_suffix_verified") is not True
+            or admitted.get("stale_owner_recovery_receipt_verified") is not True
+            or admitted.get("prestart_authorization_consumed") is not False
+        ):
+            raise OperatorError("M37 prestart admission report differs")
+        return MappingProxyType(
+            {
+                "dependency_valid": True,
+                "board_valid": True,
+                "prior_authority": active_materialization,
+                "store": admitted,
+            }
+        )
     if "operator_task_binding_correction_successor_materialization" in config:
         raise OperatorError(
             "M36 requires the exact live generation-29 owner; restart is not authorized"
@@ -10807,6 +11143,68 @@ def _m23_portal_completion_is_compatible(
         is False
         and operational_validation_revision.get("worker_self_approval") is False
     )
+
+
+def _verify_m37_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M37's generation-30 event-291 target and exact task heads."""
+
+    materializer._validated_m37_live_preflight_contract(authority)
+    head = materializer._inspect_m37_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M37_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M37_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M37_TARGET_PROJECTION_CID
+        or head.get("projection_cid") != expected_projection_cid
+    ):
+        raise materializer.MigrationRequired("M37 live head projection differs")
+    expected_heads = authority.get("expected_task_heads")
+    if not isinstance(expected_heads, Mapping):
+        raise materializer.MigrationRequired("M37 expected task heads are missing")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    sawm_000_verified = False
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        task_cid = str(expected["task_cid"])
+        if alias == "SAWM-000":
+            if task_cid != _M36_OPERATOR_TASK_CID:
+                raise materializer.MigrationRequired(
+                    "M37 population SAWM-000 task binding differs"
+                )
+            sawm_000_verified = True
+        observed = source.get_task(task_cid)
+        expected_head = expected_heads.get(alias)
+        if (
+            observed is None
+            or not isinstance(expected_head, Mapping)
+            or observed.status != expected_head.get("status")
+            or int(observed.revision)
+            != int(expected_head.get("revision") or 0)
+        ):
+            raise materializer.MigrationRequired(
+                f"M37 task head differs: {alias}"
+            )
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    if not sawm_000_verified:
+        raise materializer.MigrationRequired("M37 population SAWM-000 task is missing")
+    return statuses, revisions, receipt_cids
 
 
 def _verify_m36_live_head_task_projection(
@@ -12386,6 +12784,18 @@ def _normalized_live_preflight_contract(
     """Resolve one closed preflight view without shape-dependent aliases."""
 
     revision = str(active_source_repair.get("migration_revision") or "")
+    if revision == "SAWM-R2-M37":
+        try:
+            return materializer._validated_m37_live_preflight_contract(
+                active_source_repair
+            )
+        except (
+            materializer.MigrationRequired,
+            materializer.MaterializationError,
+        ) as exc:
+            raise OperatorError(
+                f"M37 normalized preflight contract differs: {exc}"
+            ) from exc
     if revision == "SAWM-R2-M36":
         try:
             return materializer._validated_m36_live_preflight_contract(
@@ -12527,6 +12937,7 @@ def _live_preflight(
         }
     )
     active_revision = str(active_source_repair.get("migration_revision") or "")
+    m37_active = active_revision == "SAWM-R2-M37"
     m36_active = active_revision == "SAWM-R2-M36"
     m35_active = active_revision == "SAWM-R2-M35"
     m34_active = active_revision == "SAWM-R2-M34"
@@ -12548,6 +12959,7 @@ def _live_preflight(
     m18_active = active_revision == "SAWM-R2-M18"
     evidence_only_post_m27 = any(
         (
+            m37_active,
             m36_active,
             m35_active,
             m34_active,
@@ -12561,6 +12973,7 @@ def _live_preflight(
     )
     deferred_live_evidence_marker = any(
         (
+            m37_active,
             m36_active,
             m35_active,
             m34_active,
@@ -12685,7 +13098,42 @@ def _live_preflight(
     # explicit boundary rather than a MappingProxyType implementation detail.
     receipt_authority = dict(active_source_repair)
     try:
-        if m36_active:
+        if m37_active:
+            try:
+                m37_verified = materializer._verify_m37_live_materialization(
+                    live,
+                    live_identity,
+                    population,
+                    config,
+                    active_source_repair,
+                    validation_digest,
+                )
+                expected_m37_receipt = (
+                    materializer._expected_m37_source_successor_receipt(
+                        population,
+                        receipt_authority,
+                        validation_digest,
+                        m37_verified,
+                    )
+                )
+                final_pair_marker = _require_active_final_pair_marker(
+                    config,
+                    active_source_repair,
+                    materializer,
+                    checked={
+                        "valid": True,
+                        "receipt": expected_m37_receipt,
+                        **m37_verified,
+                    },
+                )
+            except (
+                materializer.MigrationRequired,
+                materializer.MaterializationError,
+            ) as exc:
+                raise OperatorError(
+                    f"M37 exact generation restart source seal failed: {exc}"
+                ) from exc
+        elif m36_active:
             try:
                 m36_verified = materializer._verify_m36_live_materialization(
                     live,
@@ -13006,7 +13454,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if "operator_task_binding_correction_successor_materialization" in config:
+            if _M37_SUCCESSOR_KEY in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m37_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif "operator_task_binding_correction_successor_materialization" in config:
                 statuses, _revisions, _receipts = (
                     _verify_m36_live_head_task_projection(
                         live,
@@ -13317,7 +13775,7 @@ def _live_preflight(
         live_plan_body = (
             live_plan.get("body") if isinstance(live_plan, Mapping) else {}
         )
-        if m36_active or m35_active or m34_active or m33_active:
+        if m37_active or m36_active or m35_active or m34_active or m33_active:
             contract_anchor = preflight_contract["preserved_plan_anchor"]
             preserved_plan_anchor = MappingProxyType(
                 {
