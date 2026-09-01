@@ -1097,6 +1097,20 @@ def evaluate_receipt_to_human_ladder(
     )
 
 
+def evaluate_identity_bound_deterministic_ladder(**kwargs: Any) -> LadderDecision:
+    """Derive deterministic evidence receipts, then traverse this canonical ladder.
+
+    The import is local so the evidence evaluator can depend on the canonical
+    ladder types without introducing an import-time cycle.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.semantic_state.deterministic_stages import (
+        evaluate_deterministic_stages,
+    )
+
+    return evaluate_receipt_to_human_ladder(evaluate_deterministic_stages(**kwargs).evidence)
+
+
 def _human_review_reasons(
     inputs: RoutingInputs, policy: ModelRoutingPolicy
 ) -> list[str]:
