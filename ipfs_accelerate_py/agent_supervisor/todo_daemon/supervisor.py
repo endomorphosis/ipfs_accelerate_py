@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fcntl
 import hashlib
+import json
 import os
 import re
 import shlex
@@ -136,6 +137,22 @@ _ORDINARY_PROVIDER_RUNNER_RECEIPT_FIELDS = frozenset(
         "receipt_id",
     }
 )
+_ORDINARY_GROK_ORPHAN_FENCE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "ordinary-grok-orphan-container-fence@1"
+)
+_ORDINARY_GROK_TEMP_ROOT = Path("/tmp")
+_ORDINARY_GROK_LEASE_RE = re.compile(
+    r"asref-grok-container-[A-Za-z0-9._-]{1,128}"
+)
+_ORDINARY_GROK_CONTAINER_ID_RE = re.compile(r"[0-9a-f]{64}")
+_ORDINARY_GROK_CONTAINER_NAME_RE = re.compile(
+    r"ipfs-accelerate-grok-([0-9]+)-[0-9a-f]{32}"
+)
+_ORDINARY_GROK_INSPECTION_MAX_BYTES = 256 * 1024
+_ORDINARY_GROK_MAX_TEMP_ENTRIES = 4096
+_ORDINARY_GROK_MAX_LEASE_ENTRIES = 256
+_ORDINARY_GROK_MAX_MASK_ENTRIES = 1024
 
 DEFAULT_WORKTREE_PHASES = frozenset(
     {
@@ -819,6 +836,583 @@ def _ordinary_provider_runner_receipt_matches(
     return bool(before == expected and after == expected)
 
 
+def _ordinary_grok_docker_binary() -> str:
+    """Resolve the trusted local Docker CLI without consulting a mutable tag."""
+
+    for candidate in (Path("/usr/bin/docker"), Path("/usr/local/bin/docker")):
+        try:
+            resolved = candidate.resolve(strict=True)
+            metadata = resolved.stat()
+        except OSError:
+            continue
+        if (
+            resolved in {Path("/usr/bin/docker"), Path("/usr/local/bin/docker")}
+            and resolved.is_file()
+            and os.access(resolved, os.X_OK)
+            and metadata.st_uid == 0
+            and not metadata.st_mode & 0o022
+        ):
+            return str(resolved)
+    return ""
+
+
+def _ordinary_grok_docker_query(
+    command: Sequence[str],
+) -> tuple[int, bytes, bytes]:
+    """Run one bounded Docker control query with the canonical environment."""
+
+    from ..runtime import grok_cli_runner
+
+    return grok_cli_runner._bounded_docker_query(command, timeout=10.0)
+
+
+def _ordinary_grok_file_identity(path: Path) -> tuple[int, ...]:
+    metadata = os.lstat(path)
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_uid,
+        metadata.st_mode,
+        metadata.st_nlink,
+        metadata.st_size,
+    )
+
+
+def _ordinary_grok_lease_records() -> list[JsonDict]:
+    """Read only uid-owned, private legacy Grok lease records."""
+
+    temporary_root = _ORDINARY_GROK_TEMP_ROOT
+    if not temporary_root.is_absolute():
+        raise ValueError("ordinary Grok temporary root is invalid")
+    try:
+        entries = []
+        with os.scandir(temporary_root) as iterator:
+            for inspected_count, entry in enumerate(iterator, start=1):
+                if inspected_count > _ORDINARY_GROK_MAX_TEMP_ENTRIES:
+                    raise ValueError(
+                        "ordinary Grok temporary-root enumeration is oversized"
+                    )
+                if _ORDINARY_GROK_LEASE_RE.fullmatch(entry.name) is not None:
+                    entries.append(entry)
+                    if len(entries) > _ORDINARY_GROK_MAX_LEASE_ENTRIES:
+                        raise ValueError(
+                            "ordinary Grok lease enumeration is oversized"
+                        )
+    except OSError as exc:
+        raise ValueError("ordinary Grok lease enumeration failed") from exc
+    entries.sort(key=lambda item: item.name)
+    records: list[JsonDict] = []
+    for entry in entries:
+        lease_root = temporary_root / entry.name
+        try:
+            root_stat = os.lstat(lease_root)
+        except OSError as exc:
+            raise ValueError("ordinary Grok lease inspection failed") from exc
+        if root_stat.st_uid != os.geteuid():
+            continue
+        docker_config = lease_root / "docker-config"
+        cidfile = lease_root / "container.cid"
+        mask_root = lease_root / "provider-masks"
+        try:
+            config_stat = os.lstat(docker_config)
+            cid_stat = os.lstat(cidfile)
+            mask_stat = os.lstat(mask_root)
+        except OSError as exc:
+            raise ValueError("ordinary Grok owned lease is incomplete") from exc
+        if (
+            not stat_module.S_ISDIR(root_stat.st_mode)
+            or stat_module.S_IMODE(root_stat.st_mode) != 0o700
+            or not stat_module.S_ISDIR(config_stat.st_mode)
+            or config_stat.st_uid != os.geteuid()
+            or stat_module.S_IMODE(config_stat.st_mode) != 0o700
+            or not stat_module.S_ISREG(cid_stat.st_mode)
+            or cid_stat.st_uid != os.geteuid()
+            or cid_stat.st_nlink != 1
+            # Docker creates cidfiles as 0664 on this host.  The containing
+            # uid-owned 0700 directory is the privacy boundary; reject only
+            # executable or special-mode cidfiles here.
+            or stat_module.S_IMODE(cid_stat.st_mode) & 0o7111
+            or not stat_module.S_ISDIR(mask_stat.st_mode)
+            or mask_stat.st_uid != os.geteuid()
+            or stat_module.S_IMODE(mask_stat.st_mode) != 0o700
+        ):
+            raise ValueError("ordinary Grok owned lease is not private")
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+            os, "O_NOFOLLOW", 0
+        )
+        try:
+            descriptor = os.open(cidfile, flags)
+            try:
+                opened_stat = os.fstat(descriptor)
+                encoded_cid = os.read(descriptor, 65)
+                trailing = os.read(descriptor, 1)
+            finally:
+                os.close(descriptor)
+        except OSError as exc:
+            raise ValueError("ordinary Grok cidfile is unreadable") from exc
+        try:
+            container_id = encoded_cid.decode("ascii")
+        except UnicodeError as exc:
+            raise ValueError("ordinary Grok cidfile is malformed") from exc
+        if (
+            trailing
+            or _ORDINARY_GROK_CONTAINER_ID_RE.fullmatch(container_id) is None
+            or (
+                opened_stat.st_dev,
+                opened_stat.st_ino,
+                opened_stat.st_uid,
+                opened_stat.st_mode,
+                opened_stat.st_nlink,
+                opened_stat.st_size,
+            )
+            != (
+                cid_stat.st_dev,
+                cid_stat.st_ino,
+                cid_stat.st_uid,
+                cid_stat.st_mode,
+                cid_stat.st_nlink,
+                cid_stat.st_size,
+            )
+        ):
+            raise ValueError("ordinary Grok cidfile is malformed")
+        mask_sources: list[str] = []
+        try:
+            mask_entries = []
+            with os.scandir(mask_root) as iterator:
+                for mask_count, mask_entry in enumerate(iterator, start=1):
+                    if mask_count > _ORDINARY_GROK_MAX_MASK_ENTRIES:
+                        raise ValueError(
+                            "ordinary Grok provider masks are oversized"
+                        )
+                    mask_entries.append(mask_entry)
+        except OSError as exc:
+            raise ValueError("ordinary Grok provider masks are unreadable") from exc
+        mask_entries.sort(key=lambda item: item.name)
+        for mask_entry in mask_entries:
+            mask_path = mask_root / mask_entry.name
+            try:
+                metadata = os.lstat(mask_path)
+            except OSError as exc:
+                raise ValueError("ordinary Grok provider mask drifted") from exc
+            if (
+                not mask_entry.name.isdecimal()
+                or metadata.st_uid != os.geteuid()
+                or stat_module.S_IMODE(metadata.st_mode) != 0
+                or not (
+                    stat_module.S_ISREG(metadata.st_mode)
+                    or stat_module.S_ISDIR(metadata.st_mode)
+                )
+            ):
+                raise ValueError("ordinary Grok provider mask drifted")
+            mask_sources.append(str(mask_path))
+        cas_marker = lease_root / "cas-owned"
+        try:
+            os.lstat(cas_marker)
+            cas_owned = True
+        except FileNotFoundError:
+            cas_owned = False
+        except OSError as exc:
+            raise ValueError("ordinary Grok CAS marker is unreadable") from exc
+        records.append(
+            {
+                "lease_root": str(lease_root),
+                "docker_config": str(docker_config),
+                "container_id": container_id,
+                "cas_owned": cas_owned,
+                "mask_sources": mask_sources,
+                "filesystem_identity": [
+                    list(_ordinary_grok_file_identity(path))
+                    for path in (lease_root, docker_config, cidfile, mask_root)
+                    + tuple(Path(item) for item in mask_sources)
+                ],
+            }
+        )
+    return records
+
+
+def _ordinary_grok_strict_json(value: bytes) -> object:
+    def closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = item
+        return result
+
+    try:
+        return json.loads(
+            value,
+            object_pairs_hook=closed_object,
+            parse_constant=lambda token: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON token {token}")
+            ),
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("Docker inspection JSON is invalid") from exc
+
+
+def _ordinary_grok_container_inspection(
+    prefix: Sequence[str], container_id: str
+) -> Mapping[str, Any] | None:
+    returncode, stdout, stderr = _ordinary_grok_docker_query(
+        [*prefix, "container", "inspect", container_id]
+    )
+    if any(
+        len(value) > _ORDINARY_GROK_INSPECTION_MAX_BYTES
+        for value in (stdout, stderr)
+    ):
+        raise ValueError("Docker inspection was oversized")
+    if returncode != 0:
+        if _ordinary_grok_container_absent(prefix, container_id):
+            return None
+        raise ValueError("Docker inspection failed")
+    payload = _ordinary_grok_strict_json(stdout)
+    if (
+        not isinstance(payload, list)
+        or len(payload) != 1
+        or not isinstance(payload[0], Mapping)
+    ):
+        raise ValueError("Docker inspection shape is invalid")
+    return payload[0]
+
+
+def _ordinary_grok_container_absent(
+    prefix: Sequence[str], container_id: str
+) -> bool:
+    returncode, stdout, stderr = _ordinary_grok_docker_query(
+        [
+            *prefix,
+            "container",
+            "ls",
+            "--all",
+            "--no-trunc",
+            "--filter",
+            f"id={container_id}",
+            "--format",
+            "{{.ID}}",
+        ]
+    )
+    if (
+        returncode != 0
+        or len(stdout) > _ORDINARY_GROK_INSPECTION_MAX_BYTES
+        or len(stderr) > _ORDINARY_GROK_INSPECTION_MAX_BYTES
+    ):
+        raise ValueError("Docker absence verification failed")
+    observed = stdout.decode("ascii", errors="strict").split()
+    if any(
+        _ORDINARY_GROK_CONTAINER_ID_RE.fullmatch(item) is None
+        for item in observed
+    ):
+        raise ValueError("Docker absence response is invalid")
+    return not observed
+
+
+def _ordinary_grok_inspection_projection(
+    inspection: Mapping[str, Any],
+    *,
+    record: Mapping[str, Any],
+    expected_name: re.Pattern[str],
+    workspace: str,
+) -> JsonDict:
+    config = inspection.get("Config")
+    mounts = inspection.get("Mounts")
+    labels = config.get("Labels") if isinstance(config, Mapping) else None
+    name = inspection.get("Name")
+    container_id = record["container_id"]
+    image_id = inspection.get("Image")
+    if (
+        inspection.get("Id") != container_id
+        or not isinstance(name, str)
+        or expected_name.fullmatch(name.removeprefix("/")) is None
+        or _SHA256_ID_RE.fullmatch(str(image_id or "")) is None
+        or not isinstance(config, Mapping)
+        or config.get("Image") != image_id
+        or not isinstance(labels, Mapping)
+        or labels.get("ipfs_accelerate.grok_isolation") != "true"
+        or labels.get("ipfs_accelerate.codex_fallback_isolation") is not None
+        or not isinstance(mounts, list)
+    ):
+        raise ValueError("ordinary Grok container identity drifted")
+    normalized: list[JsonDict] = []
+    for mount in mounts:
+        if not isinstance(mount, Mapping):
+            raise ValueError("ordinary Grok container mount is invalid")
+        item = {
+            "Type": mount.get("Type"),
+            "Source": mount.get("Source"),
+            "Destination": mount.get("Destination"),
+            "RW": mount.get("RW"),
+        }
+        if not isinstance(item["Source"], str):
+            raise ValueError("ordinary Grok container mount is invalid")
+        normalized.append(item)
+    workspace_mounts = [
+        item
+        for item in normalized
+        if item == {
+            "Type": "bind",
+            "Source": workspace,
+            "Destination": workspace,
+            "RW": True,
+        }
+    ]
+    expected_masks = set(record["mask_sources"])
+    observed_masks = {
+        str(item["Source"])
+        for item in normalized
+        if Path(str(item["Source"])).parent.name == "provider-masks"
+    }
+    admitted_masks = {
+        str(item["Source"])
+        for item in normalized
+        if str(item["Source"]) in expected_masks
+        and item["Type"] == "bind"
+        and item["RW"] is False
+    }
+    if (
+        len(workspace_mounts) != 1
+        or not expected_masks
+        or observed_masks != expected_masks
+        or admitted_masks != expected_masks
+    ):
+        raise ValueError("ordinary Grok container mount authority drifted")
+    return {
+        "container_id": container_id,
+        "container_name": name.removeprefix("/"),
+        "image_id": image_id,
+        "mounts": sorted(
+            normalized,
+            key=lambda item: (
+                str(item["Source"]),
+                str(item["Destination"]),
+            ),
+        ),
+    }
+
+
+def _ordinary_grok_inspection_mentions_workspace(
+    inspection: Mapping[str, Any],
+    workspace: str,
+) -> bool:
+    mounts = inspection.get("Mounts")
+    if not isinstance(mounts, list):
+        return False
+    return any(
+        isinstance(mount, Mapping)
+        and mount.get("Type") == "bind"
+        and mount.get("Source") == workspace
+        and mount.get("Destination") == workspace
+        for mount in mounts
+    )
+
+
+def _ordinary_runner_numeric_pid_absent(
+    runner_receipt: Mapping[str, Any],
+) -> bool:
+    """Prove twice that the recorded numeric PID is absent on the same boot."""
+
+    pid = int(runner_receipt["pid"])
+    expected_boot = str(runner_receipt["boot_id"])
+    first = _ordinary_provider_runner_observation(pid)
+    second = _ordinary_provider_runner_observation(pid)
+    return bool(
+        first == second
+        and first[0] == expected_boot
+        and first[1] is None
+        and first[2] is None
+    )
+
+
+def _ordinary_grok_orphan_receipt(
+    runner_receipt: Mapping[str, Any],
+    *,
+    safe: bool,
+    removed: bool,
+    reason: str,
+    detail: Mapping[str, Any] | None = None,
+) -> JsonDict:
+    body: JsonDict = {
+        "schema": _ORDINARY_GROK_ORPHAN_FENCE_SCHEMA,
+        "task_id": runner_receipt["task_id"],
+        "attempt": runner_receipt["attempt"],
+        "task_revision_cid": runner_receipt["task_revision_cid"],
+        "workspace_path": runner_receipt["workspace_path"],
+        "runner_pid": runner_receipt["pid"],
+        "runner_receipt_id": runner_receipt["receipt_id"],
+        "safe_to_restart": safe,
+        "removed": removed,
+        "reason": reason,
+        "detail": dict(detail or {}),
+    }
+    return {**body, "receipt_id": content_identity(body)}
+
+
+def _fence_ordinary_grok_orphan_container(
+    status: Mapping[str, Any],
+    *,
+    host_birth_dead_or_fenced: bool,
+) -> JsonDict:
+    """Remove one exact non-CAS legacy Grok orphan after host fencing.
+
+    This is deliberately bounded legacy recovery.  The v1 ordinary birth
+    receipt predates Docker lease binding, so a deleted private lease is
+    indistinguishable from a native ordinary runner and is treated as absent.
+    Future births must persist the backend, CID, and lease identity instead of
+    widening this compatibility path.
+    """
+
+    runner_receipt, reason = _validated_ordinary_provider_runner_receipt(status)
+    if runner_receipt is None or not host_birth_dead_or_fenced:
+        unavailable_receipt = {
+            "task_id": "",
+            "attempt": 0,
+            "task_revision_cid": "",
+            "workspace_path": "",
+            "pid": 0,
+            "receipt_id": "",
+        }
+        return _ordinary_grok_orphan_receipt(
+            runner_receipt or unavailable_receipt,
+            safe=False,
+            removed=False,
+            reason=(
+                reason
+                if runner_receipt is None
+                else "ordinary_runner_host_fence_unproven"
+            ),
+        )
+    try:
+        records = _ordinary_grok_lease_records()
+        # An ordinary receipt carries no Docker authority.  In the absence of
+        # even one private Grok lease, keep plain ordinary runners hermetic and
+        # do not make Docker availability a new completion dependency.
+        if not records:
+            return _ordinary_grok_orphan_receipt(
+                runner_receipt,
+                safe=True,
+                removed=False,
+                reason="ordinary_grok_orphan_private_lease_absent",
+            )
+        if not _ordinary_runner_numeric_pid_absent(runner_receipt):
+            raise ValueError("ordinary runner numeric PID is no longer absent")
+        docker = _ordinary_grok_docker_binary()
+        if not docker:
+            raise ValueError("Docker unavailable")
+        from ..runtime import grok_cli_runner
+
+        expected_name = re.compile(
+            rf"ipfs-accelerate-grok-{int(runner_receipt['pid'])}-[0-9a-f]{{32}}"
+        )
+        candidates: list[tuple[JsonDict, JsonDict, list[str]]] = []
+        for record in records:
+            prefix = [
+                docker,
+                f"--host={grok_cli_runner._DOCKER_LOCAL_HOST}",
+                "--config",
+                str(record["docker_config"]),
+            ]
+            inspected = _ordinary_grok_container_inspection(
+                prefix, str(record["container_id"])
+            )
+            if inspected is None:
+                continue
+            if not _ordinary_grok_inspection_mentions_workspace(
+                inspected,
+                str(runner_receipt["workspace_path"]),
+            ):
+                continue
+            # The ordinary recovery route never adopts or removes a CAS-owned
+            # lease, even if its marker is malformed or dangling.  An
+            # unrelated CAS lease does not block this exact workspace fence.
+            if record["cas_owned"]:
+                raise ValueError(
+                    "ordinary Grok workspace is owned by CAS authority"
+                )
+            projection = _ordinary_grok_inspection_projection(
+                inspected,
+                record=record,
+                expected_name=expected_name,
+                workspace=str(runner_receipt["workspace_path"]),
+            )
+            candidates.append((record, projection, prefix))
+        if not candidates:
+            return _ordinary_grok_orphan_receipt(
+                runner_receipt,
+                safe=True,
+                removed=False,
+                reason="ordinary_grok_orphan_container_absent",
+            )
+        if len(candidates) != 1:
+            raise ValueError("ordinary Grok orphan candidate is ambiguous")
+        record, projection, prefix = candidates[0]
+        current_records = {
+            item["lease_root"]: item for item in _ordinary_grok_lease_records()
+        }
+        if current_records.get(record["lease_root"]) != record:
+            raise ValueError("ordinary Grok lease drifted before cleanup")
+        if not _ordinary_runner_numeric_pid_absent(runner_receipt):
+            raise ValueError("ordinary runner numeric PID was reused before cleanup")
+        reinspection = _ordinary_grok_container_inspection(
+            prefix, str(record["container_id"])
+        )
+        if reinspection is None or _ordinary_grok_inspection_projection(
+            reinspection,
+            record=record,
+            expected_name=expected_name,
+            workspace=str(runner_receipt["workspace_path"]),
+        ) != projection:
+            raise ValueError("ordinary Grok container drifted before cleanup")
+        returncode, _stdout, _stderr = _ordinary_grok_docker_query(
+            [*prefix, "rm", "--force", str(record["container_id"])]
+        )
+        absent = _ordinary_grok_container_absent(
+            prefix, str(record["container_id"])
+        )
+        absent_recheck = _ordinary_grok_container_absent(
+            prefix, str(record["container_id"])
+        )
+        pid_absent = _ordinary_runner_numeric_pid_absent(runner_receipt)
+        if returncode != 0 or not absent or not absent_recheck or not pid_absent:
+            raise ValueError("ordinary Grok orphan removal could not be verified")
+        return _ordinary_grok_orphan_receipt(
+            runner_receipt,
+            safe=True,
+            removed=True,
+            reason="ordinary_grok_orphan_container_removed",
+            detail={
+                "container_id": record["container_id"],
+                "container_name": projection["container_name"],
+                "image_id": projection["image_id"],
+                "lease_root": record["lease_root"],
+                "provider_mask_sources": list(record["mask_sources"]),
+            },
+        )
+    except (OSError, UnicodeError, ValueError) as exc:
+        return _ordinary_grok_orphan_receipt(
+            runner_receipt,
+            safe=False,
+            removed=False,
+            reason="ordinary_grok_orphan_container_fence_unproven",
+            detail={"error": str(exc)[:512]},
+        )
+
+
+def _with_ordinary_grok_orphan_fence(
+    status: Mapping[str, Any], host_result: JsonDict
+) -> JsonDict:
+    container_fence = _fence_ordinary_grok_orphan_container(
+        status,
+        host_birth_dead_or_fenced=bool(host_result.get("safe_to_restart")),
+    )
+    result = {**host_result, "container_fence": container_fence}
+    if not container_fence["safe_to_restart"]:
+        result["host_fenced"] = bool(host_result.get("fenced"))
+        result["safe_to_restart"] = False
+        result["fenced"] = False
+        result["reason"] = "ordinary_grok_orphan_container_fence_unproven"
+    return result
+
+
 def fence_ordinary_provider_runner(
     status: Mapping[str, Any],
     *,
@@ -960,7 +1554,7 @@ def fence_ordinary_provider_runner(
         and remaining_boot == recorded_boot
     )
     safe = bool(fenced and not exact_still_alive)
-    return {
+    host_result = {
         "applicable": True,
         "safe_to_restart": safe,
         "fenced": safe,
@@ -972,6 +1566,11 @@ def fence_ordinary_provider_runner(
             else "ordinary_provider_runner_exact_birth_fence_failed"
         ),
     }
+    return (
+        _with_ordinary_grok_orphan_fence(status, host_result)
+        if safe
+        else host_result
+    )
 
 
 def _sealed_agent_worker_process(

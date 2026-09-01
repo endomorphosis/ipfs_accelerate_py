@@ -46,7 +46,9 @@ def test_strict_fence_rejects_reused_root_before_any_signal(
     monkeypatch.setattr(
         core_module,
         "_process_identity_snapshot",
-        lambda: {pid: ("S", 1, pid, pid, "999")},
+        lambda: core_module.ProcessIdentitySnapshot.observed(
+            {pid: ("S", 1, pid, pid, "999")}
+        ),
     )
     monkeypatch.setattr(
         core_module.os,
@@ -76,7 +78,9 @@ def test_strict_fence_rejects_claimed_process_group_mismatch(
     monkeypatch.setattr(
         core_module,
         "_process_identity_snapshot",
-        lambda: {pid: ("S", 1, 777, 777, "123")},
+        lambda: core_module.ProcessIdentitySnapshot.observed(
+            {pid: ("S", 1, 777, 777, "123")}
+        ),
     )
     monkeypatch.setattr(
         core_module.os,

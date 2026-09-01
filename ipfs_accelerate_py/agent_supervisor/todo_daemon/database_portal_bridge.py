@@ -531,7 +531,29 @@ _PROVIDER_RUNNER_FENCE_FIELDS: Final[frozenset[str]] = frozenset(
         "pid",
         "pid_reused",
         "parent_pid_before_fence",
+        "host_fenced",
+        "container_fence",
     }
+)
+_ORDINARY_GROK_CONTAINER_FENCE_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "task_id",
+        "attempt",
+        "task_revision_cid",
+        "workspace_path",
+        "runner_pid",
+        "runner_receipt_id",
+        "safe_to_restart",
+        "removed",
+        "reason",
+        "detail",
+        "receipt_id",
+    }
+)
+_ORDINARY_GROK_CONTAINER_FENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "ordinary-grok-orphan-container-fence@1"
 )
 
 
@@ -1771,6 +1793,8 @@ class DatabasePortalExecutionBridge:
     @staticmethod
     def _validated_provider_runner_fence(
         raw: Any,
+        *,
+        expected_runner_receipt: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not isinstance(raw, Mapping):
             raise DatabasePortalBridgeError(
@@ -1810,6 +1834,141 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "database Portal provider fence has malformed pid_reused"
             )
+        if "host_fenced" in result and not isinstance(
+            result["host_fenced"], bool
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal provider fence has malformed host_fenced"
+            )
+        container_fence = result.get("container_fence")
+        if "host_fenced" in result and container_fence is None:
+            raise DatabasePortalBridgeError(
+                "database Portal host fence lacks its container receipt"
+            )
+        if container_fence is not None:
+            if (
+                not isinstance(container_fence, Mapping)
+                or set(container_fence)
+                != _ORDINARY_GROK_CONTAINER_FENCE_FIELDS
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal container fence has malformed shape"
+                )
+            container_reason = container_fence.get("reason")
+            container_detail = container_fence.get("detail")
+            unsigned_container_fence = {
+                key: value
+                for key, value in container_fence.items()
+                if key != "receipt_id"
+            }
+            if not isinstance(expected_runner_receipt, Mapping):
+                raise DatabasePortalBridgeError(
+                    "database Portal container fence lacks its active runner binding"
+                )
+            expected_container_binding = {
+                "task_id": expected_runner_receipt.get("task_id"),
+                "attempt": expected_runner_receipt.get("attempt"),
+                "task_revision_cid": expected_runner_receipt.get(
+                    "task_revision_cid"
+                ),
+                "workspace_path": expected_runner_receipt.get("workspace_path"),
+                "runner_pid": expected_runner_receipt.get("pid"),
+                "runner_receipt_id": expected_runner_receipt.get("receipt_id"),
+            }
+            if (
+                container_fence.get("schema")
+                != _ORDINARY_GROK_CONTAINER_FENCE_SCHEMA
+                or content_identity(unsigned_container_fence)
+                != container_fence.get("receipt_id")
+                or not isinstance(
+                    container_fence.get("safe_to_restart"), bool
+                )
+                or not isinstance(container_fence.get("removed"), bool)
+                or isinstance(container_fence.get("attempt"), bool)
+                or not isinstance(container_fence.get("attempt"), int)
+                or int(container_fence.get("attempt")) < 1
+                or isinstance(container_fence.get("runner_pid"), bool)
+                or not isinstance(container_fence.get("runner_pid"), int)
+                or int(container_fence.get("runner_pid")) <= 1
+                or not isinstance(container_detail, Mapping)
+                or any(
+                    not isinstance(container_fence.get(field), str)
+                    or not str(container_fence.get(field))
+                    for field in (
+                        "task_id",
+                        "task_revision_cid",
+                        "workspace_path",
+                        "runner_receipt_id",
+                        "reason",
+                    )
+                )
+                or (
+                    container_fence.get("runner_pid") != result.get("pid")
+                )
+                or any(
+                    container_fence.get(field) != expected
+                    for field, expected in expected_container_binding.items()
+                )
+                or (
+                    container_fence.get("safe_to_restart")
+                    is not result.get("safe_to_restart")
+                )
+                or (
+                    container_reason
+                    not in {
+                        "ordinary_grok_orphan_private_lease_absent",
+                        "ordinary_grok_orphan_container_absent",
+                        "ordinary_grok_orphan_container_removed",
+                        "ordinary_grok_orphan_container_fence_unproven",
+                    }
+                )
+                or (
+                    container_fence.get("removed") is True
+                    and (
+                        container_fence.get("safe_to_restart") is not True
+                        or container_reason
+                        != "ordinary_grok_orphan_container_removed"
+                    )
+                )
+                or (
+                    container_reason
+                    == "ordinary_grok_orphan_container_removed"
+                    and container_fence.get("removed") is not True
+                )
+                or (
+                    container_fence.get("safe_to_restart") is False
+                    and container_reason
+                    != "ordinary_grok_orphan_container_fence_unproven"
+                )
+                or (
+                    container_fence.get("safe_to_restart") is True
+                    and container_reason
+                    == "ordinary_grok_orphan_container_fence_unproven"
+                )
+                or (
+                    container_fence.get("safe_to_restart") is True
+                    and (
+                        result.get("applicable") is not True
+                        or result.get("fenced") is not True
+                        or result.get("reason")
+                        != "ordinary_provider_runner_exact_birth_fenced"
+                        or "host_fenced" in result
+                    )
+                )
+                or (
+                    container_fence.get("safe_to_restart") is False
+                    and (
+                        result.get("applicable") is not True
+                        or result.get("host_fenced") is not True
+                        or result.get("fenced") is not False
+                        or result.get("reason")
+                        != "ordinary_grok_orphan_container_fence_unproven"
+                    )
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal container fence receipt is invalid"
+                )
         if result["fenced"] is True and (
             result["applicable"] is not True
             or result["safe_to_restart"] is not True
@@ -5296,7 +5455,10 @@ class DatabasePortalExecutionBridge:
             fence_ordinary_provider_runner(
                 strict_state or {},
                 grace_seconds=1.0,
-            )
+            ),
+            expected_runner_receipt=(strict_state or {}).get(
+                "active_provider_runner"
+            ),
         )
         provider_runner_reconciliation_authority = (
             # The sealed runner has a distinct descriptor/latch authority.

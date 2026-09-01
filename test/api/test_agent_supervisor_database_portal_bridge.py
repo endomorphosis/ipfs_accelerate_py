@@ -7027,6 +7027,120 @@ def test_database_shutdown_honors_nested_ordinary_fence_outcome(
         daemon.close()
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "receipt_id",
+        "task_id",
+        "attempt",
+        "task_revision_cid",
+        "workspace_path",
+        "runner_receipt_id",
+        "runner_pid",
+        "safe_mismatch",
+        "removed_reason",
+        "unsafe_without_host_fence",
+        "host_fence_on_safe_result",
+        "fenced_false_on_safe_result",
+        "wrong_top_reason",
+    ),
+)
+def test_database_portal_validates_nested_grok_container_fence_binding(
+    mutation: str,
+) -> None:
+    body: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "ordinary-grok-orphan-container-fence@1"
+        ),
+        "task_id": "PCTDD-005",
+        "attempt": 1,
+        "task_revision_cid": "task:cid:pctdd-005",
+        "workspace_path": "/tmp/workspace-pctdd-005",
+        "runner_pid": 4242,
+        "runner_receipt_id": "receipt:ordinary-runner",
+        "safe_to_restart": True,
+        "removed": False,
+        "reason": "ordinary_grok_orphan_container_absent",
+        "detail": {},
+    }
+    result: dict[str, object] = {
+        "applicable": True,
+        "safe_to_restart": True,
+        "fenced": True,
+        "pid": 4242,
+        "parent_pid_before_fence": 1,
+        "reason": "ordinary_provider_runner_exact_birth_fenced",
+    }
+    expected_runner_receipt: dict[str, object] = {
+        "task_id": body["task_id"],
+        "attempt": body["attempt"],
+        "task_revision_cid": body["task_revision_cid"],
+        "workspace_path": body["workspace_path"],
+        "pid": body["runner_pid"],
+        "receipt_id": body["runner_receipt_id"],
+    }
+    if mutation in {
+        "task_id",
+        "task_revision_cid",
+        "workspace_path",
+        "runner_receipt_id",
+    }:
+        body[mutation] = str(body[mutation]) + ":drifted"
+    elif mutation == "attempt":
+        body["attempt"] = 2
+    elif mutation == "runner_pid":
+        body["runner_pid"] = 4243
+    elif mutation == "safe_mismatch":
+        body["safe_to_restart"] = False
+        body["reason"] = "ordinary_grok_orphan_container_fence_unproven"
+    elif mutation == "removed_reason":
+        body["removed"] = True
+    elif mutation == "unsafe_without_host_fence":
+        body["safe_to_restart"] = False
+        body["reason"] = "ordinary_grok_orphan_container_fence_unproven"
+        result["safe_to_restart"] = False
+        result["fenced"] = False
+    elif mutation == "host_fence_on_safe_result":
+        result["host_fenced"] = True
+    elif mutation == "fenced_false_on_safe_result":
+        result["fenced"] = False
+    elif mutation == "wrong_top_reason":
+        result["reason"] = "ordinary_provider_runner_recorded_birth_dead"
+    container_fence = {**body, "receipt_id": content_identity(body)}
+    if mutation == "receipt_id":
+        container_fence["receipt_id"] = "receipt:forged"
+    result["container_fence"] = container_fence
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="container fence receipt is invalid",
+    ):
+        DatabasePortalExecutionBridge._validated_provider_runner_fence(
+            result,
+            expected_runner_receipt=expected_runner_receipt,
+        )
+
+
+def test_database_portal_rejects_non_object_grok_container_fence() -> None:
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="container fence has malformed shape",
+    ):
+        DatabasePortalExecutionBridge._validated_provider_runner_fence(
+            {
+                "applicable": True,
+                "safe_to_restart": True,
+                "fenced": True,
+                "pid": 4242,
+                "parent_pid_before_fence": 1,
+                "reason": "ordinary_provider_runner_exact_birth_fenced",
+                "container_fence": [],
+            },
+            expected_runner_receipt={},
+        )
+
+
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_database_startup_replays_blocked_nested_fence_without_dispatch(
     tmp_path: Path,

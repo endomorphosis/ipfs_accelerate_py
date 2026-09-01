@@ -43,6 +43,32 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
 from test.api.test_llm_router_agent_implementation_route import _signed_high_plan
 
 
+@pytest.fixture(autouse=True)
+def _isolate_ordinary_grok_orphan_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Never let mocked ordinary-fence tests inspect live /tmp leases."""
+
+    recovery_root = tmp_path / "ordinary-grok-recovery-root"
+    recovery_root.mkdir(mode=0o700)
+    monkeypatch.setattr(
+        supervisor,
+        "_ORDINARY_GROK_TEMP_ROOT",
+        recovery_root,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_grok_docker_binary",
+        lambda: "/usr/bin/docker",
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_grok_docker_query",
+        lambda _command: (0, b"", b""),
+    )
+
+
 @pytest.fixture
 def sealed_control_plane_fd() -> Iterator[tuple[int, str]]:
     if not hasattr(os, "memfd_create") or not hasattr(fcntl, "F_ADD_SEALS"):
@@ -263,6 +289,109 @@ def _ordinary_fence_status(tmp_path: Path, *, pid: int = 4242) -> dict[str, Any]
         "receipt_id": content_identity(receipt_body),
     }
     return status
+
+
+def _ordinary_grok_orphan_lease(
+    *,
+    suffix: str,
+    container_id: str,
+) -> dict[str, Path]:
+    root = supervisor._ORDINARY_GROK_TEMP_ROOT / (
+        f"asref-grok-container-{suffix}"
+    )
+    root.mkdir(mode=0o700)
+    config = root / "docker-config"
+    config.mkdir(mode=0o700)
+    cidfile = root / "container.cid"
+    cidfile.write_text(container_id, encoding="ascii")
+    # Docker creates this file as 0664; the enclosing 0700 lease is private.
+    cidfile.chmod(0o664)
+    mask_root = root / "provider-masks"
+    mask_root.mkdir(mode=0o700)
+    mask = mask_root / "0"
+    mask.write_bytes(b"")
+    mask.chmod(0o000)
+    return {
+        "root": root,
+        "config": config,
+        "cidfile": cidfile,
+        "mask": mask,
+    }
+
+
+def _ordinary_grok_inspection(
+    status: dict[str, Any],
+    lease: dict[str, Path],
+    container_id: str,
+    *,
+    name_suffix: str = "a" * 32,
+    image_id: str = "sha256:" + "d" * 64,
+) -> list[dict[str, Any]]:
+    workspace = status["active_worktree_path"]
+    runner_pid = status["active_provider_runner"]["pid"]
+    return [
+        {
+            "Id": container_id,
+            "Name": f"/ipfs-accelerate-grok-{runner_pid}-{name_suffix}",
+            "Image": image_id,
+            "Config": {
+                "Image": image_id,
+                "Labels": {"ipfs_accelerate.grok_isolation": "true"},
+            },
+            "Mounts": [
+                {
+                    "Type": "bind",
+                    "Source": workspace,
+                    "Destination": workspace,
+                    "RW": True,
+                },
+                {
+                    "Type": "bind",
+                    "Source": str(lease["mask"]),
+                    "Destination": "/alternate-provider",
+                    "RW": False,
+                },
+            ],
+        }
+    ]
+
+
+def _mock_exact_ordinary_host_fence(
+    status: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = status["active_provider_runner"]
+    exact = (
+        receipt["boot_id"],
+        (
+            receipt["owner_pid"],
+            receipt["process_group_id"],
+            receipt["session_id"],
+            receipt["start_time_ticks"],
+        ),
+        receipt["argv_sha256"],
+    )
+    observation_count = 0
+
+    def observe(_pid: int):
+        nonlocal observation_count
+        observation_count += 1
+        return exact if observation_count <= 2 else (
+            receipt["boot_id"],
+            None,
+            None,
+        )
+
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_provider_runner_observation",
+        observe,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: True,
+    )
 
 
 def _fake_control_plane(command: list[str]) -> SimpleNamespace:
@@ -1430,6 +1559,188 @@ def test_ordinary_birth_recheck_failure_withholds_input_after_save(
     assert durable.active_provider_runner
     if marker.exists():
         assert marker.read_bytes() == b""
+
+
+def test_exactly_fenced_ordinary_runner_reaps_correlated_grok_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status = _ordinary_fence_status(tmp_path)
+    container_id = "6" * 64
+    lease = _ordinary_grok_orphan_lease(
+        suffix="success",
+        container_id=container_id,
+    )
+    inspection = _ordinary_grok_inspection(status, lease, container_id)
+    commands: list[list[str]] = []
+
+    def docker_query(command: list[str]) -> tuple[int, bytes, bytes]:
+        commands.append(command)
+        if command[-3:-1] == ["container", "inspect"]:
+            assert command[-1] == container_id
+            return 0, json.dumps(inspection).encode(), b""
+        if "rm" in command:
+            assert command[-3:] == ["rm", "--force", container_id]
+            return 0, b"", b""
+        if "ls" in command:
+            assert f"id={container_id}" in command
+            return 0, b"", b""
+        raise AssertionError(command)
+
+    receipt = status["active_provider_runner"]
+    _mock_exact_ordinary_host_fence(status, monkeypatch)
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_grok_docker_binary",
+        lambda: "/usr/bin/docker",
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_grok_docker_query",
+        docker_query,
+    )
+    result = supervisor.fence_ordinary_provider_runner(status)
+
+    assert result["safe_to_restart"] is True
+    assert result["fenced"] is True
+    container_fence = result["container_fence"]
+    assert container_fence["removed"] is True
+    assert container_fence["detail"]["container_id"] == container_id
+    assert container_fence["runner_receipt_id"] == receipt["receipt_id"]
+    body = {
+        key: value
+        for key, value in container_fence.items()
+        if key != "receipt_id"
+    }
+    assert container_fence["receipt_id"] == content_identity(body)
+    rm_commands = [command for command in commands if "rm" in command]
+    assert len(rm_commands) == 1
+    assert rm_commands[0][-1] == container_id
+    assert not any(
+        container_fence["detail"]["container_name"] == command[-1]
+        for command in rm_commands
+    )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        "docker_unavailable",
+        "cas_owned",
+        "name_drift",
+        "label_drift",
+        "image_drift",
+        "workspace_read_only",
+    ),
+)
+def test_ordinary_grok_orphan_fence_fails_closed_on_authority_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    status = _ordinary_fence_status(tmp_path)
+    container_id = "7" * 64
+    lease = _ordinary_grok_orphan_lease(
+        suffix=failure,
+        container_id=container_id,
+    )
+    inspection = _ordinary_grok_inspection(status, lease, container_id)
+    if failure == "cas_owned":
+        marker = lease["root"] / "cas-owned"
+        marker.write_text("sealed-cas-owner", encoding="ascii")
+        marker.chmod(0o600)
+    elif failure == "name_drift":
+        inspection[0]["Name"] = "/renamed-container"
+    elif failure == "label_drift":
+        inspection[0]["Config"]["Labels"] = {}
+    elif failure == "image_drift":
+        inspection[0]["Config"]["Image"] = "sha256:" + "e" * 64
+    elif failure == "workspace_read_only":
+        inspection[0]["Mounts"][0]["RW"] = False
+    commands: list[list[str]] = []
+
+    def docker_query(command: list[str]) -> tuple[int, bytes, bytes]:
+        commands.append(command)
+        if command[-3:-1] == ["container", "inspect"]:
+            return 0, json.dumps(inspection).encode(), b""
+        raise AssertionError(command)
+
+    _mock_exact_ordinary_host_fence(status, monkeypatch)
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_grok_docker_binary",
+        lambda: "" if failure == "docker_unavailable" else "/usr/bin/docker",
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_grok_docker_query",
+        docker_query,
+    )
+
+    result = supervisor.fence_ordinary_provider_runner(status)
+
+    assert result["safe_to_restart"] is False
+    assert result["fenced"] is False
+    assert result["reason"] == "ordinary_grok_orphan_container_fence_unproven"
+    container_fence = result["container_fence"]
+    body = {
+        key: value
+        for key, value in container_fence.items()
+        if key != "receipt_id"
+    }
+    assert container_fence["receipt_id"] == content_identity(body)
+    assert not any("rm" in command for command in commands)
+
+
+def test_sealed_runner_fence_never_enters_ordinary_grok_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status = _ordinary_fence_status(tmp_path)
+    status["active_provider_runner"] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor.provider-runner-birth@1"
+        )
+    }
+    monkeypatch.setattr(
+        supervisor,
+        "_fence_ordinary_grok_orphan_container",
+        lambda *_args, **_kwargs: pytest.fail("sealed CAS path scanned legacy leases"),
+    )
+
+    result = supervisor.fence_ordinary_provider_runner(status)
+
+    assert result["applicable"] is False
+    assert result["safe_to_restart"] is True
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (b'{"duplicate":1,"duplicate":2}', b'{"nonfinite":NaN}'),
+)
+def test_ordinary_grok_docker_inspection_json_is_strict(payload: bytes) -> None:
+    with pytest.raises(ValueError, match="Docker inspection JSON is invalid"):
+        supervisor._ordinary_grok_strict_json(payload)
+
+
+def test_plain_ordinary_runner_without_grok_lease_never_requires_docker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    status = _ordinary_fence_status(tmp_path)
+    _mock_exact_ordinary_host_fence(status, monkeypatch)
+    monkeypatch.setattr(
+        supervisor,
+        "_ordinary_grok_docker_binary",
+        lambda: pytest.fail("plain ordinary runner probed Docker"),
+    )
+
+    result = supervisor.fence_ordinary_provider_runner(status)
+
+    assert result["safe_to_restart"] is True
+    assert result["container_fence"]["reason"] == (
+        "ordinary_grok_orphan_private_lease_absent"
+    )
 
 
 @pytest.mark.parametrize(
