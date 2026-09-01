@@ -2036,9 +2036,11 @@ with receipt `m38-source-successor-receipt.json`. The event-291 projection
 `baguqeeravycbuo73fyu5mpad55qi5duk3la53lubqeu7nu6kjtnahehjtnsq` is
 recomputed through the canonical task/goal/plan projection using watermark
 291; it is not inherited from M37 merely because the expected value is equal.
-M38 remains non-authoritative until its exact runtime-repair commit, initial
-nine-control commit, and final reseal identities replace all `PENDING_M38_*`
-sentinels. M38 is selected before M37 only when its complete protected-control
+M38's initial control commit is
+`e6763e2ba64eac282fb2b3e6a8f38c05dc2db8df` with tree
+`78927b797c7f80dca7e80ae542f3f7e06d95cbc3`. The reseal binds authority
+CID `sha256:b8275acc53fa5fcbce1186ff48f249adab7381828805e1545220547d259afaef`.
+M38 is selected before M37 only when its complete protected-control
 triplet and source chain validate.
 
 ## 47. Current limitations at seal time

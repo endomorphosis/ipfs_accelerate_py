@@ -5023,6 +5023,10 @@ def test_m38_authority_pins_custody_restart_and_preserves_m37() -> None:
         if identity_state == "placeholder"
         else materializer._identity(authority)
     )
+    if identity_state == "sealed":
+        assert expected_authority_cid == (
+            "sha256:b8275acc53fa5fcbce1186ff48f249adab7381828805e1545220547d259afaef"
+        )
     assert seal[f"{key}_cid"] == reference["authority_cid"] == expected_authority_cid
     assert reference["schema"] == "sawm/operator-control-authority-reference@1"
     assert reference["migration_revision"] == "SAWM-R2-M38"
@@ -5042,7 +5046,9 @@ def test_m38_authority_pins_custody_restart_and_preserves_m37() -> None:
         assert materializer._m38_source_identities_pending() is False
 
 
-def test_m38_placeholder_controls_fail_closed_at_launch_boundaries() -> None:
+def test_m38_placeholder_controls_fail_closed_at_launch_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
         "sawm_materializer_m38_placeholder_rejection_test",
@@ -5053,6 +5059,26 @@ def test_m38_placeholder_controls_fail_closed_at_launch_boundaries() -> None:
         "migration_revision": "SAWM-R2-M38",
         "authority_cid": "sha256:PENDING_M38_AUTHORITY_CID",
     }
+    monkeypatch.setattr(
+        materializer,
+        "_M38_INITIAL_CONTROL_COMMIT",
+        "PENDING_M38_INITIAL_CONTROL_COMMIT",
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_M38_INITIAL_CONTROL_TREE",
+        "PENDING_M38_INITIAL_CONTROL_TREE",
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_M38_INITIAL_CONTROL_BLOBS",
+        {
+            path: f"PENDING_M38_INITIAL_CONTROL_BLOB_{index}"
+            for index, path in enumerate(
+                sorted(materializer._M38_OPERATOR_CONTROL_PATHS), start=1
+            )
+        },
+    )
     assert materializer._m38_successor_configured({key: pending}) is True
     with pytest.raises(
         materializer.MaterializationError,
@@ -5063,6 +5089,22 @@ def test_m38_placeholder_controls_fail_closed_at_launch_boundaries() -> None:
             {"source_binding": {"head": "0" * 40, "tree": "0" * 40}},
             materializer._expected_m38_pre_authoritative_custody_restart_authority(),
         )
+    m37_key = "post_reboot_generation_restart_successor_materialization"
+    m37_reference = {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M37",
+        "authority_cid": (
+            "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
+        ),
+    }
+    monkeypatch.setattr(
+        materializer,
+        "_load_json",
+        lambda *_args: {
+            f"{key}_cid": pending["authority_cid"],
+            f"{m37_key}_cid": m37_reference["authority_cid"],
+        },
+    )
     with pytest.raises(
         materializer.MaterializationError,
         match="M38 source identities are not resealed",
@@ -5072,25 +5114,13 @@ def test_m38_placeholder_controls_fail_closed_at_launch_boundaries() -> None:
             {
                 "migration_inventory": {
                     key: pending,
-                    "post_reboot_generation_restart_successor_materialization": {
-                        "schema": "sawm/operator-control-authority-reference@1",
-                        "migration_revision": "SAWM-R2-M37",
-                        "authority_cid": (
-                            "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
-                        ),
-                    },
+                    m37_key: m37_reference,
                 },
                 "source_binding": {"head": "0" * 40},
             },
             {
                 key: pending,
-                "post_reboot_generation_restart_successor_materialization": {
-                    "schema": "sawm/operator-control-authority-reference@1",
-                    "migration_revision": "SAWM-R2-M37",
-                    "authority_cid": (
-                        "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
-                    ),
-                },
+                m37_key: m37_reference,
             },
         )
 
@@ -5128,6 +5158,44 @@ def test_m38_rejects_nonexact_initial_control_identity_states(
         match="M38 initial-control identities mix placeholder and sealed values",
     ):
         materializer._m38_source_identities_pending()
+
+
+def test_m38_dependency_validator_rejects_noncanonical_pending_identities(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m38_noncanonical_dependency_identity_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m38_noncanonical_identity_test",
+    )
+    authority = copy.deepcopy(
+        materializer._expected_m38_pre_authoritative_custody_restart_authority()
+    )
+    paths = sorted(materializer._M38_OPERATOR_CONTROL_PATHS)
+    arbitrary_commit = "PENDING_M38_INITIAL_UNAUTHORIZED_COMMIT"
+    arbitrary_tree = "PENDING_M38_INITIAL_UNAUTHORIZED_TREE"
+    arbitrary_blobs = {
+        path: f"PENDING_M38_INITIAL_UNAUTHORIZED_BLOB_{index}"
+        for index, path in enumerate(paths, start=1)
+    }
+    chain = authority["source_chain"]
+    chain["initial_control_commit"] = arbitrary_commit
+    chain["initial_control_tree"] = arbitrary_tree
+    chain["initial_control_blobs"] = arbitrary_blobs
+    chain["final_reseal_parent"] = arbitrary_commit
+    monkeypatch.setattr(
+        materializer, "_M38_INITIAL_CONTROL_COMMIT", arbitrary_commit
+    )
+    monkeypatch.setattr(materializer, "_M38_INITIAL_CONTROL_TREE", arbitrary_tree)
+    monkeypatch.setattr(materializer, "_M38_INITIAL_CONTROL_BLOBS", arbitrary_blobs)
+    with pytest.raises(
+        RuntimeError,
+        match="M38 initial-control identities mix placeholder/sealed values",
+    ):
+        dependencies._m38_source_chain_identity_state(materializer, authority)
 
 
 def test_m38_preserves_the_exact_historical_m37_triplet(

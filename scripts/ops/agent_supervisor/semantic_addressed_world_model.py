@@ -1124,6 +1124,8 @@ def _active_source_repair_materialization(
             or expected.get("migration_revision") != "SAWM-R2-M38"
             or expected.get("migration_kind") != _M38_SUCCESSOR_KEY
             or expected.get("control_recorded_at") != "2026-09-01T01:10:00Z"
+            or reference.get("authority_cid")
+            != "sha256:b8275acc53fa5fcbce1186ff48f249adab7381828805e1545220547d259afaef"
             or not isinstance(binding, Mapping)
             or binding.get("store_id") != _M38_STORE_ID
             or binding.get("store_generation") != _M38_GENERATION
@@ -5332,6 +5334,16 @@ def _require_m38_source_successor_marker(
         or observed.get("pre_authoritative_custody_repair_source_verified")
         is not True
         or observed.get("runtime_custody_observation_not_persisted") is not True
+        or observed.get(
+            "sealed_prestart_contract_requires_post_failure_read_replica_identity"
+        )
+        is not True
+        or observed.get("read_replica_rebuilt_non_authoritatively_on_start")
+        is not True
+        or observed.get(
+            "coordination_and_historical_receipt_bytes_preserved"
+        )
+        is not True
         or observed.get("target_projection_recomputed") is not True
         or observed.get("complete_evidence_projection_verified") is not True
         or int(observed.get("evidence_node_count") or 0)

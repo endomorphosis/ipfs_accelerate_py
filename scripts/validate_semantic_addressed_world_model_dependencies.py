@@ -3252,9 +3252,20 @@ def _m38_source_chain_identity_state(
         chain.get("final_reseal_parent"),
         *control_blobs.values(),
     )
-    if all(
-        isinstance(value, str) and value.startswith("PENDING_M38_INITIAL_")
-        for value in control_identities
+    expected_placeholder_blobs = {
+        path: f"PENDING_M38_INITIAL_CONTROL_BLOB_{index}"
+        for index, path in enumerate(
+            sorted(materializer._M38_OPERATOR_CONTROL_PATHS), start=1
+        )
+    }
+    if (
+        chain.get("initial_control_commit")
+        == "PENDING_M38_INITIAL_CONTROL_COMMIT"
+        and chain.get("initial_control_tree")
+        == "PENDING_M38_INITIAL_CONTROL_TREE"
+        and chain.get("final_reseal_parent")
+        == "PENDING_M38_INITIAL_CONTROL_COMMIT"
+        and dict(control_blobs) == expected_placeholder_blobs
     ):
         return "placeholder"
     if all(
@@ -3369,6 +3380,12 @@ def _m38_pre_authoritative_custody_restart_successor_errors(
         )
         if seal.get(f"{key}_cid") != expected_cid:
             errors.append("M38 custody restart CID differs")
+        if (
+            state == "sealed"
+            and expected_cid
+            != "sha256:b8275acc53fa5fcbce1186ff48f249adab7381828805e1545220547d259afaef"
+        ):
+            errors.append("M38 sealed custody restart CID differs")
         failed = expected.get("failed_m37_pre_authority_attempt", {})
         custody = expected.get("pre_authoritative_custody_repair", {})
         lane = expected.get("stale_lane_pid_repair", {})

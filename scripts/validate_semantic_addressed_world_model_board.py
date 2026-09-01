@@ -4122,6 +4122,11 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 or source_chain.get("runtime_repair_commit")
                 != "ad30bfa90cd0309a77a1a9936815f739e072a8a7"
                 or expected.get("control_recorded_at") != "2026-09-01T01:10:00Z"
+                or (
+                    identity_state == "sealed"
+                    and expected_seal_cid
+                    != "sha256:b8275acc53fa5fcbce1186ff48f249adab7381828805e1545220547d259afaef"
+                )
                 or expected.get("target_event_watermark") != 291
                 or expected.get("target_projection_cid")
                 != "baguqeeravycbuo73fyu5mpad55qi5duk3la53lubqeu7nu6kjtnahehjtnsq"

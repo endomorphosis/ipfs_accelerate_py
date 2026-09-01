@@ -1453,12 +1453,38 @@ _M38_RUNTIME_REPAIR_BLOBS = MappingProxyType(
     }
 )
 _M38_OPERATOR_CONTROL_PATHS = frozenset(_M33_OPERATOR_CONTROL_PATHS)
-_M38_INITIAL_CONTROL_COMMIT = "PENDING_M38_INITIAL_CONTROL_COMMIT"
-_M38_INITIAL_CONTROL_TREE = "PENDING_M38_INITIAL_CONTROL_TREE"
+_M38_INITIAL_CONTROL_COMMIT = "e6763e2ba64eac282fb2b3e6a8f38c05dc2db8df"
+_M38_INITIAL_CONTROL_TREE = "78927b797c7f80dca7e80ae542f3f7e06d95cbc3"
 _M38_INITIAL_CONTROL_BLOBS = MappingProxyType(
     {
-        path: f"PENDING_M38_INITIAL_CONTROL_BLOB_{index}"
-        for index, path in enumerate(sorted(_M38_OPERATOR_CONTROL_PATHS), start=1)
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "1a88ca42ae58966dc99621d22bf02d989944e192"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "8a5844ece2dd6e9fb0449630e3deb2f042ab51b4"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "ed7f976f757d4e3ce73f77a36f95df7508d4b042"
+        ),
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ): "baf18243482c08b2de09bfa830d5a9d74c1b3f57",
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "fd8291bf5dfd712578cf1d645a6bf0bd329395b6"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "d889194e92b4e96e3df01c4ad75d39c1ea4507c3"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "4354d427caf659f632b62f7aa2dd95f7c9a34559"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "d598de25bcf14ba78b6d1683e1e7398f47a912e3"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "1eb477e794e7e20f3aa3902cb54c2c987921c5bf"
+        ),
     }
 )
 _M38_AUTHORITY_CID_SENTINEL = "sha256:PENDING_M38_AUTHORITY_CID"
