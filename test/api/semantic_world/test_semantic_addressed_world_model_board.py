@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "failed_pre_authoritative_m41_evidence_projection_successor_materialization",
     "failed_pre_authoritative_m40_validation_successor_materialization",
     "failed_pre_authoritative_m39_successor_materialization",
     "committed_m38_evidence_reconciliation_successor_materialization",
@@ -158,6 +159,39 @@ def test_historical_successor_controls_include_m41_before_m40() -> None:
     assert historical_migration is not None and m41_key not in historical_migration
     assert historical_seal is not None
     assert f"{m41_key}_cid" not in historical_seal
+
+
+def test_historical_successor_controls_include_m42_before_m41() -> None:
+    """M41 fixtures remove M42 while current M42 remains presence-first."""
+
+    m42_key = (
+        "failed_pre_authoritative_m41_evidence_projection_"
+        "successor_materialization"
+    )
+    m41_key = "failed_pre_authoritative_m40_validation_successor_materialization"
+    scheduler = {m42_key: {"revision": "M42"}, m41_key: {"revision": "M41"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m42_key}_cid": "sha256:" + "6" * 64,
+        f"{m41_key}_cid": "sha256:" + "5" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m42_key, scheduler, migration, seal
+    )
+    assert current[m42_key] == scheduler[m42_key]
+    assert current_migration is not None
+    assert current_migration[m42_key] == migration[m42_key]
+    assert current_seal is not None
+    assert current_seal[f"{m42_key}_cid"] == seal[f"{m42_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m41_key, scheduler, migration, seal)
+    )
+    assert m42_key not in historical
+    assert historical_migration is not None and m42_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m42_key}_cid" not in historical_seal
 
 
 def _load(relative: str, name: str) -> ModuleType:
@@ -5197,6 +5231,209 @@ def test_m40_operator_selects_newest_authority_by_key_presence() -> None:
     assert marker.index("_M40_SUCCESSOR_KEY") < marker.index("_M39_SUCCESSOR_KEY")
 
 
+def test_m42_authority_seals_failed_m41_projection_and_exact_repair() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m42_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m42_failed_pre_authoritative_m41_evidence_projection_successor_authority()
+    )
+    reference = materializer._m42_authority_reference()
+    failed = authority["failed_m41_pre_authoritative_materialization"]
+    legacy = authority["exact_legacy_projection_authority"]
+    repair = authority["accepted_projection_repair"]
+    hardening = authority["final_control_hardening"]
+
+    assert reference == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M42",
+        "authority_cid": materializer._M42_AUTHORITY_CID,
+    }
+    assert materializer._identity(authority) == materializer._M42_AUTHORITY_CID
+    assert materializer._identity(authority["prior_m41_authority"]) == (
+        materializer._M42_M41_AUTHORITY_CID
+    )
+    assert failed["materializer_invoked"] is True
+    assert failed["authenticated_live_quack_read_opened"] is True
+    assert failed["quack_mutation_request_created"] is False
+    assert failed["record_evidence_reached"] is False
+    assert failed["event_watermark_before"] == failed["event_watermark_after"] == 291
+    assert failed["event_292_rows_created"] == 0
+    assert failed["m41_receipt_created"] is False
+    assert legacy["manifest_cid"] == (
+        materializer._M42_LEGACY_PROJECTION_MANIFEST_CID
+    )
+    assert legacy["evidence_node_count"] == 48
+    assert legacy["evidence_event_count"] == 37
+    assert legacy["validation_event_count"] == 11
+    assert legacy["evidence_refresh_overlay_count"] == 9
+    assert legacy["compact_validation_evidence_overlay_count"] == 1
+    assert legacy["validation_attempt_overlay_count"] == 1
+    assert repair["repair_parent"] == materializer._M42_M41_FINAL_CONTROL_COMMIT
+    assert repair["repair_commit"] == materializer._M42_PROJECTION_REPAIR_COMMIT
+    assert repair["blob_oids"] == dict(materializer._M42_PROJECTION_REPAIR_BLOBS)
+    assert hardening["helper_does_not_establish_target_body_authority"] is True
+    assert hardening["production_db_derived_expected_row_forbidden"] is True
+    assert hardening["target_event_session_id"] == "session:intent"
+    assert authority["target_event_watermark"] == 292
+    assert authority["target_projection_derivation"][
+        "event_body_bound_by_event_prefix_not_projection"
+    ] is True
+    materializer._validated_m42_live_preflight_contract(authority)
+
+
+def test_m42_restart_rows_route_through_exact_m41_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m42_restart_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m42_failed_pre_authoritative_m41_evidence_projection_successor_authority()
+    )
+    observed: list[object] = []
+
+    def inspect_restart(
+        source: object, identity: object, prior_m41: object
+    ) -> dict[str, bool]:
+        observed.extend((source, identity, prior_m41))
+        return {"generation_29_30_restart_rows_verified": True}
+
+    monkeypatch.setattr(
+        materializer, "_inspect_m41_generation_restart_rows", inspect_restart
+    )
+    source = object()
+    identity = {"server_id": materializer._M42_LIVE_SERVER_ID}
+    assert materializer._inspect_m42_generation_restart_rows(
+        source, identity, authority
+    ) == {"generation_29_30_restart_rows_verified": True}
+    assert observed == [source, identity, authority["prior_m41_authority"]]
+
+    malformed = dict(authority)
+    malformed["prior_m41_authority"] = {}
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="historical M41 restart authority differs",
+    ):
+        materializer._inspect_m42_generation_restart_rows(
+            source, identity, malformed
+        )
+
+
+def test_m42_receipt_publication_is_last_idempotent_and_exclusive(
+    tmp_path: Path,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m42_receipt_test",
+    )
+    control = tmp_path / "control.duckdb"
+    control.write_bytes(b"test")
+    expected = {"schema": "test/m42-receipt@1", "receipt_cid": "sha256:test"}
+
+    first = materializer._ensure_m42_source_successor_receipt(
+        tmp_path, control, expected
+    )
+    second = materializer._ensure_m42_source_successor_receipt(
+        tmp_path, control, expected
+    )
+    assert first == second == expected
+    path = tmp_path / "m42-source-successor-receipt.json"
+    assert json.loads(path.read_text(encoding="utf-8")) == expected
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    for revision in ("m37", "m38", "m39", "m40", "m41", "m42"):
+        assert (
+            tmp_path / f".{revision}-source-successor-receipt.publish.lock"
+        ).exists()
+
+    path.unlink()
+    (tmp_path / "m41-source-successor-receipt.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M41 receipt unexpectedly exists",
+    ):
+        materializer._ensure_m42_source_successor_receipt(
+            tmp_path, control, expected
+        )
+
+
+def test_m42_dispatch_precedes_m41_and_receipt_follows_live_verification() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m42_dispatch_test",
+    )
+    check_source = inspect.getsource(materializer.check_materialized)
+    materialize_source = inspect.getsource(materializer.materialize)
+    m42 = "_m42_successor_configured_on_any_surface"
+    m41 = "_m41_successor_configured_on_any_surface"
+    assert check_source.index(m42) < check_source.index(m41)
+    assert materialize_source.index(m42) < materialize_source.index(m41)
+    main_source = inspect.getsource(materializer.main)
+    assert main_source.index(
+        "failed_pre_authoritative_m41_evidence_projection_successor_materialization"
+    ) < main_source.index(
+        "failed_pre_authoritative_m40_validation_successor_materialization"
+    )
+    core = inspect.getsource(materializer._materialize_m42)
+    assert core.index("_verify_m42_live_materialization") < core.index(
+        "_ensure_m42_source_successor_receipt"
+    )
+    assert "snapshot.event_cursor == _M42_PRIOR_EVENT_WATERMARK" in core
+    assert "snapshot.event_cursor != _M42_TARGET_EVENT_WATERMARK" in core
+    assert "_verify_m42_exact_legacy_projection(connection)" in core
+    verifier = inspect.getsource(materializer._verify_m42_live_materialization)
+    assert "expected_target_evidence_row=expected_evidence" in verifier
+    assert "expected_target_evidence_row=evidence" not in verifier
+    assert verifier.index("expected_evidence = (") < verifier.index(
+        "evidence = connection.execute("
+    )
+    assert 'for revision in ("m37", "m38", "m39", "m40", "m41")' in core
+
+
+def test_m42_operator_selects_newest_authority_by_key_presence() -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m42_authority_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    active = operator._active_source_repair_materialization(config)
+    assert active["migration_revision"] == "SAWM-R2-M42"
+    assert active["target_event_watermark"] == 292
+    assert active["failed_m41_pre_authoritative_materialization"][
+        "quack_mutation_request_created"
+    ] is False
+    configured = inspect.getsource(operator._successor_materialization_configured)
+    assert configured.index("_M42_SUCCESSOR_KEY") < configured.index(
+        "_M41_SUCCESSOR_KEY"
+    )
+    normalized = inspect.getsource(operator._normalized_live_preflight_contract)
+    assert normalized.index("_M42_MIGRATION_REVISION") < normalized.index(
+        "_M41_MIGRATION_REVISION"
+    )
+    preflight = inspect.getsource(operator._live_preflight)
+    assert "m42_active = active_revision == _M42_MIGRATION_REVISION" in preflight
+    assert preflight.index("m42_active,") < preflight.index("m41_active,")
+    assert preflight.index("_verify_m42_live_materialization") < preflight.index(
+        "_verify_m41_live_materialization"
+    )
+    assert preflight.index("_expected_m42_source_successor_receipt") < (
+        preflight.index("_expected_m41_source_successor_receipt")
+    )
+    marker = inspect.getsource(operator._require_active_final_pair_marker)
+    assert marker.index("_M42_SUCCESSOR_KEY") < marker.index("_M41_SUCCESSOR_KEY")
+
+
 def test_m41_authority_seals_failed_m40_validation_and_exact_repair() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -5375,7 +5612,13 @@ def test_m41_operator_selects_newest_authority_by_key_presence() -> None:
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
     )
-    active = operator._active_source_repair_materialization(config)
+    historical_config, _historical_migration, _historical_seal = (
+        _historical_successor_controls_at(
+            "failed_pre_authoritative_m40_validation_successor_materialization",
+            config,
+        )
+    )
+    active = operator._active_source_repair_materialization(historical_config)
     assert active["migration_revision"] == "SAWM-R2-M41"
     assert active["target_event_watermark"] == 292
     assert active["failed_m40_pre_authoritative_validation"][
@@ -6333,6 +6576,9 @@ class _M38ProjectionResult:
     def fetchall(self) -> list[object]:
         return self._rows
 
+    def fetchone(self) -> object | None:
+        return self._rows[0] if self._rows else None
+
 
 class _M38ProjectionConnection:
     def __init__(
@@ -7114,6 +7360,275 @@ def test_m42_production_legacy_projection_manifest_is_closed() -> None:
     m42 = inspect.getsource(materializer._verify_m42_exact_legacy_projection)
     assert "_m42_apply_exact_legacy_evidence_overlay" not in strict
     assert "_m42_apply_exact_legacy_evidence_overlay" in m42
+
+
+class _M42ExactTargetConnection:
+    def __init__(
+        self,
+        evidence_rows: list[tuple[object, ...]],
+        target_event: tuple[object, ...] | None,
+    ) -> None:
+        self.evidence_rows = evidence_rows
+        self.target_event = target_event
+
+    def execute(
+        self, query: str, _parameters: object = None
+    ) -> _M38ProjectionResult:
+        if "FROM evidence_nodes ORDER BY evidence_id" in query:
+            return _M38ProjectionResult(sorted(self.evidence_rows))
+        if "FROM domain_events" in query and "global_sequence=?" in query:
+            return _M38ProjectionResult(
+                [] if self.target_event is None else [self.target_event]
+            )
+        raise AssertionError(f"unexpected query: {query}")
+
+
+def _synthetic_m42_exact_target(
+    monkeypatch: pytest.MonkeyPatch,
+    materializer: ModuleType,
+) -> tuple[
+    tuple[object, ...],
+    tuple[object, ...],
+    tuple[object, ...],
+]:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    prior = (
+        "evidence:legacy",
+        "",
+        "task:legacy",
+        "operator_control",
+        "sha256:legacy",
+        "2026-09-01T05:59:59Z",
+        "{}",
+    )
+    target_body = {"bounded": True, "source": "M42"}
+    target_digest = materializer._identity(target_body)
+    target_id = content_identity(
+        {
+            "task_cid": materializer._M42_OPERATOR_TASK_CID,
+            "evidence_kind": materializer._M42_EVIDENCE_KIND,
+            "digest": target_digest,
+            "body": target_body,
+        }
+    )
+    target = (
+        target_id,
+        "",
+        materializer._M42_OPERATOR_TASK_CID,
+        materializer._M42_EVIDENCE_KIND,
+        target_digest,
+        materializer._M42_CONTROL_RECORDED_AT,
+        materializer._canonical(target_body).decode("utf-8"),
+    )
+    envelope = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": target_id,
+        "body": {
+            "evidence_id": target_id,
+            "parent_evidence_id": "",
+            "task_cid": target[2],
+            "evidence_kind": target[3],
+            "digest": target_digest,
+            "body": target_body,
+            "created_at": target[5],
+            "revision": 0,
+        },
+        "recorded_at": target[5],
+        "owner_id": "sawm-r2-m42-live-source-sealer",
+    }
+    event_id = content_identity(
+        {
+            "stream_id": "stream:intent",
+            "sequence": 292,
+            "global_sequence": 292,
+            "event_type": "intent.evidence_recorded",
+            "body": envelope,
+        }
+    )
+    event = (
+        event_id,
+        "stream:intent",
+        292,
+        292,
+        "intent.evidence_recorded",
+        target[2],
+        "",
+        "session:intent",
+        target[5],
+        materializer._canonical(envelope).decode("utf-8"),
+    )
+    projection = {
+        "rows": [prior],
+        "evidence_node_count": 1,
+        "evidence_event_count": 1,
+        "validation_event_count": 1,
+        "passed_validation_event_count": 1,
+        "validation_evidence_node_count": 1,
+    }
+    monkeypatch.setattr(
+        materializer,
+        "_m38_evidence_projection_from_events",
+        lambda _connection, *, watermark: dict(projection),
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_m42_apply_exact_legacy_evidence_overlay",
+        lambda rows, *, watermark: list(rows),
+    )
+    monkeypatch.setattr(materializer, "_M42_LEGACY_EVIDENCE_NODE_COUNT", 1)
+    monkeypatch.setattr(materializer, "_M42_LEGACY_EVIDENCE_EVENT_COUNT", 1)
+    monkeypatch.setattr(materializer, "_M42_LEGACY_VALIDATION_EVENT_COUNT", 1)
+    monkeypatch.setattr(
+        materializer, "_M42_LEGACY_PASSED_VALIDATION_EVENT_COUNT", 1
+    )
+    monkeypatch.setattr(
+        materializer, "_M42_LEGACY_VALIDATION_EVIDENCE_NODE_COUNT", 1
+    )
+    monkeypatch.setattr(
+        materializer, "_M42_LEGACY_EVIDENCE_REFRESH_ROWS", MappingProxyType({})
+    )
+    monkeypatch.setattr(
+        materializer, "_M42_LEGACY_PROJECTION_MANIFEST_CID", "sha256:test"
+    )
+    evidence_digest = materializer._identity(
+        {
+            "schema": materializer._M42_LEGACY_EVIDENCE_PROJECTION_SCHEMA,
+            "manifest_cid": "sha256:test",
+            "event_watermark": materializer._M42_LEGACY_PROJECTION_WATERMARK,
+            "evidence_node_count": 1,
+            "evidence_event_count": 1,
+            "validation_event_count": 1,
+            "passed_validation_event_count": 1,
+            "validation_evidence_node_count": 1,
+            "rows": [prior],
+        }
+    )
+    monkeypatch.setattr(
+        materializer, "_M42_LEGACY_EVIDENCE_PROJECTION_DIGEST", evidence_digest
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_m42_legacy_validation_table_projection",
+        lambda _connection: {
+            "validation_run_count": 1,
+            "validation_result_count": 1,
+            "validation_runs_digest": "sha256:runs",
+            "validation_results_digest": "sha256:results",
+            "legacy_validation_attempt_overlay_count": 1,
+            "complete_validation_table_projection_verified": True,
+        },
+    )
+    return prior, target, event
+
+
+def test_m42_exact_target_requires_event_identity_session_and_membership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m42_exact_target_test",
+    )
+    prior, target, event = _synthetic_m42_exact_target(monkeypatch, materializer)
+    connection = _M42ExactTargetConnection([prior, target], event)
+
+    verified = materializer._verify_m42_exact_legacy_projection(
+        connection, expected_target_evidence_row=target
+    )
+    assert verified["legacy_event_watermark"] == 291
+    assert verified["prior_evidence_node_count"] == 1
+    assert verified["total_evidence_node_count"] == 2
+    assert verified["additional_evidence_node_count"] == 1
+
+    with pytest.raises(
+        materializer.MigrationRequired, match="lacks event 292"
+    ):
+        materializer._verify_m42_exact_legacy_projection(
+            _M42ExactTargetConnection([prior, target], None),
+            expected_target_evidence_row=target,
+        )
+
+    bad_id = ("not-a-cid",) + target[1:]
+    with pytest.raises(
+        materializer.MigrationRequired, match="target evidence identity differs"
+    ):
+        materializer._verify_m42_exact_legacy_projection(
+            connection, expected_target_evidence_row=bad_id
+        )
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    arbitrary_body = json.loads(str(target[6]))
+    arbitrary_id = content_identity(
+        {
+            "task_cid": "task:arbitrary",
+            "evidence_kind": target[3],
+            "digest": target[4],
+            "body": arbitrary_body,
+        }
+    )
+    arbitrary = (arbitrary_id, "", "task:arbitrary") + target[3:]
+    with pytest.raises(
+        materializer.MigrationRequired, match="target evidence identity differs"
+    ):
+        materializer._verify_m42_exact_legacy_projection(
+            connection, expected_target_evidence_row=arbitrary
+        )
+
+    wrong_session = event[:7] + ("session:forged",) + event[8:]
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="target event/evidence binding differs",
+    ):
+        materializer._verify_m42_exact_legacy_projection(
+            _M42ExactTargetConnection([prior, target], wrong_session),
+            expected_target_evidence_row=target,
+        )
+
+    extra = ("evidence:unexpected",) + prior[1:]
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="exact evidence projection membership differs",
+    ):
+        materializer._verify_m42_exact_legacy_projection(
+            _M42ExactTargetConnection([prior, target, extra], event),
+            expected_target_evidence_row=target,
+        )
+
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="target evidence row must be one tuple",
+    ):
+        materializer._verify_m42_exact_legacy_projection(
+            connection,
+            expected_target_evidence_row=[target, target],  # type: ignore[arg-type]
+        )
+
+
+def test_m42_exact_target_requires_canonical_event_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m42_canonical_target_event_test",
+    )
+    prior, target, event = _synthetic_m42_exact_target(monkeypatch, materializer)
+    noncanonical = event[:-1] + (
+        json.dumps(json.loads(str(event[-1])), indent=2, sort_keys=False),
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="target event projection body is not canonical",
+    ):
+        materializer._verify_m42_exact_legacy_projection(
+            _M42ExactTargetConnection([prior, target], noncanonical),
+            expected_target_evidence_row=target,
+        )
 
 
 def test_m38_evidence_projection_normalizes_named_quack_rows() -> None:

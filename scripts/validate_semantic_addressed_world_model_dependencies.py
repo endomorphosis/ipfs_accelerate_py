@@ -36,6 +36,9 @@ NAMESPACE = "semantic-addressed-world-model-v1"
 REVISION = "SAWM-PLAN-R2"
 SCHEMA = "semantic-addressed-world-model/dependency-seal-validation@1"
 _SHA256 = re.compile(r"sha256:[0-9a-f]{64}")
+_M42_AUTHORITY_CID = (
+    "sha256:1e1df3ea3d6b1805dc32f6dd43c61bb95d99e2d08da4c96872441dbc9fdbf587"
+)
 _HISTORICAL_VALIDATION_PYTHON = "/home/barberb/.local/bin/python"
 _OPERATIONAL_VALIDATION_PYTHON = "python"
 _VALIDATION_RUNTIME_ROOTS = {
@@ -3193,6 +3196,286 @@ def _m18_portal_completion_persistence_errors(
     except Exception as exc:
         return [
             "M18 portal-completion authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m42_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Return true when any protected surface declares the M42 successor."""
+
+    key = "failed_pre_authoritative_m41_evidence_projection_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m42_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    """Require M41 final -> exact two-file repair -> nine-path M42 child."""
+
+    try:
+        chain = authority.get("source_chain", {})
+        repair_blobs = chain.get("projection_repair_blobs", {})
+        if (
+            not isinstance(chain, Mapping)
+            or not isinstance(repair_blobs, Mapping)
+            or chain.get("m41_final_control_commit")
+            != materializer._M42_M41_FINAL_CONTROL_COMMIT
+            or chain.get("m41_final_control_tree")
+            != materializer._M42_M41_FINAL_CONTROL_TREE
+            or chain.get("projection_repair_parent")
+            != materializer._M42_M41_FINAL_CONTROL_COMMIT
+            or chain.get("projection_repair_commit")
+            != materializer._M42_PROJECTION_REPAIR_COMMIT
+            or chain.get("projection_repair_tree")
+            != materializer._M42_PROJECTION_REPAIR_TREE
+            or dict(repair_blobs)
+            != dict(materializer._M42_PROJECTION_REPAIR_BLOBS)
+            or int(chain.get("bounded_repair_commit_count") or 0) != 1
+            or chain.get("final_control_parent")
+            != materializer._M42_PROJECTION_REPAIR_COMMIT
+            or chain.get("final_control_commit_is_current_head") is not True
+            or int(chain.get("final_control_commit_count") or 0) != 1
+            or set(authority.get("operator_control_paths", ()))
+            != set(materializer._M42_OPERATOR_CONTROL_PATHS)
+            or set(repair_blobs)
+            != {
+                "scripts/materialize_semantic_addressed_world_model_program.py",
+                "test/api/semantic_world/"
+                "test_semantic_addressed_world_model_board.py",
+            }
+        ):
+            raise RuntimeError("M42 sealed source-chain identity fields differ")
+        if not hasattr(materializer, "_assert_m42_source_delta"):
+            raise RuntimeError("M42 final source-delta verifier is unavailable")
+        population = materializer.build_population(root)
+        materializer._assert_m42_source_delta(root, population, authority)
+        return []
+    except Exception as exc:
+        return [
+            "M42 exact repair/control source chain differs: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m42_failed_pre_authoritative_m41_evidence_projection_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Validate M42 before masking M41's pre-authoritative projection failure."""
+
+    key = "failed_pre_authoritative_m41_evidence_projection_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m42_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M42 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer
+            ._expected_m42_failed_pre_authoritative_m41_evidence_projection_successor_authority()
+        )
+        contract = materializer._validated_m42_live_preflight_contract(expected)
+        reference = dict(materializer._m42_authority_reference())
+        expected_cid = materializer._identity(expected)
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append("M42 successor authority is only partially declared")
+        if scheduler.get(key) != reference or migration.get(key) != reference:
+            errors.append("M42 successor reference differs")
+        if seal.get(f"{key}_cid") != expected_cid:
+            errors.append("M42 successor CID differs")
+
+        m41_key = "failed_pre_authoritative_m40_validation_successor_materialization"
+        m41_expected = (
+            materializer
+            ._expected_m41_failed_pre_authoritative_m40_validation_successor_authority()
+        )
+        m41_reference = dict(materializer._m41_authority_reference())
+        m41_cid = materializer._identity(m41_expected)
+        if (
+            scheduler.get(m41_key) != m41_reference
+            or migration.get(m41_key) != m41_reference
+            or seal.get(f"{m41_key}_cid") != m41_cid
+            or m41_cid
+            != "sha256:25ad5550b59024c8da9b4821fba2d7b1b49d2a17a781e5d4bd2cbe58cb7b0233"
+            or expected.get("prior_m41_authority") != m41_expected
+            or expected.get("prior_m41_reference") != m41_reference
+        ):
+            errors.append("M42 embedded historical M41 controls differ")
+
+        failed = expected.get("failed_m41_pre_authoritative_materialization", {})
+        split_clock = expected.get("split_timestamp_writer_evidence", {})
+        legacy = expected.get("exact_legacy_projection_authority", {})
+        repair = expected.get("accepted_projection_repair", {})
+        derivation = expected.get("target_projection_derivation", {})
+        preservation = expected.get("preservation", {})
+        changes = expected.get("exact_changes", {})
+        required_functions = (
+            "_assert_m42_historical_m41_controls",
+            "_assert_m42_source_delta",
+            "_validated_m42_live_preflight_contract",
+            "_m42_source_binding_authority",
+            "_verify_m42_exact_legacy_projection",
+            "_verify_m42_live_materialization",
+            "_materialize_m42",
+            "_check_m42_materialized",
+        )
+        if (
+            expected.get("schema")
+            != (
+                "sawm/failed-pre-authoritative-m41-evidence-projection-"
+                "successor-authorization@1"
+            )
+            or expected_cid != _M42_AUTHORITY_CID
+            or expected_cid != materializer._M42_AUTHORITY_CID
+            or expected.get("migration_revision") != "SAWM-R2-M42"
+            or expected.get("migration_kind") != key
+            or expected.get("control_recorded_at") != "2026-09-01T06:00:00Z"
+            or expected.get("target_generation") != 30
+            or expected.get("target_event_watermark") != 292
+            or expected.get("target_projection_cid")
+            != "baguqeera6t2s6prg5atpg4gkgrlmqclu34firbn4z2o3wsgv6btp7p6q66tq"
+            or failed.get("schema")
+            != "sawm/pre-authoritative-m41-materialization-failure@1"
+            or failed.get("attempt") != "SAWM-R2-M41-MATERIALIZE-A1"
+            or failed.get("phase")
+            != "exact_historical_evidence_projection_verification"
+            or failed.get("failure_kind")
+            != "landed_projection_differs_from_event_only_replay"
+            or failed.get("source_head")
+            != materializer._M42_M41_FINAL_CONTROL_COMMIT
+            or failed.get("source_tree") != materializer._M42_M41_FINAL_CONTROL_TREE
+            or failed.get("sealed_suite_passed") != 314
+            or failed.get("sealed_suite_failed") != 0
+            or failed.get("materializer_invoked") is not True
+            or failed.get("authenticated_live_quack_read_opened") is not True
+            or failed.get("direct_duckdb_opened") is not False
+            or failed.get("quack_mutation_request_created") is not False
+            or failed.get("record_evidence_reached") is not False
+            or failed.get("event_292_rows_created") != 0
+            or failed.get("m41_receipt_created") is not False
+            or failed.get("accepted_completion_changes") != 0
+            or failed.get("worker_self_approval") is not False
+            or split_clock.get("writer_inner_time_sampled_before_event_append")
+            is not True
+            or split_clock.get("legacy_mismatch_count") != 4
+            or split_clock.get("event_identity_validation_preserved") is not True
+            or split_clock.get("run_and_result_identity_validation_preserved")
+            is not True
+            or legacy.get("schema") != "sawm/m42-legacy-projection-authority@1"
+            or legacy.get("manifest_cid")
+            != materializer._M42_LEGACY_PROJECTION_MANIFEST_CID
+            or legacy.get("evidence_projection_digest")
+            != materializer._M42_LEGACY_EVIDENCE_PROJECTION_DIGEST
+            or legacy.get("validation_runs_digest")
+            != materializer._M42_LEGACY_VALIDATION_RUNS_DIGEST
+            or legacy.get("validation_results_digest")
+            != materializer._M42_LEGACY_VALIDATION_RESULTS_DIGEST
+            or legacy.get("event_watermark") != 291
+            or legacy.get("evidence_node_count") != 48
+            or legacy.get("evidence_event_count") != 37
+            or legacy.get("validation_event_count") != 11
+            or legacy.get("validation_run_count") != 11
+            or legacy.get("validation_result_count") != 11
+            or legacy.get("evidence_refresh_overlay_count") != 9
+            or legacy.get("compact_validation_evidence_overlay_count") != 1
+            or legacy.get("validation_attempt_overlay_count") != 1
+            or legacy.get("overlay_is_closed") is not True
+            or legacy.get("event_only_replay_remains_strict_by_default") is not True
+            or repair.get("schema") != "sawm/m41-evidence-projection-repair@1"
+            or repair.get("repair_parent")
+            != materializer._M42_M41_FINAL_CONTROL_COMMIT
+            or repair.get("repair_commit")
+            != materializer._M42_PROJECTION_REPAIR_COMMIT
+            or repair.get("repair_tree") != materializer._M42_PROJECTION_REPAIR_TREE
+            or repair.get("changed_paths")
+            != sorted(materializer._M42_PROJECTION_REPAIR_BLOBS)
+            or repair.get("blob_oids")
+            != dict(materializer._M42_PROJECTION_REPAIR_BLOBS)
+            or repair.get("strict_default_m38_verifier_preserved") is not True
+            or repair.get("m42_exact_overlay_verifier_added") is not True
+            or repair.get("production_authority_selection_changed") is not False
+            or repair.get("historical_rows_rewritten") is not False
+            or repair.get("validation_weakened") is not False
+            or repair.get("focused_tests_passed") != 21
+            or contract.get("generation_restart_authorized") is not False
+            or contract.get("prior_event_watermark") != 291
+            or contract.get("target_event_watermark") != 292
+            or contract.get("m37_receipt_must_be_absent") is not True
+            or contract.get("m38_receipt_must_be_absent") is not True
+            or contract.get("m39_receipt_must_be_absent") is not True
+            or contract.get("m40_receipt_must_be_absent") is not True
+            or contract.get("m41_receipt_must_be_absent") is not True
+            or contract.get("legacy_projection_manifest_cid")
+            != legacy.get("manifest_cid")
+            or contract.get("legacy_evidence_projection_digest")
+            != legacy.get("evidence_projection_digest")
+            or contract.get("legacy_validation_runs_digest")
+            != legacy.get("validation_runs_digest")
+            or contract.get("legacy_validation_results_digest")
+            != legacy.get("validation_results_digest")
+            or derivation.get("recomputed_not_inherited") is not True
+            or derivation.get("event_body_bound_by_event_prefix_not_projection")
+            is not True
+            or preservation.get("failed_m41_materialization_attempt_preserved")
+            is not True
+            or preservation.get("m37_receipt_created_or_rewritten") is not False
+            or preservation.get("m38_receipt_created_or_rewritten") is not False
+            or preservation.get("m39_receipt_created_or_rewritten") is not False
+            or preservation.get("m40_receipt_created_or_rewritten") is not False
+            or preservation.get("m41_receipt_created_or_rewritten") is not False
+            or changes.get("event_suffix_length") != 1
+            or changes.get("evidence_node_changes") != 1
+            or changes.get("evidence_event_changes") != 1
+            or changes.get("validation_event_changes") != 0
+            or changes.get("store_generation_row_changes") != 0
+            or changes.get("state_server_row_changes") != 0
+            or changes.get("accepted_completion_changes") != 0
+            or any(not hasattr(materializer, name) for name in required_functions)
+        ):
+            errors.append("M42 failed-M41-projection successor delta is not exact")
+        if require_active_runtime:
+            runtime = scheduler.get("runtime_paths")
+            program = scheduler.get("database_program")
+            owner = scheduler.get("quack_owner")
+            target_root = str(expected["target_runtime_root"])
+            if (
+                not isinstance(program, Mapping)
+                or program.get("store_generation") != "30"
+                or program.get("store_id") != expected["target_store_id"]
+                or not isinstance(owner, Mapping)
+                or owner.get("database_path") != expected["target_store_id"]
+                or owner.get("port") != 24_070
+                or runtime
+                != {
+                    "root": target_root,
+                    "state": f"{target_root}/state",
+                    "worktrees": f"{target_root}/worktrees",
+                    "merge_queue": f"{target_root}/merge-queue",
+                    "logs": f"{target_root}/logs",
+                    "generated_runtime_artifacts_are_completion_authority": False,
+                }
+            ):
+                errors.append("scheduler M42 target/runtime binding is not exact")
+        errors.extend(_m42_source_chain_errors(root, materializer, expected))
+        return errors
+    except Exception as exc:
+        return [
+            "M42 failed-pre-authoritative-M41-projection authority is unavailable: "
             f"{type(exc).__name__}: {exc}"
         ]
 
@@ -11605,6 +11888,74 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m42_key = (
+        "failed_pre_authoritative_m41_evidence_projection_"
+        "successor_materialization"
+    )
+    m42_presence = (
+        m42_key in scheduler,
+        m42_key in migration,
+        f"{m42_key}_cid" in seal,
+    )
+    if any(m42_presence):
+        if not all(m42_presence):
+            return effective, ["active M42 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m42_nested_source_materializer",
+                REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M42 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer
+                ._expected_m42_failed_pre_authoritative_m41_evidence_projection_successor_authority()
+            )
+            materializer._validated_m42_live_preflight_contract(authority)
+            reference = dict(materializer._m42_authority_reference())
+            expected_cid = materializer._identity(authority)
+            source_errors = _m42_source_chain_errors(
+                REPO_ROOT, materializer, authority
+            )
+            if source_errors:
+                raise RuntimeError("; ".join(source_errors))
+        except Exception as exc:
+            return effective, [f"active M42 nested-source authority unavailable: {exc}"]
+        if (
+            scheduler.get(m42_key) != reference
+            or migration.get(m42_key) != reference
+            or seal.get(f"{m42_key}_cid") != expected_cid
+            or expected_cid != _M42_AUTHORITY_CID
+        ):
+            return effective, ["active M42 nested-source authority differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(authority.get("current_datasets_gitlink") or ""),
+                str(authority.get("current_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(authority.get("current_kit_gitlink") or ""),
+                str(authority.get("current_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M42 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     m41_key = "failed_pre_authoritative_m40_validation_successor_materialization"
     m41_presence = (
         m41_key in scheduler,
@@ -12706,6 +13057,15 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m42_key = (
+            "failed_pre_authoritative_m41_evidence_projection_"
+            "successor_materialization"
+        )
+        m42_presence = (
+            m42_key in scheduler_probe,
+            m42_key in migration_probe,
+            f"{m42_key}_cid" in seal,
+        )
         m41_key = "failed_pre_authoritative_m40_validation_successor_materialization"
         m41_presence = (
             m41_key in scheduler_probe,
@@ -12846,7 +13206,38 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m41_presence):
+        if any(m42_presence):
+            scheduled = scheduler_probe.get(m42_key)
+            migrated = migration_probe.get(m42_key)
+            if not all(m42_presence) or scheduled != migrated:
+                unexpected = ["M42 authority is partial or differs across controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m42_source_status_materializer",
+                    root / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M42 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer
+                        ._expected_m42_failed_pre_authoritative_m41_evidence_projection_successor_authority()
+                    )
+                    reference = dict(materializer._m42_authority_reference())
+                    expected_seal_cid = materializer._identity(expected)
+                    if (
+                        scheduled != reference
+                        or seal.get(f"{m42_key}_cid") != expected_seal_cid
+                        or expected_seal_cid != _M42_AUTHORITY_CID
+                    ):
+                        unexpected = ["M42 authority/CID differs across controls"]
+                    else:
+                        unexpected = _m42_source_chain_errors(
+                            root, materializer, expected
+                        )
+        elif any(m41_presence):
             scheduled = scheduler_probe.get(m41_key)
             migrated = migration_probe.get(m41_key)
             if not all(m41_presence) or scheduled != migrated:
@@ -14020,6 +14411,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m42_declared = _m42_successor_declared(scheduler, seal, migration)
         m41_declared = _m41_successor_declared(scheduler, seal, migration)
         m40_declared = _m40_successor_declared(scheduler, seal, migration)
         m39_declared = _m39_successor_declared(scheduler, seal, migration)
@@ -14037,7 +14429,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m41_declared
+            m42_declared
+            or m41_declared
             or m40_declared
             or m39_declared
             or m38_declared
@@ -14055,19 +14448,30 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m41_declared:
+            if m42_declared:
+                protocol_errors.extend(
+                    _m42_failed_pre_authoritative_m41_evidence_projection_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+            if m41_declared and not m42_declared:
                 protocol_errors.extend(
                     _m41_failed_pre_authoritative_m40_validation_successor_errors(
                         scheduler, seal, migration, root=root
                     )
                 )
-            if m40_declared and not m41_declared:
+            if m40_declared and not m41_declared and not m42_declared:
                 protocol_errors.extend(
                     _m40_failed_pre_authoritative_m39_successor_errors(
                         scheduler, seal, migration, root=root
                     )
                 )
-            if m39_declared and not m40_declared and not m41_declared:
+            if (
+                m39_declared
+                and not m40_declared
+                and not m41_declared
+                and not m42_declared
+            ):
                 protocol_errors.extend(
                     _m39_committed_m38_evidence_reconciliation_successor_errors(
                         scheduler, seal, migration, root=root
@@ -14078,6 +14482,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                 and not m39_declared
                 and not m40_declared
                 and not m41_declared
+                and not m42_declared
             ):
                 protocol_errors.extend(
                     _m38_pre_authoritative_custody_restart_successor_errors(
@@ -14090,6 +14495,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                 and not m39_declared
                 and not m40_declared
                 and not m41_declared
+                and not m42_declared
             ):
                 protocol_errors.extend(
                     _m37_post_reboot_generation_restart_successor_errors(
@@ -14104,7 +14510,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         migration,
                         root=root,
                         require_active_runtime=not (
-                            m41_declared
+                            m42_declared
+                            or m41_declared
                             or m40_declared
                             or m39_declared
                             or m38_declared

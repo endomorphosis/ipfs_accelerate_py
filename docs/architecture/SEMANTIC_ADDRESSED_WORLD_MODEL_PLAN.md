@@ -2167,7 +2167,61 @@ verification compares canonical inner evidence/event bodies, including
 Quack envelope JSON. M38 is selected before M37 only when its complete
 protected-control triplet and source chain validate.
 
-## 50. Current limitations at seal time
+## 50. M42 exact-legacy-projection successor after failed M41 materialization
+
+`SAWM-R2-M42` supersedes M41 append-only without rewriting M41. The M41
+controls remain sealed at commit `39c6cb33e353ef993f8db860633a7ca07b5c3097`,
+tree `4879c56bc86bd128a077d98833aa3f3a6fe5057d`, and authority CID
+`sha256:25ad5550b59024c8da9b4821fba2d7b1b49d2a17a781e5d4bd2cbe58cb7b0233`.
+Its 314-test pre-materialization suite passed, but the subsequent authenticated
+read-only Quack precheck raised `MigrationRequired: M38 validation event
+envelope differs`. The attempt stopped before a mutation request or
+`record_evidence`: event watermark 291, projection, 48 evidence nodes, 37
+evidence events, 11 validation events, task/goal/plan heads, generation-30
+owner, and coordination semantics did not change. No M37 through M41 successor
+receipt exists.
+
+The bounded repair commit is
+`8e835d805a130fbac0dd18812a55fcce9bbc8a5d`, tree
+`9efc46866b691cb1197f40ca04e0d8928699690c`. It changes only the materializer
+and focused board tests. It preserves the strict default M38 event replay and
+adds a closed M42 legacy projection manifest. That manifest binds nine exact
+evidence refresh overlays, one compact historical validation-evidence body,
+one exact validation-attempt overlay, all 48 evidence rows, and all 11
+validation runs/results. The separate M42 authority plus the event-prefix and
+event-CID checks bind the dual timestamps of the four affected validation
+events. The sealed projection identities are:
+
+- manifest `sha256:b634a4ec5a3adbf04874443a779161defe183991e263eea9c76edc867bb5ff04`;
+- evidence projection `sha256:f3b5f2d9c2c2b1a78b81c2a90b4b60bcf727dbe9272c7c6213441a2c5a3839c9`;
+- validation runs `sha256:a025721f25ddf3db874f15b6e5f401760d6437fe41d9f7d5b33995600ceb4ac3`;
+- validation results `sha256:17e1297bc906f35e2450a45eebb520806495f8d84e97ad3a081b9cb5db7b70ff`.
+
+The final M42 control is one direct child of that repair and changes exactly
+the same nine operator-protected paths. Its authority CID is
+`sha256:1e1df3ea3d6b1805dc32f6dd43c61bb95d99e2d08da4c96872441dbc9fdbf587`.
+The production target row is derived from the sealed migration body, never
+from a database row offered as expected authority. Its canonical evidence
+body, CID, event-292 envelope, event CID, exact `session:intent`, current source
+binding, generation-30 owner, target projection, and prefix are independently
+fetched and rehashed. The lower-level legacy helper establishes only structural
+consistency for its caller-bound expected row; production provenance remains a
+separate mandatory gate. Absent-event, noncanonical, second-row, stale, or
+partially declared targets fail closed.
+
+M42 alone may append one evidence event 292 through the existing authenticated
+Quack owner. It preserves plan revision 28 and generation 30, and targets 49
+evidence nodes, 38 evidence events, 11 validation events, and projection
+`baguqeera6t2s6prg5atpg4gkgrlmqclu34firbn4z2o3wsgv6btp7p6q66tq`.
+The projection identity is correctly shared by any exact event-292 append
+because that projection hashes task/goal/plan heads, dependency count, and
+event watermark; the event body and evidence are separately bound by the
+event prefix and exact row verification. Only
+`m42-source-successor-receipt.json` may be published, last and idempotently.
+M42 grants no restart, direct DuckDB writer, task completion, implementation
+change, validation weakening, or worker self-approval.
+
+## 51. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.
