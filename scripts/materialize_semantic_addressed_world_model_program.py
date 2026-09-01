@@ -61764,99 +61764,432 @@ def _m38_projection_cid_at_watermark(source: Any, watermark: int) -> str:
     )
 
 
+def _m38_evidence_projection_from_events(
+    connection: Any,
+    *,
+    watermark: int,
+) -> dict[str, Any]:
+    """Fold the immutable event prefix into its exact evidence-node projection."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    event_rows = connection.execute(
+        "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+        "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+        "WHERE global_sequence<=? AND event_type IN "
+        "('intent.evidence_recorded','intent.validation_recorded') "
+        "ORDER BY global_sequence",
+        [int(watermark)],
+    ).fetchall()
+
+    projected: dict[str, tuple[tuple[str, ...], str]] = {}
+    seen_sequences: set[int] = set()
+    last_sequence = 0
+    evidence_recorded_ids: set[str] = set()
+    validation_evidence_ids: set[str] = set()
+    evidence_event_count = 0
+    validation_event_count = 0
+    passed_validation_event_count = 0
+
+    def closed_object(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, member in pairs:
+            if key in value:
+                raise ValueError(f"duplicate event JSON key {key!r}")
+            value[key] = member
+        return value
+
+    def require_text(value: Any, *, field: str, optional: bool = False) -> str:
+        if not isinstance(value, str) or (not optional and not value):
+            raise MigrationRequired(f"M38 evidence event {field} is invalid")
+        return value
+
+    def fold(row: tuple[str, ...], *, source_kind: str) -> None:
+        evidence_id = row[0]
+        previous = projected.get(evidence_id)
+        if previous is not None:
+            previous_row, previous_source = previous
+            # Explicit evidence IDs exclude created_at from their identity and
+            # record_evidence deliberately performs DELETE+INSERT.  Therefore
+            # identical evidence may be refreshed and the greatest event
+            # sequence supplies its current timestamp.  A validation evidence
+            # ID includes run_id, whose identity binds its recorded_at; any
+            # timestamp change involving a validation-derived row is a conflict.
+            if previous_source == "validation" or source_kind == "validation":
+                identity_matches = previous_row == row
+            else:
+                identity_matches = (
+                    previous_row[0:5] + previous_row[6:7]
+                    == row[0:5] + row[6:7]
+                )
+            if not identity_matches:
+                raise MigrationRequired(
+                    "M38 evidence event identity-bound fields conflict"
+                )
+        projected[evidence_id] = (row, source_kind)
+
+    event_columns = (
+        "event_id",
+        "stream_id",
+        "sequence",
+        "global_sequence",
+        "event_type",
+        "task_cid",
+        "attempt_id",
+        "session_id",
+        "recorded_at",
+        "body_json",
+    )
+    for raw_row in event_rows:
+        if isinstance(raw_row, Mapping):
+            if any(column not in raw_row for column in event_columns):
+                raise MigrationRequired("M38 evidence event row shape is invalid")
+            normalized_row = tuple(raw_row[column] for column in event_columns)
+        else:
+            try:
+                normalized_row = tuple(raw_row[index] for index in range(10))
+            except (IndexError, KeyError, TypeError) as exc:
+                raise MigrationRequired(
+                    "M38 evidence event row shape is invalid"
+                ) from exc
+            if len(raw_row) != 10:
+                raise MigrationRequired("M38 evidence event row shape is invalid")
+        (
+            event_id,
+            stream_id,
+            stream_sequence,
+            global_sequence,
+            event_type,
+            task_cid,
+            attempt_id,
+            session_id,
+            event_recorded_at,
+            body_json,
+        ) = normalized_row
+        try:
+            sequence = int(global_sequence)
+            normalized_stream_sequence = int(stream_sequence)
+        except (TypeError, ValueError) as exc:
+            raise MigrationRequired("M38 evidence event sequence is invalid") from exc
+        if (
+            sequence < 1
+            or sequence > int(watermark)
+            or sequence in seen_sequences
+            or sequence <= last_sequence
+            or normalized_stream_sequence != sequence
+        ):
+            raise MigrationRequired("M38 evidence event sequence is invalid")
+        seen_sequences.add(sequence)
+        last_sequence = sequence
+        encoded_envelope: str | None
+        if isinstance(body_json, Mapping):
+            envelope = dict(body_json)
+            encoded_envelope = None
+        else:
+            if isinstance(body_json, bytes):
+                try:
+                    encoded_envelope = body_json.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise MigrationRequired("M38 evidence event JSON is invalid") from exc
+            elif isinstance(body_json, str):
+                encoded_envelope = body_json
+            else:
+                raise MigrationRequired("M38 evidence event JSON is invalid")
+            try:
+                envelope = json.loads(
+                    encoded_envelope, object_pairs_hook=closed_object
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise MigrationRequired("M38 evidence event JSON is invalid") from exc
+        try:
+            canonical_envelope = _canonical(envelope).decode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise MigrationRequired("M38 evidence event JSON is invalid") from exc
+        if encoded_envelope is not None and encoded_envelope != canonical_envelope:
+            raise MigrationRequired("M38 evidence event envelope differs")
+        # Normalize Quack's decoded Mapping and local text transports to the
+        # same plain, canonical JSON value before validation and rehashing.
+        envelope = json.loads(canonical_envelope, object_pairs_hook=closed_object)
+        if (
+            not isinstance(envelope, Mapping)
+            or set(envelope)
+            != {
+                "schema",
+                "event_type",
+                "subject_id",
+                "body",
+                "recorded_at",
+                "owner_id",
+            }
+            or envelope.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/intent-event@1"
+            or envelope.get("event_type") != event_type
+            or envelope.get("recorded_at") != event_recorded_at
+            or stream_id != "stream:intent"
+            or not isinstance(session_id, str)
+            or not session_id
+            or not isinstance(envelope.get("owner_id"), str)
+            or not envelope.get("owner_id")
+            or event_id
+            != content_identity(
+                {
+                    "stream_id": "stream:intent",
+                    "sequence": sequence,
+                    "global_sequence": sequence,
+                    "event_type": event_type,
+                    "body": envelope,
+                }
+            )
+        ):
+            raise MigrationRequired("M38 evidence event envelope differs")
+        inner = envelope.get("body") if isinstance(envelope, Mapping) else None
+        if not isinstance(inner, Mapping):
+            raise MigrationRequired("M38 evidence event envelope differs")
+
+        if event_type == "intent.evidence_recorded":
+            evidence_event_count += 1
+            if (
+                set(inner)
+                != {
+                    "evidence_id",
+                    "parent_evidence_id",
+                    "task_cid",
+                    "evidence_kind",
+                    "digest",
+                    "body",
+                    "created_at",
+                    "revision",
+                }
+                or type(inner.get("revision")) is not int
+                or inner.get("revision") != 0
+                or attempt_id != ""
+                or envelope.get("recorded_at") != inner.get("created_at")
+            ):
+                raise MigrationRequired("M38 evidence event envelope differs")
+            evidence_id = require_text(inner.get("evidence_id"), field="evidence_id")
+            parent_evidence_id = require_text(
+                inner.get("parent_evidence_id"),
+                field="parent_evidence_id",
+                optional=True,
+            )
+            inner_task_cid = require_text(inner.get("task_cid"), field="task_cid")
+            evidence_kind = require_text(
+                inner.get("evidence_kind"), field="evidence_kind"
+            )
+            digest = require_text(inner.get("digest"), field="digest")
+            created_at = require_text(inner.get("created_at"), field="created_at")
+            body = inner.get("body")
+            if (
+                not isinstance(body, Mapping)
+                or envelope.get("subject_id") != evidence_id
+                or task_cid != inner_task_cid
+                or evidence_id
+                != content_identity(
+                    {
+                        "task_cid": inner_task_cid,
+                        "evidence_kind": evidence_kind,
+                        "digest": digest,
+                        "body": body,
+                    }
+                )
+            ):
+                raise MigrationRequired("M38 evidence event envelope differs")
+            fold(
+                (
+                    evidence_id,
+                    parent_evidence_id,
+                    inner_task_cid,
+                    evidence_kind,
+                    digest,
+                    created_at,
+                    _canonical(body).decode("utf-8"),
+                ),
+                source_kind="evidence",
+            )
+            evidence_recorded_ids.add(evidence_id)
+            continue
+
+        if event_type != "intent.validation_recorded":
+            raise MigrationRequired("M38 evidence event type is invalid")
+        validation_event_count += 1
+        if (
+            set(inner)
+            != {
+                "result_id",
+                "run_id",
+                "task_cid",
+                "outcome",
+                "evidence_digest",
+                "argv",
+                "body",
+                "recorded_at",
+                "revision",
+            }
+            or type(inner.get("revision")) is not int
+            or inner.get("revision") != 0
+        ):
+            raise MigrationRequired("M38 validation event envelope differs")
+        result_id = require_text(inner.get("result_id"), field="result_id")
+        run_id = require_text(inner.get("run_id"), field="run_id")
+        inner_task_cid = require_text(inner.get("task_cid"), field="task_cid")
+        outcome = require_text(inner.get("outcome"), field="outcome")
+        digest = require_text(inner.get("evidence_digest"), field="evidence_digest")
+        recorded_at = require_text(inner.get("recorded_at"), field="recorded_at")
+        argv = inner.get("argv")
+        validation_body = inner.get("body")
+        if (
+            outcome not in {"passed", "failed", "error", "skipped"}
+            or not isinstance(argv, list)
+            or any(not isinstance(argument, str) for argument in argv)
+            or not isinstance(validation_body, Mapping)
+            or not isinstance(attempt_id, str)
+            or envelope.get("recorded_at") != recorded_at
+            or envelope.get("subject_id") != result_id
+            or task_cid != inner_task_cid
+            or run_id
+            != content_identity(
+                {
+                    "task_cid": inner_task_cid,
+                    "attempt_id": attempt_id,
+                    "argv": argv,
+                    "recorded_at": recorded_at,
+                }
+            )
+            or result_id
+            != content_identity(
+                {
+                    "run_id": run_id,
+                    "outcome": outcome,
+                    "evidence_digest": digest,
+                }
+            )
+        ):
+            raise MigrationRequired("M38 validation event envelope differs")
+        if outcome != "passed":
+            continue
+        passed_validation_event_count += 1
+        evidence_id = content_identity(
+            {
+                "task_cid": inner_task_cid,
+                "evidence_kind": "validation",
+                "digest": digest,
+                "run_id": run_id,
+            }
+        )
+        fold(
+            (
+                evidence_id,
+                "",
+                inner_task_cid,
+                "validation",
+                digest,
+                recorded_at,
+                _canonical(
+                    {
+                        "run_id": run_id,
+                        "result_id": result_id,
+                        "argv": argv,
+                        "outcome": "passed",
+                    }
+                ).decode("utf-8"),
+            ),
+            source_kind="validation",
+        )
+        validation_evidence_ids.add(evidence_id)
+
+    expected_sorted = sorted(
+        (value[0] for value in projected.values()), key=lambda row: row[0]
+    )
+    return {
+        "rows": expected_sorted,
+        "evidence_node_count": len(expected_sorted),
+        "evidence_event_count": evidence_event_count,
+        "evidence_recorded_node_count": len(evidence_recorded_ids),
+        "validation_event_count": validation_event_count,
+        "passed_validation_event_count": passed_validation_event_count,
+        "validation_evidence_node_count": len(validation_evidence_ids),
+    }
+
+
 def _verify_m38_evidence_projection(
     connection: Any,
     *,
     watermark: int,
 ) -> dict[str, Any]:
-    """Derive every evidence row from the immutable intent-event prefix."""
+    """Verify every evidence row against the immutable intent-event prefix."""
 
-    event_rows = _m38_sql_triples(
-        connection.execute(
-            "SELECT global_sequence,event_type,body_json FROM domain_events "
-            "WHERE global_sequence<=? AND event_type='intent.evidence_recorded' "
-            "ORDER BY global_sequence",
-            [int(watermark)],
-        ).fetchall(),
-        ("global_sequence", "event_type", "body_json"),
+    projection = _m38_evidence_projection_from_events(
+        connection, watermark=watermark
     )
-    expected: list[tuple[str, str, str, str, str, str, str]] = []
-    for global_sequence, event_type, body_json in event_rows:
-        try:
-            envelope = _m38_parse_json(body_json)
-        except (json.JSONDecodeError, TypeError, UnicodeDecodeError) as exc:
-            raise MigrationRequired(
-                "M38 evidence event JSON is invalid"
-            ) from exc
-        inner = envelope.get("body") if isinstance(envelope, Mapping) else None
-        if (
-            event_type != "intent.evidence_recorded"
-            or not isinstance(inner, Mapping)
-            or envelope.get("event_type") != "intent.evidence_recorded"
-            or envelope.get("subject_id") != inner.get("evidence_id")
-            or envelope.get("recorded_at") != inner.get("created_at")
-            or int(inner.get("revision", -1)) != 0
-            or int(global_sequence) < 1
-        ):
-            raise MigrationRequired("M38 evidence event envelope differs")
-        body = inner.get("body")
-        if not isinstance(body, Mapping):
-            raise MigrationRequired("M38 evidence event body is not canonical")
-        expected.append(
-            (
-                str(inner.get("evidence_id") or ""),
-                str(inner.get("parent_evidence_id") or ""),
-                str(inner.get("task_cid") or ""),
-                str(inner.get("evidence_kind") or ""),
-                str(inner.get("digest") or ""),
-                str(inner.get("created_at") or ""),
-                _canonical(body).decode("utf-8"),
-            )
-        )
-    if any(not row[0] for row in expected) or len({row[0] for row in expected}) != len(
-        expected
-    ):
-        raise MigrationRequired("M38 evidence event identities are invalid")
-    actual = [
-        tuple(_m38_row_values(row)[:7])
-        for row in connection.execute(
-            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
-            "created_at,body_json FROM evidence_nodes ORDER BY evidence_id"
-        ).fetchall()
-    ]
-    expected_sorted = sorted(expected, key=lambda row: row[0])
+    raw_actual = connection.execute(
+        "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+        "created_at,body_json FROM evidence_nodes ORDER BY evidence_id"
+    ).fetchall()
+    evidence_columns = (
+        "evidence_id",
+        "parent_evidence_id",
+        "task_cid",
+        "evidence_kind",
+        "digest",
+        "created_at",
+        "body_json",
+    )
+    actual: list[tuple[Any, ...]] = []
+    for raw_row in raw_actual:
+        if isinstance(raw_row, Mapping):
+            if any(column not in raw_row for column in evidence_columns):
+                raise MigrationRequired("M38 evidence-node row shape is invalid")
+            row = tuple(raw_row[column] for column in evidence_columns)
+        else:
+            try:
+                row = tuple(raw_row[index] for index in range(7))
+            except (IndexError, KeyError, TypeError) as exc:
+                raise MigrationRequired(
+                    "M38 evidence-node row shape is invalid"
+                ) from exc
+            if len(raw_row) != 7:
+                raise MigrationRequired("M38 evidence-node row shape is invalid")
+        body_json = row[6]
+        if isinstance(body_json, Mapping):
+            body_text = _canonical(body_json).decode("utf-8")
+        elif isinstance(body_json, bytes):
+            try:
+                body_text = body_json.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise MigrationRequired("M38 evidence-node body is invalid") from exc
+        elif isinstance(body_json, str):
+            body_text = body_json
+        else:
+            raise MigrationRequired("M38 evidence-node body is invalid")
+        actual.append(row[0:6] + (body_text,))
+    expected_sorted = projection["rows"]
+    if len({row[0] for row in actual}) != len(actual):
+        raise MigrationRequired("M38 evidence-node identities are duplicate")
     actual_by_id = {row[0]: row for row in actual}
-    recorded_ids = {row[0] for row in expected_sorted}
-    extra = [row for row in actual if row[0] not in recorded_ids]
-    def _identity_fields(row: tuple[str, ...]) -> tuple[str, ...]:
-        # created_at may later-write; identity is id/parent/task/kind/digest/body.
-        return (row[0], row[1], row[2], row[3], row[4], row[6])
-
-    if any(
-        actual_by_id.get(row[0]) is None
-        or _identity_fields(actual_by_id[row[0]]) != _identity_fields(row)
-        for row in expected_sorted
-    ):
-        raise MigrationRequired("M38 evidence-recorded node projection differs")
-    if int(watermark) <= _M38_PRIOR_EVENT_WATERMARK:
-        expected_nodes, expected_recorded, expected_extra = 47, 36, 11
-    elif int(watermark) == _M38_TARGET_EVENT_WATERMARK:
-        expected_nodes, expected_recorded, expected_extra = 48, 37, 11
-    else:
-        raise MigrationRequired("M38 evidence projection watermark differs")
-    if (
-        len(actual) != expected_nodes
-        or len(expected_sorted) != expected_recorded
-        or len(extra) != expected_extra
-        or any(row[3] != "validation" for row in extra)
-    ):
-        raise MigrationRequired("M38 preserved evidence_nodes projection differs")
+    expected_by_id = {row[0]: row for row in expected_sorted}
+    missing = sorted(set(expected_by_id) - set(actual_by_id))
+    extra = sorted(set(actual_by_id) - set(expected_by_id))
+    if missing:
+        raise MigrationRequired("M38 evidence-node projection is missing rows")
+    if extra:
+        raise MigrationRequired("M38 evidence-node projection has extra rows")
+    if actual_by_id != expected_by_id:
+        raise MigrationRequired("M38 evidence-node/event projection conflicts")
     return {
-        "evidence_node_count": len(actual),
-        "evidence_event_count": len(expected),
-        "validation_evidence_node_count": len(extra),
+        key: value for key, value in projection.items() if key != "rows"
+    } | {
         "evidence_projection_digest": _identity(
-            {"watermark": int(watermark), "rows": expected_sorted, "extra": extra}
+            {
+                "watermark": int(watermark),
+                "rows": expected_sorted,
+                "evidence_event_count": projection["evidence_event_count"],
+                "validation_event_count": projection["validation_event_count"],
+                "passed_validation_event_count": projection[
+                    "passed_validation_event_count"
+                ],
+            }
         ),
         "complete_evidence_projection_verified": True,
     }
@@ -61980,14 +62313,8 @@ def _verify_m38_live_materialization(
         evidence_projection = _verify_m38_evidence_projection(
             connection, watermark=_M38_TARGET_EVENT_WATERMARK
         )
-        prior_evidence_event_count = int(
-            _m38_row_values(
-                connection.execute(
-                    "SELECT COUNT(*) FROM domain_events WHERE global_sequence<=? "
-                    "AND event_type='intent.evidence_recorded'",
-                    [_M38_PRIOR_EVENT_WATERMARK],
-                ).fetchone()
-            )[0]
+        prior_evidence_projection = _m38_evidence_projection_from_events(
+            connection, watermark=_M38_PRIOR_EVENT_WATERMARK
         )
         semantic = _semantic_authority_digest_on(connection)
     operational_events = _m37_normalized_operational_events(event_suffix_rows)
@@ -62033,8 +62360,16 @@ def _verify_m38_live_materialization(
         != authority["post_m36_operational_suffix"]["events"]
         or prefix[1] != _M38_TARGET_EVENT_WATERMARK
         or semantic != _M38_PRIOR_SEMANTIC_AUTHORITY_DIGEST
+        or evidence_projection["evidence_node_count"]
+        != prior_evidence_projection["evidence_node_count"] + 1
         or evidence_projection["evidence_event_count"]
-        != prior_evidence_event_count + 1
+        != prior_evidence_projection["evidence_event_count"] + 1
+        or evidence_projection["validation_event_count"]
+        != prior_evidence_projection["validation_event_count"]
+        or evidence_projection["passed_validation_event_count"]
+        != prior_evidence_projection["passed_validation_event_count"]
+        or evidence_projection["validation_evidence_node_count"]
+        != prior_evidence_projection["validation_evidence_node_count"]
     ):
         raise MigrationRequired("M38 exact target event/evidence authority differs")
     return {
@@ -62061,7 +62396,9 @@ def _verify_m38_live_materialization(
         "sealed_startup_entrypoint_requires_prestart_check": True,
         "runtime_custody_observation_not_persisted": True,
         "target_projection_recomputed": True,
-        "prior_evidence_node_count": prior_evidence_event_count,
+        "prior_evidence_node_count": prior_evidence_projection[
+            "evidence_node_count"
+        ],
         **evidence_projection,
         "semantic_authority_digest": semantic,
         "full_event_and_evidence_body_verified": True,
