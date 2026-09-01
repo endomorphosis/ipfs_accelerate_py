@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import importlib
 import importlib.util
@@ -1297,6 +1298,120 @@ def test_recover_force_does_not_bounce_healthy_owner_when_listener_is_up(
     assert owner.reconnected == 0
     assert server._connection is owner
     assert server._transport_connection is owner
+
+
+def test_owner_listener_ready_refuses_only_connection_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    server = SimpleNamespace(
+        config=SimpleNamespace(container_bind_host="127.0.0.1", container_port=46731),
+        _bound_port=46731,
+    )
+
+    def refused(_address: object, timeout: object = None) -> object:
+        del timeout
+        raise ConnectionRefusedError(errno.ECONNREFUSED, "Connection refused")
+
+    monkeypatch.setattr(materializer.socket, "create_connection", refused)
+    assert materializer._owner_listener_ready(server) is False
+
+    def timed_out(_address: object, timeout: object = None) -> object:
+        del timeout
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(materializer.socket, "create_connection", timed_out)
+    assert materializer._owner_listener_ready(server) is True
+
+    def reset(_address: object, timeout: object = None) -> object:
+        del timeout
+        raise ConnectionResetError(errno.ECONNRESET, "Connection reset")
+
+    monkeypatch.setattr(materializer.socket, "create_connection", reset)
+    assert materializer._owner_listener_ready(server) is True
+
+
+def test_recover_force_does_not_bounce_when_listener_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+
+    class _Owner:
+        def __init__(self) -> None:
+            self._poisoned = False
+            self.path = tmp_path / "control.duckdb"
+            self.reconnected = 0
+
+        def reconnect_exclusive_owner(self) -> None:
+            self.reconnected += 1
+
+    owner = _Owner()
+    refreshed: list[bool] = []
+    server = SimpleNamespace(
+        _connection=owner,
+        _owner_transaction_lock=threading.RLock(),
+        _command_gateway=SimpleNamespace(_connection=owner),
+        _transport_connection=owner,
+        _refresh_read_replica=lambda: refreshed.append(True),
+        config=SimpleNamespace(
+            database_path=tmp_path / "control.duckdb",
+            container_bind_host="127.0.0.1",
+            container_port=46731,
+        ),
+    )
+    monkeypatch.setattr(
+        materializer.socket,
+        "create_connection",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("timed out")),
+    )
+
+    assert materializer._recover_poisoned_owner_connection(server, force=True) is False
+    assert owner.reconnected == 0
+    assert refreshed == []
+    assert server._transport_connection is owner
+
+
+def test_recover_reconnects_closed_exclusive_owner(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+
+    class _Owner:
+        def __init__(self) -> None:
+            self._poisoned = False
+            self._closed = True
+            self._connection = None
+            self.path = tmp_path / "control.duckdb"
+            self.reconnected = 0
+            self._lock_context = object()
+
+        def reconnect_exclusive_owner(self) -> None:
+            self.reconnected += 1
+            self._closed = False
+            self._connection = object()
+
+    owner = _Owner()
+    server = SimpleNamespace(
+        _connection=owner,
+        _owner_transaction_lock=threading.RLock(),
+        _command_gateway=SimpleNamespace(_connection=owner),
+        _transport_connection=owner,
+        _refresh_read_replica=lambda: None,
+        config=SimpleNamespace(
+            database_path=tmp_path / "control.duckdb",
+            container_bind_host="127.0.0.1",
+            container_port=46731,
+        ),
+    )
+    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: False)
+
+    assert materializer._recover_poisoned_owner_connection(server, force=True) is True
+    assert owner.reconnected == 1
+    assert owner._closed is False
+    assert server._connection is owner
+    assert server._command_gateway._connection is owner
 
 
 def test_reconnect_exclusive_owner_keeps_usable_handle(tmp_path: Path) -> None:

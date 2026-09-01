@@ -2559,6 +2559,79 @@ def test_live_query_retries_quack_could_not_connect_birth_race(
     assert attempts == 2
 
 
+def test_live_query_does_not_execute_on_unusable_owner_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class IOException(Exception):
+        pass
+
+    class UnusableOwner:
+        def __init__(self) -> None:
+            self._poisoned = True
+            self._closed = False
+            self._connection = None
+            self.executed = 0
+
+        def execute(self, sql: str, _params: Any = None) -> _Result:
+            del sql
+            self.executed += 1
+            raise DuckDBConnectionPolicyError(
+                "DuckDB connection is unusable after an uncertain transaction"
+            )
+
+    class Sidecar:
+        def execute(self, sql: str, _params: Any = None) -> _Result:
+            if "quack_query" in sql:
+                raise IOException("Could not connect to server")
+            return _Result()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "duckdb",
+        SimpleNamespace(connect=lambda _database: Sidecar()),
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server."
+        "QUACK_LIVE_QUERY_BIRTH_TIMEOUT_SECONDS",
+        0.0,
+    )
+    identity = StateServerIdentity(
+        server_id="server:unusable-fallback",
+        store_id="store:unusable-fallback",
+        database_uuid=_UUID,
+        schema_revision=1,
+        schema_fingerprint=_DIGEST,
+        generation=1,
+        fence_epoch=1,
+        revision=0,
+        process_birth=_birth(),
+        listen_uri="quack:127.0.0.1:45690",
+        extension_fingerprint=_DIGEST,
+        credential_generation=1,
+        secret_handle="handle:unusable-fallback",
+    )
+    transport = InProcessQuackTransport()
+    transport.start(
+        FakeConnection(),
+        host="127.0.0.1",
+        port=45690,
+        token="isolated-unusable-fallback-token",
+        identity=identity,
+    )
+    owner = UnusableOwner()
+
+    with pytest.raises(QuackStateServerReadyError, match="IOException"):
+        transport.live_query(
+            owner,
+            identity=identity,
+            token="isolated-unusable-fallback-token",
+        )
+    assert owner.executed == 0
+
+
 def test_transport_start_does_not_fall_back_after_bind_ioerror() -> None:
     class IOException(Exception):
         pass

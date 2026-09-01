@@ -17,6 +17,7 @@ Quack authentication token.
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -1986,6 +1987,14 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
 
 
 def _owner_listener_ready(server: Any) -> bool:
+    """Return whether the Quack listener is bound.
+
+    Only ``ECONNREFUSED`` proves the port is closed.  A handshake timeout or
+    reset is the full accept backlog of attached lanes, not a down listener.
+    Treating those as down bounced ``quack_serve`` and poisoned every typed
+    client with ``DuckDBConnectionPolicyError``.
+    """
+
     config = getattr(server, "config", None)
     host = str(getattr(config, "container_bind_host", "") or "") if config is not None else ""
     port = 0
@@ -1998,8 +2007,22 @@ def _owner_listener_ready(server: Any) -> bool:
     try:
         with socket.create_connection((host, port), timeout=0.1):
             return True
-    except OSError:
+    except ConnectionRefusedError:
         return False
+    except TimeoutError:
+        return True
+    except OSError as exc:
+        return getattr(exc, "errno", None) != errno.ECONNREFUSED
+
+
+def _owner_connection_unusable(connection: Any) -> bool:
+    """Return whether the exclusive wrapper must be reconnected in place."""
+
+    return (
+        getattr(connection, "_poisoned", False) is True
+        or getattr(connection, "_closed", False) is True
+        or getattr(connection, "_connection", True) is None
+    )
 
 
 def _restart_owner_transport(server: Any, *, previous: Any, replacement: Any) -> None:
@@ -2043,29 +2066,34 @@ def _recover_poisoned_owner_connection(
     path = _owner_database_path(server, connection)
     if connection is None or lock is None or path is None:
         return False
-    poisoned = getattr(connection, "_poisoned", False) is True
-    if not force and not poisoned:
+    unusable = _owner_connection_unusable(connection)
+    if not force and not unusable:
         return False
     with lock:
         current = getattr(server, "_connection", None)
         current_path = _owner_database_path(server, current)
         if current is None or current_path is None:
             return False
-        poisoned = getattr(current, "_poisoned", False) is True
-        if not force and not poisoned:
+        unusable = _owner_connection_unusable(current)
+        if not force and not unusable:
             return False
         replacement = current
         native_replaced = False
-        if poisoned:
+        if unusable:
             # Same-process reopen cannot take exclusive_file_lock again: the
             # live handle still holds the path's thread RLock. Reconnect the
             # native owner in place. Fall back to close+open only when
-            # reconnect is absent.
+            # reconnect is absent or the exclusive lock was already released.
             reconnect = getattr(current, "reconnect_exclusive_owner", None)
+            reconnected = False
             if callable(reconnect) and getattr(current, "path", None) is not None:
-                reconnect()
-                replacement = current
-            else:
+                try:
+                    reconnect()
+                    replacement = current
+                    reconnected = True
+                except Exception:
+                    reconnected = False
+            if not reconnected:
                 close = getattr(current, "close", None)
                 if callable(close):
                     try:

@@ -6224,7 +6224,14 @@ def _discard_reserved_pid_projection_locked(
 
 
 def _adopt_or_create_current_master_pid_projection(pid_path: Path) -> None:
-    """Adopt a detached parent's exact projection or create a foreground one."""
+    """Adopt this runner's projection, or recover a dead leftover after reboot.
+
+    SPAR supervise takes this path (no live-context, no plan-bound children).
+    A leftover ``configured-board-master.pid`` from SIGTERM or reboot used to
+    fail closed with "master PID projection is not owned by this runner".
+    Exact ESRCH quarantine matches the live-context recovery; live, unknown,
+    or malformed projections still fail closed.
+    """
 
     path = Path(pid_path)
     expected = f"{os.getpid()}\n".encode("ascii")
@@ -6234,15 +6241,16 @@ def _adopt_or_create_current_master_pid_projection(pid_path: Path) -> None:
         except _StableArtifactReadError as exc:
             raise ValueError(f"unsafe master PID projection: {exc}") from exc
         if payload is not None:
-            if (
-                payload != expected
-                or int(evidence.get("uid", -1)) != os.geteuid()
-                or int(evidence.get("link_count", -1)) != 1
-                or not stat.S_ISREG(int(evidence.get("mode", 0)))
-                or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
-            ):
-                raise ValueError("master PID projection is not owned by this runner")
-            return
+            owned = (
+                payload == expected
+                and int(evidence.get("uid", -1)) == os.geteuid()
+                and int(evidence.get("link_count", -1)) == 1
+                and stat.S_ISREG(int(evidence.get("mode", 0)))
+                and stat.S_IMODE(int(evidence.get("mode", 0))) == 0o600
+            )
+            if owned:
+                return
+            _quarantine_stale_detached_master_pid_locked(path)
         descriptor, identity = _reserve_owned_pid_projection_locked(path)
         try:
             _publish_reserved_pid_projection(
