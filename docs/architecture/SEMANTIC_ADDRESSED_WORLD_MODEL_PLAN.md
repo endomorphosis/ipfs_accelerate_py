@@ -2274,14 +2274,15 @@ content address, durably records prepared lifecycle clearance, advances the
 lifecycle CAS, retires the active marker without replacement, records the
 committed recovery receipt, and recovers safely across the post-rename crash
 boundary.  Changed, linked, foreign, live, unproven, or ambiguously owned
-attempt state fails closed.  Until the reviewed repair commit, tree, source
-delta, and final authority CID are resealed, the controls intentionally retain
-only the explicit `INITIAL_M43_CONTROL` and
-`PENDING_M43_FINAL_CONTROL_AUTHORITY_CID` sentinels and the materializer
-refuses to mutate.  The reviewed repair commit, tree, blobs, and modes are no
-longer pending.
+attempt state fails closed.  The initial nine-control seal is commit
+`21c2a72f0e9d23d86ac990d4320cf1d80a05a044`, tree
+`3efca4759e083b1615b6ac092e0b40054f233452`, with the exact `100644` Git blobs
+bound by the M43 source-chain manifest.  The canonical M43 authority CID is
+`sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5`.
+No repair, initial-control, or final-authority sentinel remains in the current
+control declaration.
 
-After reseal, M43 authorizes exactly one stopped-generation restart from 30
+Under this final reseal, M43 authorizes exactly one stopped-generation restart from 30
 to 31 through the existing Quack owner path and exactly one evidence append,
 event 297.  The live result must retain plan revision 28 and task heads
 SAWM-006 `in_progress` revision 11 and SAWM-008 `in_progress` revision 13,

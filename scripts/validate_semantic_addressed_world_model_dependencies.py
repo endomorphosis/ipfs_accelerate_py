@@ -39,7 +39,10 @@ _SHA256 = re.compile(r"sha256:[0-9a-f]{64}")
 _M42_AUTHORITY_CID = (
     "sha256:1e1df3ea3d6b1805dc32f6dd43c61bb95d99e2d08da4c96872441dbc9fdbf587"
 )
-_M43_PENDING_AUTHORITY_CID = "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
+_M43_AUTHORITY_CID = (
+    "sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5"
+)
+_M43_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
 _HISTORICAL_VALIDATION_PYTHON = "/home/barberb/.local/bin/python"
 _OPERATIONAL_VALIDATION_PYTHON = "python"
 _VALIDATION_RUNTIME_ROOTS = {
@@ -3259,6 +3262,8 @@ def _m43_source_chain_errors(
             or chain.get("initial_control_tree")
             != materializer._M43_INITIAL_CONTROL_TREE
             or dict(control_blobs) != dict(materializer._M43_INITIAL_CONTROL_BLOBS)
+            or chain.get("initial_control_modes")
+            != dict(materializer._M43_INITIAL_CONTROL_MODES)
             or chain.get("final_reseal_parent")
             != materializer._M43_INITIAL_CONTROL_COMMIT
             or int(chain.get("final_control_commit_count") or 0) != 1
@@ -3307,7 +3312,7 @@ def _m43_dead_attempt_lifecycle_recovery_restart_successor_errors(
         reference = dict(materializer._m43_authority_reference())
         configured_cid = materializer._M43_AUTHORITY_CID
         computed_cid = materializer._identity(expected)
-        pending = configured_cid == _M43_PENDING_AUTHORITY_CID
+        pending = configured_cid == _M43_UNSEALED_AUTHORITY_CID
         errors: list[str] = []
         presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
         if not all(presence):
@@ -3318,6 +3323,8 @@ def _m43_dead_attempt_lifecycle_recovery_restart_successor_errors(
             errors.append("M43 successor CID differs")
         if pending:
             errors.append("M43 final control identities are not resealed")
+        elif configured_cid != _M43_AUTHORITY_CID:
+            errors.append("M43 successor authority CID is not the sealed identity")
         elif configured_cid != computed_cid:
             errors.append("M43 successor authority CID does not bind its body")
 
@@ -12240,7 +12247,8 @@ def _effective_nested_source_authorities(
             scheduler.get(m43_key) != reference
             or migration.get(m43_key) != reference
             or seal.get(f"{m43_key}_cid") != materializer._M43_AUTHORITY_CID
-            or materializer._M43_AUTHORITY_CID == _M43_PENDING_AUTHORITY_CID
+            or materializer._M43_AUTHORITY_CID == _M43_UNSEALED_AUTHORITY_CID
+            or materializer._M43_AUTHORITY_CID != _M43_AUTHORITY_CID
             or materializer._identity(authority) != materializer._M43_AUTHORITY_CID
         ):
             return effective, ["active M43 nested-source authority differs"]
@@ -13620,7 +13628,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                     if (
                         scheduled != reference
                         or seal.get(f"{m43_key}_cid") != configured_cid
-                        or configured_cid == _M43_PENDING_AUTHORITY_CID
+                        or configured_cid == _M43_UNSEALED_AUTHORITY_CID
+                        or configured_cid != _M43_AUTHORITY_CID
                         or materializer._identity(expected) != configured_cid
                     ):
                         unexpected = ["M43 authority/CID differs across controls"]

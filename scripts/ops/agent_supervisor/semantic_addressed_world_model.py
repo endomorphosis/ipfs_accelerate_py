@@ -36,7 +36,9 @@ _M43_SUCCESSOR_KEY = (
     "dead_attempt_lifecycle_recovery_restart_successor_materialization"
 )
 _M43_MIGRATION_REVISION = "SAWM-R2-M43"
-_M43_AUTHORITY_CID = "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
+_M43_AUTHORITY_CID = (
+    "sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5"
+)
 _M43_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
     "run-r2-m27/control.duckdb"

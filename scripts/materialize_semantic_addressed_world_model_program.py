@@ -1606,11 +1606,9 @@ _M40_DATABASE_UUID = _M39_DATABASE_UUID
 _M40_EXTENSION_FINGERPRINT = _M39_EXTENSION_FINGERPRINT
 
 # M43 is the generation-bearing successor to the cleanly stopped generation-30
-# run.  The ordinary implementation repair is intentionally outside the nine
-# operator controls and remains PENDING until its separately reviewed commit is
-# accepted.  These sentinels make this draft renderable and testable while the
-# source-chain gate fails closed until the repair and initial-control identities
-# are resealed.
+# run.  Its separately reviewed four-path implementation repair and its initial
+# nine-control seal are exact immutable predecessors.  The final source-chain
+# gate admits only one nine-control reseal over that initial seal.
 _M43_MIGRATION_REVISION = "SAWM-R2-M43"
 _M43_SUPERSESSION_MODE = (
     "generation_bearing_dead_attempt_lifecycle_recovery_restart_source_seal"
@@ -1646,7 +1644,9 @@ _M43_PASSED_VALIDATION_EVENT_COUNT = 11
 _M43_EVIDENCE_KIND = (
     "operator_control_plane_dead_attempt_lifecycle_recovery_restart_successor"
 )
-_M43_AUTHORITY_CID = "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
+_M43_AUTHORITY_CID = (
+    "sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5"
+)
 _M43_M42_AUTHORITY_CID = (
     "sha256:1e1df3ea3d6b1805dc32f6dd43c61bb95d99e2d08da4c96872441dbc9fdbf587"
 )
@@ -1705,11 +1705,42 @@ _M43_LIFECYCLE_REPAIR_MODES = MappingProxyType(
 )
 _M43_LIFECYCLE_REPAIR_PATHS_FINALIZED = True
 _M43_OPERATOR_CONTROL_PATHS = frozenset(_M40_OPERATOR_CONTROL_PATHS)
-_M43_INITIAL_CONTROL_COMMIT = "INITIAL_M43_CONTROL_COMMIT"
-_M43_INITIAL_CONTROL_TREE = "INITIAL_M43_CONTROL_TREE"
+_M43_INITIAL_CONTROL_COMMIT = "21c2a72f0e9d23d86ac990d4320cf1d80a05a044"
+_M43_INITIAL_CONTROL_TREE = "3efca4759e083b1615b6ac092e0b40054f233452"
 _M43_INITIAL_CONTROL_BLOBS = MappingProxyType(
-    {path: f"INITIAL_M43_CONTROL_BLOB_{index:02d}"
-     for index, path in enumerate(sorted(_M43_OPERATOR_CONTROL_PATHS), start=1)}
+    {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "2c3cdbe4a307b9309ba3a1e09e78805a2e738437"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "f18b018ba2879ee8899737d830db6528840a3cd8"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "25047b1171688d4973dbd3adad2ad921c5550fe8"
+        ),
+        "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json": (
+            "6bf831d39995cdc84828f12535efe41f728c2cb9"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "4bd399f7cfdc88b6f9b5b5a407b7d41eb069322e"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "ea243c8e888869960ce2805601604d4aa51f472b"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "db26d8bf21f687c944baa83192a824331f1e1892"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "f1c654a3205370ea71704c752a3fce2e3198c332"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "f3676283ea67f2aab68e667d5b2f407a7106444f"
+        ),
+    }
+)
+_M43_INITIAL_CONTROL_MODES = MappingProxyType(
+    {path: "100644" for path in _M43_INITIAL_CONTROL_BLOBS}
 )
 
 # M41 preserves M40's complete control declaration and failed sealed-suite
@@ -8600,11 +8631,7 @@ def _m43_post_m42_operational_suffix() -> dict[str, Any]:
 
 
 def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[str, Any]:
-    """Return M43's closed stopped-generation restart authorization.
-
-    The repair identities deliberately remain explicit sentinels in this draft.
-    `_assert_m43_source_delta` refuses to admit them operationally.
-    """
+    """Return M43's closed stopped-generation restart authorization."""
 
     m42 = (
         _expected_m42_failed_pre_authoritative_m41_evidence_projection_successor_authority()
@@ -8766,6 +8793,7 @@ def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[st
             "initial_control_commit": _M43_INITIAL_CONTROL_COMMIT,
             "initial_control_tree": _M43_INITIAL_CONTROL_TREE,
             "initial_control_blobs": dict(_M43_INITIAL_CONTROL_BLOBS),
+            "initial_control_modes": dict(_M43_INITIAL_CONTROL_MODES),
             "final_reseal_parent": _M43_INITIAL_CONTROL_COMMIT,
             "final_control_commit_count": 1,
         },
@@ -8811,7 +8839,7 @@ def _expected_m43_dead_attempt_lifecycle_recovery_restart_authority() -> dict[st
 
 
 def _m43_authority_reference() -> dict[str, Any]:
-    """Return the explicit draft reference; resealing replaces its sentinel."""
+    """Return M43's sealed authority reference and reject body drift."""
 
     authority = _expected_m43_dead_attempt_lifecycle_recovery_restart_authority()
     if not _M43_AUTHORITY_CID.endswith("PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"):
@@ -56358,6 +56386,7 @@ def _assert_m43_source_delta(
         or chain.get("initial_control_commit") != _M43_INITIAL_CONTROL_COMMIT
         or chain.get("initial_control_tree") != _M43_INITIAL_CONTROL_TREE
         or chain.get("initial_control_blobs") != dict(_M43_INITIAL_CONTROL_BLOBS)
+        or chain.get("initial_control_modes") != dict(_M43_INITIAL_CONTROL_MODES)
         or chain.get("final_reseal_parent") != _M43_INITIAL_CONTROL_COMMIT
         or int(chain.get("final_control_commit_count") or 0) != 1
         or base_parents[0:1] != [_M43_BASE_CONTROL_COMMIT]
@@ -56387,17 +56416,27 @@ def _assert_m43_source_delta(
         or int(authority.get("ordinary_source_changes", -1)) != len(repairs)
     ):
         raise MaterializationError("M43 exact repair/control source chain differs")
-    for commit, blobs, noun in (
-        (_M43_LIFECYCLE_REPAIR_COMMIT, _M43_LIFECYCLE_REPAIR_BLOBS, "repair"),
-        (_M43_INITIAL_CONTROL_COMMIT, _M43_INITIAL_CONTROL_BLOBS, "initial-control"),
+    for commit, blobs, modes, noun in (
+        (
+            _M43_LIFECYCLE_REPAIR_COMMIT,
+            _M43_LIFECYCLE_REPAIR_BLOBS,
+            _M43_LIFECYCLE_REPAIR_MODES,
+            "repair",
+        ),
+        (
+            _M43_INITIAL_CONTROL_COMMIT,
+            _M43_INITIAL_CONTROL_BLOBS,
+            _M43_INITIAL_CONTROL_MODES,
+            "initial-control",
+        ),
     ):
         for path, oid in blobs.items():
             if _git(root, "rev-parse", f"{commit}:{path}") != oid:
                 raise MaterializationError(f"M43 {noun} blob differs: {path}")
-            if noun == "repair" and _git(
+            if _git(
                 root, "ls-tree", commit, "--", path
-            ) != f"{_M43_LIFECYCLE_REPAIR_MODES[path]} blob {oid}\t{path}":
-                raise MaterializationError(f"M43 repair mode differs: {path}")
+            ) != f"{modes[path]} blob {oid}\t{path}":
+                raise MaterializationError(f"M43 {noun} mode differs: {path}")
     for dependency, gitlink_key, tree_key, population_key in (
         (
             "ipfs_datasets_py",

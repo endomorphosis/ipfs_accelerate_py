@@ -206,7 +206,8 @@ def test_historical_successor_controls_include_m43_before_m42() -> None:
     scheduler = {m43_key: {"revision": "M43"}, m42_key: {"revision": "M42"}}
     migration = copy.deepcopy(scheduler)
     seal = {
-        f"{m43_key}_cid": "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID",
+        # Deliberately non-current fixture: only relative key removal matters.
+        f"{m43_key}_cid": "sha256:SYNTHETIC_UNSEALED_M43_AUTHORITY_CID",
         f"{m42_key}_cid": "sha256:" + "6" * 64,
     }
 
@@ -257,17 +258,7 @@ def test_static_board_gate_is_valid() -> None:
         "sawm_board_validator_test",
     )
     report = validator.validate_program(REPO_ROOT)
-    materializer = _load(
-        "scripts/materialize_semantic_addressed_world_model_program.py",
-        "sawm_materializer_board_gate_reseal_state_test",
-    )
-    if materializer._M43_AUTHORITY_CID.endswith(
-        "PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
-    ):
-        assert report["valid"] is False
-        assert any("not resealed" in error for error in report["errors"])
-    else:
-        assert report["valid"] is True, report["errors"]
+    assert report["valid"] is True, report["errors"]
     assert report["task_count"] == 45
     assert report["goal_count"] == 29
     assert report["markdown_completion_is_authority"] is False
@@ -279,16 +270,6 @@ def test_dependency_gate_qualifies_the_exact_isolated_launch_stack() -> None:
         "sawm_dependency_validator_test",
     )
     report = validator.validate_dependencies(REPO_ROOT, cold_import=True)
-    materializer = _load(
-        "scripts/materialize_semantic_addressed_world_model_program.py",
-        "sawm_materializer_dependency_gate_reseal_state_test",
-    )
-    if materializer._M43_AUTHORITY_CID.endswith(
-        "PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
-    ):
-        assert report["valid"] is False
-        assert any("not resealed" in error for error in report["errors"])
-        return
     assert report["valid"] is True, report["errors"]
     assert report["database_opened"] is True
     assert report["network_required"] is False
@@ -5432,12 +5413,15 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     artifacts = authority["stopped_prestart_artifacts"]
     receipt = authority["preserved_m42_receipt"]
     repair = authority["accepted_lifecycle_repair"]
+    source_chain = authority["source_chain"]
     changes = authority["exact_changes"]
 
     assert reference == {
         "schema": "sawm/operator-control-authority-reference@1",
         "migration_revision": "SAWM-R2-M43",
-        "authority_cid": "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID",
+        "authority_cid": (
+            "sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5"
+        ),
     }
     assert authority["target_generation"] == 31
     assert authority["target_event_watermark"] == 297
@@ -5521,6 +5505,49 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     assert repair["path_modes"] == {
         path: "100644" for path in repair["changed_paths"]
     }
+    assert source_chain["initial_control_parent"] == repair["repair_commit"]
+    assert source_chain["initial_control_commit"] == (
+        "21c2a72f0e9d23d86ac990d4320cf1d80a05a044"
+    )
+    assert source_chain["initial_control_tree"] == (
+        "3efca4759e083b1615b6ac092e0b40054f233452"
+    )
+    assert source_chain["initial_control_blobs"] == {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "2c3cdbe4a307b9309ba3a1e09e78805a2e738437"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "f18b018ba2879ee8899737d830db6528840a3cd8"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "25047b1171688d4973dbd3adad2ad921c5550fe8"
+        ),
+        "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json": (
+            "6bf831d39995cdc84828f12535efe41f728c2cb9"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "4bd399f7cfdc88b6f9b5b5a407b7d41eb069322e"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "ea243c8e888869960ce2805601604d4aa51f472b"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "db26d8bf21f687c944baa83192a824331f1e1892"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "f1c654a3205370ea71704c752a3fce2e3198c332"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "f3676283ea67f2aab68e667d5b2f407a7106444f"
+        ),
+    }
+    assert source_chain["initial_control_modes"] == {
+        path: "100644" for path in source_chain["initial_control_blobs"]
+    }
+    assert source_chain["final_reseal_parent"] == (
+        source_chain["initial_control_commit"]
+    )
     assert authority["ordinary_source_changes"] == len(repair["changed_paths"])
     assert repair["repair_path_set_finalized"] is True
     assert repair["newest_first_attempt_selection"] is True
@@ -5534,39 +5561,24 @@ def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     assert materializer._identity(authority["prior_m42_authority"]) == (
         materializer._M43_M42_AUTHORITY_CID
     )
+    assert materializer._identity(authority) == reference["authority_cid"]
 
 
-def test_m43_draft_is_declared_but_operationally_fails_closed_until_reseal() -> None:
+def test_m43_current_seal_rejects_a_synthetic_unsealed_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
-        "sawm_materializer_m43_pending_reseal_test",
-    )
-    dependency = _load(
-        "scripts/validate_semantic_addressed_world_model_dependencies.py",
-        "sawm_dependency_m43_pending_reseal_test",
-    )
-    config = json.loads(
-        (
-            REPO_ROOT
-            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
-        ).read_text(encoding="utf-8")
-    )
-    migration = json.loads(
-        (
-            REPO_ROOT
-            / "docs/architecture/semantic_addressed_world_model_inventory/"
-            "prior_materialization_migration.json"
-        ).read_text(encoding="utf-8")
-    )
-    seal = json.loads(
-        (
-            REPO_ROOT
-            / "config/semantic_addressed_world_model_dependencies.seal.json"
-        ).read_text(encoding="utf-8")
+        "sawm_materializer_m43_synthetic_unsealed_test",
     )
     authority = (
         materializer
         ._expected_m43_dead_attempt_lifecycle_recovery_restart_authority()
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_M43_AUTHORITY_CID",
+        "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID",
     )
     with pytest.raises(
         materializer.MaterializationError,
@@ -5575,12 +5587,6 @@ def test_m43_draft_is_declared_but_operationally_fails_closed_until_reseal() -> 
         materializer._assert_m43_source_delta(
             REPO_ROOT, {"source_binding": {"head": "unused"}}, authority
         )
-    errors = dependency._m43_dead_attempt_lifecycle_recovery_restart_successor_errors(
-        config, seal, migration, root=REPO_ROOT
-    )
-    assert any("not resealed" in error for error in errors)
-    assert not any("historical M42 controls differ" in error for error in errors)
-    assert config["database_program"]["store_generation"] == "31"
 
 
 def test_m43_dispatch_is_newest_and_receipt_follows_live_verification() -> None:

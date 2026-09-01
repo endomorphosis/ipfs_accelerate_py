@@ -1,5 +1,5 @@
 {
-  "dead_attempt_lifecycle_recovery_restart_successor_materialization_cid": "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID",
+  "dead_attempt_lifecycle_recovery_restart_successor_materialization_cid": "sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5",
   "failed_pre_authoritative_m41_evidence_projection_successor_materialization_cid": "sha256:1e1df3ea3d6b1805dc32f6dd43c61bb95d99e2d08da4c96872441dbc9fdbf587",
   "failed_pre_authoritative_m40_validation_successor_materialization_cid": "sha256:25ad5550b59024c8da9b4821fba2d7b1b49d2a17a781e5d4bd2cbe58cb7b0233",
   "failed_pre_authoritative_m39_successor_materialization_cid": "sha256:377b6e7269a7025f236642f12aaf92264582f42a1efa4899eb4d6e64b0e41db2",

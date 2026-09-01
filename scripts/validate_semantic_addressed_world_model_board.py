@@ -34,7 +34,10 @@ ROOT_GOAL = "SAWM-G000"
 _M42_AUTHORITY_CID = (
     "sha256:1e1df3ea3d6b1805dc32f6dd43c61bb95d99e2d08da4c96872441dbc9fdbf587"
 )
-_M43_PENDING_AUTHORITY_CID = "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
+_M43_AUTHORITY_CID = (
+    "sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5"
+)
+_M43_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
 TASK_IDS = tuple(f"SAWM-{index:03d}" for index in range(45))
 GOAL_IDS = (
     "SAWM-G000",
@@ -4573,12 +4576,13 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 successor != reference
                 or migration.get(m43_key) != reference
                 or seal.get(f"{m43_key}_cid") != configured_cid
+                or configured_cid != _M43_AUTHORITY_CID
                 or (
-                    configured_cid == _M43_PENDING_AUTHORITY_CID
+                    configured_cid == _M43_UNSEALED_AUTHORITY_CID
                     and not any("not resealed" in error for error in m43_errors)
                 )
                 or (
-                    configured_cid != _M43_PENDING_AUTHORITY_CID
+                    configured_cid != _M43_UNSEALED_AUTHORITY_CID
                     and (
                         materializer._identity(expected) != configured_cid
                         or m43_errors
@@ -4665,6 +4669,12 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 != dict(materializer._M43_LIFECYCLE_REPAIR_MODES)
                 or source_chain.get("initial_control_commit")
                 != materializer._M43_INITIAL_CONTROL_COMMIT
+                or source_chain.get("initial_control_tree")
+                != materializer._M43_INITIAL_CONTROL_TREE
+                or source_chain.get("initial_control_blobs")
+                != dict(materializer._M43_INITIAL_CONTROL_BLOBS)
+                or source_chain.get("initial_control_modes")
+                != dict(materializer._M43_INITIAL_CONTROL_MODES)
                 or expected.get("ordinary_source_changes")
                 != len(materializer._M43_LIFECYCLE_REPAIR_BLOBS)
                 or set(expected.get("operator_control_paths", ()))
@@ -4676,7 +4686,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 or changes.get("accepted_completion_changes") != 0
             ):
                 config_errors.append(
-                    "M43 stopped-generation recovery authority/source draft differs"
+                    "M43 stopped-generation recovery authority/source seal differs"
                 )
         except Exception as exc:
             config_errors.append(
