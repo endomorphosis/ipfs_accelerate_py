@@ -1,4 +1,5 @@
 {
+  "post_m47_clean_shutdown_restart_successor_materialization": {"authority_cid":"sha256:a7b262b976b38eb94646a9d73c595ff49ab9b1f89fa528443745ed964be025f6","migration_revision":"SAWM-R2-M48","schema":"sawm/operator-control-authority-reference@1"},
   "ignored_python_cache_preservation_and_recovery_successor_materialization": {"authority_cid":"sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444","migration_revision":"SAWM-R2-M47","schema":"sawm/operator-control-authority-reference@1"},
   "legacy_no_delta_rescue_recovery_successor_materialization": {"authority_cid":"sha256:47ed315018541ef5c4c759c1c486cae2a411821ed4e9902877b08439b79b4455","migration_revision":"SAWM-R2-M46","schema":"sawm/operator-control-authority-reference@1"},
   "failed_pre_authoritative_m44_validation_successor_materialization": {"authority_cid":"sha256:1fece222571aff1238d6e32465cae69f3f766d3e4da303b8775a5df892b95ef7","migration_revision":"SAWM-R2-M45","schema":"sawm/operator-control-authority-reference@1"},
@@ -225,7 +226,7 @@
     "endpoint_secret_handle": "env://SAWM_QUACK_TOKEN",
     "quack_endpoint": "quack:127.0.0.1:24070",
     "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb",
-    "store_generation": "34",
+    "store_generation": "35",
     "schema_revision": "datasets-authoritative-operational-v1",
     "event_store_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/events",
     "runtime_registry_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/registry",

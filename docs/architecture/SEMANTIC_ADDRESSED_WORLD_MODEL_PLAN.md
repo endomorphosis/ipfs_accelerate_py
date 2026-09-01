@@ -2658,7 +2658,106 @@ CID `sha256:3f9d79c33306ada7b3074609c9fd1e43beee7e474a9fd8b4caacdd65966513c2`)
 must remain exact. `m47-source-successor-receipt.json` is published mode
 `0600` only after authenticated event append and full live verification.
 
-## 56. Current limitations at seal time
+## 56. M48 post-M47 clean-shutdown restart successor
+
+`SAWM-R2-M48` is the append-only restart successor to M47's exact accepted
+generation-34/event-304 materialization. It preserves M47's 18,795-byte
+canonical authority body
+`sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444`
+and the mode-`0600`, 8,088-byte `m47-source-successor-receipt.json` with
+SHA-256
+`e8ef92a302f38d37d5704d67d1beb9575091c16c2ee61d6f680fd34aa4cfe731`
+and content identity
+`sha256:52d8954b5c31a07deafd6077cc9786a3de170017660bca0746dffae08c128919`.
+The preserved M47 event is
+`baguqeeranmbjd63u4wungeeox327cskqjtyypsavnwjwdlh3pqj3zbmtkeua`; its
+evidence node is
+`baguqeeraqy7idops72utponoumzonzd3hbo4f4tqmg74of223pcbvb2mouua`, its
+migration digest is
+`sha256:bceaad94e642ea09ba9ef1d4567b809db1ef6e5f371b3ff5b86273a1b3efa1b8`,
+and its exact source binding is
+`sha256:2f87cf1b9620144aca641b49acbbe39d12a19917318bd351e5210c81e206dae1`.
+Event 304 binds prefix SHA-256
+`f07f744fb2b89922dc227ef20792e48b418548ccd75fa5babd5ed29d39edcedb`,
+task-head projection
+`baguqeeraadvcue2olr4ies6ctvwaf4rzgafn5myeyomldgeaazkq53cco5wq`, and
+semantic-authority digest
+`sha256:b0f775db0bab9821418d4d4054033480c638a7c0ae86160bd21cdd816456fd59`.
+The exact projection has 53 evidence nodes, 42 evidence events, and 11
+validation events, all 11 of which remain passed; SAWM-006 remains
+`in_progress` revision 13 and SAWM-008 remains `in_progress` revision 15,
+with 11 completed, 2 in-progress, and 32 todo task heads.
+
+M47's immutable final control is commit
+`ffec7b3c57cd75843dbedfb260263a98c4104d36`, tree
+`100f37e1da44aa5aec079c922b962d1ac9fdc3db`, a direct child of the exact
+cache-preservation repair commit
+`7fe0f09615c6d07ba72d3f6334b6bb4f6a512141`, tree
+`9d89c71fd4d9a89b731bf83f6024f411fbac2b53`. Its nine mode-`100644`
+protected-control blobs are:
+
+```text
+config/agent_supervisor_semantic_addressed_world_model_scheduler.json                 e625d362eb26832db6471209cd11d7ad5af9f5ff
+config/semantic_addressed_world_model_dependencies.seal.json                          5811daa88fd34f1f752a3f0d08c8edd0f1f76272
+docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md                              fd2177ba555acd1f9e292693938deef2736e1c54
+docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json  07b8141ed545ecbd44b705474a994332490d6f09
+scripts/materialize_semantic_addressed_world_model_program.py                         a7f9b33c88d21b53abcc0cf32d62181d9c8700bb
+scripts/ops/agent_supervisor/semantic_addressed_world_model.py                        bf6365155004081a1bf20ecde5375bec4762b704
+scripts/validate_semantic_addressed_world_model_board.py                              3e7274c772a4a3a25ed196e03f37a3febabde6b2
+scripts/validate_semantic_addressed_world_model_dependencies.py                       2e4f2da05ce5208e9192d581c0cf4813893a42df
+test/api/semantic_world/test_semantic_addressed_world_model_board.py                  9fd14d507538c4824e125bdee77b127af8c0390c
+```
+
+The generation-34 owner was started by a broad semantic-board regression
+attempt after the M47 controls were committed. That attempt was explicitly
+interrupted after 21 passing tests and terminated with pytest exit code 2
+from `KeyboardInterrupt`; it is preserved as failed or incomplete operational
+history and is not a passed validation, implementation result, proof,
+completion receipt, or authorization. The induced owner nevertheless
+materialized the exact independently verified M47 transition and then stopped
+cleanly. Its stopped database row binds server
+`server:a07014c7-a8be-4ad3-bb64-dff0f75e0565`, process birth
+`birth:8943d2dce1ac0e122a6421d9f108ae08`, start
+`2026-09-01T15:09:37Z`, stop `2026-09-01T15:12:26Z`, startup epoch
+`1788275377`, owner revision 2, database UUID
+`c6b5c6a1-eaaa-4c09-b401-6ee7998602b4`, and generation, fence, and credential
+generation 34.
+
+The immutable stopped control store is 43,790,336 bytes with SHA-256
+`7bebea176083e1ccec45665b3a899c4cc405f54118623c10b810ff79715d847b`;
+the byte-preserved coordination store is 17,313,792 bytes with SHA-256
+`cecb343c4e8c45ae7405193ba3745a623d2fd1039c5b6fe3ab4d02c4e2683137`;
+and the 2,409-byte stopped-status projection has SHA-256
+`44830adc7d4070112d69e6180e45ca9c7214a567bf51df50edb36a4f347aba91`.
+The owner marker, stop control, token handoff, both WALs, M44 receipt, and M48
+receipt are absent. M47's receipt and all older admitted receipts remain
+immutable.
+
+M48 seals exactly one direct nine-control child of M47 commit
+`ffec7b3c57cd75843dbedfb260263a98c4104d36`. It authorizes no ordinary
+source delta; the child may change only the nine protected operator-control
+paths listed above. Its current commit, tree, blob identities, and source
+binding are excluded from the canonical M48 authority body to avoid recursive
+identity. Presence on any protected surface selects M48 newest-first; a
+partial, pending, malformed, wrong-parent, additional-path, or mismatched
+declaration fails closed without falling back to M47.
+
+The sole authorized runtime delta is one authenticated Quack restart from
+generation 34 to 35 and one operator evidence append at event 305, retaining
+plan revision 28 and target task-head projection
+`baguqeerar773puawanjlnneg2heko27svsonv5dfg5pioayyqemfu73ljpwa`, with the
+exact task heads, 54 evidence nodes, 43 evidence events, and 11 passed
+validation events. Task, goal, plan, coordination, provider, effect,
+implementation, merge, validation, task-status, goal-status, and
+accepted-completion semantics do not change. The authority is recorded at
+`2026-09-01T16:00:00Z`. M48 does not turn the interrupted test attempt into
+validation authority and grants no direct DuckDB writer or worker
+self-approval. The 17,315-byte canonical authority body has CID
+`sha256:a7b262b976b38eb94646a9d73c595ff49ab9b1f89fa528443745ed964be025f6`;
+`m48-source-successor-receipt.json` is published mode `0600` only after the
+authenticated append and complete live verification.
+
+## 57. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.
