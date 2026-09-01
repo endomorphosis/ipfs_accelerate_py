@@ -11143,14 +11143,16 @@ class DatabasePortalExecutionBridge:
     ) -> Mapping[str, Any] | None:
         """Prove one exact nested recovery is eligible for bounded rearm.
 
-        A populated terminal-reconciliation link first reaches the exact
-        interrupted-implementation verifier.  One task/attempt-pinned
-        historical successor may prove the released 1 -> 0 nested counter
-        transition from a predecessor seal.  Under the standard policy only,
-        a distinct successor may then prove that the nested task was never
-        selected because its route remained resource-deferred.  None of these
-        routes may fall through to legacy setup-failure evidence, and the stale
-        dispatch migration policy remains exclusive to its migration proof.
+        One task/attempt-pinned historical overlap first prefers an exact
+        current quiesced-release occurrence.  Otherwise a populated terminal-
+        reconciliation link first reaches the exact interrupted-implementation
+        verifier.  If the overlap proof misses, that ordinary verifier and the
+        historical compatibility proof of the released 1 -> 0 nested counter
+        transition remain available in that order.  A distinct successor may
+        then prove that the nested task was never selected because its route
+        remained resource-deferred.  None of these routes may fall through to
+        legacy setup-failure evidence, and the stale dispatch migration policy
+        remains exclusive to its migration proof.
         """
 
         receipt = dict(outer_block_receipt)
@@ -11228,6 +11230,15 @@ class DatabasePortalExecutionBridge:
             if type(terminal_link) is not dict:
                 return None
             if terminal_link:
+                if historical_state_transition_candidate:
+                    quiesced_release = (
+                        self._quiesced_stale_dispatch_release_rearm_evidence(
+                            attempt,
+                            receipt,
+                        )
+                    )
+                    if quiesced_release is not None:
+                        return quiesced_release
                 interrupted_evidence = (
                     self._interrupted_implementation_rearm_evidence(
                         attempt,
@@ -11255,14 +11266,15 @@ class DatabasePortalExecutionBridge:
                     )
                     if historical_transition is not None:
                         return historical_transition
-                quiesced_release = (
-                    self._quiesced_stale_dispatch_release_rearm_evidence(
-                        attempt,
-                        receipt,
+                else:
+                    quiesced_release = (
+                        self._quiesced_stale_dispatch_release_rearm_evidence(
+                            attempt,
+                            receipt,
+                        )
                     )
-                )
-                if quiesced_release is not None:
-                    return quiesced_release
+                    if quiesced_release is not None:
+                        return quiesced_release
                 return self._terminal_quiescent_deferred_rearm_evidence(
                     attempt,
                     receipt,

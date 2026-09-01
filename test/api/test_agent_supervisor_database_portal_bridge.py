@@ -2680,6 +2680,222 @@ def test_terminal_rearm_candidate_never_downgrades_to_setup_evidence(
     assert len(quiescent_calls) == expected_quiescent_calls
 
 
+def _historical_transition_route_candidate(
+    tmp_path: Path,
+) -> tuple[
+    DatabasePortalExecutionBridge,
+    SimpleNamespace,
+    dict[str, object],
+]:
+    pin = dict(
+        database_portal_bridge_module.DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_PIN
+    )
+    attempt = SimpleNamespace(
+        **{
+            field: pin[field]
+            for field in (
+                "task_alias",
+                "task_cid",
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "attempt_number",
+                "owner_session_id",
+                "fencing_token",
+                "fence_epoch",
+            )
+        },
+        status="failed",
+        committed_phase="failed",
+    )
+    receipt: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/database-retry-budget@1"
+        ),
+        "operation": "database_unknown_outcome_blocked",
+        "reason": "callback_authority_incomplete_blocked",
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "attempt_number": attempt.attempt_number,
+        "owner_session_id": attempt.owner_session_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "retry_exhausted": True,
+        "forced_block": True,
+        "authority_outcome": "unknown",
+        "process_instance_id": "process:pctdd-005-route-precedence",
+        "attempts_used": 1,
+        "unknown_outcome_rearm_count": 0,
+        "terminal_reconciliation": {
+            "evidence_id": "sha256:" + "5" * 64,
+        },
+    }
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+    )
+    return bridge, attempt, receipt
+
+
+def test_exact_quiesced_release_precedes_historical_transition_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prefer the current P005 proof when both exact routes are available."""
+
+    bridge, attempt, receipt = _historical_transition_route_candidate(
+        tmp_path
+    )
+    quiesced_evidence = {
+        "schema": DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA,
+        "evidence_id": "sha256:" + "6" * 64,
+    }
+    historical_evidence = {
+        "schema": (
+            database_portal_bridge_module.DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
+        ),
+        "evidence_id": "sha256:" + "7" * 64,
+    }
+    calls: list[str] = []
+
+    def interrupted(
+        _attempt: object,
+        _receipt: object,
+        *,
+        expected_evidence_schema: str | None = None,
+    ) -> Mapping[str, object] | None:
+        calls.append(str(expected_evidence_schema or ""))
+        if expected_evidence_schema == historical_evidence["schema"]:
+            return historical_evidence
+        return None
+
+    def exact_quiesced(
+        observed_attempt: object,
+        observed_receipt: object,
+    ) -> Mapping[str, object]:
+        calls.append("quiesced-release")
+        assert observed_attempt is attempt
+        assert observed_receipt == receipt
+        return quiesced_evidence
+
+    monkeypatch.setattr(
+        bridge,
+        "_interrupted_implementation_rearm_evidence",
+        interrupted,
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_quiesced_stale_dispatch_release_rearm_evidence",
+        exact_quiesced,
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_terminal_quiescent_deferred_rearm_evidence",
+        lambda *_args: pytest.fail("exact quiesced route fell through"),
+    )
+
+    assert bridge.no_provider_dispatch_rearm_evidence(
+        attempt,
+        outer_block_receipt=receipt,
+    ) is quiesced_evidence
+    assert calls == ["quiesced-release"]
+
+
+@pytest.mark.parametrize(
+    "near_attempt",
+    (False, True),
+    ids=("quiesced-proof-miss", "attempt-tuple-near-miss"),
+)
+def test_quiesced_release_miss_preserves_closed_historical_routing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    near_attempt: bool,
+) -> None:
+    """Retain P005 compatibility only for its exact pinned attempt tuple."""
+
+    bridge, attempt, receipt = _historical_transition_route_candidate(
+        tmp_path
+    )
+    if near_attempt:
+        attempt.attempt_id = "attempt:pctdd-005-near-miss"
+        receipt["attempt_id"] = attempt.attempt_id
+    historical_schema = (
+        database_portal_bridge_module.DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
+    )
+    historical_evidence = {
+        "schema": historical_schema,
+        "evidence_id": "sha256:" + "8" * 64,
+    }
+    deferred_evidence = {
+        "schema": DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
+        "evidence_id": "sha256:" + "9" * 64,
+    }
+    calls: list[str] = []
+
+    def interrupted(
+        _attempt: object,
+        _receipt: object,
+        *,
+        expected_evidence_schema: str | None = None,
+    ) -> Mapping[str, object] | None:
+        calls.append(str(expected_evidence_schema or ""))
+        if expected_evidence_schema == historical_schema:
+            return historical_evidence
+        return None
+
+    def reject_quiesced(
+        _attempt: object,
+        _receipt: object,
+    ) -> None:
+        calls.append("quiesced-release")
+        return None
+
+    def terminal_fallback(
+        _attempt: object,
+        _receipt: object,
+    ) -> Mapping[str, object]:
+        calls.append("terminal-quiescent")
+        return deferred_evidence
+
+    monkeypatch.setattr(
+        bridge,
+        "_interrupted_implementation_rearm_evidence",
+        interrupted,
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_quiesced_stale_dispatch_release_rearm_evidence",
+        reject_quiesced,
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_terminal_quiescent_deferred_rearm_evidence",
+        terminal_fallback,
+    )
+
+    evidence = bridge.no_provider_dispatch_rearm_evidence(
+        attempt,
+        outer_block_receipt=receipt,
+    )
+    if near_attempt:
+        assert evidence is deferred_evidence
+        assert calls == [
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            "quiesced-release",
+            "terminal-quiescent",
+        ]
+    else:
+        assert evidence is historical_evidence
+        assert calls == [
+            "quiesced-release",
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            historical_schema,
+        ]
+
+
 def test_terminal_quiescent_resource_deferral_rearms_after_interrupted_miss(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
