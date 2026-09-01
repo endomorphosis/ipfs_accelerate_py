@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/merge/patch-plan@1",
+  "title": "PatchPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "base_tree", "intended_semantic_change", "files_and_symbols", "preconditions", "postconditions", "expected_invariants", "required_tests_and_proofs", "scope_limit", "patch_digest"],
+  "properties": {
+    "schema": {"const": "ipfs_accelerate_py/agent-supervisor/merge/patch-plan@1"},
+    "base_tree": {"type": "string", "minLength": 1},
+    "intended_semantic_change": {"type": "string", "minLength": 1},
+    "files_and_symbols": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"type": "object", "additionalProperties": false, "required": ["path", "symbols"], "properties": {"path": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!\\./).+$"}, "symbols": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}}
+    },
+    "preconditions": {"$ref": "#/$defs/nonEmptyStringArray"},
+    "postconditions": {"$ref": "#/$defs/nonEmptyStringArray"},
+    "expected_invariants": {"$ref": "#/$defs/nonEmptyStringArray"},
+    "required_tests_and_proofs": {"$ref": "#/$defs/nonEmptyStringArray"},
+    "scope_limit": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!\\./).+$"}},
+    "patch_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  },
+  "$defs": {"nonEmptyStringArray": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}
+}
