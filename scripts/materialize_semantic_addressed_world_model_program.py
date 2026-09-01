@@ -1489,6 +1489,8 @@ _M38_INITIAL_CONTROL_BLOBS = MappingProxyType(
 )
 _M38_FIRST_RESEAL_COMMIT = "a241ca013e91f0c9a9a0aa4b26261663c03cf80a"
 _M38_FIRST_RESEAL_TREE = "aea6bebeadde6d63f31bdd1680a4e2499eabd77d"
+_M38_SECOND_RESEAL_COMMIT = "6a9383c1e26c2ae3dc62acfbb82d5d122f577017"
+_M38_SECOND_RESEAL_TREE = "ef0e1faa7e2fadb32721298cb163fea0a45aeef9"
 _M38_AUTHORITY_CID_SENTINEL = "sha256:PENDING_M38_AUTHORITY_CID"
 _M38_M37_AUTHORITY_CID = (
     "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
@@ -7630,9 +7632,12 @@ def _expected_m38_pre_authoritative_custody_restart_authority() -> dict[str, Any
             "first_reseal_parent": _M38_INITIAL_CONTROL_COMMIT,
             "first_reseal_commit": _M38_FIRST_RESEAL_COMMIT,
             "first_reseal_tree": _M38_FIRST_RESEAL_TREE,
-            "final_reseal_parent": _M38_FIRST_RESEAL_COMMIT,
-            "final_reseal_commit_count": 2,
-            "control_commit_count": 3,
+            "second_reseal_parent": _M38_FIRST_RESEAL_COMMIT,
+            "second_reseal_commit": _M38_SECOND_RESEAL_COMMIT,
+            "second_reseal_tree": _M38_SECOND_RESEAL_TREE,
+            "final_reseal_parent": _M38_SECOND_RESEAL_COMMIT,
+            "final_reseal_commit_count": 3,
+            "control_commit_count": 4,
         },
         "expected_task_heads": dict(m37["expected_task_heads"]),
         "runtime_repair_paths": sorted(_M38_RUNTIME_REPAIR_PATHS),
@@ -54075,6 +54080,9 @@ def _assert_m38_source_delta(
     first_reseal_parents = _git(
         root, "rev-list", "--parents", "-n", "1", _M38_FIRST_RESEAL_COMMIT
     ).split()
+    second_reseal_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M38_SECOND_RESEAL_COMMIT
+    ).split()
     current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
     if (
         current in {
@@ -54082,6 +54090,7 @@ def _assert_m38_source_delta(
             _M38_RUNTIME_REPAIR_COMMIT,
             _M38_INITIAL_CONTROL_COMMIT,
             _M38_FIRST_RESEAL_COMMIT,
+            _M38_SECOND_RESEAL_COMMIT,
         }
         or not isinstance(chain, Mapping)
         or runtime_paths != set(_M38_RUNTIME_REPAIR_PATHS)
@@ -54101,16 +54110,21 @@ def _assert_m38_source_delta(
         or chain.get("first_reseal_parent") != _M38_INITIAL_CONTROL_COMMIT
         or chain.get("first_reseal_commit") != _M38_FIRST_RESEAL_COMMIT
         or chain.get("first_reseal_tree") != _M38_FIRST_RESEAL_TREE
-        or chain.get("final_reseal_parent") != _M38_FIRST_RESEAL_COMMIT
-        or int(chain.get("final_reseal_commit_count") or 0) != 2
-        or int(chain.get("control_commit_count") or 0) != 3
+        or chain.get("second_reseal_parent") != _M38_FIRST_RESEAL_COMMIT
+        or chain.get("second_reseal_commit") != _M38_SECOND_RESEAL_COMMIT
+        or chain.get("second_reseal_tree") != _M38_SECOND_RESEAL_TREE
+        or chain.get("final_reseal_parent") != _M38_SECOND_RESEAL_COMMIT
+        or int(chain.get("final_reseal_commit_count") or 0) != 3
+        or int(chain.get("control_commit_count") or 0) != 4
         or runtime_parents
         != [_M38_RUNTIME_REPAIR_COMMIT, _M38_BASE_CONTROL_COMMIT]
         or initial_parents
         != [_M38_INITIAL_CONTROL_COMMIT, _M38_RUNTIME_REPAIR_COMMIT]
         or first_reseal_parents
         != [_M38_FIRST_RESEAL_COMMIT, _M38_INITIAL_CONTROL_COMMIT]
-        or current_parents != [current, _M38_FIRST_RESEAL_COMMIT]
+        or second_reseal_parents
+        != [_M38_SECOND_RESEAL_COMMIT, _M38_FIRST_RESEAL_COMMIT]
+        or current_parents != [current, _M38_SECOND_RESEAL_COMMIT]
         or _git(root, "rev-parse", f"{_M38_BASE_CONTROL_COMMIT}^{{tree}}")
         != _M38_BASE_CONTROL_TREE
         or _git(root, "rev-parse", f"{_M38_RUNTIME_REPAIR_COMMIT}^{{tree}}")
@@ -54119,6 +54133,8 @@ def _assert_m38_source_delta(
         != _M38_INITIAL_CONTROL_TREE
         or _git(root, "rev-parse", f"{_M38_FIRST_RESEAL_COMMIT}^{{tree}}")
         != _M38_FIRST_RESEAL_TREE
+        or _git(root, "rev-parse", f"{_M38_SECOND_RESEAL_COMMIT}^{{tree}}")
+        != _M38_SECOND_RESEAL_TREE
         or _m27_name_status(
             root, _M38_BASE_CONTROL_COMMIT, _M38_RUNTIME_REPAIR_COMMIT
         )
@@ -54131,7 +54147,11 @@ def _assert_m38_source_delta(
             root, _M38_INITIAL_CONTROL_COMMIT, _M38_FIRST_RESEAL_COMMIT
         )
         != {path: "M" for path in control_paths}
-        or _m27_name_status(root, _M38_FIRST_RESEAL_COMMIT, current)
+        or _m27_name_status(
+            root, _M38_FIRST_RESEAL_COMMIT, _M38_SECOND_RESEAL_COMMIT
+        )
+        != {path: "M" for path in control_paths}
+        or _m27_name_status(root, _M38_SECOND_RESEAL_COMMIT, current)
         != {path: "M" for path in control_paths}
         or population["source_binding"].get("tree")
         != _git(root, "rev-parse", f"{current}^{{tree}}")
@@ -61577,6 +61597,18 @@ def _ensure_m37_source_successor_receipt(
         os.close(descriptor)
 
 
+def _m38_sql_triples(rows: Any, names: tuple[str, str, str]) -> list[tuple[Any, Any, Any]]:
+    """Normalize Quack dict rows and native tuples to positional triples."""
+
+    triples: list[tuple[Any, Any, Any]] = []
+    for row in rows:
+        if isinstance(row, Mapping):
+            triples.append((row[names[0]], row[names[1]], row[names[2]]))
+        else:
+            triples.append((row[0], row[1], row[2]))
+    return triples
+
+
 def _m38_projection_cid_at_watermark(source: Any, watermark: int) -> str:
     """Recompute the canonical snapshot projection with an explicit watermark."""
 
@@ -61588,15 +61620,24 @@ def _m38_projection_cid_at_watermark(source: Any, watermark: int) -> str:
         objective_count = int(
             connection.execute("SELECT COUNT(*) FROM objectives").fetchone()[0]
         )
-        goals = connection.execute(
-            "SELECT goal_cid,status,revision FROM goals ORDER BY goal_cid"
-        ).fetchall()
-        plans = connection.execute(
-            "SELECT plan_cid,status,revision FROM plans ORDER BY plan_cid"
-        ).fetchall()
-        tasks = connection.execute(
-            "SELECT task_cid,status,revision FROM tasks ORDER BY task_cid"
-        ).fetchall()
+        goals = _m38_sql_triples(
+            connection.execute(
+                "SELECT goal_cid,status,revision FROM goals ORDER BY goal_cid"
+            ).fetchall(),
+            ("goal_cid", "status", "revision"),
+        )
+        plans = _m38_sql_triples(
+            connection.execute(
+                "SELECT plan_cid,status,revision FROM plans ORDER BY plan_cid"
+            ).fetchall(),
+            ("plan_cid", "status", "revision"),
+        )
+        tasks = _m38_sql_triples(
+            connection.execute(
+                "SELECT task_cid,status,revision FROM tasks ORDER BY task_cid"
+            ).fetchall(),
+            ("task_cid", "status", "revision"),
+        )
         dependency_count = int(
             connection.execute("SELECT COUNT(*) FROM task_dependencies").fetchone()[0]
         )
