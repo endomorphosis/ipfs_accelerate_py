@@ -2147,9 +2147,61 @@ def _recover_poisoned_owner_connection(
             if getattr(server, "_transport_connection", None) in {current, None}:
                 server._transport_connection = replacement
             native_replaced = True
-        # Never re-enter transport.start() from projection recovery.
-        # That rebind is what drops SPAR-018's typed attach.
-        return native_replaced
+        restored_serve = False
+        if not _owner_listener_ready(server):
+            # Reconnecting a poisoned exclusive handle leaves TCP down.
+            # Restart serve only when ECONNREFUSED proves the listener is
+            # actually gone; a live serve must not be rebound.
+            restored_serve = _restart_owner_serve_if_down(
+                server,
+                getattr(server, "_connection", None),
+            )
+        return native_replaced or restored_serve
+
+
+def _restart_owner_serve_if_down(server: Any, connection: Any) -> bool:
+    """Bind quack_serve again after exclusive-handle reconnect dropped TCP."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        ServerLifecycle,
+    )
+
+    if connection is None or _owner_listener_ready(server):
+        return False
+    transport = getattr(server, "transport", None)
+    start = getattr(transport, "start", None)
+    identity = getattr(server, "_identity", None)
+    config = getattr(server, "config", None)
+    vault = getattr(server, "_vault", None)
+    if not callable(start) or identity is None or config is None or vault is None:
+        return False
+    try:
+        secret_handle = config.resolved_secret_handle(
+            identity.server_id,
+            int(identity.generation),
+        )
+        token = vault.resolve(secret_handle)
+        port = int(
+            getattr(server, "_bound_port", 0)
+            or getattr(config, "port", 0)
+            or 0
+        )
+        host = str(getattr(config, "host", "") or "127.0.0.1")
+        if port <= 0:
+            return False
+        start(
+            connection,
+            host=host,
+            port=port,
+            token=token,
+            identity=identity,
+        )
+        server._transport_connection = connection
+        if getattr(server, "_lifecycle", None) is ServerLifecycle.FAILED:
+            server._lifecycle = ServerLifecycle.READY
+        return True
+    except Exception:
+        return False
 
 
 def _owner_task_projection(server: Any) -> dict[str, Any]:
