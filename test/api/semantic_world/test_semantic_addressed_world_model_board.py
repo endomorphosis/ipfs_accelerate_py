@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "failed_pre_authoritative_m39_successor_materialization",
     "committed_m38_evidence_reconciliation_successor_materialization",
     "pre_authoritative_custody_restart_successor_materialization",
     "post_reboot_generation_restart_successor_materialization",
@@ -94,6 +95,36 @@ def _historical_successor_controls_at(
     if historical_seal is not None:
         assert not any(f"{key}_cid" in historical_seal for key in newer_keys)
     return historical_scheduler, historical_migration, historical_seal
+
+
+def test_historical_successor_controls_include_m40() -> None:
+    """Historical fixtures must remove M40 from every protected surface."""
+
+    m40_key = "failed_pre_authoritative_m39_successor_materialization"
+    m39_key = "committed_m38_evidence_reconciliation_successor_materialization"
+    scheduler = {m40_key: {"revision": "M40"}, m39_key: {"revision": "M39"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m40_key}_cid": "sha256:" + "4" * 64,
+        f"{m39_key}_cid": "sha256:" + "3" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m40_key, scheduler, migration, seal
+    )
+    assert current[m40_key] == scheduler[m40_key]
+    assert current_migration is not None
+    assert current_migration[m40_key] == migration[m40_key]
+    assert current_seal is not None
+    assert current_seal[f"{m40_key}_cid"] == seal[f"{m40_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m39_key, scheduler, migration, seal)
+    )
+    assert m40_key not in historical
+    assert historical_migration is not None and m40_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m40_key}_cid" not in historical_seal
 
 
 def _load(relative: str, name: str) -> ModuleType:
