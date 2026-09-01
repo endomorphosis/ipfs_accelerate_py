@@ -29,6 +29,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Any, Final
 
 from ...llm_router import resolve_agent_implementation_route_binding
@@ -80,6 +81,13 @@ DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-interrupted-implementation-rearm-evidence@1"
 )
+DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA: Final[
+    str
+] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-historical-interrupted-implementation-state-transition-"
+    "rearm-evidence@1"
+)
 DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-terminal-quiescent-deferred-rearm-evidence@1"
@@ -89,6 +97,54 @@ DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_AUTHORIZATION_SCHEMA: Final[
 ] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-interrupted-implementation-rearm-authorization@1"
+)
+DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_AUTHORIZATION_SCHEMA: Final[
+    str
+] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-historical-interrupted-implementation-state-transition-"
+    "rearm-authorization@1"
+)
+DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_PIN: Final[
+    Mapping[str, Any]
+] = MappingProxyType(
+    {
+        # One immutable predecessor occurrence.  This is intentionally not a
+        # reusable policy keyed only by task name or retry counters.
+        "task_alias": "PCTDD-005",
+        "task_cid": (
+            "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+        ),
+        "task_revision": 13,
+        "attempt_id": "attempt:813bc9975e30429d85399ffe3a6b16f5",
+        "claim_id": "claim:9cffc9bab8474296b3144065192ca626",
+        "lease_id": "lease:ba39ebba12c44784bcffee6f7881c260",
+        "attempt_number": 3,
+        "owner_session_id": "embedded-store:5a477a1db9402e639fecebb83f5f0873",
+        "fencing_token": 3,
+        "fence_epoch": 3,
+        "binding_id": (
+            "sha256:20e99c89db312c9efa6f62255a8e065434eda322b150c8b53f0b916d7d05a5a3"
+        ),
+        "nested_task_cid": (
+            "baguqeerae2oqlgsousztddczfgaxbsdmgdmmwya7sszn7sk27c5qvgsd6qzq"
+        ),
+        "prepared_reconciliation_receipt_id": (
+            "sha256:9aa94eeb08ce11648763618652b9cf5e6cf26cad9c6d291874bcf24dcd974651"
+        ),
+        "commit_barrier_receipt_id": (
+            "sha256:11bf392edd1b28c296a54e7a0a24d6a1a93787152ad7e23ceb70a95a402b32f6"
+        ),
+        "retry_preparation_event_id": (
+            "sha256:396bda2d77db77339585da1cfd4780e8e5705500f60c094a16839647023829dd"
+        ),
+        "state_recovery_event_id": (
+            "sha256:ed4e09a1625c1a0d64b258c29d9aaccd15804e5e99eefdc9dccd952823d5fd9e"
+        ),
+        "claim_release_event_id": (
+            "sha256:c948d61362e14fd8c0f0cdb452e63891145470cdd8b7ee41fdbe89c5302618b1"
+        ),
+    }
 )
 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -381,6 +437,32 @@ DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_FIELDS: Final[
         "recovery_terminal",
         "retained_candidate_disposition",
         "evidence_id",
+    }
+)
+DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_FIELDS: Final[
+    frozenset[str]
+] = DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_FIELDS | frozenset(
+    {
+        "pre_state_digest",
+        "state_transition_reason",
+        "state_transition_profile",
+        "task_revision",
+        "board_namespace",
+        "retry_preparation_event_id",
+        "claim_release_event_id",
+        "event_stream_id",
+        "event_snapshot_id",
+        "event_manifest_digest",
+        "event_count",
+        "event_head_sequence",
+        "event_head_id",
+        "pre_display_attempt_count",
+        "pre_cid_attempt_count",
+        "post_display_attempt_count",
+        "post_cid_attempt_count",
+        "attempt_consumed",
+        "historical_transition_only",
+        "nested_state_quiescent",
     }
 )
 DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_FIELDS: Final[
@@ -819,6 +901,70 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
             "board_namespace",
         }
     ),
+    "interrupted_implementation_retry_prepared": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "attempt",
+            "board_namespace",
+            "branch",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "claim_id",
+            "claim_lease_id",
+            "database_evidence_id",
+            "database_receipt_id",
+            "interrupted_retry_id",
+            "legacy_worktree_root_missing",
+            "lifecycle_fence",
+            "lifecycle_record_id",
+            "release_epoch",
+            "task_id",
+            "workspace_path",
+        }
+    ),
+    "implementation_state_recovered": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "attempt",
+            "attempt_recovery",
+            "board_namespace",
+            "branch",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "finished_attempt",
+            "interrupted_retry_id",
+            "reason",
+            "task_id",
+            "worktree_path",
+        }
+    ),
+    "implementation_task_claim_released": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "attempt",
+            "blocked",
+            "board_namespace",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "claim_id",
+            "claim_lease_id",
+            "claim_path",
+            "lifecycle_fence",
+            "lifecycle_record_id",
+            "operation_id",
+            "owner_pid",
+            "reason",
+            "receipt_id",
+            "receipt_path",
+            "reconciled",
+            "released_at",
+            "released_unfinished_attempt",
+            "released_unfinished_retry_id",
+            "state_dir",
+            "task_id",
+            "task_status",
+        }
+    ),
     "daemon_pass": _EVENT_ENVELOPE_FIELDS
     | frozenset(
         {
@@ -861,6 +1007,45 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
 _SETUP_EVENT_FIELD_VARIANTS: Final[
     dict[str, frozenset[frozenset[str]]]
 ] = {
+    "implementation_protected_path_snapshot_cleared": frozenset(
+        {
+            _EVENT_ENVELOPE_FIELDS
+            | frozenset({"task_id", "attempt", "reason"}),
+        }
+    ),
+    "implementation_protected_path_snapshot_reconciled": frozenset(
+        {
+            _EVENT_ENVELOPE_FIELDS
+            | frozenset(
+                {
+                    "task_id",
+                    "attempt",
+                    "workspace_path",
+                    "blocked",
+                    "reason",
+                }
+            ),
+        }
+    ),
+    "implementation_shutdown_reconciliation_blocked": frozenset(
+        {
+            _EVENT_ENVELOPE_FIELDS
+            | frozenset(
+                {
+                    "reconciled",
+                    "blocked",
+                    "reason",
+                    "reconciled_at",
+                    "task_id",
+                    "attempt",
+                    "attempt_recovery",
+                    "task_claim_reconciliation",
+                    "protected_path_reconciliation",
+                    "worktree_lifecycle_reconciliation",
+                }
+            ),
+        }
+    ),
     # The protected quota/medium predecessor predates ``exception_result``.
     # Keep its exact historical shape as a separate closed variant instead of
     # weakening either version with an optional authority-bearing field.
@@ -1090,6 +1275,10 @@ _ORDINARY_GROK_CONTAINER_FENCE_SCHEMA: Final[str] = (
 
 class DatabasePortalBridgeError(RuntimeError):
     """A database claim could not obtain trustworthy Portal evidence."""
+
+
+class DatabasePortalTerminalQuiescentStateAdvanced(DatabasePortalBridgeError):
+    """The sealed terminal probe observed a stable later quiescent state."""
 
 
 class DatabasePortalBridgeDeferred(DatabasePortalBridgeError):
@@ -2353,6 +2542,65 @@ class DatabasePortalExecutionBridge:
             ),
             "active_branch": str(payload.get("active_branch") or ""),
         }
+
+    @staticmethod
+    def _nested_state_is_exactly_quiescent(
+        payload: Mapping[str, Any] | None,
+        nested_state: Mapping[str, Any],
+        *,
+        allow_legacy_sparse: bool = False,
+    ) -> bool:
+        """Recognize only a present, fully inactive Portal execution state.
+
+        The predecessor Portal persisted a closed four-field state before the
+        richer runner and task-identity fields existed.  Preserve that exact
+        inactive shape as a versioned compatibility profile; missing fields in
+        any larger record remain invalid rather than acquiring empty defaults.
+        """
+
+        active_string_fields = (
+            "active_task_id",
+            "active_task_key",
+            "active_task_cid",
+            "active_task_title",
+            "active_task_track",
+            "active_task_started_at",
+            "active_phase",
+            "active_phase_started_at",
+            "active_phase_detail",
+            "active_log_path",
+            "active_worktree_path",
+            "active_branch",
+        )
+        if (
+            not isinstance(payload, Mapping)
+            or nested_state.get("present") is not True
+            or nested_state.get("active") is not False
+        ):
+            return False
+        legacy_sparse_fields = {
+            "implementation_in_progress",
+            "active_task_id",
+            "active_attempt",
+            "active_phase",
+        }
+        if (
+            allow_legacy_sparse
+            and set(payload) == legacy_sparse_fields
+            and payload.get("implementation_in_progress") is False
+            and payload.get("active_task_id") == ""
+            and type(payload.get("active_attempt")) is int
+            and payload.get("active_attempt") == 0
+            and payload.get("active_phase") == ""
+        ):
+            return True
+        return bool(
+            payload.get("implementation_in_progress") is False
+            and all(payload.get(field) == "" for field in active_string_fields)
+            and type(payload.get("active_attempt")) is int
+            and payload.get("active_attempt") == 0
+            and payload.get("active_provider_runner") == {}
+        )
 
     @staticmethod
     def _validated_provider_runner_fence(
@@ -4349,8 +4597,18 @@ class DatabasePortalExecutionBridge:
                     "database Portal pre-implementation event is malformed"
                 )
         elif event_type == "implementation_protected_path_snapshot_cleared":
+            historical_shape = not any(
+                field in event
+                for field in (
+                    "canonical_task_key",
+                    "canonical_task_cid",
+                    "board_namespace",
+                )
+            )
             if (
-                any(
+                (
+                    not historical_shape
+                    and any(
                     not isinstance(event.get(name), str)
                     or not str(event.get(name) or "")
                     for name in (
@@ -4360,9 +4618,14 @@ class DatabasePortalExecutionBridge:
                         "canonical_task_cid",
                         "board_namespace",
                     )
+                    )
                 )
                 or type(event.get("attempt")) is not int
                 or int(event["attempt"]) < 1
+                or not isinstance(event.get("task_id"), str)
+                or not str(event.get("task_id") or "")
+                or not isinstance(event.get("reason"), str)
+                or not str(event.get("reason") or "")
             ):
                 raise DatabasePortalBridgeError(
                     "database Portal protected snapshot clear is malformed"
@@ -5119,6 +5382,347 @@ class DatabasePortalExecutionBridge:
                         with suppress(OSError):
                             os.close(descriptor)
 
+    def _historical_interrupted_state_transition_basis(
+        self,
+        *,
+        attempt: Any,
+        receipt: Mapping[str, Any],
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        source: Mapping[str, Any],
+        prepared: Mapping[str, Any],
+        snapshot: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Verify the one released PCTDD-005 pre-state sealing defect.
+
+        The predecessor captured its quiescent state immediately before the
+        interrupted-retry adapter refunded the nested attempt counter.  This
+        migration reconstructs those exact predecessor bytes and admits only
+        the immutable three-event 1 -> 0 recovery suffix already present.
+        It never invokes a provider or mutating reconciliation adapter.
+        """
+
+        pin = (
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_PIN
+        )
+        if (
+            any(
+                getattr(attempt, field, None) != pin[field]
+                for field in (
+                    "task_alias",
+                    "task_cid",
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "attempt_number",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            )
+            or receipt.get("operation") != "database_unknown_outcome_blocked"
+            or receipt.get("reason") != "callback_authority_incomplete_blocked"
+            or receipt.get("retry_exhausted") is not True
+            or receipt.get("forced_block") is not True
+            or receipt.get("authority_outcome") != "unknown"
+            or type(receipt.get("attempts_used")) is not int
+            or receipt.get("attempts_used") != 1
+            or type(receipt.get("unknown_outcome_rearm_count")) is not int
+            or receipt.get("unknown_outcome_rearm_count") != 0
+            or not str(receipt.get("process_instance_id") or "").strip()
+        ):
+            return None
+
+        state = snapshot.get("state")
+        events = snapshot.get("events")
+        manifest = snapshot.get("manifest")
+        projection = str(snapshot.get("projection") or "")
+        current_nested = prepared.get("nested_state")
+        recovery = prepared.get("portal_reconciliation")
+        source_receipt = source.get("reconciliation_receipt")
+        if not (
+            isinstance(state, Mapping)
+            and isinstance(events, list)
+            and all(isinstance(event, Mapping) for event in events)
+            and isinstance(manifest, Mapping)
+            and isinstance(current_nested, Mapping)
+            and isinstance(recovery, Mapping)
+            and isinstance(source_receipt, Mapping)
+            and snapshot.get("binding") == binding
+            and _projection_immutable_digest(projection)
+            == binding.get("projection_immutable_digest")
+            and binding.get("binding_id") == pin["binding_id"]
+            and binding.get("task_revision") == pin["task_revision"]
+        ):
+            return None
+
+        try:
+            identity = self._projection_task_identity(
+                paths,
+                binding,
+                projection,
+            )
+            verified_current = self._verify_nested_state_identity(
+                paths,
+                binding,
+                identity,
+                payload=state,
+                state_digest=str(snapshot.get("state_digest") or ""),
+            )
+        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+            return None
+        board_namespace = str(identity.get("board_namespace") or "")
+        nested_task_cid = str(identity.get("canonical_task_cid") or "")
+        canonical_task_key = str(identity.get("canonical_task_key") or "")
+        task_revision = binding.get("task_revision")
+        if (
+            board_namespace != "parallel-content-sealing-proof-carrying-tdd-v1"
+            or identity.get("task_id") != "PCTDD-005"
+            or nested_task_cid != pin["nested_task_cid"]
+            or not re.fullmatch(r"baguqeera[a-z2-7]{52}", nested_task_cid)
+            or not canonical_task_key
+            or type(task_revision) is not int
+            or task_revision < 0
+            or not self._nested_state_is_exactly_quiescent(
+                state,
+                verified_current,
+            )
+        ):
+            return None
+
+        claim_release = recovery.get("task_claim_reconciliation")
+        released_attempt = (
+            claim_release.get("released_unfinished_attempt")
+            if isinstance(claim_release, Mapping)
+            else None
+        )
+        source_nested = source_receipt.get("nested_state")
+        source_portal = source_receipt.get("portal_reconciliation")
+        source_claim = (
+            source_portal.get("task_claim_reconciliation")
+            if isinstance(source_portal, Mapping)
+            else None
+        )
+        source_evidence_id = str(source.get("evidence_id") or "")
+        source_receipt_id = str(source_receipt.get("receipt_id") or "")
+        retry_id = str(
+            (claim_release or {}).get("released_unfinished_retry_id") or ""
+        )
+        if not (
+            isinstance(claim_release, Mapping)
+            and isinstance(released_attempt, Mapping)
+            and isinstance(source_nested, Mapping)
+            and isinstance(source_claim, Mapping)
+            and recovery.get("reason")
+            == "interrupted_implementation_recovered_for_retry"
+            and recovery.get("reconciled") is True
+            and recovery.get("blocked") is False
+            and recovery.get("task_id") == "PCTDD-005"
+            and recovery.get("canonical_task_cid") == nested_task_cid
+            and type(recovery.get("attempt")) is int
+            and recovery.get("attempt") == 1
+            and claim_release.get("reason") == "quiesced_task_claim_released"
+            and claim_release.get("reconciled") is True
+            and claim_release.get("blocked") is False
+            and claim_release.get("task_id") == "PCTDD-005"
+            and claim_release.get("canonical_task_cid") == nested_task_cid
+            and claim_release.get("canonical_task_key") == canonical_task_key
+            and claim_release.get("board_namespace") == board_namespace
+            and claim_release.get("task_status") == "todo"
+            and type(claim_release.get("attempt")) is int
+            and claim_release.get("attempt") == 1
+            and type(released_attempt.get("released_from")) is int
+            and released_attempt.get("released_from") == 1
+            and type(released_attempt.get("released_to")) is int
+            and released_attempt.get("released_to") == 0
+            and re.fullmatch(r"baguqeera[a-z2-7]{52}", retry_id)
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", source_evidence_id)
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", source_receipt_id)
+            and source_claim.get("canonical_task_cid") == nested_task_cid
+            and source_nested.get("active_task_id") == "PCTDD-005"
+            and type(source_nested.get("active_attempt")) is int
+            and source_nested.get("active_attempt") == 1
+        ):
+            return None
+
+        display_counts = state.get("implementation_attempts")
+        cid_counts = state.get("implementation_attempts_by_cid")
+        pre_state_digest = str(current_nested.get("state_digest") or "")
+        post_state_digest = str(snapshot.get("state_digest") or "")
+        if not (
+            display_counts == {}
+            and cid_counts == {}
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", pre_state_digest)
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", post_state_digest)
+            and pre_state_digest != post_state_digest
+        ):
+            return None
+        reconstructed_pre_state = dict(state)
+        reconstructed_pre_state["implementation_attempts"] = {"PCTDD-005": 1}
+        reconstructed_pre_state["implementation_attempts_by_cid"] = {
+            nested_task_cid: 1
+        }
+        reconstructed_pre_bytes = (
+            json.dumps(reconstructed_pre_state, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        reconstructed_post_state = dict(reconstructed_pre_state)
+        reconstructed_post_state["implementation_attempts"] = {}
+        reconstructed_post_state["implementation_attempts_by_cid"] = {}
+        reconstructed_post_bytes = (
+            json.dumps(reconstructed_post_state, indent=2, sort_keys=True) + "\n"
+        ).encode("utf-8")
+        if (
+            _sha256_bytes(reconstructed_pre_bytes) != pre_state_digest
+            or _sha256_bytes(reconstructed_post_bytes) != post_state_digest
+            or reconstructed_post_state != dict(state)
+        ):
+            return None
+
+        if len(events) < 3:
+            return None
+        preparation, state_recovery, claim_release_event = events[-3:]
+        forbidden_event_types = {
+            "commit_created",
+            "implementation_finished",
+            "implementation_provider_exhausted",
+            "implementation_skipped",
+            "implementation_terminated",
+            "implementation_timeout",
+            "merge_finished",
+            "merge_started",
+            "proof_accepted",
+            "provider_invocation_committed",
+            "task_completed",
+            "validation_finished",
+            "validation_started",
+        }
+        release_receipt_id = str(claim_release.get("receipt_id") or "")
+        state_recovery_event_id = str(state_recovery.get("event_id") or "")
+        if (
+            any(event.get("type") in forbidden_event_types for event in events)
+            or preparation.get("type")
+            != "interrupted_implementation_retry_prepared"
+            or state_recovery.get("type") != "implementation_state_recovered"
+            or claim_release_event.get("type")
+            != "implementation_task_claim_released"
+            or preparation.get("task_id") != "PCTDD-005"
+            or preparation.get("canonical_task_key") != canonical_task_key
+            or preparation.get("canonical_task_cid") != nested_task_cid
+            or preparation.get("board_namespace") != board_namespace
+            or type(preparation.get("attempt")) is not int
+            or preparation.get("attempt") != 1
+            or preparation.get("database_evidence_id") != source_evidence_id
+            or preparation.get("database_receipt_id") != source_receipt_id
+            or preparation.get("interrupted_retry_id") != retry_id
+            or preparation.get("workspace_path")
+            != source_nested.get("active_worktree_path")
+            or preparation.get("branch") != source_nested.get("active_branch")
+            or preparation.get("claim_id") != claim_release.get("claim_id")
+            or preparation.get("claim_lease_id")
+            != claim_release.get("claim_lease_id")
+            or preparation.get("lifecycle_record_id")
+            != claim_release.get("lifecycle_record_id")
+            or preparation.get("lifecycle_fence")
+            != claim_release.get("lifecycle_fence")
+            or state_recovery.get("task_id") != "PCTDD-005"
+            or state_recovery.get("canonical_task_key") != canonical_task_key
+            or state_recovery.get("canonical_task_cid") != nested_task_cid
+            or state_recovery.get("board_namespace") != board_namespace
+            or type(state_recovery.get("attempt")) is not int
+            or state_recovery.get("attempt") != 1
+            or state_recovery.get("reason") != "inflight_process_missing"
+            or state_recovery.get("finished_attempt") is not False
+            or state_recovery.get("interrupted_retry_id") != retry_id
+            or state_recovery.get("attempt_recovery")
+            != {
+                "attempt": 1,
+                "canonical_task_cid": nested_task_cid,
+                "consumed": False,
+                "previous_cid_count": 1,
+                "previous_display_count": 1,
+                "released": True,
+                "released_to": 0,
+                "task_id": "PCTDD-005",
+            }
+            or released_attempt.get("event_id") != state_recovery_event_id
+            or claim_release_event.get("task_id") != "PCTDD-005"
+            or claim_release_event.get("canonical_task_key")
+            != canonical_task_key
+            or claim_release_event.get("canonical_task_cid") != nested_task_cid
+            or claim_release_event.get("board_namespace") != board_namespace
+            or type(claim_release_event.get("attempt")) is not int
+            or claim_release_event.get("attempt") != 1
+            or claim_release_event.get("reason")
+            != "quiesced_task_claim_released"
+            or claim_release_event.get("reconciled") is not True
+            or claim_release_event.get("blocked") is not False
+            or claim_release_event.get("task_status") != "todo"
+            or claim_release_event.get("released_unfinished_retry_id") != retry_id
+            or claim_release_event.get("released_unfinished_attempt")
+            != released_attempt
+            or claim_release_event.get("receipt_id") != release_receipt_id
+            or claim_release_event.get("claim_id") != claim_release.get("claim_id")
+            or claim_release_event.get("claim_lease_id")
+            != claim_release.get("claim_lease_id")
+            or claim_release_event.get("lifecycle_record_id")
+            != claim_release.get("lifecycle_record_id")
+            or claim_release_event.get("lifecycle_fence")
+            != claim_release.get("lifecycle_fence")
+            or preparation.get("event_id") != state_recovery.get("previous_event_id")
+            or state_recovery_event_id
+            != claim_release_event.get("previous_event_id")
+            or preparation.get("event_id")
+            != pin["retry_preparation_event_id"]
+            or state_recovery_event_id != pin["state_recovery_event_id"]
+            or claim_release_event.get("event_id")
+            != pin["claim_release_event_id"]
+            or claim_release_event.get("event_id")
+            != manifest.get("last_event_id")
+            or claim_release_event.get("sequence")
+            != manifest.get("latest_sequence")
+            or len(events) != manifest.get("latest_sequence")
+        ):
+            return None
+
+        return {
+            "task_revision": task_revision,
+            "board_namespace": board_namespace,
+            "nested_task_cid": nested_task_cid,
+            "nested_attempt": 1,
+            "retry_preparation_event_id": str(
+                preparation.get("event_id") or ""
+            ),
+            "state_recovery_event_id": state_recovery_event_id,
+            "claim_release_event_id": str(
+                claim_release_event.get("event_id") or ""
+            ),
+            "claim_release_receipt_id": release_receipt_id,
+            "interrupted_retry_id": retry_id,
+            "event_stream_id": str(manifest.get("stream_id") or ""),
+            "event_snapshot_id": str(manifest.get("snapshot_id") or ""),
+            "event_manifest_digest": str(
+                manifest.get("manifest_digest") or ""
+            ),
+            "event_count": len(events),
+            "event_head_sequence": int(manifest.get("latest_sequence") or 0),
+            "event_head_id": str(manifest.get("last_event_id") or ""),
+            "pre_state_digest": pre_state_digest,
+            "state_digest": post_state_digest,
+            "state_transition_profile": (
+                "release-unfinished-implementation-attempt-counts@1"
+            ),
+            "state_transition_reason": (
+                "interrupted_implementation_recovered_for_retry"
+            ),
+            "pre_display_attempt_count": 1,
+            "pre_cid_attempt_count": 1,
+            "post_display_attempt_count": 0,
+            "post_cid_attempt_count": 0,
+            "attempt_consumed": False,
+            "historical_transition_only": True,
+            "nested_state_quiescent": True,
+        }
+
     def _interrupted_implementation_rearm_evidence(
         self,
         attempt: Any,
@@ -5139,6 +5743,9 @@ class DatabasePortalExecutionBridge:
 
         accepted_expected_schemas = {
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            (
+                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
+            ),
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
         }
         if (
@@ -5242,8 +5849,10 @@ class DatabasePortalExecutionBridge:
                 )
             )
             migration_source = None
-            if source is None and expected_evidence_schema != (
-                DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+            if (
+                source is None
+                and expected_evidence_schema
+                == DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA
             ):
                 migration_source = (
                     self._stale_dispatch_migration_retry_evidence(
@@ -5252,14 +5861,51 @@ class DatabasePortalExecutionBridge:
                     )
                 )
                 source = migration_source
-            state_before, state_digest_before = self._strict_state_record(
-                paths.state
-            )
+            historical_snapshot: Mapping[str, Any] | None = None
+            if expected_evidence_schema == (
+                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
+            ):
+                historical_snapshot = self._pinned_no_provider_snapshot(paths)
+                if historical_snapshot.get("binding") != binding:
+                    return None
+                state_before = historical_snapshot.get("state")
+                state_digest_before = str(
+                    historical_snapshot.get("state_digest") or ""
+                )
+            else:
+                state_before, state_digest_before = self._strict_state_record(
+                    paths.state
+                )
+            verified_current_nested: Mapping[str, Any] | None = None
+            if expected_evidence_schema == (
+                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
+            ):
+                projection = str(historical_snapshot.get("projection") or "")
+                if (
+                    _projection_immutable_digest(projection)
+                    != binding.get("projection_immutable_digest")
+                ):
+                    return None
+                identity = self._projection_task_identity(
+                    paths,
+                    binding,
+                    projection,
+                )
+                verified_current_nested = self._verify_nested_state_identity(
+                    paths,
+                    binding,
+                    identity,
+                    payload=state_before,
+                    state_digest=state_digest_before,
+                )
         except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
             return None
         if source is None or not isinstance(durable_binding, Mapping):
             return None
         stale_dispatch_migration = migration_source is not None
+        interrupted_state_transition = expected_evidence_schema == (
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
+        )
         durable_expected = {
             **exact_attempt,
             "binding_id": str(binding.get("binding_id") or ""),
@@ -5315,7 +5961,27 @@ class DatabasePortalExecutionBridge:
             or current_nested.get("state_path") != str(paths.state)
             or (
                 not stale_dispatch_migration
+                and not interrupted_state_transition
                 and current_nested.get("state_digest") != state_digest_before
+            )
+            or (
+                interrupted_state_transition
+                and (
+                    current_nested.get("state_digest") == state_digest_before
+                    or not re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(current_nested.get("state_digest") or ""),
+                    )
+                    or not re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(state_digest_before or ""),
+                    )
+                    or not isinstance(verified_current_nested, Mapping)
+                    or not self._nested_state_is_exactly_quiescent(
+                        state_before,
+                        verified_current_nested,
+                    )
+                )
             )
             or link.get("nested_state_digest")
             != current_nested.get("state_digest")
@@ -5353,48 +6019,96 @@ class DatabasePortalExecutionBridge:
         ):
             return None
 
-        daemon = self.portal_factory(
-            paths,
-            str(binding.get("task_alias") or attempt.task_cid),
-        )
         replay: dict[str, Any] = {}
-        try:
-            reconcile = getattr(
-                daemon,
-                (
-                    "reconcile_stale_dispatch_release_migration"
-                    if stale_dispatch_migration
-                    else "reconcile_interrupted_database_implementation_attempt"
-                ),
-                None,
-            )
-            if not callable(reconcile):
+        historical_basis: dict[str, Any] | None = None
+        if interrupted_state_transition:
+            if not isinstance(historical_snapshot, Mapping):
                 return None
-            raw_replay = (
-                reconcile(
-                    source,
-                    expected_pre_state_digest=str(
-                        current_nested.get("state_digest") or ""
-                    ),
+            historical_basis = (
+                self._historical_interrupted_state_transition_basis(
+                    attempt=attempt,
+                    receipt=receipt,
+                    paths=paths,
+                    binding=binding,
+                    source=source,
+                    prepared=prepared,
+                    snapshot=historical_snapshot,
                 )
-                if stale_dispatch_migration
-                else reconcile(source)
             )
-            if not isinstance(raw_replay, Mapping):
+            if historical_basis is None:
                 return None
-            replay = dict(raw_replay)
-        except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
-            return None
-        finally:
-            close = getattr(daemon, "close_event_runtime", None) or getattr(
-                daemon,
-                "close",
-                None,
+            replay = dict(recovery)
+            replay.pop("provider_forbidden_terminal_recovery", None)
+        else:
+            daemon = self.portal_factory(
+                paths,
+                str(binding.get("task_alias") or attempt.task_cid),
             )
-            if callable(close):
-                close()
+            try:
+                reconcile = getattr(
+                    daemon,
+                    (
+                        "reconcile_stale_dispatch_release_migration"
+                        if stale_dispatch_migration
+                        else (
+                            "reconcile_interrupted_database_implementation_attempt"
+                        )
+                    ),
+                    None,
+                )
+                if not callable(reconcile):
+                    return None
+                raw_replay = (
+                    reconcile(
+                        source,
+                        expected_pre_state_digest=str(
+                            current_nested.get("state_digest") or ""
+                        ),
+                    )
+                    if stale_dispatch_migration
+                    else reconcile(source)
+                )
+                if not isinstance(raw_replay, Mapping):
+                    return None
+                replay = dict(raw_replay)
+            except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
+                return None
+            finally:
+                close = getattr(daemon, "close_event_runtime", None) or getattr(
+                    daemon,
+                    "close",
+                    None,
+                )
+                if callable(close):
+                    close()
         try:
-            state_after, state_digest_after = self._strict_state_record(paths.state)
+            if interrupted_state_transition:
+                historical_snapshot_after = self._pinned_no_provider_snapshot(paths)
+                if historical_snapshot_after != historical_snapshot:
+                    return None
+                state_after = historical_snapshot_after.get("state")
+                state_digest_after = str(
+                    historical_snapshot_after.get("state_digest") or ""
+                )
+                if (
+                    self.load_reconciliation_receipt(
+                        attempt,
+                        str(link["prepared_reconciliation_receipt_id"]),
+                        required_stage="prepared",
+                    )
+                    != prepared
+                    or self.load_reconciliation_receipt(
+                        attempt,
+                        str(link["commit_barrier_receipt_id"]),
+                        required_stage="commit_barrier",
+                    )
+                    != commit_barrier
+                ):
+                    return None
+            else:
+                state_after, state_digest_after = self._strict_state_record(
+                    paths.state
+                )
         except (DatabasePortalBridgeError, OSError, TypeError, ValueError):
             return None
         if (
@@ -5682,7 +6396,9 @@ class DatabasePortalExecutionBridge:
 
         authorization = {
             "schema": (
-                DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_AUTHORIZATION_SCHEMA
+                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_AUTHORIZATION_SCHEMA
+                if interrupted_state_transition
+                else DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_AUTHORIZATION_SCHEMA
             ),
             **exact_attempt,
             "binding_id": str(binding.get("binding_id") or ""),
@@ -5721,12 +6437,15 @@ class DatabasePortalExecutionBridge:
             "outer_block_receipt_digest": _sha256_bytes(
                 _canonical_json(dict(receipt))
             ),
+            **(historical_basis or {}),
         }
         rearm_authorization_id = _sha256_bytes(_canonical_json(authorization))
 
         evidence: dict[str, Any] = {
             "schema": (
-                DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
+                if interrupted_state_transition
+                else DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
             ),
             **exact_attempt,
             "task_alias": str(binding.get("task_alias") or ""),
@@ -5782,7 +6501,24 @@ class DatabasePortalExecutionBridge:
             "acceptance_inferred": False,
             "recovery_terminal": True,
             "retained_candidate_disposition": "preserved_unvalidated",
+            **(historical_basis or {}),
         }
+        expected_evidence_fields = (
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_FIELDS
+            if interrupted_state_transition
+            else DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_FIELDS
+        )
+        if set(evidence) != expected_evidence_fields - {"evidence_id"}:
+            raise DatabasePortalBridgeError(
+                "interrupted implementation evidence field construction drifted"
+            )
+        if interrupted_state_transition and any(
+            evidence.get(field) != expected
+            for field, expected in (
+                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_PIN.items()
+            )
+        ):
+            return None
         evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
         return evidence
 
@@ -7832,10 +8568,12 @@ class DatabasePortalExecutionBridge:
         """Prove one exact nested recovery is eligible for bounded rearm.
 
         A populated terminal-reconciliation link first reaches the exact
-        interrupted-implementation verifier.  Under the standard policy only,
+        interrupted-implementation verifier.  One task/attempt-pinned
+        historical successor may prove the released 1 -> 0 nested counter
+        transition from a predecessor seal.  Under the standard policy only,
         a distinct successor may then prove that the nested task was never
-        selected because its route remained resource-deferred.  Neither route
-        may fall through to legacy setup-failure evidence, and the stale
+        selected because its route remained resource-deferred.  None of these
+        routes may fall through to legacy setup-failure evidence, and the stale
         dispatch migration policy remains exclusive to its migration proof.
         """
 
@@ -7866,6 +8604,31 @@ class DatabasePortalExecutionBridge:
             and receipt.get("reason") == "provider_dispatch_outcome_unknown"
             and isinstance(receipt.get("terminal_reconciliation"), Mapping)
             and bool(receipt.get("terminal_reconciliation"))
+        )
+        historical_state_transition_candidate = bool(
+            standard_policy
+            and all(
+                getattr(attempt, field, None) == expected
+                for field, expected in (
+                    DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_PIN.items()
+                )
+                if field
+                in {
+                    "task_alias",
+                    "task_cid",
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "attempt_number",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                }
+            )
+            and type(receipt.get("attempts_used")) is int
+            and receipt.get("attempts_used") == 1
+            and type(receipt.get("unknown_outcome_rearm_count")) is int
+            and receipt.get("unknown_outcome_rearm_count") == 0
         )
         if (
             str(getattr(attempt, "status", "") or "") != "failed"
@@ -7904,6 +8667,18 @@ class DatabasePortalExecutionBridge:
                     return interrupted_evidence
                 if not standard_policy:
                     return None
+                if historical_state_transition_candidate:
+                    historical_transition = (
+                        self._interrupted_implementation_rearm_evidence(
+                            attempt,
+                            receipt,
+                            expected_evidence_schema=(
+                                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
+                            ),
+                        )
+                    )
+                    if historical_transition is not None:
+                        return historical_transition
                 return self._terminal_quiescent_deferred_rearm_evidence(
                     attempt,
                     receipt,
@@ -9149,13 +9924,7 @@ class DatabasePortalExecutionBridge:
             payload=strict_state,
             state_digest=strict_state_digest,
         )
-        if terminal_landed_recovery and str(
-            terminal_reconciliation.get("nested_state_digest") or ""
-        ) != str(nested_state.get("state_digest") or ""):
-            raise DatabasePortalBridgeError(
-                "blocked terminal landed recovery nested state changed"
-            )
-        _state_before_fence, state_digest_before_fence = (
+        state_before_fence, state_digest_before_fence = (
             self._strict_state_record(paths.state)
         )
         if state_digest_before_fence != strict_state_digest:
@@ -9178,6 +9947,19 @@ class DatabasePortalExecutionBridge:
                 },
                 "terminal_provider_evidence": False,
             }
+        if terminal_landed_recovery and str(
+            terminal_reconciliation.get("nested_state_digest") or ""
+        ) != str(nested_state.get("state_digest") or ""):
+            if not self._nested_state_is_exactly_quiescent(
+                state_before_fence,
+                nested_state,
+            ):
+                raise DatabasePortalBridgeError(
+                    "blocked terminal landed recovery nested state changed"
+                )
+            raise DatabasePortalTerminalQuiescentStateAdvanced(
+                "blocked terminal landed recovery nested state changed"
+            )
         from .supervisor import fence_ordinary_provider_runner
 
         provider_runner_fence = self._validated_provider_runner_fence(
@@ -9360,6 +10142,60 @@ class DatabasePortalExecutionBridge:
             )
             if callable(close):
                 close()
+        final_strict_state, final_strict_state_digest = (
+            self._strict_state_record(paths.state)
+        )
+        final_nested_state = self._verify_nested_state_identity(
+            paths,
+            expected,
+            identity,
+            payload=final_strict_state,
+            state_digest=final_strict_state_digest,
+        )
+        _confirmed_final_state, confirmed_final_state_digest = (
+            self._strict_state_record(paths.state)
+        )
+        final_state_invalid = bool(
+            type(nested_state.get("present")) is not bool
+            or type(final_nested_state.get("present")) is not bool
+            or final_nested_state.get("present")
+            != nested_state.get("present")
+            or (
+                terminal_landed_recovery
+                and not self._nested_state_is_exactly_quiescent(
+                    final_strict_state,
+                    final_nested_state,
+                    allow_legacy_sparse=True,
+                )
+            )
+        )
+        if (
+            confirmed_final_state_digest != final_strict_state_digest
+            or final_state_invalid
+        ):
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "nested_state_changed_after_portal_reconciliation",
+                "attempt_id": str(attempt.attempt_id),
+                "claim_id": str(attempt.claim_id),
+                "task_cid": str(attempt.task_cid),
+                "task_alias": str(expected.get("task_alias") or ""),
+                "attempt_root": str(paths.root),
+                "binding_id": str(expected.get("binding_id") or ""),
+                "nested_state": final_nested_state,
+                "provider_runner_fence": dict(provider_runner_fence),
+                "provider_runner_reconciliation_authority": (
+                    provider_runner_reconciliation_authority
+                ),
+                "portal_reconciliation": reconciliation,
+                "terminal_provider_evidence": False,
+            }
+        # Portal reconciliation may legitimately clear an interrupted attempt,
+        # refund its nested retry counter, and release its claim.  Bind the
+        # immutable outer prepared/barrier receipts to that stable final state,
+        # not to the pre-reconciliation observation used for process fencing.
+        nested_state = final_nested_state
         if reconciliation.get("reconciled") is not True or reconciliation.get(
             "blocked"
         ) is True:
@@ -10185,6 +11021,10 @@ __all__ = (
     "DATABASE_PORTAL_ATTEMPT_RECONCILIATION_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
+    "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_AUTHORIZATION_SCHEMA",
+    "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_FIELDS",
+    "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA",
+    "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_PIN",
     "DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_FIELDS",
     "DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA",
     "DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_FIELDS",
@@ -10193,6 +11033,7 @@ __all__ = (
     "DatabasePortalBridgeDeferred",
     "DatabasePortalProviderRouteDeferred",
     "DatabasePortalBridgeError",
+    "DatabasePortalTerminalQuiescentStateAdvanced",
     "DatabasePortalPreEntryPublicationDeferred",
     "DatabasePortalExecutionBridge",
     "PortalDaemonFactory",

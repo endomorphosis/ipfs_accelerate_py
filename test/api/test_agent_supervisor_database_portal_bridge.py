@@ -51,6 +51,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
+    DatabasePortalTerminalQuiescentStateAdvanced,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT,
@@ -6870,6 +6871,73 @@ def test_database_shutdown_reconciles_exact_nested_attempt_and_lifecycle(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_reconciliation_seals_stable_post_refund_nested_state(
+    tmp_path: Path,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_interrupted_database_portal_attempt(tmp_path)
+    )
+
+    class RefundDuringReconciliation:
+        def reconcile_quiesced_active_attempt(self) -> dict[str, object]:
+            state = PortalTaskState.load(paths.state)
+            state.implementation_attempts = {}
+            state.implementation_attempts_by_cid = {}
+            assert state.save(paths.state) is True
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "interrupted_implementation_recovered_for_retry",
+            }
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    bridge.portal_factory = lambda _paths, _alias: RefundDuringReconciliation()
+    try:
+        pre_state, pre_state_digest = bridge._strict_state_record(paths.state)
+        assert pre_state is not None
+        assert pre_state["implementation_attempts"] == {"PCTDD-001": 1}
+        assert len(pre_state["implementation_attempts_by_cid"]) == 1
+
+        result = daemon.reconcile_quiesced_database_portal_attempts(
+            trigger="supervisor_signal_shutdown",
+            force=True,
+        )
+
+        assert result["reconciled"] is True, result
+        item = result["attempts"][0]
+        post_state, post_state_digest = bridge._strict_state_record(paths.state)
+        assert post_state is not None
+        assert post_state_digest != pre_state_digest
+        assert post_state["implementation_attempts"] == {}
+        assert post_state["implementation_attempts_by_cid"] == {}
+        assert item["nested_state"]["state_digest"] == post_state_digest
+
+        task = daemon.task_source.get_task(attempt.task_cid)
+        assert task is not None
+        link = task.body["completion_receipt"]["terminal_reconciliation"]
+        prepared = bridge.load_reconciliation_receipt(
+            attempt,
+            str(link["prepared_reconciliation_receipt_id"]),
+            required_stage="prepared",
+        )
+        barrier = bridge.load_reconciliation_receipt(
+            attempt,
+            str(link["commit_barrier_receipt_id"]),
+            required_stage="commit_barrier",
+        )
+        assert item["prepared_reconciliation_receipt_id"] == prepared[
+            "receipt_id"
+        ]
+        assert prepared["nested_state"]["state_digest"] == post_state_digest
+        assert barrier["nested_state"]["state_digest"] == post_state_digest
+        assert link["nested_state_digest"] == post_state_digest
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 @pytest.mark.parametrize("selection_change", ("prefix", "shard"))
 def test_restart_gate_reconciles_all_owner_attempts_outside_current_selection(
     tmp_path: Path,
@@ -9548,6 +9616,127 @@ def _seed_terminal_blocked_landed_candidate(
         Mapping,
     )
     return daemon, bridge, current_attempt, paths
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_terminal_link_stable_quiescent_advance_raises_typed_signal(
+    tmp_path: Path,
+) -> None:
+    daemon, bridge, attempt, paths = (
+        _seed_terminal_blocked_landed_candidate(tmp_path)
+    )
+    task = daemon.task_source.get_task(attempt.task_cid)
+    assert task is not None
+    link = task.body["completion_receipt"]["terminal_reconciliation"]
+    bridge.portal_factory = lambda _paths, _alias: pytest.fail(
+        "stable quiescent advance reached Portal execution"
+    )
+    state = PortalTaskState.load(paths.state)
+    state.heartbeat_at = "stable-quiescent-state-after-terminal-link"
+    assert state.save(paths.state) is True
+    try:
+        with pytest.raises(
+            DatabasePortalTerminalQuiescentStateAdvanced,
+            match="nested state changed",
+        ):
+            bridge.reconcile_quiesced_attempt(
+                attempt,
+                terminal_reconciliation=link,
+            )
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize("state_case", ("missing", "active"))
+def test_terminal_link_nonquiescent_state_change_stays_base_fail_closed(
+    tmp_path: Path,
+    state_case: str,
+) -> None:
+    daemon, bridge, attempt, paths = (
+        _seed_terminal_blocked_landed_candidate(tmp_path)
+    )
+    task = daemon.task_source.get_task(attempt.task_cid)
+    assert task is not None
+    link = task.body["completion_receipt"]["terminal_reconciliation"]
+    bridge.portal_factory = lambda _paths, _alias: pytest.fail(
+        "nonquiescent terminal state reached Portal execution"
+    )
+    if state_case == "missing":
+        paths.state.unlink()
+    else:
+        projection = parse_task_file(
+            paths.task_projection,
+            task_header_prefix="## PCTDD-001",
+        )[0]
+        state = PortalTaskState.load(paths.state)
+        state.active_task_id = projection.task_id
+        state.active_task_key = projection.canonical_task_key
+        state.active_task_cid = projection.canonical_task_cid
+        state.active_attempt = 1
+        state.active_phase = "implementing"
+        state.implementation_in_progress = True
+        assert state.save(paths.state) is True
+    try:
+        with pytest.raises(DatabasePortalBridgeError) as raised:
+            bridge.reconcile_quiesced_attempt(
+                attempt,
+                terminal_reconciliation=link,
+            )
+        assert not isinstance(
+            raised.value,
+            DatabasePortalTerminalQuiescentStateAdvanced,
+        )
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_terminal_link_second_state_read_change_stays_blocked_without_signal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, bridge, attempt, paths = (
+        _seed_terminal_blocked_landed_candidate(tmp_path)
+    )
+    task = daemon.task_source.get_task(attempt.task_cid)
+    assert task is not None
+    link = task.body["completion_receipt"]["terminal_reconciliation"]
+    bridge.portal_factory = lambda _paths, _alias: pytest.fail(
+        "racing terminal state reached Portal execution"
+    )
+    original_verify = bridge._verify_nested_state_identity
+    changed = False
+
+    def replace_after_first_read(
+        *args: object,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        nonlocal changed
+        result = original_verify(*args, **kwargs)
+        if not changed:
+            changed = True
+            replacement = PortalTaskState.load(paths.state)
+            replacement.heartbeat_at = "changed-before-second-state-read"
+            assert replacement.save(paths.state) is True
+        return result
+
+    monkeypatch.setattr(
+        bridge,
+        "_verify_nested_state_identity",
+        replace_after_first_read,
+    )
+    try:
+        result = bridge.reconcile_quiesced_attempt(
+            attempt,
+            terminal_reconciliation=link,
+        )
+
+        assert result["reconciled"] is False
+        assert result["blocked"] is True
+        assert result["reason"] == "nested_state_changed_before_provider_fence"
+    finally:
+        daemon.close()
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")

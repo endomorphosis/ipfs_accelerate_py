@@ -76124,6 +76124,12 @@ _DATABASE_PORTAL_TERMINAL_NO_EFFECT_HISTORICAL_BUDGETS = frozenset(
         ("PCTDD-034", 6, 1, 0),
     }
 )
+_DATABASE_PORTAL_HISTORICAL_INTERRUPTED_STATE_TRANSITION_BUDGET = (
+    "PCTDD-005",
+    3,
+    1,
+    0,
+)
 # This is one-shot predecessor compatibility, not a reusable refund policy.
 # Its non-replay property relies on monotonic authenticated Quack state plus
 # the existing fenced CAS/journal transition.  Rollback of both canonical
@@ -76146,6 +76152,25 @@ def _database_portal_terminal_no_effect_historical_budget_matches(
         and type(rearm_count) is int
         and (task_alias, attempt_number, attempts_used, rearm_count)
         in _DATABASE_PORTAL_TERMINAL_NO_EFFECT_HISTORICAL_BUDGETS
+    )
+
+
+def _database_portal_historical_interrupted_state_transition_budget_matches(
+    *,
+    task_alias: Any,
+    attempt_number: Any,
+    attempts_used: Any,
+    rearm_count: Any,
+) -> bool:
+    """Match the sole sealed predecessor interrupted-state transition."""
+
+    return bool(
+        type(task_alias) is str
+        and type(attempt_number) is int
+        and type(attempts_used) is int
+        and type(rearm_count) is int
+        and (task_alias, attempt_number, attempts_used, rearm_count)
+        == _DATABASE_PORTAL_HISTORICAL_INTERRUPTED_STATE_TRANSITION_BUDGET
     )
 
 
@@ -82753,6 +82778,10 @@ class DatabaseImplementationDaemon:
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_FIELDS,
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_REASON,
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_AUTHORIZATION_SCHEMA,
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_FIELDS,
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_PIN,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_AUTHORIZATION_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_FIELDS,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
@@ -83447,10 +83476,13 @@ class DatabaseImplementationDaemon:
                     original
                 )
             )
-        if (
-            record.get("schema")
-            == DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
-        ):
+        if record.get("schema") in {
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
+        }:
+            historical_state_transition = record.get("schema") == (
+                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
+            )
             digest_fields = {
                 "attempt_authority_root_digest",
                 "attempt_root_digest",
@@ -83465,6 +83497,16 @@ class DatabaseImplementationDaemon:
                 "outer_block_receipt_digest",
                 "rearm_authorization_id",
             }
+            if historical_state_transition:
+                digest_fields.update(
+                    {
+                        "pre_state_digest",
+                        "retry_preparation_event_id",
+                        "claim_release_event_id",
+                        "event_manifest_digest",
+                        "event_head_id",
+                    }
+                )
             sha_identity_fields = {
                 "binding_id",
             }
@@ -83479,9 +83521,64 @@ class DatabaseImplementationDaemon:
                 "fence_epoch",
                 "nested_attempt",
             }
+            if historical_state_transition:
+                integer_fields.update(
+                    {
+                        "task_revision",
+                        "event_count",
+                        "event_head_sequence",
+                        "pre_display_attempt_count",
+                        "pre_cid_attempt_count",
+                        "post_display_attempt_count",
+                        "post_cid_attempt_count",
+                    }
+                )
+            authorization_fields = (
+                "binding_id",
+                "binding_admission_id",
+                "binding_admission_digest",
+                "projection_immutable_digest",
+                "nested_task_cid",
+                "nested_attempt",
+                "terminal_reconciliation_evidence_id",
+                "first_clear_receipt_id",
+                "interrupted_retry_evidence_id",
+                "interrupted_retry_id",
+                "state_recovery_event_id",
+                "claim_release_receipt_id",
+                "prepared_reconciliation_receipt_id",
+                "commit_barrier_receipt_id",
+                "state_digest",
+                "outer_block_receipt_digest",
+            )
+            if historical_state_transition:
+                authorization_fields += (
+                    "task_revision",
+                    "board_namespace",
+                    "retry_preparation_event_id",
+                    "claim_release_event_id",
+                    "event_stream_id",
+                    "event_snapshot_id",
+                    "event_manifest_digest",
+                    "event_count",
+                    "event_head_sequence",
+                    "event_head_id",
+                    "pre_state_digest",
+                    "state_transition_profile",
+                    "state_transition_reason",
+                    "pre_display_attempt_count",
+                    "pre_cid_attempt_count",
+                    "post_display_attempt_count",
+                    "post_cid_attempt_count",
+                    "attempt_consumed",
+                    "historical_transition_only",
+                    "nested_state_quiescent",
+                )
             authorization = {
                 "schema": (
-                    DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_AUTHORIZATION_SCHEMA
+                    DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_AUTHORIZATION_SCHEMA
+                    if historical_state_transition
+                    else DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_AUTHORIZATION_SCHEMA
                 ),
                 **{
                     name: record.get(name)
@@ -83498,24 +83595,7 @@ class DatabaseImplementationDaemon:
                 },
                 **{
                     name: record.get(name)
-                    for name in (
-                        "binding_id",
-                        "binding_admission_id",
-                        "binding_admission_digest",
-                        "projection_immutable_digest",
-                        "nested_task_cid",
-                        "nested_attempt",
-                        "terminal_reconciliation_evidence_id",
-                        "first_clear_receipt_id",
-                        "interrupted_retry_evidence_id",
-                        "interrupted_retry_id",
-                        "state_recovery_event_id",
-                        "claim_release_receipt_id",
-                        "prepared_reconciliation_receipt_id",
-                        "commit_barrier_receipt_id",
-                        "state_digest",
-                        "outer_block_receipt_digest",
-                    )
+                    for name in authorization_fields
                 },
             }
             calculated_authorization_id = "sha256:" + hashlib.sha256(
@@ -83527,14 +83607,94 @@ class DatabaseImplementationDaemon:
                     default=str,
                 ).encode("utf-8")
             ).hexdigest()
+            historical_conditions = True
+            if historical_state_transition:
+                original_rearm_count = original.get(
+                    "unknown_outcome_rearm_count"
+                )
+                event_ids = {
+                    str(record.get("retry_preparation_event_id") or ""),
+                    str(record.get("state_recovery_event_id") or ""),
+                    str(record.get("claim_release_event_id") or ""),
+                }
+                historical_conditions = bool(
+                    type(original.get("unknown_outcome_rearm_count")) is int
+                    and _database_portal_historical_interrupted_state_transition_budget_matches(
+                        task_alias=str(record.get("task_alias") or ""),
+                        attempt_number=record.get("attempt_number"),
+                        attempts_used=original.get("attempts_used"),
+                        rearm_count=original_rearm_count,
+                    )
+                    and original.get("operation")
+                    == "database_unknown_outcome_blocked"
+                    and original.get("reason")
+                    == "callback_authority_incomplete_blocked"
+                    and original.get("retry_exhausted") is True
+                    and original.get("forced_block") is True
+                    and original.get("authority_outcome") == "unknown"
+                    and bool(
+                        str(original.get("process_instance_id") or "").strip()
+                    )
+                    and record.get("board_namespace")
+                    == "parallel-content-sealing-proof-carrying-tdd-v1"
+                    and record.get("nested_attempt") == 1
+                    and record.get("state_transition_profile")
+                    == "release-unfinished-implementation-attempt-counts@1"
+                    and record.get("state_transition_reason")
+                    == "interrupted_implementation_recovered_for_retry"
+                    and record.get("pre_display_attempt_count") == 1
+                    and record.get("pre_cid_attempt_count") == 1
+                    and record.get("post_display_attempt_count") == 0
+                    and record.get("post_cid_attempt_count") == 0
+                    and record.get("attempt_consumed") is False
+                    and record.get("historical_transition_only") is True
+                    and record.get("nested_state_quiescent") is True
+                    and record.get("pre_state_digest")
+                    != record.get("state_digest")
+                    and type(record.get("event_count")) is int
+                    and 3 <= int(record["event_count"]) <= 4096
+                    and record.get("event_head_sequence")
+                    == record.get("event_count")
+                    and record.get("event_head_id")
+                    == record.get("claim_release_event_id")
+                    and len(event_ids) == 3
+                    and all(
+                        re.fullmatch(r"sha256:[0-9a-f]{64}", event_id)
+                        for event_id in event_ids
+                    )
+                    and re.fullmatch(
+                        r"event-log:sha256:[0-9a-f]{64}",
+                        str(record.get("event_stream_id") or ""),
+                    )
+                    is not None
+                    and re.fullmatch(
+                        r"event-log-snapshot:sha256:[0-9a-f]{64}",
+                        str(record.get("event_snapshot_id") or ""),
+                    )
+                    is not None
+                    and re.fullmatch(
+                        r"baguqeera[a-z2-7]{52}",
+                        str(record.get("nested_task_cid") or ""),
+                    )
+                    is not None
+                    and all(
+                        record.get(field) == expected
+                        for field, expected in (
+                            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_PIN.items()
+                        )
+                    )
+                )
             return bool(
                 set(record)
                 == set(
-                    DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_FIELDS
+                    DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_FIELDS
+                    if historical_state_transition
+                    else DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_FIELDS
                 )
                 and re.fullmatch(r"sha256:[0-9a-f]{64}", evidence_id)
                 and evidence_id == expected_evidence_id
                 and calculated_id == evidence_id
+                and historical_conditions
                 and all(
                     re.fullmatch(
                         r"sha256:[0-9a-f]{64}",
@@ -83679,6 +83839,7 @@ class DatabaseImplementationDaemon:
 
         from .database_portal_bridge import (
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
@@ -83738,6 +83899,7 @@ class DatabaseImplementationDaemon:
             rearm_evidence_schema
             in {
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
@@ -83745,6 +83907,7 @@ class DatabaseImplementationDaemon:
             }
         )
         terminal_recovery_refund = rearm_evidence_schema in {
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
@@ -83756,6 +83919,10 @@ class DatabaseImplementationDaemon:
         terminal_no_effect_route_refund = (
             rearm_evidence_schema
             == DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA
+        )
+        historical_interrupted_state_transition_refund = (
+            rearm_evidence_schema
+            == DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
         )
         try:
             original_bytes = canonical_json(dict(original)).encode("utf-8")
@@ -83818,8 +83985,18 @@ class DatabaseImplementationDaemon:
                     )
                 )
                 or (
+                    historical_interrupted_state_transition_refund
+                    and _database_portal_historical_interrupted_state_transition_budget_matches(
+                        task_alias=str(getattr(task, "task_alias", "") or ""),
+                        attempt_number=raw_original_attempt_number,
+                        attempts_used=raw_original_attempts_used,
+                        rearm_count=prior_rearms,
+                    )
+                )
+                or (
                     terminal_recovery_refund
                     and not stale_dispatch_migration_refund
+                    and not historical_interrupted_state_transition_refund
                     and _database_terminal_claim_ordinal_lower_bound(
                         attempt_number=raw_original_attempt_number,
                         attempts_used=raw_original_attempts_used,
@@ -85580,6 +85757,7 @@ class DatabaseImplementationDaemon:
             return None
         from .database_portal_bridge import (
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
@@ -85590,6 +85768,7 @@ class DatabaseImplementationDaemon:
         terminal_recovery = bool(
             evidence_schema
             in {
+                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
@@ -85599,6 +85778,7 @@ class DatabaseImplementationDaemon:
             evidence_schema
             in {
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
@@ -85612,6 +85792,10 @@ class DatabaseImplementationDaemon:
         terminal_no_effect_route = bool(
             evidence_schema
             == DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA
+        )
+        historical_interrupted_state_transition = bool(
+            evidence_schema
+            == DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA
         )
         terminal_quiescent_deferred = bool(
             evidence_schema
@@ -85651,8 +85835,18 @@ class DatabaseImplementationDaemon:
                 )
             )
             or (
+                historical_interrupted_state_transition
+                and _database_portal_historical_interrupted_state_transition_budget_matches(
+                    task_alias=str(attempt.task_alias),
+                    attempt_number=attempt.attempt_number,
+                    attempts_used=raw_attempts_used,
+                    rearm_count=raw_rearm_count,
+                )
+            )
+            or (
                 terminal_recovery
                 and not stale_dispatch_migration
+                and not historical_interrupted_state_transition
                 and _database_terminal_claim_ordinal_lower_bound(
                     attempt_number=attempt.attempt_number,
                     attempts_used=raw_attempts_used,
@@ -86040,6 +86234,7 @@ class DatabaseImplementationDaemon:
 
         from .database_portal_bridge import (
             DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
@@ -86080,6 +86275,7 @@ class DatabaseImplementationDaemon:
             )
             proof_backed_nonconsuming = evidence_schema in {
                 DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
+                DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
                 DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
@@ -87222,6 +87418,10 @@ class DatabaseImplementationDaemon:
     def reconcile_blocked_terminal_landed_tasks(self) -> list[dict[str, Any]]:
         """Select terminal-link candidates before generic unknown rearm."""
 
+        from .database_portal_bridge import (
+            DatabasePortalTerminalQuiescentStateAdvanced,
+        )
+
         bridge = self._database_portal_bridge
         list_tasks = getattr(self.task_source, "list_tasks", None)
         if bridge is None or not callable(list_tasks):
@@ -87331,6 +87531,12 @@ class DatabaseImplementationDaemon:
                 if outcome.get("applicable") is False:
                     continue
                 outcomes.append(outcome)
+            except DatabasePortalTerminalQuiescentStateAdvanced:
+                # The terminal probe extended the exact event stream while
+                # observing that the nested Portal had already quiesced.
+                # Leave this candidate to the generic no-effect rearm gate in
+                # the same pass; unrelated bridge failures remain blockers.
+                continue
             except Exception as exc:
                 _reraise_database_execution_storage_art_fatal(exc)
                 outcomes.append(
@@ -87358,6 +87564,7 @@ class DatabaseImplementationDaemon:
         """
 
         from .database_portal_bridge import (
+            DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
             DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
         )
@@ -87466,6 +87673,7 @@ class DatabaseImplementationDaemon:
                         "database-portal-stale-dispatch-migration-"
                         "rearm-evidence@1"
                     ),
+                    DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA,
                     DATABASE_PORTAL_TERMINAL_QUIESCENT_DEFERRED_REARM_EVIDENCE_SCHEMA,
                     DATABASE_PORTAL_TERMINAL_NO_EFFECT_ROUTE_REARM_EVIDENCE_SCHEMA,
                 }
