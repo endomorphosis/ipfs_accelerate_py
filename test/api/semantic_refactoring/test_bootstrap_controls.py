@@ -1220,7 +1220,7 @@ def test_recover_poisoned_owner_connection_restarts_shared_transport(
     )
 
     assert materializer._recover_poisoned_owner_connection(server) is True
-    assert refreshed == [True]
+    assert refreshed == []
     assert server._transport_connection is replacement
 
 

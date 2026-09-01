@@ -2114,17 +2114,11 @@ def _recover_poisoned_owner_connection(
             gateway = getattr(server, "_command_gateway", None)
             if gateway is not None:
                 gateway._connection = replacement
+            if getattr(server, "_transport_connection", None) in {current, None}:
+                server._transport_connection = replacement
             native_replaced = True
-        listener_down = not _owner_listener_ready(server)
-        # Reconnect a poisoned handle in place. Restarting transport while
-        # the TCP listener is still bound drops every typed lane attach.
-        if native_replaced and listener_down:
-            _restart_owner_transport(
-                server,
-                previous=current,
-                replacement=replacement,
-            )
-            return True
+        # Never re-enter transport.start() from projection recovery.
+        # That rebind is what drops SPAR-018's typed attach.
         return native_replaced
 
 
