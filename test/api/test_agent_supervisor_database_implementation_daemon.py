@@ -6996,6 +6996,180 @@ def test_quiesced_stale_release_budget_rejects_predecessors_and_near_misses(
 @pytest.mark.parametrize(
     ("task_alias", "attempt_number", "attempts_used", "rearm_count"),
     (
+        ("PCTDD-005", 3, 1, 0),
+        ("PCTDD-006", 4, 1, 1),
+        ("PCTDD-007", 4, 1, 1),
+        ("PCTDD-034", 8, 1, 0),
+    ),
+)
+def test_exact_quiesced_stale_release_bypasses_terminal_landed_selector(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    task_alias: str,
+    attempt_number: int,
+    attempts_used: int,
+    rearm_count: int,
+) -> None:
+    """The exact release profile reaches only the proof-backed rearm gate."""
+
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:release-selector:{task_alias.lower()}",
+        max_task_attempts=2,
+    )
+    task = SimpleNamespace(
+        task_cid=f"task:cid:{task_alias.lower()}",
+        task_alias=task_alias,
+        status="blocked",
+        revision=1,
+        body={
+            "completion_receipt": {
+                "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                "operation": "database_unknown_outcome_blocked",
+                "reason": "callback_authority_incomplete_blocked",
+                "forced_block": True,
+                "authority_outcome": "unknown",
+                "retry_exhausted": True,
+                "attempt_number": attempt_number,
+                "attempts_used": attempts_used,
+                "unknown_outcome_rearm_count": rearm_count,
+                "terminal_reconciliation": {"schema": "exact-candidate"},
+            }
+        },
+    )
+    landed_calls: list[str] = []
+    generic_calls: list[str] = []
+    try:
+        daemon._database_portal_bridge = object()
+        monkeypatch.setattr(
+            daemon.task_source,
+            "list_tasks",
+            lambda **_kwargs: SimpleNamespace(tasks=(task,)),
+        )
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+
+        def landed(*, task: object, bridge: object) -> dict[str, object]:
+            landed_calls.append(str(getattr(task, "task_alias", "")))
+            raise AssertionError("exact release profile reached landed recovery")
+
+        def generic(task: object, receipt: object) -> None:
+            generic_calls.append(str(getattr(task, "task_alias", "")))
+            return None
+
+        monkeypatch.setattr(
+            daemon,
+            "_reconcile_one_blocked_terminal_landed_task",
+            landed,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_database_portal_no_provider_rearm_evidence",
+            generic,
+        )
+
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert outcomes == []
+        assert landed_calls == []
+        assert generic_calls == [task_alias]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("task_alias", "attempt_number", "attempts_used", "rearm_count"),
+    (
+        ("PCTDD-005", 2, 1, 0),
+        ("PCTDD-006", 4, 1, 0),
+        ("PCTDD-007", 4, 1, 2),
+        ("PCTDD-034", 8, 2, 0),
+    ),
+)
+def test_near_quiesced_release_remains_in_terminal_landed_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    task_alias: str,
+    attempt_number: int,
+    attempts_used: int,
+    rearm_count: int,
+) -> None:
+    """A neighboring budget tuple cannot enter the new proof route."""
+
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:release-near-miss:{task_alias.lower()}",
+        max_task_attempts=2,
+    )
+    task = SimpleNamespace(
+        task_cid=f"task:cid:{task_alias.lower()}",
+        task_alias=task_alias,
+        status="blocked",
+        revision=1,
+        body={
+            "completion_receipt": {
+                "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+                "operation": "database_unknown_outcome_blocked",
+                "reason": "callback_authority_incomplete_blocked",
+                "forced_block": True,
+                "authority_outcome": "unknown",
+                "retry_exhausted": True,
+                "attempt_number": attempt_number,
+                "attempts_used": attempts_used,
+                "unknown_outcome_rearm_count": rearm_count,
+                "terminal_reconciliation": {"schema": "near-miss"},
+            }
+        },
+    )
+    generic_calls: list[str] = []
+    cas_calls: list[str] = []
+    try:
+        daemon._database_portal_bridge = object()
+        monkeypatch.setattr(
+            daemon.task_source,
+            "list_tasks",
+            lambda **_kwargs: SimpleNamespace(tasks=(task,)),
+        )
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(
+            daemon,
+            "_reconcile_one_blocked_terminal_landed_task",
+            lambda *, task, bridge: {
+                "task_cid": str(task.task_cid),
+                "task_alias": str(task.task_alias),
+                "operation": DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION,
+                "recovered": False,
+                "rearmed": False,
+                "blocked": True,
+                "reason": "terminal_landed_candidate_recovery_blocked",
+            },
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_database_portal_no_provider_rearm_evidence",
+            lambda task, receipt: generic_calls.append(str(task.task_alias)),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            lambda task_cid, **_kwargs: cas_calls.append(str(task_cid)),
+        )
+
+        outcomes = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["task_cid"] == task.task_cid
+        assert outcomes[0]["reason"] == (
+            "terminal_landed_candidate_recovery_blocked"
+        )
+        assert generic_calls == []
+        assert cas_calls == []
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("task_alias", "attempt_number", "attempts_used", "rearm_count"),
+    (
         ("PCTDD-034", 5, 1, None),
         ("PCTDD-034", 7, 1, None),
         ("PCTDD-006", 3, 1, 0),
@@ -7438,11 +7612,6 @@ def test_quiesced_stale_release_rearm_is_fenced_nonconsuming_and_effect_free(
                 return result
 
         daemon._database_portal_bridge = ExactQuiescedReleaseBridge()
-        monkeypatch.setattr(
-            daemon,
-            "reconcile_blocked_terminal_landed_tasks",
-            lambda: [],
-        )
         monkeypatch.setattr(
             daemon,
             "_database_portal_terminal_reconciliation_saga",
