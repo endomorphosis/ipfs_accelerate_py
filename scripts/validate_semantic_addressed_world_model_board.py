@@ -35,7 +35,7 @@ _M42_AUTHORITY_CID = (
     "sha256:1e1df3ea3d6b1805dc32f6dd43c61bb95d99e2d08da4c96872441dbc9fdbf587"
 )
 _M43_AUTHORITY_CID = (
-    "sha256:f0db2f708316ad8ef58cb78886b5df74872d80c6147a1ed6e1d51faeeac35049"
+    "sha256:1c1c16ed284a0176a2244bddd79847934ba6a369e9ab46c674a109853d2d67d8"
 )
 _M43_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
 TASK_IDS = tuple(f"SAWM-{index:03d}" for index in range(45))
@@ -4567,6 +4567,13 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
             fixture_repair = expected.get(
                 "accepted_historical_fixture_repair", {}
             )
+            failed_reseal = expected.get(
+                "failed_pre_authoritative_reseal_validation", {}
+            )
+            verifier_repair = expected.get(
+                "accepted_bounded_materializer_verifier_repair", {}
+            )
+            final_hardening = expected.get("final_control_hardening", {})
             prior_control = expected.get("prior_control_authorization", {})
             source_chain = expected.get("source_chain", {})
             changes = expected.get("exact_changes", {})
@@ -4596,23 +4603,26 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                     )
                 )
                 or expected.get("schema")
-                != "sawm/dead-attempt-lifecycle-recovery-restart-authorization@2"
-                or expected.get("authorization_revision") != 2
+                != "sawm/dead-attempt-lifecycle-recovery-restart-authorization@3"
+                or expected.get("authorization_revision") != 3
                 or expected.get("authorization_amended_at")
                 != materializer._M43_AUTHORIZATION_AMENDED_AT
                 or expected.get("prior_authorization_cid")
-                != materializer._M43_PRE_AUTHORITATIVE_AUTHORITY_CID
-                or expected.get("control_recorded_at") != "2026-09-01T09:00:00Z"
+                != materializer._M43_PRIOR_FINAL_AUTHORITY_CID
+                or expected.get("control_recorded_at") != "2026-09-01T10:00:00Z"
                 or expected.get("authorization_amendment_paths")
                 != sorted(materializer._M43_OPERATOR_CONTROL_PATHS)
                 or prior_control.get("authorization_cid")
+                != materializer._M43_PRIOR_FINAL_AUTHORITY_CID
+                or prior_control.get("authorization_revision") != 2
+                or prior_control.get("prior_authorization_cid")
                 != materializer._M43_PRE_AUTHORITATIVE_AUTHORITY_CID
                 or prior_control.get("control_recorded_at")
-                != "2026-09-01T08:00:00Z"
+                != "2026-09-01T09:00:00Z"
                 or prior_control.get("control_commit")
-                != materializer._M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT
+                != materializer._M43_PRIOR_FINAL_CONTROL_COMMIT
                 or prior_control.get("control_tree")
-                != materializer._M43_FAILED_PRE_AUTHORITATIVE_CONTROL_TREE
+                != materializer._M43_PRIOR_FINAL_CONTROL_TREE
                 or prior_control.get("superseded_before_event_297") is not True
                 or prior_control.get("event_297_appended") is not False
                 or prior_control.get("receipt_published") is not False
@@ -4750,6 +4760,59 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 is not False
                 or fixture_repair.get("validation_weakened") is not False
                 or fixture_repair.get("authority_weakened") is not False
+                or failed_reseal.get("authority_cid")
+                != materializer._M43_PRIOR_FINAL_AUTHORITY_CID
+                or failed_reseal.get("control_commit")
+                != materializer._M43_PRIOR_FINAL_CONTROL_COMMIT
+                or failed_reseal.get("control_tree")
+                != materializer._M43_PRIOR_FINAL_CONTROL_TREE
+                or failed_reseal.get("observed_failure_count") != 2
+                or failed_reseal.get("isolated_live_rehearsal", {}).get(
+                    "disposable_generation_31_ready"
+                )
+                is not True
+                or failed_reseal.get("full_suite_validation", {}).get("error")
+                != "MigrationRequired: operator task-recovery event differs"
+                or failed_reseal.get("authenticated_mutation_request_created")
+                is not False
+                or failed_reseal.get("event_297_rows_created") != 0
+                or failed_reseal.get("accepted_completion_changes") != 0
+                or verifier_repair.get("repair_parent")
+                != materializer._M43_PRIOR_FINAL_CONTROL_COMMIT
+                or verifier_repair.get("repair_commit")
+                != materializer._M43_VERIFIER_REPAIR_COMMIT
+                or verifier_repair.get("repair_tree")
+                != materializer._M43_VERIFIER_REPAIR_TREE
+                or verifier_repair.get("blob_oids")
+                != dict(materializer._M43_VERIFIER_REPAIR_BLOBS)
+                or verifier_repair.get("path_modes")
+                != dict(materializer._M43_VERIFIER_REPAIR_MODES)
+                or verifier_repair.get("repair_class_count") != 2
+                or verifier_repair.get("repair_classes")
+                != [
+                    "duckdb_positional_row_normalization",
+                    "task_revision_timestamp_source_binding",
+                ]
+                or verifier_repair.get("repair_site_count") != 5
+                or verifier_repair.get("repair_sites")
+                != [
+                    "m43_operational_suffix_rows",
+                    "m43_prestart_event_type_counts",
+                    "m43_live_preappend_event_type_counts",
+                    "m43_live_postappend_event_type_counts",
+                    "m6_recovery_revision_recorded_at",
+                ]
+                or verifier_repair.get("validation_weakened") is not False
+                or verifier_repair.get("authority_weakened") is not False
+                or final_hardening.get(
+                    "operational_suffix_malformed_rows_are_typed_conflicts"
+                )
+                is not True
+                or final_hardening.get(
+                    "pending_authority_rejected_by_operator_facade"
+                )
+                is not True
+                or final_hardening.get("authority_weakened") is not False
                 or source_chain.get("m42_final_control_commit")
                 != materializer._M43_BASE_CONTROL_COMMIT
                 or source_chain.get("lifecycle_repair_commit")
@@ -4786,16 +4849,44 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 != dict(materializer._M43_HISTORICAL_FIXTURE_REPAIR_BLOBS)
                 or source_chain.get("historical_fixture_repair_modes")
                 != dict(materializer._M43_HISTORICAL_FIXTURE_REPAIR_MODES)
-                or source_chain.get("final_reseal_parent")
+                or source_chain.get("prior_final_control_parent")
                 != materializer._M43_HISTORICAL_FIXTURE_REPAIR_COMMIT
+                or source_chain.get("prior_final_control_commit")
+                != materializer._M43_PRIOR_FINAL_CONTROL_COMMIT
+                or source_chain.get("prior_final_control_tree")
+                != materializer._M43_PRIOR_FINAL_CONTROL_TREE
+                or source_chain.get("prior_final_control_blobs")
+                != dict(materializer._M43_PRIOR_FINAL_CONTROL_BLOBS)
+                or source_chain.get("prior_final_control_modes")
+                != dict(materializer._M43_PRIOR_FINAL_CONTROL_MODES)
+                or source_chain.get(
+                    "bounded_materializer_verifier_repair_parent"
+                )
+                != materializer._M43_PRIOR_FINAL_CONTROL_COMMIT
+                or source_chain.get(
+                    "bounded_materializer_verifier_repair_commit"
+                )
+                != materializer._M43_VERIFIER_REPAIR_COMMIT
+                or source_chain.get("bounded_materializer_verifier_repair_tree")
+                != materializer._M43_VERIFIER_REPAIR_TREE
+                or source_chain.get("bounded_materializer_verifier_repair_blobs")
+                != dict(materializer._M43_VERIFIER_REPAIR_BLOBS)
+                or source_chain.get("bounded_materializer_verifier_repair_modes")
+                != dict(materializer._M43_VERIFIER_REPAIR_MODES)
+                or source_chain.get("final_reseal_parent")
+                != materializer._M43_VERIFIER_REPAIR_COMMIT
                 or source_chain.get(
                     "failed_pre_authoritative_control_commit_count"
                 )
-                != 1
+                != 2
                 or source_chain.get("historical_fixture_repair_commit_count")
                 != 1
-                or source_chain.get("final_reseal_commit_count") != 1
-                or source_chain.get("final_control_commit_count") != 2
+                or source_chain.get(
+                    "bounded_materializer_verifier_repair_commit_count"
+                )
+                != 1
+                or source_chain.get("final_reseal_commit_count") != 2
+                or source_chain.get("final_control_commit_count") != 3
                 or expected.get("ordinary_source_changes")
                 != len(materializer._M43_LIFECYCLE_REPAIR_BLOBS)
                 or set(expected.get("operator_control_paths", ()))

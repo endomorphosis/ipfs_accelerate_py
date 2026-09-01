@@ -2292,15 +2292,40 @@ The bounded fixture-only repair is commit
 `test/api/semantic_world/test_semantic_addressed_world_model_board.py` at mode
 `100644` to blob `cf9e119747ff01835a2cf70565052cc77d6e402a`.  It replays all nine
 failures without changing production code, test selection, validation,
-authority, or completion semantics.  The canonical authorization-revision-2
-control and amendment time is `2026-09-01T09:00:00Z`, after the repair commit;
-the revision-1 `2026-09-01T08:00:00Z` authorization remains nested immutable
-history.  The canonical authorization-revision-2 M43 authority CID is
+authority, or completion semantics.  Authorization revision 2 was sealed as
+commit `d693f82660603adc56f3c09429d3d578225d7fb9`, tree
+`6cc740dbfcac0d9a8004d3a261410a2b63553ea9`, at
+`2026-09-01T09:00:00Z`, with authority CID
 `sha256:f0db2f708316ad8ef58cb78886b5df74872d80c6147a1ed6e1d51faeeac35049`.
-No repair, initial-control, or final-authority sentinel remains in the current
-control declaration.
+It is retained as immutable prior-final control, while the revision-1
+`2026-09-01T08:00:00Z` authorization remains nested historical evidence.
 
-Under this final reseal, M43 authorizes exactly one stopped-generation restart from 30
+The revision-2 source then failed twice before authoritative use.  An isolated
+copy of the exact stopped generation-30 anchors admitted and cleanly stopped a
+disposable generation-31 owner, but materialization stopped before any event
+append because a Quack `DuckDBRow` mapping was iterated as column names.  The
+authoritative Quack owner was not started, no authenticated authoritative
+mutation request was created, event 297 remained absent, and task, goal, plan,
+evidence, coordination, and completion state remained unchanged.  The exact
+280-test source suite separately returned 279 passes and one historical
+task-revision/event timestamp-source mismatch; its non-authoritative retained
+log has SHA-256
+`1a1fd7acb5c7b09057d5971434d1bba0fc4007c744706037eebec10e7d155ce4`
+and size 383803 bytes.
+
+The bounded verifier repair is commit
+`c5ca423d74e27fe9156c4ce9b476851f565cb7cd`, tree
+`502eeb8cb5be1ea926df40975486823879e8c3b9`, direct child of the revision-2
+control.  It changes only the materializer and its board test and repairs five
+sites total: four Quack row-reading sites across the operational suffix and
+pre/post event-count checks, plus the historical revision timestamp binding.
+It changes no expected value, lifecycle rule, authority, database, event,
+task, or completion state.  Authorization revision 3 is recorded at
+`2026-09-01T10:00:00Z`; its canonical authority CID is
+`sha256:1c1c16ed284a0176a2244bddd79847934ba6a369e9ab46c674a109853d2d67d8`, bound to the exact revision-3 authority body before the
+nine-control successor is frozen and independently authorized.
+
+Under the final revision-3 reseal, M43 authorizes exactly one stopped-generation restart from 30
 to 31 through the existing Quack owner path and exactly one evidence append,
 event 297.  The live result must retain plan revision 28 and task heads
 SAWM-006 `in_progress` revision 11 and SAWM-008 `in_progress` revision 13,

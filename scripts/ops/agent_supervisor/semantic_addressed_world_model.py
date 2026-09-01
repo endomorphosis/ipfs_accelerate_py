@@ -37,10 +37,10 @@ _M43_SUCCESSOR_KEY = (
 )
 _M43_MIGRATION_REVISION = "SAWM-R2-M43"
 _M43_AUTHORITY_CID = (
-    "sha256:f0db2f708316ad8ef58cb78886b5df74872d80c6147a1ed6e1d51faeeac35049"
+    "sha256:1c1c16ed284a0176a2244bddd79847934ba6a369e9ab46c674a109853d2d67d8"
 )
 _M43_PRIOR_AUTHORITY_CID = (
-    "sha256:6b0b23955f966d12f0f2ec8f3fc7dd4e22328cdfd9ed0a0917a331dc6ed340a5"
+    "sha256:f0db2f708316ad8ef58cb78886b5df74872d80c6147a1ed6e1d51faeeac35049"
 )
 _M43_STORE_ID = (
     "data/agent_supervisor/semantic_addressed_world_model/"
@@ -1295,6 +1295,13 @@ def _active_source_repair_materialization(
         repair = expected.get("accepted_lifecycle_repair")
         prior_control = expected.get("prior_control_authorization")
         fixture_repair = expected.get("accepted_historical_fixture_repair")
+        failed_reseal = expected.get(
+            "failed_pre_authoritative_reseal_validation"
+        )
+        verifier_repair = expected.get(
+            "accepted_bounded_materializer_verifier_repair"
+        )
+        final_hardening = expected.get("final_control_hardening")
         target = expected.get("target_authority")
         exact_changes = expected.get("exact_changes")
         preservation = expected.get("preservation")
@@ -1303,18 +1310,26 @@ def _active_source_repair_materialization(
         target_root = str(Path(_M43_STORE_ID).parent)
         if (
             not isinstance(authority, Mapping)
+            or _M43_AUTHORITY_CID.endswith(
+                "PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
+            )
             or dict(authority) != reference
             or expected.get("migration_revision") != _M43_MIGRATION_REVISION
             or expected.get("migration_kind") != _M43_SUCCESSOR_KEY
             or reference.get("authority_cid") != _M43_AUTHORITY_CID
-            or expected.get("authorization_revision") != 2
+            or expected.get("authorization_revision") != 3
             or expected.get("prior_authorization_cid")
             != _M43_PRIOR_AUTHORITY_CID
             or not isinstance(prior_control, Mapping)
             or prior_control.get("authorization_cid")
             != _M43_PRIOR_AUTHORITY_CID
+            or prior_control.get("authorization_revision") != 2
+            or prior_control.get("prior_authorization_cid")
+            != materializer._M43_PRE_AUTHORITATIVE_AUTHORITY_CID
             or prior_control.get("control_commit")
-            != materializer._M43_FAILED_PRE_AUTHORITATIVE_CONTROL_COMMIT
+            != materializer._M43_PRIOR_FINAL_CONTROL_COMMIT
+            or prior_control.get("control_tree")
+            != materializer._M43_PRIOR_FINAL_CONTROL_TREE
             or prior_control.get("superseded_before_event_297") is not True
             or prior_control.get("event_297_appended") is not False
             or prior_control.get("receipt_published") is not False
@@ -1346,6 +1361,52 @@ def _active_source_repair_materialization(
             != materializer._M43_HISTORICAL_FIXTURE_REPAIR_COMMIT
             or fixture_repair.get("production_code_changes") != 0
             or fixture_repair.get("validation_weakened") is not False
+            or not isinstance(failed_reseal, Mapping)
+            or failed_reseal.get("authority_cid") != _M43_PRIOR_AUTHORITY_CID
+            or failed_reseal.get("control_commit")
+            != materializer._M43_PRIOR_FINAL_CONTROL_COMMIT
+            or failed_reseal.get("observed_failure_count") != 2
+            or failed_reseal.get("isolated_live_rehearsal", {}).get(
+                "disposable_generation_31_ready"
+            )
+            is not True
+            or failed_reseal.get("full_suite_validation", {}).get("error")
+            != "MigrationRequired: operator task-recovery event differs"
+            or failed_reseal.get("authenticated_mutation_request_created")
+            is not False
+            or failed_reseal.get("event_297_rows_created") != 0
+            or not isinstance(verifier_repair, Mapping)
+            or verifier_repair.get("repair_parent")
+            != materializer._M43_PRIOR_FINAL_CONTROL_COMMIT
+            or verifier_repair.get("repair_commit")
+            != materializer._M43_VERIFIER_REPAIR_COMMIT
+            or verifier_repair.get("repair_class_count") != 2
+            or verifier_repair.get("repair_classes")
+            != [
+                "duckdb_positional_row_normalization",
+                "task_revision_timestamp_source_binding",
+            ]
+            or verifier_repair.get("repair_site_count") != 5
+            or verifier_repair.get("repair_sites")
+            != [
+                "m43_operational_suffix_rows",
+                "m43_prestart_event_type_counts",
+                "m43_live_preappend_event_type_counts",
+                "m43_live_postappend_event_type_counts",
+                "m6_recovery_revision_recorded_at",
+            ]
+            or verifier_repair.get("validation_weakened") is not False
+            or verifier_repair.get("authority_weakened") is not False
+            or not isinstance(final_hardening, Mapping)
+            or final_hardening.get(
+                "operational_suffix_malformed_rows_are_typed_conflicts"
+            )
+            is not True
+            or final_hardening.get(
+                "pending_authority_rejected_by_operator_facade"
+            )
+            is not True
+            or final_hardening.get("authority_weakened") is not False
             or not isinstance(target, Mapping)
             or int(target.get("event_watermark") or 0)
             != _M43_TARGET_EVENT_WATERMARK
@@ -6015,9 +6076,12 @@ def _require_m43_source_successor_marker(
     expected_reference = materializer._m43_authority_reference()
     if (
         dict(authority) != expected_authority
+        or _M43_AUTHORITY_CID.endswith(
+            "PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
+        )
         or config.get(key) != expected_reference
         or expected_reference.get("authority_cid") != _M43_AUTHORITY_CID
-        or expected_authority.get("authorization_revision") != 2
+        or expected_authority.get("authorization_revision") != 3
         or expected_authority.get("prior_authorization_cid")
         != _M43_PRIOR_AUTHORITY_CID
         or expected_authority.get("prior_control_authorization", {}).get(
@@ -6068,7 +6132,7 @@ def _require_m43_source_successor_marker(
         or checked.get("m42_evidence_projection_verified") is not True
         or checked.get("post_m42_operational_suffix_verified") is not True
         or observed.get("migration_revision") != _M43_MIGRATION_REVISION
-        or observed.get("authorization_revision") != 2
+        or observed.get("authorization_revision") != 3
         or observed.get("prior_authorization_cid")
         != _M43_PRIOR_AUTHORITY_CID
         or observed.get("prior_control_authorization")
@@ -6079,6 +6143,14 @@ def _require_m43_source_successor_marker(
         != expected_authority.get("failed_pre_authoritative_control_validation")
         or observed.get("accepted_historical_fixture_repair")
         != expected_authority.get("accepted_historical_fixture_repair")
+        or observed.get("failed_pre_authoritative_reseal_validation")
+        != expected_authority.get("failed_pre_authoritative_reseal_validation")
+        or observed.get("accepted_bounded_materializer_verifier_repair")
+        != expected_authority.get(
+            "accepted_bounded_materializer_verifier_repair"
+        )
+        or observed.get("final_control_hardening")
+        != expected_authority.get("final_control_hardening")
         or observed.get(f"{key}_cid") != materializer._identity(expected_authority)
         or observed.get("prior_m42_authority")
         != expected_authority.get("prior_m42_reference")
