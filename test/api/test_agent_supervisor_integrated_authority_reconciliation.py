@@ -559,6 +559,42 @@ def test_provider_forbidden_terminal_recovery_rejects_target_race_before_mark(
     )
 
 
+def test_provider_forbidden_terminal_recovery_rejects_dirty_current_source(
+    tmp_path: Path,
+) -> None:
+    daemon, task, _initial_commit = (
+        _real_provider_forbidden_landed_fixture(
+            tmp_path,
+            protected_board=False,
+        )
+    )
+    (daemon.repo_root / "unrelated-user-work.py").write_text(
+        "DIRTY = True\n",
+        encoding="utf-8",
+    )
+
+    result = daemon.reconcile_provider_forbidden_terminal_result(
+        expected_task_identity=_expected_identity(daemon, task),
+    )
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "provider_forbidden_landed_recovery_source_not_clean_current"
+    )
+    assert "- Status: todo" in daemon.todo_path.read_text(encoding="utf-8")
+    lifecycle = daemon._iter_merge_lifecycle_events()
+    assert not any(
+        event.get("type")
+        in {
+            "provider_forbidden_landed_completion_prepared",
+            "merge_reconciled",
+            "task_completed",
+        }
+        for event in lifecycle
+    )
+
+
 def test_provider_forbidden_terminal_recovery_repairs_receipt_idempotently(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -683,6 +719,25 @@ def _configure_provider_forbidden_landed_recovery(
     lifecycle = [dict(event)]
     target_commit = "d" * 40
     lease = object()
+    monkeypatch.setattr(
+        daemon,
+        "_candidate_workspace_identity",
+        lambda _workspace: {
+            "verified": True,
+            "head": target_commit,
+            "tree": "e" * 40,
+            "branch": "main",
+            "status_clean": True,
+            "status_fingerprint": "sha256:" + "0" * 64,
+            "status_bytes": 0,
+            "errors": [],
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_strict_dirty_worktree_paths",
+        lambda _workspace: set(),
+    )
     monkeypatch.setattr(daemon, "_load_tasks", lambda: list(current_task))
     monkeypatch.setattr(
         daemon,

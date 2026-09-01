@@ -7139,6 +7139,498 @@ def test_active_sealed_runner_schema_delegates_to_portal_authority(
         daemon.close()
 
 
+def _seed_terminal_blocked_landed_candidate(
+    tmp_path: Path,
+) -> tuple[
+    DatabaseImplementationDaemon,
+    DatabasePortalExecutionBridge,
+    DatabaseTaskAttempt,
+    object,
+]:
+    """Create the exact post-terminal state the landed selector consumes."""
+
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_interrupted_database_portal_attempt(tmp_path)
+    )
+
+    class QuiescedWithoutCompletion:
+        def reconcile_quiesced_active_attempt(self) -> dict[str, object]:
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "nested_attempt_quiesced",
+            }
+
+        def reconcile_provider_forbidden_terminal_result(
+            self,
+            **_kwargs: object,
+        ) -> dict[str, object]:
+            return {
+                "reconciled": False,
+                "blocked": False,
+                "applicable": False,
+                "reason": "no_landed_candidate_observed_yet",
+                "provider_dispatched": False,
+                "implementation_dispatched": False,
+            }
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    bridge.portal_factory = lambda _paths, _alias: QuiescedWithoutCompletion()
+    daemon._begin_callback_dispatch(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=f"provider:{attempt.attempt_id}",
+    )
+    terminalized = daemon.reconcile_quiesced_database_portal_attempts(
+        trigger="supervisor_signal_shutdown",
+        force=True,
+    )
+    assert terminalized["blocked"] is False, terminalized
+    current_attempt = daemon.get_attempt(attempt.attempt_id)
+    assert current_attempt is not None and current_attempt.status == "failed"
+    task = daemon.task_source.get_task(attempt.task_cid)
+    assert task is not None and task.status == "blocked"
+    assert isinstance(
+        task.body["completion_receipt"]["terminal_reconciliation"],
+        Mapping,
+    )
+    return daemon, bridge, current_attempt, paths
+
+
+def _landed_reconciliation_fixture(
+    expected_task_identity: Mapping[str, str],
+) -> dict[str, object]:
+    implementation_commit = "a" * 40
+    merge_commit = "b" * 40
+    current_source_head = "c" * 40
+    task_id = expected_task_identity["task_id"]
+    canonical_task_cid = expected_task_identity["canonical_task_cid"]
+    completion_task_cids = {task_id: canonical_task_cid}
+    recovery_key = content_identity({"provider_forbidden": "landed"})
+    return {
+        "task_id": task_id,
+        "implementation_commit": implementation_commit,
+        "landed_commit": implementation_commit,
+        "merge_commit": merge_commit,
+        "completion_task_cids": completion_task_cids,
+        "resolved": True,
+        "reason": "provider_forbidden_commit_already_landed",
+        "merge_result": {
+            "attempted": False,
+            "merged": True,
+            "reason": "implementation_commit_already_merged",
+        },
+        "current_source_identity": {
+            "verified": True,
+            "status_clean": True,
+            "head": current_source_head,
+            "blocking_dirty_paths": [],
+            "implementation_commit_ancestor": True,
+            "target_commit": merge_commit,
+            "target_commit_ancestor": True,
+        },
+        "integration_commit_proof": {
+            "passed": True,
+            "implementation_commit": implementation_commit,
+            "integration_commit": merge_commit,
+        },
+        "changed_submodule_handoff_proof": {
+            "passed": True,
+            "candidate_commit": implementation_commit,
+            "target_commit": merge_commit,
+        },
+        "post_merge_declared_output_invariant": {
+            "passed": True,
+            "mode": "repository_tree",
+            "repository_ref": merge_commit,
+            "task_ids": [task_id],
+            "unsafe_outputs": [],
+            "missing_outputs": [],
+            "untracked_outputs": [],
+        },
+        "completion_persistence": {
+            "passed": True,
+            "completion_task_cids": completion_task_cids,
+            "recovery_key": recovery_key,
+        },
+        "preparation_completion_persistence": {
+            "passed": True,
+            "exact_population": True,
+            "expected_task_ids": [task_id],
+        },
+        "provider_forbidden_preparation_event_id": (
+            "event:provider-forbidden-preparation"
+        ),
+        "provider_forbidden_recovery_key": recovery_key,
+        "provider_dispatched": False,
+        "implementation_dispatched": False,
+    }
+
+
+def _landed_recovery_portal(
+    paths: object,
+    *,
+    calls: list[str],
+    blocked_reason: str = "",
+    proof_tamper: str = "",
+) -> object:
+    class LandedRecoveryPortal:
+        def reconcile_quiesced_active_attempt(self) -> dict[str, object]:
+            calls.append("quiesce")
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "nested_attempt_quiesced",
+            }
+
+        def reconcile_provider_forbidden_terminal_result(
+            self,
+            *,
+            expected_task_identity: Mapping[str, str],
+        ) -> dict[str, object]:
+            calls.append("terminal_recovery")
+            if blocked_reason:
+                return {
+                    "reconciled": False,
+                    "blocked": True,
+                    "applicable": True,
+                    "reason": blocked_reason,
+                    "provider_dispatched": False,
+                    "implementation_dispatched": False,
+                }
+            text = paths.task_projection.read_text(encoding="utf-8")
+            paths.task_projection.write_text(
+                text.replace("- Status: ready", "- Status: completed"),
+                encoding="utf-8",
+            )
+            append_jsonl_event(
+                paths.events,
+                "task_completed",
+                dict(expected_task_identity),
+            )
+            landed = _landed_reconciliation_fixture(
+                expected_task_identity
+            )
+            if proof_tamper == "dirty_source":
+                landed["current_source_identity"] = {
+                    **dict(landed["current_source_identity"]),
+                    "status_clean": False,
+                }
+            elif proof_tamper == "declared_output":
+                landed["post_merge_declared_output_invariant"] = {
+                    "passed": False,
+                }
+            elif proof_tamper == "preparation":
+                landed["provider_forbidden_recovery_key"] = "tampered"
+            elif proof_tamper == "task_binding":
+                landed["completion_task_cids"] = {
+                    expected_task_identity["task_id"]: "tampered",
+                }
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "applicable": True,
+                "reason": "provider_forbidden_terminal_receipt_recovered",
+                "provider_dispatched": False,
+                "implementation_dispatched": False,
+                "landed_reconciliation": landed,
+            }
+
+        def run_once(self) -> dict[str, object]:
+            raise AssertionError("landed terminal recovery dispatched a provider")
+
+        def close_event_runtime(self) -> None:
+            calls.append("close")
+
+    return LandedRecoveryPortal()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_blocked_terminal_selector_completes_landed_candidate_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, bridge, attempt, paths = _seed_terminal_blocked_landed_candidate(
+        tmp_path
+    )
+    calls: list[str] = []
+    bridge.portal_factory = lambda _paths, _alias: _landed_recovery_portal(
+        paths,
+        calls=calls,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_database_portal_no_provider_rearm_evidence",
+        lambda *_args, **_kwargs: pytest.fail(
+            "terminal selector entered the generic no-provider rearm gate"
+        ),
+    )
+    try:
+        recovered = daemon.reconcile_blocked_unknown_outcome_tasks()
+        replay = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(recovered) == 1
+        assert recovered[0]["recovered"] is True
+        assert recovered[0]["rearmed"] is False
+        assert recovered[0]["provider_dispatched"] is False
+        assert replay == []
+        task = daemon.task_source.get_task(attempt.task_cid)
+        assert task is not None and task.status == "completed"
+        assert task.body["completion_receipt"]["operation"] == (
+            "database_terminal_landed_completion"
+        )
+        assert daemon.coordinator.claimability(attempt.task_cid)[
+            "completion_status"
+        ] == "succeeded"
+        assert calls == ["quiesce", "terminal_recovery", "close"]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_blocked_terminal_selector_contains_malformed_retry_budget(
+    tmp_path: Path,
+) -> None:
+    daemon, bridge, attempt, paths = _seed_terminal_blocked_landed_candidate(
+        tmp_path
+    )
+    task = daemon.task_source.get_task(attempt.task_cid)
+    assert task is not None
+    tampered = dict(task.body["completion_receipt"])
+    tampered["attempts_used"] = {"not": "an integer"}
+    tampered_body = dict(task.body)
+    tampered_body["completion_receipt"] = tampered
+    with daemon.task_source._intent._connection(write=True) as connection:
+        connection.execute(
+            "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+            [
+                json.dumps(
+                    tampered_body,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                attempt.task_cid,
+            ],
+        )
+    calls: list[str] = []
+    bridge.portal_factory = lambda _paths, _alias: _landed_recovery_portal(
+        paths,
+        calls=calls,
+    )
+    try:
+        rejected = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(rejected) == 1
+        assert rejected[0]["blocked"] is True
+        assert rejected[0]["reason"] == (
+            "terminal_landed_candidate_recovery_blocked"
+        )
+        current = daemon.task_source.get_task(attempt.task_cid)
+        assert current is not None and current.status == "blocked"
+        assert calls == []
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_blocked_terminal_selector_rejects_tampered_terminal_receipt(
+    tmp_path: Path,
+) -> None:
+    daemon, bridge, attempt, paths = _seed_terminal_blocked_landed_candidate(
+        tmp_path
+    )
+    task = daemon.task_source.get_task(attempt.task_cid)
+    assert task is not None
+    link = task.body["completion_receipt"]["terminal_reconciliation"]
+    saga = daemon._database_portal_terminal_reconciliation_saga(attempt)
+    assert saga is not None
+    terminal_path = Path(paths.reconciliation) / (
+        str(saga["receipt_id"]).removeprefix("sha256:") + ".json"
+    )
+    terminal = json.loads(terminal_path.read_text(encoding="utf-8"))
+    terminal["terminal_reconciliation_evidence_id"] = content_identity(
+        {"tampered": True}
+    )
+    terminal_path.write_text(
+        json.dumps(terminal, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+    bridge.portal_factory = lambda _paths, _alias: _landed_recovery_portal(
+        paths,
+        calls=calls,
+    )
+    try:
+        rejected = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(rejected) == 1
+        assert rejected[0]["blocked"] is True
+        assert rejected[0]["reason"] == (
+            "terminal_landed_candidate_recovery_blocked"
+        )
+        assert daemon.task_source.get_task(attempt.task_cid).status == "blocked"
+        assert calls == []
+        assert link["evidence_id"] != terminal[
+            "terminal_reconciliation_evidence_id"
+        ]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    "proof_tamper",
+    ("dirty_source", "declared_output", "preparation", "task_binding"),
+)
+def test_blocked_terminal_selector_rejects_tampered_landed_proof(
+    tmp_path: Path,
+    proof_tamper: str,
+) -> None:
+    daemon, bridge, attempt, paths = _seed_terminal_blocked_landed_candidate(
+        tmp_path
+    )
+    calls: list[str] = []
+    bridge.portal_factory = lambda _paths, _alias: _landed_recovery_portal(
+        paths,
+        calls=calls,
+        proof_tamper=proof_tamper,
+    )
+    try:
+        rejected = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(rejected) == 1
+        assert rejected[0]["blocked"] is True
+        assert rejected[0]["rearmed"] is False
+        current = daemon.task_source.get_task(attempt.task_cid)
+        assert current is not None and current.status == "blocked"
+        assert calls == ["quiesce", "terminal_recovery", "close"]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_blocked_terminal_selector_contains_malformed_terminal_link(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _bridge, attempt, _paths = (
+        _seed_terminal_blocked_landed_candidate(tmp_path)
+    )
+    task = daemon.task_source.get_task(attempt.task_cid)
+    assert task is not None
+    tampered = dict(task.body["completion_receipt"])
+    tampered["terminal_reconciliation"] = ["not", "a", "record"]
+    tampered_body = dict(task.body)
+    tampered_body["completion_receipt"] = tampered
+    with daemon.task_source._intent._connection(write=True) as connection:
+        connection.execute(
+            "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+            [
+                json.dumps(
+                    tampered_body,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                attempt.task_cid,
+            ],
+        )
+    monkeypatch.setattr(
+        daemon,
+        "_database_portal_no_provider_rearm_evidence",
+        lambda *_args, **_kwargs: pytest.fail(
+            "malformed terminal link reached the generic rearm gate"
+        ),
+    )
+    try:
+        rejected = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(rejected) == 1
+        assert rejected[0]["blocked"] is True
+        assert rejected[0]["reason"] == (
+            "terminal_landed_candidate_link_invalid"
+        )
+        current = daemon.task_source.get_task(attempt.task_cid)
+        assert current is not None and current.status == "blocked"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    "blocked_reason",
+    (
+        "provider_forbidden_landed_recovery_candidate_ambiguous",
+        "provider_forbidden_landed_recovery_candidate_stale",
+    ),
+)
+def test_blocked_terminal_selector_rejects_ambiguous_or_stale_source(
+    tmp_path: Path,
+    blocked_reason: str,
+) -> None:
+    daemon, bridge, attempt, paths = _seed_terminal_blocked_landed_candidate(
+        tmp_path
+    )
+    calls: list[str] = []
+    bridge.portal_factory = lambda _paths, _alias: _landed_recovery_portal(
+        paths,
+        calls=calls,
+        blocked_reason=blocked_reason,
+    )
+    try:
+        rejected = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(rejected) == 1
+        assert rejected[0]["blocked"] is True
+        assert rejected[0]["rearmed"] is False
+        assert daemon.task_source.get_task(attempt.task_cid).status == "blocked"
+        assert calls == ["quiesce", "terminal_recovery", "close"]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_blocked_terminal_selector_rejects_existing_provider_result(
+    tmp_path: Path,
+) -> None:
+    daemon, bridge, attempt, paths = _seed_terminal_blocked_landed_candidate(
+        tmp_path
+    )
+    daemon._require_connection().execute(
+        """
+        INSERT INTO provider_invocations(
+            invocation_id, attempt_id, task_cid, idempotency_key,
+            owner_session_id, recorded_at_ms, result_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            "provider:forbidden-existing-result",
+            attempt.attempt_id,
+            attempt.task_cid,
+            f"provider:{attempt.attempt_id}",
+            attempt.owner_session_id,
+            daemon._now_ms(),
+            "{}",
+        ],
+    )
+    calls: list[str] = []
+    bridge.portal_factory = lambda _paths, _alias: _landed_recovery_portal(
+        paths,
+        calls=calls,
+    )
+    try:
+        rejected = daemon.reconcile_blocked_unknown_outcome_tasks()
+
+        assert len(rejected) == 1
+        assert rejected[0]["blocked"] is True
+        assert rejected[0]["rearmed"] is False
+        assert daemon.task_source.get_task(attempt.task_cid).status == "blocked"
+        assert calls == []
+    finally:
+        daemon.close()
+
+
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 @pytest.mark.parametrize(
     "fault_boundary",

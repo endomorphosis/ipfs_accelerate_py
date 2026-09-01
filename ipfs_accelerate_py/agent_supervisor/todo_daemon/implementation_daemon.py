@@ -13539,7 +13539,38 @@ class PortalImplementationDaemon:
                 "completion_persistence",
                 {},
             )
-            self._record_event("merge_reconciled", result)
+            recovery_key = str(
+                result.get("provider_forbidden_recovery_key") or ""
+            )
+            finalized = [
+                event
+                for event in self._iter_merge_lifecycle_events()
+                if event.get("type") == "merge_reconciled"
+                and event.get("provider_forbidden_recovery_key")
+                == recovery_key
+            ]
+            if len(finalized) > 1 or any(
+                event.get("resolved") is not True
+                or event.get("task_id") != result.get("task_id")
+                or event.get("implementation_commit")
+                != result.get("implementation_commit")
+                or event.get("provider_forbidden_preparation_event_id")
+                != result.get("provider_forbidden_preparation_event_id")
+                or event.get("provider_dispatched") is not False
+                or event.get("implementation_dispatched") is not False
+                for event in finalized
+            ):
+                return {
+                    "resolved": False,
+                    "reason": (
+                        "provider_forbidden_landed_recovery_finalization_"
+                        "ambiguous"
+                    ),
+                    "provider_forbidden_recovery_key": recovery_key,
+                    "finalization_count": len(finalized),
+                }
+            if not finalized:
+                self._record_event("merge_reconciled", result)
         return result
 
     def _prepare_provider_forbidden_landed_candidate(
@@ -13782,6 +13813,75 @@ class PortalImplementationDaemon:
         target_commit = self._resolved_commit_ref(
             self.repo_root,
             target_branch,
+        )
+        raw_source_identity = self._candidate_workspace_identity(
+            self.repo_root
+        )
+        try:
+            dirty_source_paths = sorted(
+                self._strict_dirty_worktree_paths(self.repo_root)
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            return rejected(
+                "provider_forbidden_landed_recovery_source_not_clean_current",
+                current_source_identity=raw_source_identity,
+                source_status_error_type=type(exc).__name__,
+            )
+        try:
+            state_relative = self.state_path.parent.resolve().relative_to(
+                self.repo_root.resolve()
+            ).as_posix()
+        except (OSError, ValueError):
+            state_relative = ""
+        control_source_paths = [
+            path
+            for path in dirty_source_paths
+            if state_relative
+            and self._path_matches_prefix(path, state_relative)
+        ]
+        control_source_path_set = set(control_source_paths)
+        blocking_source_paths = [
+            path
+            for path in dirty_source_paths
+            if path not in control_source_path_set
+        ]
+        current_source_identity = {
+            **raw_source_identity,
+            "raw_status_clean": raw_source_identity.get("status_clean")
+            is True,
+            "status_clean": not blocking_source_paths,
+            "blocking_dirty_paths": blocking_source_paths,
+            "ignored_control_paths": control_source_paths,
+        }
+        current_source_head = str(
+            current_source_identity.get("head") or ""
+        )
+        if (
+            current_source_identity.get("verified") is not True
+            or current_source_identity.get("status_clean") is not True
+            or not current_source_head
+            or not self._git_ref_is_ancestor(
+                implementation_commit,
+                current_source_head,
+            )
+            or not target_commit
+            or not self._git_ref_is_ancestor(
+                target_commit,
+                current_source_head,
+            )
+        ):
+            return rejected(
+                "provider_forbidden_landed_recovery_source_not_clean_current",
+                current_source_identity=current_source_identity,
+                implementation_commit=implementation_commit,
+                target_commit=target_commit,
+            )
+        current_source_identity.update(
+            {
+                "implementation_commit_ancestor": True,
+                "target_commit": target_commit,
+                "target_commit_ancestor": True,
+            }
         )
         integration_commit_proof = self._immutable_integration_commit(
             {"merge_commit": target_commit},
@@ -14087,6 +14187,7 @@ class PortalImplementationDaemon:
                 changed_submodule_handoff_proof
             ),
             "completion_persistence": completion_persistence,
+            "current_source_identity": current_source_identity,
             "provider_forbidden_preparation_event_id": (
                 preparation_event_id
             ),
@@ -14511,18 +14612,57 @@ class PortalImplementationDaemon:
             )
         exact_receipt_present = bool(completion_receipts)
         task_status = normalize_status(task.status)
+        landed_reconciliation: dict[str, Any] | None = None
         if exact_receipt_present:
             if task_status != "completed":
                 return blocked(
                     "provider_forbidden_terminal_recovery_receipt_status_mismatch",
                     task_status=task_status,
                 )
-            return accepted(
+            prepared_recoveries = [
+                event
+                for event in lifecycle_events
+                if event.get("type")
+                == "provider_forbidden_landed_completion_prepared"
+                and event.get("task_id") == task.task_id
+            ]
+            if len(prepared_recoveries) > 1:
+                return blocked(
+                    "provider_forbidden_landed_recovery_preparation_ambiguous",
+                    preparation_count=len(prepared_recoveries),
+                )
+            if prepared_recoveries:
+                try:
+                    landed_reconciliation = dict(
+                        self._reconcile_provider_forbidden_already_landed_candidate(
+                            task,
+                            expected_task_identity=expected_identity,
+                        )
+                    )
+                except Exception as exc:
+                    return blocked(
+                        "provider_forbidden_terminal_recovery_candidates_invalid",
+                        error_type=type(exc).__name__,
+                    )
+                if landed_reconciliation.get("resolved") is not True:
+                    return blocked(
+                        str(landed_reconciliation.get("reason") or "")
+                        or (
+                            "provider_forbidden_terminal_recovery_"
+                            "revalidation_failed"
+                        )
+                    )
+            accepted_result = accepted(
                 "provider_forbidden_terminal_receipt_already_present",
                 task_id=task.task_id,
                 canonical_task_cid=task_identity.canonical_task_cid,
                 completion_receipt_recorded=False,
             )
+            if landed_reconciliation is not None:
+                accepted_result["landed_reconciliation"] = (
+                    landed_reconciliation
+                )
+            return accepted_result
 
         if (
             self.manual_completion_authority_revalidation_only
@@ -14540,19 +14680,15 @@ class PortalImplementationDaemon:
                     "provider_forbidden_terminal_recovery_merge_evidence_invalid",
                     error_type=type(exc).__name__,
                 )
-            if task.task_id not in successfully_merged:
-                has_prepared_recovery = any(
-                    event.get("type")
-                    == "provider_forbidden_landed_completion_prepared"
-                    and event.get("task_id") == task.task_id
-                    for event in lifecycle_events
-                )
-                if not has_prepared_recovery:
-                    return blocked(
-                        "provider_forbidden_terminal_recovery_merge_not_admitted",
-                    )
+            has_prepared_recovery = any(
+                event.get("type")
+                == "provider_forbidden_landed_completion_prepared"
+                and event.get("task_id") == task.task_id
+                for event in lifecycle_events
+            )
+            if has_prepared_recovery:
                 try:
-                    landed_reconciliation = (
+                    landed_reconciliation = dict(
                         self._reconcile_provider_forbidden_already_landed_candidate(
                             task,
                             expected_task_identity=expected_identity,
@@ -14571,9 +14707,13 @@ class PortalImplementationDaemon:
                             "reconciliation_failed"
                         )
                     )
+            elif task.task_id not in successfully_merged:
+                return blocked(
+                    "provider_forbidden_terminal_recovery_merge_not_admitted",
+                )
         elif task_status == "todo":
             try:
-                landed_reconciliation = (
+                landed_reconciliation = dict(
                     self._reconcile_provider_forbidden_already_landed_candidate(
                         task,
                         expected_task_identity=expected_identity,
@@ -14647,7 +14787,7 @@ class PortalImplementationDaemon:
             expected_task_identity=expected_identity,
         )
         if publication.get("published") is True:
-            return accepted(
+            accepted_result = accepted(
                 "provider_forbidden_terminal_receipt_recovered",
                 task_id=str(publication.get("task_id") or ""),
                 canonical_task_cid=str(
@@ -14655,8 +14795,13 @@ class PortalImplementationDaemon:
                 ),
                 completion_receipt_recorded=True,
             )
+            if landed_reconciliation is not None:
+                accepted_result["landed_reconciliation"] = (
+                    landed_reconciliation
+                )
+            return accepted_result
         if publication.get("already_present") is True:
-            return accepted(
+            accepted_result = accepted(
                 "provider_forbidden_terminal_receipt_already_present",
                 task_id=str(publication.get("task_id") or ""),
                 canonical_task_cid=str(
@@ -14664,6 +14809,11 @@ class PortalImplementationDaemon:
                 ),
                 completion_receipt_recorded=False,
             )
+            if landed_reconciliation is not None:
+                accepted_result["landed_reconciliation"] = (
+                    landed_reconciliation
+                )
+            return accepted_result
         return blocked(
             str(publication.get("reason") or "")
             or "provider_forbidden_terminal_receipt_publication_failed",
@@ -73870,6 +74020,13 @@ DATABASE_UNKNOWN_OUTCOME_BLOCK_REASONS = frozenset(
 )
 DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION = "database_unknown_outcome_rearmed"
 DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT = 3
+DATABASE_TERMINAL_LANDED_COMPLETION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-terminal-landed-completion@1"
+)
+DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION = (
+    "database_terminal_landed_completion"
+)
 DATABASE_NO_PROVIDER_REARM_SAGA_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-no-provider-rearm-saga@1"
@@ -81975,6 +82132,711 @@ class DatabaseImplementationDaemon:
             outcomes.append(outcome)
         return outcomes
 
+    @staticmethod
+    def _terminal_landed_completion_receipt(
+        *,
+        task: Any,
+        attempt: "DatabaseTaskAttempt",
+        blocked_receipt: Mapping[str, Any],
+        link: Mapping[str, Any],
+        terminal_receipt_id: str,
+        portal_receipt: Mapping[str, Any],
+        landed_reconciliation: Mapping[str, Any],
+        validation_evidence_digest: str,
+    ) -> dict[str, Any]:
+        """Build the closed one-shot receipt for an already-landed result."""
+
+        receipt = {
+            "schema": DATABASE_TERMINAL_LANDED_COMPLETION_SCHEMA,
+            "operation": DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION,
+            "task_cid": str(task.task_cid),
+            "task_alias": str(task.task_alias or ""),
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "blocked_receipt_digest": content_identity(dict(blocked_receipt)),
+            "terminal_reconciliation_evidence_id": str(
+                link.get("evidence_id") or ""
+            ),
+            "terminal_reconciliation_receipt_id": str(terminal_receipt_id),
+            "portal_completion_receipt_id": str(
+                portal_receipt.get("receipt_id") or ""
+            ),
+            "landed_reconciliation_digest": content_identity(
+                dict(landed_reconciliation)
+            ),
+            "validation_evidence_digest": str(validation_evidence_digest),
+            "provider_dispatched": False,
+            "implementation_dispatched": False,
+            "completion_mode": "provider_forbidden_already_landed",
+        }
+        receipt["recovery_receipt_id"] = content_identity(receipt)
+        return receipt
+
+    def _blocked_terminal_landed_receipt_is_exact(
+        self,
+        *,
+        task: Any,
+        attempt: "DatabaseTaskAttempt",
+        receipt: Mapping[str, Any],
+    ) -> bool:
+        """Reject malformed retry budgets before terminal-link replay."""
+
+        required_fields = {
+            "schema",
+            "operation",
+            "task_cid",
+            "validation_spec_cid",
+            "attempts_used",
+            "max_task_attempts",
+            "retry_exhausted",
+            "process_instance_id",
+            "owner_session_id",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "reason",
+            "forced_block",
+            "authority_outcome",
+            "terminal_reconciliation",
+        }
+        optional_fields = {
+            "reconciled_by_process_instance_id",
+            "unknown_outcome_rearm_count",
+        }
+        record = dict(receipt)
+        if (
+            not required_fields.issubset(record)
+            or set(record) - required_fields - optional_fields
+            or record.get("schema") != DATABASE_RETRY_BUDGET_SCHEMA
+            or record.get("operation")
+            != "database_unknown_outcome_blocked"
+            or record.get("task_cid") != attempt.task_cid
+            or record.get("attempt_id") != attempt.attempt_id
+            or record.get("claim_id") != attempt.claim_id
+            or record.get("lease_id") != attempt.lease_id
+            or record.get("owner_session_id") != attempt.owner_session_id
+            or type(record.get("attempts_used")) is not int
+            or record.get("attempts_used") != int(attempt.attempt_number)
+            or type(record.get("max_task_attempts")) is not int
+            or int(record.get("max_task_attempts")) < 0
+            or type(record.get("attempt_number")) is not int
+            or record.get("attempt_number") != int(attempt.attempt_number)
+            or type(record.get("fencing_token")) is not int
+            or record.get("fencing_token") != int(attempt.fencing_token)
+            or type(record.get("fence_epoch")) is not int
+            or record.get("fence_epoch") != int(attempt.fence_epoch)
+            or record.get("retry_exhausted") is not True
+            or record.get("forced_block") is not True
+            or record.get("authority_outcome") != "unknown"
+            or record.get("reason")
+            != "callback_authority_incomplete_blocked"
+            or not str(record.get("process_instance_id") or "").strip()
+        ):
+            return False
+        if "reconciled_by_process_instance_id" in record and not str(
+            record.get("reconciled_by_process_instance_id") or ""
+        ).strip():
+            return False
+        if "unknown_outcome_rearm_count" in record:
+            rearm_count = record.get("unknown_outcome_rearm_count")
+            if (
+                type(rearm_count) is not int
+                or not 1 <= rearm_count <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+            ):
+                return False
+        raw_control_claim = attempt.body.get("control_claim")
+        if not isinstance(raw_control_claim, Mapping):
+            return False
+        control_claim = dict(raw_control_claim)
+        try:
+            retry_budget = self._retry_budget_state(task)
+            return bool(
+                control_claim.get("task_cid") == attempt.task_cid
+                and control_claim.get("execution_spec_cid")
+                == self._task_execution_spec_cid(task)
+                and control_claim.get("validation_spec_cid")
+                == self._retry_budget_validation_spec_cid(task)
+                and record.get("validation_spec_cid")
+                == control_claim.get("validation_spec_cid")
+                and retry_budget.get("malformed") is False
+                and retry_budget.get("policy_mismatch") is False
+                and retry_budget.get("attempts_used")
+                == record.get("attempts_used")
+                and retry_budget.get("max_task_attempts")
+                == record.get("max_task_attempts")
+            )
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
+    def _terminal_landed_reconciliation_is_exact(
+        landed: Any,
+        *,
+        expected_task_id: str,
+        expected_canonical_task_cid: str,
+    ) -> bool:
+        """Validate the bounded proof returned by the existing lander."""
+
+        if not isinstance(landed, Mapping):
+            return False
+        implementation_commit = str(
+            landed.get("implementation_commit") or ""
+        )
+        merge_commit = str(landed.get("merge_commit") or "")
+        source = landed.get("current_source_identity")
+        integration = landed.get("integration_commit_proof")
+        submodules = landed.get("changed_submodule_handoff_proof")
+        outputs = landed.get("post_merge_declared_output_invariant")
+        persistence = landed.get("completion_persistence")
+        preparation_persistence = landed.get(
+            "preparation_completion_persistence"
+        )
+        merge_result = landed.get("merge_result")
+        completion_task_cids = {
+            expected_task_id: expected_canonical_task_cid,
+        }
+        recovery_key = str(
+            landed.get("provider_forbidden_recovery_key") or ""
+        )
+        return bool(
+            landed.get("resolved") is True
+            and landed.get("reason")
+            == "provider_forbidden_commit_already_landed"
+            and landed.get("task_id") == expected_task_id
+            and landed.get("completion_task_cids")
+            == completion_task_cids
+            and landed.get("landed_commit") == implementation_commit
+            and re.fullmatch(r"[0-9a-f]{40,64}", implementation_commit)
+            and re.fullmatch(r"[0-9a-f]{40,64}", merge_commit)
+            and isinstance(source, Mapping)
+            and source.get("verified") is True
+            and source.get("status_clean") is True
+            and re.fullmatch(
+                r"[0-9a-f]{40,64}",
+                str(source.get("head") or ""),
+            )
+            and source.get("blocking_dirty_paths") == []
+            and source.get("implementation_commit_ancestor") is True
+            and source.get("target_commit") == merge_commit
+            and source.get("target_commit_ancestor") is True
+            and isinstance(integration, Mapping)
+            and integration.get("passed") is True
+            and integration.get("implementation_commit")
+            == implementation_commit
+            and integration.get("integration_commit") == merge_commit
+            and isinstance(submodules, Mapping)
+            and submodules.get("passed") is True
+            and submodules.get("candidate_commit")
+            == implementation_commit
+            and submodules.get("target_commit") == merge_commit
+            and isinstance(outputs, Mapping)
+            and outputs.get("passed") is True
+            and outputs.get("mode") == "repository_tree"
+            and outputs.get("repository_ref") == merge_commit
+            and outputs.get("task_ids") == [expected_task_id]
+            and outputs.get("unsafe_outputs") == []
+            and outputs.get("missing_outputs") == []
+            and outputs.get("untracked_outputs") == []
+            and isinstance(persistence, Mapping)
+            and persistence.get("passed") is True
+            and persistence.get("completion_task_cids")
+            == completion_task_cids
+            and persistence.get("recovery_key") == recovery_key
+            and isinstance(preparation_persistence, Mapping)
+            and preparation_persistence.get("passed") is True
+            and preparation_persistence.get("exact_population") is True
+            and preparation_persistence.get("expected_task_ids")
+            == [expected_task_id]
+            and isinstance(merge_result, Mapping)
+            and merge_result.get("attempted") is False
+            and merge_result.get("merged") is True
+            and merge_result.get("reason")
+            == "implementation_commit_already_merged"
+            and re.fullmatch(
+                r"(?:sha256:[0-9a-f]{64}|b[a-z2-7]{20,})",
+                recovery_key,
+            )
+            and bool(
+                str(
+                    landed.get("provider_forbidden_preparation_event_id")
+                    or ""
+                ).strip()
+            )
+            and landed.get("provider_dispatched") is False
+            and landed.get("implementation_dispatched") is False
+        )
+
+    def _reconcile_one_blocked_terminal_landed_task(
+        self,
+        *,
+        task: Any,
+        bridge: Any,
+    ) -> dict[str, Any]:
+        """Promote one exact terminally blocked, already-landed candidate.
+
+        This path never grants a retry or callback budget.  It revalidates the
+        immutable terminal saga, terminal claim, nested Portal binding, and
+        provider-forbidden current-tree result before a single canonical CAS.
+        """
+
+        receipt = dict(getattr(task, "body", {}).get("completion_receipt") or {})
+        link = receipt.get("terminal_reconciliation")
+        if not isinstance(link, Mapping):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery lacks a terminal reconciliation link"
+            )
+        attempt_id = str(receipt.get("attempt_id") or "")
+        attempt = self.get_attempt(attempt_id)
+        if attempt is None:
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery names an unknown attempt"
+            )
+        if (
+            attempt.status != "failed"
+            or attempt.committed_phase != ATTEMPT_PHASE_FAILED
+            or attempt.finished_at_ms is None
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery attempt is not terminal"
+            )
+        if not self._blocked_terminal_landed_receipt_is_exact(
+            task=task,
+            attempt=attempt,
+            receipt=receipt,
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery receipt is malformed or stale"
+            )
+        validated_link, forced_block, unknown, reason = (
+            self._validate_terminal_reconciliation_replay(
+                attempt=attempt,
+                task=task,
+                bridge=bridge,
+            )
+        )
+        if (
+            not forced_block
+            or not unknown
+            or reason != "callback_authority_incomplete_blocked"
+            or dict(validated_link) != dict(link)
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery terminal policy is not exact"
+            )
+        phases = self.phase_history(attempt.attempt_id)
+        failed_phases = [
+            item for item in phases if item.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        if (
+            not phases
+            or phases[-1].get("phase") != ATTEMPT_PHASE_FAILED
+            or len(failed_phases) != 1
+            or dict(failed_phases[0].get("body") or {}).get(
+                "terminal_reconciliation"
+            )
+            != dict(link)
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery failed phase changed terminal link"
+            )
+        saga = self._database_portal_terminal_reconciliation_saga(attempt)
+        if (
+            saga is None
+            or saga.get("stage") != "terminal"
+            or saga.get("evidence_id") != link.get("evidence_id")
+            or not str(saga.get("receipt_id") or "")
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery lacks its terminal saga"
+            )
+        terminal_receipt = bridge.load_reconciliation_receipt(
+            attempt,
+            str(saga["receipt_id"]),
+            required_stage="terminal",
+        )
+        if (
+            terminal_receipt.get("terminal_reconciliation_evidence_id")
+            != link.get("evidence_id")
+            or terminal_receipt.get("database_disposition")
+            != "blocked_unknown_outcome"
+            or terminal_receipt.get("database_attempt_status") != "failed"
+            or terminal_receipt.get("database_attempt_phase")
+            != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery terminal receipt changed authority"
+            )
+        binding = self._database_portal_attempt_binding(attempt)
+        if (
+            binding is None
+            or binding.get("stage") != "portal_entered"
+            or binding.get("binding_id") != link.get("binding_id")
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery lacks its entered Portal binding"
+            )
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        if claim is None:
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery lost its terminal claim"
+            )
+        claim_record = claim.to_dict()
+        expected_claim = {
+            "task_cid": attempt.task_cid,
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        claim_state = str(claim_record.get("state") or "")
+        if claim_state not in {"released", "expired"} or any(
+            claim_record.get(name) != expected
+            for name, expected in expected_claim.items()
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery claim is not exact and terminal"
+            )
+        if self.coordinator.get_prepared_task_completion(attempt.task_cid) is not None:
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery conflicts with completion preparation"
+            )
+        provider_result = self.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        effect_result = self.effect_claim_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        )
+        provider_dispatch = self._dispatch_journal_entry(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        effect_dispatch = self._dispatch_journal_entry(
+            attempt,
+            dispatch_kind="effect",
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        )
+        if (
+            provider_result is not None
+            or effect_result is not None
+            or effect_dispatch is not None
+            or provider_dispatch is None
+            or provider_dispatch.get("outcome") not in {"started", "raised"}
+            or attempt.phase_committed(ATTEMPT_PHASE_PROVIDER)
+            or attempt.phase_committed(ATTEMPT_PHASE_EFFECT)
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery callback authority is not provider-free"
+            )
+
+        nested = bridge.reconcile_quiesced_attempt(
+            attempt,
+            terminal_reconciliation=link,
+        )
+        portal_reconciliation = nested.get("portal_reconciliation")
+        terminal_recovery = (
+            portal_reconciliation.get("provider_forbidden_terminal_recovery")
+            if isinstance(portal_reconciliation, Mapping)
+            else None
+        )
+        landed = (
+            terminal_recovery.get("landed_reconciliation")
+            if isinstance(terminal_recovery, Mapping)
+            else None
+        )
+        portal_receipt = nested.get("terminal_provider_receipt")
+        if (
+            nested.get("reconciled") is not True
+            or nested.get("blocked") is True
+            or nested.get("binding_id") != link.get("binding_id")
+            or nested.get("terminal_provider_evidence") is not True
+            or not isinstance(terminal_recovery, Mapping)
+            or terminal_recovery.get("reconciled") is not True
+            or terminal_recovery.get("blocked") is True
+            or terminal_recovery.get("applicable") is not True
+            or terminal_recovery.get("provider_dispatched") is not False
+            or terminal_recovery.get("implementation_dispatched") is not False
+            or not isinstance(portal_receipt, Mapping)
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery did not produce exact provider-free evidence"
+            )
+        portal_receipt = dict(portal_receipt)
+        if not self._terminal_landed_reconciliation_is_exact(
+            landed,
+            expected_task_id=str(portal_receipt.get("task_alias") or ""),
+            expected_canonical_task_cid=str(
+                portal_receipt.get("canonical_task_cid") or ""
+            ),
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery landed proof changed task authority"
+            )
+        portal_receipt_id = str(portal_receipt.get("receipt_id") or "")
+        unsigned_portal_receipt = dict(portal_receipt)
+        unsigned_portal_receipt.pop("receipt_id", None)
+        if (
+            not re.fullmatch(r"sha256:[0-9a-f]{64}", portal_receipt_id)
+            or self._database_no_provider_rearm_digest(unsigned_portal_receipt)
+            != portal_receipt_id
+            or portal_receipt.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-execution-receipt@1"
+            )
+            or portal_receipt.get("accepted") is not True
+            or portal_receipt.get("attempt_id") != attempt.attempt_id
+            or portal_receipt.get("task_cid") != attempt.task_cid
+            or portal_receipt.get("binding_id") != link.get("binding_id")
+            or portal_receipt.get("task_alias")
+            != getattr(task, "task_alias", "")
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery Portal receipt identity failed"
+            )
+
+        validation_body = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-terminal-landed-validation@1"
+            ),
+            **self._database_attempt_identity(attempt),
+            "terminal_reconciliation_evidence_id": str(link["evidence_id"]),
+            "terminal_reconciliation_receipt_id": str(saga["receipt_id"]),
+            "portal_completion_receipt": portal_receipt,
+            "landed_reconciliation": dict(landed),
+            "provider_dispatched": False,
+            "implementation_dispatched": False,
+        }
+        validation_evidence_digest = content_identity(validation_body)
+        record_evidence = getattr(self.task_source, "record_evidence", None)
+        if not callable(record_evidence):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot persist landed validation evidence"
+            )
+        record_evidence(
+            task_cid=str(task.task_cid),
+            evidence_kind="validation",
+            digest=validation_evidence_digest,
+            body=validation_body,
+        )
+        completion_receipt = self._terminal_landed_completion_receipt(
+            task=task,
+            attempt=attempt,
+            blocked_receipt=receipt,
+            link=link,
+            terminal_receipt_id=str(saga["receipt_id"]),
+            portal_receipt=portal_receipt,
+            landed_reconciliation=landed,
+            validation_evidence_digest=validation_evidence_digest,
+        )
+        barrier = getattr(
+            self.coordinator,
+            "execute_with_terminal_task_claim_barrier",
+            None,
+        )
+        if not callable(barrier):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator lacks terminal landed completion barrier"
+            )
+
+        def complete_control_task() -> Any:
+            return self._cas_task_status_database(
+                str(task.task_cid),
+                expected_revision=int(task.revision),
+                new_status="completed",
+                receipt=completion_receipt,
+                evidence_digests=[validation_evidence_digest],
+            )
+
+        try:
+            barrier(claim, complete_control_task)
+        except Exception:
+            current = self.task_source.get(str(task.task_cid))
+            if (
+                current is None
+                or str(current.status or "").strip().lower() != "completed"
+                or dict(current.body.get("completion_receipt") or {})
+                != completion_receipt
+            ):
+                raise
+        current = self.task_source.get(str(task.task_cid))
+        if (
+            current is None
+            or str(current.status or "").strip().lower() != "completed"
+            or dict(current.body.get("completion_receipt") or {})
+            != completion_receipt
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery canonical CAS did not commit exactly"
+            )
+        readiness = self.coordinator.claimability(str(task.task_cid))
+        if str(readiness.get("completion_status") or "") != "succeeded":
+            self.coordinator.mark_task_complete(
+                str(task.task_cid),
+                status="succeeded",
+                body={
+                    "schema": DATABASE_TERMINAL_LANDED_COMPLETION_SCHEMA,
+                    "recovery_receipt_id": completion_receipt[
+                        "recovery_receipt_id"
+                    ],
+                    "terminal_reconciliation_evidence_id": str(
+                        link["evidence_id"]
+                    ),
+                    "portal_completion_receipt_id": portal_receipt_id,
+                },
+                now_ms=self._now_ms(),
+            )
+        settled = self.coordinator.claimability(str(task.task_cid))
+        if str(settled.get("completion_status") or "") != "succeeded":
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery coordination completion did not settle"
+            )
+        outcome = {
+            "task_cid": str(task.task_cid),
+            "task_alias": str(task.task_alias or ""),
+            "operation": DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION,
+            "recovered": True,
+            "rearmed": False,
+            "provider_dispatched": False,
+            "implementation_dispatched": False,
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "terminal_reconciliation_evidence_id": str(link["evidence_id"]),
+            "portal_completion_receipt_id": portal_receipt_id,
+            "validation_evidence_digest": validation_evidence_digest,
+            "recovery_receipt_id": completion_receipt["recovery_receipt_id"],
+        }
+        self._record_event(
+            DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION,
+            attempt_id=attempt.attempt_id,
+            task_cid=str(task.task_cid),
+            body=outcome,
+        )
+        return outcome
+
+    def reconcile_blocked_terminal_landed_tasks(self) -> list[dict[str, Any]]:
+        """Select terminal-link candidates before generic unknown rearm."""
+
+        bridge = self._database_portal_bridge
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if bridge is None or not callable(list_tasks):
+            return []
+        try:
+            page = list_tasks(status="blocked", limit=TASK_SOURCE_QUERY_LIMIT)
+        except Exception:
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for task in getattr(page, "tasks", ()):
+            alias = str(getattr(task, "task_alias", "") or "")
+            if self.task_prefix and not alias.startswith(self.task_prefix):
+                continue
+            if self.strict_task_sharding and self.task_shard_count > 1:
+                if not self._task_belongs_to_shard(
+                    self._shard_key_for_task(task, task_cid=task.task_cid)
+                ):
+                    continue
+            body = getattr(task, "body", None)
+            raw_receipt = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            if not isinstance(raw_receipt, Mapping):
+                continue
+            receipt = dict(raw_receipt)
+            if "terminal_reconciliation" not in receipt:
+                continue
+            if not isinstance(
+                receipt.get("terminal_reconciliation"), Mapping
+            ):
+                outcomes.append(
+                    {
+                        "task_cid": str(task.task_cid),
+                        "task_alias": alias,
+                        "operation": (
+                            DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION
+                        ),
+                        "recovered": False,
+                        "rearmed": False,
+                        "blocked": True,
+                        "reason": "terminal_landed_candidate_link_invalid",
+                    }
+                )
+                continue
+            candidate = bool(
+                receipt.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
+                and receipt.get("operation") == "database_unknown_outcome_blocked"
+                and receipt.get("reason")
+                == "callback_authority_incomplete_blocked"
+                and receipt.get("forced_block") is True
+                and receipt.get("authority_outcome") == "unknown"
+            )
+            if not candidate:
+                outcomes.append(
+                    {
+                        "task_cid": str(task.task_cid),
+                        "task_alias": alias,
+                        "operation": DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION,
+                        "recovered": False,
+                        "rearmed": False,
+                        "blocked": True,
+                        "reason": "terminal_landed_candidate_policy_invalid",
+                    }
+                )
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": str(task.task_cid),
+                        "task_alias": alias,
+                        "operation": DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION,
+                        "recovered": False,
+                        "rearmed": False,
+                        "blocked": True,
+                        "reason": "terminal_landed_candidate_manual_authority_required",
+                    }
+                )
+                continue
+            try:
+                outcomes.append(
+                    self._reconcile_one_blocked_terminal_landed_task(
+                        task=task,
+                        bridge=bridge,
+                    )
+                )
+            except Exception as exc:
+                _reraise_database_execution_storage_art_fatal(exc)
+                outcomes.append(
+                    {
+                        "task_cid": str(task.task_cid),
+                        "task_alias": alias,
+                        "operation": DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION,
+                        "recovered": False,
+                        "rearmed": False,
+                        "blocked": True,
+                        "reason": "terminal_landed_candidate_recovery_blocked",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:512],
+                    }
+                )
+            if len(outcomes) >= 128:
+                break
+        return outcomes
+
     def reconcile_blocked_unknown_outcome_tasks(self) -> list[dict[str, Any]]:
         """Rearm dead unknown-outcome blocks after the blocking session ends.
 
@@ -81984,6 +82846,12 @@ class DatabaseImplementationDaemon:
         projection, so control-plane loss cannot permanently stall the board.
         """
 
+        landed_recoveries = self.reconcile_blocked_terminal_landed_tasks()
+        if landed_recoveries:
+            # Already-landed completion and a retry/claim are separate durable
+            # passes.  A malformed nominated candidate also stays fail closed
+            # instead of falling through to the generic retry budget.
+            return landed_recoveries
         shared_recoveries = self._reconcile_shared_no_provider_rearm_fences()
         if shared_recoveries:
             # Canonical control fences outrank lane-local audit recovery.  A

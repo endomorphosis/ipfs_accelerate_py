@@ -30,6 +30,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
+from ..proof.formal_verification_contracts import content_identity
 from ..runtime.event_log import EVENT_LOG_MANIFEST_SCHEMA
 from ..task_sources.intent_repository import (
     VALIDATION_ARGV_REPRESENTATION,
@@ -51,6 +52,34 @@ DATABASE_PORTAL_ATTEMPT_RECONCILIATION_SCHEMA: Final[str] = (
 DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-no-provider-rearm-evidence@1"
+)
+DATABASE_PORTAL_TERMINAL_RECONCILIATION_LINK_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-terminal-reconciliation-link@1"
+)
+DATABASE_PORTAL_TERMINAL_RECONCILIATION_LINK_FIELDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "schema",
+            "attempt_id",
+            "claim_id",
+            "task_cid",
+            "attempt_number",
+            "owner_session_id",
+            "lease_id",
+            "fencing_token",
+            "fence_epoch",
+            "binding_id",
+            "nested_state_digest",
+            "nested_reason",
+            "nested_reconciled",
+            "trigger",
+            "intended_database_disposition",
+            "prepared_reconciliation_receipt_id",
+            "commit_barrier_receipt_id",
+            "evidence_id",
+        }
+    )
 )
 DATABASE_PORTAL_NO_PROVIDER_REARM_EVIDENCE_FIELDS: Final[frozenset[str]] = (
     frozenset(
@@ -4160,7 +4189,110 @@ class DatabasePortalExecutionBridge:
         evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
         return evidence
 
-    def reconcile_quiesced_attempt(self, attempt: Any) -> dict[str, Any]:
+    @staticmethod
+    def _blocked_terminal_landed_recovery_is_authorized(
+        *,
+        attempt: Any,
+        record: Any,
+        terminal_reconciliation: Any,
+        durable_binding: Any,
+        observed_binding: Mapping[str, Any],
+    ) -> bool:
+        """Validate the existing terminal link before historical recovery.
+
+        A terminal database status necessarily changes the rendered task body
+        and revision, so its original Portal projection is historical by the
+        time an already-landed result can be recovered.  The historical
+        projection is usable only when the canonical blocked receipt carries
+        the exact immutable terminal-reconciliation link for this attempt and
+        that link selects the already-admitted Portal binding.  This grants no
+        provider authority; it only makes the provider-forbidden landed
+        reconciliation adapter reachable.
+        """
+
+        if terminal_reconciliation is None:
+            return False
+        if not isinstance(terminal_reconciliation, Mapping):
+            raise DatabasePortalBridgeError(
+                "blocked terminal landed recovery link is malformed"
+            )
+        link = dict(terminal_reconciliation)
+        if (
+            set(link) != set(DATABASE_PORTAL_TERMINAL_RECONCILIATION_LINK_FIELDS)
+            or link.get("schema")
+            != DATABASE_PORTAL_TERMINAL_RECONCILIATION_LINK_SCHEMA
+        ):
+            raise DatabasePortalBridgeError(
+                "blocked terminal landed recovery link is not closed"
+            )
+        unsigned = dict(link)
+        evidence_id = str(unsigned.pop("evidence_id", "") or "")
+        if not evidence_id or content_identity(unsigned) != evidence_id:
+            raise DatabasePortalBridgeError(
+                "blocked terminal landed recovery link identity failed"
+            )
+        body = getattr(record, "body", None)
+        receipt = (
+            dict(body.get("completion_receipt") or {})
+            if isinstance(body, Mapping)
+            else {}
+        )
+        record_status = str(getattr(record, "status", "") or "").strip().lower()
+        expected_attempt = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if (
+            record_status != "blocked"
+            or receipt.get("schema")
+            != (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-retry-budget@1"
+            )
+            or receipt.get("operation") != "database_unknown_outcome_blocked"
+            or receipt.get("reason") != "callback_authority_incomplete_blocked"
+            or receipt.get("forced_block") is not True
+            or receipt.get("authority_outcome") != "unknown"
+            or receipt.get("terminal_reconciliation") != link
+            or link.get("nested_reconciled") is not True
+            or link.get("intended_database_disposition")
+            != "blocked_unknown_outcome"
+            or any(
+                type(link.get(name)) is not type(expected)
+                or link.get(name) != expected
+                for name, expected in expected_attempt.items()
+            )
+            or any(
+                type(receipt.get(name)) is not type(expected)
+                or receipt.get(name) != expected
+                for name, expected in expected_attempt.items()
+            )
+            or not isinstance(durable_binding, Mapping)
+            or durable_binding.get("stage") != "portal_entered"
+            or durable_binding.get("binding_id") != link.get("binding_id")
+            or observed_binding.get("binding_id") != link.get("binding_id")
+            or durable_binding.get("binding_id")
+            != observed_binding.get("binding_id")
+            or durable_binding.get("projection_immutable_digest")
+            != observed_binding.get("projection_immutable_digest")
+        ):
+            raise DatabasePortalBridgeError(
+                "blocked terminal landed recovery changed attempt authority"
+            )
+        return True
+
+    def reconcile_quiesced_attempt(
+        self,
+        attempt: Any,
+        *,
+        terminal_reconciliation: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Reconcile the exact nested Portal state for one active DB attempt.
 
         The database attempt id selects one content-stable directory.  A
@@ -4539,6 +4671,17 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "database Portal binding has an unknown execution stage"
             )
+        terminal_landed_recovery = (
+            self._blocked_terminal_landed_recovery_is_authorized(
+                attempt=attempt,
+                record=record,
+                terminal_reconciliation=terminal_reconciliation,
+                durable_binding=durable_binding,
+                observed_binding=observed,
+            )
+            if terminal_reconciliation is not None
+            else False
+        )
         historical_binding = expected is None or observed != expected
         if historical_binding:
             # A legitimate canonical task replacement cannot reproduce the
@@ -4596,6 +4739,12 @@ class DatabasePortalExecutionBridge:
             payload=strict_state,
             state_digest=strict_state_digest,
         )
+        if terminal_landed_recovery and str(
+            terminal_reconciliation.get("nested_state_digest") or ""
+        ) != str(nested_state.get("state_digest") or ""):
+            raise DatabasePortalBridgeError(
+                "blocked terminal landed recovery nested state changed"
+            )
         _state_before_fence, state_digest_before_fence = (
             self._strict_state_record(paths.state)
         )
@@ -4708,7 +4857,9 @@ class DatabasePortalExecutionBridge:
             None if historical_binding else self.recover_provider_result(attempt)
         )
         interrupted_validation_evidence = (
-            self._interrupted_validation_recovery_evidence(
+            None
+            if terminal_landed_recovery
+            else self._interrupted_validation_recovery_evidence(
                 attempt,
                 expected,
             )
@@ -4720,7 +4871,11 @@ class DatabasePortalExecutionBridge:
         )
         interrupted_implementation_evidence = (
             None
-            if terminal_provider or interrupted_validation_evidence is not None
+            if (
+                terminal_landed_recovery
+                or terminal_provider
+                or interrupted_validation_evidence is not None
+            )
             else self._interrupted_implementation_retry_evidence(
                 attempt,
                 expected,
@@ -4759,7 +4914,7 @@ class DatabasePortalExecutionBridge:
                 None,
             )
             if (
-                not historical_binding
+                (not historical_binding or terminal_landed_recovery)
                 and reconciliation.get("reconciled") is True
                 and reconciliation.get("blocked") is not True
                 and callable(recover_terminal)
@@ -4813,12 +4968,35 @@ class DatabasePortalExecutionBridge:
                 "portal_reconciliation": reconciliation,
                 "terminal_provider_evidence": False,
             }
-        terminal_provider_evidence = (
-            None
-            if historical_binding
-            else terminal_provider or self.recover_provider_result(attempt)
-        )
-        return {
+        if terminal_landed_recovery:
+            terminal_recovery = reconciliation.get(
+                "provider_forbidden_terminal_recovery"
+            )
+            if (
+                not isinstance(terminal_recovery, Mapping)
+                or terminal_recovery.get("reconciled") is not True
+                or terminal_recovery.get("blocked") is True
+                or terminal_recovery.get("provider_dispatched") is not False
+                or terminal_recovery.get("implementation_dispatched")
+                is not False
+            ):
+                raise DatabasePortalBridgeError(
+                    "blocked terminal landed recovery lacked exact provider-free "
+                    "completion"
+                )
+            terminal_provider_evidence = self._acceptance_receipt(
+                attempt=attempt,
+                paths=paths,
+                binding=expected,
+                summaries=(),
+            )
+        else:
+            terminal_provider_evidence = (
+                None
+                if historical_binding
+                else terminal_provider or self.recover_provider_result(attempt)
+            )
+        result = {
             "reconciled": True,
             "blocked": False,
             "reason": "nested_portal_attempt_reconciled",
@@ -4842,6 +5020,11 @@ class DatabasePortalExecutionBridge:
                 (terminal_provider_evidence or {}).get("receipt_id") or ""
             ),
         }
+        if terminal_landed_recovery:
+            result["terminal_provider_receipt"] = dict(
+                terminal_provider_evidence or {}
+            )
+        return result
 
     def persist_reconciliation_receipt(
         self,
