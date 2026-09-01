@@ -85949,6 +85949,21 @@ class DatabaseImplementationDaemon:
             and provider_dispatch_outcome == "started"
             and legacy_started_dispatch_body
         )
+        quiesced_release_started_candidate = bool(
+            receipt.get("operation") == "database_unknown_outcome_blocked"
+            and receipt.get("reason")
+            == "callback_authority_incomplete_blocked"
+            and receipt.get("retry_exhausted") is True
+            and interrupted_phase_link is not None
+            and provider_dispatch_outcome == "started"
+            and legacy_started_dispatch_body
+            and _database_portal_quiesced_stale_dispatch_release_budget_matches(
+                task_alias=str(attempt.task_alias),
+                attempt_number=attempt.attempt_number,
+                attempts_used=raw_attempts_used,
+                rearm_count=raw_rearm_count,
+            )
+        )
         terminal_quiescent_deferred_dispatch_candidate = bool(
             interrupted_phase_link is not None
             and not stale_dispatch_receipt
@@ -85965,6 +85980,7 @@ class DatabaseImplementationDaemon:
         if not (
             provider_dispatch_raised_exactly
             or stale_dispatch_started_candidate
+            or quiesced_release_started_candidate
             or terminal_quiescent_deferred_dispatch_candidate
             or terminal_linked_timeout_candidate
         ):
@@ -86133,6 +86149,10 @@ class DatabaseImplementationDaemon:
         ):
             return None
         if stale_dispatch_started_candidate and not stale_dispatch_migration:
+            return None
+        if quiesced_release_started_candidate and not (
+            quiesced_stale_dispatch_release
+        ):
             return None
         if stale_dispatch_migration is not stale_dispatch_receipt:
             return None

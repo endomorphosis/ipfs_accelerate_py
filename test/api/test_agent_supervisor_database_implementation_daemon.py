@@ -2986,6 +2986,159 @@ def _historical_stale_dispatch_selector_case(
     )
 
 
+def _quiesced_release_started_selector_case(
+    *,
+    task_alias: str,
+    attempt_number: int,
+    rearm_count: int,
+    evidence_schema: str = (
+        DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA
+    ),
+) -> SimpleNamespace:
+    """Build the exact outer gate for a sealed quiesced release occurrence."""
+
+    case = _historical_stale_dispatch_selector_case(
+        task_alias=task_alias,
+        attempt_number=attempt_number,
+    )
+    case.receipt["reason"] = "callback_authority_incomplete_blocked"
+    case.receipt["unknown_outcome_rearm_count"] = rearm_count
+    case.phase_body["reason"] = "callback_authority_incomplete_blocked"
+    case.evidence["schema"] = evidence_schema
+    case.evidence["outer_block_receipt_digest"] = (
+        DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+            case.receipt
+        )
+    )
+    case.evidence.pop("evidence_id", None)
+    case.evidence["evidence_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            case.evidence,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    # These tests isolate the daemon's pre-verifier journal/tuple gate and its
+    # post-verifier schema gate.  The bridge's full occurrence validator is
+    # covered independently by its artifact and live-history test matrix.
+    case.daemon._valid_no_provider_rearm_evidence = (
+        lambda *args, **kwargs: True
+    )
+    return case
+
+
+@pytest.mark.parametrize(
+    ("task_alias", "attempt_number", "rearm_count"),
+    (
+        ("PCTDD-005", 3, 0),
+        ("PCTDD-006", 4, 1),
+        ("PCTDD-007", 4, 1),
+        ("PCTDD-034", 8, 0),
+    ),
+)
+def test_quiesced_release_started_journal_admits_only_exact_current_tuple(
+    task_alias: str,
+    attempt_number: int,
+    rearm_count: int,
+) -> None:
+    """The four sealed callback-authority occurrences reach their verifier."""
+
+    case = _quiesced_release_started_selector_case(
+        task_alias=task_alias,
+        attempt_number=attempt_number,
+        rearm_count=rearm_count,
+    )
+
+    admitted = case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    )
+
+    assert admitted is not None
+    assert admitted["schema"] == (
+        DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_SCHEMA
+    )
+    assert case.calls["verifier"] == [case.attempt]
+    assert case.calls["provider"] == [
+        (
+            (case.attempt.attempt_id,),
+            {
+                "idempotency_key": (
+                    f"provider:{case.attempt.attempt_id}"
+                )
+            },
+        )
+    ]
+    assert case.calls["effect"] == [
+        (
+            (case.attempt.attempt_id,),
+            {"idempotency_key": f"effect:{case.attempt.attempt_id}"},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_verifier_calls"),
+    (
+        ("predecessor_tuple", 0),
+        ("wrong_rearm_count", 0),
+        ("missing_terminal_link", 0),
+        ("wrong_callback_reason", 1),
+        ("not_retry_exhausted", 0),
+        ("open_started_body", 0),
+    ),
+)
+def test_quiesced_release_started_journal_near_misses_fail_closed(
+    mutation: str,
+    expected_verifier_calls: int,
+) -> None:
+    case = _quiesced_release_started_selector_case(
+        task_alias="PCTDD-034",
+        attempt_number=6 if mutation == "predecessor_tuple" else 8,
+        rearm_count=0,
+    )
+    if mutation == "wrong_rearm_count":
+        case.receipt["unknown_outcome_rearm_count"] = 1
+    elif mutation == "missing_terminal_link":
+        case.receipt.pop("terminal_reconciliation")
+        case.phase_body.pop("terminal_reconciliation")
+    elif mutation == "wrong_callback_reason":
+        case.receipt["reason"] = "provider_dispatch_outcome_unknown"
+        case.phase_body["reason"] = "provider_dispatch_outcome_unknown"
+    elif mutation == "not_retry_exhausted":
+        case.receipt["retry_exhausted"] = False
+    else:
+        case.started_body["unreviewed_field"] = True
+
+    assert case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    ) is None
+    assert len(case.calls["verifier"]) == expected_verifier_calls
+
+
+def test_quiesced_release_started_journal_requires_release_evidence_schema(
+) -> None:
+    """A different admitted proof schema cannot inherit this journal gate."""
+
+    case = _quiesced_release_started_selector_case(
+        task_alias="PCTDD-034",
+        attempt_number=8,
+        rearm_count=0,
+        evidence_schema=(
+            DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA
+        ),
+    )
+
+    assert case.daemon._database_portal_no_provider_rearm_evidence(
+        case.task,
+        case.receipt,
+    ) is None
+    assert case.calls["verifier"] == [case.attempt]
+
+
 @pytest.mark.parametrize(
     ("task_alias", "attempt_number"),
     [("PCTDD-005", 1), ("PCTDD-034", 5)],
