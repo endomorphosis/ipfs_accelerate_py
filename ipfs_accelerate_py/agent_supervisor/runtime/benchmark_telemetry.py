@@ -1,9 +1,11 @@
 """Benchmark causal-span telemetry for Planner/Doctor live runs.
 
 This module attributes wall-clock, provider tokens, process-tree resources,
-GPU, I/O, network, and cost to immutable causal spans.  It joins existing
-scheduler metrics and the supervisor token ledger by span identity rather
-than replacing capacity admission or inventing zero observations.
+GPU, I/O, network, cost, and work (tests, proofs, retries, rescue, merge,
+human action, validation, and patch disposition, including audit overhead)
+to immutable causal spans.  It joins existing scheduler metrics and the
+supervisor token ledger by span identity rather than replacing capacity
+admission or inventing zero observations.
 
 Contract rules:
 
@@ -70,6 +72,17 @@ PROVIDER_USAGE_RECORD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/benchmark-provider-usage-record@1"
 )
 PROVIDER_USAGE_RECORD_INTERFACE: Final[str] = "BenchmarkProviderUsageRecord@1"
+OPERATION_OBSERVATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/benchmark-operation-observation@1"
+)
+WORK_TELEMETRY_RECORD_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/benchmark-work-telemetry-record@1"
+)
+WORK_TELEMETRY_RECORD_INTERFACE: Final[str] = "BenchmarkWorkTelemetryRecord@1"
+
+CID_RE: Final[re.Pattern[str]] = re.compile(r"^b[a-z2-7]{20,}$")
+MAX_CID_BYTES: Final[int] = 128
+MAX_VERIFIERS: Final[int] = 256
 
 MAX_TEXT_BYTES: Final[int] = 512
 MAX_SAMPLES: Final[int] = 10_000
@@ -173,6 +186,143 @@ GPU_METRIC_NAMES: Final[tuple[str, ...]] = (
     "gpu_energy_joules_optional",
 )
 
+COMPUTE_FIELD_NAMES: Final[tuple[str, ...]] = (
+    "cpu_seconds",
+    "gpu_seconds",
+    "peak_memory",
+    "wall_clock_duration",
+    "test_execution_time",
+    "prover_execution_time",
+    "static_analysis_time",
+    "indexing_retrieval_time",
+    "bytes_read",
+    "bytes_written",
+    "process_count",
+    "concurrency",
+)
+
+WORK_OPERATION_FIELD_NAMES: Final[tuple[str, ...]] = (
+    "tests_selected",
+    "tests_executed",
+    "full_suite_tests",
+    "type_static_schema_checks",
+    "proof_obligations_selected",
+    "proof_obligations_executed",
+    "proof_receipts_reused",
+    "retries",
+    "rescue_attempts",
+    "merge_conflicts",
+    "manual_recovery",
+    "human_interventions",
+    "validation_result",
+)
+
+WORK_ENUM_FIELD_NAMES: Final[tuple[str, ...]] = (
+    "final_task_outcome",
+    "patch_disposition",
+)
+
+WORK_FIELD_NAMES: Final[tuple[str, ...]] = (
+    WORK_OPERATION_FIELD_NAMES + WORK_ENUM_FIELD_NAMES
+)
+
+WORK_OVERHEAD_FIELD_NAMES: Final[tuple[str, ...]] = (
+    "audit_and_verification_overhead",
+    "time_to_terminal_outcome",
+)
+
+WORK_METRIC_NAMES: Final[tuple[str, ...]] = (
+    COMPUTE_FIELD_NAMES + WORK_OPERATION_FIELD_NAMES + WORK_OVERHEAD_FIELD_NAMES
+)
+
+_PROCESS_TREE_TO_COMPUTE: Final[dict[str, str]] = {
+    "total_cpu_seconds": "cpu_seconds",
+    "peak_rss_bytes": "peak_memory",
+    "read_bytes": "bytes_read",
+    "write_bytes": "bytes_written",
+    "peak_process_count": "process_count",
+}
+
+_WORK_FIELD_SPAN_KINDS: Final[dict[str, tuple[str, ...]]] = {
+    "cpu_seconds": ("process", "task", "attempt"),
+    "gpu_seconds": ("process", "task", "attempt"),
+    "peak_memory": ("process", "task", "attempt"),
+    "wall_clock_duration": ("task", "attempt", "run"),
+    "test_execution_time": ("check", "validation"),
+    "prover_execution_time": ("proof",),
+    "static_analysis_time": ("check",),
+    "indexing_retrieval_time": ("check", "task"),
+    "bytes_read": ("process", "task"),
+    "bytes_written": ("process", "task"),
+    "process_count": ("process", "task"),
+    "concurrency": ("task", "run"),
+    "tests_selected": ("check", "validation"),
+    "tests_executed": ("check", "validation"),
+    "full_suite_tests": ("check", "validation"),
+    "type_static_schema_checks": ("check",),
+    "proof_obligations_selected": ("proof",),
+    "proof_obligations_executed": ("proof",),
+    "proof_receipts_reused": ("proof",),
+    "retries": ("retry",),
+    "rescue_attempts": ("rescue",),
+    "merge_conflicts": ("merge",),
+    "manual_recovery": ("recovery",),
+    "human_interventions": ("human",),
+    "validation_result": ("validation",),
+    "audit_and_verification_overhead": ("validation", "check", "proof", "sensor"),
+    "time_to_terminal_outcome": ("task", "attempt", "run"),
+}
+
+_SELECTED_EXECUTED_BOUNDS: Final[tuple[tuple[str, str], ...]] = (
+    ("tests_selected", "tests_executed"),
+    ("proof_obligations_selected", "proof_obligations_executed"),
+    ("proof_obligations_selected", "proof_receipts_reused"),
+)
+
+OPERATION_REASON_CODES: Final[tuple[str, ...]] = (
+    "not_reported",
+    "sensor_absent",
+    "provider_omitted",
+    "collection_failed",
+    "permission_denied",
+    "hardware_absent",
+    "not_applicable",
+    "not_yet_measured",
+    "fixture_only",
+    "deadline_elapsed",
+    "not_sealed",
+    "not_admitted",
+)
+
+TASK_OUTCOMES: Final[tuple[str, ...]] = (
+    "succeeded",
+    "failed",
+    "retried",
+    "rescued",
+    "conflicted",
+    "human_escalated",
+    "quarantined",
+    "compensated",
+)
+
+PATCH_DISPOSITIONS: Final[tuple[str, ...]] = (
+    "accepted",
+    "rejected",
+    "quarantined",
+    "reverted",
+)
+
+VERIFICATION_WORK_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "tests_executed",
+        "full_suite_tests",
+        "type_static_schema_checks",
+        "proof_obligations_executed",
+        "proof_receipts_reused",
+        "validation_result",
+    }
+)
+
 # Units used in measured samples (integer-only contracts).
 UNIT_SECONDS_MILLIONTHS: Final[str] = "seconds_millionths"
 UNIT_COUNT: Final[str] = "count"
@@ -204,6 +354,11 @@ class UnavailableReason(str, Enum):
     COLLECTION_FAILED = "collection-failed"
     NOT_REPORTED = "not-reported"
     NOT_ADMITTED = "not-admitted"
+    NOT_APPLICABLE = "not-applicable"
+    NOT_YET_MEASURED = "not-yet-measured"
+    FIXTURE_ONLY = "fixture-only"
+    DEADLINE_ELAPSED = "deadline-elapsed"
+    NOT_SEALED = "not-sealed"
 
 
 class EstimatorMethod(str, Enum):
@@ -234,6 +389,47 @@ class ProviderUsageQuarantineReason(str, Enum):
     MISSING_CAUSAL_IDENTITY = "missing_causal_identity"
 
 
+class OperationTruthState(str, Enum):
+    ATTEMPTED = "attempted"
+    OBSERVED = "observed"
+    VERIFIED = "verified"
+    UNAVAILABLE = "unavailable"
+    SIMULATED = "simulated"
+
+
+class TaskOutcome(str, Enum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    RETRIED = "retried"
+    RESCUED = "rescued"
+    CONFLICTED = "conflicted"
+    HUMAN_ESCALATED = "human_escalated"
+    QUARANTINED = "quarantined"
+    COMPENSATED = "compensated"
+
+
+class PatchDisposition(str, Enum):
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    QUARANTINED = "quarantined"
+    REVERTED = "reverted"
+
+
+class WorkTelemetryDisposition(str, Enum):
+    ADMITTED = "admitted"
+    QUARANTINED = "quarantined"
+
+
+class WorkTelemetryQuarantineReason(str, Enum):
+    UNBOUND_WORK = "unbound_work"
+    MISSING_CAUSAL_IDENTITY = "missing_causal_identity"
+    ATTEMPTED_AS_OBSERVED = "attempted_as_observed"
+    OBSERVED_AS_VERIFIED = "observed_as_verified"
+    MISSING_OVERHEAD = "missing_overhead"
+    DUPLICATE_TERMINAL_ACCOUNTING = "duplicate_terminal_accounting"
+    INVALID_BOUNDS = "invalid_bounds"
+
+
 class SpanKind(str, Enum):
     RUN = "run"
     CASE = "case"
@@ -248,6 +444,12 @@ class SpanKind(str, Enum):
     RETRY = "retry"
     CANCEL = "cancel"
     SENSOR = "sensor"
+    CHECK = "check"
+    PROOF = "proof"
+    VALIDATION = "validation"
+    HUMAN = "human"
+    RESCUE = "rescue"
+    RECOVERY = "recovery"
 
 
 class AttributionRole(str, Enum):
@@ -260,6 +462,8 @@ class AttributionRole(str, Enum):
     PROVIDER = "provider"
     ORACLE = "oracle"
     TELEMETRY = "telemetry"
+    HUMAN = "human"
+    VERIFIER = "verifier"
 
 
 # ---------------------------------------------------------------------------
@@ -1472,6 +1676,9 @@ class BenchmarkTelemetrySession:
         self._measurements: dict[str, BenchmarkResourceMeasurement] = {}
         self._admitted_usage_span_ids: set[str] = set()
         self._provider_usage: dict[str, ProviderUsageRecord] = {}
+        self._admitted_verifiers: dict[str, str] = {}
+        self._work_telemetry: dict[str, WorkTelemetryRecord] = {}
+        self._terminalized_span_ids: set[str] = set()
         if root.process_id:
             self._process_owners[root.process_id] = root.span_id
 
@@ -1498,6 +1705,24 @@ class BenchmarkTelemetrySession:
         return tuple(
             self._provider_usage[key] for key in sorted(self._provider_usage)
         )
+
+    @property
+    def admitted_task_span_ids(self) -> frozenset[str]:
+        return self.admitted_usage_span_ids
+
+    @property
+    def admitted_verifiers(self) -> dict[str, str]:
+        return dict(self._admitted_verifiers)
+
+    @property
+    def work_telemetry(self) -> tuple["WorkTelemetryRecord", ...]:
+        return tuple(
+            self._work_telemetry[key] for key in sorted(self._work_telemetry)
+        )
+
+    @property
+    def terminalized_span_ids(self) -> frozenset[str]:
+        return frozenset(self._terminalized_span_ids)
 
     def register_span(self, span: BenchmarkCausalSpan) -> BenchmarkCausalSpan:
         if span.span_id in self._spans:
@@ -1584,7 +1809,7 @@ class BenchmarkTelemetrySession:
         return measurement
 
     def admit_task_span(self, span: BenchmarkCausalSpan) -> BenchmarkCausalSpan:
-        """Admit a causal task span as the only legal provider-usage binding."""
+        """Admit a causal task span as the only legal usage/work binding."""
 
         registered = self.register_span(span)
         if not registered.task_id:
@@ -1593,6 +1818,25 @@ class BenchmarkTelemetrySession:
             )
         self._admitted_usage_span_ids.add(registered.span_id)
         return registered
+
+    def admit_verifier(
+        self, verifier_id: str, verifier_receipt_cid: str
+    ) -> tuple[str, str]:
+        """Admit a verifier identity and receipt CID for work-field linkage."""
+
+        verifier_id = _text(verifier_id, "verifier_id")
+        cid = _require_cid(verifier_receipt_cid, "verifier_receipt_cid")
+        if len(self._admitted_verifiers) >= MAX_VERIFIERS and (
+            verifier_id not in self._admitted_verifiers
+        ):
+            raise BenchmarkTelemetryError("admitted verifier population exceeds bound")
+        existing = self._admitted_verifiers.get(verifier_id)
+        if existing is not None and existing != cid:
+            raise BenchmarkTelemetryError(
+                f"verifier {verifier_id!r} is already admitted with a different receipt"
+            )
+        self._admitted_verifiers[verifier_id] = cid
+        return verifier_id, cid
 
     def record_provider_response(
         self,
@@ -1625,6 +1869,62 @@ class BenchmarkTelemetrySession:
             return prior
         self._provider_usage[record.record_id] = record
         if record.disposition is ProviderUsageDisposition.ADMITTED:
+            self.record_measurement(record.to_resource_measurement())
+        return record
+
+    def record_work_and_compute(
+        self,
+        payload: Mapping[str, Any] | None = None,
+        *,
+        span: BenchmarkCausalSpan,
+        record_id: str | None = None,
+        compute: Mapping[str, Any] | None = None,
+        work: Mapping[str, Any] | None = None,
+        audit_and_verification_overhead: Mapping[str, Any]
+        | TelemetrySample
+        | None = None,
+        time_to_terminal_outcome: Mapping[str, Any] | TelemetrySample | None = None,
+        process_samples: Mapping[str, TelemetrySample] | None = None,
+        gpu_samples: Mapping[str, TelemetrySample] | None = None,
+        terminalized: bool | None = None,
+    ) -> "WorkTelemetryRecord":
+        """Map work/compute fields onto an admitted causal task span.
+
+        Attempted-as-observed, observed-as-verified, missing audit overhead,
+        duplicate terminal accounting, and invalid bounds fail closed.
+        """
+
+        record = map_work_and_compute_to_admitted_span(
+            payload,
+            span,
+            session=self,
+            record_id=record_id,
+            compute=compute,
+            work=work,
+            audit_and_verification_overhead=audit_and_verification_overhead,
+            time_to_terminal_outcome=time_to_terminal_outcome,
+            process_samples=process_samples,
+            gpu_samples=gpu_samples,
+            terminalized=terminalized,
+        )
+        if record.record_id in self._work_telemetry:
+            prior = self._work_telemetry[record.record_id]
+            if prior.content_id != record.content_id:
+                raise BenchmarkTelemetryError(
+                    "work telemetry record_id collides with a different body"
+                )
+            return prior
+        if (
+            record.disposition is WorkTelemetryDisposition.ADMITTED
+            and record.terminalized
+        ):
+            if span.span_id in self._terminalized_span_ids:
+                raise BenchmarkTelemetryError(
+                    "duplicate terminal accounting for admitted work span"
+                )
+            self._terminalized_span_ids.add(span.span_id)
+        self._work_telemetry[record.record_id] = record
+        if record.disposition is WorkTelemetryDisposition.ADMITTED:
             self.record_measurement(record.to_resource_measurement())
         return record
 
@@ -4079,6 +4379,1680 @@ def project_provider_usage_samples(
     return record.sample_map()
 
 
+# ---------------------------------------------------------------------------
+# Work / compute telemetry (ASEH-012)
+# ---------------------------------------------------------------------------
+
+
+def _require_cid(value: Any, name: str) -> str:
+    cid = _text(value, name)
+    if len(cid.encode("utf-8")) > MAX_CID_BYTES or CID_RE.fullmatch(cid) is None:
+        raise BenchmarkTelemetryError(f"{name} must be a CIDv1")
+    return cid
+
+
+def _operation_reason(value: Any) -> str:
+    code = _text(value, "reason_code").replace("-", "_")
+    if code not in OPERATION_REASON_CODES:
+        raise BenchmarkTelemetryError("reason_code is not a supported unavailable reason")
+    return code
+
+
+def _unavailable_reason_from_payload(value: Any) -> UnavailableReason:
+    code = _text(value, "reason_code").replace("_", "-")
+    return _enum(code, UnavailableReason, "reason_code")
+
+
+def _work_sensor(span_id: str, field: str) -> str:
+    return _sensor_id("work-telemetry", span_id or "unbound", field)
+
+
+def _rename_sample(sample: TelemetrySample, metric_name: str) -> TelemetrySample:
+    if sample.status is SampleStatus.MEASURED:
+        return TelemetrySample.measured(
+            metric_name,
+            sample.value,
+            unit=sample.unit,
+            sensor_id=sample.sensor_id,
+        )
+    if sample.status is SampleStatus.ESTIMATED:
+        return TelemetrySample.estimated(
+            metric_name,
+            sample.value,
+            unit=sample.unit,
+            estimator_id=sample.estimator_id,
+            method=sample.method,
+            price_snapshot_identity=sample.price_snapshot_identity,
+            sensor_id=sample.sensor_id,
+        )
+    return TelemetrySample.unavailable(
+        metric_name,
+        sample.reason_code,
+        sensor_id=sample.sensor_id,
+    )
+
+
+def _blank_compute_sample(
+    field_name: str,
+    *,
+    span_id: str,
+    quarantined: bool = False,
+    reason: UnavailableReason = UnavailableReason.NOT_REPORTED,
+) -> TelemetrySample:
+    return TelemetrySample.unavailable(
+        field_name,
+        UnavailableReason.NOT_ADMITTED if quarantined else reason,
+        sensor_id=_work_sensor(span_id, field_name),
+    )
+
+
+@dataclass(frozen=True)
+class OperationObservation(_TelemetryContract):
+    """Attempted, observed, verified, unavailable, or simulated work operation.
+
+    Attempted cannot carry observer or verifier fields. Observed cannot carry
+    admitted verifier linkage. Verified requires an admitted verifier identity
+    and receipt CID. Unavailable never encodes a numeric count or zero.
+    """
+
+    SCHEMA: ClassVar[str] = OPERATION_OBSERVATION_SCHEMA
+
+    field_name: str
+    truth_state: OperationTruthState
+    operation_id: str = ""
+    attempt_count: int = 0
+    observer_id: str = ""
+    count: int = 0
+    verifier_id: str = ""
+    verifier_receipt_cid: str = ""
+    reason_code: str = ""
+    fixture_id: str = ""
+    covering_span_id: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "field_name", _text(self.field_name, "field_name")
+        )
+        if self.field_name not in WORK_OPERATION_FIELD_NAMES:
+            raise BenchmarkTelemetryError(
+                f"{self.field_name!r} is not a work operation field"
+            )
+        object.__setattr__(
+            self,
+            "truth_state",
+            _enum(self.truth_state, OperationTruthState, "truth_state"),
+        )
+        object.__setattr__(
+            self,
+            "operation_id",
+            _text(self.operation_id, "operation_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "attempt_count",
+            _integer(self.attempt_count, "attempt_count"),
+        )
+        object.__setattr__(
+            self,
+            "observer_id",
+            _text(self.observer_id, "observer_id", required=False),
+        )
+        object.__setattr__(self, "count", _integer(self.count, "count"))
+        object.__setattr__(
+            self,
+            "verifier_id",
+            _text(self.verifier_id, "verifier_id", required=False),
+        )
+        cid = self.verifier_receipt_cid
+        if cid:
+            cid = _require_cid(cid, "verifier_receipt_cid")
+        else:
+            cid = _text(cid, "verifier_receipt_cid", required=False)
+        object.__setattr__(self, "verifier_receipt_cid", cid)
+        object.__setattr__(
+            self,
+            "reason_code",
+            _text(self.reason_code, "reason_code", required=False),
+        )
+        if self.reason_code:
+            object.__setattr__(self, "reason_code", _operation_reason(self.reason_code))
+        object.__setattr__(
+            self,
+            "fixture_id",
+            _text(self.fixture_id, "fixture_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "covering_span_id",
+            _text(self.covering_span_id, "covering_span_id", required=False),
+        )
+        self._assert_truth_state()
+
+    def _assert_truth_state(self) -> None:
+        state = self.truth_state
+        if state is OperationTruthState.ATTEMPTED:
+            if not self.operation_id or self.attempt_count < 1:
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: attempted operations require operation_id "
+                    "and a positive attempt_count"
+                )
+            if self.observer_id or self.verifier_id or self.verifier_receipt_cid:
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: attempted operations cannot be represented "
+                    "as observed or verified"
+                )
+            if self.count:
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: attempted operations cannot carry an "
+                    "observed count"
+                )
+            if self.reason_code or self.fixture_id:
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: attempted operations cannot carry "
+                    "unavailable or simulated labels"
+                )
+            return
+        if state is OperationTruthState.OBSERVED:
+            if not self.operation_id or not self.observer_id:
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: observed operations require operation_id "
+                    "and observer_id"
+                )
+            if self.verifier_id or self.verifier_receipt_cid:
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: observed operations cannot be represented "
+                    "as verified"
+                )
+            if self.attempt_count:
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: attempted operations cannot be represented "
+                    "as observed"
+                )
+            if self.reason_code or self.fixture_id:
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: observed operations cannot carry "
+                    "unavailable or simulated labels"
+                )
+            return
+        if state is OperationTruthState.VERIFIED:
+            if (
+                not self.operation_id
+                or not self.observer_id
+                or not self.verifier_id
+                or not self.verifier_receipt_cid
+            ):
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: verified operations require observer and "
+                    "admitted verifier linkage"
+                )
+            if self.attempt_count:
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: attempted operations cannot be represented "
+                    "as verified"
+                )
+            if self.reason_code or self.fixture_id:
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: verified operations cannot carry "
+                    "unavailable or simulated labels"
+                )
+            return
+        if state is OperationTruthState.UNAVAILABLE:
+            if not self.reason_code:
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: unavailable operations require a reason_code"
+                )
+            if (
+                self.operation_id
+                or self.attempt_count
+                or self.observer_id
+                or self.count
+                or self.verifier_id
+                or self.verifier_receipt_cid
+                or self.fixture_id
+            ):
+                raise BenchmarkTelemetryError(
+                    f"{self.field_name}: unavailable evidence cannot encode a "
+                    "numeric value or operation identity"
+                )
+            return
+        if not self.fixture_id or not self.reason_code:
+            raise BenchmarkTelemetryError(
+                f"{self.field_name}: simulated operations require fixture_id "
+                "and reason_code"
+            )
+        if (
+            self.observer_id
+            or self.verifier_id
+            or self.verifier_receipt_cid
+            or self.count
+            or self.attempt_count
+        ):
+            raise BenchmarkTelemetryError(
+                f"{self.field_name}: simulated evidence cannot claim live "
+                "observation or verification"
+            )
+
+    @classmethod
+    def attempted(
+        cls,
+        field_name: str,
+        operation_id: str,
+        *,
+        attempt_count: int = 1,
+        covering_span_id: str = "",
+    ) -> "OperationObservation":
+        return cls(
+            field_name=field_name,
+            truth_state=OperationTruthState.ATTEMPTED,
+            operation_id=operation_id,
+            attempt_count=attempt_count,
+            covering_span_id=covering_span_id,
+        )
+
+    @classmethod
+    def observed(
+        cls,
+        field_name: str,
+        operation_id: str,
+        *,
+        observer_id: str,
+        count: int,
+        covering_span_id: str = "",
+    ) -> "OperationObservation":
+        return cls(
+            field_name=field_name,
+            truth_state=OperationTruthState.OBSERVED,
+            operation_id=operation_id,
+            observer_id=observer_id,
+            count=count,
+            covering_span_id=covering_span_id,
+        )
+
+    @classmethod
+    def verified(
+        cls,
+        field_name: str,
+        operation_id: str,
+        *,
+        observer_id: str,
+        count: int,
+        verifier_id: str,
+        verifier_receipt_cid: str,
+        covering_span_id: str = "",
+    ) -> "OperationObservation":
+        return cls(
+            field_name=field_name,
+            truth_state=OperationTruthState.VERIFIED,
+            operation_id=operation_id,
+            observer_id=observer_id,
+            count=count,
+            verifier_id=verifier_id,
+            verifier_receipt_cid=verifier_receipt_cid,
+            covering_span_id=covering_span_id,
+        )
+
+    @classmethod
+    def unavailable(
+        cls,
+        field_name: str,
+        reason: UnavailableReason | str,
+        *,
+        covering_span_id: str = "",
+    ) -> "OperationObservation":
+        if isinstance(reason, UnavailableReason):
+            code = reason.value.replace("-", "_")
+        else:
+            code = str(reason)
+        return cls(
+            field_name=field_name,
+            truth_state=OperationTruthState.UNAVAILABLE,
+            reason_code=code,
+            covering_span_id=covering_span_id,
+        )
+
+    @classmethod
+    def simulated(
+        cls,
+        field_name: str,
+        fixture_id: str,
+        reason: UnavailableReason | str = UnavailableReason.FIXTURE_ONLY,
+        *,
+        covering_span_id: str = "",
+    ) -> "OperationObservation":
+        if isinstance(reason, UnavailableReason):
+            code = reason.value.replace("-", "_")
+        else:
+            code = str(reason)
+        return cls(
+            field_name=field_name,
+            truth_state=OperationTruthState.SIMULATED,
+            fixture_id=fixture_id,
+            reason_code=code,
+            covering_span_id=covering_span_id,
+        )
+
+    def to_operation_envelope(self) -> dict[str, Any]:
+        """Efficiency-receipt operationObservation envelope."""
+
+        if self.truth_state is OperationTruthState.ATTEMPTED:
+            return {
+                "truth_state": OperationTruthState.ATTEMPTED.value,
+                "operation_id": self.operation_id,
+                "attempt_count": self.attempt_count,
+            }
+        if self.truth_state is OperationTruthState.OBSERVED:
+            return {
+                "truth_state": OperationTruthState.OBSERVED.value,
+                "operation_id": self.operation_id,
+                "observer_id": self.observer_id,
+                "count": self.count,
+            }
+        if self.truth_state is OperationTruthState.VERIFIED:
+            return {
+                "truth_state": OperationTruthState.VERIFIED.value,
+                "operation_id": self.operation_id,
+                "observer_id": self.observer_id,
+                "count": self.count,
+                "verifier_id": self.verifier_id,
+                "verifier_receipt_cid": self.verifier_receipt_cid,
+            }
+        if self.truth_state is OperationTruthState.SIMULATED:
+            return {
+                "truth_state": OperationTruthState.SIMULATED.value,
+                "fixture_id": self.fixture_id,
+                "reason_code": self.reason_code,
+            }
+        return {
+            "truth_state": OperationTruthState.UNAVAILABLE.value,
+            "reason_code": self.reason_code,
+        }
+
+    def counted_value(self) -> int | None:
+        if self.truth_state is OperationTruthState.OBSERVED:
+            return self.count
+        if self.truth_state is OperationTruthState.VERIFIED:
+            return self.count
+        if self.truth_state is OperationTruthState.ATTEMPTED:
+            return self.attempt_count
+        return None
+
+    def to_quantity_sample(self, *, span_id: str) -> TelemetrySample:
+        """Project an operation onto a quantity sample without collapsing states.
+
+        Observed and verified counts are measured. Attempted, unavailable, and
+        simulated stay unavailable rather than inventing a measured zero.
+        """
+
+        sensor = _work_sensor(span_id or self.covering_span_id, self.field_name)
+        if self.truth_state in {
+            OperationTruthState.OBSERVED,
+            OperationTruthState.VERIFIED,
+        }:
+            return TelemetrySample.measured(
+                self.field_name,
+                self.count,
+                unit=UNIT_COUNT,
+                sensor_id=sensor,
+            )
+        if self.truth_state is OperationTruthState.UNAVAILABLE:
+            return TelemetrySample.unavailable(
+                self.field_name,
+                self.reason_code.replace("_", "-"),
+                sensor_id=sensor,
+            )
+        if self.truth_state is OperationTruthState.SIMULATED:
+            return TelemetrySample.unavailable(
+                self.field_name,
+                UnavailableReason.FIXTURE_ONLY,
+                sensor_id=sensor,
+            )
+        return TelemetrySample.unavailable(
+            self.field_name,
+            UnavailableReason.NOT_YET_MEASURED,
+            sensor_id=sensor,
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "contract_version": BENCHMARK_TELEMETRY_CONTRACT_VERSION,
+            "field_name": self.field_name,
+            "truth_state": self.truth_state.value,
+            "covering_span_id": self.covering_span_id,
+        }
+        payload.update(self.to_operation_envelope())
+        payload["truth_state"] = self.truth_state.value
+        payload["field_name"] = self.field_name
+        payload["covering_span_id"] = self.covering_span_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "OperationObservation":
+        allowed = {
+            "schema",
+            "schema_version",
+            "contract_version",
+            "field_name",
+            "truth_state",
+            "operation_id",
+            "attempt_count",
+            "observer_id",
+            "count",
+            "verifier_id",
+            "verifier_receipt_cid",
+            "reason_code",
+            "fixture_id",
+            "covering_span_id",
+            "content_id",
+        }
+        _closed(
+            payload,
+            schema=cls.SCHEMA,
+            allowed=allowed,
+            name="operation observation",
+        )
+        _detect_operation_fail_closed(
+            str(payload.get("field_name") or "operation"), payload
+        )
+        result = cls(
+            field_name=payload.get("field_name", ""),
+            truth_state=payload.get("truth_state", ""),
+            operation_id=payload.get("operation_id", ""),
+            attempt_count=payload.get("attempt_count", 0),
+            observer_id=payload.get("observer_id", ""),
+            count=payload.get("count", 0),
+            verifier_id=payload.get("verifier_id", ""),
+            verifier_receipt_cid=payload.get("verifier_receipt_cid", ""),
+            reason_code=payload.get("reason_code", ""),
+            fixture_id=payload.get("fixture_id", ""),
+            covering_span_id=payload.get("covering_span_id", ""),
+        )
+        _claim(payload, result.content_id, "content_id")
+        return result
+
+
+def _detect_operation_fail_closed(
+    field_name: str, payload: Mapping[str, Any]
+) -> None:
+    """Raise on attempted-as-observed or observed-as-verified mislabels."""
+
+    claimed = str(payload.get("truth_state") or payload.get("status") or "")
+    has_observer = bool(payload.get("observer_id"))
+    has_count = "count" in payload
+    has_attempt = bool(payload.get("attempt_count"))
+    has_verifier = bool(
+        payload.get("verifier_id") or payload.get("verifier_receipt_cid")
+    )
+    if claimed == OperationTruthState.OBSERVED.value:
+        if has_attempt or not has_observer:
+            raise BenchmarkTelemetryError(
+                f"{field_name}: attempted operations cannot be represented as observed"
+            )
+        if has_verifier:
+            raise BenchmarkTelemetryError(
+                f"{field_name}: observed operations cannot be represented as verified"
+            )
+        return
+    if claimed == OperationTruthState.VERIFIED.value:
+        if has_attempt:
+            raise BenchmarkTelemetryError(
+                f"{field_name}: attempted operations cannot be represented as verified"
+            )
+        if not (
+            payload.get("verifier_id") and payload.get("verifier_receipt_cid")
+        ):
+            raise BenchmarkTelemetryError(
+                f"{field_name}: observed operations cannot be represented as "
+                "verified without admitted verifier evidence"
+            )
+        return
+    if claimed == OperationTruthState.ATTEMPTED.value and (
+        has_observer or has_count or has_verifier
+    ):
+        raise BenchmarkTelemetryError(
+            f"{field_name}: attempted operations cannot be represented as "
+            "observed or verified"
+        )
+    if claimed == OperationTruthState.UNAVAILABLE.value:
+        for forbidden in (
+            "count",
+            "attempt_count",
+            "value",
+            "unit",
+            "observer_id",
+            "operation_id",
+            "verifier_id",
+            "verifier_receipt_cid",
+            "fixture_id",
+        ):
+            if forbidden in payload:
+                raise BenchmarkTelemetryError(
+                    f"{field_name}: unavailable evidence cannot encode a "
+                    "numeric value or operation identity"
+                )
+    if claimed == OperationTruthState.SIMULATED.value and (
+        has_observer or has_count or has_verifier or has_attempt
+    ):
+        raise BenchmarkTelemetryError(
+            f"{field_name}: simulated evidence cannot claim live observation "
+            "or verification"
+        )
+
+
+def _operation_from_payload(
+    field_name: str,
+    payload: Any,
+    *,
+    covering_span_id: str,
+    quarantined: bool = False,
+) -> OperationObservation:
+    if quarantined:
+        return OperationObservation.unavailable(
+            field_name,
+            UnavailableReason.NOT_ADMITTED,
+            covering_span_id=covering_span_id,
+        )
+    if payload is None:
+        return OperationObservation.unavailable(
+            field_name,
+            UnavailableReason.NOT_REPORTED,
+            covering_span_id=covering_span_id,
+        )
+    if isinstance(payload, OperationObservation):
+        if payload.field_name != field_name:
+            raise BenchmarkTelemetryError(
+                f"{field_name}: operation field_name does not match"
+            )
+        if covering_span_id and not payload.covering_span_id:
+            return OperationObservation(
+                field_name=payload.field_name,
+                truth_state=payload.truth_state,
+                operation_id=payload.operation_id,
+                attempt_count=payload.attempt_count,
+                observer_id=payload.observer_id,
+                count=payload.count,
+                verifier_id=payload.verifier_id,
+                verifier_receipt_cid=payload.verifier_receipt_cid,
+                reason_code=payload.reason_code,
+                fixture_id=payload.fixture_id,
+                covering_span_id=covering_span_id,
+            )
+        return payload
+    if not isinstance(payload, Mapping):
+        raise BenchmarkTelemetryError(f"{field_name} must be an operation object")
+    _detect_operation_fail_closed(field_name, payload)
+    body = dict(payload)
+    body["field_name"] = field_name
+    if covering_span_id and not body.get("covering_span_id"):
+        body["covering_span_id"] = covering_span_id
+    if "truth_state" not in body and "status" in body:
+        body["truth_state"] = body["status"]
+    try:
+        return OperationObservation(
+            field_name=field_name,
+            truth_state=body.get("truth_state", ""),
+            operation_id=body.get("operation_id", ""),
+            attempt_count=body.get("attempt_count", 0),
+            observer_id=body.get("observer_id", ""),
+            count=body.get("count", 0),
+            verifier_id=body.get("verifier_id", ""),
+            verifier_receipt_cid=body.get("verifier_receipt_cid", ""),
+            reason_code=body.get("reason_code", ""),
+            fixture_id=body.get("fixture_id", ""),
+            covering_span_id=body.get("covering_span_id", covering_span_id),
+        )
+    except BenchmarkTelemetryError:
+        raise
+    except Exception as exc:
+        raise BenchmarkTelemetryError(
+            f"{field_name}: invalid operation observation"
+        ) from exc
+
+
+def _compute_sample_from_payload(
+    field_name: str,
+    payload: Any,
+    *,
+    span_id: str,
+    quarantined: bool = False,
+    default_unit: str = UNIT_SECONDS_MILLIONTHS,
+) -> TelemetrySample:
+    if quarantined:
+        return _blank_compute_sample(field_name, span_id=span_id, quarantined=True)
+    if payload is None:
+        return _blank_compute_sample(field_name, span_id=span_id)
+    if isinstance(payload, TelemetrySample):
+        if payload.metric_name != field_name:
+            return _rename_sample(payload, field_name)
+        return payload
+    if not isinstance(payload, Mapping):
+        raise BenchmarkTelemetryError(f"{field_name} must be a quantity object")
+    claimed = str(payload.get("truth_state") or payload.get("status") or "")
+    if claimed in {
+        OperationTruthState.ATTEMPTED.value,
+        OperationTruthState.OBSERVED.value,
+        OperationTruthState.VERIFIED.value,
+    }:
+        raise BenchmarkTelemetryError(
+            f"{field_name}: compute fields cannot carry operation truth states"
+        )
+    if claimed == SampleStatus.ESTIMATED.value or (
+        "estimator_id" in payload and claimed != SampleStatus.MEASURED.value
+    ):
+        if claimed == SampleStatus.MEASURED.value or (
+            "sensor_id" in payload and claimed != SampleStatus.ESTIMATED.value
+        ):
+            raise BenchmarkTelemetryError(
+                f"{field_name}: estimated values cannot be labeled measured"
+            )
+        return TelemetrySample.estimated(
+            field_name,
+            payload.get("value", 0),
+            unit=str(payload.get("unit") or default_unit),
+            estimator_id=str(payload.get("estimator_id", "")),
+            method=str(payload.get("method", "")),
+            price_snapshot_identity=str(
+                payload.get("price_snapshot_identity", "unavailable")
+            ),
+            sensor_id=str(payload.get("sensor_id") or _work_sensor(span_id, field_name)),
+        )
+    if claimed == SampleStatus.UNAVAILABLE.value or claimed == "":
+        if claimed == "" and "value" in payload:
+            claimed = SampleStatus.MEASURED.value
+        elif claimed != SampleStatus.MEASURED.value:
+            reason = payload.get("reason_code") or UnavailableReason.NOT_REPORTED.value
+            return TelemetrySample.unavailable(
+                field_name,
+                _unavailable_reason_from_payload(reason),
+                sensor_id=str(
+                    payload.get("sensor_id") or _work_sensor(span_id, field_name)
+                ),
+            )
+    if claimed == SampleStatus.MEASURED.value or "value" in payload:
+        if "estimator_id" in payload or "method" in payload:
+            raise BenchmarkTelemetryError(
+                f"{field_name}: measured values cannot carry estimator labels"
+            )
+        sensor = payload.get("sensor_id")
+        if not isinstance(sensor, str) or not sensor.strip():
+            raise BenchmarkTelemetryError(
+                f"{field_name}: measured sample requires a sensor_id"
+            )
+        return TelemetrySample.measured(
+            field_name,
+            payload.get("value", 0),
+            unit=str(payload.get("unit") or default_unit),
+            sensor_id=sensor,
+        )
+    reason = payload.get("reason_code") or UnavailableReason.NOT_REPORTED.value
+    return TelemetrySample.unavailable(
+        field_name,
+        _unavailable_reason_from_payload(reason),
+        sensor_id=str(payload.get("sensor_id") or _work_sensor(span_id, field_name)),
+    )
+
+
+_COMPUTE_UNITS: Final[dict[str, str]] = {
+    "cpu_seconds": UNIT_SECONDS_MILLIONTHS,
+    "gpu_seconds": UNIT_SECONDS_MILLIONTHS,
+    "peak_memory": UNIT_BYTES,
+    "wall_clock_duration": UNIT_SECONDS_MILLIONTHS,
+    "test_execution_time": UNIT_SECONDS_MILLIONTHS,
+    "prover_execution_time": UNIT_SECONDS_MILLIONTHS,
+    "static_analysis_time": UNIT_SECONDS_MILLIONTHS,
+    "indexing_retrieval_time": UNIT_SECONDS_MILLIONTHS,
+    "bytes_read": UNIT_BYTES,
+    "bytes_written": UNIT_BYTES,
+    "process_count": UNIT_COUNT,
+    "concurrency": UNIT_COUNT,
+    "audit_and_verification_overhead": UNIT_MICROUSD,
+    "time_to_terminal_outcome": UNIT_SECONDS_MILLIONTHS,
+}
+
+
+def _covering_span_id_for_field(
+    field_name: str,
+    span: BenchmarkCausalSpan,
+    *,
+    session: BenchmarkTelemetrySession | None,
+) -> str:
+    kinds = _WORK_FIELD_SPAN_KINDS.get(field_name, ())
+    if session is None or not kinds:
+        return span.span_id
+    children = [
+        item
+        for item in session.spans
+        if item.parent_span_id == span.span_id and item.kind.value in kinds
+    ]
+    if not children:
+        descendants = [
+            item
+            for item in session.spans
+            if span.span_id in item.ancestry and item.kind.value in kinds
+        ]
+        children = descendants
+    if not children:
+        return span.span_id
+    return sorted(children, key=lambda item: item.span_id)[0].span_id
+
+
+def _child_span_duration_sample(
+    field_name: str,
+    span: BenchmarkCausalSpan,
+    *,
+    session: BenchmarkTelemetrySession | None,
+) -> TelemetrySample | None:
+    kinds = _WORK_FIELD_SPAN_KINDS.get(field_name, ())
+    if session is None or not kinds:
+        return None
+    matching = [
+        item
+        for item in session.spans
+        if (item.parent_span_id == span.span_id or span.span_id in item.ancestry)
+        and item.kind.value in kinds
+        and item.span_id != span.span_id
+        and item.started_at_mono_ns
+        and item.finished_at_mono_ns
+    ]
+    if not matching:
+        return None
+    total = sum(item.duration_seconds_millionths for item in matching)
+    sensor = _work_sensor(span.span_id, field_name)
+    return TelemetrySample.measured(
+        field_name,
+        total,
+        unit=UNIT_SECONDS_MILLIONTHS,
+        sensor_id=sensor,
+    )
+
+
+def project_compute_from_sensors(
+    span: BenchmarkCausalSpan,
+    *,
+    process_samples: Mapping[str, TelemetrySample] | None = None,
+    gpu_samples: Mapping[str, TelemetrySample] | None = None,
+    extras: Mapping[str, TelemetrySample] | None = None,
+    session: BenchmarkTelemetrySession | None = None,
+) -> dict[str, TelemetrySample]:
+    """Join process-tree, GPU, span-clock, and child-span timings onto compute fields.
+
+    Absent sensors remain ``unavailable`` rather than numeric zero.
+    """
+
+    samples: dict[str, TelemetrySample] = {}
+    process_samples = process_samples or {}
+    gpu_samples = gpu_samples or {}
+    extras = extras or {}
+    span_id = span.span_id
+
+    for source_name, dest_name in _PROCESS_TREE_TO_COMPUTE.items():
+        source = process_samples.get(source_name)
+        if source is not None:
+            samples[dest_name] = _rename_sample(source, dest_name)
+
+    gpu = gpu_samples.get("gpu_seconds")
+    if gpu is not None:
+        samples["gpu_seconds"] = _rename_sample(gpu, "gpu_seconds")
+    elif span.hardware is not None and not span.hardware.accelerator_present:
+        samples["gpu_seconds"] = TelemetrySample.unavailable(
+            "gpu_seconds",
+            UnavailableReason.HARDWARE_ABSENT,
+            sensor_id=_work_sensor(span_id, "gpu_seconds"),
+        )
+
+    if span.started_at_mono_ns and span.finished_at_mono_ns:
+        samples["wall_clock_duration"] = TelemetrySample.measured(
+            "wall_clock_duration",
+            span.duration_seconds_millionths,
+            unit=UNIT_SECONDS_MILLIONTHS,
+            sensor_id=_sensor_id("span-clock", span_id),
+        )
+        samples.setdefault(
+            "time_to_terminal_outcome",
+            TelemetrySample.measured(
+                "time_to_terminal_outcome",
+                span.duration_seconds_millionths,
+                unit=UNIT_SECONDS_MILLIONTHS,
+                sensor_id=_sensor_id("span-clock", span_id, "terminal"),
+            ),
+        )
+
+    for timing_field in (
+        "test_execution_time",
+        "prover_execution_time",
+        "static_analysis_time",
+        "indexing_retrieval_time",
+    ):
+        derived = _child_span_duration_sample(
+            timing_field, span, session=session
+        )
+        if derived is not None:
+            samples.setdefault(timing_field, derived)
+
+    for name, sample in extras.items():
+        if name in COMPUTE_FIELD_NAMES or name in WORK_OVERHEAD_FIELD_NAMES:
+            samples[name] = (
+                sample if sample.metric_name == name else _rename_sample(sample, name)
+            )
+
+    for name in COMPUTE_FIELD_NAMES:
+        samples.setdefault(
+            name,
+            _blank_compute_sample(
+                name,
+                span_id=span_id,
+                reason=UnavailableReason.NOT_REPORTED,
+            ),
+        )
+    return samples
+
+
+def _assert_selected_executed_bounds(
+    operations: Mapping[str, OperationObservation],
+) -> None:
+    for selected_name, executed_name in _SELECTED_EXECUTED_BOUNDS:
+        selected = operations.get(selected_name)
+        executed = operations.get(executed_name)
+        if selected is None or executed is None:
+            continue
+        selected_count = selected.counted_value()
+        executed_count = executed.counted_value()
+        if selected_count is None or executed_count is None:
+            continue
+        if selected.truth_state is OperationTruthState.ATTEMPTED:
+            continue
+        if executed.truth_state is OperationTruthState.ATTEMPTED:
+            continue
+        if executed_count > selected_count:
+            raise BenchmarkTelemetryError(
+                f"{executed_name} count exceeds {selected_name} bound"
+            )
+
+
+def _verification_occurred(operations: Mapping[str, OperationObservation]) -> bool:
+    for name in VERIFICATION_WORK_FIELDS:
+        item = operations.get(name)
+        if item is None:
+            continue
+        if item.truth_state in {
+            OperationTruthState.OBSERVED,
+            OperationTruthState.VERIFIED,
+        }:
+            return True
+    return False
+
+
+def _assert_admitted_verifier_linkage(
+    operations: Mapping[str, OperationObservation],
+    *,
+    session: BenchmarkTelemetrySession | None,
+    admitted_verifiers: Mapping[str, str] | None,
+) -> None:
+    admitted = dict(admitted_verifiers or {})
+    if session is not None:
+        admitted.update(session.admitted_verifiers)
+    for name, item in operations.items():
+        if item.truth_state is not OperationTruthState.VERIFIED:
+            continue
+        bound = admitted.get(item.verifier_id)
+        if bound != item.verifier_receipt_cid:
+            raise BenchmarkTelemetryError(
+                f"{name}: observed operations cannot be represented as verified "
+                "without admitted verifier linkage"
+            )
+
+
+@dataclass(frozen=True)
+class WorkTelemetryRecord(_TelemetryContract):
+    """Work and compute telemetry bound (or quarantined) against a causal span.
+
+    Interface: BenchmarkWorkTelemetryRecord@1
+
+    Admitted records cover every requested compute and work field with explicit
+    availability. Verified operations require admitted verifier linkage. Missing
+    audit overhead, duplicate terminal accounting, attempted-as-observed,
+    observed-as-verified, and invalid bounds fail closed.
+    """
+
+    SCHEMA: ClassVar[str] = WORK_TELEMETRY_RECORD_SCHEMA
+    INTERFACE: ClassVar[str] = WORK_TELEMETRY_RECORD_INTERFACE
+
+    record_id: str
+    disposition: WorkTelemetryDisposition
+    span: BenchmarkCausalSpan | None
+    compute: tuple[TelemetrySample, ...]
+    operations: tuple[OperationObservation, ...]
+    final_task_outcome: str
+    patch_disposition: str
+    audit_and_verification_overhead: TelemetrySample
+    time_to_terminal_outcome: TelemetrySample
+    terminalized: bool = True
+    single_terminalization: bool = True
+    covering_span_ids: tuple[tuple[str, str], ...] = ()
+    admitted_verifier_ids: tuple[tuple[str, str], ...] = ()
+    quarantine_reason: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "record_id", _text(self.record_id, "record_id"))
+        object.__setattr__(
+            self,
+            "disposition",
+            _enum(self.disposition, WorkTelemetryDisposition, "disposition"),
+        )
+        span = self.span
+        if isinstance(span, Mapping):
+            span = BenchmarkCausalSpan.from_dict(span)
+        if span is not None and not isinstance(span, BenchmarkCausalSpan):
+            raise BenchmarkTelemetryError("span must be BenchmarkCausalSpan")
+        object.__setattr__(self, "span", span)
+
+        compute_items: list[TelemetrySample] = []
+        for item in self.compute or ():
+            if isinstance(item, Mapping):
+                compute_items.append(TelemetrySample.from_dict(item))
+            elif isinstance(item, TelemetrySample):
+                compute_items.append(item)
+            else:
+                raise BenchmarkTelemetryError("compute samples must be TelemetrySample")
+        compute_names = [item.metric_name for item in compute_items]
+        if len(compute_names) != len(set(compute_names)):
+            raise BenchmarkTelemetryError("compute contains duplicate metric names")
+        missing_compute = [
+            name for name in COMPUTE_FIELD_NAMES if name not in compute_names
+        ]
+        if missing_compute:
+            raise BenchmarkTelemetryError(
+                f"compute is missing required fields: {missing_compute}"
+            )
+        extra_compute = [
+            name for name in compute_names if name not in COMPUTE_FIELD_NAMES
+        ]
+        if extra_compute:
+            raise BenchmarkTelemetryError(
+                f"compute contains unknown fields: {extra_compute}"
+            )
+        object.__setattr__(self, "compute", tuple(compute_items))
+
+        operations: list[OperationObservation] = []
+        for item in self.operations or ():
+            if isinstance(item, Mapping):
+                operations.append(OperationObservation.from_dict(item))
+            elif isinstance(item, OperationObservation):
+                operations.append(item)
+            else:
+                raise BenchmarkTelemetryError(
+                    "operations must be OperationObservation records"
+                )
+        op_names = [item.field_name for item in operations]
+        if len(op_names) != len(set(op_names)):
+            raise BenchmarkTelemetryError("operations contain duplicate field names")
+        missing_ops = [
+            name for name in WORK_OPERATION_FIELD_NAMES if name not in op_names
+        ]
+        if missing_ops:
+            raise BenchmarkTelemetryError(
+                f"work is missing required fields: {missing_ops}"
+            )
+        extra_ops = [
+            name for name in op_names if name not in WORK_OPERATION_FIELD_NAMES
+        ]
+        if extra_ops:
+            raise BenchmarkTelemetryError(
+                f"work contains unknown fields: {extra_ops}"
+            )
+        object.__setattr__(self, "operations", tuple(operations))
+
+        object.__setattr__(
+            self,
+            "final_task_outcome",
+            _text(self.final_task_outcome, "final_task_outcome", required=False),
+        )
+        object.__setattr__(
+            self,
+            "patch_disposition",
+            _text(self.patch_disposition, "patch_disposition", required=False),
+        )
+        if self.final_task_outcome and self.final_task_outcome not in TASK_OUTCOMES:
+            raise BenchmarkTelemetryError("final_task_outcome is not a closed value")
+        if (
+            self.patch_disposition
+            and self.patch_disposition not in PATCH_DISPOSITIONS
+        ):
+            raise BenchmarkTelemetryError("patch_disposition is not a closed value")
+
+        def _sample(value: Any, name: str) -> TelemetrySample:
+            if isinstance(value, Mapping):
+                sample = TelemetrySample.from_dict(value)
+            elif isinstance(value, TelemetrySample):
+                sample = value
+            else:
+                raise BenchmarkTelemetryError(f"{name} must be a TelemetrySample")
+            if sample.metric_name != name:
+                sample = _rename_sample(sample, name)
+            return sample
+
+        object.__setattr__(
+            self,
+            "audit_and_verification_overhead",
+            _sample(
+                self.audit_and_verification_overhead,
+                "audit_and_verification_overhead",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "time_to_terminal_outcome",
+            _sample(self.time_to_terminal_outcome, "time_to_terminal_outcome"),
+        )
+        if not isinstance(self.terminalized, bool):
+            raise BenchmarkTelemetryError("terminalized must be a boolean")
+        if not isinstance(self.single_terminalization, bool):
+            raise BenchmarkTelemetryError("single_terminalization must be a boolean")
+        if self.terminalized and not self.single_terminalization:
+            raise BenchmarkTelemetryError(
+                "duplicate terminal accounting: single_terminalization must be true"
+            )
+
+        covering: list[tuple[str, str]] = []
+        seen_fields: set[str] = set()
+        for pair in self.covering_span_ids or ():
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                raise BenchmarkTelemetryError(
+                    "covering_span_ids must be (field, span_id) pairs"
+                )
+            field_name = _text(pair[0], "covering_field")
+            span_id = _text(pair[1], "covering_span_id")
+            if field_name in seen_fields:
+                raise BenchmarkTelemetryError(
+                    "covering_span_ids contains duplicate fields"
+                )
+            seen_fields.add(field_name)
+            covering.append((field_name, span_id))
+        object.__setattr__(self, "covering_span_ids", tuple(sorted(covering)))
+
+        verifiers: list[tuple[str, str]] = []
+        seen_verifiers: set[str] = set()
+        for pair in self.admitted_verifier_ids or ():
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                raise BenchmarkTelemetryError(
+                    "admitted_verifier_ids must be (verifier_id, cid) pairs"
+                )
+            verifier_id = _text(pair[0], "verifier_id")
+            cid = _require_cid(pair[1], "verifier_receipt_cid")
+            if verifier_id in seen_verifiers:
+                raise BenchmarkTelemetryError(
+                    "admitted_verifier_ids contains duplicate verifier identities"
+                )
+            seen_verifiers.add(verifier_id)
+            verifiers.append((verifier_id, cid))
+        object.__setattr__(
+            self, "admitted_verifier_ids", tuple(sorted(verifiers))
+        )
+        object.__setattr__(
+            self,
+            "quarantine_reason",
+            _text(self.quarantine_reason, "quarantine_reason", required=False),
+        )
+
+        if self.disposition is WorkTelemetryDisposition.ADMITTED:
+            if span is None or not span.task_id:
+                raise BenchmarkTelemetryError(
+                    "admitted work telemetry requires a causal task span"
+                )
+            if self.quarantine_reason:
+                raise BenchmarkTelemetryError(
+                    "admitted work telemetry cannot carry a quarantine reason"
+                )
+            if not self.final_task_outcome or not self.patch_disposition:
+                raise BenchmarkTelemetryError(
+                    "admitted work telemetry requires outcome and patch disposition"
+                )
+            if not self.terminalized:
+                raise BenchmarkTelemetryError(
+                    "admitted work telemetry must be terminalized exactly once"
+                )
+            _assert_selected_executed_bounds(
+                {item.field_name: item for item in self.operations}
+            )
+            if _verification_occurred(
+                {item.field_name: item for item in self.operations}
+            ) and self.audit_and_verification_overhead.status is SampleStatus.UNAVAILABLE:
+                raise BenchmarkTelemetryError(
+                    "missing audit and verification overhead"
+                )
+            required_cover = set(WORK_METRIC_NAMES) | set(WORK_ENUM_FIELD_NAMES)
+            covered = {field for field, _span in self.covering_span_ids}
+            if not required_cover <= covered:
+                missing = sorted(required_cover - covered)
+                raise BenchmarkTelemetryError(
+                    f"causal spans do not cover required fields: {missing}"
+                )
+        else:
+            if not self.quarantine_reason:
+                raise BenchmarkTelemetryError(
+                    "quarantined work telemetry requires a quarantine_reason"
+                )
+            try:
+                WorkTelemetryQuarantineReason(self.quarantine_reason)
+            except ValueError as exc:
+                raise BenchmarkTelemetryError(
+                    "quarantine_reason is not a supported quarantine reason"
+                ) from exc
+
+        for sample in self.compute:
+            if (
+                sample.status is SampleStatus.UNAVAILABLE
+                and (sample.value != 0 or sample.unit)
+            ):
+                raise BenchmarkTelemetryError(
+                    "unavailable compute fields must not encode numeric zero"
+                )
+
+    @property
+    def span_id(self) -> str:
+        return "" if self.span is None else self.span.span_id
+
+    @property
+    def task_id(self) -> str:
+        return "" if self.span is None else self.span.task_id
+
+    @property
+    def admitted(self) -> bool:
+        return self.disposition is WorkTelemetryDisposition.ADMITTED
+
+    def compute_map(self) -> dict[str, TelemetrySample]:
+        return {item.metric_name: item for item in self.compute}
+
+    def operation_map(self) -> dict[str, OperationObservation]:
+        return {item.field_name: item for item in self.operations}
+
+    def covering_span_map(self) -> dict[str, str]:
+        return {field: span_id for field, span_id in self.covering_span_ids}
+
+    def explicit_availability(self) -> dict[str, str]:
+        availability: dict[str, str] = {
+            name: sample.status.value for name, sample in self.compute_map().items()
+        }
+        for name, operation in self.operation_map().items():
+            availability[name] = operation.truth_state.value
+        availability["audit_and_verification_overhead"] = (
+            self.audit_and_verification_overhead.status.value
+        )
+        availability["time_to_terminal_outcome"] = (
+            self.time_to_terminal_outcome.status.value
+        )
+        availability["final_task_outcome"] = "observed"
+        availability["patch_disposition"] = "observed"
+        return availability
+
+    def sample_map(self) -> dict[str, TelemetrySample]:
+        samples = dict(self.compute_map())
+        samples["audit_and_verification_overhead"] = (
+            self.audit_and_verification_overhead
+        )
+        samples["time_to_terminal_outcome"] = self.time_to_terminal_outcome
+        for operation in self.operations:
+            samples[operation.field_name] = operation.to_quantity_sample(
+                span_id=self.span_id
+            )
+        return samples
+
+    def unavailable_fields(self) -> tuple[str, ...]:
+        names: list[str] = []
+        for name, sample in self.compute_map().items():
+            if sample.status is SampleStatus.UNAVAILABLE:
+                names.append(f"compute.{name}")
+        for name, operation in self.operation_map().items():
+            if operation.truth_state is OperationTruthState.UNAVAILABLE:
+                names.append(f"work.{name}")
+        if self.audit_and_verification_overhead.status is SampleStatus.UNAVAILABLE:
+            names.append("cost.audit_and_verification_overhead")
+        if self.time_to_terminal_outcome.status is SampleStatus.UNAVAILABLE:
+            names.append("terminal.time_to_terminal_outcome")
+        return tuple(sorted(names))
+
+    def to_compute_fields(self) -> dict[str, Any]:
+        return {
+            name: self.compute_map()[name].to_quantity_envelope()
+            for name in COMPUTE_FIELD_NAMES
+        }
+
+    def to_work_fields(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            name: self.operation_map()[name].to_operation_envelope()
+            for name in WORK_OPERATION_FIELD_NAMES
+        }
+        payload["final_task_outcome"] = self.final_task_outcome
+        payload["patch_disposition"] = self.patch_disposition
+        return payload
+
+    def to_terminal_fields(self) -> dict[str, Any]:
+        return {
+            "final_task_outcome": self.final_task_outcome,
+            "validation_result": self.operation_map()[
+                "validation_result"
+            ].to_operation_envelope(),
+            "patch_disposition": self.patch_disposition,
+            "time_to_terminal_outcome": (
+                self.time_to_terminal_outcome.to_quantity_envelope()
+            ),
+            "terminalized": True if self.admitted else self.terminalized,
+            "single_terminalization": self.single_terminalization,
+        }
+
+    def to_resource_measurement(self) -> BenchmarkResourceMeasurement:
+        if (
+            self.disposition is not WorkTelemetryDisposition.ADMITTED
+            or self.span is None
+        ):
+            raise BenchmarkTelemetryError(
+                "quarantined unbound work cannot seal a resource measurement"
+            )
+        source_ids = [self.span.span_id]
+        for _field, span_id in self.covering_span_ids:
+            if span_id not in source_ids:
+                source_ids.append(span_id)
+        attributed = [
+            self.span.process_id
+        ] if self.span.process_id else []
+        return build_resource_measurement(
+            measurement_id=f"meas:work-telemetry:{self.record_id}",
+            span=self.span,
+            samples=self.sample_map(),
+            attributed_process_ids=attributed,
+            source_span_ids=source_ids,
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "contract_version": BENCHMARK_TELEMETRY_CONTRACT_VERSION,
+            "interface": self.INTERFACE,
+            "record_id": self.record_id,
+            "disposition": self.disposition.value,
+            "span": None if self.span is None else self.span.to_record(),
+            "compute": [item.to_record() for item in self.compute],
+            "operations": [item.to_record() for item in self.operations],
+            "final_task_outcome": self.final_task_outcome,
+            "patch_disposition": self.patch_disposition,
+            "audit_and_verification_overhead": (
+                self.audit_and_verification_overhead.to_record()
+            ),
+            "time_to_terminal_outcome": self.time_to_terminal_outcome.to_record(),
+            "terminalized": self.terminalized,
+            "single_terminalization": self.single_terminalization,
+            "covering_span_ids": [list(pair) for pair in self.covering_span_ids],
+            "admitted_verifier_ids": [
+                list(pair) for pair in self.admitted_verifier_ids
+            ],
+            "quarantine_reason": self.quarantine_reason,
+            "unavailable_fields": list(self.unavailable_fields()),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "WorkTelemetryRecord":
+        allowed = {
+            "schema",
+            "schema_version",
+            "contract_version",
+            "interface",
+            "record_id",
+            "disposition",
+            "span",
+            "compute",
+            "operations",
+            "final_task_outcome",
+            "patch_disposition",
+            "audit_and_verification_overhead",
+            "time_to_terminal_outcome",
+            "terminalized",
+            "single_terminalization",
+            "covering_span_ids",
+            "admitted_verifier_ids",
+            "quarantine_reason",
+            "unavailable_fields",
+            "content_id",
+        }
+        _closed(
+            payload,
+            schema=cls.SCHEMA,
+            allowed=allowed,
+            name="work telemetry record",
+        )
+        result = cls(
+            record_id=payload.get("record_id", ""),
+            disposition=payload.get("disposition", ""),
+            span=payload.get("span"),
+            compute=tuple(payload.get("compute") or ()),
+            operations=tuple(payload.get("operations") or ()),
+            final_task_outcome=payload.get("final_task_outcome", ""),
+            patch_disposition=payload.get("patch_disposition", ""),
+            audit_and_verification_overhead=payload.get(
+                "audit_and_verification_overhead", {}
+            ),
+            time_to_terminal_outcome=payload.get("time_to_terminal_outcome", {}),
+            terminalized=bool(payload.get("terminalized", True)),
+            single_terminalization=bool(payload.get("single_terminalization", True)),
+            covering_span_ids=tuple(
+                tuple(item)
+                for item in (payload.get("covering_span_ids") or ())
+            ),
+            admitted_verifier_ids=tuple(
+                tuple(item)
+                for item in (payload.get("admitted_verifier_ids") or ())
+            ),
+            quarantine_reason=payload.get("quarantine_reason", ""),
+        )
+        if payload.get("interface", result.INTERFACE) != result.INTERFACE:
+            raise BenchmarkTelemetryError("work telemetry interface mismatch")
+        claimed = payload.get("unavailable_fields")
+        if claimed is not None and tuple(claimed) != result.unavailable_fields():
+            raise BenchmarkTelemetryError(
+                "unavailable_fields does not match work/compute samples"
+            )
+        _claim(payload, result.content_id, "content_id")
+        return result
+
+
+def _quarantine_work_record(
+    *,
+    record_id: str,
+    span: BenchmarkCausalSpan | None,
+    reason: WorkTelemetryQuarantineReason,
+) -> WorkTelemetryRecord:
+    span_id = "" if span is None else span.span_id
+    compute = tuple(
+        _blank_compute_sample(name, span_id=span_id, quarantined=True)
+        for name in COMPUTE_FIELD_NAMES
+    )
+    operations = tuple(
+        OperationObservation.unavailable(
+            name,
+            UnavailableReason.NOT_ADMITTED,
+            covering_span_id=span_id,
+        )
+        for name in WORK_OPERATION_FIELD_NAMES
+    )
+    covering = tuple(
+        (name, span_id or "unbound")
+        for name in (*WORK_METRIC_NAMES, *WORK_ENUM_FIELD_NAMES)
+    )
+    return WorkTelemetryRecord(
+        record_id=record_id,
+        disposition=WorkTelemetryDisposition.QUARANTINED,
+        span=span,
+        compute=compute,
+        operations=operations,
+        final_task_outcome=TaskOutcome.QUARANTINED.value,
+        patch_disposition=PatchDisposition.QUARANTINED.value,
+        audit_and_verification_overhead=_blank_compute_sample(
+            "audit_and_verification_overhead",
+            span_id=span_id,
+            quarantined=True,
+        ),
+        time_to_terminal_outcome=_blank_compute_sample(
+            "time_to_terminal_outcome",
+            span_id=span_id,
+            quarantined=True,
+        ),
+        terminalized=False,
+        single_terminalization=True,
+        covering_span_ids=covering,
+        admitted_verifier_ids=(),
+        quarantine_reason=reason.value,
+    )
+
+
+def _merge_mapping(
+    base: Mapping[str, Any] | None, overlay: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    if isinstance(base, Mapping):
+        merged.update(base)
+    if isinstance(overlay, Mapping):
+        merged.update(overlay)
+    return merged
+
+
+def map_work_and_compute_to_admitted_span(
+    payload: Mapping[str, Any] | None,
+    span: BenchmarkCausalSpan | None,
+    *,
+    session: BenchmarkTelemetrySession | None = None,
+    admitted_span_ids: Container[str] | None = None,
+    admitted_verifiers: Mapping[str, str] | None = None,
+    record_id: str | None = None,
+    compute: Mapping[str, Any] | None = None,
+    work: Mapping[str, Any] | None = None,
+    audit_and_verification_overhead: Mapping[str, Any]
+    | TelemetrySample
+    | None = None,
+    time_to_terminal_outcome: Mapping[str, Any] | TelemetrySample | None = None,
+    process_samples: Mapping[str, TelemetrySample] | None = None,
+    gpu_samples: Mapping[str, TelemetrySample] | None = None,
+    terminalized: bool | None = None,
+) -> WorkTelemetryRecord:
+    """Bind work and compute fields to an admitted causal task span.
+
+    Every requested field is present with explicit availability. Verified
+    operations require admitted verifier linkage. Fail-closed errors cover
+    attempted-as-observed, observed-as-verified, missing overhead, duplicate
+    terminal accounting, and invalid bounds. Unbound or anonymous spans are
+    quarantined rather than admitted.
+    """
+
+    if payload is not None and not isinstance(payload, Mapping):
+        raise BenchmarkTelemetryError("work telemetry payload must be an object")
+    body = dict(payload or {})
+    identity = record_id or _sensor_id(
+        "work-telemetry-record",
+        "" if span is None else span.span_id,
+        str(body.get("record_id") or "anonymous"),
+    )
+
+    if not _span_has_causal_task_identity(span):
+        return _quarantine_work_record(
+            record_id=identity,
+            span=span,
+            reason=WorkTelemetryQuarantineReason.MISSING_CAUSAL_IDENTITY,
+        )
+    if not _span_is_admitted_for_usage(
+        span, session=session, admitted_span_ids=admitted_span_ids
+    ):
+        return _quarantine_work_record(
+            record_id=identity,
+            span=span,
+            reason=WorkTelemetryQuarantineReason.UNBOUND_WORK,
+        )
+
+    assert span is not None
+    span_id = span.span_id
+    if (
+        terminalized is not False
+        and (body.get("terminalized", True) is True)
+        and session is not None
+        and span_id in session.terminalized_span_ids
+    ):
+        raise BenchmarkTelemetryError(
+            "duplicate terminal accounting for admitted work span"
+        )
+
+    compute_payload = _merge_mapping(body.get("compute"), compute)
+    work_payload = _merge_mapping(body.get("work"), work)
+    for name in WORK_FIELD_NAMES:
+        if name in body and name not in work_payload:
+            work_payload[name] = body[name]
+    for name in COMPUTE_FIELD_NAMES:
+        if name in body and name not in compute_payload:
+            compute_payload[name] = body[name]
+
+    extras: dict[str, TelemetrySample] = {}
+    for name, raw in compute_payload.items():
+        if name not in COMPUTE_FIELD_NAMES:
+            raise BenchmarkTelemetryError(
+                f"compute contains unknown fields: {[name]}"
+            )
+        extras[name] = _compute_sample_from_payload(
+            name,
+            raw,
+            span_id=span_id,
+            default_unit=_COMPUTE_UNITS[name],
+        )
+
+    projected = project_compute_from_sensors(
+        span,
+        process_samples=process_samples,
+        gpu_samples=gpu_samples,
+        extras=extras,
+        session=session,
+    )
+    compute_samples = tuple(projected[name] for name in COMPUTE_FIELD_NAMES)
+
+    operations: dict[str, OperationObservation] = {}
+    for name in WORK_OPERATION_FIELD_NAMES:
+        covering = _covering_span_id_for_field(name, span, session=session)
+        operations[name] = _operation_from_payload(
+            name,
+            work_payload.get(name),
+            covering_span_id=covering,
+        )
+    extra_work = [
+        key
+        for key in work_payload
+        if key not in WORK_FIELD_NAMES
+    ]
+    if extra_work:
+        raise BenchmarkTelemetryError(
+            f"work contains unknown fields: {sorted(extra_work)}"
+        )
+
+    _assert_selected_executed_bounds(operations)
+    _assert_admitted_verifier_linkage(
+        operations, session=session, admitted_verifiers=admitted_verifiers
+    )
+
+    outcome = work_payload.get("final_task_outcome", body.get("final_task_outcome"))
+    disposition_value = work_payload.get(
+        "patch_disposition", body.get("patch_disposition")
+    )
+    if not isinstance(outcome, str) or not outcome.strip():
+        raise BenchmarkTelemetryError("final_task_outcome is required")
+    if not isinstance(disposition_value, str) or not disposition_value.strip():
+        raise BenchmarkTelemetryError("patch_disposition is required")
+    outcome = _enum(outcome, TaskOutcome, "final_task_outcome").value
+    disposition_value = _enum(
+        disposition_value, PatchDisposition, "patch_disposition"
+    ).value
+
+    overhead_raw = audit_and_verification_overhead
+    if overhead_raw is None:
+        overhead_raw = body.get("audit_and_verification_overhead")
+    if overhead_raw is None and "cost" in body and isinstance(body["cost"], Mapping):
+        overhead_raw = body["cost"].get("audit_and_verification_overhead")
+    if overhead_raw is None:
+        raise BenchmarkTelemetryError("missing audit and verification overhead")
+    overhead = _compute_sample_from_payload(
+        "audit_and_verification_overhead",
+        overhead_raw,
+        span_id=span_id,
+        default_unit=UNIT_MICROUSD,
+    )
+    if _verification_occurred(operations) and overhead.status is SampleStatus.UNAVAILABLE:
+        raise BenchmarkTelemetryError("missing audit and verification overhead")
+
+    terminal_raw = time_to_terminal_outcome
+    if terminal_raw is None:
+        terminal_raw = body.get("time_to_terminal_outcome")
+    if terminal_raw is None and "terminal" in body and isinstance(body["terminal"], Mapping):
+        terminal_raw = body["terminal"].get("time_to_terminal_outcome")
+    if terminal_raw is None:
+        terminal_sample = projected.get(
+            "time_to_terminal_outcome",
+            _blank_compute_sample("time_to_terminal_outcome", span_id=span_id),
+        )
+        if terminal_sample.metric_name != "time_to_terminal_outcome":
+            terminal_sample = _rename_sample(
+                terminal_sample, "time_to_terminal_outcome"
+            )
+    else:
+        terminal_sample = _compute_sample_from_payload(
+            "time_to_terminal_outcome",
+            terminal_raw,
+            span_id=span_id,
+            default_unit=UNIT_SECONDS_MILLIONTHS,
+        )
+
+    is_terminal = True if terminalized is None else bool(terminalized)
+    if "terminalized" in body:
+        if not isinstance(body["terminalized"], bool):
+            raise BenchmarkTelemetryError("terminalized must be a boolean")
+        is_terminal = bool(body["terminalized"])
+    single = True
+    if "single_terminalization" in body:
+        if body["single_terminalization"] is not True:
+            raise BenchmarkTelemetryError(
+                "duplicate terminal accounting: single_terminalization must be true"
+            )
+
+    covering_pairs: list[tuple[str, str]] = []
+    for name in COMPUTE_FIELD_NAMES:
+        covering_pairs.append(
+            (name, _covering_span_id_for_field(name, span, session=session))
+        )
+    for name in WORK_OPERATION_FIELD_NAMES:
+        covering_pairs.append((name, operations[name].covering_span_id or span_id))
+    covering_pairs.append(
+        (
+            "audit_and_verification_overhead",
+            _covering_span_id_for_field(
+                "audit_and_verification_overhead", span, session=session
+            ),
+        )
+    )
+    covering_pairs.append(
+        (
+            "time_to_terminal_outcome",
+            _covering_span_id_for_field(
+                "time_to_terminal_outcome", span, session=session
+            ),
+        )
+    )
+    covering_pairs.append(("final_task_outcome", span_id))
+    covering_pairs.append(("patch_disposition", span_id))
+
+    verifier_pairs: list[tuple[str, str]] = []
+    admitted = dict(admitted_verifiers or {})
+    if session is not None:
+        admitted.update(session.admitted_verifiers)
+    for item in operations.values():
+        if item.truth_state is OperationTruthState.VERIFIED:
+            verifier_pairs.append((item.verifier_id, item.verifier_receipt_cid))
+
+    return WorkTelemetryRecord(
+        record_id=identity,
+        disposition=WorkTelemetryDisposition.ADMITTED,
+        span=span,
+        compute=compute_samples,
+        operations=tuple(operations[name] for name in WORK_OPERATION_FIELD_NAMES),
+        final_task_outcome=outcome,
+        patch_disposition=disposition_value,
+        audit_and_verification_overhead=overhead,
+        time_to_terminal_outcome=terminal_sample,
+        terminalized=is_terminal,
+        single_terminalization=single,
+        covering_span_ids=tuple(covering_pairs),
+        admitted_verifier_ids=tuple(sorted(set(verifier_pairs))),
+    )
+
+
+def project_work_telemetry_samples(
+    record: WorkTelemetryRecord,
+) -> dict[str, TelemetrySample]:
+    """Project a work-telemetry record onto named telemetry samples."""
+
+    if not isinstance(record, WorkTelemetryRecord):
+        raise BenchmarkTelemetryError("record must be WorkTelemetryRecord")
+    return record.sample_map()
+
+
 __all__ = [
     "AttributionRole",
     "BENCHMARK_CAUSAL_SPAN_INTERFACE",
@@ -4095,16 +6069,23 @@ __all__ = [
     "BenchmarkTelemetryReceipt",
     "BenchmarkTelemetrySession",
     "CLOCK_METRIC_NAMES",
+    "COMPUTE_FIELD_NAMES",
     "ESTIMATOR_METHODS",
     "EstimatorMethod",
     "GPU_METRIC_NAMES",
     "MODEL_CALL_CLASSES",
     "MILLIONTHS",
     "ModelCallClass",
+    "OPERATION_OBSERVATION_SCHEMA",
+    "OPERATION_REASON_CODES",
+    "OperationObservation",
+    "OperationTruthState",
+    "PATCH_DISPOSITIONS",
     "PROCESS_TREE_METRIC_NAMES",
     "PROVIDER_USAGE_METRIC_NAMES",
     "PROVIDER_USAGE_RECORD_INTERFACE",
     "PROVIDER_USAGE_RECORD_SCHEMA",
+    "PatchDisposition",
     "ProviderUsageDisposition",
     "ProviderUsageQuarantineReason",
     "ProviderUsageRecord",
@@ -4113,8 +6094,10 @@ __all__ = [
     "SampleStatus",
     "SpanKind",
     "SpanReplayCertificate",
+    "TASK_OUTCOMES",
     "TOKEN_METRIC_NAMES",
     "TELEMETRY_SAMPLE_SCHEMA",
+    "TaskOutcome",
     "TelemetrySample",
     "UNIT_BYTES",
     "UNIT_COUNT",
@@ -4127,6 +6110,14 @@ __all__ = [
     "UNIT_SECONDS_MILLIONTHS",
     "UNIT_TOKENS",
     "UnavailableReason",
+    "WORK_FIELD_NAMES",
+    "WORK_METRIC_NAMES",
+    "WORK_OPERATION_FIELD_NAMES",
+    "WORK_TELEMETRY_RECORD_INTERFACE",
+    "WORK_TELEMETRY_RECORD_SCHEMA",
+    "WorkTelemetryDisposition",
+    "WorkTelemetryQuarantineReason",
+    "WorkTelemetryRecord",
     "build_resource_measurement",
     "build_span_joined_measurement",
     "certify_measurement_from_source_spans",
@@ -4134,11 +6125,14 @@ __all__ = [
     "extract_safe_provider_request_ids",
     "is_safe_provider_request_id",
     "map_provider_response_to_admitted_span",
+    "map_work_and_compute_to_admitted_span",
     "mono_ns",
     "observe_wall_seconds_millionths",
+    "project_compute_from_sensors",
     "project_provider_usage_samples",
     "project_scheduler_clock_samples",
     "project_token_ledger_samples",
+    "project_work_telemetry_samples",
     "provider_response_contains_credentials",
     "reject_self_certified_counters",
     "sample_energy_optional",
