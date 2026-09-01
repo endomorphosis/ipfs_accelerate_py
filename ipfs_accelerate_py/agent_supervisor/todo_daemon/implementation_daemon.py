@@ -87842,6 +87842,26 @@ class DatabaseImplementationDaemon:
                     }
                 )
                 continue
+            quiesced_stale_dispatch_release_candidate = bool(
+                receipt.get("retry_exhausted") is True
+                and _database_portal_quiesced_stale_dispatch_release_budget_matches(
+                    task_alias=alias,
+                    attempt_number=receipt.get("attempt_number"),
+                    attempts_used=receipt.get("attempts_used"),
+                    rearm_count=receipt.get(
+                        "unknown_outcome_rearm_count",
+                        0,
+                    ),
+                )
+            )
+            if quiesced_stale_dispatch_release_candidate:
+                # These four sealed predecessor occurrences have exact
+                # quiesced claim-release evidence, not an already-landed
+                # implementation result.  Delegate them to the existing
+                # no-provider verifier and terminal-claim barrier below.  A
+                # missing or stale proof remains blocked there and never
+                # inherits generic retry authority.
+                continue
             if self._automatic_claim_forbidden(task):
                 outcomes.append(
                     {
