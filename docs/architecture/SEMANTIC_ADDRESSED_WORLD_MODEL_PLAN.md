@@ -2041,7 +2041,7 @@ M38's initial control commit is
 `78927b797c7f80dca7e80ae542f3f7e06d95cbc3`. The first reseal is
 `a241ca013e91f0c9a9a0aa4b26261663c03cf80a`. The second reseal is `6a9383c1e26c2ae3dc62acfbb82d5d122f577017`.
 The live-row unpacking reseal binds authority
-CID `sha256:c6d6c0b6951301d6b8bda94efade51d3e6ceb25dac3a82cdbc100e189c9cac19`.
+CID `sha256:600c75398388140c0b1c74710adbaa30641c50ef5e568c85689d5634127ea829`.
 M38 is selected before M37 only when its complete protected-control
 triplet and source chain validate.
 

@@ -1491,6 +1491,8 @@ _M38_FIRST_RESEAL_COMMIT = "a241ca013e91f0c9a9a0aa4b26261663c03cf80a"
 _M38_FIRST_RESEAL_TREE = "aea6bebeadde6d63f31bdd1680a4e2499eabd77d"
 _M38_SECOND_RESEAL_COMMIT = "6a9383c1e26c2ae3dc62acfbb82d5d122f577017"
 _M38_SECOND_RESEAL_TREE = "ef0e1faa7e2fadb32721298cb163fea0a45aeef9"
+_M38_THIRD_RESEAL_COMMIT = "35b73c5505ac00eea1453d9f90a25b70235a3e92"
+_M38_THIRD_RESEAL_TREE = "20699f01927a26e9f4a5b432c1ca4217b170b846"
 _M38_AUTHORITY_CID_SENTINEL = "sha256:PENDING_M38_AUTHORITY_CID"
 _M38_M37_AUTHORITY_CID = (
     "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
@@ -7635,9 +7637,12 @@ def _expected_m38_pre_authoritative_custody_restart_authority() -> dict[str, Any
             "second_reseal_parent": _M38_FIRST_RESEAL_COMMIT,
             "second_reseal_commit": _M38_SECOND_RESEAL_COMMIT,
             "second_reseal_tree": _M38_SECOND_RESEAL_TREE,
-            "final_reseal_parent": _M38_SECOND_RESEAL_COMMIT,
-            "final_reseal_commit_count": 3,
-            "control_commit_count": 4,
+            "third_reseal_parent": _M38_SECOND_RESEAL_COMMIT,
+            "third_reseal_commit": _M38_THIRD_RESEAL_COMMIT,
+            "third_reseal_tree": _M38_THIRD_RESEAL_TREE,
+            "final_reseal_parent": _M38_THIRD_RESEAL_COMMIT,
+            "final_reseal_commit_count": 4,
+            "control_commit_count": 5,
         },
         "expected_task_heads": dict(m37["expected_task_heads"]),
         "runtime_repair_paths": sorted(_M38_RUNTIME_REPAIR_PATHS),
@@ -54083,6 +54088,9 @@ def _assert_m38_source_delta(
     second_reseal_parents = _git(
         root, "rev-list", "--parents", "-n", "1", _M38_SECOND_RESEAL_COMMIT
     ).split()
+    third_reseal_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M38_THIRD_RESEAL_COMMIT
+    ).split()
     current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
     if (
         current in {
@@ -54091,6 +54099,7 @@ def _assert_m38_source_delta(
             _M38_INITIAL_CONTROL_COMMIT,
             _M38_FIRST_RESEAL_COMMIT,
             _M38_SECOND_RESEAL_COMMIT,
+            _M38_THIRD_RESEAL_COMMIT,
         }
         or not isinstance(chain, Mapping)
         or runtime_paths != set(_M38_RUNTIME_REPAIR_PATHS)
@@ -54113,9 +54122,12 @@ def _assert_m38_source_delta(
         or chain.get("second_reseal_parent") != _M38_FIRST_RESEAL_COMMIT
         or chain.get("second_reseal_commit") != _M38_SECOND_RESEAL_COMMIT
         or chain.get("second_reseal_tree") != _M38_SECOND_RESEAL_TREE
-        or chain.get("final_reseal_parent") != _M38_SECOND_RESEAL_COMMIT
-        or int(chain.get("final_reseal_commit_count") or 0) != 3
-        or int(chain.get("control_commit_count") or 0) != 4
+        or chain.get("third_reseal_parent") != _M38_SECOND_RESEAL_COMMIT
+        or chain.get("third_reseal_commit") != _M38_THIRD_RESEAL_COMMIT
+        or chain.get("third_reseal_tree") != _M38_THIRD_RESEAL_TREE
+        or chain.get("final_reseal_parent") != _M38_THIRD_RESEAL_COMMIT
+        or int(chain.get("final_reseal_commit_count") or 0) != 4
+        or int(chain.get("control_commit_count") or 0) != 5
         or runtime_parents
         != [_M38_RUNTIME_REPAIR_COMMIT, _M38_BASE_CONTROL_COMMIT]
         or initial_parents
@@ -54124,7 +54136,9 @@ def _assert_m38_source_delta(
         != [_M38_FIRST_RESEAL_COMMIT, _M38_INITIAL_CONTROL_COMMIT]
         or second_reseal_parents
         != [_M38_SECOND_RESEAL_COMMIT, _M38_FIRST_RESEAL_COMMIT]
-        or current_parents != [current, _M38_SECOND_RESEAL_COMMIT]
+        or third_reseal_parents
+        != [_M38_THIRD_RESEAL_COMMIT, _M38_SECOND_RESEAL_COMMIT]
+        or current_parents != [current, _M38_THIRD_RESEAL_COMMIT]
         or _git(root, "rev-parse", f"{_M38_BASE_CONTROL_COMMIT}^{{tree}}")
         != _M38_BASE_CONTROL_TREE
         or _git(root, "rev-parse", f"{_M38_RUNTIME_REPAIR_COMMIT}^{{tree}}")
@@ -54135,6 +54149,8 @@ def _assert_m38_source_delta(
         != _M38_FIRST_RESEAL_TREE
         or _git(root, "rev-parse", f"{_M38_SECOND_RESEAL_COMMIT}^{{tree}}")
         != _M38_SECOND_RESEAL_TREE
+        or _git(root, "rev-parse", f"{_M38_THIRD_RESEAL_COMMIT}^{{tree}}")
+        != _M38_THIRD_RESEAL_TREE
         or _m27_name_status(
             root, _M38_BASE_CONTROL_COMMIT, _M38_RUNTIME_REPAIR_COMMIT
         )
@@ -54151,7 +54167,11 @@ def _assert_m38_source_delta(
             root, _M38_FIRST_RESEAL_COMMIT, _M38_SECOND_RESEAL_COMMIT
         )
         != {path: "M" for path in control_paths}
-        or _m27_name_status(root, _M38_SECOND_RESEAL_COMMIT, current)
+        or _m27_name_status(
+            root, _M38_SECOND_RESEAL_COMMIT, _M38_THIRD_RESEAL_COMMIT
+        )
+        != {path: "M" for path in control_paths}
+        or _m27_name_status(root, _M38_THIRD_RESEAL_COMMIT, current)
         != {path: "M" for path in control_paths}
         or population["source_binding"].get("tree")
         != _git(root, "rev-parse", f"{current}^{{tree}}")
@@ -61609,6 +61629,20 @@ def _m38_sql_triples(rows: Any, names: tuple[str, str, str]) -> list[tuple[Any, 
     return triples
 
 
+def _m38_row_values(row: Any) -> tuple[Any, ...]:
+    if isinstance(row, Mapping):
+        return tuple(row.values())
+    return tuple(row)
+
+
+def _m38_parse_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        return json.loads(value.decode("utf-8"))
+    return json.loads(str(value))
+
+
 def _m38_projection_cid_at_watermark(source: Any, watermark: int) -> str:
     """Recompute the canonical snapshot projection with an explicit watermark."""
 
@@ -61681,17 +61715,20 @@ def _verify_m38_evidence_projection(
 ) -> dict[str, Any]:
     """Derive every evidence row from the immutable intent-event prefix."""
 
-    event_rows = connection.execute(
-        "SELECT global_sequence,event_type,body_json FROM domain_events "
-        "WHERE global_sequence<=? AND event_type='intent.evidence_recorded' "
-        "ORDER BY global_sequence",
-        [int(watermark)],
-    ).fetchall()
+    event_rows = _m38_sql_triples(
+        connection.execute(
+            "SELECT global_sequence,event_type,body_json FROM domain_events "
+            "WHERE global_sequence<=? AND event_type='intent.evidence_recorded' "
+            "ORDER BY global_sequence",
+            [int(watermark)],
+        ).fetchall(),
+        ("global_sequence", "event_type", "body_json"),
+    )
     expected: list[tuple[str, str, str, str, str, str, str]] = []
     for global_sequence, event_type, body_json in event_rows:
         try:
-            envelope = json.loads(str(body_json))
-        except json.JSONDecodeError as exc:
+            envelope = _m38_parse_json(body_json)
+        except (json.JSONDecodeError, TypeError, UnicodeDecodeError) as exc:
             raise MigrationRequired(
                 "M38 evidence event JSON is invalid"
             ) from exc
@@ -61724,13 +61761,13 @@ def _verify_m38_evidence_projection(
         expected
     ):
         raise MigrationRequired("M38 evidence event identities are invalid")
-    actual = _positional_rows(
-        connection.execute(
+    actual = [
+        tuple(_m38_row_values(row)[:7])
+        for row in connection.execute(
             "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
             "created_at,body_json FROM evidence_nodes ORDER BY evidence_id"
-        ).fetchall(),
-        7,
-    )
+        ).fetchall()
+    ]
     expected_sorted = sorted(expected, key=lambda row: row[0])
     actual_by_id = {row[0]: row for row in actual}
     recorded_ids = {row[0] for row in expected_sorted}
@@ -61882,11 +61919,13 @@ def _verify_m38_live_materialization(
             connection, watermark=_M38_TARGET_EVENT_WATERMARK
         )
         prior_evidence_event_count = int(
-            connection.execute(
-                "SELECT COUNT(*) FROM domain_events WHERE global_sequence<=? "
-                "AND event_type='intent.evidence_recorded'",
-                [_M38_PRIOR_EVENT_WATERMARK],
-            ).fetchone()[0]
+            _m38_row_values(
+                connection.execute(
+                    "SELECT COUNT(*) FROM domain_events WHERE global_sequence<=? "
+                    "AND event_type='intent.evidence_recorded'",
+                    [_M38_PRIOR_EVENT_WATERMARK],
+                ).fetchone()
+            )[0]
         )
         semantic = _semantic_authority_digest_on(connection)
     operational_events = _m37_normalized_operational_events(event_suffix_rows)
@@ -61913,9 +61952,9 @@ def _verify_m38_live_materialization(
     ]
     if (
         evidence is None
-        or [evidence[index] for index in range(7)] != expected_evidence
+        or list(_m38_row_values(evidence)[:7]) != expected_evidence
         or event is None
-        or [event[index] for index in range(10)] != expected_event
+        or list(_m38_row_values(event)[:10]) != expected_event
         or m36_prefix
         != (_M37_M36_EVENT_PREFIX_SHA256, _M37_M36_EVENT_WATERMARK)
         or prior_prefix
