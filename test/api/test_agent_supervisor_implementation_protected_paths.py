@@ -2808,7 +2808,7 @@ def test_auto_clear_refuses_shared_checkout_deletions(tmp_path: Path) -> None:
     assert daemon._implementation_protected_incident_path().exists()
 
 
-def test_auto_clears_shared_checkout_content_change_when_head_is_clean(
+def test_head_clean_shared_checkout_incident_remains_latched(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -2852,10 +2852,9 @@ def test_auto_clears_shared_checkout_content_change_when_head_is_clean(
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
-    assert result.get("cleared") is True
-    assert result.get("auto") is True
-    assert result.get("reason") == "shared_checkout_matches_head"
-    assert not daemon._implementation_protected_incident_path().exists()
+    assert result.get("blocked") is True
+    assert result.get("reason") == "implementation_protected_path_incident_latched"
+    assert daemon._implementation_protected_incident_path().exists()
 
 
 def test_auto_clear_refuses_shared_plan_content_changes(tmp_path: Path) -> None:

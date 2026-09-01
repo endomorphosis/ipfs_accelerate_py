@@ -1201,15 +1201,6 @@ class CrashFenceReconciler:
                 )
                 if trusted and trusted.get("cleared"):
                     return trusted
-                head_clean = (
-                    daemon._auto_clear_shared_checkout_incident_when_head_clean(
-                        incident,
-                        incident_path=incident_path,
-                        active_path=active_path,
-                    )
-                )
-                if head_clean and head_clean.get("cleared"):
-                    return head_clean
         fence_present = False
         try:
             fence_present = incident_path.exists() or active_path.exists()
