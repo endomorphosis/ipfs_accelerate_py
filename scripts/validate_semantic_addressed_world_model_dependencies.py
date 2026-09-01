@@ -3197,6 +3197,7 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+    # Live M38 event bodies are Quack envelopes; verification uses inner JSON.
 def _m38_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],

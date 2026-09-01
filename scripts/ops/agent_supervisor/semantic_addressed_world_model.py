@@ -5236,6 +5236,7 @@ def _require_m18_final_pair_marker(
     return MappingProxyType(dict(observed))
 
 
+    # Live M38 event bodies are Quack envelopes; verification uses inner JSON.
 def _require_m38_source_successor_marker(
     config: Mapping[str, Any],
     authority: Mapping[str, Any],

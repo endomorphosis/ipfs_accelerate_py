@@ -4979,6 +4979,7 @@ def test_m29_presence_masks_m28_and_keeps_every_predecessor_historical(
     assert any("only partially declared" in error for error in errors)
 
 
+    # Live M38 event bodies are Quack envelopes; verification uses inner JSON.
 def test_m38_authority_pins_custody_restart_and_preserves_m37() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",

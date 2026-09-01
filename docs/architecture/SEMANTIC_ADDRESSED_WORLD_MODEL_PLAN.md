@@ -2042,8 +2042,10 @@ M38's initial control commit is
 `a241ca013e91f0c9a9a0aa4b26261663c03cf80a`. The second reseal is `6a9383c1e26c2ae3dc62acfbb82d5d122f577017`.
 The live-row unpacking reseal binds authority
 CID `sha256:664af21f470ada7e4d4bf02313df473ed345c539b122f30036db8c8ee171a8eb`.
-M38 is selected before M37 only when its complete protected-control
-triplet and source chain validate.
+Later nine-path descendants of that reseal remain admissible. Live
+verification compares canonical inner evidence/event bodies, including
+Quack envelope JSON. M38 is selected before M37 only when its complete
+protected-control triplet and source chain validate.
 
 ## 47. Current limitations at seal time
 

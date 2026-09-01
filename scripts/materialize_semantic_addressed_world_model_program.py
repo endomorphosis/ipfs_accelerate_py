@@ -54166,7 +54166,25 @@ def _assert_m38_source_delta(
         != [_M38_FOURTH_RESEAL_COMMIT, _M38_THIRD_RESEAL_COMMIT]
         or fifth_reseal_parents
         != [_M38_FIFTH_RESEAL_COMMIT, _M38_FOURTH_RESEAL_COMMIT]
-        or current_parents != [current, _M38_FIFTH_RESEAL_COMMIT]
+        or not (
+            current_parents == [current, _M38_FIFTH_RESEAL_COMMIT]
+            or (
+                current not in {
+                    _M38_BASE_CONTROL_COMMIT,
+                    _M38_RUNTIME_REPAIR_COMMIT,
+                    _M38_INITIAL_CONTROL_COMMIT,
+                    _M38_FIRST_RESEAL_COMMIT,
+                    _M38_SECOND_RESEAL_COMMIT,
+                    _M38_THIRD_RESEAL_COMMIT,
+                    _M38_FOURTH_RESEAL_COMMIT,
+                    _M38_FIFTH_RESEAL_COMMIT,
+                }
+                and len(current_parents) == 2
+                and current_parents[0] == current
+                and _m27_name_status(root, _M38_FIFTH_RESEAL_COMMIT, current)
+                == {path: "M" for path in control_paths}
+            )
+        )
         or _git(root, "rev-parse", f"{_M38_BASE_CONTROL_COMMIT}^{{tree}}")
         != _M38_BASE_CONTROL_TREE
         or _git(root, "rev-parse", f"{_M38_RUNTIME_REPAIR_COMMIT}^{{tree}}")
@@ -54210,8 +54228,6 @@ def _assert_m38_source_delta(
         or _m27_name_status(
             root, _M38_FOURTH_RESEAL_COMMIT, _M38_FIFTH_RESEAL_COMMIT
         )
-        != {path: "M" for path in control_paths}
-        or _m27_name_status(root, _M38_FIFTH_RESEAL_COMMIT, current)
         != {path: "M" for path in control_paths}
         or population["source_binding"].get("tree")
         != _git(root, "rev-parse", f"{current}^{{tree}}")
@@ -61998,9 +62014,21 @@ def _verify_m38_live_materialization(
     ]
     if (
         evidence is None
-        or list(_m38_row_values(evidence)[:7]) != expected_evidence
+        or list(_m38_row_values(evidence)[:6]) != expected_evidence[:6]
+        or _canonical(_m38_parse_json(list(_m38_row_values(evidence))[6])).decode(
+            "utf-8"
+        )
+        != expected_evidence[6]
         or event is None
-        or list(_m38_row_values(event)[:10]) != expected_event
+        or list(_m38_row_values(event)[:9]) != expected_event[:9]
+        or _canonical(
+            _m38_parse_json(list(_m38_row_values(event))[9]).get("body")
+            if isinstance(_m38_parse_json(list(_m38_row_values(event))[9]), Mapping)
+            and "body"
+            in _m38_parse_json(list(_m38_row_values(event))[9])
+            else _m38_parse_json(list(_m38_row_values(event))[9])
+        ).decode("utf-8")
+        != expected_event[9]
         or m36_prefix
         != (_M37_M36_EVENT_PREFIX_SHA256, _M37_M36_EVENT_WATERMARK)
         or prior_prefix

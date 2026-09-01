@@ -388,6 +388,7 @@ def _m16_migration_errors(
         return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+    # Live M38 event bodies are Quack envelopes; verification uses inner JSON.
 def _m38_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
