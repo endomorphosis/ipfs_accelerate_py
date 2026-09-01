@@ -2041,7 +2041,46 @@ before M38 even when the M39 value is null or malformed. No M39 action changes
 a task, goal, plan, accepted completion, coordination event, provider result,
 or implementation evidence, and no worker may approve the transition.
 
-## 47. M38 pre-authoritative custody restart successor
+## 47. M40 failed-pre-authoritative-M39 successor
+
+`SAWM-R2-M40` is the append-only successor for M39's failed
+pre-authoritative attempt. The M39 process reached generation-restart row
+verification and then failed with the typed error
+`KeyError: 'stopped_owner'` because its top-level successor authority was
+incorrectly passed to the historical generation-29/30 verifier. The failed
+attempt is identified as `SAWM-R2-M39-LIVE-A1`; it submitted no Quack mutation
+request and changed no event, evidence node, task, goal, plan, accepted
+completion, coordination record, provider result, implementation commit,
+merge attempt, owner identity, generation, or receipt. Event 291 and projection
+`baguqeeravycbuo73fyu5mpad55qi5duk3la53lubqeu7nu6kjtnahehjtnsq` therefore
+remain the exact authoritative predecessor, and the M39 receipt remains absent.
+
+M40 preserves the committed M39 control source
+`64651e11f9d390a98a9daecc70c672e329487a1b` / tree
+`75b32dda51c7475a0a54de28d6e6a3c693c2d7f3`. The bounded restart-helper
+repair is `00d15b870f7fdaa8e7165a94719eb2c7d3df7eca` / tree
+`83c17ce2ed68d10ef54e53c0a5e312f2eae8060b`; it changes only the M39
+materializer and its focused semantic-world test, routing generation-restart
+verification through the sealed historical M38 authority. The final M40
+control commit must be the direct child of that repair and modify exactly the
+nine protected operator-control paths. Its authority CID is
+`sha256:377b6e7269a7025f236642f12aaf92264582f42a1efa4899eb4d6e64b0e41db2`.
+
+M40 remains on the exact ready generation-30 owner and authorizes no restart,
+owner replacement, database copy, direct DuckDB writer, or M39 receipt. It may
+append exactly one operator-control evidence event 292 through the authenticated
+Quack owner only after re-verifying the unchanged event-291 prefix, historical
+M38 event/evidence authority, live owner, task/goal/plan projection, and the
+typed no-write M39 failure. The target projection remains
+`baguqeera6t2s6prg5atpg4gkgrlmqclu34firbn4z2o3wsgv6btp7p6q66tq`.
+
+The non-authoritative `m40-source-successor-receipt.json` is published last
+and idempotently only after event 292 and the complete projection verify. No
+M39 receipt is reconstructed or published. Partial or mixed M40 declarations
+fail closed, and key presence selects M40 before M39 even when the M40 value is
+null or malformed. M40 does not grant worker self-approval or task completion.
+
+## 48. M38 pre-authoritative custody restart successor
 
 `SAWM-R2-M38` preserves M37 as immutable source history and explicitly
 supersedes its failed, unmaterialized restart attempt. The module-form M37
@@ -2089,7 +2128,7 @@ verification compares canonical inner evidence/event bodies, including
 Quack envelope JSON. M38 is selected before M37 only when its complete
 protected-control triplet and source chain validate.
 
-## 48. Current limitations at seal time
+## 49. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.
