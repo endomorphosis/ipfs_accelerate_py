@@ -9259,6 +9259,43 @@ class PortalImplementationSupervisor:
             # the duration of that scan.
             return SupervisorLoopDecision.keep_running()
 
+        # The managed daemon's local ``PortalTaskState`` is an execution
+        # projection, not the authoritative DuckDB/Quack claim population.
+        # A provider invoked through the nested database portal can hold a
+        # current fenced claim while the outer state file is idle.  Even an
+        # authenticated idle database snapshot cannot authorize quiescence:
+        # its owner-mutation lock is released before this routine watchdog
+        # could kill the child, so a new claim could start in that gap.  Defer
+        # routine maintenance for every configured Quack portal, including
+        # active, idle, inconclusive, and malformed projections.  The shared
+        # process/log-heartbeat watchdog remains the authority for a genuinely
+        # stale or stalled child, without creating an unknown provider outcome.
+        database_projection = self._database_portal_reload_projection()
+        database_program = self.config.database_program
+        database_portal_configured = bool(
+            database_program is not None
+            and database_program.authority_mode == "quack"
+            and database_program.task_source_kind == "duckdb"
+        )
+        if database_portal_configured:
+            detail = {
+                "supervisor_maintenance_deferred": True,
+                "supervisor_maintenance_deferred_reason": (
+                    "database_portal_routine_maintenance_deferred"
+                ),
+                "database_portal_projection_reason": str(
+                    database_projection.get("reason") or ""
+                ),
+                "database_portal_reload_projection": database_projection,
+            }
+            self._last_supervisor_maintenance_at = now_monotonic
+            self._set_loop_status_fields(_loop, detail)
+            self._record_event(
+                "supervisor_maintenance_deferred_for_database_portal",
+                detail,
+            )
+            return SupervisorLoopDecision.keep_running()
+
         self._last_supervisor_maintenance_at = now_monotonic
         daemon_pid = int(getattr(_child, "pid", 0) or 0) or None
         update_maintenance_phase, finish_maintenance = self._begin_supervisor_maintenance_heartbeat(

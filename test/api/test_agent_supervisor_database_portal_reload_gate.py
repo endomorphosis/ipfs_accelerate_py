@@ -29,6 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     CONTROL_PLANE_RELOAD_DEFERRED_UNSEALED_STATUS,
     CONTROL_PLANE_RELOAD_STATUS,
+    DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA,
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
 )
@@ -137,6 +138,47 @@ def _idle_projection() -> dict[str, object]:
     }
 
 
+def _authenticated_watchdog_projection(*, active: bool) -> dict[str, object]:
+    projection = {
+        "schema": DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA,
+        "applicable": True,
+        "authority_available": True,
+        "integrity_verified": True,
+        "error_type": "",
+        "quack_owner": _owner_binding(41),
+    }
+    projection.update(_idle_projection())
+    projection.update(
+        {
+            "activity_detected": active,
+            "defer_reload": active,
+            "defer_maintenance": active,
+            "reason": (
+                "database_portal_claim_or_recovery_saga"
+                if active
+                else "database_portal_population_idle"
+            ),
+            "task_ids": ["PCTDD-034"] if active else [],
+            "nonterminal_attempt_count": 1 if active else 0,
+        }
+    )
+    return projection
+
+
+def _inconclusive_watchdog_projection() -> dict[str, object]:
+    return {
+        "schema": DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA,
+        "applicable": True,
+        "authority_available": False,
+        "integrity_verified": False,
+        "activity_detected": False,
+        "defer_reload": True,
+        "defer_maintenance": True,
+        "reason": "database_portal_projection_inconclusive",
+        "error_type": "RuntimeError",
+    }
+
+
 @pytest.mark.parametrize(
     ("claim_appears", "sealed_dispatch"),
     [(False, False), (True, True), (True, False)],
@@ -220,13 +262,127 @@ def test_source_reload_quiesces_before_post_idle_claim_recheck(
         assert decision.status == CONTROL_PLANE_RELOAD_STATUS
 
 
-@pytest.mark.parametrize("maintenance_blocked", [False, True])
-def test_watchdog_maintenance_quiesces_child_before_mutating(
+@pytest.mark.parametrize(
+    ("projection", "projection_reason"),
+    [
+        (
+            _authenticated_watchdog_projection(active=True),
+            "database_portal_claim_or_recovery_saga",
+        ),
+        (
+            _inconclusive_watchdog_projection(),
+            "database_portal_projection_inconclusive",
+        ),
+        (
+            _authenticated_watchdog_projection(active=False),
+            "database_portal_population_idle",
+        ),
+        (
+            {
+                "applicable": True,
+                "activity_detected": "unknown",
+                "reason": "malformed_projection",
+            },
+            "malformed_projection",
+        ),
+    ],
+    ids=(
+        "authenticated-active",
+        "inconclusive-fail-closed",
+        "authenticated-idle-race-closed",
+        "malformed-applicable-fail-closed",
+    ),
+)
+def test_watchdog_defers_before_quiescence_for_database_portal(
     tmp_path,
     monkeypatch,
-    maintenance_blocked,
+    projection,
+    projection_reason,
 ):
     config = _config(tmp_path)
+    PortalTaskState().save(config.state_path)
+    supervisor = PortalImplementationSupervisor(config)
+    supervisor._last_supervisor_maintenance_at = 0.0
+    events: list[tuple[str, object]] = []
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        lambda: {"control_plane_update_pending": False},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection",
+        lambda: (
+            events.append(("projection", None))
+            or projection
+        ),
+    )
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda name, detail: events.append((name, detail)),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: pytest.fail(
+            "routine maintenance must not quiesce a configured Quack child"
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: pytest.fail(
+            "deferred maintenance must not start a maintenance heartbeat"
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda *_args, **_kwargs: pytest.fail(
+            "deferred maintenance must not run"
+        ),
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=987654),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert [name for name, _detail in events] == [
+        "projection",
+        "supervisor_maintenance_deferred_for_database_portal",
+    ]
+    assert loop.config.status_extra_fields[
+        "supervisor_maintenance_deferred"
+    ] is True
+    assert loop.config.status_extra_fields[
+        "supervisor_maintenance_deferred_reason"
+    ] == "database_portal_routine_maintenance_deferred"
+    assert loop.config.status_extra_fields[
+        "database_portal_projection_reason"
+    ] == projection_reason
+    assert loop.config.status_extra_fields[
+        "database_portal_reload_projection"
+    ] == projection
+    assert supervisor._last_supervisor_maintenance_at > 0.0
+
+
+def test_non_quack_watchdog_maintenance_quiesces_child_before_mutating(
+    tmp_path,
+    monkeypatch,
+):
+    config = replace(_config(tmp_path), database_program=None)
     PortalTaskState().save(config.state_path)
     supervisor = PortalImplementationSupervisor(config)
     supervisor._last_supervisor_maintenance_at = 0.0
@@ -248,6 +404,15 @@ def test_watchdog_maintenance_quiesces_child_before_mutating(
     )
     monkeypatch.setattr(
         supervisor,
+        "_database_portal_reload_projection",
+        lambda: events.append("projection") or {
+            "schema": DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA,
+            "applicable": False,
+            "reason": "database_portal_authority_not_configured",
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
         "_quiesce_supervised_child_for_control_gate",
         lambda *_args, **_kwargs: (
             events.append("quiesce")
@@ -256,13 +421,13 @@ def test_watchdog_maintenance_quiesces_child_before_mutating(
     )
 
     def maintenance(_update, **kwargs):
-        assert events == ["quiesce"]
+        assert events == ["projection", "quiesce"]
         assert kwargs == {"managed_daemon_launch_lock_held": True}
         events.append("maintenance")
         return {
             "stuck": False,
-            "maintenance_blocked": maintenance_blocked,
-            "reason": "quack_projection_inconclusive" if maintenance_blocked else "",
+            "maintenance_blocked": False,
+            "reason": "",
             "main_checkout_repair": {"repaired": False},
         }
 
@@ -284,19 +449,10 @@ def test_watchdog_maintenance_quiesces_child_before_mutating(
         {},
     )
 
-    assert events == ["quiesce", "maintenance"]
+    assert events == ["projection", "quiesce", "maintenance"]
     assert decision.action == "recycle"
-    assert decision.reason == (
-        "supervisor_maintenance_deferred_after_quiescence"
-        if maintenance_blocked
-        else "supervisor_maintenance_completed_after_quiescence"
-    )
-    assert finished == [
-        (
-            "deferred" if maintenance_blocked else "completed",
-            "quack_projection_inconclusive" if maintenance_blocked else "",
-        )
-    ]
+    assert decision.reason == "supervisor_maintenance_completed_after_quiescence"
+    assert finished == [("completed", "")]
 
 
 @pytest.mark.parametrize(
