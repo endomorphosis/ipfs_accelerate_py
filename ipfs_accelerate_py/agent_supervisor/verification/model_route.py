@@ -236,7 +236,6 @@ CAP_MULTI_FILE_SYNTHESIS: Final[str] = "multi_file_synthesis"
 CAP_FRONTIER_REASONING: Final[str] = "frontier_reasoning"
 CAP_HUMAN_JUDGMENT: Final[str] = "human_judgment"
 
-
 class ModelRouteError(VerificationContractError):
     """Fail-closed error while selecting a provider-neutral model route."""
 
@@ -540,6 +539,8 @@ class ModelRoutePolicy:
                 name,
                 _nonneg_int(getattr(self, name), field_name=name),
             )
+        if self.schema != MODEL_ROUTE_POLICY_SCHEMA:
+            raise ModelRoutePolicyError("model route policy has unsupported schema")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -981,6 +982,20 @@ def _tier_available(
     if tier is ModelRoute.HUMAN_REVIEW_REQUIRED:
         return True
     for item in inventory:
+        # The capability tiers encode execution placement as well as scale:
+        # small is local-only, medium may be local or remote, and frontier is
+        # remote-only.  A larger or differently placed available capability
+        # must never satisfy the smaller tier's requirement.
+        if (
+            tier is ModelRoute.SMALL_LOCAL_MODEL
+            and item.locality is not CapabilityLocality.LOCAL
+        ):
+            continue
+        if (
+            tier is ModelRoute.FRONTIER_MODEL
+            and item.locality is not CapabilityLocality.REMOTE
+        ):
+            continue
         if (
             item.available
             and item.capability_tier is tier
@@ -1657,7 +1672,7 @@ def default_inventory(
             AvailableModelCapability(
                 capability_tier=ModelRoute.FRONTIER_MODEL,
                 context_limit_tokens=context_limit_tokens,
-                locality=CapabilityLocality.ANY,
+                locality=CapabilityLocality.REMOTE,
                 available=True,
             )
         )
