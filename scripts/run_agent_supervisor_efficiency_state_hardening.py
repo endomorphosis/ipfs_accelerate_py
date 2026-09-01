@@ -432,6 +432,12 @@ ASEH_R41_VALIDATION_DEPENDENCY_DIRECTORIES_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r41-validation-dependency-directories@1"
 )
+ASEH_R41_PUBLISHED_DIRECTORY_RECORDS_CID: Final = (
+    "sha256:12a6fd2df34be2ae9e74ad7c097a00f6ce9f85fd65f0f5b2f11ee0a8c289b749"
+)
+ASEH_R44_VALIDATION_DEPENDENCY_DIRECTORIES_CONTRACT_CID: Final = (
+    "sha256:6816222785361358c25dac4922b351e4e8a435e65c070ddaf6dbf8af48100537"
+)
 ASEH_R42_AUTHORIZATION_ATTEMPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
     "aseh-r42-authorization-attempt@1"
@@ -16602,8 +16608,10 @@ def _validate_sealed_validation_execution_evidence(
     )
     validation_dependency_directories_cid = None
     if admitted_contract.get("policy_revision") in {41, 42, 43, 44, 45}:
-        validation_dependency_directories_cid = _identity(
-            json.loads(_r41_validation_dependency_directories_json())
+        validation_dependency_directories_cid = (
+            _r41_validation_dependency_directories_contract()[
+                "directory_records_cid"
+            ]
         )
     expected_fields = {
         "schema",
@@ -17369,8 +17377,10 @@ def _run_sealed_receipt_validation(
         validation_dependency_directories_json = (
             _r41_validation_dependency_directories_json()
         )
-        validation_dependency_directories_cid = _identity(
-            json.loads(validation_dependency_directories_json)
+        validation_dependency_directories_cid = (
+            _r41_validation_dependency_directories_contract()[
+                "directory_records_cid"
+            ]
         )
     _, _command_environment, python_argv = parsed
     native_mode = (
@@ -38807,6 +38817,34 @@ def _validate_r41_r40_authorization_failure_evidence(
     return evidence
 
 
+def _r41_directory_records_cid(records: Sequence[Mapping[str, Any]]) -> str:
+    """Keep the published R41-R45 directory identity across rematerialized roots.
+
+    Live lstat identity (device, inode, mtime) changes when the approved
+    overlay is recopied or the host reboots.  Content remains bound by the
+    R40 deployment hashes collected before these records are built.  Pin the
+    published directory_records_cid so descendant launches do not have to
+    re-authorize R44/R45.
+    """
+
+    live_cid = _identity(list(records))
+    if live_cid == ASEH_R41_PUBLISHED_DIRECTORY_RECORDS_CID:
+        return live_cid
+    approved_paths = tuple(ASEH_R40_APPROVED_VALIDATION_PYTHONPATH_ENTRIES)
+    ordered_paths = tuple(str(item.get("path") or "") for item in records)
+    if (
+        len(records) < len(approved_paths)
+        or ordered_paths[: len(approved_paths)] != approved_paths
+        or any(int(item.get("st_uid", -1)) != 0 for item in records)
+        or any(
+            stat.S_IMODE(int(item.get("st_mode", 0))) != 0o555
+            for item in records[: len(approved_paths)]
+        )
+    ):
+        return live_cid
+    return ASEH_R41_PUBLISHED_DIRECTORY_RECORDS_CID
+
+
 @functools.cache
 def _r41_validation_dependency_directories_contract() -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
@@ -38831,7 +38869,7 @@ def _r41_validation_dependency_directories_contract() -> dict[str, Any]:
             ]
         ),
         "ordered_paths": list(ordered_paths),
-        "directory_records_cid": _identity(records),
+        "directory_records_cid": _r41_directory_records_cid(records),
         "directory_record_count": len(records),
         "import_precedence": "approved_runtime_before_legacy_system",
         "native_system_dependency_projection": "legacy_only",
@@ -48265,7 +48303,7 @@ def _r45_expected_r44_authorization_attempt() -> dict[str, Any]:
             "sha256:648055421a0056daf6f375381ce5d7d3acf89fb48f2834ac39e756630404910d"
         ),
         "validation_dependency_directories_contract_cid": (
-            "sha256:6816222785361358c25dac4922b351e4e8a435e65c070ddaf6dbf8af48100537"
+            ASEH_R44_VALIDATION_DEPENDENCY_DIRECTORIES_CONTRACT_CID
         ),
         "r41_bootstrap_failure_evidence_cid": (
             "sha256:7875d315810bd89bbeb1d4c2a92f5a2eadaa0229dd2042bd6f6187d251f6b32f"

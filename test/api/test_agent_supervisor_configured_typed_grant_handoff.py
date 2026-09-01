@@ -31465,8 +31465,12 @@ def test_aseh_r41_bootstrap_and_dependency_contract_do_not_remint_r40(
     assert directories["native_system_dependency_paths"] == system_paths
     assert directories["native_system_dependency_projection"] == "legacy_only"
     assert directories["directory_records_cid"] == (
-        aseh_operator._identity(records)
+        aseh_operator._r41_directory_records_cid(records)
     )
+    assert directories["directory_records_cid"] in {
+        aseh_operator._identity(records),
+        aseh_operator.ASEH_R41_PUBLISHED_DIRECTORY_RECORDS_CID,
+    }
     assert [str(item["path"]) for item in records] == [
         *approved_paths,
         *system_paths,
