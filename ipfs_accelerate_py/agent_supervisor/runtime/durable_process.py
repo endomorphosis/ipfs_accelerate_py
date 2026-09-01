@@ -262,6 +262,61 @@ def launch_systemd_user_service(
     )
 
 
+def inspect_systemd_user_service(
+    unit_name: str,
+    *,
+    systemctl_path: Optional[str] = None,
+    runner: _Runner = subprocess.run,
+    timeout_seconds: float = 5.0,
+) -> dict:
+    """Return the current systemd-user identity of one unit.
+
+    A missing unit is a normal inactive result, not an exception.  The
+    receipt never includes command argv or environment values.
+    """
+
+    if timeout_seconds <= 0:
+        raise DurableProcessError("inspect timeout must be positive")
+    service_unit = _normalize_unit_name(unit_name)
+    systemctl = _resolve_tool("systemctl", systemctl_path)
+    inspected = _run(
+        runner,
+        [
+            systemctl,
+            "--user",
+            "show",
+            "--no-pager",
+            "--property=LoadState",
+            "--property=ActiveState",
+            "--property=SubState",
+            "--property=MainPID",
+            "--property=Result",
+        ]
+        + [service_unit],
+        timeout_seconds=timeout_seconds,
+    )
+    properties = (
+        _service_properties(inspected.stdout) if inspected.returncode == 0 else {}
+    )
+    try:
+        pid = int(properties.get("MainPID", "0"))
+    except ValueError:
+        pid = 0
+    load_state = properties.get("LoadState", "not-found")
+    active_state = properties.get("ActiveState", "inactive")
+    return {
+        "backend": "systemd-user",
+        "unit_name": service_unit,
+        "load_state": load_state,
+        "active_state": active_state,
+        "sub_state": properties.get("SubState", ""),
+        "pid": pid,
+        "result": properties.get("Result", ""),
+        "exists": load_state not in {"", "not-found", "masked"},
+        "running": active_state == "active" and pid > 0,
+    }
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     """Build the durable-launch command-line parser."""
 

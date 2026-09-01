@@ -6,6 +6,7 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.durable_process import (
     DurableProcessError,
+    inspect_systemd_user_service,
     launch_systemd_user_service,
     main,
 )
@@ -210,3 +211,60 @@ def test_cli_passes_only_named_environment_and_strips_separator(
     assert captured["command"] == ["/bin/echo", "--literal"]
     assert captured["environment"] == {"SELECTED_ENV": "selected value"}
     assert '"pid": 99' in capsys.readouterr().out
+
+
+def test_inspect_systemd_user_service_reports_running_identity() -> None:
+    def runner(command, **kwargs):
+        del kwargs
+        assert command[1:3] == ["--user", "show"]
+        assert "--property=LoadState" in command
+        assert command[-1] == "sawm-quack.service"
+        return _completed(
+            stdout=(
+                "LoadState=loaded\n"
+                "ActiveState=active\n"
+                "SubState=running\n"
+                "MainPID=99\n"
+                "Result=success\n"
+            )
+        )
+
+    inspected = inspect_systemd_user_service(
+        "sawm-quack",
+        systemctl_path="/usr/bin/systemctl",
+        runner=runner,
+    )
+    assert inspected == {
+        "backend": "systemd-user",
+        "unit_name": "sawm-quack.service",
+        "load_state": "loaded",
+        "active_state": "active",
+        "sub_state": "running",
+        "pid": 99,
+        "result": "success",
+        "exists": True,
+        "running": True,
+    }
+
+
+def test_inspect_missing_systemd_user_service_is_not_running() -> None:
+    def runner(command, **kwargs):
+        del kwargs
+        return _completed(
+            stdout=(
+                "LoadState=not-found\n"
+                "ActiveState=inactive\n"
+                "SubState=dead\n"
+                "MainPID=0\n"
+                "Result=\n"
+            )
+        )
+
+    inspected = inspect_systemd_user_service(
+        "missing-owner",
+        systemctl_path="/usr/bin/systemctl",
+        runner=runner,
+    )
+    assert inspected["exists"] is False
+    assert inspected["running"] is False
+    assert inspected["pid"] == 0

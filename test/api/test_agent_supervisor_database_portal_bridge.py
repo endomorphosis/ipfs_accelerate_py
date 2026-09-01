@@ -3304,6 +3304,8 @@ def _write_fake_user_manager_process(
     process_group: int,
     session: int,
     command: bytes,
+    start_time_ticks: int = 424_242,
+    cgroup: bytes | None = None,
 ) -> Path:
     process = proc_root / str(pid)
     process.mkdir()
@@ -3318,12 +3320,13 @@ def _write_fake_user_manager_process(
         encoding="ascii",
     )
     (process / "cmdline").write_bytes(command)
-    (process / "cgroup").write_text(
-        (
+    (process / "cgroup").write_bytes(
+        cgroup
+        if cgroup is not None
+        else (
             f"0::/user.slice/user-{uid}.slice/"
             f"user@{uid}.service/init.scope\n"
-        ),
-        encoding="ascii",
+        ).encode("ascii"),
     )
     stat_fields = [
         "S",
@@ -3331,7 +3334,7 @@ def _write_fake_user_manager_process(
         str(process_group),
         str(session),
         *("0" for _ in range(15)),
-        "424242",
+        str(start_time_ticks),
     ]
     (process / "stat").write_text(
         f"{pid} {comm} {' '.join(stat_fields)}\n",
@@ -3339,6 +3342,53 @@ def _write_fake_user_manager_process(
     )
     (process / "cwd").symlink_to("/")
     return process
+
+
+_CURRENT_TEST_BOOT_ID = "11111111-2222-3333-4444-555555555555"
+_PRIOR_TEST_BOOT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+
+def _write_fake_proc_boot_id(proc_root: Path, boot_id: str) -> Path:
+    boot_path = proc_root / "sys" / "kernel" / "random" / "boot_id"
+    boot_path.parent.mkdir(parents=True, exist_ok=True)
+    boot_path.write_text(f"{boot_id}\n", encoding="ascii")
+    return boot_path
+
+
+def _write_fake_arbitrary_process(
+    proc_root: Path,
+    *,
+    pid: int = 424_300,
+    parent_pid: int = 1,
+    start_time_ticks: int = 400,
+    command: bytes = b"python3\0worker.py\0",
+    cgroup: bytes = b"0::/user.slice/user-1000.slice/session.scope\n",
+) -> Path:
+    return _write_fake_user_manager_process(
+        proc_root,
+        pid=pid,
+        name="python3",
+        comm="(python3)",
+        parent_pid=parent_pid,
+        process_group=pid,
+        session=pid,
+        command=command,
+        start_time_ticks=start_time_ticks,
+        cgroup=cgroup,
+    )
+
+
+def _prior_process_owner(
+    *,
+    boot_id: str = _CURRENT_TEST_BOOT_ID,
+    start_time_ticks: int = 500,
+) -> ProcessBirthIdentity:
+    return ProcessBirthIdentity(
+        pid=999_999,
+        start_time_ticks=start_time_ticks,
+        boot_id=boot_id,
+        parent_pid=1,
+    )
 
 
 @pytest.mark.parametrize("denied_errno", [errno.EACCES, errno.EPERM])
@@ -3565,6 +3615,318 @@ def test_process_scan_keeps_arbitrary_unreadable_process_fail_closed(
         DatabasePortalExecutionBridge._strict_workspace_process_scan(
             SimpleNamespace(proc_root=proc_root),
             workspace,
+        )
+
+
+@pytest.mark.parametrize("denied_errno", [errno.EACCES, errno.EPERM])
+def test_process_scan_admits_unreadable_process_from_different_boot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    denied_errno: int,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_fake_proc_boot_id(proc_root, _CURRENT_TEST_BOOT_ID)
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    process = _write_fake_arbitrary_process(
+        proc_root,
+        start_time_ticks=700,
+    )
+    original_readlink = os.readlink
+
+    def deny_process_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == process / "cwd":
+            raise PermissionError(denied_errno, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_process_cwd)
+
+    result = DatabasePortalExecutionBridge._strict_workspace_process_scan(
+        SimpleNamespace(proc_root=proc_root),
+        workspace,
+        prior_owner=_prior_process_owner(boot_id=_PRIOR_TEST_BOOT_ID),
+    )
+
+    assert result == {"same_uid_processes_inspected": 1}
+
+
+def test_process_scan_admits_unreadable_same_boot_process_older_than_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_fake_proc_boot_id(proc_root, _CURRENT_TEST_BOOT_ID)
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    process = _write_fake_arbitrary_process(
+        proc_root,
+        start_time_ticks=499,
+    )
+    original_readlink = os.readlink
+
+    def deny_process_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == process / "cwd":
+            raise PermissionError(errno.EACCES, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_process_cwd)
+
+    result = DatabasePortalExecutionBridge._strict_workspace_process_scan(
+        SimpleNamespace(proc_root=proc_root),
+        workspace,
+        prior_owner=_prior_process_owner(start_time_ticks=500),
+    )
+
+    assert result == {"same_uid_processes_inspected": 1}
+
+
+@pytest.mark.parametrize("process_birth_tick", [500, 501])
+def test_process_scan_rejects_unreadable_same_boot_equal_or_newer_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    process_birth_tick: int,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_fake_proc_boot_id(proc_root, _CURRENT_TEST_BOOT_ID)
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    process = _write_fake_arbitrary_process(
+        proc_root,
+        start_time_ticks=process_birth_tick,
+    )
+    original_readlink = os.readlink
+
+    def deny_process_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == process / "cwd":
+            raise PermissionError(errno.EACCES, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_process_cwd)
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_process_inventory_unavailable",
+    ):
+        DatabasePortalExecutionBridge._strict_workspace_process_scan(
+            SimpleNamespace(proc_root=proc_root),
+            workspace,
+            prior_owner=_prior_process_owner(start_time_ticks=500),
+        )
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    [
+        "pid",
+        "uid",
+        "parent",
+        "stat",
+        "boot",
+        "prior_boot",
+        "missing_boot",
+        "missing_status",
+    ],
+)
+def test_process_scan_rejects_malformed_unreadable_process_lineage_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    malformation: str,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    if malformation != "missing_boot":
+        _write_fake_proc_boot_id(
+            proc_root,
+            "not-a-boot-id" if malformation == "boot" else _CURRENT_TEST_BOOT_ID,
+        )
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    process = _write_fake_arbitrary_process(
+        proc_root,
+        parent_pid=7,
+        start_time_ticks=400,
+    )
+    status_path = process / "status"
+    status_payload = status_path.read_text(encoding="ascii")
+    if malformation == "pid":
+        status_path.write_text(
+            status_payload.replace("Pid:\t424300\n", "Pid:\t424301\n"),
+            encoding="ascii",
+        )
+    elif malformation == "uid":
+        uid = os.geteuid()
+        status_path.write_text(
+            status_payload.replace(
+                f"Uid:\t{uid}\t{uid}\t{uid}\t{uid}\n",
+                f"Uid:\t{uid}\t{uid}\t{uid}\t{uid + 1}\n",
+            ),
+            encoding="ascii",
+        )
+    elif malformation == "parent":
+        status_path.write_text(
+            status_payload.replace("PPid:\t7\n", "PPid:\t8\n"),
+            encoding="ascii",
+        )
+    elif malformation == "stat":
+        (process / "stat").write_bytes(b"malformed\n")
+    elif malformation == "missing_status":
+        status_path.unlink()
+    original_readlink = os.readlink
+
+    def deny_process_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == process / "cwd":
+            raise PermissionError(errno.EACCES, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_process_cwd)
+    owner = _prior_process_owner(
+        boot_id=(
+            "not-a-prior-boot"
+            if malformation == "prior_boot"
+            else _CURRENT_TEST_BOOT_ID
+        ),
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_process_inventory_unavailable",
+    ):
+        DatabasePortalExecutionBridge._strict_workspace_process_scan(
+            SimpleNamespace(proc_root=proc_root),
+            workspace,
+            prior_owner=owner,
+        )
+
+
+@pytest.mark.parametrize("unstable_record", ["boot", "stat"])
+def test_process_scan_rejects_changing_unreadable_process_lineage_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unstable_record: str,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    boot_path = _write_fake_proc_boot_id(proc_root, _CURRENT_TEST_BOOT_ID)
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    process = _write_fake_arbitrary_process(
+        proc_root,
+        start_time_ticks=400,
+    )
+    original_readlink = os.readlink
+    original_bounded_read = DatabasePortalExecutionBridge._bounded_proc_file
+    read_count = 0
+
+    def deny_process_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == process / "cwd":
+            raise PermissionError(errno.EACCES, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    def changing_bounded_read(path: Path, *, limit: int) -> bytes:
+        nonlocal read_count
+        payload = original_bounded_read(path, limit=limit)
+        target = boot_path if unstable_record == "boot" else process / "stat"
+        if path == target:
+            read_count += 1
+            if read_count == 2:
+                return payload + b"changed"
+        return payload
+
+    monkeypatch.setattr(os, "readlink", deny_process_cwd)
+    monkeypatch.setattr(
+        DatabasePortalExecutionBridge,
+        "_exact_user_manager_process",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        DatabasePortalExecutionBridge,
+        "_bounded_proc_file",
+        changing_bounded_read,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_process_inventory_unavailable",
+    ):
+        DatabasePortalExecutionBridge._strict_workspace_process_scan(
+            SimpleNamespace(proc_root=proc_root),
+            workspace,
+            prior_owner=_prior_process_owner(),
+        )
+
+
+@pytest.mark.parametrize("workspace_record", ["cmdline", "cgroup"])
+def test_process_scan_rejects_workspace_reference_in_unreadable_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    workspace_record: str,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_fake_proc_boot_id(proc_root, _CURRENT_TEST_BOOT_ID)
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    workspace_bytes = str(workspace).encode("utf-8")
+    process = _write_fake_arbitrary_process(
+        proc_root,
+        start_time_ticks=400,
+        command=(
+            b"python3\0" + workspace_bytes + b"/worker.py\0"
+            if workspace_record == "cmdline"
+            else b"python3\0worker.py\0"
+        ),
+        cgroup=(
+            b"0::/worker/" + workspace_bytes + b"\n"
+            if workspace_record == "cgroup"
+            else b"0::/worker.scope\n"
+        ),
+    )
+    original_readlink = os.readlink
+
+    def deny_process_cwd(path: object, *args: object, **kwargs: object) -> str:
+        if Path(path) == process / "cwd":
+            raise PermissionError(errno.EACCES, "procfs cwd denied", str(path))
+        return original_readlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "readlink", deny_process_cwd)
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_process_inventory_unavailable",
+    ):
+        DatabasePortalExecutionBridge._strict_workspace_process_scan(
+            SimpleNamespace(proc_root=proc_root),
+            workspace,
+            prior_owner=_prior_process_owner(),
+        )
+
+
+def test_process_scan_readable_workspace_remains_active_with_prior_owner(
+    tmp_path: Path,
+) -> None:
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+    _write_fake_proc_boot_id(proc_root, _CURRENT_TEST_BOOT_ID)
+    workspace = tmp_path / "worktree"
+    workspace.mkdir()
+    process = _write_fake_arbitrary_process(
+        proc_root,
+        start_time_ticks=400,
+    )
+    (process / "cwd").unlink()
+    (process / "cwd").symlink_to(workspace)
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_worktree_process_active",
+    ):
+        DatabasePortalExecutionBridge._strict_workspace_process_scan(
+            SimpleNamespace(proc_root=proc_root),
+            workspace,
+            prior_owner=_prior_process_owner(),
         )
 
 
@@ -3800,13 +4162,20 @@ def test_bridge_ignores_unrelated_process_count_changes_between_scans(
     bridge, attempt, store, workspace, portals = (
         _cross_attempt_recovery_fixture(tmp_path, protected_marker=True)
     )
+    prior_record = store.load_workspace(workspace)
+    assert prior_record is not None
     inspected = 2
+    observed_owners: list[ProcessBirthIdentity] = []
 
     def changing_process_inventory(
         _store: object,
         _workspace: Path,
+        *,
+        prior_owner: ProcessBirthIdentity | None = None,
     ) -> dict[str, int]:
         nonlocal inspected
+        assert prior_owner is not None
+        observed_owners.append(prior_owner)
         inspected += 1
         return {"same_uid_processes_inspected": inspected}
 
@@ -3828,6 +4197,8 @@ def test_bridge_ignores_unrelated_process_count_changes_between_scans(
     assert len(tuple(
         prior_root.glob("cross-attempt-protected-state-retirement-*.json")
     )) == 1
+    assert len(observed_owners) >= 2
+    assert set(observed_owners) == {prior_record.owner}
     assert portals and portals[0].run_count == 1
 
 

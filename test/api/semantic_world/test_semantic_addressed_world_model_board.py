@@ -2631,13 +2631,124 @@ def test_quack_custody_blocker_main_output_is_typed_and_credential_free(
         ),
     )
 
-    assert operator.main(["--config", "unused.json", "quack-start"]) == 2
+    assert operator.main(
+        ["--config", "unused.json", "quack-start", "--foreground"]
+    ) == 2
     rendered = capsys.readouterr().out
     payload = json.loads(rendered)
     assert payload["schema"] == "sawm/quack-startup-capability-blocker@1"
     assert payload["reason_code"] == "inotify_watch_quota_exhausted"
     assert payload["authoritative_database_opened"] is False
     assert secret not in rendered
+
+
+def test_durable_operator_environment_excludes_quack_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_durable_env_test",
+    )
+    monkeypatch.setenv("PYTHONPATH", "/tmp/other")
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("SAWM_QUACK_TOKEN", "must-not-cross")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "must-not-cross")
+    environment = operator._durable_operator_environment()
+    assert environment["PYTHONPATH"].split(os.pathsep)[0] == str(operator.REPO_ROOT)
+    assert "PATH" in environment
+    assert "SAWM_QUACK_TOKEN" not in environment
+    assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in environment
+    assert "must-not-cross" not in json.dumps(environment)
+
+
+def test_durable_quack_start_reuses_live_owner_without_new_generation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_durable_reuse_test",
+    )
+    identity = {
+        "server_id": "server:reuse",
+        "generation": 35,
+        "secret_handle": "env://SAWM_QUACK_TOKEN",
+    }
+    monkeypatch.setattr(
+        operator,
+        "_existing_ready_quack_status",
+        lambda _config: {"identity": identity, "lifecycle": "ready"},
+    )
+
+    def refuse_launch(*_args, **_kwargs):
+        raise AssertionError("live owner must not start a new generation")
+
+    monkeypatch.setattr(operator, "_launch_durable_operator_service", refuse_launch)
+    assert (
+        operator._run_durable_quack_start({"quack_owner": {}}, operator.CONFIG_PATH)
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["identity"]["generation"] == 35
+    assert payload["readiness"]["reused"] is True
+    assert payload["durable"]["reused"] is True
+
+
+def test_durable_operator_launch_never_forwards_token_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_durable_launch_test",
+    )
+    captured: dict[str, object] = {}
+
+    class FakeLaunch:
+        def to_dict(self) -> dict[str, object]:
+            return {
+                "backend": "systemd-user",
+                "unit_name": "sawm-scheduler.service",
+                "pid": 4242,
+            }
+
+    def fake_inspect(_unit_name: str):
+        return {"running": False, "pid": 0}
+
+    def fake_launch(command, **kwargs):
+        captured["command"] = list(command)
+        captured["environment"] = dict(kwargs.get("environment") or {})
+        captured["unit_name"] = kwargs["unit_name"]
+        return FakeLaunch()
+
+    monkeypatch.setenv("SAWM_QUACK_TOKEN", "must-not-cross")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "must-not-cross")
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.durable_process."
+        "inspect_systemd_user_service",
+        fake_inspect,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.runtime.durable_process."
+        "launch_systemd_user_service",
+        fake_launch,
+    )
+    config = {
+        "database_program": {"store_id": "data/control.duckdb"},
+        "quack_owner": {"state_dir": "data/quack-owner"},
+    }
+    result = operator._run_durable_operator_launch(
+        config,
+        operator.CONFIG_PATH,
+        duration_seconds=float("inf"),
+    )
+    assert result == 0
+    assert captured["command"][-2:] == ["launch", "--foreground"]
+    environment = captured["environment"]
+    assert isinstance(environment, dict)
+    assert "SAWM_QUACK_TOKEN" not in environment
+    assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in environment
+    assert "must-not-cross" not in json.dumps(environment)
+    assert "--setenv" not in " ".join(str(item) for item in captured["command"])
 
 
 def test_quack_start_closes_native_fd_when_owner_fails(

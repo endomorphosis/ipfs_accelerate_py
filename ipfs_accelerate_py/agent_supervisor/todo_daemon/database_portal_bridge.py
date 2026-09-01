@@ -2377,6 +2377,8 @@ class DatabasePortalExecutionBridge:
     def _strict_workspace_process_scan(
         lifecycle_store: Any,
         workspace: Path,
+        *,
+        prior_owner: Any | None = None,
     ) -> dict[str, Any]:
         """Fail closed while checking same-UID process argv and cwd via procfs."""
 
@@ -2422,17 +2424,32 @@ class DatabasePortalExecutionBridge:
                     raw_cwd = ""
                 elif (
                     exc.errno in {errno.EACCES, errno.EPERM}
-                    and DatabasePortalExecutionBridge._exact_user_manager_process(
-                        proc_root,
-                        entry,
-                        workspace_bytes=workspace_bytes,
+                    and (
+                        DatabasePortalExecutionBridge._exact_user_manager_process(
+                            proc_root,
+                            entry,
+                            workspace_bytes=workspace_bytes,
+                        )
+                        or (
+                            DatabasePortalExecutionBridge
+                            ._process_proven_outside_prior_owner_lineage(
+                                proc_root,
+                                entry,
+                                workspace_bytes=workspace_bytes,
+                                prior_owner=prior_owner,
+                            )
+                        )
                     )
                 ):
                     # A normal systemd user manager and its sd-pam child live
                     # in the user's init.scope.  Hardened procfs commonly
                     # denies their cwd links even to the same UID.  Admit only
-                    # those two exact, stable identities; every other
-                    # unreadable process remains a fail-closed deferral.
+                    # those two exact, stable identities.  An arbitrary
+                    # unreadable process is admitted only when stable procfs
+                    # evidence proves that it predates the exact prior owner
+                    # (or belongs to a different boot) and therefore cannot
+                    # be in that owner's process lineage.  Every inconclusive
+                    # process remains a fail-closed deferral.
                     continue
                 else:
                     raise DatabasePortalBridgeDeferred(
@@ -2556,6 +2573,211 @@ class DatabasePortalExecutionBridge:
             )
         except (ValueError, IndexError):
             return None
+
+    @staticmethod
+    def _canonical_proc_boot_id(payload: bytes) -> str | None:
+        """Return one canonical Linux boot UUID from a bounded procfs read."""
+
+        try:
+            value = payload.decode("ascii")
+        except UnicodeDecodeError:
+            return None
+        if value.endswith("\n"):
+            value = value[:-1]
+        if re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
+            r"[0-9a-f]{4}-[0-9a-f]{12}",
+            value,
+        ) is None:
+            return None
+        return value
+
+    @staticmethod
+    def _arbitrary_proc_stat_identity(
+        payload: bytes,
+        *,
+        expected_pid: int,
+    ) -> tuple[int, int] | None:
+        """Return PPID and birth tick from a stable arbitrary process stat."""
+
+        prefix = str(expected_pid).encode("ascii") + b" "
+        if not payload.startswith(prefix):
+            return None
+        close = payload.rfind(b") ")
+        comm = payload[len(prefix) : close + 1]
+        if close < len(prefix) + 1 or not comm.startswith(b"("):
+            return None
+        fields = payload[close + 2 :].split()
+        # Remaining fields start at Linux proc stat field 3 (state); starttime
+        # is field 22 and therefore index 19 in this suffix.
+        if len(fields) <= 19 or len(fields[0]) != 1:
+            return None
+        try:
+            parent_pid = int(fields[1])
+            birth_tick = int(fields[19])
+        except (ValueError, IndexError):
+            return None
+        if parent_pid < 0 or birth_tick <= 0:
+            return None
+        return parent_pid, birth_tick
+
+    @staticmethod
+    def _process_proven_outside_prior_owner_lineage(
+        proc_root: Path,
+        entry: Path,
+        *,
+        workspace_bytes: bytes,
+        prior_owner: Any | None,
+    ) -> bool:
+        """Prove an unreadable-cwd process cannot descend from ``prior_owner``.
+
+        This is intentionally a one-way proof.  It admits only a stable
+        process identity from a different boot, or a process on the same boot
+        whose birth tick is strictly older than the prior lifecycle owner.
+        Missing, malformed, changing, equal, and newer identities all retain
+        the caller's fail-closed behavior.
+        """
+
+        if prior_owner is None or not entry.name.isdigit():
+            return False
+        try:
+            owner_pid = prior_owner.pid
+            owner_birth_tick = prior_owner.start_time_ticks
+            owner_boot_id = prior_owner.boot_id
+            owner_parent_pid = prior_owner.parent_pid
+        except AttributeError:
+            return False
+        if (
+            type(owner_pid) is not int
+            or owner_pid <= 0
+            or type(owner_birth_tick) is not int
+            or owner_birth_tick <= 0
+            or type(owner_boot_id) is not str
+            or DatabasePortalExecutionBridge._canonical_proc_boot_id(
+                owner_boot_id.encode("ascii", errors="ignore")
+            )
+            != owner_boot_id
+            or type(owner_parent_pid) is not int
+            or owner_parent_pid < 0
+        ):
+            return False
+        try:
+            pid = int(entry.name)
+        except ValueError:
+            return False
+        if pid <= 0:
+            return False
+
+        boot_path = proc_root / "sys" / "kernel" / "random" / "boot_id"
+        uid = os.geteuid()
+        try:
+            first_entry = entry.lstat()
+            first_boot = DatabasePortalExecutionBridge._bounded_proc_file(
+                boot_path,
+                limit=128,
+            )
+            first_stat = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "stat",
+                limit=16 * 1024,
+            )
+            first_status = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "status",
+                limit=64 * 1024,
+            )
+            first_command = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "cmdline",
+                limit=1024 * 1024,
+            )
+            first_cgroup = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "cgroup",
+                limit=64 * 1024,
+            )
+            second_command = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "cmdline",
+                limit=1024 * 1024,
+            )
+            second_cgroup = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "cgroup",
+                limit=64 * 1024,
+            )
+            second_status = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "status",
+                limit=64 * 1024,
+            )
+            second_stat = DatabasePortalExecutionBridge._bounded_proc_file(
+                entry / "stat",
+                limit=16 * 1024,
+            )
+            second_boot = DatabasePortalExecutionBridge._bounded_proc_file(
+                boot_path,
+                limit=128,
+            )
+            second_entry = entry.lstat()
+        except (OSError, ValueError):
+            return False
+
+        entry_identity = (
+            first_entry.st_dev,
+            first_entry.st_ino,
+            first_entry.st_mode,
+            first_entry.st_uid,
+        )
+        if (
+            entry_identity
+            != (
+                second_entry.st_dev,
+                second_entry.st_ino,
+                second_entry.st_mode,
+                second_entry.st_uid,
+            )
+            or not stat.S_ISDIR(first_entry.st_mode)
+            or first_entry.st_uid != uid
+            or first_boot != second_boot
+            or first_stat != second_stat
+            or first_status != second_status
+            or first_command != second_command
+            or first_cgroup != second_cgroup
+            or workspace_bytes in first_command
+            or workspace_bytes in first_cgroup
+        ):
+            return False
+
+        current_boot_id = (
+            DatabasePortalExecutionBridge._canonical_proc_boot_id(first_boot)
+        )
+        stat_identity = (
+            DatabasePortalExecutionBridge._arbitrary_proc_stat_identity(
+                first_stat,
+                expected_pid=pid,
+            )
+        )
+        status_fields = DatabasePortalExecutionBridge._proc_status_fields(
+            first_status
+        )
+        if current_boot_id is None or stat_identity is None or status_fields is None:
+            return False
+        try:
+            status_pid = int(status_fields[b"Pid"])
+            status_parent = int(status_fields[b"PPid"])
+            status_uids = tuple(
+                int(value) for value in status_fields[b"Uid"].split()
+            )
+        except (ValueError, KeyError):
+            return False
+        if (
+            not status_fields[b"Name"]
+            or b"\0" in status_fields[b"Name"]
+            or status_pid != pid
+            or status_parent < 0
+            or status_parent != stat_identity[0]
+            or status_uids != (uid, uid, uid, uid)
+        ):
+            return False
+
+        return bool(
+            current_boot_id != owner_boot_id
+            or stat_identity[1] < owner_birth_tick
+        )
 
     @staticmethod
     def _exact_user_manager_process(
@@ -4658,6 +4880,7 @@ class DatabasePortalExecutionBridge:
         second_process = self._strict_workspace_process_scan(
             daemon.worktree_lifecycle,
             workspace,
+            prior_owner=record.owner,
         )
         second_container = self._strict_workspace_container_scan(workspace)
         second_marker, second_raw, second_identity = (
@@ -5303,6 +5526,7 @@ class DatabasePortalExecutionBridge:
         process_inventory = self._strict_workspace_process_scan(
             daemon.worktree_lifecycle,
             workspace,
+            prior_owner=record.owner,
         )
         container_inventory = self._strict_workspace_container_scan(workspace)
 
