@@ -91,6 +91,33 @@ _M45_TARGET_EVENT_WATERMARK = _M44_TARGET_EVENT_WATERMARK
 _M45_PRIOR_PROJECTION_CID = _M44_PRIOR_PROJECTION_CID
 _M45_TARGET_PROJECTION_CID = _M44_TARGET_PROJECTION_CID
 _M45_TARGET_QUACK_PORT = _M44_TARGET_QUACK_PORT
+_M46_SUCCESSOR_KEY = "legacy_no_delta_rescue_recovery_successor_materialization"
+_M46_MIGRATION_REVISION = "SAWM-R2-M46"
+_M46_AUTHORITY_CID = (
+    "sha256:47ed315018541ef5c4c759c1c486cae2a411821ed4e9902877b08439b79b4455"
+)
+_M46_AUTHORITY_SIZE = 19_365
+_M46_M45_AUTHORITY_CID = _M45_AUTHORITY_CID
+_M46_STORE_ID = _M45_STORE_ID
+_M46_COORDINATION_STORE_ID = _M45_COORDINATION_STORE_ID
+_M46_WORKTREE_ROOT = _M45_WORKTREE_ROOT
+_M46_PRIOR_GENERATION = _M45_GENERATION
+_M46_GENERATION = 33
+_M46_TARGET_PLAN_REVISION = _M45_TARGET_PLAN_REVISION
+_M46_PRIOR_EVENT_WATERMARK = _M45_TARGET_EVENT_WATERMARK
+_M46_TARGET_EVENT_WATERMARK = 303
+_M46_PRIOR_PROJECTION_CID = _M45_TARGET_PROJECTION_CID
+_M46_TARGET_PROJECTION_CID = (
+    "baguqeera3gwgex35vb2k2c2u2vq5qq6d65immvntj3nl2fqfzjpts6jvrfta"
+)
+_M46_TARGET_QUACK_PORT = _M45_TARGET_QUACK_PORT
+_M46_M45_RECEIPT_CID = (
+    "sha256:46508d2540469d9cbc3ab0cc5220db0bf0cf0cb3cfdce6eed2ff8c8f4da71a97"
+)
+_M46_M45_RECEIPT_SHA256 = (
+    "61a1b31a062c798b6ef3c94808f32755b263261e799ae20740c65eb96be747d0"
+)
+_M46_M45_RECEIPT_SIZE = 9_308
 _M43_SUCCESSOR_KEY = (
     "dead_attempt_lifecycle_recovery_restart_successor_materialization"
 )
@@ -1316,6 +1343,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m46_key = _M46_SUCCESSOR_KEY
     m45_key = _M45_SUCCESSOR_KEY
     m44_key = _M44_SUCCESSOR_KEY
     m43_key = _M43_SUCCESSOR_KEY
@@ -1355,6 +1383,152 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m46_key in config:
+        authority = config.get(m46_key)
+        try:
+            materializer = _materializer()
+            expected = (
+                materializer
+                ._expected_m46_legacy_no_delta_rescue_recovery_successor_authority()
+            )
+            reference = materializer._m46_authority_reference()
+            contract = materializer._validated_m46_live_preflight_contract(expected)
+        except Exception as exc:
+            raise OperatorError(
+                "active M46 legacy no-delta rescue recovery successor "
+                "authority is unavailable"
+            ) from exc
+        binding = expected.get("runtime_binding")
+        prior = expected.get("prior_authority")
+        stopped = expected.get("stopped_owner")
+        artifacts = expected.get("stopped_prestart_artifacts")
+        receipt = expected.get("preserved_m45_receipt")
+        preserved = expected.get("preserved_m45_materialization")
+        repair = expected.get("accepted_legacy_no_delta_rescue_repair")
+        target = expected.get("target_authority")
+        changes = expected.get("exact_changes")
+        preservation = expected.get("preservation")
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        configured_cid = str(materializer._M46_AUTHORITY_CID)
+        target_root = str(Path(_M46_STORE_ID).parent)
+        if (
+            not isinstance(authority, Mapping)
+            or dict(authority) != dict(reference)
+            or configured_cid.endswith("PENDING_M46_FINAL_CONTROL_AUTHORITY_CID")
+            or reference.get("authority_cid") != configured_cid
+            or configured_cid != _M46_AUTHORITY_CID
+            or materializer._identity(expected) != configured_cid
+            or len(materializer._canonical(expected)) != _M46_AUTHORITY_SIZE
+            or expected.get("schema")
+            != "sawm/legacy-no-delta-rescue-recovery-authorization@1"
+            or expected.get("migration_revision") != _M46_MIGRATION_REVISION
+            or expected.get("migration_kind") != _M46_SUCCESSOR_KEY
+            or expected.get("authorized") is not True
+            or expected.get("authority") != "operator_control_plane"
+            or not isinstance(binding, Mapping)
+            or binding.get("store_id") != _M46_STORE_ID
+            or binding.get("coordination_store_id")
+            != _M46_COORDINATION_STORE_ID
+            or int(binding.get("store_generation") or 0) != _M46_GENERATION
+            or int(binding.get("prior_event_watermark") or 0)
+            != _M46_PRIOR_EVENT_WATERMARK
+            or int(binding.get("target_event_watermark") or 0)
+            != _M46_TARGET_EVENT_WATERMARK
+            or not isinstance(prior, Mapping)
+            or int(prior.get("event_watermark") or 0)
+            != _M46_PRIOR_EVENT_WATERMARK
+            or prior.get("projection_cid") != _M46_PRIOR_PROJECTION_CID
+            or not isinstance(stopped, Mapping)
+            or stopped.get("status") != "stopped"
+            or int(stopped.get("generation") or 0) != _M46_PRIOR_GENERATION
+            or int(stopped.get("target_generation") or 0) != _M46_GENERATION
+            or not isinstance(artifacts, Mapping)
+            or artifacts.get("owner_marker_absent") is not True
+            or artifacts.get("stop_control_absent") is not True
+            or artifacts.get("token_handoff_absent") is not True
+            or artifacts.get("control_wal_absent") is not True
+            or artifacts.get("coordination_wal_absent") is not True
+            or artifacts.get("m46_receipt_absent") is not True
+            or artifacts.get("m44_receipt_absent") is not True
+            or not isinstance(receipt, Mapping)
+            or receipt.get("receipt_cid") != _M46_M45_RECEIPT_CID
+            or receipt.get("sha256") != _M46_M45_RECEIPT_SHA256
+            or receipt.get("size") != _M46_M45_RECEIPT_SIZE
+            or receipt.get("created_or_rewritten") is not False
+            or not isinstance(preserved, Mapping)
+            or preserved.get("authority_cid") != _M46_M45_AUTHORITY_CID
+            or preserved.get("receipt_cid") != _M46_M45_RECEIPT_CID
+            or preserved.get("m44_receipt_absent") is not True
+            or not isinstance(repair, Mapping)
+            or repair.get("repair_parent")
+            != "5408e29ba1067c1282589818d175d930aeade1de"
+            or repair.get("repair_commit")
+            != "e666d239ba37738da9830497be50c8b0737271fc"
+            or repair.get("repair_tree")
+            != "6bc26fda6ab6a0b1b27a17b561e6fdea04dce928"
+            or repair.get("status_empty_or_nested_gitlink_only_required")
+            is not True
+            or repair.get("attestation_metadata_validated_exactly") is not True
+            or repair.get("authority_weakened") is not False
+            or not isinstance(target, Mapping)
+            or int(target.get("event_watermark") or 0)
+            != _M46_TARGET_EVENT_WATERMARK
+            or target.get("projection_cid") != _M46_TARGET_PROJECTION_CID
+            or not isinstance(changes, Mapping)
+            or int(changes.get("event_suffix_length") or 0) != 1
+            or int(changes.get("store_generation_row_changes") or 0) != 1
+            or int(changes.get("state_server_row_changes") or 0) != 1
+            or int(changes.get("task_status_changes") or 0) != 0
+            or int(changes.get("task_revision_changes") or 0) != 0
+            or int(changes.get("accepted_completion_changes") or 0) != 0
+            or changes.get("worker_self_approval") is not False
+            or not isinstance(preservation, Mapping)
+            or preservation.get("generation_32_preserved_stopped") is not True
+            or preservation.get("m45_authority_preserved_exactly") is not True
+            or preservation.get("m45_receipt_preserved_exactly") is not True
+            or preservation.get("m44_receipt_remains_absent") is not True
+            or preservation.get("event_302_preserved_exactly") is not True
+            or preservation.get("coordination_store_bytes_preserved_exactly")
+            is not True
+            or preservation.get("worker_self_approval") is not False
+            or contract.get("migration_revision") != _M46_MIGRATION_REVISION
+            or int(contract.get("prior_generation") or 0)
+            != _M46_PRIOR_GENERATION
+            or int(contract.get("target_generation") or 0) != _M46_GENERATION
+            or int(contract.get("prior_event_watermark") or 0)
+            != _M46_PRIOR_EVENT_WATERMARK
+            or int(contract.get("target_event_watermark") or 0)
+            != _M46_TARGET_EVENT_WATERMARK
+            or contract.get("prior_projection_cid")
+            != _M46_PRIOR_PROJECTION_CID
+            or contract.get("target_projection_cid")
+            != _M46_TARGET_PROJECTION_CID
+            or contract.get("m45_receipt_must_be_preserved") is not True
+            or contract.get("m44_receipt_must_remain_absent") is not True
+            or not isinstance(program, Mapping)
+            or program.get("store_id") != _M46_STORE_ID
+            or program.get("store_generation") != str(_M46_GENERATION)
+            or program.get("worktree_root") != _M46_WORKTREE_ROOT
+            or not isinstance(owner, Mapping)
+            or owner.get("database_path") != _M46_STORE_ID
+            or owner.get("store_id") != _M46_STORE_ID
+            or owner.get("port") != _M46_TARGET_QUACK_PORT
+            or config.get("runtime_paths")
+            != {
+                "root": target_root,
+                "state": f"{target_root}/state",
+                "worktrees": _M46_WORKTREE_ROOT,
+                "merge_queue": f"{target_root}/merge-queue",
+                "logs": f"{target_root}/logs",
+                "generated_runtime_artifacts_are_completion_authority": False,
+            }
+        ):
+            raise OperatorError(
+                "active M46 legacy no-delta rescue recovery successor "
+                "authority is invalid"
+            )
+        return MappingProxyType(expected)
     if m45_key in config:
         authority = config.get(m45_key)
         try:
@@ -4210,6 +4384,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            _M46_SUCCESSOR_KEY,
             _M45_SUCCESSOR_KEY,
             _M44_SUCCESSOR_KEY,
             _M43_SUCCESSOR_KEY,
@@ -6600,6 +6775,83 @@ def _require_m18_final_pair_marker(
             raise OperatorError(
                 "M18 materializer check differs from its final pair marker"
             )
+    return MappingProxyType(dict(observed))
+
+
+def _require_m46_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M46's receipt while retaining M45's exact receipt."""
+
+    key = _M46_SUCCESSOR_KEY
+    if key not in config:
+        return MappingProxyType({})
+    expected_authority = (
+        materializer
+        ._expected_m46_legacy_no_delta_rescue_recovery_successor_authority()
+    )
+    expected_reference = materializer._m46_authority_reference()
+    configured_cid = str(materializer._M46_AUTHORITY_CID)
+    if (
+        dict(authority) != expected_authority
+        or config.get(key) != expected_reference
+        or configured_cid.endswith("PENDING_M46_FINAL_CONTROL_AUTHORITY_CID")
+        or configured_cid != _M46_AUTHORITY_CID
+        or expected_reference.get("authority_cid") != configured_cid
+        or materializer._identity(expected_authority) != configured_cid
+    ):
+        raise OperatorError("M46 legacy no-delta rescue recovery authority differs")
+    materializer._validated_m46_live_preflight_contract(expected_authority)
+    if checked is None:
+        raise OperatorError("M46 marker requires exact live materializer verification")
+    root = (REPO_ROOT / _M46_STORE_ID).resolve().parent
+    path = root / "m46-source-successor-receipt.json"
+    m45_path = root / "m45-source-successor-receipt.json"
+    if not os.path.lexists(m45_path):
+        raise OperatorError("M46 preserved M45 receipt is unavailable")
+    if os.path.lexists(root / "m44-source-successor-receipt.json"):
+        raise OperatorError("M46 historical M44 receipt unexpectedly exists")
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            path, root=REPO_ROOT, noun="M46 source successor receipt"
+        )
+    except Exception as exc:
+        raise OperatorError("M46 exact source successor receipt is unavailable") from exc
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    reported_receipt = checked.get("m46_source_successor_receipt")
+    if not isinstance(reported_receipt, Mapping):
+        reported_receipt = checked.get("receipt")
+    if (
+        claimed != materializer._identity(unhashed)
+        or not isinstance(reported_receipt, Mapping)
+        or dict(reported_receipt) != observed
+        or checked.get("valid") is not True
+        or int(checked.get("event_watermark") or 0)
+        != _M46_TARGET_EVENT_WATERMARK
+        or checked.get("projection_cid") != _M46_TARGET_PROJECTION_CID
+        or observed.get("migration_revision") != _M46_MIGRATION_REVISION
+        or int(observed.get("target_generation") or 0) != _M46_GENERATION
+        or int(observed.get("prior_event_watermark") or 0)
+        != _M46_PRIOR_EVENT_WATERMARK
+        or int(observed.get("target_event_watermark") or 0)
+        != _M46_TARGET_EVENT_WATERMARK
+        or observed.get("prior_projection_cid") != _M46_PRIOR_PROJECTION_CID
+        or observed.get("projection_cid") != _M46_TARGET_PROJECTION_CID
+        or observed.get(f"{key}_cid") != configured_cid
+        or observed.get("prior_m45_receipt_cid") != _M46_M45_RECEIPT_CID
+        or observed.get("m45_receipt_preserved_exactly") is not True
+        or observed.get("m44_receipt_absent") is not True
+        or observed.get("accepted_completion_changes") != 0
+        or observed.get("worker_self_approval") is not False
+        or not os.path.lexists(m45_path)
+        or os.path.lexists(root / "m44-source-successor-receipt.json")
+    ):
+        raise OperatorError("M46 exact source successor receipt differs")
     return MappingProxyType(dict(observed))
 
 
@@ -11906,6 +12158,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if _M46_SUCCESSOR_KEY in config:
+        return _require_m46_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if _M45_SUCCESSOR_KEY in config:
         return _require_m45_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -12103,6 +12359,11 @@ def _recover_stale_quack(config: Mapping[str, Any]) -> Mapping[str, Any]:
     ):
         raise OperatorError("stale Quack recovery store binding differs")
     active = _active_source_repair_materialization(config)
+    if active.get("migration_revision") == _M46_MIGRATION_REVISION:
+        raise OperatorError(
+            "M46 binds a cleanly stopped generation-32 owner; use the sealed "
+            "generation-33 quack-start path instead of stale-owner recovery"
+        )
     if active.get("migration_revision") == _M45_MIGRATION_REVISION:
         raise OperatorError(
             "M45 binds a cleanly stopped generation-31 owner; use the sealed "
@@ -13092,6 +13353,47 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
+    if _M46_SUCCESSOR_KEY in config:
+        active_materialization = _active_source_repair_materialization(config)
+        try:
+            admitted = materializer._check_m46_prestart_admission(
+                REPO_ROOT, config
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "M46 stopped generation-32 restart is not admissible"
+            ) from exc
+        if (
+            admitted.get("valid") is not True
+            or admitted.get("action")
+            != "admitted_stopped_generation_32_restart_to_generation_33"
+            or admitted.get("database_path")
+            != str((REPO_ROOT / _M46_STORE_ID).resolve())
+            or admitted.get("coordination_path")
+            != str((REPO_ROOT / _M46_COORDINATION_STORE_ID).resolve())
+            or admitted.get("prior_generation") != _M46_PRIOR_GENERATION
+            or admitted.get("target_generation") != _M46_GENERATION
+            or admitted.get("prior_event_watermark")
+            != _M46_PRIOR_EVENT_WATERMARK
+            or admitted.get("prior_projection_cid")
+            != _M46_PRIOR_PROJECTION_CID
+            or admitted.get("m45_receipt_preserved_exactly") is not True
+            or admitted.get("m44_receipt_absent") is not True
+            or admitted.get("m45_event_302_preserved_exactly") is not True
+            or admitted.get("stopped_owner_bytes_verified") is not True
+            or admitted.get("coordination_store_bytes_preserved_exactly")
+            is not True
+            or admitted.get("prestart_authorization_consumed") is not False
+        ):
+            raise OperatorError("M46 prestart admission report differs")
+        return MappingProxyType(
+            {
+                "dependency_valid": True,
+                "board_valid": True,
+                "prior_authority": active_materialization,
+                "store": admitted,
+            }
+        )
     if _M45_SUCCESSOR_KEY in config:
         active_materialization = _active_source_repair_materialization(config)
         try:
@@ -14114,6 +14416,56 @@ def _m23_portal_completion_is_compatible(
         is False
         and operational_validation_revision.get("worker_self_approval") is False
     )
+
+
+def _verify_m46_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M46's unchanged task heads at event 303/generation 33."""
+
+    materializer._validated_m46_live_preflight_contract(authority)
+    head = materializer._inspect_m46_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M46_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M46_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M46_TARGET_PROJECTION_CID
+        or head.get("projection_cid") != expected_projection_cid
+    ):
+        raise materializer.MigrationRequired("M46 live head projection differs")
+    expected_heads = authority.get("expected_task_heads")
+    if not isinstance(expected_heads, Mapping):
+        raise materializer.MigrationRequired("M46 expected task heads are missing")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        task_cid = str(expected["task_cid"])
+        observed = source.get_task(task_cid)
+        expected_head = expected_heads.get(alias)
+        if (
+            observed is None
+            or not isinstance(expected_head, Mapping)
+            or observed.status != expected_head.get("status")
+            or int(observed.revision) != int(expected_head.get("revision") or 0)
+        ):
+            raise materializer.MigrationRequired(f"M46 task head differs: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
 
 
 def _verify_m45_live_head_task_projection(
@@ -16137,6 +16489,18 @@ def _normalized_live_preflight_contract(
     """Resolve one closed preflight view without shape-dependent aliases."""
 
     revision = str(active_source_repair.get("migration_revision") or "")
+    if revision == _M46_MIGRATION_REVISION:
+        try:
+            return materializer._validated_m46_live_preflight_contract(
+                active_source_repair
+            )
+        except (
+            materializer.MigrationRequired,
+            materializer.MaterializationError,
+        ) as exc:
+            raise OperatorError(
+                f"M46 normalized preflight contract differs: {exc}"
+            ) from exc
     if revision == _M45_MIGRATION_REVISION:
         try:
             return materializer._validated_m45_live_preflight_contract(
@@ -16386,6 +16750,7 @@ def _live_preflight(
         }
     )
     active_revision = str(active_source_repair.get("migration_revision") or "")
+    m46_active = active_revision == _M46_MIGRATION_REVISION
     m45_active = active_revision == _M45_MIGRATION_REVISION
     m44_active = active_revision == _M44_MIGRATION_REVISION
     m43_active = active_revision == _M43_MIGRATION_REVISION
@@ -16416,6 +16781,7 @@ def _live_preflight(
     m18_active = active_revision == "SAWM-R2-M18"
     evidence_only_post_m27 = any(
         (
+            m46_active,
             m45_active,
             m44_active,
             m43_active,
@@ -16438,6 +16804,7 @@ def _live_preflight(
     )
     deferred_live_evidence_marker = any(
         (
+            m46_active,
             m45_active,
             m44_active,
             m43_active,
@@ -16479,6 +16846,11 @@ def _live_preflight(
     discovery = discover_live_quack_endpoint(store)
     expected_uri = str(config["database_program"]["quack_endpoint"])
     if not discovery.uri or discovery.uri != expected_uri or not discovery.token:
+        if m46_active:
+            raise OperatorError(
+                "M46 exact live generation-33 owner is unavailable; run the "
+                "sealed offline quack-start admission first"
+            )
         if m45_active:
             raise OperatorError(
                 "M45 exact live generation-32 owner is unavailable; run the "
@@ -16544,6 +16916,10 @@ def _live_preflight(
         or live_identity.get("listen_uri") != expected_uri
         or remote_identity.get("listen_uri") != expected_uri
     ):
+        if m46_active:
+            raise OperatorError(
+                "M46 exact live generation-33 owner binding differs"
+            )
         if m45_active:
             raise OperatorError(
                 "M45 exact live generation-32 owner binding differs"
@@ -16608,7 +16984,44 @@ def _live_preflight(
     # explicit boundary rather than a MappingProxyType implementation detail.
     receipt_authority = dict(active_source_repair)
     try:
-        if m45_active:
+        if m46_active:
+            try:
+                m46_verified = materializer._verify_m46_live_materialization(
+                    live,
+                    live_identity,
+                    population,
+                    config,
+                    active_source_repair,
+                    validation_digest,
+                )
+                expected_m46_receipt = (
+                    materializer._expected_m46_source_successor_receipt(
+                        population,
+                        receipt_authority,
+                        validation_digest,
+                        m46_verified,
+                    )
+                )
+                final_pair_marker = _require_active_final_pair_marker(
+                    config,
+                    active_source_repair,
+                    materializer,
+                    checked={
+                        "valid": True,
+                        "receipt": expected_m46_receipt,
+                        "m46_source_successor_receipt": expected_m46_receipt,
+                        **m46_verified,
+                    },
+                )
+            except (
+                materializer.MigrationRequired,
+                materializer.MaterializationError,
+            ) as exc:
+                raise OperatorError(
+                    "M46 exact legacy no-delta rescue recovery successor "
+                    f"verification failed: {exc}"
+                ) from exc
+        elif m45_active:
             try:
                 m44_execution_authority = (
                     materializer
@@ -17257,7 +17670,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if _M45_SUCCESSOR_KEY in config:
+            if _M46_SUCCESSOR_KEY in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m46_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif _M45_SUCCESSOR_KEY in config:
                 statuses, _revisions, _receipts = (
                     _verify_m45_live_head_task_projection(
                         live,
@@ -17862,7 +18285,40 @@ def _live_preflight(
         "direct_authoritative_file_opened": False,
         "statuses": statuses,
     }
-    if m45_active and final_pair_marker:
+    if m46_active and final_pair_marker:
+        store_report.update(
+            {
+                "coordination_path": str(
+                    (REPO_ROOT / _M46_COORDINATION_STORE_ID).resolve()
+                ),
+                "materialization_receipt_cid": _M46_M45_RECEIPT_CID,
+                "final_pair_commit_marker_verified": False,
+                "source_successor_receipt_cid": str(
+                    final_pair_marker["receipt_cid"]
+                ),
+                "source_successor_receipt_verified": (
+                    final_pair_marker.get(
+                        "receipt_is_evidence_source_seal_marker"
+                    )
+                    is True
+                ),
+                "source_successor_chain": dict(
+                    final_pair_marker.get("source_chain") or {}
+                ),
+                "m46_authority_cid": _M46_AUTHORITY_CID,
+                "m46_event_id": str(
+                    final_pair_marker.get("migration_evidence_event_id") or ""
+                ),
+                "m46_evidence_id": str(
+                    final_pair_marker.get("migration_evidence_id") or ""
+                ),
+                "m46_source_successor_receipt": dict(final_pair_marker),
+                "m45_receipt_preserved_exactly": (
+                    final_pair_marker.get("m45_receipt_preserved_exactly") is True
+                ),
+            }
+        )
+    elif m45_active and final_pair_marker:
         store_report.update(
             {
                 "coordination_path": str(

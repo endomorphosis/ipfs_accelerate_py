@@ -2520,7 +2520,72 @@ full live verification. M45 grants no direct DuckDB writer, task/goal/plan or
 completion change, provider invocation, effect claim, merge attempt,
 coordination semantic change, validation weakening, or worker self-approval.
 
-## 54. Current limitations at seal time
+## 54. M46 legacy no-delta rescue recovery successor
+
+`SAWM-R2-M46` preserves M45's accepted generation-32/event-302
+materialization and `m45-source-successor-receipt.json` byte-for-byte. It
+authorizes only the bounded supervisor recovery repair needed for legacy
+`rescue/worktree/*` branches whose outer tree is unchanged and whose dirty
+state is confined to declared nested gitlink outputs. The lifecycle bridge
+may attest that legacy shape only after exact attempt authority, checkout
+lease, process/container quiescence, original/rescue ref and tree agreement,
+an empty index, and nested-gitlink-only porcelain validation. Root-source,
+staged, ambiguous, active, or concurrently moved state continues to fail
+closed. The attestation is single-parent, hook-free, signing-free, bounded by
+a timeout, proposal-only, and grants no merge or completion authority.
+
+The accepted repair is commit
+`e666d239ba37738da9830497be50c8b0737271fc`, tree
+`6bc26fda6ab6a0b1b27a17b561e6fdea04dce928`, a direct child of M45 final
+control commit `5408e29ba1067c1282589818d175d930aeade1de`. Its exact four mode-`100644`
+paths and blobs are:
+
+```text
+ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py       274b5a6f0dbcab4ae58e806ceec28fea168d4f87
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py    df4c2679e87ba0b6aa33143e62d2892c07282929
+test/api/test_agent_supervisor_database_portal_bridge.py                         13c454af282400a3c70dc415abb6aacfef03c620
+test/api/test_agent_supervisor_reconciliation_auto_unblock.py                    bb9c70e43c77352c58607f0f8e116637a64e0014
+```
+
+The binary diff over exactly those paths has SHA-256
+`4610655e8bacc63c38c00e79475e3c715e78c5a74c02f06d47ef2dec99a56669`.
+The bridge suite passes 98 of 98 tests. The reconciliation file passes all 11
+current cases relevant to this repair; three historical tests fail identically
+at the clean M45 baseline and therefore are recorded as pre-existing stale
+test debt rather than evidence against or permission to broaden this repair.
+
+Generation 32 was cleanly stopped before sealing. Its immutable predecessor
+bytes are control store SHA-256
+`31151cbe8d4e86881805408c0a665264952ef4035a90b2477571f6107e5f30d0`
+(43,790,336 bytes), coordination store SHA-256
+`808f12c38cfcd0563ee99fff6203ccc1e7f8b78435e9bf6de24371ef00538c10`
+(17,313,792 bytes), and stopped-status SHA-256
+`77ed8e95bf8e30232ee289f9ea8445a9ff0a86b2f117fa5fee859837aec8e75b`
+(2,409 bytes). The stopped database row binds server
+`server:ae330703-96f3-44d6-b280-5fbe750a4e49`, process birth
+`birth:251d433c6e0362efe74da41a27de6b49`, start
+`2026-09-01T12:59:09Z`, stop `2026-09-01T13:50:18Z`, startup epoch
+`1788267549`, database UUID `c6b5c6a1-eaaa-4c09-b401-6ee7998602b4`, and
+generation/fence/credential generation 32. Owner marker, stop control, token
+handoff, and both WALs are absent.
+
+M46 seals exactly one nine-control child of the repair, excluding that child's
+commit, tree, and blobs from its canonical body to avoid recursive identity.
+Its canonical authority CID is
+`sha256:47ed315018541ef5c4c759c1c486cae2a411821ed4e9902877b08439b79b4455`.
+Presence on any protected
+surface selects M46 newest-first; partial, pending, malformed, or mismatched
+declarations fail closed without falling back to M45. The only runtime delta
+is the existing authenticated Quack restart from generation 32 to 33 and one
+operator evidence append at event 303. Task, goal, plan, coordination,
+provider, effect, merge, validation, and accepted-completion semantics remain
+unchanged. M45's 9,308-byte receipt (SHA-256
+`61a1b31a062c798b6ef3c94808f32755b263261e799ae20740c65eb96be747d0`,
+CID `sha256:46508d2540469d9cbc3ab0cc5220db0bf0cf0cb3cfdce6eed2ff8c8f4da71a97`)
+must remain exact. `m46-source-successor-receipt.json` is published mode
+`0600` only after authenticated event append and full live verification.
+
+## 55. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.
