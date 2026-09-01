@@ -1238,7 +1238,11 @@ def bind_database_portal_execution_from_args(
             strategy_path=paths.strategy,
             events_path=paths.events,
             repo_root=repo_root,
-            task_header_prefix=parsed.task_prefix,
+            # This is a private one-task projection selected by the durable
+            # database claim.  A successor lane's current scheduler prefix may
+            # exclude a predecessor attempt, but cleanup must still parse the
+            # exact claimed alias without broadening to any sibling task.
+            task_header_prefix=f"## {task_alias}",
             implement=True,
             implementation_command=parsed.implementation_command or None,
             implementation_timeout=parsed.implementation_timeout,

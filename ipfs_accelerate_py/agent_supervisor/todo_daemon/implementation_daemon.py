@@ -504,13 +504,13 @@ AUTHORITY_VALIDATION_CONTAINER_IMAGE_ENV = (
 )
 AUTHORITY_VALIDATION_DOCKER_PATH = Path("/usr/bin/docker")
 AUTHORITY_VALIDATION_DOCKER_SHA256 = (
-    "414d9e16a30060770648522f8ecadef2f2b57b50b8c61d4b0ae9d3b8b64c2a02"
+    "c6a8317bfcc35c90c36b1807897b1c0447bba769cca83d652dfbc1683c2a192d"
 )
 AUTHORITY_VALIDATION_NVIDIA_SMI_PATH = Path("/usr/bin/nvidia-smi")
 AUTHORITY_VALIDATION_NVIDIA_SMI_SHA256 = (
     "934be0af12e24ad46e3deca64234be7493d8f3552461c9956d43fbedd6ff9c67"
 )
-AUTHORITY_VALIDATION_DOCKER_SERVER_IDENTITY = "29.1.3|linux|arm64"
+AUTHORITY_VALIDATION_DOCKER_SERVER_IDENTITY = "29.2.1|linux|arm64"
 AUTHORITY_VALIDATION_GPU_IDENTITY = (
     "GPU-fd94473f-d6ba-bada-c1e2-5a1e9ad037e4, 580.142"
 )
@@ -2287,10 +2287,10 @@ def _configured_agent_implementation_route_plan(
 ) -> AgentImplementationRoutePlan | None:
     """Resolve an attempted sealed route through the canonical router.
 
-    A provider name by itself is the legacy daemon selector and does not
-    attempt the ordered six-field route.  Any ordered-route or authorization
-    metadata still enters the sealed parser and therefore fails closed when
-    incomplete.
+    Provider, model, and reasoning values are also the direct-provider tuning
+    surface and therefore do not by themselves attempt the ordered six-field
+    route.  A fallback-exclusive marker or any authorization metadata enters
+    the sealed parser and therefore fails closed when incomplete.
     """
 
     route_values = {
@@ -2330,9 +2330,8 @@ def _configured_agent_implementation_route_plan(
         "route_id": os.environ.get(_ROUTE_ID_ENV, "").strip(),
     }
     sealed_tuple_attempted = any(
-        value
-        for field, value in route_values.items()
-        if field != "primary_provider_id"
+        route_values[field]
+        for field in ("fallback_provider_id", "fallback_trigger")
     )
     authorization_attempted = any(authorization_values.values())
     if not sealed_tuple_attempted and not authorization_attempted:
@@ -25954,7 +25953,13 @@ class PortalImplementationDaemon:
         )
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
-        if self._board_task_is_completed(task.task_id):
+        authority_revalidation_only = (
+            self._manual_completion_authority_revalidation_only_task(task)
+        )
+        if (
+            self._board_task_is_completed(task.task_id)
+            and not authority_revalidation_only
+        ):
             result = {
                 "skipped": True,
                 "reason": "completed_task_leftover",
@@ -25965,9 +25970,6 @@ class PortalImplementationDaemon:
             }
             self._record_event("implementation_skipped", result)
             return result
-        authority_revalidation_only = (
-            self._manual_completion_authority_revalidation_only_task(task)
-        )
         if (
             self.manual_completion_authority_revalidation_only
             and not authority_revalidation_only
@@ -46989,6 +46991,7 @@ class PortalImplementationDaemon:
         reconciliation_branch_name: str = "",
         record_event: bool = True,
         allow_scope_adjudication: bool = True,
+        consult_typed_local_execution_policy: bool = True,
         diagnostics: dict[str, Any] | None = None,
     ) -> Any:
         """Validate a candidate patch before task validation is dispatched."""
@@ -47102,7 +47105,10 @@ class PortalImplementationDaemon:
         malformed_validation_command = False
         for raw_command in task.validation:
             command = rewrite_validation_command(str(raw_command))
-            if self._task_uses_typed_local_execution(task):
+            if (
+                consult_typed_local_execution_policy
+                and self._task_uses_typed_local_execution(task)
+            ):
                 command, _notes = self._normalize_validation_command(command)
             try:
                 command_argv = tuple(shlex.split(command))
@@ -49325,6 +49331,7 @@ class PortalImplementationDaemon:
         baseline_ref: str,
         validated_result: Mapping[str, Any] | None = None,
         no_change_completion_authority: Mapping[str, str] | None = None,
+        read_only_revalidation: bool = False,
     ) -> dict[str, Any] | None:
         """Validate an unchanged candidate before the empty-patch gate.
 
@@ -49400,42 +49407,25 @@ class PortalImplementationDaemon:
             },
         )
 
-        proposal_diagnostics: dict[str, Any] = {}
-        proposal_validation = self._validate_implementation_patch(
-            workspace_path,
-            task,
-            baseline_ref=baseline_ref,
-            allow_scope_adjudication=False,
-            diagnostics=proposal_diagnostics,
-        )
         empty_fingerprint = self._proposal_candidate_fingerprint(())
-        completion_mode = self._no_change_completion_mode(task)
-        retry_scope = (
-            self._retry_no_change_pre_dispatch_scope(task, state)
-            if state is not None
-            else None
-        )
-        authorized_retry_scope = bool(
-            isinstance(no_change_completion_authority, Mapping)
-            and retry_scope is not None
-            and dict(no_change_completion_authority) == retry_scope
-        )
-        if authorized_retry_scope:
+        proposal_diagnostics: dict[str, Any] = {}
+        if self._manual_completion_authority_revalidation_only_task(task):
+            # Completed-claim renewal proves the existing tree. The empty-patch
+            # proposal gate is an implementation admission check and must not
+            # consult provider metadata or reject reviewed validation commands.
+            proposal_validation = None
             completion_mode = "allowed"
-        no_change_policy_gate = self._no_change_candidate_policy_gate(
-            proposal_validation,
-            candidate_fingerprint=empty_fingerprint,
-            canonical_task_cid=self._canonical_ref(task),
-            expected_output_preflight_id=content_identity(
-                expected_output_preflight
-            ),
-            proposal_diagnostics=proposal_diagnostics,
-            completion_mode=completion_mode,
-        )
-        if authorized_retry_scope:
             no_change_policy_gate = {
-                **no_change_policy_gate,
-                "completion_authority": dict(retry_scope),
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor/"
+                    "no-change-candidate-policy-gate@1"
+                ),
+                "attempted": True,
+                "accepted": True,
+                "reason": "authority_revalidation_existing_tree",
+                "completion_mode": "allowed",
+                "task_id": task.task_id,
+                "canonical_task_cid": self._canonical_ref(task),
             }
             no_change_policy_gate["gate_id"] = content_identity(
                 {
@@ -49444,6 +49434,59 @@ class PortalImplementationDaemon:
                     if key != "gate_id"
                 }
             )
+            proposal_gate = {
+                "attempted": False,
+                "accepted": True,
+                "reason": (
+                    "authority_revalidation_skips_empty_patch_proposal"
+                ),
+            }
+        else:
+            proposal_validation = self._validate_implementation_patch(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+                allow_scope_adjudication=False,
+                consult_typed_local_execution_policy=(
+                    not read_only_revalidation
+                ),
+                diagnostics=proposal_diagnostics,
+            )
+            completion_mode = self._no_change_completion_mode(task)
+            retry_scope = (
+                self._retry_no_change_pre_dispatch_scope(task, state)
+                if state is not None
+                else None
+            )
+            authorized_retry_scope = bool(
+                isinstance(no_change_completion_authority, Mapping)
+                and retry_scope is not None
+                and dict(no_change_completion_authority) == retry_scope
+            )
+            if authorized_retry_scope:
+                completion_mode = "allowed"
+            no_change_policy_gate = self._no_change_candidate_policy_gate(
+                proposal_validation,
+                candidate_fingerprint=empty_fingerprint,
+                canonical_task_cid=self._canonical_ref(task),
+                expected_output_preflight_id=content_identity(
+                    expected_output_preflight
+                ),
+                proposal_diagnostics=proposal_diagnostics,
+                completion_mode=completion_mode,
+            )
+            if authorized_retry_scope:
+                no_change_policy_gate = {
+                    **no_change_policy_gate,
+                    "completion_authority": dict(retry_scope),
+                }
+                no_change_policy_gate["gate_id"] = content_identity(
+                    {
+                        key: value
+                        for key, value in no_change_policy_gate.items()
+                        if key != "gate_id"
+                    }
+                )
         try:
             self._stage_declared_ignored_outputs(workspace_path, task)
             policy_bound_entries, policy_bound_expansions = (
@@ -49491,10 +49534,13 @@ class PortalImplementationDaemon:
             ),
             {"task_id": task.task_id, **no_change_policy_gate},
         )
-        proposal_gate = self._compact_proposal_validation(
-            proposal_validation
-        )
-        proposal_gate["reason"] = "empty_patch_reserved_for_no_change_gate"
+        if proposal_validation is not None:
+            proposal_gate = self._compact_proposal_validation(
+                proposal_validation
+            )
+            proposal_gate["reason"] = (
+                "empty_patch_reserved_for_no_change_gate"
+            )
         if completion_mode != "allowed":
             return {
                 "attempted": False,
@@ -50193,6 +50239,7 @@ class PortalImplementationDaemon:
                         log_path,
                         state=state,
                         baseline_ref=baseline_ref,
+                        read_only_revalidation=True,
                     )
                     validation_result = (
                         clean_result
@@ -89144,6 +89191,22 @@ class DatabaseImplementationDaemon:
                         "terminal phase changed its actual database disposition"
                     )
                 if saga is None:
+                    attempt_position = (
+                        int(attempt.started_at_ms),
+                        attempt.attempt_id,
+                    )
+                    if (
+                        exact_attempt is None
+                        and attempt_position <= cursor
+                    ):
+                        # A row already covered by the durable repair high-water
+                        # previously had to present a coherent saga.  Its later
+                        # absence is corruption, not authority to reconstruct a
+                        # deleted mutable index from still-present receipts.
+                        raise DatabaseImplementationConflictError(
+                            "terminal reconciliation saga disappeared behind "
+                            "the repair high-water"
+                        )
                     saga = (
                         self._restore_database_portal_terminal_reconciliation_barrier(
                             attempt=attempt,

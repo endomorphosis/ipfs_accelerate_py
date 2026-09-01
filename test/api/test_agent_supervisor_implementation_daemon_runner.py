@@ -459,6 +459,26 @@ def test_daemon_partial_sealed_route_metadata_still_fails_closed(
         _configured_agent_implementation_route_plan(tmp_path)
 
 
+def test_direct_codex_model_tuning_does_not_attempt_sealed_route(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "codex",
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL",
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT",
+        "high",
+    )
+
+    assert _configured_agent_implementation_route_plan(tmp_path) is None
+
+
 def test_daemon_links_shared_dependencies_from_configured_source_root(tmp_path: Path, monkeypatch):
     repo_root = tmp_path / "branch-checkout"
     worktree_root = repo_root / "worktrees"

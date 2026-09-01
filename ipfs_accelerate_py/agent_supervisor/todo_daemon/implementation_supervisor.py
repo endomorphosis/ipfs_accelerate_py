@@ -50,6 +50,10 @@ from ..task_sources.board_control_plane import (
     infer_board_namespace,
     isolate_board_runtime,
 )
+from ..control.manual_completion_seal import (
+    ManualCompletionSealError,
+    verify_manual_completion_seal,
+)
 from ..control.plan_execution_store import (
     MAX_PLAN_BOUND_WAVE_TRANSFERS,
     PLAN_BOUND_MERGE_AUTHORIZATION_SCHEMA,
@@ -6759,7 +6763,11 @@ class PortalImplementationSupervisor:
         )
         self.board_control_plane_status = isolated
         resolved_branch = str(isolated.get("implementation_branch") or "").strip()
-        if resolved_branch and not str(self.config.merge_target_branch or "").strip():
+        if (
+            resolved_branch
+            and not self.config.manual_completion_authority_revalidation_only
+            and not str(self.config.merge_target_branch or "").strip()
+        ):
             self.config.merge_target_branch = resolved_branch
 
     @staticmethod
@@ -7896,6 +7904,17 @@ class PortalImplementationSupervisor:
         include_refill: bool = True,
         managed_daemon_launch_lock_held: bool = False,
     ) -> dict[str, Any]:
+        if self.config.manual_completion_authority_revalidation_only:
+            update_maintenance_phase(
+                "manual_completion_authority_revalidation_only"
+            )
+            return {
+                "stuck": False,
+                "maintenance_blocked": False,
+                "reason": "manual_completion_authority_revalidation_only",
+                "manual_completion_authority_revalidation_only": True,
+                "ordinary_provider_dispatch_allowed": False,
+            }
         maintenance_kwargs = {
             "include_refill": include_refill,
             "implementation_maintenance_lease": None,
@@ -14864,7 +14883,7 @@ class PortalImplementationSupervisor:
                 strategy_path=paths.strategy,
                 events_path=paths.events,
                 repo_root=self.config.repo_root,
-                task_header_prefix=self.config.task_prefix,
+                task_header_prefix=f"## {task_alias}",
                 implement=False,
                 implementation_command=self.config.implementation_command,
                 implementation_timeout=self.config.implementation_timeout,
@@ -21025,10 +21044,10 @@ class PortalImplementationSupervisor:
         ]
         if not all(fragment in command_line for fragment in required_fragments):
             return False
-        has_implement_flag = "--implement" in command_line
+        tokens = command_line.split()
+        has_implement_flag = "--implement" in tokens
         if self.config.implement != has_implement_flag:
             return False
-        tokens = command_line.split()
 
         (
             effective_shard_count,
@@ -21071,6 +21090,29 @@ class PortalImplementationSupervisor:
         )
         if option_values("--execution-slice-task-id") != expected_slice_task_ids:
             return False
+        if option_values("--manual-completion-authority-task-id") != set(
+            self.config.manual_completion_authority_task_ids
+        ):
+            return False
+        if option_values(
+            "--manual-completion-authority-required-task-id"
+        ) != set(self.config.manual_completion_authority_required_task_ids):
+            return False
+        expected_authority_epoch_ids = (
+            {self.config.manual_completion_authority_epoch_id}
+            if self.config.manual_completion_authority_epoch_id
+            else set()
+        )
+        if option_values(
+            "--manual-completion-authority-epoch-id"
+        ) != expected_authority_epoch_ids:
+            return False
+        if (
+            "--manual-completion-authority-revalidation-only" in tokens
+        ) != bool(
+            self.config.manual_completion_authority_revalidation_only
+        ):
+            return False
         if option_values("--execution-slice-task-cid") != set(
             self.config.execution_slice_task_cids
         ):
@@ -21108,7 +21150,23 @@ class PortalImplementationSupervisor:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    expanded_argv, scheduler_config_path = (
+        expand_supervisor_scheduler_config_args(
+            sys.argv[1:] if argv is None else argv,
+            repo_root=REPO_ROOT,
+        )
+    )
     parser = argparse.ArgumentParser(description="Supervise the portal implementation backlog daemon")
+    parser.add_argument(
+        "--scheduler-config",
+        type=Path,
+        default=scheduler_config_path,
+        help=(
+            "Sealed scheduler_config@1 JSON profile. Safe profile values become "
+            "defaults; explicit scalar CLI options take precedence. The profile "
+            "never enables implementation, refill, Doctor mutation, or rollout."
+        ),
+    )
     parser.add_argument("--once", action="store_true", help="Run one supervisor check and exit")
     parser.add_argument(
         "--todo-path",
@@ -21231,6 +21289,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--manual-completion-authority-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID governed by operator-sealed manual "
+            "completion. Pending descendants must be freshly revalidated "
+            "after its seal becomes active."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-required-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID whose status cannot be selected or "
+            "accepted as complete until a fresh scheduler load verifies its "
+            "operator seal."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-epoch-id",
+        default="",
+        help=(
+            "Content-addressed identity of the verified manual-completion "
+            "seal and policy set used for descendant revalidation."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-revalidation-only",
+        action="store_true",
+        help=(
+            "Supervise only zero-provider manual-completion authority "
+            "revalidation and suppress ordinary supervisor maintenance, "
+            "refill, merge repair, and implementation dispatch."
+        ),
+    )
+    parser.add_argument(
         "--llm-merge-resolver-command",
         default=os.environ.get("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND", ""),
         help=(
@@ -21272,6 +21367,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=300.0,
         help="Recycle an active implementation attempt after this many seconds without log output; <=0 disables.",
+    )
+    parser.add_argument(
+        "--validation-max-workers",
+        type=int,
+        default=None,
+        help=(
+            "Maximum validation subprocesses used by the managed daemon. "
+            "Defaults to the daemon policy when omitted."
+        ),
     )
     parser.add_argument(
         "--no-ephemeral-worktree",
@@ -21843,7 +21947,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity",
     )
-    return parser.parse_args(argv)
+    parsed = parser.parse_args(expanded_argv)
+    parsed.scheduler_config = scheduler_config_path
+    return parsed
 
 
 def supervisor_config_from_args(
@@ -21901,6 +22007,7 @@ def supervisor_config_from_args(
         implementation_timeout=args.implementation_timeout,
         implementation_max_timeout=args.implementation_max_timeout,
         implementation_log_stall_seconds=args.implementation_log_stall_seconds,
+        validation_max_workers=args.validation_max_workers,
         use_ephemeral_worktree=implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,
@@ -21910,6 +22017,35 @@ def supervisor_config_from_args(
             resolved_implementation_protected_paths,
             repo_root=effective_repo_root,
         ),
+        manual_completion_authority_task_ids=tuple(
+            dict.fromkeys(
+                str(task_id).strip()
+                for task_id in (
+                    args.manual_completion_authority_task_id or ()
+                )
+                if str(task_id).strip()
+            )
+        ),
+        manual_completion_authority_required_task_ids=tuple(
+            dict.fromkeys(
+                str(task_id).strip()
+                for task_id in (
+                    args.manual_completion_authority_required_task_id or ()
+                )
+                if str(task_id).strip()
+            )
+        ),
+        manual_completion_authority_epoch_id=str(
+            getattr(args, "manual_completion_authority_epoch_id", "") or ""
+        ).strip(),
+        manual_completion_authority_revalidation_only=bool(
+            getattr(
+                args,
+                "manual_completion_authority_revalidation_only",
+                False,
+            )
+        ),
+        scheduler_config_path=getattr(args, "scheduler_config", None),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
         worktree_reconciliation_dry_run=args.worktree_reconciliation_dry_run,

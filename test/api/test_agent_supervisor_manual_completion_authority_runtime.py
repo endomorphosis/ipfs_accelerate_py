@@ -251,6 +251,8 @@ def _implementation_revalidation_daemon(
     shard_index: int = 0,
     max_task_attempts: int = 1,
     revalidation_only: bool = False,
+    use_ephemeral_worktree: bool = False,
+    worktree_pool_enabled: bool = True,
 ) -> daemon_module.PortalImplementationDaemon:
     state_dir = tmp_path / f"state-{suffix}"
     return daemon_module.PortalImplementationDaemon(
@@ -261,11 +263,11 @@ def _implementation_revalidation_daemon(
         repo_root=repo,
         task_header_prefix="## TEST-",
         implement=True,
-        use_ephemeral_worktree=False,
+        use_ephemeral_worktree=use_ephemeral_worktree,
         worktree_root=tmp_path / "worktrees",
         merge_queue_dir=tmp_path / "merge-queue",
         validation_cache_dir=tmp_path / "validation-cache",
-        worktree_pool_enabled=True,
+        worktree_pool_enabled=worktree_pool_enabled,
         max_task_attempts=max_task_attempts,
         task_shard_count=shard_count,
         task_shard_index=shard_index,
@@ -2415,9 +2417,19 @@ def test_todo_descendant_remains_on_provider_route(
         descendants=[("TEST-002", "todo", "TEST-001")],
     )
     daemon = _implementation_revalidation_daemon(
-        tmp_path, repo, board, suffix="todo-provider"
+        tmp_path,
+        repo,
+        board,
+        suffix="todo-provider",
+        use_ephemeral_worktree=True,
+        worktree_pool_enabled=False,
     )
     calls: list[str] = []
+    monkeypatch.setattr(
+        daemon,
+        "_require_primary_provider_readiness",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(
         daemon,
         "_build_implementation_prompt",
