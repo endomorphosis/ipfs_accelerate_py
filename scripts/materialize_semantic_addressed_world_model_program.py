@@ -1493,6 +1493,8 @@ _M38_SECOND_RESEAL_COMMIT = "6a9383c1e26c2ae3dc62acfbb82d5d122f577017"
 _M38_SECOND_RESEAL_TREE = "ef0e1faa7e2fadb32721298cb163fea0a45aeef9"
 _M38_THIRD_RESEAL_COMMIT = "35b73c5505ac00eea1453d9f90a25b70235a3e92"
 _M38_THIRD_RESEAL_TREE = "20699f01927a26e9f4a5b432c1ca4217b170b846"
+_M38_FOURTH_RESEAL_COMMIT = "01bf8223540480b4b2073ad2d848a8b631437778"
+_M38_FOURTH_RESEAL_TREE = "0a9e9d12ade1b20774070f8845944561ac10f32b"
 _M38_AUTHORITY_CID_SENTINEL = "sha256:PENDING_M38_AUTHORITY_CID"
 _M38_M37_AUTHORITY_CID = (
     "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
@@ -7640,9 +7642,12 @@ def _expected_m38_pre_authoritative_custody_restart_authority() -> dict[str, Any
             "third_reseal_parent": _M38_SECOND_RESEAL_COMMIT,
             "third_reseal_commit": _M38_THIRD_RESEAL_COMMIT,
             "third_reseal_tree": _M38_THIRD_RESEAL_TREE,
-            "final_reseal_parent": _M38_THIRD_RESEAL_COMMIT,
-            "final_reseal_commit_count": 4,
-            "control_commit_count": 5,
+            "fourth_reseal_parent": _M38_THIRD_RESEAL_COMMIT,
+            "fourth_reseal_commit": _M38_FOURTH_RESEAL_COMMIT,
+            "fourth_reseal_tree": _M38_FOURTH_RESEAL_TREE,
+            "final_reseal_parent": _M38_FOURTH_RESEAL_COMMIT,
+            "final_reseal_commit_count": 5,
+            "control_commit_count": 6,
         },
         "expected_task_heads": dict(m37["expected_task_heads"]),
         "runtime_repair_paths": sorted(_M38_RUNTIME_REPAIR_PATHS),
@@ -54091,6 +54096,9 @@ def _assert_m38_source_delta(
     third_reseal_parents = _git(
         root, "rev-list", "--parents", "-n", "1", _M38_THIRD_RESEAL_COMMIT
     ).split()
+    fourth_reseal_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M38_FOURTH_RESEAL_COMMIT
+    ).split()
     current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
     if (
         current in {
@@ -54100,6 +54108,7 @@ def _assert_m38_source_delta(
             _M38_FIRST_RESEAL_COMMIT,
             _M38_SECOND_RESEAL_COMMIT,
             _M38_THIRD_RESEAL_COMMIT,
+            _M38_FOURTH_RESEAL_COMMIT,
         }
         or not isinstance(chain, Mapping)
         or runtime_paths != set(_M38_RUNTIME_REPAIR_PATHS)
@@ -54125,9 +54134,12 @@ def _assert_m38_source_delta(
         or chain.get("third_reseal_parent") != _M38_SECOND_RESEAL_COMMIT
         or chain.get("third_reseal_commit") != _M38_THIRD_RESEAL_COMMIT
         or chain.get("third_reseal_tree") != _M38_THIRD_RESEAL_TREE
-        or chain.get("final_reseal_parent") != _M38_THIRD_RESEAL_COMMIT
-        or int(chain.get("final_reseal_commit_count") or 0) != 4
-        or int(chain.get("control_commit_count") or 0) != 5
+        or chain.get("fourth_reseal_parent") != _M38_THIRD_RESEAL_COMMIT
+        or chain.get("fourth_reseal_commit") != _M38_FOURTH_RESEAL_COMMIT
+        or chain.get("fourth_reseal_tree") != _M38_FOURTH_RESEAL_TREE
+        or chain.get("final_reseal_parent") != _M38_FOURTH_RESEAL_COMMIT
+        or int(chain.get("final_reseal_commit_count") or 0) != 5
+        or int(chain.get("control_commit_count") or 0) != 6
         or runtime_parents
         != [_M38_RUNTIME_REPAIR_COMMIT, _M38_BASE_CONTROL_COMMIT]
         or initial_parents
@@ -54138,7 +54150,9 @@ def _assert_m38_source_delta(
         != [_M38_SECOND_RESEAL_COMMIT, _M38_FIRST_RESEAL_COMMIT]
         or third_reseal_parents
         != [_M38_THIRD_RESEAL_COMMIT, _M38_SECOND_RESEAL_COMMIT]
-        or current_parents != [current, _M38_THIRD_RESEAL_COMMIT]
+        or fourth_reseal_parents
+        != [_M38_FOURTH_RESEAL_COMMIT, _M38_THIRD_RESEAL_COMMIT]
+        or current_parents != [current, _M38_FOURTH_RESEAL_COMMIT]
         or _git(root, "rev-parse", f"{_M38_BASE_CONTROL_COMMIT}^{{tree}}")
         != _M38_BASE_CONTROL_TREE
         or _git(root, "rev-parse", f"{_M38_RUNTIME_REPAIR_COMMIT}^{{tree}}")
@@ -54151,6 +54165,8 @@ def _assert_m38_source_delta(
         != _M38_SECOND_RESEAL_TREE
         or _git(root, "rev-parse", f"{_M38_THIRD_RESEAL_COMMIT}^{{tree}}")
         != _M38_THIRD_RESEAL_TREE
+        or _git(root, "rev-parse", f"{_M38_FOURTH_RESEAL_COMMIT}^{{tree}}")
+        != _M38_FOURTH_RESEAL_TREE
         or _m27_name_status(
             root, _M38_BASE_CONTROL_COMMIT, _M38_RUNTIME_REPAIR_COMMIT
         )
@@ -54171,7 +54187,11 @@ def _assert_m38_source_delta(
             root, _M38_SECOND_RESEAL_COMMIT, _M38_THIRD_RESEAL_COMMIT
         )
         != {path: "M" for path in control_paths}
-        or _m27_name_status(root, _M38_THIRD_RESEAL_COMMIT, current)
+        or _m27_name_status(
+            root, _M38_THIRD_RESEAL_COMMIT, _M38_FOURTH_RESEAL_COMMIT
+        )
+        != {path: "M" for path in control_paths}
+        or _m27_name_status(root, _M38_FOURTH_RESEAL_COMMIT, current)
         != {path: "M" for path in control_paths}
         or population["source_binding"].get("tree")
         != _git(root, "rev-parse", f"{current}^{{tree}}")
@@ -61782,10 +61802,16 @@ def _verify_m38_evidence_projection(
         for row in expected_sorted
     ):
         raise MigrationRequired("M38 evidence-recorded node projection differs")
+    if int(watermark) <= _M38_PRIOR_EVENT_WATERMARK:
+        expected_nodes, expected_recorded, expected_extra = 47, 36, 11
+    elif int(watermark) == _M38_TARGET_EVENT_WATERMARK:
+        expected_nodes, expected_recorded, expected_extra = 48, 37, 11
+    else:
+        raise MigrationRequired("M38 evidence projection watermark differs")
     if (
-        len(actual) != 47
-        or len(expected_sorted) != 36
-        or len(extra) != 11
+        len(actual) != expected_nodes
+        or len(expected_sorted) != expected_recorded
+        or len(extra) != expected_extra
         or any(row[3] != "validation" for row in extra)
     ):
         raise MigrationRequired("M38 preserved evidence_nodes projection differs")

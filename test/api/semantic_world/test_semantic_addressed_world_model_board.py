@@ -5025,7 +5025,7 @@ def test_m38_authority_pins_custody_restart_and_preserves_m37() -> None:
     )
     if identity_state == "sealed":
         assert expected_authority_cid == (
-            "sha256:600c75398388140c0b1c74710adbaa30641c50ef5e568c85689d5634127ea829"
+            "sha256:282c5e53a751394f50c6b5a4a6d9a94541e2dc511fca0bff47f696d50dc4e1af"
         )
     assert seal[f"{key}_cid"] == reference["authority_cid"] == expected_authority_cid
     assert reference["schema"] == "sawm/operator-control-authority-reference@1"

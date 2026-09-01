@@ -3233,8 +3233,10 @@ def _m38_source_chain_identity_state(
         != materializer._M38_SECOND_RESEAL_COMMIT
         or chain.get("third_reseal_commit")
         != materializer._M38_THIRD_RESEAL_COMMIT
+        or chain.get("fourth_reseal_commit")
+        != materializer._M38_FOURTH_RESEAL_COMMIT
         or chain.get("final_reseal_parent")
-        != materializer._M38_THIRD_RESEAL_COMMIT
+        != materializer._M38_FOURTH_RESEAL_COMMIT
         or dict(control_blobs) != dict(materializer._M38_INITIAL_CONTROL_BLOBS)
         or set(control_blobs) != set(materializer._M38_OPERATOR_CONTROL_PATHS)
         or len(runtime_blobs) != 4
@@ -3388,7 +3390,7 @@ def _m38_pre_authoritative_custody_restart_successor_errors(
         if (
             state == "sealed"
             and expected_cid
-            != "sha256:600c75398388140c0b1c74710adbaa30641c50ef5e568c85689d5634127ea829"
+            != "sha256:282c5e53a751394f50c6b5a4a6d9a94541e2dc511fca0bff47f696d50dc4e1af"
         ):
             errors.append("M38 sealed custody restart CID differs")
         failed = expected.get("failed_m37_pre_authority_attempt", {})
