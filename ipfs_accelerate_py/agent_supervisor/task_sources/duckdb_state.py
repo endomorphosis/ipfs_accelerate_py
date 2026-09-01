@@ -820,6 +820,8 @@ class DuckDBConnection:
             self.path is None
             or self._lock_context is None
             or self._pooled
+            or self._quack_owner
+            or self._preload_quack_for_state_owner
             or str(self._quack_uri or "").strip()
             or self._transaction_active
             or not isinstance(exc, DuckDBConnectionPolicyError)
