@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import ctypes
+import errno
 import hashlib
 import importlib.util
 import inspect
@@ -2128,14 +2130,29 @@ def test_quack_start_preloads_exact_native_before_validation_and_holds_fd(
         events,
     )
 
+    class Transport:
+        def __init__(self, owner: object) -> None:
+            assert owner == "test"
+            events.append("transport")
+
+        def prepare_extension_custody(self) -> None:
+            os.fstat(descriptor)
+            events.append("custody")
+
+        def stop(self) -> None:
+            events.append("transport_stop")
+
+    monkeypatch.setattr(operator, "_SawmQuackTransport", Transport)
+
     def validate(config: object, config_path: Path) -> None:
         assert config == {"quack_owner": "test"}
         assert config_path == REPO_ROOT / "config/test-quack.json"
         os.fstat(descriptor)
         events.append("validate")
 
-    def start(config: object) -> int:
+    def start(config: object, *, transport: object) -> int:
         assert config == {"quack_owner": "test"}
+        assert isinstance(transport, Transport)
         os.fstat(descriptor)
         events.append("start")
         return 17
@@ -2153,6 +2170,8 @@ def test_quack_start_preloads_exact_native_before_validation_and_holds_fd(
             "seal",
             "preload",
             "verify_fd",
+            "transport",
+            "custody",
             "validate",
             "start",
             "verify_fd",
@@ -2161,6 +2180,130 @@ def test_quack_start_preloads_exact_native_before_validation_and_holds_fd(
             os.fstat(descriptor)
     finally:
         os.close(writer)
+
+
+def test_quack_start_reports_custody_quota_before_validation_or_owner_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_quack_custody_quota_test",
+    )
+    events: list[str] = []
+    descriptor, writer = _install_synthetic_quack_native_bootstrap(
+        monkeypatch,
+        events,
+    )
+
+    class Transport:
+        def __init__(self, owner: object) -> None:
+            assert owner == {"authority": "test"}
+            events.append("transport")
+
+        def prepare_extension_custody(self) -> None:
+            events.append("custody")
+            raise operator.QuackExtensionCustodyBlocker(
+                operation="inotify_add_watch",
+                errno_number=errno.ENOSPC,
+            )
+
+        def stop(self) -> None:
+            events.append("transport_stop")
+
+    monkeypatch.setattr(operator, "_SawmQuackTransport", Transport)
+    monkeypatch.setattr(
+        operator,
+        "_validate_offline_quack_start",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("custody quota must block before offline database validation")
+        ),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_start_quack",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("custody quota must block before owner/server start")
+        ),
+    )
+    try:
+        with pytest.raises(operator.QuackExtensionCustodyBlocker) as raised:
+            operator._run_quack_start(
+                {"quack_owner": {"authority": "test"}},
+                REPO_ROOT / "config/test-quack.json",
+            )
+        report = raised.value.as_dict()
+        assert report == {
+            "schema": "sawm/quack-startup-capability-blocker@1",
+            "valid": False,
+            "terminal": "typed_external_capability",
+            "phase": "pre_authoritative_mutation_extension_custody",
+            "reason_code": "inotify_watch_quota_exhausted",
+            "operation": "inotify_add_watch",
+            "errno_number": errno.ENOSPC,
+            "errno_name": "ENOSPC",
+            "retryable": True,
+            "retry_requires_changed_resource_evidence": True,
+            "authoritative_database_opened": False,
+            "owner_marker_created": False,
+            "store_generation_changes": 0,
+            "credential_changes": 0,
+            "token_handoff_created": False,
+            "task_status_changes": 0,
+            "completion_changes": 0,
+            "recovery": {
+                "automatic_process_termination": False,
+                "automatic_kernel_limit_change": False,
+                "guidance": [
+                    "release or fence stale watcher consumers through their own authority",
+                    "or have an operator explicitly increase the inotify resource limit",
+                    "retry only after the available-capacity evidence changes",
+                ],
+            },
+        }
+        assert events == [
+            "load_board",
+            "snapshot",
+            "seal",
+            "preload",
+            "verify_fd",
+            "transport",
+            "custody",
+            "transport_stop",
+            "verify_fd",
+        ]
+    finally:
+        os.close(writer)
+
+
+def test_quack_custody_blocker_main_output_is_typed_and_credential_free(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_quack_custody_output_test",
+    )
+    secret = "not-for-operator-output"
+    monkeypatch.setenv("SAWM_TEST_QUACK_TOKEN", secret)
+    monkeypatch.setattr(operator, "_config", lambda _path: {"quack_owner": {}})
+    monkeypatch.setattr(
+        operator,
+        "_run_quack_start",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            operator.QuackExtensionCustodyBlocker(
+                operation="inotify_add_watch",
+                errno_number=errno.ENOSPC,
+            )
+        ),
+    )
+
+    assert operator.main(["--config", "unused.json", "quack-start"]) == 2
+    rendered = capsys.readouterr().out
+    payload = json.loads(rendered)
+    assert payload["schema"] == "sawm/quack-startup-capability-blocker@1"
+    assert payload["reason_code"] == "inotify_watch_quota_exhausted"
+    assert payload["authoritative_database_opened"] is False
+    assert secret not in rendered
 
 
 def test_quack_start_closes_native_fd_when_owner_fails(
@@ -2175,13 +2318,27 @@ def test_quack_start_closes_native_fd_when_owner_fails(
         monkeypatch,
         events,
     )
+
+    class Transport:
+        def __init__(self, owner: object) -> None:
+            assert owner == "test"
+            events.append("transport")
+
+        def prepare_extension_custody(self) -> None:
+            events.append("custody")
+
+        def stop(self) -> None:
+            events.append("transport_stop")
+
+    monkeypatch.setattr(operator, "_SawmQuackTransport", Transport)
     monkeypatch.setattr(
         operator,
         "_validate_offline_quack_start",
         lambda *_args: events.append("validate"),
     )
 
-    def fail_owner(_config: object) -> int:
+    def fail_owner(_config: object, *, transport: object) -> int:
+        assert isinstance(transport, Transport)
         os.fstat(descriptor)
         events.append("start")
         raise RuntimeError("owner failed")
@@ -2189,8 +2346,18 @@ def test_quack_start_closes_native_fd_when_owner_fails(
     monkeypatch.setattr(operator, "_start_quack", fail_owner)
     try:
         with pytest.raises(RuntimeError, match="owner failed"):
-            operator._run_quack_start({}, REPO_ROOT / "config/test-quack.json")
-        assert events[-3:] == ["validate", "start", "verify_fd"]
+            operator._run_quack_start(
+                {"quack_owner": "test"},
+                REPO_ROOT / "config/test-quack.json",
+            )
+        assert events[-6:] == [
+            "transport",
+            "custody",
+            "validate",
+            "start",
+            "transport_stop",
+            "verify_fd",
+        ]
         with pytest.raises(OSError):
             os.fstat(descriptor)
     finally:
@@ -2385,6 +2552,198 @@ def test_operator_loads_and_resolves_exact_extension_names(
         transport.stop()
 
 
+def test_operator_types_inotify_quota_when_preparing_extension_custody() -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_extension_custody_errno_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_projection import (
+        ConfiguredBoardExtensionProjectionError,
+    )
+
+    class Seal:
+        closed = False
+
+        def verify(self) -> None:
+            return None
+
+        def _open_watch(self) -> int:
+            ctypes.set_errno(errno.ENOSPC)
+            raise ConfiguredBoardExtensionProjectionError(
+                "sealed extension set race detector could not bind custody"
+            )
+
+        def close(self) -> None:
+            self.closed = True
+
+    seal = Seal()
+    transport = operator._SawmQuackTransport({})
+    transport._sealed_extension_set = seal
+    try:
+        with pytest.raises(operator.QuackExtensionCustodyBlocker) as raised:
+            transport.prepare_extension_custody()
+        assert raised.value.operation == "inotify_add_watch"
+        assert raised.value.errno_number == errno.ENOSPC
+        assert raised.value.reason_code == "inotify_watch_quota_exhausted"
+        assert transport._extension_custody_watch is None
+    finally:
+        transport.stop()
+    assert seal.closed is True
+
+
+def test_operator_reuses_one_prepared_watch_without_nested_load_guard(
+    tmp_path: Path,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_extension_custody_reuse_test",
+    )
+    read_fd, write_fd = os.pipe()
+    os.set_blocking(read_fd, False)
+    httpfs_path = tmp_path / "httpfs.duckdb_extension"
+    quack_path = tmp_path / "quack.duckdb_extension"
+
+    class Seal:
+        open_calls = 0
+        fallback_guard_calls = 0
+        closed_after_watch = False
+        install_paths = {"httpfs": httpfs_path, "quack": quack_path}
+
+        def verify(self) -> None:
+            os.fstat(read_fd)
+
+        def _open_watch(self) -> int:
+            self.open_calls += 1
+            return read_fd
+
+        @staticmethod
+        def _watch_changed(descriptor: int) -> bool:
+            try:
+                return bool(os.read(descriptor, 64 * 1024))
+            except BlockingIOError:
+                return False
+
+        @contextlib.contextmanager
+        def load_guard(self):
+            self.fallback_guard_calls += 1
+            yield
+
+        def close(self) -> None:
+            with pytest.raises(OSError):
+                os.fstat(read_fd)
+            self.closed_after_watch = True
+
+    class Result:
+        def fetchall(self) -> list[tuple[str, str, str]]:
+            return [
+                ("httpfs", str(httpfs_path), "httpfs-v1"),
+                ("quack", str(quack_path), "quack-v1"),
+            ]
+
+    class Connection:
+        statements: list[str]
+
+        def __init__(self) -> None:
+            self.statements = []
+
+        def execute(self, sql: str) -> Result:
+            self.statements.append(sql)
+            return Result()
+
+    seal = Seal()
+    transport = operator._SawmQuackTransport(
+        {
+            "pinned_httpfs_extension": {"version": "httpfs-v1"},
+            "pinned_extension": {"version": "quack-v1"},
+        }
+    )
+    transport._sealed_extension_set = seal
+    connection = Connection()
+    try:
+        transport.prepare_extension_custody()
+        transport._load_reviewed_extensions(connection)
+        transport._load_reviewed_extensions(connection)
+        assert seal.open_calls == 1
+        assert seal.fallback_guard_calls == 0
+        assert connection.statements.count("LOAD httpfs") == 2
+        assert connection.statements.count("LOAD quack") == 2
+        assert transport._extension_custody_watch == read_fd
+    finally:
+        transport.stop()
+        os.close(write_fd)
+    assert seal.closed_after_watch is True
+
+
+def test_operator_prepared_watch_rejects_a_custody_event_during_load(
+    tmp_path: Path,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_extension_custody_event_test",
+    )
+    read_fd, write_fd = os.pipe()
+    os.set_blocking(read_fd, False)
+    httpfs_path = tmp_path / "httpfs.duckdb_extension"
+    quack_path = tmp_path / "quack.duckdb_extension"
+
+    class Seal:
+        fallback_guard_calls = 0
+        install_paths = {"httpfs": httpfs_path, "quack": quack_path}
+
+        def verify(self) -> None:
+            os.fstat(read_fd)
+
+        def _open_watch(self) -> int:
+            return read_fd
+
+        @staticmethod
+        def _watch_changed(descriptor: int) -> bool:
+            try:
+                return bool(os.read(descriptor, 64 * 1024))
+            except BlockingIOError:
+                return False
+
+        @contextlib.contextmanager
+        def load_guard(self):
+            self.fallback_guard_calls += 1
+            yield
+
+        def close(self) -> None:
+            with pytest.raises(OSError):
+                os.fstat(read_fd)
+
+    class Result:
+        def fetchall(self) -> list[tuple[str, str, str]]:
+            return [
+                ("httpfs", str(httpfs_path), "httpfs-v1"),
+                ("quack", str(quack_path), "quack-v1"),
+            ]
+
+    class TamperingConnection:
+        def execute(self, sql: str) -> Result:
+            if sql == "LOAD quack":
+                os.write(write_fd, b"custody-event")
+            return Result()
+
+    seal = Seal()
+    transport = operator._SawmQuackTransport(
+        {
+            "pinned_httpfs_extension": {"version": "httpfs-v1"},
+            "pinned_extension": {"version": "quack-v1"},
+        }
+    )
+    transport._sealed_extension_set = seal
+    try:
+        transport.prepare_extension_custody()
+        with pytest.raises(operator.OperatorError, match="custody changed during"):
+            transport._load_reviewed_extensions(TamperingConnection())
+        assert transport._extension_custody_poisoned is True
+        assert seal.fallback_guard_calls == 0
+    finally:
+        transport.stop()
+        os.close(write_fd)
+
+
 def test_operator_rechecks_extension_bytes_after_native_load(tmp_path: Path) -> None:
     operator = _load(
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
@@ -2540,6 +2899,7 @@ def test_operator_stop_closes_shared_extension_custody_on_quack_stop_failure() -
         "sawm_operator_stop_cleanup_test",
     )
     transport = operator._SawmQuackTransport({})
+    custody_read, custody_write = os.pipe()
 
     class Replica:
         closed = False
@@ -2552,8 +2912,12 @@ def test_operator_stop_closes_shared_extension_custody_on_quack_stop_failure() -
 
     class Seal:
         close_count = 0
+        custody_closed_first = False
 
         def close(self) -> None:
+            with pytest.raises(OSError):
+                os.fstat(custody_read)
+            self.custody_closed_first = True
             self.close_count += 1
 
     replica = Replica()
@@ -2561,12 +2925,18 @@ def test_operator_stop_closes_shared_extension_custody_on_quack_stop_failure() -
     transport._serve_uri = "quack:127.0.0.1:45123"
     transport._replica_connection = replica
     transport._sealed_extension_set = seal
+    transport._extension_custody_watch = custody_read
 
-    with pytest.raises(RuntimeError, match="quack stop failed"):
-        transport.stop()
-    assert replica.closed is True
-    assert seal.close_count == 1
-    assert transport._sealed_extension_set is None
+    try:
+        with pytest.raises(RuntimeError, match="quack stop failed"):
+            transport.stop()
+        assert replica.closed is True
+        assert seal.close_count == 1
+        assert seal.custody_closed_first is True
+        assert transport._sealed_extension_set is None
+        assert transport._extension_custody_watch is None
+    finally:
+        os.close(custody_write)
 
 
 def test_m10_controls_and_live_projection_comparator_fail_closed() -> None:
@@ -4654,7 +5024,7 @@ def test_m37_authority_pins_reboot_recovery_generation_and_source_chain() -> Non
     )
     if identity_state == "sealed":
         assert expected_authority_cid == (
-            "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
+            "sha256:186d77f8d352d66f1bbffcd8e20d611d104f96b9155794d255eecf0b149211fb"
         )
     assert seal[f"{key}_cid"] == reference["authority_cid"] == expected_authority_cid
     assert reference["schema"] == "sawm/operator-control-authority-reference@1"

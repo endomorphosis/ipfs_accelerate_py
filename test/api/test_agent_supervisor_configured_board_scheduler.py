@@ -2027,6 +2027,148 @@ def test_detached_main_rejects_supplied_reservation_substitution_without_spawn(
     assert not original_path.exists()
 
 
+def test_plan_bound_lane_dead_pid_is_quarantined_after_private_confinement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_root = tmp_path / "state"
+    lane_state = state_root / "lane-0"
+    state_root.mkdir(mode=0o700)
+    lane_state.mkdir(mode=0o775)
+    os.chmod(lane_state, 0o775)
+    pid_path = lane_state / "supervisor.pid"
+    stale_pid = 3_554_889
+    stale_payload = f"{stale_pid}\n".encode("ascii")
+    pid_path.write_bytes(stale_payload)
+    os.chmod(pid_path, 0o664)
+    stale_stat = os.lstat(pid_path)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_pid_projection_liveness",
+        lambda pid: (
+            multi_runner_module.OwnerLiveness.DEAD
+            if pid == stale_pid
+            else multi_runner_module.OwnerLiveness.UNKNOWN
+        ),
+    )
+
+    receipt_path = (
+        multi_runner_module._recover_plan_bound_lane_pid_projection(
+            pid_path,
+            state_root=state_root,
+        )
+    )
+
+    assert receipt_path is not None and receipt_path.is_file()
+    assert stat.S_IMODE(lane_state.stat().st_mode) == 0o700
+    assert not pid_path.exists()
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    raw_path = Path(receipt["quarantine_path"])
+    assert raw_path.read_bytes() == stale_payload
+    assert stat.S_IMODE(raw_path.stat().st_mode) == 0o664
+    assert receipt["schema"] == (
+        "ipfs_accelerate_py/agent-supervisor/"
+        "stale-pid-projection-quarantine@1"
+    )
+    assert receipt["artifact_label"] == (
+        "plan-bound supervisor PID projection"
+    )
+    assert receipt["original_path"] == str(pid_path)
+    assert receipt["recorded_pid"] == stale_pid
+    assert receipt["liveness"] == "dead"
+    assert receipt["size"] == len(stale_payload)
+    assert receipt["inode"] == int(stale_stat.st_ino)
+    assert receipt["mode"] == 0o664
+    assert receipt["content_sha256"] == (
+        "sha256:" + hashlib.sha256(stale_payload).hexdigest()
+    )
+    assert receipt["receipt_id"].startswith("baguqeera")
+
+
+@pytest.mark.parametrize(
+    ("liveness", "message"),
+    (
+        (multi_runner_module.OwnerLiveness.ALIVE, "names a live process"),
+        (multi_runner_module.OwnerLiveness.UNKNOWN, "liveness is unknown"),
+    ),
+)
+def test_plan_bound_lane_live_or_unknown_pid_remains_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    liveness: multi_runner_module.OwnerLiveness,
+    message: str,
+) -> None:
+    state_root = tmp_path / "state"
+    lane_state = state_root / "lane-0"
+    state_root.mkdir(mode=0o700)
+    lane_state.mkdir(mode=0o775)
+    os.chmod(lane_state, 0o775)
+    pid_path = lane_state / "supervisor.pid"
+    pid_path.write_text("424242\n", encoding="ascii")
+    os.chmod(pid_path, 0o664)
+    before = os.lstat(pid_path)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_pid_projection_liveness",
+        lambda _pid: liveness,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        multi_runner_module._recover_plan_bound_lane_pid_projection(
+            pid_path,
+            state_root=state_root,
+        )
+
+    after = os.lstat(pid_path)
+    assert (int(after.st_dev), int(after.st_ino)) == (
+        int(before.st_dev),
+        int(before.st_ino),
+    )
+    assert pid_path.read_bytes() == b"424242\n"
+    assert stat.S_IMODE(lane_state.stat().st_mode) == 0o700
+    assert not (lane_state / "stale-pid-projections").exists()
+
+
+@pytest.mark.parametrize(
+    ("state_root_mode", "lane_mode", "message"),
+    (
+        (0o755, 0o775, "state root is not owner-only"),
+        (0o700, 0o755, "neither owner-only nor the exact safe legacy mode"),
+        (0o700, 0o777, "neither owner-only nor the exact safe legacy mode"),
+    ),
+)
+def test_plan_bound_lane_pid_recovery_rejects_unsafe_directory_modes(
+    tmp_path: Path,
+    state_root_mode: int,
+    lane_mode: int,
+    message: str,
+) -> None:
+    state_root = tmp_path / "state"
+    lane_state = state_root / "lane-0"
+    state_root.mkdir(mode=state_root_mode)
+    os.chmod(state_root, state_root_mode)
+    lane_state.mkdir(mode=lane_mode)
+    os.chmod(lane_state, lane_mode)
+    pid_path = lane_state / "supervisor.pid"
+    pid_path.write_text("424242\n", encoding="ascii")
+    before = os.lstat(pid_path)
+
+    with pytest.raises(ValueError, match=message):
+        multi_runner_module._recover_plan_bound_lane_pid_projection(
+            pid_path,
+            state_root=state_root,
+        )
+
+    after = os.lstat(pid_path)
+    assert (int(after.st_dev), int(after.st_ino)) == (
+        int(before.st_dev),
+        int(before.st_ino),
+    )
+    assert stat.S_IMODE(state_root.stat().st_mode) == state_root_mode
+    assert stat.S_IMODE(lane_state.stat().st_mode) == lane_mode
+    assert pid_path.read_bytes() == b"424242\n"
+
+
 def test_plan_bound_wave_and_supervisor_pid_projections_reject_links(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2064,7 +2206,12 @@ def test_plan_bound_wave_and_supervisor_pid_projections_reject_links(
     )
     track = child.track(stamp="20260809T-pid-projection")
     resolved_track = track.resolve(repo)
-    resolved_track.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
+    lane_state = resolved_track.supervisor_pid_path.parent
+    state_root = lane_state.parent
+    state_root.mkdir(parents=True, exist_ok=True)
+    os.chmod(state_root, 0o700)
+    lane_state.mkdir(parents=True, exist_ok=True)
+    os.chmod(lane_state, 0o700)
     outside = tmp_path / "outside-plan-bound-pid"
     outside.write_text("31337\n", encoding="ascii")
     spawned = False

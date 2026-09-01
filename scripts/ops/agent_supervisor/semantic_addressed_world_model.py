@@ -9,7 +9,9 @@ configured-board scheduler; this module is not a second agent framework.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import dataclasses
+import errno
 import hashlib
 import importlib.util
 import json
@@ -870,6 +872,63 @@ _M9_GENERATION = 11
 
 class OperatorError(RuntimeError):
     pass
+
+
+class QuackExtensionCustodyBlocker(OperatorError):
+    """Typed pre-authoritative-mutation extension-custody terminal."""
+
+    _RESOURCE_REASONS = {
+        errno.ENOSPC: "inotify_watch_quota_exhausted",
+        errno.EMFILE: "inotify_instance_or_process_fd_quota_exhausted",
+        errno.ENFILE: "system_file_descriptor_table_exhausted",
+        errno.ENOMEM: "kernel_memory_unavailable",
+    }
+
+    def __init__(self, *, operation: str, errno_number: int) -> None:
+        self.operation = operation
+        self.errno_number = int(errno_number)
+        self.errno_name = errno.errorcode.get(self.errno_number, "UNKNOWN")
+        self.reason_code = self._RESOURCE_REASONS.get(
+            self.errno_number,
+            "extension_custody_unavailable",
+        )
+        self.retryable = self.errno_number in self._RESOURCE_REASONS
+        super().__init__(
+            f"{self.reason_code} during {self.operation} "
+            f"({self.errno_name})"
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a credential-free external-capability blocker receipt."""
+
+        return {
+            "schema": "sawm/quack-startup-capability-blocker@1",
+            "valid": False,
+            "terminal": "typed_external_capability",
+            "phase": "pre_authoritative_mutation_extension_custody",
+            "reason_code": self.reason_code,
+            "operation": self.operation,
+            "errno_number": self.errno_number,
+            "errno_name": self.errno_name,
+            "retryable": self.retryable,
+            "retry_requires_changed_resource_evidence": self.retryable,
+            "authoritative_database_opened": False,
+            "owner_marker_created": False,
+            "store_generation_changes": 0,
+            "credential_changes": 0,
+            "token_handoff_created": False,
+            "task_status_changes": 0,
+            "completion_changes": 0,
+            "recovery": {
+                "automatic_process_termination": False,
+                "automatic_kernel_limit_change": False,
+                "guidance": [
+                    "release or fence stale watcher consumers through their own authority",
+                    "or have an operator explicitly increase the inotify resource limit",
+                    "retry only after the available-capacity evidence changes",
+                ],
+            },
+        }
 
 
 def _load_script(relative: str, name: str):
@@ -9703,6 +9762,9 @@ class _SawmQuackTransport:
         self._refresh_sequence = 0
         self._extension_projection_parent: Path | None = None
         self._sealed_extension_set: Any | None = None
+        self._extension_custody_watch: int | None = None
+        self._extension_load_active = False
+        self._extension_custody_poisoned = False
 
     @staticmethod
     def _verify_extension_source(
@@ -9939,6 +10001,96 @@ class _SawmQuackTransport:
         except (OSError, ValueError) as exc:
             raise OperatorError(str(exc)) from exc
 
+    def prepare_extension_custody(self) -> None:
+        """Reserve the exact inotify custody set before authority is opened."""
+
+        from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_projection import (
+            ConfiguredBoardExtensionProjectionError,
+        )
+
+        sealed = self._ensure_extension_projection()
+        if self._extension_custody_watch is not None:
+            self._verify_prepared_extension_custody(sealed, phase="preflight")
+            return
+        ctypes.set_errno(0)
+        try:
+            watch = int(sealed._open_watch())
+        except ConfiguredBoardExtensionProjectionError as exc:
+            errno_number = int(ctypes.get_errno())
+            operation = (
+                "inotify_add_watch"
+                if "bind custody" in str(exc)
+                else "inotify_init1"
+            )
+            raise QuackExtensionCustodyBlocker(
+                operation=operation,
+                errno_number=errno_number,
+            ) from exc
+        try:
+            sealed.verify()
+            if sealed._watch_changed(watch):
+                raise ConfiguredBoardExtensionProjectionError(
+                    "sealed extension set custody changed during preflight"
+                )
+        except BaseException:
+            os.close(watch)
+            raise
+        self._extension_custody_watch = watch
+        self._extension_custody_poisoned = False
+
+    def _verify_prepared_extension_custody(
+        self,
+        sealed: Any,
+        *,
+        phase: str,
+    ) -> None:
+        """Verify exact bytes and reject every queued custody event."""
+
+        from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_projection import (
+            ConfiguredBoardExtensionProjectionError,
+        )
+
+        watch = self._extension_custody_watch
+        if watch is None:
+            raise ConfiguredBoardExtensionProjectionError(
+                "sealed extension set custody was not prepared"
+            )
+        if self._extension_custody_poisoned:
+            raise ConfiguredBoardExtensionProjectionError(
+                "sealed extension set custody is poisoned"
+            )
+        try:
+            sealed.verify()
+            changed = bool(sealed._watch_changed(watch))
+        except BaseException:
+            self._extension_custody_poisoned = True
+            raise
+        if changed:
+            self._extension_custody_poisoned = True
+            raise ConfiguredBoardExtensionProjectionError(
+                f"sealed extension set custody changed {phase} native LOAD"
+            )
+
+    @contextmanager
+    def _extension_load_guard(self, sealed: Any) -> Iterator[None]:
+        """Use held custody when prepared, retaining the legacy fallback."""
+
+        if self._extension_custody_watch is None:
+            with sealed.load_guard():
+                yield
+            return
+        if self._extension_load_active:
+            raise OperatorError("nested native extension LOAD is forbidden")
+        self._extension_load_active = True
+        try:
+            self._verify_prepared_extension_custody(sealed, phase="before")
+            try:
+                yield
+            finally:
+                self._verify_prepared_extension_custody(sealed, phase="during")
+        finally:
+            self._extension_load_active = False
+
     def _load_reviewed_extensions(self, connection: Any) -> None:
         """Load exact sealed httpfs+Quack bytes and verify DuckDB's mapping."""
 
@@ -9952,8 +10104,15 @@ class _SawmQuackTransport:
             "quack": self._owner.get("pinned_extension") or {},
         }
         try:
-            with sealed.load_guard():
+            with self._extension_load_guard(sealed):
                 connection.execute("LOAD httpfs")
+                if self._extension_custody_watch is not None:
+                    # This post-httpfs check is also the pre-quack check; the
+                    # held queue therefore brackets each LOAD independently.
+                    self._verify_prepared_extension_custody(
+                        sealed,
+                        phase="between",
+                    )
                 connection.execute("LOAD quack")
                 observed_rows = connection.execute(
                     "SELECT extension_name, install_path, extension_version "
@@ -10122,8 +10281,17 @@ class _SawmQuackTransport:
     def _remove_extension_projection(self) -> None:
         sealed = self._sealed_extension_set
         projection_parent = self._extension_projection_parent
+        custody_watch = self._extension_custody_watch
+        self._extension_custody_watch = None
+        self._extension_custody_poisoned = False
+        self._extension_load_active = False
         self._sealed_extension_set = None
         self._extension_projection_parent = None
+        if custody_watch is not None:
+            try:
+                os.close(custody_watch)
+            except OSError:
+                pass
         if sealed is not None:
             sealed.close()
         self._remove_regular_extension_projection(projection_parent)
@@ -10572,11 +10740,27 @@ def _run_quack_start(
     """Validate and serve Quack under the exact protected native runtime."""
 
     with _sealed_quack_native_runtime(config_path):
-        _validate_offline_quack_start(config, config_path)
-        return _start_quack(config)
+        transport = _SawmQuackTransport(config["quack_owner"])
+        try:
+            # Reserve the complete watch set before validation can open or
+            # mutate the authoritative control store.  The same reservation is
+            # retained and reused by every subsequent native extension LOAD.
+            transport.prepare_extension_custody()
+            _validate_offline_quack_start(config, config_path)
+            return _start_quack(config, transport=transport)
+        except BaseException:
+            try:
+                transport.stop()
+            except BaseException:
+                pass
+            raise
 
 
-def _start_quack(config: Mapping[str, Any]) -> int:
+def _start_quack(
+    config: Mapping[str, Any],
+    *,
+    transport: _SawmQuackTransport | None = None,
+) -> int:
     owner = config["quack_owner"]
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import build_server
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
@@ -10591,7 +10775,9 @@ def _start_quack(config: Mapping[str, Any]) -> int:
         # Critical authority boundary: never install the generic full schema.
         migrate=install_datasets_authoritative_operational_schema,
         connection_factory=lambda path: _owner_connection(path, owner),
-        transport=_SawmQuackTransport(owner),
+        transport=(
+            transport if transport is not None else _SawmQuackTransport(owner)
+        ),
     )
     identity = server.start()
     try:
@@ -14221,6 +14407,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "live_preflight": live,
             }
         )
+    except QuackExtensionCustodyBlocker as exc:
+        return _emit(exc.as_dict())
     except Exception as exc:
         return _emit({"schema": "sawm/operator-error@1", "valid": False,
                       "error": _credential_safe_error(exc)})

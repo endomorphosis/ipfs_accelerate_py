@@ -3967,6 +3967,159 @@ def _pid_projection_quarantine_directory(pid_path: Path) -> Path:
     return quarantine
 
 
+def _ensure_owner_only_lane_state_directory(
+    lane_state_dir: Path,
+    *,
+    state_root: Path,
+) -> Path:
+    """Return one private direct-child lane directory.
+
+    Older configured-board generations created lane directories with mode
+    ``0775`` below an already private ``0700`` state root.  That historical
+    shape is safe to tighten in place because the private parent prevents a
+    second uid from reaching the lane while its mode is changed.  No other
+    pre-existing mode is inferred to be safe.
+    """
+
+    lane = Path(lane_state_dir)
+    root = Path(state_root)
+    if (
+        not lane.is_absolute()
+        or not root.is_absolute()
+        or Path(os.path.abspath(lane)) != lane
+        or Path(os.path.abspath(root)) != root
+        or lane.parent != root
+    ):
+        raise ValueError(
+            "plan-bound lane state directory is not an exact state-root child"
+        )
+    try:
+        root_stat = os.lstat(root)
+    except OSError as exc:
+        raise ValueError("plan-bound state root cannot be inspected") from exc
+    if (
+        stat.S_ISLNK(root_stat.st_mode)
+        or not stat.S_ISDIR(root_stat.st_mode)
+        or int(root_stat.st_uid) != os.geteuid()
+        or stat.S_IMODE(root_stat.st_mode) != 0o700
+    ):
+        raise ValueError("plan-bound state root is not owner-only")
+
+    try:
+        os.mkdir(lane, 0o700)
+        _fsync_directory(root)
+    except FileExistsError:
+        pass
+    except OSError as exc:
+        raise ValueError(
+            "plan-bound lane state directory cannot be created"
+        ) from exc
+    try:
+        observed = os.lstat(lane)
+    except OSError as exc:
+        raise ValueError(
+            "plan-bound lane state directory cannot be inspected"
+        ) from exc
+    if (
+        stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISDIR(observed.st_mode)
+        or int(observed.st_uid) != os.geteuid()
+    ):
+        raise ValueError("plan-bound lane state directory is unsafe")
+    lane_mode = stat.S_IMODE(observed.st_mode)
+    if lane_mode == 0o700:
+        return lane
+    if lane_mode != 0o775:
+        raise ValueError(
+            "plan-bound lane state directory is neither owner-only nor "
+            "the exact safe legacy mode"
+        )
+
+    flags = os.O_RDONLY
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(lane, flags)
+    except OSError as exc:
+        raise ValueError(
+            "plan-bound legacy lane state directory cannot be opened safely"
+        ) from exc
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or int(opened.st_uid) != os.geteuid()
+            or stat.S_IMODE(opened.st_mode) != 0o775
+            or (int(opened.st_dev), int(opened.st_ino))
+            != (int(observed.st_dev), int(observed.st_ino))
+        ):
+            raise ValueError(
+                "plan-bound legacy lane state directory changed before repair"
+            )
+        os.fchmod(descriptor, 0o700)
+        os.fsync(descriptor)
+    except OSError as exc:
+        raise ValueError(
+            "plan-bound legacy lane state directory cannot be made owner-only"
+        ) from exc
+    finally:
+        os.close(descriptor)
+    try:
+        repaired = os.lstat(lane)
+    except OSError as exc:
+        raise ValueError(
+            "plan-bound lane state directory cannot be revalidated"
+        ) from exc
+    if (
+        stat.S_ISLNK(repaired.st_mode)
+        or not stat.S_ISDIR(repaired.st_mode)
+        or int(repaired.st_uid) != os.geteuid()
+        or stat.S_IMODE(repaired.st_mode) != 0o700
+        or (int(repaired.st_dev), int(repaired.st_ino))
+        != (int(observed.st_dev), int(observed.st_ino))
+    ):
+        raise ValueError(
+            "plan-bound lane state directory changed during owner-only repair"
+        )
+    _fsync_directory(root)
+    return lane
+
+
+def _recover_plan_bound_lane_pid_projection(
+    pid_path: Path,
+    *,
+    state_root: Path,
+) -> Path | None:
+    """Quarantine one provably dead lane PID before authority-store reads."""
+
+    path = Path(pid_path)
+    lane = _ensure_owner_only_lane_state_directory(
+        path.parent,
+        state_root=state_root,
+    )
+    with serialized_lock_update(path):
+        # Revalidate after taking the adjacent update lock.  The helper only
+        # tightens the exact historical 0775 shape; substitutions and wider
+        # modes remain fail-closed.
+        _ensure_owner_only_lane_state_directory(
+            lane,
+            state_root=state_root,
+        )
+        try:
+            os.lstat(path)
+        except FileNotFoundError:
+            return None
+        except OSError as exc:
+            raise ValueError(
+                "cannot inspect plan-bound supervisor PID projection"
+            ) from exc
+        return _quarantine_stale_owned_pid_projection_locked(
+            path,
+            artifact_label="plan-bound supervisor PID projection",
+        )
+
+
 def _write_stale_pid_projection_receipt(
     *,
     quarantine_path: Path,
@@ -5546,12 +5699,15 @@ def start_track(
                 raise ValueError(
                     "plan-bound runtime projection escapes its configured lane state"
                 )
-        # Reject a preplaced PID projection before PlanRevisionStore reads or
-        # Git identity probes can cross a subprocess boundary.  The later
-        # O_EXCL reservation repeats this under its update lock to close the
-        # check-to-create race.
-        with serialized_lock_update(resolved.supervisor_pid_path):
-            _require_absent_pid_projection(resolved.supervisor_pid_path)
+        # Recover only a stable, owner-owned, provably dead projection before
+        # PlanRevisionStore reads or Git identity probes can cross a subprocess
+        # boundary.  Live, unknown, linked, foreign, or otherwise unsafe
+        # projections remain fail-closed.  The later O_EXCL reservation repeats
+        # the recovery under its update lock to close the check-to-create race.
+        _recover_plan_bound_lane_pid_projection(
+            resolved.supervisor_pid_path,
+            state_root=state_dir.parent,
+        )
         from ..control.plan_execution_store import ProductionParallelPlanAdapter
         from ..task_sources.plan_revision_store import PlanRevisionStore
 
