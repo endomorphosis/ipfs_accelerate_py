@@ -2114,6 +2114,111 @@ _M44_REPAIR_MODES = MappingProxyType(
 )
 _M44_OPERATOR_CONTROL_PATHS = frozenset(_M43_OPERATOR_CONTROL_PATHS)
 
+# M45 is a prepublication source-only successor to M44.  M44's authority and
+# stopped generation-31/event-301 runtime are immutable; no M44 receipt or
+# event 302 exists yet.  The only accepted semantic correction is the stale
+# M39 fixture's expected operator error.  One nine-control child of the exact
+# M44 seal reauthorizes the unchanged generation-31 to generation-32 restart
+# and sole event-302 append.  Its own commit, tree, and blobs are deliberately
+# excluded from the canonical authority body to avoid recursive identity.
+_M45_MIGRATION_REVISION = "SAWM-R2-M45"
+_M45_SUPERSESSION_MODE = (
+    "append_only_failed_pre_authoritative_m44_validation_successor_source_seal"
+)
+_M45_SUPERSESSION_REASON = (
+    "failed_pre_authoritative_m44_validation_successor_materialization"
+)
+_M45_CONTROL_RECORDED_AT = "2026-09-01T12:30:00Z"
+_M45_AUTHORITY_CID = (
+    "sha256:1fece222571aff1238d6e32465cae69f3f766d3e4da303b8775a5df892b95ef7"
+)
+_M45_M44_AUTHORITY_CID = _M44_AUTHORITY_CID
+_M45_M44_AUTHORITY_SIZE = 20_272
+_M45_M44_FINAL_CONTROL_COMMIT = (
+    "7aab0aa1267b2dc3ae1baafb821e857b4dc0356f"
+)
+_M45_M44_FINAL_CONTROL_TREE = "808cd2fdc3c68c74b25f4b3663a9eb2e884eb0f8"
+_M45_M44_FINAL_CONTROL_BLOBS = MappingProxyType(
+    {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "8b52fd9ba277df2c9bac062262cbc7c5e9f68dd4"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "700c4b52460db6bfdf5309eb0bd86e505e65b77b"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "7de72a067b79377450514d43d03b0f0c3bd4c10e"
+        ),
+        "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json": (
+            "65d37796725bca1272e842ef860b0b1f1d18ba1f"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "cc9f80c1898053971b73fbc5afca2d7e496b5d6f"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "2fdf9d7a34e8837bd7c0a4a0e5e0460b82fc7c3a"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "355a721b49c4d742d111201c5e01b64e3070620c"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "6bf5833fccb82ae4fb4389ded7ed44938a705cb9"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "b791cb5b5a8bc2a6ab48841c06bfd5ee32c4be33"
+        ),
+    }
+)
+_M45_M44_FINAL_CONTROL_MODES = MappingProxyType(
+    {path: "100644" for path in _M45_M44_FINAL_CONTROL_BLOBS}
+)
+_M45_TEST_REPAIR_COMMIT = "43516e08effc05ae2492a3cf6783b2b981f1ec4e"
+_M45_TEST_REPAIR_TREE = "c405745eda8ea5c8c728dad9ab0764c0c107c9d5"
+_M45_TEST_REPAIR_BLOB = "86913518dd59e4084638651a1f0af5083609dfb8"
+_M45_TEST_REPAIR_MODE = "100644"
+_M45_TEST_REPAIR_DIFF_SHA256 = (
+    "65981f1ff5875ad65bb19ddf03d3fc80e628c0a7a9fdfe47d01f64c0f583c34b"
+)
+_M45_OPERATOR_CONTROL_PATHS = frozenset(_M44_OPERATOR_CONTROL_PATHS)
+_M45_TEST_PATH = (
+    "test/api/semantic_world/test_semantic_addressed_world_model_board.py"
+)
+_M45_PRIOR_TEST_NAME = (
+    "test_m39_stale_owner_recovery_requires_a_generation_31_successor"
+)
+_M45_TEST_NAME = (
+    "test_m39_stale_owner_recovery_requires_a_generation_32_successor"
+)
+_M45_PRIOR_TEST_FUNCTION_SHA256 = (
+    "dc2c37c0c3e088698bfaaf17941b097954d2880d30875071768c629cbf1e6065"
+)
+_M45_TARGET_TEST_FUNCTION_SHA256 = (
+    "b75f0fef74b6f35f36531eeda2c368508ee65473b4846ed051b6d11f21becbb0"
+)
+_M45_OBSOLETE_EXPECTATION = (
+    "M43 binds a cleanly stopped generation-30 owner; use the sealed "
+    "generation-31 quack-start path"
+)
+_M45_CORRECT_EXPECTATION = (
+    "binds a cleanly stopped generation-31 owner; use the sealed "
+    "generation-32 quack-start path instead of stale-owner recovery"
+)
+_M45_ACTUAL_ERROR = f"M44 {_M45_CORRECT_EXPECTATION}"
+_M45_PRIOR_GENERATION = _M44_PRIOR_GENERATION
+_M45_TARGET_GENERATION = _M44_TARGET_GENERATION
+_M45_PRIOR_EVENT_WATERMARK = _M44_PRIOR_EVENT_WATERMARK
+_M45_TARGET_EVENT_WATERMARK = _M44_TARGET_EVENT_WATERMARK
+_M45_PRIOR_PROJECTION_CID = _M44_PRIOR_PROJECTION_CID
+_M45_TARGET_PROJECTION_CID = _M44_TARGET_PROJECTION_CID
+_M45_STORE_ID = _M44_STORE_ID
+_M45_COORDINATION_STORE_ID = _M44_COORDINATION_STORE_ID
+_M45_RUNTIME_ROOT = _M44_RUNTIME_ROOT
+_M45_WORKTREE_ROOT = _M44_WORKTREE_ROOT
+_M45_DATABASE_UUID = _M44_DATABASE_UUID
+_M45_TARGET_PLAN_REVISION = _M44_TARGET_PLAN_REVISION
+_M45_TARGET_QUACK_PORT = _M44_TARGET_QUACK_PORT
+
 # M41 preserves M40's complete control declaration and failed sealed-suite
 # attempt as pre-authoritative history.  M40 was never materialized: the suite
 # passed 285 tests and failed 22 historical-fixture cases because the helper
@@ -10342,6 +10447,290 @@ def _validated_m44_live_preflight_contract(
     return contract
 
 
+def _expected_m45_failed_pre_authoritative_m44_validation_successor_authority() -> dict[str, Any]:
+    """Return M45's compact non-recursive prepublication source authority."""
+
+    m44 = (
+        _expected_m44_post_m43_hardened_procfs_user_manager_restart_successor_authority()
+    )
+    m44_cid = _identity(m44)
+    if (
+        m44_cid != _M45_M44_AUTHORITY_CID
+        or len(_canonical(m44)) != _M45_M44_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M45 preserved M44 authority differs")
+    runtime = dict(m44["runtime_binding"])
+    contract = {
+        "schema": "sawm/live-preflight-contract@1",
+        "migration_revision": _M45_MIGRATION_REVISION,
+        "successor_class": "failed_pre_authoritative_m44_validation_successor",
+        "target_store_id": _M45_STORE_ID,
+        "database_uuid": _M45_DATABASE_UUID,
+        "prior_generation": _M45_PRIOR_GENERATION,
+        "target_generation": _M45_TARGET_GENERATION,
+        "prior_event_watermark": _M45_PRIOR_EVENT_WATERMARK,
+        "target_event_watermark": _M45_TARGET_EVENT_WATERMARK,
+        "target_plan_revision": _M45_TARGET_PLAN_REVISION,
+        "prior_projection_cid": _M45_PRIOR_PROJECTION_CID,
+        "target_projection_cid": _M45_TARGET_PROJECTION_CID,
+        "semantic_authority_digest": _M44_SEMANTIC_AUTHORITY_DIGEST,
+        "expected_task_heads": _m44_expected_task_heads(),
+        "m44_authority_cid": _M45_M44_AUTHORITY_CID,
+        "m44_authority_must_be_preserved": True,
+        "m44_receipt_must_be_absent_before_publication": True,
+        "m43_receipt_must_be_preserved": True,
+        "events_297_through_301_must_be_preserved": True,
+        "event_302_must_be_absent_before_append": True,
+        "generation_restart_authorized": True,
+    }
+    return {
+        "schema": (
+            "sawm/failed-pre-authoritative-m44-validation-successor-"
+            "authorization@1"
+        ),
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": _M45_MIGRATION_REVISION,
+        "migration_kind": _M45_SUPERSESSION_REASON,
+        "supersession_mode": _M45_SUPERSESSION_MODE,
+        "control_recorded_at": _M45_CONTROL_RECORDED_AT,
+        "target_store_id": _M45_STORE_ID,
+        "target_coordination_store_id": _M45_COORDINATION_STORE_ID,
+        "target_runtime_root": _M45_RUNTIME_ROOT,
+        "target_generation": _M45_TARGET_GENERATION,
+        "target_quack_port": _M45_TARGET_QUACK_PORT,
+        "target_plan_revision": _M45_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M45_TARGET_EVENT_WATERMARK,
+        "target_projection_cid": _M45_TARGET_PROJECTION_CID,
+        "prior_database_uuid": _M45_DATABASE_UUID,
+        "runtime_binding": runtime,
+        "preserved_m44_authority": {
+            "schema": "sawm/preserved-operator-control-authority@1",
+            "migration_revision": _M44_MIGRATION_REVISION,
+            "authority_cid": _M45_M44_AUTHORITY_CID,
+            "authority_schema": m44["schema"],
+            "canonical_body_size": _M45_M44_AUTHORITY_SIZE,
+            "body_rehashed_independently": True,
+            "final_control_commit": _M45_M44_FINAL_CONTROL_COMMIT,
+            "final_control_tree": _M45_M44_FINAL_CONTROL_TREE,
+            "authority_amended_or_rewritten": False,
+            "receipt_created": False,
+            "event_302_created": False,
+        },
+        "failed_m44_prepublication_validation": {
+            "schema": "sawm/prepublication-control-validation-failure@1",
+            "test_id": (
+                f"{_M45_TEST_PATH}::{_M45_PRIOR_TEST_NAME}"
+            ),
+            "phase": "sealed_board_test_suite",
+            "failure_kind": "obsolete_historical_operator_error_expectation",
+            "expected_error": _M45_OBSOLETE_EXPECTATION,
+            "actual_error": _M45_ACTUAL_ERROR,
+            "runtime_started": False,
+            "database_mutations": 0,
+            "sidecar_mutations": 0,
+            "event_302_created": False,
+            "m44_receipt_created": False,
+        },
+        "accepted_test_expectation_correction": {
+            "schema": "sawm/exact-test-expectation-correction@1",
+            "path": _M45_TEST_PATH,
+            "prior_test_name": _M45_PRIOR_TEST_NAME,
+            "test_name": _M45_TEST_NAME,
+            "parent_blob_oid": _M45_M44_FINAL_CONTROL_BLOBS[_M45_TEST_PATH],
+            "repair_parent": _M45_M44_FINAL_CONTROL_COMMIT,
+            "repair_commit": _M45_TEST_REPAIR_COMMIT,
+            "repair_tree": _M45_TEST_REPAIR_TREE,
+            "repair_blob_oid": _M45_TEST_REPAIR_BLOB,
+            "repair_mode": _M45_TEST_REPAIR_MODE,
+            "binary_diff_sha256": _M45_TEST_REPAIR_DIFF_SHA256,
+            "prior_function_sha256": _M45_PRIOR_TEST_FUNCTION_SHA256,
+            "target_function_sha256": _M45_TARGET_TEST_FUNCTION_SHA256,
+            "obsolete_expectation": _M45_OBSOLETE_EXPECTATION,
+            "correct_expectation": _M45_CORRECT_EXPECTATION,
+            "exact_replacement_count": 1,
+            "operator_behavior_changed": False,
+            "ordinary_source_changes": 1,
+            "runtime_changes": 0,
+            "validation_weakened": False,
+            "worker_self_approval": False,
+        },
+        "delegated_m44_materialization": {
+            "schema": "sawm/preserved-prepublication-materialization@1",
+            "authority_cid": _M45_M44_AUTHORITY_CID,
+            "prior_generation": _M45_PRIOR_GENERATION,
+            "target_generation": _M45_TARGET_GENERATION,
+            "prior_event_watermark": _M45_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M45_TARGET_EVENT_WATERMARK,
+            "prior_projection_cid": _M45_PRIOR_PROJECTION_CID,
+            "target_projection_cid": _M45_TARGET_PROJECTION_CID,
+            "m44_transition_semantics_preserved_exactly": True,
+            "m44_receipt_created": False,
+            "m45_receipt_published_last": True,
+            "generation_restart_authorized": True,
+        },
+        "live_preflight_contract": contract,
+        "source_chain": {
+            "m44_final_control_parent": _M44_REPAIR_COMMIT,
+            "m44_final_control_commit": _M45_M44_FINAL_CONTROL_COMMIT,
+            "m44_final_control_tree": _M45_M44_FINAL_CONTROL_TREE,
+            "m44_final_control_blobs": dict(_M45_M44_FINAL_CONTROL_BLOBS),
+            "m44_final_control_modes": dict(_M45_M44_FINAL_CONTROL_MODES),
+            "test_repair_parent": _M45_M44_FINAL_CONTROL_COMMIT,
+            "test_repair_commit": _M45_TEST_REPAIR_COMMIT,
+            "test_repair_tree": _M45_TEST_REPAIR_TREE,
+            "test_repair_path": _M45_TEST_PATH,
+            "test_repair_blob": _M45_TEST_REPAIR_BLOB,
+            "test_repair_mode": _M45_TEST_REPAIR_MODE,
+            "test_repair_diff_sha256": _M45_TEST_REPAIR_DIFF_SHA256,
+            "test_repair_commit_count": 1,
+            "final_control_parent": _M45_TEST_REPAIR_COMMIT,
+            "final_control_commit_count": 1,
+            "current_commit_identity_embedded_in_authority": False,
+        },
+        "expected_task_heads": _m44_expected_task_heads(),
+        "operator_control_paths": sorted(_M45_OPERATOR_CONTROL_PATHS),
+        "current_datasets_gitlink": m44["current_datasets_gitlink"],
+        "current_datasets_tree": m44["current_datasets_tree"],
+        "current_kit_gitlink": m44["current_kit_gitlink"],
+        "current_kit_tree": m44["current_kit_tree"],
+        "ordinary_source_changes": 1,
+        "exact_changes": {
+            "test_expectation_changes": 1,
+            "event_suffix_length": 1,
+            "evidence_node_changes": 1,
+            "evidence_event_changes": 1,
+            "validation_event_changes": 0,
+            "store_generation_row_changes": 1,
+            "state_server_row_changes": 1,
+            "credential_row_changes": 1,
+            "server_epoch_row_changes": 1,
+            "capability_snapshot_row_changes": 1,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "goal_revision_changes": 0,
+            "plan_revision_changes": 0,
+            "coordination_semantic_changes": 0,
+            "implementation_provider_invocations": 0,
+            "effect_claim_changes": 0,
+            "merge_attempt_changes": 0,
+            "accepted_completion_changes": 0,
+            "worker_self_approval": False,
+        },
+        "preservation": {
+            "m44_authority_preserved_exactly": True,
+            "m44_history_preserved_append_only": True,
+            "m44_receipt_absent_before_publication": True,
+            "m43_receipt_preserved_exactly": True,
+            "event_297_preserved_exactly": True,
+            "events_298_through_301_preserved_exactly": True,
+            "generation_31_preserved_stopped": True,
+            "task_goal_plan_heads_preserved": True,
+            "coordination_store_bytes_preserved_exactly": True,
+            "same_database_uuid": True,
+            "same_runtime_root": True,
+            "same_store_path": True,
+            "worker_self_approval": False,
+        },
+    }
+
+
+def _m45_authority_reference() -> dict[str, Any]:
+    """Return M45's reference and reject sealed-body drift."""
+
+    authority = (
+        _expected_m45_failed_pre_authoritative_m44_validation_successor_authority()
+    )
+    if not _M45_AUTHORITY_CID.endswith(
+        "PENDING_M45_FINAL_CONTROL_AUTHORITY_CID"
+    ) and _identity(authority) != _M45_AUTHORITY_CID:
+        raise MaterializationError("M45 source successor authority CID differs")
+    return {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": _M45_MIGRATION_REVISION,
+        "authority_cid": _M45_AUTHORITY_CID,
+    }
+
+
+def _validated_m45_live_preflight_contract(
+    authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Validate M45's closed delegation to unchanged M44 runtime semantics."""
+
+    expected = (
+        _expected_m45_failed_pre_authoritative_m44_validation_successor_authority()
+    )
+    contract = authority.get("live_preflight_contract")
+    preserved = authority.get("preserved_m44_authority")
+    correction = authority.get("accepted_test_expectation_correction")
+    delegated = authority.get("delegated_m44_materialization")
+    chain = authority.get("source_chain")
+    if (
+        dict(authority) != expected
+        or not all(
+            isinstance(value, Mapping)
+            for value in (contract, preserved, correction, delegated, chain)
+        )
+        or authority.get("schema")
+        != (
+            "sawm/failed-pre-authoritative-m44-validation-successor-"
+            "authorization@1"
+        )
+        or authority.get("authorized") is not True
+        or authority.get("authority") != "operator_control_plane"
+        or authority.get("migration_revision") != _M45_MIGRATION_REVISION
+        or authority.get("migration_kind") != _M45_SUPERSESSION_REASON
+        or preserved.get("authority_cid") != _M45_M44_AUTHORITY_CID
+        or preserved.get("canonical_body_size") != _M45_M44_AUTHORITY_SIZE
+        or preserved.get("authority_amended_or_rewritten") is not False
+        or correction.get("prior_function_sha256")
+        != _M45_PRIOR_TEST_FUNCTION_SHA256
+        or correction.get("target_function_sha256")
+        != _M45_TARGET_TEST_FUNCTION_SHA256
+        or correction.get("repair_commit") != _M45_TEST_REPAIR_COMMIT
+        or correction.get("repair_tree") != _M45_TEST_REPAIR_TREE
+        or correction.get("repair_blob_oid") != _M45_TEST_REPAIR_BLOB
+        or correction.get("binary_diff_sha256")
+        != _M45_TEST_REPAIR_DIFF_SHA256
+        or correction.get("operator_behavior_changed") is not False
+        or correction.get("validation_weakened") is not False
+        or delegated.get("authority_cid") != _M45_M44_AUTHORITY_CID
+        or delegated.get("m44_transition_semantics_preserved_exactly")
+        is not True
+        or delegated.get("m44_receipt_created") is not False
+        or delegated.get("m45_receipt_published_last") is not True
+        or contract.get("migration_revision") != _M45_MIGRATION_REVISION
+        or contract.get("prior_generation") != _M45_PRIOR_GENERATION
+        or contract.get("target_generation") != _M45_TARGET_GENERATION
+        or contract.get("prior_event_watermark")
+        != _M45_PRIOR_EVENT_WATERMARK
+        or contract.get("target_event_watermark")
+        != _M45_TARGET_EVENT_WATERMARK
+        or contract.get("prior_projection_cid") != _M45_PRIOR_PROJECTION_CID
+        or contract.get("target_projection_cid") != _M45_TARGET_PROJECTION_CID
+        or contract.get("m44_receipt_must_be_absent_before_publication")
+        is not True
+        or chain.get("test_repair_parent") != _M45_M44_FINAL_CONTROL_COMMIT
+        or chain.get("test_repair_commit") != _M45_TEST_REPAIR_COMMIT
+        or chain.get("final_control_parent") != _M45_TEST_REPAIR_COMMIT
+        or chain.get("current_commit_identity_embedded_in_authority") is not False
+        or authority.get("operator_control_paths")
+        != sorted(_M45_OPERATOR_CONTROL_PATHS)
+        or authority.get("exact_changes", {}).get("test_expectation_changes")
+        != 1
+        or authority.get("exact_changes", {}).get("event_suffix_length") != 1
+        or authority.get("exact_changes", {}).get("task_revision_changes") != 0
+        or authority.get("exact_changes", {}).get("accepted_completion_changes")
+        != 0
+        or authority.get("preservation", {}).get("m44_authority_preserved_exactly")
+        is not True
+        or authority.get("preservation", {}).get("worker_self_approval")
+        is not False
+    ):
+        raise MaterializationError("M45 live preflight contract differs")
+    return contract
+
+
 def _expected_m42_failed_pre_authoritative_m41_evidence_projection_successor_authority() -> dict[str, Any]:
     """Return M42's closed authority for the sole event-292 append.
 
@@ -13389,6 +13778,42 @@ def _expected_m29_committed_evidence_verification_authority() -> dict[str, Any]:
             "worker_self_approval": False,
         },
     }
+
+
+def _m45_successor_configured(config: Mapping[str, Any]) -> bool:
+    key = _M45_SUPERSESSION_REASON
+    if key not in config:
+        return False
+    if config.get(key) != _m45_authority_reference():
+        raise MaterializationError("M45 successor authority reference differs")
+    return True
+
+
+def _m45_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M45_SUPERSESSION_REASON
+    migration = _load_json(
+        root
+        / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if any(presence) and not all(presence):
+        raise MaterializationError("M45 successor authority is only partially declared")
+    if not any(presence):
+        return False
+    reference = _m45_authority_reference()
+    if (
+        config.get(key) != reference
+        or migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M45 successor authority differs across controls")
+    return _m45_successor_configured(config)
 
 
 def _m44_successor_configured(config: Mapping[str, Any]) -> bool:
@@ -32321,6 +32746,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m45_successor_configured_on_any_surface(root, config):
+        return _check_m45_materialized(root, config_file)
     if _m44_successor_configured_on_any_surface(root, config):
         return _check_m44_materialized(root, config_file)
     if _m43_successor_configured_on_any_surface(root, config):
@@ -57796,6 +58223,257 @@ def _materialize_m26(
     }
 
 
+def _assert_m45_historical_m44_controls(
+    scheduler: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    seal: Mapping[str, Any],
+) -> None:
+    """Preserve M44 exactly without re-entering its current-HEAD gate."""
+
+    _assert_m44_historical_m43_controls(scheduler, migration, seal)
+    key = _M44_SUPERSESSION_REASON
+    reference = _m44_authority_reference()
+    body = (
+        _expected_m44_post_m43_hardened_procfs_user_manager_restart_successor_authority()
+    )
+    if (
+        scheduler.get(key) != reference
+        or migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+        or reference.get("authority_cid") != _M45_M44_AUTHORITY_CID
+        or _identity(body) != _M45_M44_AUTHORITY_CID
+        or len(_canonical(body)) != _M45_M44_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M45 historical M44 authority differs")
+
+
+def _m45_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    expected = (
+        _expected_m45_failed_pre_authoritative_m44_validation_successor_authority()
+    )
+    reference = _m45_authority_reference()
+    key = _M45_SUPERSESSION_REASON
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if not isinstance(inventory, Mapping):
+        raise MaterializationError("M45 migration inventory is invalid")
+    _assert_m45_historical_m44_controls(config, inventory, seal)
+    if (
+        config.get(key) != reference
+        or inventory.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M45 authority differs across protected controls")
+    _validated_m45_live_preflight_contract(expected)
+    return expected
+
+
+def _m45_named_test_function(text: str, name: str) -> str:
+    """Extract the exact corrected fixture body for non-recursive sealing."""
+
+    match = re.search(
+        rf"(?ms)^def {re.escape(name)}\(\) -> None:\n.*?(?=^def )",
+        text,
+    )
+    if match is None:
+        raise MaterializationError("M45 corrected test function is unavailable")
+    return match.group(0)
+
+
+def _assert_m45_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Require exact 7aab -> one-test repair -> one nine-control child."""
+
+    identities = (
+        _M45_M44_FINAL_CONTROL_COMMIT,
+        _M45_M44_FINAL_CONTROL_TREE,
+        *tuple(_M45_M44_FINAL_CONTROL_BLOBS.values()),
+        _M45_TEST_REPAIR_COMMIT,
+        _M45_TEST_REPAIR_TREE,
+        _M45_TEST_REPAIR_BLOB,
+    )
+    if (
+        any(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in identities)
+        or _M45_AUTHORITY_CID.endswith("PENDING_M45_FINAL_CONTROL_AUTHORITY_CID")
+    ):
+        raise MaterializationError("M45 final control identities are not resealed")
+    current = str(population["source_binding"]["head"])
+    chain = authority.get("source_chain")
+    controls = set(authority.get("operator_control_paths") or ())
+    parent_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M45_M44_FINAL_CONTROL_COMMIT
+    ).split()
+    repair_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M45_TEST_REPAIR_COMMIT
+    ).split()
+    current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
+    binary_diff = subprocess.run(
+        [
+            "git",
+            "diff",
+            "--binary",
+            _M45_M44_FINAL_CONTROL_COMMIT,
+            _M45_TEST_REPAIR_COMMIT,
+            "--",
+            _M45_TEST_PATH,
+        ],
+        cwd=root,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        timeout=20,
+    )
+    if binary_diff.returncode:
+        raise MaterializationError("M45 test repair binary diff is unavailable")
+    observed_diff_sha256 = hashlib.sha256(binary_diff.stdout).hexdigest()
+    if (
+        current in {_M45_M44_FINAL_CONTROL_COMMIT, _M45_TEST_REPAIR_COMMIT}
+        or not isinstance(chain, Mapping)
+        or controls != set(_M45_OPERATOR_CONTROL_PATHS)
+        or _M45_OPERATOR_CONTROL_PATHS != _M44_OPERATOR_CONTROL_PATHS
+        or chain.get("m44_final_control_parent") != _M44_REPAIR_COMMIT
+        or chain.get("m44_final_control_commit")
+        != _M45_M44_FINAL_CONTROL_COMMIT
+        or chain.get("m44_final_control_tree") != _M45_M44_FINAL_CONTROL_TREE
+        or chain.get("m44_final_control_blobs")
+        != dict(_M45_M44_FINAL_CONTROL_BLOBS)
+        or chain.get("m44_final_control_modes")
+        != dict(_M45_M44_FINAL_CONTROL_MODES)
+        or chain.get("test_repair_parent") != _M45_M44_FINAL_CONTROL_COMMIT
+        or chain.get("test_repair_commit") != _M45_TEST_REPAIR_COMMIT
+        or chain.get("test_repair_tree") != _M45_TEST_REPAIR_TREE
+        or chain.get("test_repair_path") != _M45_TEST_PATH
+        or chain.get("test_repair_blob") != _M45_TEST_REPAIR_BLOB
+        or chain.get("test_repair_mode") != _M45_TEST_REPAIR_MODE
+        or chain.get("test_repair_diff_sha256")
+        != _M45_TEST_REPAIR_DIFF_SHA256
+        or int(chain.get("test_repair_commit_count") or 0) != 1
+        or chain.get("final_control_parent") != _M45_TEST_REPAIR_COMMIT
+        or int(chain.get("final_control_commit_count") or 0) != 1
+        or chain.get("current_commit_identity_embedded_in_authority") is not False
+        or parent_parents
+        != [_M45_M44_FINAL_CONTROL_COMMIT, _M44_REPAIR_COMMIT]
+        or repair_parents
+        != [_M45_TEST_REPAIR_COMMIT, _M45_M44_FINAL_CONTROL_COMMIT]
+        or current_parents != [current, _M45_TEST_REPAIR_COMMIT]
+        or _git(root, "rev-parse", f"{_M45_M44_FINAL_CONTROL_COMMIT}^{{tree}}")
+        != _M45_M44_FINAL_CONTROL_TREE
+        or _git(root, "rev-parse", f"{_M45_TEST_REPAIR_COMMIT}^{{tree}}")
+        != _M45_TEST_REPAIR_TREE
+        or _m27_name_status(
+            root, _M45_M44_FINAL_CONTROL_COMMIT, _M45_TEST_REPAIR_COMMIT
+        )
+        != {_M45_TEST_PATH: "M"}
+        or _m27_name_status(root, _M45_TEST_REPAIR_COMMIT, current)
+        != {path: "M" for path in controls}
+        or observed_diff_sha256 != _M45_TEST_REPAIR_DIFF_SHA256
+        or population["source_binding"].get("tree")
+        != _git(root, "rev-parse", f"{current}^{{tree}}")
+        or int(authority.get("ordinary_source_changes", -1)) != 1
+    ):
+        raise MaterializationError("M45 exact M44/control source chain differs")
+    for path, oid in _M45_M44_FINAL_CONTROL_BLOBS.items():
+        if _git(root, "rev-parse", f"{_M45_M44_FINAL_CONTROL_COMMIT}:{path}") != oid:
+            raise MaterializationError(f"M45 M44-final-control blob differs: {path}")
+        if (
+            _git(root, "ls-tree", _M45_M44_FINAL_CONTROL_COMMIT, "--", path)
+            != f"{_M45_M44_FINAL_CONTROL_MODES[path]} blob {oid}\t{path}"
+        ):
+            raise MaterializationError(f"M45 M44-final-control mode differs: {path}")
+    _assert_m43_current_control_modes(root, current, controls)
+    if (
+        _git(root, "rev-parse", f"{_M45_TEST_REPAIR_COMMIT}:{_M45_TEST_PATH}")
+        != _M45_TEST_REPAIR_BLOB
+        or _git(root, "ls-tree", _M45_TEST_REPAIR_COMMIT, "--", _M45_TEST_PATH)
+        != (
+            f"{_M45_TEST_REPAIR_MODE} blob {_M45_TEST_REPAIR_BLOB}"
+            f"\t{_M45_TEST_PATH}"
+        )
+    ):
+        raise MaterializationError("M45 test repair blob/mode differs")
+    sources: list[str] = []
+    for commit in (
+        _M45_M44_FINAL_CONTROL_COMMIT,
+        _M45_TEST_REPAIR_COMMIT,
+        current,
+    ):
+        observed = subprocess.run(
+            ["git", "show", f"{commit}:{_M45_TEST_PATH}"],
+            cwd=root,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=20,
+        )
+        if observed.returncode:
+            raise MaterializationError("M45 committed test source is unavailable")
+        try:
+            sources.append(observed.stdout.decode("utf-8"))
+        except UnicodeDecodeError as exc:
+            raise MaterializationError("M45 test source is not UTF-8") from exc
+    try:
+        parent_function = _m45_named_test_function(
+            sources[0], _M45_PRIOR_TEST_NAME
+        )
+        target_function = _m45_named_test_function(
+            sources[1], _M45_TEST_NAME
+        )
+        current_function = _m45_named_test_function(sources[2], _M45_TEST_NAME)
+    except MaterializationError:
+        raise
+    correction = authority.get("accepted_test_expectation_correction")
+    if (
+        not isinstance(correction, Mapping)
+        or hashlib.sha256(parent_function.encode("utf-8")).hexdigest()
+        != _M45_PRIOR_TEST_FUNCTION_SHA256
+        or hashlib.sha256(target_function.encode("utf-8")).hexdigest()
+        != _M45_TARGET_TEST_FUNCTION_SHA256
+        or hashlib.sha256(current_function.encode("utf-8")).hexdigest()
+        != _M45_TARGET_TEST_FUNCTION_SHA256
+        or parent_function.count(_M45_OBSOLETE_EXPECTATION.split(";", 1)[0]) != 1
+        or target_function.count(_M45_CORRECT_EXPECTATION.split(";", 1)[0]) != 1
+        or correction.get("path") != _M45_TEST_PATH
+        or correction.get("exact_replacement_count") != 1
+        or correction.get("operator_behavior_changed") is not False
+        or correction.get("runtime_changes") != 0
+        or correction.get("validation_weakened") is not False
+    ):
+        raise MaterializationError("M45 exact test expectation correction differs")
+    for dependency, gitlink_key, tree_key, population_key in (
+        (
+            "ipfs_datasets_py",
+            "current_datasets_gitlink",
+            "current_datasets_tree",
+            "datasets_gitlink",
+        ),
+        ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree", "kit_gitlink"),
+    ):
+        gitlink = str(authority[gitlink_key])
+        if (
+            any(
+                _git(root, "rev-parse", f"{head}:{dependency}") != gitlink
+                for head in (
+                    _M45_M44_FINAL_CONTROL_COMMIT,
+                    _M45_TEST_REPAIR_COMMIT,
+                    current,
+                )
+            )
+            or population["source_binding"].get(population_key) != gitlink
+            or _git(root / dependency, "rev-parse", f"{gitlink}^{{tree}}")
+            != authority[tree_key]
+        ):
+            raise MaterializationError(f"M45 {dependency} authority differs")
+
+
 def _assert_m44_historical_m43_controls(
     scheduler: Mapping[str, Any],
     migration: Mapping[str, Any],
@@ -62051,6 +62729,118 @@ def _m44_operational_suffix_on(connection: Any) -> list[dict[str, Any]]:
             }
         )
     return normalized
+
+
+def _check_m45_prestart_admission(
+    root: Path,
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Admit M45 only from M44's exact stopped prepublication bytes."""
+
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m45_source_binding_authority(root, population, config)
+    _assert_m45_source_delta(root, population, authority)
+    m44 = (
+        _expected_m44_post_m43_hardened_procfs_user_manager_restart_successor_authority()
+    )
+    _validated_m44_live_preflight_contract(m44)
+    control, coordination = _m44_target_paths(root, config, m44)
+    _assert_offline(control)
+    receipt_path = control.parent / "m45-source-successor-receipt.json"
+    m44_receipt_path = control.parent / "m44-source-successor-receipt.json"
+    if os.path.lexists(receipt_path) or os.path.lexists(m44_receipt_path):
+        raise MigrationRequired("M45 prepublication admission is already consumed")
+    status_path = control.parent / "quack-owner/quack-state-server.status.json"
+    m43_path = control.parent / "m43-source-successor-receipt.json"
+    for path, expected_size, expected_sha, noun, expected_mode in (
+        (
+            control,
+            _M44_PRIOR_CONTROL_SIZE,
+            _M44_PRIOR_CONTROL_SHA256,
+            "M45 stopped control store",
+            0o664,
+        ),
+        (
+            coordination,
+            _M44_PRIOR_COORDINATION_SIZE,
+            _M44_PRIOR_COORDINATION_SHA256,
+            "M45 coordination store",
+            0o664,
+        ),
+        (
+            status_path,
+            _M44_STOPPED_STATUS_SIZE,
+            _M44_STOPPED_STATUS_SHA256,
+            "M45 stopped status",
+            0o600,
+        ),
+        (
+            m43_path,
+            _M44_M43_RECEIPT_SIZE,
+            _M44_M43_RECEIPT_SHA256,
+            "M45 preserved M43 receipt",
+            0o600,
+        ),
+    ):
+        observed_sha, observed_size = _stable_regular_sha256(
+            path, root=root, noun=noun, required_link_count=1
+        )
+        if (
+            observed_size != expected_size
+            or observed_sha != expected_sha
+            or stat.S_IMODE(os.lstat(path).st_mode) != expected_mode
+        ):
+            raise MigrationRequired(f"{noun} bytes/mode differ")
+    _verify_m44_preserved_m43_receipt(root, control)
+    status, _ = _load_nofollow_json(
+        status_path, root=root, noun="M45 stopped Quack status"
+    )
+    identity = status.get("identity")
+    marker_path = control.with_name(f".{control.name}.state-owner.json")
+    stop_path = status_path.with_name("quack-state-server.stop")
+    token_handoff_path = status_path.parent / "env___SAWM_QUACK_TOKEN.quack-token"
+    if (
+        status.get("lifecycle") != "stopped"
+        or not isinstance(identity, Mapping)
+        or identity.get("status") != "stopped"
+        or identity.get("server_id") != _M44_PRIOR_SERVER_ID
+        or identity.get("process_birth_id") != _M44_PRIOR_PROCESS_BIRTH_ID
+        or identity.get("database_uuid") != _M44_DATABASE_UUID
+        or identity.get("store_id") != _M44_STORE_ID
+        or identity.get("listen_uri") != "quack:127.0.0.1:24070"
+        or identity.get("started_at") != _M44_PRIOR_STARTED_AT
+        or identity.get("stopped_at") not in (None, _M44_PRIOR_STOPPED_AT)
+        or identity.get("extension_fingerprint") != _M44_EXTENSION_FINGERPRINT
+        or int(identity.get("generation") or 0) != _M45_PRIOR_GENERATION
+        or int(identity.get("fence_epoch") or 0) != _M45_PRIOR_GENERATION
+        or int(identity.get("credential_generation") or 0)
+        != _M45_PRIOR_GENERATION
+        or int(identity.get("startup_epoch") or 0) != _M44_PRIOR_STARTUP_EPOCH
+        or os.path.lexists(marker_path)
+        or os.path.lexists(stop_path)
+        or os.path.lexists(token_handoff_path)
+        or os.path.lexists(control.with_name(f"{control.name}.wal"))
+        or os.path.lexists(coordination.with_name(f"{coordination.name}.wal"))
+    ):
+        raise MigrationRequired("M45 stopped owner status differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "admitted_stopped_generation_31_restart_to_generation_32",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "prior_event_watermark": _M45_PRIOR_EVENT_WATERMARK,
+        "prior_projection_cid": _M45_PRIOR_PROJECTION_CID,
+        "prior_generation": _M45_PRIOR_GENERATION,
+        "target_generation": _M45_TARGET_GENERATION,
+        "m44_authority_preserved_exactly": True,
+        "m44_receipt_absent": True,
+        "m43_receipt_preserved_exactly": True,
+        "stopped_owner_bytes_verified": True,
+        "coordination_store_bytes_preserved_exactly": True,
+        "prestart_authorization_consumed": False,
+    }
 
 
 def _check_m44_prestart_admission(
@@ -71840,6 +72630,147 @@ def _verify_m41_live_materialization(
     }
 
 
+def _expected_m45_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind M45's source seal to the unchanged M44 runtime transition."""
+
+    m44 = (
+        _expected_m44_post_m43_hardened_procfs_user_manager_restart_successor_authority()
+    )
+    result = _expected_m44_source_successor_receipt(
+        population, m44, validation_digest, verified
+    )
+    result.pop("receipt_cid", None)
+    result.pop(f"{_M44_SUPERSESSION_REASON}_cid", None)
+    result.update(
+        {
+            "schema": (
+                "sawm/non-authoritative-failed-pre-authoritative-m44-"
+                "validation-successor-receipt@1"
+            ),
+            "migration_revision": _M45_MIGRATION_REVISION,
+            "migration_kind": _M45_SUPERSESSION_REASON,
+            "supersession_mode": _M45_SUPERSESSION_MODE,
+            f"{_M45_SUPERSESSION_REASON}_cid": _identity(authority),
+            "delegated_m44_authority_cid": _M45_M44_AUTHORITY_CID,
+            "m44_authority_preserved_exactly": True,
+            "m44_receipt_created": False,
+            "m45_receipt_published_last": True,
+            "accepted_test_expectation_correction": dict(
+                authority["accepted_test_expectation_correction"]
+            ),
+        }
+    )
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _ensure_m45_source_successor_receipt(
+    root: Path, control: Path, expected: Mapping[str, Any]
+) -> Mapping[str, Any]:
+    """Publish M45 last while M43 remains exact and M44 stays absent."""
+
+    path = control.parent / "m45-source-successor-receipt.json"
+    m44_path = control.parent / "m44-source-successor-receipt.json"
+    descriptors: list[int] = []
+    temporary: Path | None = None
+    try:
+        for revision in ("m43", "m44", "m45"):
+            lock_path = control.parent / f".{revision}-source-successor-receipt.publish.lock"
+            descriptor = os.open(
+                lock_path,
+                os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            lock_stat = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(lock_stat.st_mode)
+                or lock_stat.st_nlink != 1
+                or stat.S_IMODE(lock_stat.st_mode) != 0o600
+                or lock_stat.st_uid != os.geteuid()
+            ):
+                os.close(descriptor)
+                raise MigrationRequired("M45 receipt-chain publication lock is unsafe")
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            descriptors.append(descriptor)
+        before = _verify_m44_preserved_m43_receipt(root, control)
+        if os.path.lexists(m44_path):
+            raise MigrationRequired("M45 superseded M44 receipt unexpectedly exists")
+        if os.path.lexists(path):
+            receipt_stat = os.lstat(path)
+            if (
+                not stat.S_ISREG(receipt_stat.st_mode)
+                or receipt_stat.st_nlink != 1
+                or stat.S_IMODE(receipt_stat.st_mode) != 0o600
+                or receipt_stat.st_uid != os.geteuid()
+            ):
+                raise MigrationRequired("M45 source successor receipt mode is unsafe")
+            observed, _ = _load_nofollow_json(
+                path, root=root, noun="M45 source successor receipt"
+            )
+            if observed != dict(expected):
+                raise MigrationRequired("M45 source successor receipt differs")
+            if (
+                _verify_m44_preserved_m43_receipt(root, control) != before
+                or os.path.lexists(m44_path)
+            ):
+                raise MigrationRequired("M45 publication chain changed")
+            return dict(observed)
+        temporary = path.with_name(
+            f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+        )
+        out = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            os.write(out, _canonical(expected) + b"\n")
+            os.fsync(out)
+        finally:
+            os.close(out)
+        if (
+            _verify_m44_preserved_m43_receipt(root, control) != before
+            or os.path.lexists(m44_path)
+        ):
+            raise MigrationRequired("M45 predecessor changed before publication")
+        os.replace(temporary, path)
+        temporary = None
+        directory = os.open(
+            path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        observed, _ = _load_nofollow_json(
+            path, root=root, noun="M45 published source successor receipt"
+        )
+        if (
+            observed != dict(expected)
+            or _verify_m44_preserved_m43_receipt(root, control) != before
+            or os.path.lexists(m44_path)
+        ):
+            raise MigrationRequired("M45 published receipt chain differs")
+        return dict(observed)
+    finally:
+        if temporary is not None and os.path.lexists(temporary):
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+        for descriptor in reversed(descriptors):
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(descriptor)
+
+
 def _expected_m44_source_successor_receipt(
     population: Mapping[str, Any],
     authority: Mapping[str, Any],
@@ -75569,6 +76500,291 @@ def _verify_m36_preserved_files(
     ):
         raise MigrationRequired("M36 preserved M34 source receipt differs")
     return observed
+
+
+def _check_m45_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    """Verify M45's source receipt and delegated M44 runtime transition."""
+
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m45_source_binding_authority(root, population, config)
+    _assert_m45_source_delta(root, population, authority)
+    m44 = (
+        _expected_m44_post_m43_hardened_procfs_user_manager_restart_successor_authority()
+    )
+    _validated_m44_live_preflight_contract(m44)
+    control, coordination = _m44_target_paths(root, config, m44)
+    receipt_path = control.parent / "m45-source-successor-receipt.json"
+    if not os.path.lexists(receipt_path):
+        raise MigrationRequired("M45 source successor receipt is missing")
+    if os.path.lexists(control.parent / "m44-source-successor-receipt.json"):
+        raise MigrationRequired("M45 superseded M44 receipt unexpectedly exists")
+    m43_before = _verify_m44_preserved_m43_receipt(root, control)
+    coordination_before = _stable_regular_sha256(
+        coordination,
+        root=root,
+        noun="M45 preserved coordination store",
+        required_link_count=1,
+    )
+    validation_digest = _m7_validation_digest(root, population)
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        m44,
+        owner_id="sawm-r2-m44-live-source-sealer",
+    ) as (source, identity):
+        verified = _verify_m44_live_materialization(
+            source,
+            identity,
+            population,
+            config,
+            m44,
+            validation_digest,
+            repository_root=root,
+        )
+    observed, _ = _load_nofollow_json(
+        receipt_path, root=root, noun="M45 source successor receipt"
+    )
+    expected = _expected_m45_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    if (
+        observed != expected
+        or _verify_m44_preserved_m43_receipt(root, control) != m43_before
+        or os.path.lexists(control.parent / "m44-source-successor-receipt.json")
+        or _stable_regular_sha256(
+            coordination,
+            root=root,
+            noun="M45 preserved coordination store",
+            required_link_count=1,
+        )
+        != coordination_before
+        or coordination_before
+        != (_M44_PRIOR_COORDINATION_SHA256, _M44_PRIOR_COORDINATION_SIZE)
+    ):
+        raise MigrationRequired("M45 source successor receipt chain differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_failed_pre_authoritative_m44_validation_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "prior_m43_receipt": m43_before,
+        "receipt": observed,
+        "m45_source_successor_receipt": observed,
+        **verified,
+    }
+
+
+def _materialize_m45(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Run M44's unchanged sole restart/event under M45's source seal."""
+
+    del config_file
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m45_source_binding_authority(root, population, config)
+    _assert_m45_source_delta(root, population, authority)
+    m44 = (
+        _expected_m44_post_m43_hardened_procfs_user_manager_restart_successor_authority()
+    )
+    _validated_m44_live_preflight_contract(m44)
+    control, coordination = _m44_target_paths(root, config, m44)
+    receipt_path = control.parent / "m45-source-successor-receipt.json"
+    m44_receipt_path = control.parent / "m44-source-successor-receipt.json"
+    if os.path.lexists(m44_receipt_path):
+        raise MigrationRequired("M45 superseded M44 receipt unexpectedly exists")
+    m43_before = _verify_m44_preserved_m43_receipt(root, control)
+    coordination_before = _stable_regular_sha256(
+        coordination,
+        root=root,
+        noun="M45 preserved coordination store",
+        required_link_count=1,
+    )
+    if coordination_before != (
+        _M44_PRIOR_COORDINATION_SHA256,
+        _M44_PRIOR_COORDINATION_SIZE,
+    ):
+        raise MigrationRequired("M45 preserved coordination store differs")
+    validation_digest = _m7_validation_digest(root, population)
+    body = _m44_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = m44["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence_id = content_identity(
+        {
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": body,
+        }
+    )
+    appended = False
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        m44,
+        owner_id="sawm-r2-m44-live-source-sealer",
+    ) as (source, identity):
+        snapshot = source.snapshot()
+        if snapshot.event_cursor == _M45_PRIOR_EVENT_WATERMARK:
+            if os.path.lexists(receipt_path) or os.path.lexists(m44_receipt_path):
+                raise MigrationRequired(
+                    "M45 source receipt exists before its accepted event"
+                )
+            _inspect_m44_live_projection(
+                source,
+                population,
+                m44,
+                expected_event_watermark=_M45_PRIOR_EVENT_WATERMARK,
+                expected_projection_cid=_M45_PRIOR_PROJECTION_CID,
+            )
+            if (
+                _m38_projection_cid_at_watermark(
+                    source, _M45_PRIOR_EVENT_WATERMARK
+                )
+                != _M45_PRIOR_PROJECTION_CID
+                or _m38_projection_cid_at_watermark(
+                    source, _M45_TARGET_EVENT_WATERMARK
+                )
+                != _M45_TARGET_PROJECTION_CID
+            ):
+                raise MigrationRequired(
+                    "M45 prior/target projection derivation differs"
+                )
+            _inspect_m44_generation_restart_rows(source, identity, m44)
+            with source.intent._connection(write=False) as connection:
+                preserved = _verify_m44_preserved_m43_materialization(
+                    connection, m43_before
+                )
+                prior_prefix = _event_prefix_digest(
+                    connection, _M45_PRIOR_EVENT_WATERMARK
+                )
+                semantic = _semantic_authority_digest_on(connection)
+                suffix = _m44_operational_suffix_on(connection)
+                target_event = connection.execute(
+                    "SELECT 1 FROM domain_events WHERE global_sequence=?",
+                    [_M45_TARGET_EVENT_WATERMARK],
+                ).fetchone()
+                target_evidence = connection.execute(
+                    "SELECT 1 FROM evidence_nodes WHERE evidence_id=?",
+                    [evidence_id],
+                ).fetchone()
+                evidence_count = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM evidence_nodes"
+                    ).fetchone()[0]
+                )
+                raw_counts = _m43_event_type_counts_on(
+                    connection, _M45_PRIOR_EVENT_WATERMARK
+                )
+            if (
+                preserved.get("m43_event_297_preserved_exactly") is not True
+                or prior_prefix
+                != (_M44_PRIOR_EVENT_PREFIX_SHA256, _M45_PRIOR_EVENT_WATERMARK)
+                or semantic != _M44_SEMANTIC_AUTHORITY_DIGEST
+                or suffix != m44["post_m43_operational_suffix"]["events"]
+                or target_event is not None
+                or target_evidence is not None
+                or evidence_count != _M44_PRIOR_EVIDENCE_NODE_COUNT
+                or raw_counts
+                != (_M44_PRIOR_EVIDENCE_EVENT_COUNT, _M44_VALIDATION_EVENT_COUNT)
+            ):
+                raise MigrationRequired("M45 exact prior projection authority differs")
+            from ipfs_accelerate_py.agent_supervisor.task_sources import (
+                intent_repository,
+            )
+
+            original_clock = intent_repository._utc_iso
+
+            def fixed_m45_utc_iso(_moment: Any = None) -> str:
+                return _M44_CONTROL_RECORDED_AT
+
+            intent_repository._utc_iso = fixed_m45_utc_iso
+            try:
+                try:
+                    evidence_receipt = source.record_evidence(
+                        task_cid=target["operator_task_cid"],
+                        evidence_kind=target["evidence_kind"],
+                        digest=digest,
+                        body=body,
+                    )
+                except Exception:
+                    raise MaterializationError(
+                        "authenticated M45-delegated M44 evidence append failed"
+                    ) from None
+            finally:
+                clock_interference = (
+                    intent_repository._utc_iso is not fixed_m45_utc_iso
+                )
+                intent_repository._utc_iso = original_clock
+            if clock_interference or not evidence_receipt.changed:
+                raise MaterializationError(
+                    "M45-delegated M44 evidence append clock/CAS differed"
+                )
+            appended = True
+        elif snapshot.event_cursor != _M45_TARGET_EVENT_WATERMARK:
+            raise MigrationRequired("M45 live event head is neither prior nor target")
+        verified = _verify_m44_live_materialization(
+            source,
+            identity,
+            population,
+            config,
+            m44,
+            validation_digest,
+            repository_root=root,
+        )
+        if verified["migration_evidence_id"] != evidence_id:
+            raise MaterializationError("M45 delegated evidence identity differs")
+    if (
+        _verify_m44_preserved_m43_receipt(root, control) != m43_before
+        or os.path.lexists(m44_receipt_path)
+        or _stable_regular_sha256(
+            coordination,
+            root=root,
+            noun="M45 preserved coordination store",
+            required_link_count=1,
+        )
+        != coordination_before
+    ):
+        raise MigrationRequired("M45 predecessor receipt/coordination changed")
+    expected_receipt = _expected_m45_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    receipt = _ensure_m45_source_successor_receipt(
+        root, control, expected_receipt
+    )
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": (
+            "materialized_failed_pre_authoritative_m44_validation_successor"
+            if appended
+            else "checked_failed_pre_authoritative_m44_validation_successor"
+        ),
+        "migration_required": False,
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "prior_m43_receipt": m43_before,
+        "receipt": receipt,
+        "m45_source_successor_receipt": receipt,
+        **verified,
+    }
 
 
 def _check_m44_materialized(root: Path, config_file: Path) -> dict[str, Any]:
@@ -79486,6 +80702,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m45_successor_configured_on_any_surface(root, config):
+        return _materialize_m45(root, config_file, config)
     if _m44_successor_configured_on_any_surface(root, config):
         return _materialize_m44(root, config_file, config)
     if _m43_successor_configured_on_any_surface(root, config):

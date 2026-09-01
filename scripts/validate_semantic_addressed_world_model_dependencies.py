@@ -82,6 +82,17 @@ _M44_REPAIR_BLOBS = {
     ),
 }
 _M44_REPAIR_MODES = {path: "100644" for path in _M44_REPAIR_BLOBS}
+_M45_AUTHORITY_CID = (
+    "sha256:1fece222571aff1238d6e32465cae69f3f766d3e4da303b8775a5df892b95ef7"
+)
+_M45_AUTHORITY_SIZE = 14_585
+_M45_UNSEALED_AUTHORITY_CID = (
+    "sha256:PENDING_M45_FINAL_CONTROL_AUTHORITY_CID"
+)
+_M45_SUCCESSOR_KEY = (
+    "failed_pre_authoritative_m44_validation_successor_materialization"
+)
+_M45_MIGRATION_REVISION = "SAWM-R2-M45"
 _HISTORICAL_VALIDATION_PYTHON = "/home/barberb/.local/bin/python"
 _OPERATIONAL_VALIDATION_PYTHON = "python"
 _VALIDATION_RUNTIME_ROOTS = {
@@ -3239,6 +3250,187 @@ def _m18_portal_completion_persistence_errors(
     except Exception as exc:
         return [
             "M18 portal-completion authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m45_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Return true when any protected surface declares the M45 successor."""
+
+    key = _M45_SUCCESSOR_KEY
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m45_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    """Require M45's exact test repair and protected-control reseal."""
+
+    try:
+        required = (
+            "_assert_m45_source_delta",
+            "_M45_OPERATOR_CONTROL_PATHS",
+        )
+        if any(not hasattr(materializer, name) for name in required):
+            raise RuntimeError("M45 final source-delta verifier is unavailable")
+        population = materializer.build_population(root)
+        materializer._assert_m45_source_delta(root, population, authority)
+        return []
+    except Exception as exc:
+        return [
+            "M45 exact test-repair/control source chain differs: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m45_failed_pre_authoritative_m44_validation_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Validate M45 while treating M44 as immutable historical authority."""
+
+    key = _M45_SUCCESSOR_KEY
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m45_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M45 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer
+            ._expected_m45_failed_pre_authoritative_m44_validation_successor_authority()
+        )
+        contract = materializer._validated_m45_live_preflight_contract(expected)
+        reference = dict(materializer._m45_authority_reference())
+        configured_cid = str(materializer._M45_AUTHORITY_CID)
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append("M45 successor authority is only partially declared")
+        if scheduler.get(key) != reference or migration.get(key) != reference:
+            errors.append("M45 successor reference differs")
+        if seal.get(f"{key}_cid") != configured_cid:
+            errors.append("M45 successor CID differs")
+        if configured_cid == _M45_UNSEALED_AUTHORITY_CID:
+            errors.append("M45 final control identities are not resealed")
+        elif configured_cid != _M45_AUTHORITY_CID:
+            errors.append("M45 successor authority CID is not the sealed identity")
+        elif materializer._identity(expected) != configured_cid:
+            errors.append("M45 successor authority CID does not bind its body")
+        elif len(materializer._canonical(expected)) != _M45_AUTHORITY_SIZE:
+            errors.append("M45 successor authority canonical size differs")
+
+        # M44 remains exact history under M45.  Its active current-HEAD source
+        # gate is intentionally not entered after the accepted test repair.
+        try:
+            materializer._assert_m45_historical_m44_controls(
+                scheduler, migration, seal
+            )
+        except Exception as exc:
+            errors.append(
+                "M45 historical M44 control verification differs: "
+                f"{type(exc).__name__}: {exc}"
+            )
+
+        preserved = expected.get("preserved_m44_authority", {})
+        failed = expected.get("failed_m44_prepublication_validation", {})
+        correction = expected.get("accepted_test_expectation_correction", {})
+        delegated = expected.get("delegated_m44_materialization", {})
+        changes = expected.get("exact_changes", {})
+        preservation = expected.get("preservation", {})
+        required_functions = (
+            "_expected_m45_failed_pre_authoritative_m44_validation_successor_authority",
+            "_m45_authority_reference",
+            "_validated_m45_live_preflight_contract",
+            "_assert_m45_historical_m44_controls",
+            "_assert_m45_source_delta",
+        )
+        if (
+            expected.get("schema")
+            != (
+                "sawm/failed-pre-authoritative-m44-validation-successor-"
+                "authorization@1"
+            )
+            or expected.get("migration_revision") != _M45_MIGRATION_REVISION
+            or expected.get("migration_kind") != key
+            or expected.get("authorized") is not True
+            or expected.get("authority") != "operator_control_plane"
+            or int(expected.get("target_generation") or 0) != 32
+            or int(expected.get("target_event_watermark") or 0) != 302
+            or int(expected.get("target_plan_revision") or 0) != 28
+            or preserved.get("authority_cid") != _M44_AUTHORITY_CID
+            or preserved.get("authority_amended_or_rewritten") is not False
+            or preserved.get("receipt_created") is not False
+            or failed.get("runtime_started") is not False
+            or int(failed.get("database_mutations") or 0) != 0
+            or failed.get("m44_receipt_created") is not False
+            or correction.get("exact_replacement_count") != 1
+            or correction.get("operator_behavior_changed") is not False
+            or correction.get("validation_weakened") is not False
+            or delegated.get("authority_cid") != _M44_AUTHORITY_CID
+            or delegated.get("m44_transition_semantics_preserved_exactly")
+            is not True
+            or delegated.get("m44_receipt_created") is not False
+            or contract.get("migration_revision") != _M45_MIGRATION_REVISION
+            or int(contract.get("prior_generation") or 0) != 31
+            or int(contract.get("target_generation") or 0) != 32
+            or int(contract.get("prior_event_watermark") or 0) != 301
+            or int(contract.get("target_event_watermark") or 0) != 302
+            or contract.get("m44_authority_must_be_preserved") is not True
+            or changes.get("test_expectation_changes") != 1
+            or changes.get("event_suffix_length") != 1
+            or changes.get("task_revision_changes") != 0
+            or changes.get("accepted_completion_changes") != 0
+            or preservation.get("m44_authority_preserved_exactly") is not True
+            or preservation.get("m44_receipt_absent_before_publication")
+            is not True
+            or preservation.get("coordination_store_bytes_preserved_exactly")
+            is not True
+            or preservation.get("worker_self_approval") is not False
+            or any(not hasattr(materializer, name) for name in required_functions)
+        ):
+            errors.append("M45 prepublication validation successor delta is not exact")
+        if require_active_runtime:
+            runtime = scheduler.get("runtime_paths")
+            program = scheduler.get("database_program")
+            owner = scheduler.get("quack_owner")
+            target_root = str(expected["target_runtime_root"])
+            if (
+                not isinstance(program, Mapping)
+                or program.get("store_generation") != "32"
+                or program.get("store_id") != expected["target_store_id"]
+                or not isinstance(owner, Mapping)
+                or owner.get("database_path") != expected["target_store_id"]
+                or owner.get("port") != 24_070
+                or runtime
+                != {
+                    "root": target_root,
+                    "state": f"{target_root}/state",
+                    "worktrees": f"{target_root}/worktrees",
+                    "merge_queue": f"{target_root}/merge-queue",
+                    "logs": f"{target_root}/logs",
+                    "generated_runtime_artifacts_are_completion_authority": False,
+                }
+            ):
+                errors.append("scheduler M45 target/runtime binding is not exact")
+        errors.extend(_m45_source_chain_errors(root, materializer, expected))
+        return errors
+    except Exception as exc:
+        return [
+            "M45 failed-pre-authoritative-M44-validation authority is unavailable: "
             f"{type(exc).__name__}: {exc}"
         ]
 
@@ -12877,6 +13069,76 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m45_key = _M45_SUCCESSOR_KEY
+    m45_presence = (
+        m45_key in scheduler,
+        m45_key in migration,
+        f"{m45_key}_cid" in seal,
+    )
+    if any(m45_presence):
+        if not all(m45_presence):
+            return effective, ["active M45 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m45_nested_source_materializer",
+                REPO_ROOT
+                / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M45 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer
+                ._expected_m45_failed_pre_authoritative_m44_validation_successor_authority()
+            )
+            materializer._validated_m45_live_preflight_contract(authority)
+            materializer._assert_m45_historical_m44_controls(
+                scheduler, migration, seal
+            )
+            reference = dict(materializer._m45_authority_reference())
+            source_errors = _m45_source_chain_errors(
+                REPO_ROOT, materializer, authority
+            )
+            if source_errors:
+                raise RuntimeError("; ".join(source_errors))
+        except Exception as exc:
+            return effective, [f"active M45 nested-source authority unavailable: {exc}"]
+        if (
+            scheduler.get(m45_key) != reference
+            or migration.get(m45_key) != reference
+            or seal.get(f"{m45_key}_cid") != materializer._M45_AUTHORITY_CID
+            or materializer._M45_AUTHORITY_CID == _M45_UNSEALED_AUTHORITY_CID
+            or materializer._M45_AUTHORITY_CID != _M45_AUTHORITY_CID
+            or materializer._identity(authority) != materializer._M45_AUTHORITY_CID
+            or len(materializer._canonical(authority)) != _M45_AUTHORITY_SIZE
+        ):
+            return effective, ["active M45 nested-source authority differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(authority.get("current_datasets_gitlink") or ""),
+                str(authority.get("current_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(authority.get("current_kit_gitlink") or ""),
+                str(authority.get("current_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M45 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
     m44_key = _M44_SUCCESSOR_KEY
     m44_presence = (
         m44_key in scheduler,
@@ -14176,6 +14438,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m45_key = _M45_SUCCESSOR_KEY
+        m45_presence = (
+            m45_key in scheduler_probe,
+            m45_key in migration_probe,
+            f"{m45_key}_cid" in seal,
+        )
         m44_key = _M44_SUCCESSOR_KEY
         m44_presence = (
             m44_key in scheduler_probe,
@@ -14340,7 +14608,54 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m44_presence):
+        if any(m45_presence):
+            scheduled = scheduler_probe.get(m45_key)
+            migrated = migration_probe.get(m45_key)
+            if not all(m45_presence) or scheduled != migrated:
+                unexpected = ["M45 authority is partial or differs across controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m45_source_status_materializer",
+                    root
+                    / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M45 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer
+                        ._expected_m45_failed_pre_authoritative_m44_validation_successor_authority()
+                    )
+                    materializer._validated_m45_live_preflight_contract(expected)
+                    reference = dict(materializer._m45_authority_reference())
+                    configured_cid = materializer._M45_AUTHORITY_CID
+                    try:
+                        materializer._assert_m45_historical_m44_controls(
+                            scheduler_probe, migration_probe, seal
+                        )
+                    except Exception as exc:
+                        unexpected = [
+                            "M45 historical M44 controls differ: "
+                            f"{type(exc).__name__}: {exc}"
+                        ]
+                    else:
+                        if (
+                            scheduled != reference
+                            or seal.get(f"{m45_key}_cid") != configured_cid
+                            or configured_cid == _M45_UNSEALED_AUTHORITY_CID
+                            or configured_cid != _M45_AUTHORITY_CID
+                            or materializer._identity(expected) != configured_cid
+                            or len(materializer._canonical(expected))
+                            != _M45_AUTHORITY_SIZE
+                        ):
+                            unexpected = ["M45 authority/CID differs across controls"]
+                        else:
+                            unexpected = _m45_source_chain_errors(
+                                root, materializer, expected
+                            )
+        elif any(m44_presence):
             scheduled = scheduler_probe.get(m44_key)
             migrated = migration_probe.get(m44_key)
             if not all(m44_presence) or scheduled != migrated:
@@ -15611,6 +15926,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m45_declared = _m45_successor_declared(scheduler, seal, migration)
         m44_declared = _m44_successor_declared(scheduler, seal, migration)
         m43_declared = _m43_successor_declared(scheduler, seal, migration)
         m42_declared = _m42_successor_declared(scheduler, seal, migration)
@@ -15631,7 +15947,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m44_declared
+            m45_declared
+            or m44_declared
             or m43_declared
             or m42_declared
             or m41_declared
@@ -15652,19 +15969,30 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m44_declared:
+            if m45_declared:
+                protocol_errors.extend(
+                    _m45_failed_pre_authoritative_m44_validation_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+            if m44_declared and not m45_declared:
                 protocol_errors.extend(
                     _m44_post_m43_hardened_procfs_user_manager_restart_successor_errors(
                         scheduler, seal, migration, root=root
                     )
                 )
-            if m43_declared and not m44_declared:
+            if m43_declared and not m44_declared and not m45_declared:
                 protocol_errors.extend(
                     _m43_dead_attempt_lifecycle_recovery_restart_successor_errors(
                         scheduler, seal, migration, root=root
                     )
                 )
-            if m42_declared and not m43_declared and not m44_declared:
+            if (
+                m42_declared
+                and not m43_declared
+                and not m44_declared
+                and not m45_declared
+            ):
                 protocol_errors.extend(
                     _m42_failed_pre_authoritative_m41_evidence_projection_successor_errors(
                         scheduler,

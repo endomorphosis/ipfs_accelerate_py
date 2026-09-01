@@ -2481,7 +2481,46 @@ no direct DuckDB writer, task completion, implementation scope beyond the two
 sealed repair paths, validation weakening, historical receipt rewriting, or
 worker self-approval.
 
-## 53. Current limitations at seal time
+## 53. M45 failed pre-authoritative M44 validation successor
+
+`SAWM-R2-M45` preserves the complete M44 authority as immutable failed
+pre-authoritative history. M44's canonical 20,272-byte body remains
+`sha256:36cba6a8006b50d36d8de2ed6cf76d4adf8d688669a8c6414621173409535845`;
+no M44 receipt, generation-32 row, event 302, or runtime mutation was created.
+The sealed board suite instead exposed one obsolete historical fixture: it
+expected M43's stopped generation-30 to generation-31 message after M44 had
+correctly become the active stopped generation-31 to generation-32 authority.
+
+The only accepted repair is commit
+`43516e08effc05ae2492a3cf6783b2b981f1ec4e`, tree
+`c405745eda8ea5c8c728dad9ab0764c0c107c9d5`, a direct child of M44 control
+commit `7aab0aa1267b2dc3ae1baafb821e857b4dc0356f`. It changes only mode-`100644`
+`test/api/semantic_world/test_semantic_addressed_world_model_board.py`, to blob
+`86913518dd59e4084638651a1f0af5083609dfb8`. Its binary diff SHA-256 is
+`65981f1ff5875ad65bb19ddf03d3fc80e628c0a7a9fdfe47d01f64c0f583c34b`.
+The fixture is renamed for generation 32 and matches the stable portion of
+M44's correct error. Production operator behavior, validation strength, and
+runtime state do not change.
+
+M45 seals exactly one nine-control child of that repair. Its canonical
+authority excludes the new control commit, tree, and blobs to avoid recursive
+identity; the 14,585-byte body has CID
+`sha256:1fece222571aff1238d6e32465cae69f3f766d3e4da303b8775a5df892b95ef7`.
+It independently rehashes M44, binds both source parents and the exact repair
+blob/mode/diff/function identities, and remains presence-first on every
+protected declaration and dispatch surface. Partial, pending, malformed, or
+mismatched M45 declarations fail closed without falling back to M44.
+
+The authorized runtime delta is unchanged: the exact stopped generation-31,
+event-301, M43 receipt/event, suffix 298 through 301, task heads, coordination
+bytes, and projection must precede the sole generation-32 restart and sole
+event-302 evidence append. M44's receipt must remain absent; only
+`m45-source-successor-receipt.json` is published last and idempotently after
+full live verification. M45 grants no direct DuckDB writer, task/goal/plan or
+completion change, provider invocation, effect claim, merge attempt,
+coordination semantic change, validation weakening, or worker self-approval.
+
+## 54. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "failed_pre_authoritative_m44_validation_successor_materialization",
     "post_m43_hardened_procfs_user_manager_restart_successor_materialization",
     "dead_attempt_lifecycle_recovery_restart_successor_materialization",
     "failed_pre_authoritative_m41_evidence_projection_successor_materialization",
@@ -261,6 +262,39 @@ def test_historical_successor_controls_include_m44_before_m43() -> None:
     assert historical_migration is not None and m44_key not in historical_migration
     assert historical_seal is not None
     assert f"{m44_key}_cid" not in historical_seal
+
+
+def test_historical_successor_controls_include_m45_before_m44() -> None:
+    """M44 fixtures remove M45 while current M45 remains presence-first."""
+
+    m45_key = "failed_pre_authoritative_m44_validation_successor_materialization"
+    m44_key = (
+        "post_m43_hardened_procfs_user_manager_restart_"
+        "successor_materialization"
+    )
+    scheduler = {m45_key: {"revision": "M45"}, m44_key: {"revision": "M44"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m45_key}_cid": "sha256:SYNTHETIC_UNSEALED_M45_AUTHORITY_CID",
+        f"{m44_key}_cid": "sha256:" + "8" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m45_key, scheduler, migration, seal
+    )
+    assert current[m45_key] == scheduler[m45_key]
+    assert current_migration is not None
+    assert current_migration[m45_key] == migration[m45_key]
+    assert current_seal is not None
+    assert current_seal[f"{m45_key}_cid"] == seal[f"{m45_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m44_key, scheduler, migration, seal)
+    )
+    assert m45_key not in historical
+    assert historical_migration is not None and m45_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m45_key}_cid" not in historical_seal
 
 
 def _load(relative: str, name: str) -> ModuleType:
@@ -5434,6 +5468,171 @@ def test_m42_receipt_publication_is_last_idempotent_and_exclusive(
         materializer._ensure_m42_source_successor_receipt(
             tmp_path, control, expected
         )
+
+
+def test_m45_authority_binds_exact_repair_and_unchanged_m44_transition() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m45_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m45_failed_pre_authoritative_m44_validation_successor_authority()
+    )
+    reference = materializer._m45_authority_reference()
+    contract = materializer._validated_m45_live_preflight_contract(authority)
+    m44 = (
+        materializer
+        ._expected_m44_post_m43_hardened_procfs_user_manager_restart_successor_authority()
+    )
+
+    assert reference == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M45",
+        "authority_cid": materializer._M45_AUTHORITY_CID,
+    }
+    assert materializer._identity(authority) == materializer._M45_AUTHORITY_CID
+    assert len(materializer._canonical(authority)) == 14_585
+    assert materializer._identity(m44) == materializer._M44_AUTHORITY_CID
+    assert authority["preserved_m44_authority"]["canonical_body_size"] == 20_272
+    repair = authority["accepted_test_expectation_correction"]
+    assert repair["repair_parent"] == materializer._M45_M44_FINAL_CONTROL_COMMIT
+    assert repair["repair_commit"] == materializer._M45_TEST_REPAIR_COMMIT
+    assert repair["repair_tree"] == materializer._M45_TEST_REPAIR_TREE
+    assert repair["repair_blob_oid"] == materializer._M45_TEST_REPAIR_BLOB
+    assert repair["binary_diff_sha256"] == materializer._M45_TEST_REPAIR_DIFF_SHA256
+    assert repair["operator_behavior_changed"] is False
+    assert repair["validation_weakened"] is False
+    assert contract["prior_generation"] == 31
+    assert contract["target_generation"] == 32
+    assert contract["prior_event_watermark"] == 301
+    assert contract["target_event_watermark"] == 302
+    assert contract["m44_receipt_must_be_absent_before_publication"] is True
+    assert authority["delegated_m44_materialization"][
+        "m44_transition_semantics_preserved_exactly"
+    ] is True
+    assert authority["exact_changes"]["test_expectation_changes"] == 1
+    assert authority["exact_changes"]["task_status_changes"] == 0
+    assert authority["exact_changes"]["accepted_completion_changes"] == 0
+    assert authority["preservation"]["m44_receipt_absent_before_publication"]
+
+    for function in (materializer.check_materialized, materializer.materialize):
+        source = inspect.getsource(function)
+        assert source.index("_m45_successor_configured_on_any_surface") < (
+            source.index("_m44_successor_configured_on_any_surface")
+        )
+    source_gate = inspect.getsource(materializer._assert_m45_source_delta)
+    assert "_M45_TEST_REPAIR_COMMIT" in source_gate
+    assert "_M45_TEST_REPAIR_DIFF_SHA256" in source_gate
+    assert '"git", "show"' in source_gate
+    assert ".read_text(" not in source_gate
+    core = inspect.getsource(materializer._materialize_m45)
+    assert "_m44_migration_body" in core
+    assert core.index("_verify_m44_live_materialization") < core.index(
+        "_ensure_m45_source_successor_receipt"
+    )
+    assert "_ensure_m44_source_successor_receipt" not in core
+    publisher = inspect.getsource(materializer._ensure_m45_source_successor_receipt)
+    assert publisher.index("_verify_m44_preserved_m43_receipt") < (
+        publisher.index("os.replace")
+    )
+    assert publisher.index("os.path.lexists(m44_path)") < publisher.index(
+        "os.replace"
+    )
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value"),
+    (
+        ("preserved_m44_authority", "authority_cid", "sha256:" + "0" * 64),
+        ("accepted_test_expectation_correction", "repair_commit", "0" * 40),
+        ("accepted_test_expectation_correction", "binary_diff_sha256", "0" * 64),
+        ("delegated_m44_materialization", "target_generation", 31),
+        ("live_preflight_contract", "target_event_watermark", 301),
+        ("exact_changes", "accepted_completion_changes", 1),
+        ("preservation", "worker_self_approval", True),
+    ),
+)
+def test_m45_preflight_contract_rejects_tampering(
+    section: str,
+    field: str,
+    value: object,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        f"sawm_materializer_m45_tamper_{section}_{field}",
+    )
+    authority = copy.deepcopy(
+        materializer
+        ._expected_m45_failed_pre_authoritative_m44_validation_successor_authority()
+    )
+    authority[section][field] = value
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M45 live preflight contract differs",
+    ):
+        materializer._validated_m45_live_preflight_contract(authority)
+
+
+def test_m45_presence_masks_m44_in_board_and_operator_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m45_presence_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m45_presence_test",
+    )
+    m45_key = operator._M45_SUCCESSOR_KEY
+    m44_key = operator._M44_SUCCESSOR_KEY
+    calls: list[str] = []
+    monkeypatch.setattr(
+        board,
+        "_m45_migration_errors",
+        lambda *_args, **_kwargs: calls.append("board-m45") or ["m45-invalid"],
+    )
+    monkeypatch.setattr(
+        board,
+        "_m44_migration_errors",
+        lambda *_args, **_kwargs: pytest.fail("M44 must stay historical"),
+    )
+    errors = board._active_successor_migration_errors(
+        {m45_key: None, m44_key: {}},
+        {f"{m45_key}_cid": "bad", f"{m44_key}_cid": "historical"},
+        {m45_key: None, m44_key: {}},
+    )
+    assert errors == ["m45-invalid"]
+    assert calls == ["board-m45"]
+
+    monkeypatch.setattr(
+        operator,
+        "_require_m45_source_successor_marker",
+        lambda *_args, **_kwargs: MappingProxyType({"selected": "M45"}),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_require_m44_source_successor_marker",
+        lambda *_args, **_kwargs: pytest.fail("M44 marker must stay historical"),
+    )
+    selected = operator._require_active_final_pair_marker(
+        {m45_key: None, m44_key: {}}, {}, object(), checked={}
+    )
+    assert selected == {"selected": "M45"}
+
+
+def test_m45_dependency_validator_keeps_m44_historical() -> None:
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m45_historical_m44_test",
+    )
+    source = inspect.getsource(
+        dependencies._m45_failed_pre_authoritative_m44_validation_successor_errors
+    )
+    assert "_assert_m45_historical_m44_controls" in source
+    assert "_m44_source_chain_errors(" not in source
+    assert "_assert_m44_source_delta" not in source
 
 
 def test_m44_authority_binds_stopped_m43_head_and_exact_repair() -> None:
