@@ -2390,7 +2390,98 @@ weakening, receipt rewriting, completion inference from Markdown, or worker
 self-approval.  Failed or partial prestart, restart, event, or receipt state is
 a typed conflict and is never repaired by falling back to M42.
 
-## 52. Current limitations at seal time
+## 52. M44 hardened procfs user-manager restart successor
+
+`SAWM-R2-M44` preserves the complete M43 authority, authoritative event 297,
+and `m43-source-successor-receipt.json` byte-for-byte. M43 was materialized
+under immutable final-control commit
+`de2864eac1f7e49ea44b1dd5f8ad689167374c18`, tree
+`6908632ea9a0cd42a357cae70fb42f48c90a321a`, and authority CID
+`sha256:6ddc11cb9e37da82023e5a89124298f532cfc943cc347fa5ea67ff13bcd1eb43`.
+Its event 297 is
+`baguqeerazsdqgqrzx5xyny5mh4dwpu5olor6rf4oj2p5c65onpykcy35hrvq`,
+with evidence node
+`baguqeera2britcaqnxj7ulksuxeg3v5zvdf6uh6xmq2oklgmho3tepaw6ljq`.
+The immutable M43 receipt is 246,542 bytes, mode `0600`, has SHA-256
+`d433395f68d4a16dafca3c93434d7388077d6d71694a2d0f9eb6decc823da86f`,
+and has content identity
+`sha256:eea44e0f2aae970c1580c59e7b3310904fad480f249b3b1f5df5cd887fc1f050`.
+
+After M43 receipt publication, ordinary scheduler activity appended the exact
+event suffix 298 through 301. Those events are preserved, in order, as
+`baguqeerab7ayqgt5uiu73ndpyzstjgc5bm4mzhacn4rglnakz36jltjkgcla`,
+`baguqeera3eesjjv466gwyhznwgm5rzb2lopnkqihx3tfqtgap636zirf4eka`,
+`baguqeeraztg4y7jjghsewwbrfllasopfzns2j5ufumnwfdt2y25bjsrnkvgq`, and
+`baguqeera567u6gsg23i62t4webyrdzjtqugqc4w25v4qj6cchvpe3ehckgua`.
+They leave SAWM-006 `in_progress` revision 13 and SAWM-008 `in_progress`
+revision 15, with 11 completed, 2 in-progress, and 32 todo task heads. Event
+301 binds prefix SHA-256
+`b521ef1ea54dd2a90e108e23ac63347e83a10e9d99298b143a49eb5119ab4c0e`,
+task-head projection
+`baguqeeraelrmqrsph27tld2bk6ydvq336uff5hihbl42oelhkhuwsg3sqrpa`,
+and semantic-authority digest
+`sha256:b0f775db0bab9821418d4d4054033480c638a7c0ae86160bd21cdd816456fd59`.
+
+Generation 31 then stopped cleanly. Its exact owner is
+`server:93671d78-7cc0-4ff5-9484-cd5ffa3eccfe`, process birth
+`birth:6dfa007e1c86a22e47251033e4b6f4a3`, started at
+`2026-09-01T11:13:21Z`, and stopped at `2026-09-01T11:30:50Z` at owner
+revision 2. The stopped control store is 43,790,336 bytes with SHA-256
+`4af449cb823037defb51afefa66bdd8ada01dd52118cb3a0ad0c74a54b84a594`;
+the coordination store is 17,313,792 bytes with SHA-256
+`c33fbe22df6d16674884cac518a9f152a4b16e3d734a3a7de74e5bc2b157d226`;
+and the 2,409-byte stopped status has SHA-256
+`878c8e6ff511be7951e65ea693e6ec7af13d5c28c61dc3b14eca80364c8ce4cf`.
+No owner marker, stop control, token handoff, M44 receipt, or control or
+coordination WAL is present in that stopped baseline.
+
+The sole accepted ordinary repair is commit
+`b2136e3eb88600df829afa563b74ab0957ed4061`, tree
+`99acd200a8c7cd65087fe6df316c0428b731d492`, a direct child of the M43
+final control. Its binary diff has SHA-256
+`66ce916093e2fc6b091ca1963c8eef45c7d4419b1b480c870241117dd92f73bb`
+and changes exactly two mode-`100644` paths:
+
+```text
+ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py  35f423045d8093f8a165f0ed01fdd938b14bafc2
+test/api/test_agent_supervisor_database_portal_bridge.py                   bfccdd879a6c0b2cace3a69abc0d5b428654199c
+```
+
+The repair recognizes only an unreadable `systemd --user` manager or its
+exact `(sd-pam)` child after bounded, no-follow procfs reads agree on PID,
+four UID values, parent, process group, session, cgroup, argv, comm, and
+stable positive birth tick. Only `EACCES` or `EPERM` on `cwd` enters that
+recognizer. Near misses, arbitrary unreadable processes, linked or replaced
+procfs records, and any readable workspace-overlapping process continue to
+fail closed. It changes no task, database, event, authority, validation, or
+completion state.
+
+M44 seals exactly one nine-control child of that repair without embedding
+the new control commit, tree, or control blobs recursively in its canonical
+authority body. It authorizes one stopped-generation restart from 31 to 32
+through the existing Quack owner path and one operator evidence append at
+event 302. Task heads and coordination semantics remain unchanged; the target
+task-head projection is
+`baguqeerageftwrpvliedl3nkrbqlchwo2tzogehnjeyu5iqn6p7jfes4tmea`.
+The canonical authority body is 20,272 bytes and has CID
+`sha256:36cba6a8006b50d36d8de2ed6cf76d4adf8d688669a8c6414621173409535845`.
+It is mirrored by all protected executable controls without recursively
+embedding the final M44 control commit, tree, or blob identities.
+
+M44 is selected newest-first by presence on any protected declaration
+surface. A partial, pending, malformed, or mismatched triplet fails closed and
+must not fall back to M43. The materializer must verify the stopped generation
+31 anchors, exact M43 receipt and event 297, exact suffix 298 through 301,
+event-301 prefix, task heads, coordination bytes, and two-file repair before
+starting the sole generation-32 owner. It publishes
+`m44-source-successor-receipt.json` only after the authenticated event append
+and live verification. Automatic claim expiry or retry activity, if any,
+occurs only after event 302 and is not part of the M44 source seal. M44 grants
+no direct DuckDB writer, task completion, implementation scope beyond the two
+sealed repair paths, validation weakening, historical receipt rewriting, or
+worker self-approval.
+
+## 53. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

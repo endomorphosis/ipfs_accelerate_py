@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "post_m43_hardened_procfs_user_manager_restart_successor_materialization",
     "dead_attempt_lifecycle_recovery_restart_successor_materialization",
     "failed_pre_authoritative_m41_evidence_projection_successor_materialization",
     "failed_pre_authoritative_m40_validation_successor_materialization",
@@ -227,6 +228,39 @@ def test_historical_successor_controls_include_m43_before_m42() -> None:
     assert historical_migration is not None and m43_key not in historical_migration
     assert historical_seal is not None
     assert f"{m43_key}_cid" not in historical_seal
+
+
+def test_historical_successor_controls_include_m44_before_m43() -> None:
+    """M43 fixtures remove M44 while current M44 remains presence-first."""
+
+    m44_key = (
+        "post_m43_hardened_procfs_user_manager_restart_"
+        "successor_materialization"
+    )
+    m43_key = "dead_attempt_lifecycle_recovery_restart_successor_materialization"
+    scheduler = {m44_key: {"revision": "M44"}, m43_key: {"revision": "M43"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m44_key}_cid": "sha256:SYNTHETIC_UNSEALED_M44_AUTHORITY_CID",
+        f"{m43_key}_cid": "sha256:" + "7" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m44_key, scheduler, migration, seal
+    )
+    assert current[m44_key] == scheduler[m44_key]
+    assert current_migration is not None
+    assert current_migration[m44_key] == migration[m44_key]
+    assert current_seal is not None
+    assert current_seal[f"{m44_key}_cid"] == seal[f"{m44_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m43_key, scheduler, migration, seal)
+    )
+    assert m44_key not in historical
+    assert historical_migration is not None and m44_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m44_key}_cid" not in historical_seal
 
 
 def _load(relative: str, name: str) -> ModuleType:
@@ -5402,6 +5436,217 @@ def test_m42_receipt_publication_is_last_idempotent_and_exclusive(
         )
 
 
+def test_m44_authority_binds_stopped_m43_head_and_exact_repair() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m44_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m44_post_m43_hardened_procfs_user_manager_restart_successor_authority()
+    )
+    reference = materializer._m44_authority_reference()
+    contract = materializer._validated_m44_live_preflight_contract(authority)
+
+    assert reference == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M44",
+        "authority_cid": materializer._M44_AUTHORITY_CID,
+    }
+    assert materializer._identity(authority) == materializer._M44_AUTHORITY_CID
+    assert authority["schema"] == (
+        "sawm/post-m43-hardened-procfs-user-manager-restart-authorization@1"
+    )
+    assert authority["prior_authority"]["event_watermark"] == 301
+    assert authority["stopped_owner"]["generation"] == 31
+    assert authority["stopped_owner"]["target_generation"] == 32
+    assert authority["preserved_m43_receipt"]["receipt_cid"] == (
+        "sha256:eea44e0f2aae970c1580c59e7b3310904fad480f249b3b1f5df5cd887fc1f050"
+    )
+    assert authority["preserved_m43_receipt"]["created_or_rewritten"] is False
+    assert authority["preserved_m43_materialization"]["event_watermark"] == 297
+    assert authority["post_m43_operational_suffix"]["events"] == (
+        materializer._m44_post_m43_operational_suffix()["events"]
+    )
+    assert authority["post_m43_operational_suffix"]["event_count"] == 4
+    repair = authority["accepted_user_manager_procfs_repair"]
+    assert repair["repair_parent"] == materializer._M44_REPAIR_PARENT
+    assert repair["repair_commit"] == materializer._M44_REPAIR_COMMIT
+    assert repair["blob_oids"] == dict(materializer._M44_REPAIR_BLOBS)
+    assert repair["path_modes"] == dict(materializer._M44_REPAIR_MODES)
+    assert repair["near_misses_fail_closed"] is True
+    assert repair["validation_weakened"] is False
+    assert repair["authority_weakened"] is False
+    assert contract["prior_event_watermark"] == 301
+    assert contract["target_event_watermark"] == 302
+    assert contract["prior_generation"] == 31
+    assert contract["target_generation"] == 32
+    assert contract["events_297_through_301_must_be_preserved"] is True
+    assert contract["event_302_must_be_absent_before_append"] is True
+    assert authority["exact_changes"]["task_revision_changes"] == 0
+    assert authority["exact_changes"]["task_status_changes"] == 0
+    assert authority["exact_changes"]["worker_self_approval"] is False
+    for function in (materializer.check_materialized, materializer.materialize):
+        source = inspect.getsource(function)
+        assert source.index("_m44_successor_configured_on_any_surface") < (
+            source.index("_m43_successor_configured_on_any_surface")
+        )
+    core = inspect.getsource(materializer._materialize_m44)
+    assert core.index("_verify_m44_preserved_m43_receipt") < core.index(
+        "source.record_evidence"
+    )
+    assert core.index("_verify_m44_live_materialization") < core.index(
+        "_ensure_m44_source_successor_receipt"
+    )
+    assert "snapshot.event_cursor == _M44_PRIOR_EVENT_WATERMARK" in core
+    assert "snapshot.event_cursor != _M44_TARGET_EVENT_WATERMARK" in core
+    publisher = inspect.getsource(materializer._ensure_m44_source_successor_receipt)
+    assert publisher.index("_verify_m44_preserved_m43_receipt") < (
+        publisher.index("os.replace")
+    )
+    assert publisher.count("_verify_m44_preserved_m43_receipt") >= 3
+    historical_publisher = inspect.getsource(
+        materializer._ensure_m29_source_successor_receipt
+    )
+    assert "_verify_m44_preserved_m43_receipt" not in historical_publisher
+    verifier = inspect.getsource(materializer._verify_m44_live_materialization)
+    assert "_verify_m44_preserved_m43_materialization" in verifier
+    assert "_m44_operational_suffix_on" in verifier
+    assert "_inspect_m44_generation_restart_rows" in verifier
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value"),
+    (
+        ("preserved_m43_receipt", "receipt_cid", "sha256:" + "0" * 64),
+        ("preserved_m43_materialization", "event_id", "baguqeerawrong"),
+        ("post_m43_operational_suffix", "event_count", 3),
+        ("accepted_user_manager_procfs_repair", "repair_commit", "0" * 40),
+        ("live_preflight_contract", "target_generation", 31),
+        ("exact_changes", "task_status_changes", 1),
+        ("preservation", "worker_self_approval", True),
+    ),
+)
+def test_m44_preflight_contract_rejects_anchor_tampering(
+    section: str,
+    field: str,
+    value: object,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        f"sawm_materializer_m44_tamper_{section}_{field}",
+    )
+    authority = copy.deepcopy(
+        materializer
+        ._expected_m44_post_m43_hardened_procfs_user_manager_restart_successor_authority()
+    )
+    authority[section][field] = value
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M44 live preflight contract differs",
+    ):
+        materializer._validated_m44_live_preflight_contract(authority)
+
+
+def test_m44_presence_masks_m43_in_board_and_operator_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m44_presence_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m44_presence_test",
+    )
+    m44_key = operator._M44_SUCCESSOR_KEY
+    m43_key = operator._M43_SUCCESSOR_KEY
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        board,
+        "_m44_migration_errors",
+        lambda *_args, **_kwargs: calls.append("board-m44") or ["m44-invalid"],
+    )
+    monkeypatch.setattr(
+        board,
+        "_m43_migration_errors",
+        lambda *_args, **_kwargs: calls.append("board-m43") or [],
+    )
+    errors = board._active_successor_migration_errors(
+        {m44_key: None, m43_key: {}},
+        {f"{m44_key}_cid": "bad", f"{m43_key}_cid": "historical"},
+        {m44_key: None, m43_key: {}},
+    )
+    assert errors == ["m44-invalid"]
+    assert calls == ["board-m44"]
+
+    monkeypatch.setattr(
+        operator,
+        "_require_m44_source_successor_marker",
+        lambda *_args, **_kwargs: MappingProxyType({"selected": "M44"}),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_require_m43_source_successor_marker",
+        lambda *_args, **_kwargs: pytest.fail("M43 marker must stay historical"),
+    )
+    selected = operator._require_active_final_pair_marker(
+        {m44_key: None, m43_key: {}},
+        {},
+        object(),
+        checked={},
+    )
+    assert selected == {"selected": "M44"}
+
+
+def test_m44_dependency_validator_does_not_reenter_active_m43_source_gate() -> None:
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m44_historical_m43_test",
+    )
+    source = inspect.getsource(
+        dependencies
+        ._m44_post_m43_hardened_procfs_user_manager_restart_successor_errors
+    )
+    assert "_assert_m44_historical_m43_controls" in source
+    assert "_m43_source_chain_errors(" not in source
+    assert "_assert_m43_source_delta" not in source
+
+
+def test_m44_dependency_source_chain_rejects_repair_tampering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m44_source_chain_test",
+    )
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m44_source_chain_test",
+    )
+    authority = (
+        materializer
+        ._expected_m44_post_m43_hardened_procfs_user_manager_restart_successor_authority()
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_assert_m44_source_delta",
+        lambda *_args, **_kwargs: None,
+    )
+    assert dependencies._m44_source_chain_errors(
+        REPO_ROOT, materializer, authority
+    ) == []
+
+    tampered = copy.deepcopy(authority)
+    tampered["source_chain"]["repair_commit"] = "0" * 40
+    errors = dependencies._m44_source_chain_errors(
+        REPO_ROOT, materializer, tampered
+    )
+    assert len(errors) == 1
+    assert "M44 exact repair/control source chain differs" in errors[0]
+
+
 def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -6320,6 +6565,11 @@ def test_m43_dispatch_is_newest_and_receipt_follows_live_verification(
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
     )
+    config, _migration, _seal = _historical_successor_controls_at(
+        "dead_attempt_lifecycle_recovery_restart_successor_materialization",
+        config,
+    )
+    config["database_program"]["store_generation"] = "31"
     active = operator._active_source_repair_materialization(config)
     assert active["migration_revision"] == "SAWM-R2-M43"
     assert active["target_generation"] == 31
@@ -11175,9 +11425,9 @@ def test_m31_authority_pins_dead_pid_event_281_and_generation_29() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    # M31 remains immutable history while M43 is the current generation-31
+    # M31 remains immutable history while M44 is the current generation-32
     # restart authority.
-    assert scheduler["database_program"]["store_generation"] == "31"
+    assert scheduler["database_program"]["store_generation"] == "32"
     assert authority["migration_revision"] == "SAWM-R2-M31"
     assert authority["prior_authority"]["event_watermark"] == 281
     assert authority["target_event_watermark"] == 282
@@ -11353,8 +11603,8 @@ def test_m30_authority_pins_stopped_event_280_and_generation_28() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    # M30 remains immutable history while the current M43 owner is generation 31.
-    assert scheduler["database_program"]["store_generation"] == "31"
+    # M30 remains immutable history while the current M44 owner is generation 32.
+    assert scheduler["database_program"]["store_generation"] == "32"
     assert authority["schema"].endswith("authorization@2")
     assert authority["authorization_revision"] == 2
     assert authority["control_recorded_at"] == "2026-08-31T15:59:48Z"
@@ -12589,7 +12839,7 @@ def test_m27_dead_owner_resume_authority_runtime_and_source_chain_are_exact(
     assert config["database_program"]["store_id"].endswith(
         "run-r2-m27/control.duckdb"
     )
-    assert config["database_program"]["store_generation"] == "31"
+    assert config["database_program"]["store_generation"] == "32"
     assert m27_config["database_program"]["store_generation"] == "26"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
@@ -14839,9 +15089,9 @@ def test_m22_scheduler_authority_is_preserved_under_m27_runtime() -> None:
     assert config["database_program"]["store_id"] == (
         f"{current_runtime}/control.duckdb"
     )
-    # M43 advances the owner to generation 31 without changing the M27
+    # M44 advances the owner to generation 32 without changing the M27
     # runtime namespace.
-    assert config["database_program"]["store_generation"] == "31"
+    assert config["database_program"]["store_generation"] == "32"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
     )
@@ -17901,9 +18151,9 @@ def test_m17_namespace_is_preserved_as_historical_under_m27() -> None:
     assert authority["target_generation"] == 18
     assert authority["target_quack_port"] == 24_060
     assert config["runtime_paths"]["root"].endswith("run-r2-m27")
-    # The M17 authority remains historical while M43 owns generation 31 in the
+    # The M17 authority remains historical while M44 owns generation 32 in the
     # M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "31"
+    assert config["database_program"]["store_generation"] == "32"
     assert config["quack_owner"]["port"] == 24_070
 
 
@@ -19023,9 +19273,9 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m27() -> None:
         "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
     )
     assert config["runtime_paths"] != historical_runtime
-    # The M15 authority remains historical while M43 owns generation 31 in the
+    # The M15 authority remains historical while M44 owns generation 32 in the
     # M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "31"
+    assert config["database_program"]["store_generation"] == "32"
     assert config["quack_owner"]["port"] == 24_070
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 
