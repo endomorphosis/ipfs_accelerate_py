@@ -93,6 +93,40 @@ _M45_SUCCESSOR_KEY = (
     "failed_pre_authoritative_m44_validation_successor_materialization"
 )
 _M45_MIGRATION_REVISION = "SAWM-R2-M45"
+_M47_AUTHORITY_CID = (
+    "sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444"
+)
+_M47_AUTHORITY_SIZE = 18_795
+_M47_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M47_FINAL_CONTROL_AUTHORITY_CID"
+_M47_SUCCESSOR_KEY = (
+    "ignored_python_cache_preservation_and_recovery_successor_materialization"
+)
+_M47_MIGRATION_REVISION = "SAWM-R2-M47"
+_M47_M46_RECEIPT_CID = (
+    "sha256:3f9d79c33306ada7b3074609c9fd1e43beee7e474a9fd8b4caacdd65966513c2"
+)
+_M47_M46_RECEIPT_SHA256 = (
+    "534c042365c36dcaaef99aaf8fe32af88852d9e376235cb715ade82da22b88cf"
+)
+_M47_M46_RECEIPT_SIZE = 8_673
+_M47_M46_FINAL_CONTROL_COMMIT = "c9474da7158066bffaa6cb3395bfa3801ba79111"
+_M47_REPAIR_COMMIT = "7fe0f09615c6d07ba72d3f6334b6bb4f6a512141"
+_M47_REPAIR_TREE = "9d89c71fd4d9a89b731bf83f6024f411fbac2b53"
+_M47_REPAIR_DIFF_SHA256 = (
+    "e45a80dea318c2b3ec2851540b7058cd62d4713606379fa341132b28c8ead5c4"
+)
+_M47_REPAIR_BLOBS = {
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": (
+        "a70502b7fa6179279d1f136029ba065465a6aee5"
+    ),
+    "test/api/test_agent_supervisor_database_portal_bridge.py": (
+        "984e21a2ab069f1c7d914e168fee61572713bff9"
+    ),
+}
+_M47_REPAIR_MODES = {path: "100644" for path in _M47_REPAIR_BLOBS}
+_M47_TARGET_PROJECTION_CID = (
+    "baguqeeraadvcue2olr4ies6ctvwaf4rzgafn5myeyomldgeaazkq53cco5wq"
+)
 _M46_AUTHORITY_CID = (
     "sha256:47ed315018541ef5c4c759c1c486cae2a411821ed4e9902877b08439b79b4455"
 )
@@ -3288,6 +3322,280 @@ def _m18_portal_completion_persistence_errors(
     except Exception as exc:
         return [
             "M18 portal-completion authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m47_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Return true when any protected surface declares the M47 successor."""
+
+    key = _M47_SUCCESSOR_KEY
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m47_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    """Require M47's exact repair child and protected-control reseal."""
+
+    try:
+        chain = authority.get("source_chain")
+        if (
+            not isinstance(chain, Mapping)
+            or chain.get("m46_final_control_commit")
+            != _M47_M46_FINAL_CONTROL_COMMIT
+            or chain.get("repair_parent") != _M47_M46_FINAL_CONTROL_COMMIT
+            or chain.get("repair_commit") != _M47_REPAIR_COMMIT
+            or chain.get("repair_tree") != _M47_REPAIR_TREE
+            or chain.get("repair_diff_sha256") != _M47_REPAIR_DIFF_SHA256
+            or chain.get("repair_blobs") != _M47_REPAIR_BLOBS
+            or chain.get("repair_modes") != _M47_REPAIR_MODES
+            or chain.get("final_control_parent") != _M47_REPAIR_COMMIT
+            or int(chain.get("repair_commit_count") or 0) != 1
+            or int(chain.get("final_control_commit_count") or 0) != 1
+            or chain.get("current_commit_identity_embedded_in_authority") is not False
+            or set(authority.get("operator_control_paths", ()))
+            != set(materializer._M47_OPERATOR_CONTROL_PATHS)
+        ):
+            raise RuntimeError("M47 sealed source-chain identity fields differ")
+        population = materializer.build_population(root)
+        materializer._assert_m47_source_delta(root, population, authority)
+        return []
+    except Exception as exc:
+        return [
+            "M47 exact ignored-cache repair/control source chain differs: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m47_ignored_python_cache_preservation_and_recovery_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Validate M47 while retaining M46 as immutable received history."""
+
+    key = _M47_SUCCESSOR_KEY
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m47_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M47 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer
+            ._expected_m47_ignored_python_cache_preservation_and_recovery_successor_authority()
+        )
+        contract = materializer._validated_m47_live_preflight_contract(expected)
+        reference = dict(materializer._m47_authority_reference())
+        configured_cid = str(materializer._M47_AUTHORITY_CID)
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append("M47 successor authority is only partially declared")
+        if scheduler.get(key) != reference or migration.get(key) != reference:
+            errors.append("M47 successor reference differs")
+        if seal.get(f"{key}_cid") != configured_cid:
+            errors.append("M47 successor CID differs")
+        if configured_cid == _M47_UNSEALED_AUTHORITY_CID:
+            errors.append("M47 final control identities are not resealed")
+        elif configured_cid != _M47_AUTHORITY_CID:
+            errors.append("M47 successor authority CID is not the sealed identity")
+        elif materializer._identity(expected) != configured_cid:
+            errors.append("M47 successor authority CID does not bind its body")
+        elif len(materializer._canonical(expected)) != _M47_AUTHORITY_SIZE:
+            errors.append("M47 successor authority canonical size differs")
+
+        try:
+            materializer._assert_m47_historical_m46_controls(
+                scheduler, migration, seal
+            )
+        except Exception as exc:
+            errors.append(
+                "M47 historical M46 control verification differs: "
+                f"{type(exc).__name__}: {exc}"
+            )
+
+        prior = expected.get("prior_authority", {})
+        stopped = expected.get("stopped_owner", {})
+        artifacts = expected.get("stopped_prestart_artifacts", {})
+        receipt = expected.get("preserved_m46_receipt", {})
+        preserved = expected.get("preserved_m46_materialization", {})
+        repair = expected.get("accepted_ignored_python_cache_preservation_repair", {})
+        target = expected.get("target_authority", {})
+        changes = expected.get("exact_changes", {})
+        preservation = expected.get("preservation", {})
+        required_functions = (
+            "_assert_m47_historical_m46_controls",
+            "_assert_m47_source_delta",
+            "_validated_m47_live_preflight_contract",
+            "_check_m47_prestart_admission",
+            "_verify_m47_live_materialization",
+            "_expected_m47_source_successor_receipt",
+            "_materialize_m47",
+            "_check_m47_materialized",
+        )
+        if (
+            expected.get("schema")
+            != "sawm/ignored-python-cache-preservation-and-recovery-authorization@1"
+            or expected.get("migration_revision") != _M47_MIGRATION_REVISION
+            or expected.get("migration_kind") != key
+            or expected.get("authorized") is not True
+            or expected.get("authority") != "operator_control_plane"
+            or expected.get("supersession_mode")
+            != materializer._M47_SUPERSESSION_MODE
+            or int(expected.get("target_generation") or 0) != 34
+            or int(expected.get("target_event_watermark") or 0) != 304
+            or int(expected.get("target_plan_revision") or 0) != 28
+            or expected.get("target_projection_cid")
+            != _M47_TARGET_PROJECTION_CID
+            or int(prior.get("event_watermark") or 0) != 303
+            or prior.get("projection_cid") != materializer._M47_PRIOR_PROJECTION_CID
+            or stopped.get("status") != "stopped"
+            or int(stopped.get("generation") or 0) != 33
+            or int(stopped.get("target_generation") or 0) != 34
+            or stopped.get("server_id") != materializer._M47_PRIOR_SERVER_ID
+            or stopped.get("process_birth_id")
+            != materializer._M47_PRIOR_PROCESS_BIRTH_ID
+            or stopped.get("started_at") != materializer._M47_PRIOR_STARTED_AT
+            or stopped.get("stopped_at") != materializer._M47_PRIOR_STOPPED_AT
+            or int(stopped.get("startup_epoch") or 0)
+            != materializer._M47_PRIOR_STARTUP_EPOCH
+            or artifacts.get("control_sha256")
+            != materializer._M47_PRIOR_CONTROL_SHA256
+            or artifacts.get("control_size") != materializer._M47_PRIOR_CONTROL_SIZE
+            or artifacts.get("coordination_sha256")
+            != materializer._M47_PRIOR_COORDINATION_SHA256
+            or artifacts.get("coordination_size")
+            != materializer._M47_PRIOR_COORDINATION_SIZE
+            or artifacts.get("status_sha256")
+            != materializer._M47_STOPPED_STATUS_SHA256
+            or artifacts.get("status_size") != materializer._M47_STOPPED_STATUS_SIZE
+            or artifacts.get("owner_marker_absent") is not True
+            or artifacts.get("stop_control_absent") is not True
+            or artifacts.get("token_handoff_absent") is not True
+            or artifacts.get("control_wal_absent") is not True
+            or artifacts.get("coordination_wal_absent") is not True
+            or artifacts.get("m47_receipt_absent") is not True
+            or artifacts.get("m44_receipt_absent") is not True
+            or receipt.get("receipt_cid") != _M47_M46_RECEIPT_CID
+            or receipt.get("sha256") != _M47_M46_RECEIPT_SHA256
+            or receipt.get("size") != _M47_M46_RECEIPT_SIZE
+            or receipt.get("mode") != "0600"
+            or receipt.get("created_or_rewritten") is not False
+            or preserved.get("authority_cid") != _M46_AUTHORITY_CID
+            or preserved.get("receipt_cid") != _M47_M46_RECEIPT_CID
+            or int(preserved.get("event_watermark") or 0) != 303
+            or preserved.get("m44_receipt_absent") is not True
+            or repair.get("repair_parent") != _M47_M46_FINAL_CONTROL_COMMIT
+            or repair.get("repair_commit") != _M47_REPAIR_COMMIT
+            or repair.get("repair_tree") != _M47_REPAIR_TREE
+            or repair.get("binary_diff_sha256") != _M47_REPAIR_DIFF_SHA256
+            or repair.get("blob_oids") != _M47_REPAIR_BLOBS
+            or repair.get("path_modes") != _M47_REPAIR_MODES
+            or repair.get("current_tag_cpython_cache_required") is not True
+            or repair.get("tracked_source_binding_required") is not True
+            or repair.get("raw_bytes_preserved_in_worktree") is not True
+            or repair.get("raw_bytes_copied_to_receipt") is not False
+            or repair.get("recovery_classifier_executes_payloads") is not False
+            or repair.get("admitted_as_declared_output") is not False
+            or repair.get("cache_observation_advisory") is not True
+            or repair.get("cache_observation_authoritative") is not False
+            or repair.get("unmatched_ignored_artifacts_fail_closed") is not True
+            or repair.get("unsafe_ignored_artifacts_fail_closed") is not True
+            or repair.get("mutation_authority") is not False
+            or repair.get("merge_authority") is not False
+            or repair.get("task_completion_authority") is not False
+            or repair.get("validation_weakened") is not False
+            or repair.get("authority_weakened") is not False
+            or int(target.get("event_watermark") or 0) != 304
+            or target.get("projection_cid") != _M47_TARGET_PROJECTION_CID
+            or contract.get("migration_revision") != _M47_MIGRATION_REVISION
+            or int(contract.get("prior_generation") or 0) != 33
+            or int(contract.get("target_generation") or 0) != 34
+            or int(contract.get("prior_event_watermark") or 0) != 303
+            or int(contract.get("target_event_watermark") or 0) != 304
+            or contract.get("prior_projection_cid")
+            != materializer._M47_PRIOR_PROJECTION_CID
+            or contract.get("target_projection_cid") != _M47_TARGET_PROJECTION_CID
+            or contract.get("m46_receipt_must_be_preserved") is not True
+            or contract.get("m44_receipt_must_remain_absent") is not True
+            or contract.get("event_303_must_be_preserved") is not True
+            or contract.get("event_304_must_be_absent_before_append") is not True
+            or changes.get("event_suffix_length") != 1
+            or changes.get("evidence_node_changes") != 1
+            or changes.get("evidence_event_changes") != 1
+            or changes.get("validation_event_changes") != 0
+            or changes.get("store_generation_row_changes") != 1
+            or changes.get("state_server_row_changes") != 1
+            or changes.get("credential_row_changes") != 1
+            or changes.get("server_epoch_row_changes") != 1
+            or changes.get("capability_snapshot_row_changes") != 1
+            or changes.get("task_revision_changes") != 0
+            or changes.get("task_status_changes") != 0
+            or changes.get("goal_revision_changes") != 0
+            or changes.get("plan_revision_changes") != 0
+            or changes.get("coordination_semantic_changes") != 0
+            or changes.get("implementation_provider_invocations") != 0
+            or changes.get("effect_claim_changes") != 0
+            or changes.get("merge_attempt_changes") != 0
+            or changes.get("accepted_completion_changes") != 0
+            or changes.get("worker_self_approval") is not False
+            or preservation.get("generation_33_preserved_stopped") is not True
+            or preservation.get("m46_authority_preserved_exactly") is not True
+            or preservation.get("m46_receipt_preserved_exactly") is not True
+            or preservation.get("m46_receipt_created_or_rewritten") is not False
+            or preservation.get("m44_receipt_remains_absent") is not True
+            or preservation.get("event_303_preserved_exactly") is not True
+            or preservation.get("coordination_store_bytes_preserved_exactly")
+            is not True
+            or preservation.get("worker_self_approval") is not False
+            or any(not hasattr(materializer, name) for name in required_functions)
+        ):
+            errors.append(
+                "M47 ignored Python-cache preservation/recovery delta is not exact"
+            )
+        if require_active_runtime:
+            runtime = scheduler.get("runtime_paths")
+            program = scheduler.get("database_program")
+            owner = scheduler.get("quack_owner")
+            target_root = str(expected["target_runtime_root"])
+            if (
+                not isinstance(program, Mapping)
+                or program.get("store_generation") != "34"
+                or program.get("store_id") != expected["target_store_id"]
+                or not isinstance(owner, Mapping)
+                or owner.get("database_path") != expected["target_store_id"]
+                or owner.get("store_id") != expected["target_store_id"]
+                or owner.get("port") != 24_070
+                or runtime
+                != {
+                    "root": target_root,
+                    "state": f"{target_root}/state",
+                    "worktrees": f"{target_root}/worktrees",
+                    "merge_queue": f"{target_root}/merge-queue",
+                    "logs": f"{target_root}/logs",
+                    "generated_runtime_artifacts_are_completion_authority": False,
+                }
+            ):
+                errors.append("scheduler M47 target/runtime binding is not exact")
+        errors.extend(_m47_source_chain_errors(root, materializer, expected))
+        return errors
+    except Exception as exc:
+        return [
+            "M47 ignored Python-cache preservation/recovery authority is unavailable: "
             f"{type(exc).__name__}: {exc}"
         ]
 
@@ -13362,6 +13670,76 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m47_key = _M47_SUCCESSOR_KEY
+    m47_presence = (
+        m47_key in scheduler,
+        m47_key in migration,
+        f"{m47_key}_cid" in seal,
+    )
+    if any(m47_presence):
+        if not all(m47_presence):
+            return effective, ["active M47 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m47_nested_source_materializer",
+                REPO_ROOT
+                / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M47 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer
+                ._expected_m47_ignored_python_cache_preservation_and_recovery_successor_authority()
+            )
+            materializer._validated_m47_live_preflight_contract(authority)
+            materializer._assert_m47_historical_m46_controls(
+                scheduler, migration, seal
+            )
+            reference = dict(materializer._m47_authority_reference())
+            source_errors = _m47_source_chain_errors(
+                REPO_ROOT, materializer, authority
+            )
+            if source_errors:
+                raise RuntimeError("; ".join(source_errors))
+        except Exception as exc:
+            return effective, [f"active M47 nested-source authority unavailable: {exc}"]
+        if (
+            scheduler.get(m47_key) != reference
+            or migration.get(m47_key) != reference
+            or seal.get(f"{m47_key}_cid") != materializer._M47_AUTHORITY_CID
+            or materializer._M47_AUTHORITY_CID == _M47_UNSEALED_AUTHORITY_CID
+            or materializer._M47_AUTHORITY_CID != _M47_AUTHORITY_CID
+            or materializer._identity(authority) != materializer._M47_AUTHORITY_CID
+            or len(materializer._canonical(authority)) != _M47_AUTHORITY_SIZE
+        ):
+            return effective, ["active M47 nested-source authority differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(authority.get("current_datasets_gitlink") or ""),
+                str(authority.get("current_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(authority.get("current_kit_gitlink") or ""),
+                str(authority.get("current_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M47 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
     m46_key = _M46_SUCCESSOR_KEY
     m46_presence = (
         m46_key in scheduler,
@@ -14801,6 +15179,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m47_key = _M47_SUCCESSOR_KEY
+        m47_presence = (
+            m47_key in scheduler_probe,
+            m47_key in migration_probe,
+            f"{m47_key}_cid" in seal,
+        )
         m46_key = _M46_SUCCESSOR_KEY
         m46_presence = (
             m46_key in scheduler_probe,
@@ -14977,7 +15361,54 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m46_presence):
+        if any(m47_presence):
+            scheduled = scheduler_probe.get(m47_key)
+            migrated = migration_probe.get(m47_key)
+            if not all(m47_presence) or scheduled != migrated:
+                unexpected = ["M47 authority is partial or differs across controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m47_source_status_materializer",
+                    root
+                    / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M47 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer
+                        ._expected_m47_ignored_python_cache_preservation_and_recovery_successor_authority()
+                    )
+                    materializer._validated_m47_live_preflight_contract(expected)
+                    reference = dict(materializer._m47_authority_reference())
+                    configured_cid = materializer._M47_AUTHORITY_CID
+                    try:
+                        materializer._assert_m47_historical_m46_controls(
+                            scheduler_probe, migration_probe, seal
+                        )
+                    except Exception as exc:
+                        unexpected = [
+                            "M47 historical M46 controls differ: "
+                            f"{type(exc).__name__}: {exc}"
+                        ]
+                    else:
+                        if (
+                            scheduled != reference
+                            or seal.get(f"{m47_key}_cid") != configured_cid
+                            or configured_cid == _M47_UNSEALED_AUTHORITY_CID
+                            or configured_cid != _M47_AUTHORITY_CID
+                            or materializer._identity(expected) != configured_cid
+                            or len(materializer._canonical(expected))
+                            != _M47_AUTHORITY_SIZE
+                        ):
+                            unexpected = ["M47 authority/CID differs across controls"]
+                        else:
+                            unexpected = _m47_source_chain_errors(
+                                root, materializer, expected
+                            )
+        elif any(m46_presence):
             scheduled = scheduler_probe.get(m46_key)
             migrated = migration_probe.get(m46_key)
             if not all(m46_presence) or scheduled != migrated:
@@ -16342,6 +16773,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m47_declared = _m47_successor_declared(scheduler, seal, migration)
         m46_declared = _m46_successor_declared(scheduler, seal, migration)
         m45_declared = _m45_successor_declared(scheduler, seal, migration)
         m44_declared = _m44_successor_declared(scheduler, seal, migration)
@@ -16364,7 +16796,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m46_declared
+            m47_declared
+            or m46_declared
             or m45_declared
             or m44_declared
             or m43_declared
@@ -16387,13 +16820,19 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m46_declared:
+            if m47_declared:
+                protocol_errors.extend(
+                    _m47_ignored_python_cache_preservation_and_recovery_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+            if m46_declared and not m47_declared:
                 protocol_errors.extend(
                     _m46_legacy_no_delta_rescue_recovery_successor_errors(
                         scheduler, seal, migration, root=root
                     )
                 )
-            if m45_declared and not m46_declared:
+            if m45_declared and not m46_declared and not m47_declared:
                 protocol_errors.extend(
                     _m45_failed_pre_authoritative_m44_validation_successor_errors(
                         scheduler, seal, migration, root=root

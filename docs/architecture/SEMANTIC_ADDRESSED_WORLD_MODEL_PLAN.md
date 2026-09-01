@@ -2585,7 +2585,80 @@ CID `sha256:46508d2540469d9cbc3ab0cc5220db0bf0cf0cb3cfdce6eed2ff8c8f4da71a97`)
 must remain exact. `m46-source-successor-receipt.json` is published mode
 `0600` only after authenticated event append and full live verification.
 
-## 55. Current limitations at seal time
+## 55. M47 ignored Python-cache preservation and recovery successor
+
+`SAWM-R2-M47` preserves M46's accepted generation-33/event-303
+materialization and `m46-source-successor-receipt.json` byte-for-byte. It
+authorizes only the bounded lifecycle-bridge repair required when a preserved
+legacy task worktree contains both an exact declared nested-gitlink output and
+ignored CPython `__pycache__/*.pyc` runtime artifacts. Those cache bytes remain
+non-source, non-output, non-authoritative observations: the recovery
+classifier neither deletes, copies into an authoritative receipt,
+deserializes, nor executes them, and they cannot establish task completion.
+
+Admission is fail closed and limited to a bounded set of stable regular
+CPython bytecode-cache files beneath `ipfs_accelerate_py/**/__pycache__` whose
+cache tag matches the running interpreter and whose corresponding source is
+an exact stage-0 tracked file. The bridge verifies ownership, group, mode,
+path confinement, Python magic number, source blob identity, timestamp- or
+hash-based invalidation header, per-artifact bytes, aggregate size, and a
+second identical observation before protected-state retirement. Unrelated,
+untracked-source, wrong-tag, malformed, symlinked, executable,
+world-writable, unstable, oversized, or otherwise ambiguous ignored paths
+continue to produce the typed
+`cross_attempt_declared_output_top_level_ignored` blocker. Normal proof,
+test, merge, and completion validation remains mandatory.
+
+The immutable M46 final-control predecessor is commit
+`c9474da7158066bffaa6cb3395bfa3801ba79111`, tree
+`e227a2708771a7edd6af7047bfba98fc6b9293a2`. The accepted M47 repair is its
+direct child commit `7fe0f09615c6d07ba72d3f6334b6bb4f6a512141`, tree
+`9d89c71fd4d9a89b731bf83f6024f411fbac2b53`, and changes exactly these two
+mode-`100644` paths and blobs:
+
+```text
+ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py       a70502b7fa6179279d1f136029ba065465a6aee5
+test/api/test_agent_supervisor_database_portal_bridge.py                         984e21a2ab069f1c7d914e168fee61572713bff9
+```
+
+The binary diff over exactly those paths has SHA-256
+`e45a80dea318c2b3ec2851540b7058cd62d4713606379fa341132b28c8ead5c4`.
+The repair does not broaden admission beyond the exact cache class above, mutate task output,
+delete preserved user bytes, dispatch a provider, or grant mutation, merge,
+proof, validation, task-status, goal-status, or completion authority.
+
+Generation 33 was cleanly stopped before this successor was declared. Its
+immutable predecessor bytes are control store SHA-256
+`22e18686bf52156b27654257f8259a2e5526aa344e9abf16f2fbefbe87843515`
+(43,790,336 bytes), coordination store SHA-256
+`cecb343c4e8c45ae7405193ba3745a623d2fd1039c5b6fe3ab4d02c4e2683137`
+(17,313,792 bytes), and stopped-status SHA-256
+`a459c293d60eff70a17c328cfc035429d7677e13ca2ba07b5cf80995554228d8`
+(2,409 bytes). The stopped database row binds server
+`server:33625550-a262-4c25-8d36-f83b4dea8c2d`, process birth
+`birth:e66a259534ac16f234d37ef185a5a797`, start
+`2026-09-01T14:26:15Z`, stop `2026-09-01T14:38:23Z`, startup epoch
+`1788272775`, database UUID `c6b5c6a1-eaaa-4c09-b401-6ee7998602b4`, and
+generation/fence/credential generation 33. Owner marker, stop control, token
+handoff, both WALs, the M44 receipt, and the M47 receipt are absent.
+
+M47 seals exactly one nine-control child of the repair, excluding that
+child's commit, tree, and blobs from its canonical body to avoid recursive
+identity. Presence on any protected surface selects M47 newest-first;
+partial, pending, malformed, or mismatched declarations fail closed without
+falling back to M46. The authority CID remains
+`sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444`. The only
+authorized runtime delta is an authenticated Quack restart from
+generation 33 to 34 and one operator evidence append at event 304. Task,
+goal, plan, coordination, provider, effect, merge, validation, task-status,
+goal-status, and accepted-completion semantics remain unchanged. M46's
+8,673-byte receipt (SHA-256
+`534c042365c36dcaaef99aaf8fe32af88852d9e376235cb715ade82da22b88cf`,
+CID `sha256:3f9d79c33306ada7b3074609c9fd1e43beee7e474a9fd8b4caacdd65966513c2`)
+must remain exact. `m47-source-successor-receipt.json` is published mode
+`0600` only after authenticated event append and full live verification.
+
+## 56. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.
