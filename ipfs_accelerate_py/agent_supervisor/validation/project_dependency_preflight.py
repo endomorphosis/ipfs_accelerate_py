@@ -1123,12 +1123,156 @@ def _command_is_exact_v3_scoped_pytest_target(
         )
     return tokens in board_commands
 
+def _scoped_pytest_target_from_command(
+    command: str,
+    *,
+    relative_root: str,
+) -> str | None:
+    """Return the sole pytest file target from an admitted command grammar."""
+
+    try:
+        tokens = shlex.split(str(command), posix=True)
+    except ValueError:
+        return None
+    if relative_root and tokens[:3] == ["cd", relative_root, "&&"]:
+        tokens = tokens[3:]
+    if tokens[:3] not in (["python3", "-m", "pytest"], ["python", "-m", "pytest"]):
+        return None
+    rest = tokens[3:]
+    paths = [
+        token
+        for token in rest
+        if token.endswith(".py") and not token.startswith("-")
+    ]
+    if len(paths) != 1:
+        return None
+    flags = [token for token in rest if token != paths[0]]
+    if flags not in ([], ["-q"]):
+        return None
+    try:
+        return _require_safe_scoped_pytest_target(paths[0])
+    except _ScopedDependencyContractError:
+        return None
+
+
+def _scoped_v2_undeclared_board_target(
+    parsed_targets: Sequence[Mapping[str, Any]],
+    *,
+    relative_root: str,
+    validation_command: str,
+    validation_command_sha256: str,
+    runtime_board_namespace: str,
+    runtime_task_cid: str,
+    runtime_declared_outputs: Sequence[str],
+    mixed_declared_output_roots: bool,
+    project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
+) -> dict[str, Any] | None:
+    """Reuse a reviewed extra for a new same-board pytest task.
+
+    Command-digest drift on an existing task row still fails closed.  A
+    sibling board task whose pytest file is a declared output can inherit
+    the shortest pytest-bearing requirement list already admitted for that
+    board instead of blocking provider dispatch forever.
+    """
+
+    if any(
+        str(entry.get("canonical_task_cid") or "") == runtime_task_cid
+        for entry in parsed_targets
+    ):
+        return None
+    target = _scoped_pytest_target_from_command(
+        validation_command,
+        relative_root=relative_root,
+    )
+    if target is None:
+        return None
+    declared_output: str | None = None
+    for output in runtime_declared_outputs:
+        try:
+            if mixed_declared_output_roots:
+                admitted = _require_v3_scoped_declared_output(
+                    output,
+                    target=target,
+                )
+            elif output in {
+                _expected_scoped_declared_output(relative_root, target),
+                target,
+            }:
+                admitted = _expected_scoped_declared_output(
+                    relative_root,
+                    target,
+                )
+            else:
+                continue
+        except _ScopedDependencyContractError:
+            continue
+        declared_output = admitted
+        break
+    if declared_output is None:
+        return None
+    same_board = [
+        entry
+        for entry in parsed_targets
+        if str(entry.get("board_namespace") or "") == runtime_board_namespace
+    ]
+    pytest_lists = [
+        list(entry.get("requirements") or [])
+        for entry in same_board
+        if any(
+            re.match(r"(?i)^pytest(?:$|\[|\s|[<>=!~;@])", str(requirement))
+            for requirement in (entry.get("requirements") or [])
+        )
+    ]
+    if not pytest_lists:
+        return None
+    pytest_lists.sort(key=len)
+    requirements = pytest_lists[0]
+    try:
+        _require_scoped_requirements(requirements)
+    except _ScopedDependencyContractError:
+        return None
+    candidate = project_root / target
+    try:
+        candidate.lstat()
+    except FileNotFoundError:
+        baseline_state = "declared-output-absent"
+        baseline_sha256 = ""
+    else:
+        try:
+            _target_file, target_payload = _read_bounded_contained_regular_file(
+                project_root,
+                candidate,
+                maximum_bytes=MAX_DEPENDENCY_MANIFEST_BYTES,
+                expected_containment_root_snapshot=(
+                    expected_project_root_snapshot
+                ),
+            )
+        except Exception:
+            return None
+        baseline_state = "present"
+        baseline_sha256 = hashlib.sha256(target_payload).hexdigest()
+    return {
+        "target": target,
+        "validation_command_sha256": validation_command_sha256,
+        "requirements": requirements,
+        "board_namespace": runtime_board_namespace,
+        "canonical_task_cid": runtime_task_cid,
+        "declared_output": declared_output,
+        "baseline_state": baseline_state,
+        "baseline_sha256": baseline_sha256,
+        "auto_repaired_undeclared_command": True,
+    }
+
+
 def _scoped_v2_selected_target(
     contract: Mapping[str, Any],
     *,
     relative_root: str,
     validation_commands: Sequence[str],
     task_authority: Mapping[str, Any] | None,
+    project_root: Path,
+    expected_project_root_snapshot: tuple[int, ...],
 ) -> dict[str, Any]:
     """Validate all v2/v3 entries and select one task-bound command."""
 
@@ -1342,7 +1486,23 @@ def _scoped_v2_selected_target(
         )
     ]
     if len(selected) != 1:
-        raise _ScopedDependencyContractError("v2_validation_command_not_declared")
+        repaired = _scoped_v2_undeclared_board_target(
+            parsed_targets,
+            relative_root=relative_root,
+            validation_command=validation_command,
+            validation_command_sha256=validation_command_sha256,
+            runtime_board_namespace=runtime_board_namespace,
+            runtime_task_cid=runtime_task_cid,
+            runtime_declared_outputs=runtime_declared_outputs,
+            mixed_declared_output_roots=mixed_declared_output_roots,
+            project_root=project_root,
+            expected_project_root_snapshot=expected_project_root_snapshot,
+        )
+        if repaired is None:
+            raise _ScopedDependencyContractError(
+                "v2_validation_command_not_declared"
+            )
+        selected = [repaired]
     result = selected[0]
     if (
         mixed_declared_output_roots
@@ -1513,6 +1673,8 @@ def _scoped_setup_extra_dependencies(
             relative_root=relative_root,
             validation_commands=validation_commands,
             task_authority=task_authority,
+            project_root=project_root,
+            expected_project_root_snapshot=expected_project_root_snapshot,
         )
         target = str(selected_v2_target["target"])
         requirements = list(selected_v2_target["requirements"])

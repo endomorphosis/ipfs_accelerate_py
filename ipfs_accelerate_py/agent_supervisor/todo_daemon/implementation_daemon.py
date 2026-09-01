@@ -89684,10 +89684,20 @@ class DatabaseImplementationDaemon:
                         ),
                     )
                 elif candidate_retry or retryable:
+                    retry_backoff_ms = backoff_seconds * 1000
+                    if (
+                        process_transient
+                        and reason == "quack_transport_unavailable"
+                    ):
+                        retry_backoff_ms = min(
+                            retry_backoff_ms,
+                            int(_QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS)
+                            * 1000,
+                        )
                     control_state = self._persist_task_retry_state(
                         terminal,
                         reason=reason,
-                        backoff_ms=backoff_seconds * 1000,
+                        backoff_ms=retry_backoff_ms,
                         evidence_source=(
                             "portal_candidate_retry"
                             if candidate_retry
