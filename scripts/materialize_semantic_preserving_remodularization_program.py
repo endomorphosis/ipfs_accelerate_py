@@ -2127,7 +2127,7 @@ def _owner_task_projection(server: Any) -> dict[str, Any]:
 
 
 def _publish_live_projection(server: Any, paths: Mapping[str, Path]) -> dict[str, Any]:
-    ready = server.ready()
+    ready = server.ready(retry_transient_birth=False)
     task_projection = _owner_task_projection(server)
     unsigned = {
         "schema": "spar/live-owner-projection@1",
@@ -3085,10 +3085,14 @@ class _OwnerProjectionMonitor:
                 recover_error_type = ""
                 recover_error = ""
                 connection = getattr(self.server, "_connection", None)
+                # A live-query IOException while the TCP listener is still
+                # bound is a contended handshake, not a down serve. Forcing
+                # transport restart drops every typed lane and loops.
+                listener_ready = _owner_listener_ready(self.server)
                 try:
                     recovered = _recover_poisoned_owner_connection(
                         self.server,
-                        force=True,
+                        force=not listener_ready,
                     )
                 except Exception as recover_exc:
                     recovered = False
@@ -3111,6 +3115,7 @@ class _OwnerProjectionMonitor:
                             "recovered": recovered,
                             "recover_error_type": recover_error_type,
                             "recover_error": recover_error,
+                            "listener_ready": listener_ready,
                             "connection_path_present": (
                                 getattr(connection, "path", None) is not None
                             ),
@@ -3129,6 +3134,7 @@ class _OwnerProjectionMonitor:
                     flush=True,
                 )
                 if recovered:
+                    self.stopping.wait(0.25)
                     continue
                 self.stopping.wait(1.0)
                 continue

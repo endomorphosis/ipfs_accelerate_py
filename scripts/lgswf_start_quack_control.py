@@ -87,7 +87,8 @@ def main() -> int:
                 }
             )
 
-        def live_query(self, connection, *, identity, token):
+        def live_query(self, connection, *, identity, token, retry_transient_birth=True):
+            del retry_transient_birth
             return {"listen_uri": self._listen_uri, "server_id": identity.server_id}
 
         def stop(self, connection=None) -> None:

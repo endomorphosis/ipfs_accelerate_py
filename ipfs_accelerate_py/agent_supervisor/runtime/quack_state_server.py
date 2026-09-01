@@ -2351,6 +2351,7 @@ class QuackTransport(Protocol):
         *,
         identity: StateServerIdentity,
         token: str,
+        retry_transient_birth: bool = True,
     ) -> Mapping[str, Any]:
         """Return live identity observation used for readiness."""
 
@@ -2577,13 +2578,16 @@ class InProcessQuackTransport:
         *,
         identity: StateServerIdentity,
         token: str,
+        retry_transient_birth: bool = True,
     ) -> Mapping[str, Any]:
         if not self._started:
             raise QuackStateServerReadyError("transport has not started")
         # Prove the listener, authentication, request worker, and response path
         # are all usable.  Named token/disable_ssl arguments match the admitted
         # Quack 1.5.5 surface; positional 4-arg calls are a last compatibility
-        # attempt only.
+        # attempt only.  Periodic owner projection must not retry the 2.5s
+        # birth window: that holds the exclusive owner lock and starves typed
+        # lane attach.
         query_attempts = (
             (
                 "SELECT * FROM quack_query(?, ?, token := ?, disable_ssl := ?)",
@@ -2599,7 +2603,9 @@ class InProcessQuackTransport:
         try:
             import duckdb
 
-            deadline = time.monotonic() + QUACK_LIVE_QUERY_BIRTH_TIMEOUT_SECONDS
+            deadline = time.monotonic()
+            if retry_transient_birth:
+                deadline += QUACK_LIVE_QUERY_BIRTH_TIMEOUT_SECONDS
             while True:
                 client = duckdb.connect(":memory:")
                 try:
@@ -2758,8 +2764,9 @@ class FakeQuackTransport:
         *,
         identity: StateServerIdentity,
         token: str,
+        retry_transient_birth: bool = True,
     ) -> Mapping[str, Any]:
-        del connection, token
+        del connection, token, retry_transient_birth
         if self.fail_live_query:
             raise QuackStateServerReadyError("injected live query failure")
         if not self.started or self._identity is None:
@@ -6551,19 +6558,29 @@ class QuackStateServer:
             if not owner._lock_open:  # noqa: SLF001 - cleanup proof
                 self._owner = None
 
-    def ready(self) -> dict[str, Any]:
+    def ready(self, *, retry_transient_birth: bool = True) -> dict[str, Any]:
         """Return readiness observation or raise if not ready.
 
         Ready requires:
         * lifecycle is READY
         * live transport query succeeds
         * store / generation / schema / server identities match the published set
+
+        Periodic projection passes ``retry_transient_birth=False`` so a
+        contended loopback handshake cannot hold the owner lock for the
+        2.5s birth window and starve typed lane attach.
         """
 
         with self._owner_transaction_lock:
-            return self._ready_transaction_serialized()
+            return self._ready_transaction_serialized(
+                retry_transient_birth=retry_transient_birth
+            )
 
-    def _ready_transaction_serialized(self) -> dict[str, Any]:
+    def _ready_transaction_serialized(
+        self,
+        *,
+        retry_transient_birth: bool = True,
+    ) -> dict[str, Any]:
         """Inspect readiness without interleaving another owner transaction."""
 
         with self._lock:
@@ -6636,6 +6653,7 @@ class QuackStateServer:
                 self._transport_connection,
                 identity=identity,
                 token=token,
+                retry_transient_birth=retry_transient_birth,
             )
             meta = self._read_meta(self._connection)
             if meta.get("database_uuid") and meta["database_uuid"] != identity.database_uuid:

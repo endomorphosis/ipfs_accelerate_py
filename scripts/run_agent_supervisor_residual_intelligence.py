@@ -3945,8 +3945,9 @@ class _LiveQuackTransport:
         *,
         identity: Any,
         token: str,
+        retry_transient_birth: bool = True,
     ) -> Mapping[str, Any]:
-        del token
+        del token, retry_transient_birth
         row = connection.execute("SELECT 1").fetchone()
         if row is None:
             raise OperatorError("Quack owner connection failed its live query")

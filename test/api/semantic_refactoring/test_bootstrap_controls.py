@@ -1528,6 +1528,84 @@ def test_owner_command_inbox_is_runtime_registry_mutations() -> None:
     assert inbox.is_dir()
 
 
+def test_publish_live_projection_skips_live_query_birth_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    calls: list[bool] = []
+
+    class _Server:
+        def ready(self, *, retry_transient_birth: bool = True) -> dict[str, object]:
+            calls.append(retry_transient_birth)
+            return {
+                "process_birth_id": "birth:test",
+                "server_id": "server:test",
+                "store_id": "store:test",
+                "generation": 1,
+                "schema_revision": 1,
+                "live": True,
+            }
+
+    server = _Server()
+    server._connection = object()  # type: ignore[attr-defined]
+    server._owner_transaction_lock = threading.RLock()  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        materializer,
+        "_task_status",
+        lambda _connection: {"task_count": 0, "status_counts": {}},
+    )
+    payload = materializer._publish_live_projection(server, {"owner": tmp_path})
+    assert calls == [False]
+    assert payload["quack_authenticated_live_query"] is True
+    assert (tmp_path / "spar-live-projection.json").is_file()
+
+
+def test_owner_projection_monitor_does_not_force_bounce_when_listener_is_up(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    recover_force: list[bool] = []
+    publishes = {"n": 0}
+
+    def publish(*_args: object, **_kwargs: object) -> dict[str, object]:
+        publishes["n"] += 1
+        if publishes["n"] == 2:
+            raise RuntimeError("authenticated remote live query failed: IOException")
+        return {"ok": True}
+
+    def recover(_server: object, *, force: bool = False) -> bool:
+        recover_force.append(force)
+        return False
+
+    monkeypatch.setattr(materializer, "_publish_live_projection", publish)
+    monkeypatch.setattr(materializer, "_process_mutations", lambda *_a, **_k: None)
+    monkeypatch.setattr(materializer, "_recover_poisoned_owner_connection", recover)
+    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: True)
+    server = SimpleNamespace(
+        process_mutation_inbox=lambda: None,
+        _connection=SimpleNamespace(path=tmp_path / "control.duckdb"),
+        config=SimpleNamespace(database_path=tmp_path / "control.duckdb"),
+    )
+    inbox = tmp_path / "registry" / "mutations"
+    inbox.mkdir(parents=True)
+    monitor = materializer._OwnerProjectionMonitor(
+        server,
+        {"owner": tmp_path / "owner"},
+        mutation_dir=inbox,
+        on_failure=lambda _exc: None,
+    )
+    monitor.start()
+    try:
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and not recover_force:
+            time.sleep(0.02)
+        assert recover_force == [False]
+    finally:
+        monitor.stop()
+
+
 def test_owner_projection_monitor_drains_signed_owner_commands(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

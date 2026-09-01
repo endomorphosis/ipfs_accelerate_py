@@ -2559,6 +2559,70 @@ def test_live_query_retries_quack_could_not_connect_birth_race(
     assert attempts == 2
 
 
+def test_live_query_skips_birth_retry_when_periodic_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class IOException(Exception):
+        pass
+
+    attempts = 0
+
+    class Sidecar:
+        def execute(self, sql: str, _params: Any = None) -> _Result:
+            if "quack_query" in sql:
+                raise IOException(
+                    "IO Error: Could not connect to server error for HTTP POST"
+                )
+            return _Result()
+
+        def close(self) -> None:
+            return None
+
+    def connect(_database: str) -> Sidecar:
+        nonlocal attempts
+        attempts += 1
+        return Sidecar()
+
+    monkeypatch.setitem(sys.modules, "duckdb", SimpleNamespace(connect=connect))
+    identity = StateServerIdentity(
+        server_id="server:periodic-live-query",
+        store_id="store:periodic-live-query",
+        database_uuid=_UUID,
+        schema_revision=1,
+        schema_fingerprint=_DIGEST,
+        generation=1,
+        fence_epoch=1,
+        revision=0,
+        process_birth=_birth(),
+        listen_uri="quack:127.0.0.1:45691",
+        extension_fingerprint=_DIGEST,
+        credential_generation=1,
+        secret_handle="handle:periodic-live-query",
+    )
+    transport = InProcessQuackTransport()
+    transport.start(
+        FakeConnection(),
+        host="127.0.0.1",
+        port=45691,
+        token="isolated-periodic-token",
+        identity=identity,
+    )
+    owner = FakeConnection()
+    owner.execute = (  # type: ignore[method-assign]
+        lambda sql, params=None: _Result((1,)) if "quack_query" in str(sql) else _Result()
+    )
+
+    observed = transport.live_query(
+        owner,
+        identity=identity,
+        token="isolated-periodic-token",
+        retry_transient_birth=False,
+    )
+
+    assert observed["live"] is True
+    assert attempts == 1
+
+
 def test_live_query_does_not_execute_on_unusable_owner_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2718,8 +2782,8 @@ def test_ready_requires_live_query(tmp_path: Path) -> None:
 
 def test_ready_requires_matching_identities(tmp_path: Path) -> None:
     class DriftTransport(FakeQuackTransport):
-        def live_query(self, connection, *, identity, token):  # type: ignore[no-untyped-def]
-            del connection, token
+        def live_query(self, connection, *, identity, token, retry_transient_birth=True):  # type: ignore[no-untyped-def]
+            del connection, token, retry_transient_birth
             return {
                 "live": True,
                 "server_id": identity.server_id,
@@ -2739,8 +2803,8 @@ def test_ready_requires_matching_identities(tmp_path: Path) -> None:
 
 def test_ready_requires_complete_live_identity_fields(tmp_path: Path) -> None:
     class IncompleteTransport(FakeQuackTransport):
-        def live_query(self, connection, *, identity, token):  # type: ignore[no-untyped-def]
-            del connection, token
+        def live_query(self, connection, *, identity, token, retry_transient_birth=True):  # type: ignore[no-untyped-def]
+            del connection, token, retry_transient_birth
             return {
                 "live": True,
                 "server_id": identity.server_id,
