@@ -11,6 +11,7 @@ import subprocess
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 
 import pytest
 from ipfs_accelerate_py import llm_router
@@ -57,8 +58,15 @@ def _write_native_session_home(
     updates: list[dict[str, object]],
     *,
     session_id: str = _NATIVE_SESSION_ID,
+    workspace: Path | None = None,
 ) -> Path:
-    session = grok_home / "sessions" / session_id
+    session_root = grok_home / "sessions"
+    if workspace is not None:
+        session_root /= quote(
+            str(workspace.resolve(strict=True)),
+            safe="!'()*-._~",
+        )
+    session = session_root / session_id
     session.mkdir(parents=True)
     (session / "updates.jsonl").write_text(
         "".join(json.dumps(item, sort_keys=True) + "\n" for item in updates),
@@ -925,6 +933,7 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
                 _spending_limit_terminal(session_id=session_id),
             ],
             session_id=session_id,
+            workspace=Path(kwargs["cwd"]),
         )
         return subprocess.CompletedProcess(command, 23)
 
@@ -948,7 +957,8 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
         failure_receipt=receipt,
     )
 
-    assert evidence is not None
+    assert isinstance(evidence, llm_router.AgentImplementationQuotaEvidence)
+    assert evidence.verifier_result == "spending_limit_exhausted"
     assert captured["env"]["PWD"] == str(captured["cwd"])
     assert "OLDPWD" not in captured["env"]
 

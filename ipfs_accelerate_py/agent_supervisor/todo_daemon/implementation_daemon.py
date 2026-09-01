@@ -26178,11 +26178,21 @@ class PortalImplementationDaemon:
             protected_latched = False
         protected_provenance = bool(protected_command or protected_latched)
         if protected_provenance:
-            return self._protected_provider_effect_audit(
+            protected_effect_audit = self._protected_provider_effect_audit(
                 command_items=command_items,
                 receipt_text=receipt_text,
                 returncode=returncode,
             )
+            # Recovery locators and effect-bearing signed attempts remain
+            # governed exclusively by the durable provider-effect CAS.  A
+            # legacy quota/medium route has no invocation binding by design,
+            # so it continues below only to prove that neither provider was
+            # dispatched before a denied terminal outcome.
+            if (
+                "--agent-implementation-recovery-json" in command_items
+                or protected_effect_audit.get("invocation_binding_id")
+            ):
+                return protected_effect_audit
         if protected_provenance:
             audit: dict[str, Any] = {
                 "exhausted": False,
@@ -26394,7 +26404,7 @@ class PortalImplementationDaemon:
                             valid_pairs.append((receipt, outcome))
             # Auth/high fallback is the same logical attempt. Every nonzero
             # outcome categorically bypasses provider-capacity restoration;
-            # the sole valid terminal pair is retained only as audit evidence.
+            # an exact terminal pair is retained only as audit evidence.
             if len(valid_pairs) == 1:
                 receipt, outcome = valid_pairs[0]
                 invocation_binding = route_plan.invocation_binding
@@ -27407,6 +27417,17 @@ class PortalImplementationDaemon:
             skip_provider = False
             provider_authorized = True
             reason_code = "no_analytical_close_provider_dispatched"
+        event = decision.to_event_payload(
+            task_id=task.task_id,
+            attempt=int(attempt),
+        )
+        event.update(
+            {
+                "effective_skip_provider": skip_provider,
+                "effective_provider_authorized": provider_authorized,
+                "effective_reason_code": reason_code,
+            }
+        )
         return {
             "skip_provider": skip_provider,
             "provider_authorized": provider_authorized,
@@ -27415,10 +27436,7 @@ class PortalImplementationDaemon:
             "receipt_cid": decision.receipt_cid,
             "residual_packet_cid": decision.residual_packet_cid,
             "provider_hook_count": decision.provider_hook_count,
-            "event": decision.to_event_payload(
-                task_id=task.task_id,
-                attempt=int(attempt),
-            ),
+            "event": event,
         }
 
     def _board_task_is_completed(self, task_id: str) -> bool:
