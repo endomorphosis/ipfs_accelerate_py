@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "dead_attempt_lifecycle_recovery_restart_successor_materialization",
     "failed_pre_authoritative_m41_evidence_projection_successor_materialization",
     "failed_pre_authoritative_m40_validation_successor_materialization",
     "failed_pre_authoritative_m39_successor_materialization",
@@ -194,6 +195,39 @@ def test_historical_successor_controls_include_m42_before_m41() -> None:
     assert f"{m42_key}_cid" not in historical_seal
 
 
+def test_historical_successor_controls_include_m43_before_m42() -> None:
+    """M42 fixtures remove M43 while current M43 remains presence-first."""
+
+    m43_key = "dead_attempt_lifecycle_recovery_restart_successor_materialization"
+    m42_key = (
+        "failed_pre_authoritative_m41_evidence_projection_"
+        "successor_materialization"
+    )
+    scheduler = {m43_key: {"revision": "M43"}, m42_key: {"revision": "M42"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m43_key}_cid": "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID",
+        f"{m42_key}_cid": "sha256:" + "6" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m43_key, scheduler, migration, seal
+    )
+    assert current[m43_key] == scheduler[m43_key]
+    assert current_migration is not None
+    assert current_migration[m43_key] == migration[m43_key]
+    assert current_seal is not None
+    assert current_seal[f"{m43_key}_cid"] == seal[f"{m43_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m42_key, scheduler, migration, seal)
+    )
+    assert m43_key not in historical
+    assert historical_migration is not None and m43_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m43_key}_cid" not in historical_seal
+
+
 def _load(relative: str, name: str) -> ModuleType:
     path = REPO_ROOT / relative
     spec = importlib.util.spec_from_file_location(name, path)
@@ -223,7 +257,17 @@ def test_static_board_gate_is_valid() -> None:
         "sawm_board_validator_test",
     )
     report = validator.validate_program(REPO_ROOT)
-    assert report["valid"] is True, report["errors"]
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_board_gate_reseal_state_test",
+    )
+    if materializer._M43_AUTHORITY_CID.endswith(
+        "PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
+    ):
+        assert report["valid"] is False
+        assert any("not resealed" in error for error in report["errors"])
+    else:
+        assert report["valid"] is True, report["errors"]
     assert report["task_count"] == 45
     assert report["goal_count"] == 29
     assert report["markdown_completion_is_authority"] is False
@@ -235,6 +279,16 @@ def test_dependency_gate_qualifies_the_exact_isolated_launch_stack() -> None:
         "sawm_dependency_validator_test",
     )
     report = validator.validate_dependencies(REPO_ROOT, cold_import=True)
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_dependency_gate_reseal_state_test",
+    )
+    if materializer._M43_AUTHORITY_CID.endswith(
+        "PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
+    ):
+        assert report["valid"] is False
+        assert any("not resealed" in error for error in report["errors"])
+        return
     assert report["valid"] is True, report["errors"]
     assert report["database_opened"] is True
     assert report["network_required"] is False
@@ -5363,6 +5417,235 @@ def test_m42_receipt_publication_is_last_idempotent_and_exclusive(
         )
 
 
+def test_m43_authority_binds_stopped_generation_and_preserves_m42() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m43_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m43_dead_attempt_lifecycle_recovery_restart_authority()
+    )
+    reference = materializer._m43_authority_reference()
+    prior = authority["prior_authority"]
+    stopped = authority["stopped_owner"]
+    artifacts = authority["stopped_prestart_artifacts"]
+    receipt = authority["preserved_m42_receipt"]
+    repair = authority["accepted_lifecycle_repair"]
+    changes = authority["exact_changes"]
+
+    assert reference == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M43",
+        "authority_cid": "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID",
+    }
+    assert authority["target_generation"] == 31
+    assert authority["target_event_watermark"] == 297
+    assert authority["target_projection_cid"] == (
+        "baguqeerazspjonqzwhd5e2jmnpl4lacaasfmtkziur4awfrihibnh6mxkpoa"
+    )
+    assert prior == {
+        **prior,
+        "event_watermark": 296,
+        "event_prefix_sha256": (
+            "89c64a4f018c2a3cfdce675eb8fb27913674e76995d64d89cabec42dd2967b70"
+        ),
+        "projection_cid": (
+            "baguqeerasguaepwupk3d5vme3cqsbicujihwvxnemnoenvdtnu3uwrscbt6q"
+        ),
+        "semantic_authority_digest": (
+            "sha256:a9f7e45d543cd983b36d475f3145344c956c547524bf33adfdc630de2bda7ae0"
+        ),
+    }
+    assert stopped["generation"] == 30
+    assert stopped["target_generation"] == 31
+    assert stopped["status"] == "stopped"
+    assert stopped["revision"] == 2
+    assert stopped["database_uuid"] == "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4"
+    assert artifacts["control_sha256"] == (
+        "6798563648545b3fc05f1b7638ad2d0448c743d3a788bf78208a5d28a76a95f7"
+    )
+    assert artifacts["coordination_sha256"] == (
+        "ddbdf352e6a41452c6584cfa06fc760b90a94f1ff6473ff2c5eeb93de7551785"
+    )
+    assert artifacts["status_sha256"] == (
+        "3f8c1227e7bc29c3057d238e550880cdfb6144a3687a73dea12e3ca063148a4c"
+    )
+    assert all(
+        artifacts[name] is True
+        for name in (
+            "owner_marker_absent",
+            "stop_control_absent",
+            "token_handoff_absent",
+            "control_wal_absent",
+            "coordination_wal_absent",
+        )
+    )
+    assert receipt["sha256"] == (
+        "ff9a24d339cf06eacb3573cd2825e0648a558efe5ec9539c0c4f489002ca609d"
+    )
+    assert receipt["size"] == 14_112
+    assert receipt["receipt_cid"] == (
+        "sha256:31565b6bfc8e071f4278acc88fd3500ca5c4d25eee63d0131b16ceca3e7a9169"
+    )
+    assert receipt["created_or_rewritten"] is False
+    assert set(repair["changed_paths"]) == {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py",
+        "test/api/test_agent_supervisor_database_portal_bridge.py",
+        "test/api/test_agent_supervisor_configured_board_live_capsule.py",
+    }
+    assert repair["repair_parent"] == (
+        "a8bce148b793dcd15ac742df3a29e5773a178f28"
+    )
+    assert repair["repair_commit"] == (
+        "7e3fa1170edac23149e0d1f38f5ff6b5f5ddb571"
+    )
+    assert repair["repair_tree"] == (
+        "df40d6f879753c8c2ca00f35fd28054a29fd600a"
+    )
+    assert repair["blob_oids"] == {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": (
+            "97f44d032063a8a98cfca277dd123c998244f076"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py": (
+            "51e577170d975f056e3f97a9ded55d210bee8792"
+        ),
+        "test/api/test_agent_supervisor_database_portal_bridge.py": (
+            "07fb7dd738256126c96e1370dd5a60501a13647b"
+        ),
+        "test/api/test_agent_supervisor_configured_board_live_capsule.py": (
+            "4638112c6c2da24cb5912914192f332f2903bd6b"
+        ),
+    }
+    assert repair["path_modes"] == {
+        path: "100644" for path in repair["changed_paths"]
+    }
+    assert authority["ordinary_source_changes"] == len(repair["changed_paths"])
+    assert repair["repair_path_set_finalized"] is True
+    assert repair["newest_first_attempt_selection"] is True
+    assert repair["prepared_receipt_precedes_lifecycle_cas"] is True
+    assert repair["marker_retirement_is_no_replace"] is True
+    assert changes["task_status_changes"] == 0
+    assert changes["accepted_completion_changes"] == 0
+    assert materializer._validated_m43_live_preflight_contract(authority) == (
+        authority["live_preflight_contract"]
+    )
+    assert materializer._identity(authority["prior_m42_authority"]) == (
+        materializer._M43_M42_AUTHORITY_CID
+    )
+
+
+def test_m43_draft_is_declared_but_operationally_fails_closed_until_reseal() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m43_pending_reseal_test",
+    )
+    dependency = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m43_pending_reseal_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    authority = (
+        materializer
+        ._expected_m43_dead_attempt_lifecycle_recovery_restart_authority()
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M43 final control identities are not resealed",
+    ):
+        materializer._assert_m43_source_delta(
+            REPO_ROOT, {"source_binding": {"head": "unused"}}, authority
+        )
+    errors = dependency._m43_dead_attempt_lifecycle_recovery_restart_successor_errors(
+        config, seal, migration, root=REPO_ROOT
+    )
+    assert any("not resealed" in error for error in errors)
+    assert not any("historical M42 controls differ" in error for error in errors)
+    assert config["database_program"]["store_generation"] == "31"
+
+
+def test_m43_dispatch_is_newest_and_receipt_follows_live_verification() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m43_dispatch_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m43_dispatch_test",
+    )
+    config = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    active = operator._active_source_repair_materialization(config)
+    assert active["migration_revision"] == "SAWM-R2-M43"
+    assert active["target_generation"] == 31
+    assert active["target_event_watermark"] == 297
+
+    for function in (materializer.check_materialized, materializer.materialize):
+        source = inspect.getsource(function)
+        assert source.index("_m43_successor_configured_on_any_surface") < (
+            source.index("_m42_successor_configured_on_any_surface")
+        )
+    main_source = inspect.getsource(materializer.main)
+    assert main_source.index(
+        "dead_attempt_lifecycle_recovery_restart_successor_materialization"
+    ) < main_source.index(
+        "failed_pre_authoritative_m41_evidence_projection_successor_materialization"
+    )
+    core = inspect.getsource(materializer._materialize_m43)
+    assert core.index("_verify_m43_preserved_m42_receipt") < core.index(
+        "source.record_evidence"
+    )
+    assert core.index("_verify_m43_live_materialization") < core.index(
+        "_ensure_m43_source_successor_receipt"
+    )
+    assert "snapshot.event_cursor == _M43_PRIOR_EVENT_WATERMARK" in core
+    assert "snapshot.event_cursor != _M43_TARGET_EVENT_WATERMARK" in core
+
+    configured = inspect.getsource(operator._successor_materialization_configured)
+    assert configured.index("_M43_SUCCESSOR_KEY") < configured.index(
+        "_M42_SUCCESSOR_KEY"
+    )
+    normalized = inspect.getsource(operator._normalized_live_preflight_contract)
+    assert normalized.index("_M43_MIGRATION_REVISION") < normalized.index(
+        "_M42_MIGRATION_REVISION"
+    )
+    preflight = inspect.getsource(operator._live_preflight)
+    assert "m43_active = active_revision == _M43_MIGRATION_REVISION" in preflight
+    assert preflight.index("m43_active,") < preflight.index("m42_active,")
+    assert preflight.index("_verify_m43_live_materialization") < preflight.index(
+        "_verify_m42_live_materialization"
+    )
+    marker = inspect.getsource(operator._require_active_final_pair_marker)
+    assert marker.index("_M43_SUCCESSOR_KEY") < marker.index("_M42_SUCCESSOR_KEY")
+    offline = inspect.getsource(operator._validate_offline_quack_start)
+    assert offline.index("_M43_SUCCESSOR_KEY") < offline.index(
+        "_M42_SUCCESSOR_KEY"
+    )
+
+
 def test_m42_dispatch_precedes_m41_and_receipt_follows_live_verification() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -5407,13 +5690,22 @@ def test_m42_operator_selects_newest_authority_by_key_presence() -> None:
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
     )
-    active = operator._active_source_repair_materialization(config)
+    m42_key = (
+        "failed_pre_authoritative_m41_evidence_projection_"
+        "successor_materialization"
+    )
+    historical, _, _ = _historical_successor_controls_at(m42_key, config)
+    historical["database_program"]["store_generation"] = "30"
+    active = operator._active_source_repair_materialization(historical)
     assert active["migration_revision"] == "SAWM-R2-M42"
     assert active["target_event_watermark"] == 292
     assert active["failed_m41_pre_authoritative_materialization"][
         "quack_mutation_request_created"
     ] is False
     configured = inspect.getsource(operator._successor_materialization_configured)
+    assert configured.index("_M43_SUCCESSOR_KEY") < configured.index(
+        "_M42_SUCCESSOR_KEY"
+    )
     assert configured.index("_M42_SUCCESSOR_KEY") < configured.index(
         "_M41_SUCCESSOR_KEY"
     )
@@ -5431,6 +5723,7 @@ def test_m42_operator_selects_newest_authority_by_key_presence() -> None:
         preflight.index("_expected_m41_source_successor_receipt")
     )
     marker = inspect.getsource(operator._require_active_final_pair_marker)
+    assert marker.index("_M43_SUCCESSOR_KEY") < marker.index("_M42_SUCCESSOR_KEY")
     assert marker.index("_M42_SUCCESSOR_KEY") < marker.index("_M41_SUCCESSOR_KEY")
 
 

@@ -2221,7 +2221,85 @@ event prefix and exact row verification. Only
 M42 grants no restart, direct DuckDB writer, task completion, implementation
 change, validation weakening, or worker self-approval.
 
-## 51. Current limitations at seal time
+## 51. M43 dead-attempt lifecycle recovery restart successor
+
+`SAWM-R2-M43` preserves M42 and its receipt byte-for-byte while superseding
+only the failed implementation launch that followed M42 materialization.  The
+stopped generation-30 authority is bound to database UUID
+`c6b5c6a1-eaaa-4c09-b401-6ee7998602b4`, event 296, event prefix
+`89c64a4f018c2a3cfdce675eb8fb27913674e76995d64d89cabec42dd2967b70`,
+projection
+`baguqeerasguaepwupk3d5vme3cqsbicujihwvxnemnoenvdtnu3uwrscbt6q`, and
+semantic digest
+`sha256:a9f7e45d543cd983b36d475f3145344c956c547524bf33adfdc630de2bda7ae0`.
+The exact stopped control store is
+`6798563648545b3fc05f1b7638ad2d0448c743d3a788bf78208a5d28a76a95f7`
+(43,528,192 bytes), coordination store is
+`ddbdf352e6a41452c6584cfa06fc760b90a94f1ff6473ff2c5eeb93de7551785`
+(16,789,504 bytes), and stopped-status record is
+`3f8c1227e7bc29c3057d238e550880cdfb6144a3687a73dea12e3ca063148a4c`
+(2,408 bytes).  No owner marker, stop control, token handoff, or WAL was
+present in that stopped snapshot.
+
+The immutable M42 receipt remains exactly 14,112 bytes with SHA-256
+`ff9a24d339cf06eacb3573cd2825e0648a558efe5ec9539c0c4f489002ca609d`
+and content identity
+`sha256:31565b6bfc8e071f4278acc88fd3500ca5c4d25eee63d0131b16ceca3e7a9169`.
+M43 reuses the M42 exact-legacy-projection verifier before any restart and
+does not translate, replace, or republish that historical receipt.
+
+The reviewed implementation repair surface is frozen to exactly:
+
+```text
+ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py
+ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py
+test/api/test_agent_supervisor_database_portal_bridge.py
+test/api/test_agent_supervisor_configured_board_live_capsule.py
+```
+
+The reviewed repair is commit
+`7e3fa1170edac23149e0d1f38f5ff6b5f5ddb571`, tree
+`df40d6f879753c8c2ca00f35fd28054a29fd600a`, with parent
+`a8bce148b793dcd15ac742df3a29e5773a178f28`.  The four paths above are all
+mode `100644` and bind, in that order, Git blob OIDs
+`97f44d032063a8a98cfca277dd123c998244f076`,
+`51e577170d975f056e3f97a9ded55d210bee8792`,
+`07fb7dd738256126c96e1370dd5a60501a13647b`, and
+`4638112c6c2da24cb5912914192f332f2903bd6b`.
+
+The existing `ConfiguredBoardLiveCapsuleAdmission` is carried through the
+runner into the bridge; no unlisted repair path is admitted.  The repair proves the
+dead protected-attempt snapshot, preserves exact nested declared outputs by
+content address, durably records prepared lifecycle clearance, advances the
+lifecycle CAS, retires the active marker without replacement, records the
+committed recovery receipt, and recovers safely across the post-rename crash
+boundary.  Changed, linked, foreign, live, unproven, or ambiguously owned
+attempt state fails closed.  Until the reviewed repair commit, tree, source
+delta, and final authority CID are resealed, the controls intentionally retain
+only the explicit `INITIAL_M43_CONTROL` and
+`PENDING_M43_FINAL_CONTROL_AUTHORITY_CID` sentinels and the materializer
+refuses to mutate.  The reviewed repair commit, tree, blobs, and modes are no
+longer pending.
+
+After reseal, M43 authorizes exactly one stopped-generation restart from 30
+to 31 through the existing Quack owner path and exactly one evidence append,
+event 297.  The live result must retain plan revision 28 and task heads
+SAWM-006 `in_progress` revision 11 and SAWM-008 `in_progress` revision 13,
+with 11 completed, 2 in-progress, and 32 todo tasks.  Its target task-head
+projection is
+`baguqeerazspjonqzwhd5e2jmnpl4lacaasfmtkziur4awfrihibnh6mxkpoa`.
+Generation-31 owner, store, coordination, event envelope, evidence row,
+prefix, projection, semantic digest, and all authority row families must be
+verified live before the receipt is published last and idempotently.
+
+M43 is selected newest-first only when its complete protected-control triplet
+and source chain validate.  It grants no direct DuckDB writer, task completion,
+ordinary implementation scope beyond the finally sealed repair-path manifest, validation
+weakening, receipt rewriting, completion inference from Markdown, or worker
+self-approval.  Failed or partial prestart, restart, event, or receipt state is
+a typed conflict and is never repaired by falling back to M42.
+
+## 52. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.
