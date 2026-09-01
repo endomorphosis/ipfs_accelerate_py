@@ -62,6 +62,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+    DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA,
     DatabasePortalBridgeError,
     DatabasePortalExecutionBridge,
 )
@@ -1588,6 +1589,418 @@ def test_interrupted_rearm_evidence_binds_terminal_barrier_and_recovery_identity
     assert calls == ["recovery"]
 
 
+def test_stale_dispatch_migration_rearm_uses_exact_policy_without_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The historical release suffix gets only its versioned refund proof."""
+
+    attempt = SimpleNamespace(
+        attempt_id="attempt:stale-dispatch-migration",
+        claim_id="claim:stale-dispatch-migration",
+        task_cid="task:cid:pctdd-034",
+        task_alias="PCTDD-034",
+        attempt_number=2,
+        owner_session_id="session:stale-dispatch-migration",
+        lease_id="lease:stale-dispatch-migration",
+        fencing_token=11,
+        fence_epoch=5,
+        status="failed",
+        committed_phase="failed",
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "migration-attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    paths = bridge._paths(attempt)
+    pre_state_digest = "sha256:" + "1" * 64
+    post_state_digest = "sha256:" + "2" * 64
+    binding = {
+        "task_alias": attempt.task_alias,
+        "binding_id": "sha256:" + "3" * 64,
+        "projection_immutable_digest": "sha256:" + "4" * 64,
+    }
+    exact_attempt = {
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "task_cid": attempt.task_cid,
+        "attempt_number": attempt.attempt_number,
+        "owner_session_id": attempt.owner_session_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+    }
+    durable_binding = {
+        **exact_attempt,
+        **binding,
+        "stage": "portal_entered",
+        "record_id": content_identity(
+            {"binding-admission": "stale-dispatch-migration"}
+        ),
+    }
+    first_clear_receipt_id = "sha256:" + "5" * 64
+    migration_retry_evidence_id = "sha256:" + "6" * 64
+    prepared_id = "sha256:" + "7" * 64
+    barrier_id = "sha256:" + "8" * 64
+    migration_preparation_event_id = "sha256:" + "9" * 64
+    state_recovery_event_id = "sha256:" + "a" * 64
+    migration_terminal_event_id = "sha256:" + "b" * 64
+    legacy_release_event_id = "sha256:" + "c" * 64
+    migration_id = content_identity(
+        {"migration": "stale-dispatch-release"}
+    )
+    migration_receipt_id = content_identity(
+        {"migration-receipt": migration_id}
+    )
+    legacy_release_receipt_id = content_identity(
+        {"legacy-release": "stale-dispatch"}
+    )
+    nested_task_cid = content_identity(
+        {"nested-task": attempt.task_alias}
+    )
+    source = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "stale-dispatch-release-migration-retry@1"
+        ),
+        "binding_id": binding["binding_id"],
+        "reconciliation_receipt": {
+            "binding_id": binding["binding_id"],
+            "receipt_id": first_clear_receipt_id,
+            "nested_state": {"active_attempt": 1},
+            "portal_reconciliation": {
+                "task_claim_reconciliation": {
+                    "canonical_task_cid": nested_task_cid,
+                }
+            },
+        },
+        "evidence_id": migration_retry_evidence_id,
+    }
+    claim_release = {
+        "reconciled": True,
+        "blocked": False,
+        "reason": "quiesced_task_claim_released",
+        "task_id": attempt.task_alias,
+        "canonical_task_cid": nested_task_cid,
+        "attempt": 1,
+        "task_status": "todo",
+        "stale_dispatch_intent_released_for_retry": True,
+        "receipt_id": legacy_release_receipt_id,
+    }
+    forbidden_terminal = {
+        "applicable": False,
+        "blocked": False,
+        "implementation_dispatched": False,
+        "provider_dispatched": False,
+        "reason": "provider_forbidden_terminal_recovery_not_applicable",
+        "reconciled": False,
+    }
+    recovery = {
+        "reconciled": True,
+        "blocked": False,
+        "reason": "already_quiesced",
+        "task_id": attempt.task_alias,
+        "task_claim_reconciliation": claim_release,
+        "provider_forbidden_terminal_recovery": forbidden_terminal,
+    }
+    trigger = "database_daemon_startup"
+    prepared = {
+        "receipt_id": prepared_id,
+        "binding_id": binding["binding_id"],
+        "intended_database_disposition": "blocked_unknown_outcome",
+        "reason": "nested_portal_attempt_reconciled",
+        "reconciled": True,
+        "blocked": False,
+        "trigger": trigger,
+        "nested_state": {
+            "present": True,
+            "active": False,
+            "active_task_id": "",
+            "active_attempt": 0,
+            "active_phase": "",
+            "state_path": str(paths.state),
+            "state_digest": pre_state_digest,
+        },
+        "provider_runner_fence": {
+            "safe_to_restart": True,
+            "applicable": False,
+            "fenced": False,
+            "reason": "ordinary_provider_runner_receipt_absent",
+        },
+        "portal_reconciliation": recovery,
+    }
+    barrier = {
+        **prepared,
+        "receipt_id": barrier_id,
+        "prepared_reconciliation_receipt_id": prepared_id,
+    }
+    link = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-terminal-reconciliation-link@1"
+        ),
+        **exact_attempt,
+        "binding_id": binding["binding_id"],
+        "nested_state_digest": pre_state_digest,
+        "nested_reason": "nested_portal_attempt_reconciled",
+        "nested_reconciled": True,
+        "trigger": trigger,
+        "intended_database_disposition": "blocked_unknown_outcome",
+        "prepared_reconciliation_receipt_id": prepared_id,
+        "commit_barrier_receipt_id": barrier_id,
+    }
+    link["evidence_id"] = content_identity(link)
+    outer_receipt = {
+        "schema": DATABASE_RETRY_BUDGET_SCHEMA,
+        **exact_attempt,
+        "operation": "database_unknown_outcome_blocked",
+        "reason": "provider_dispatch_outcome_unknown",
+        "retry_exhausted": True,
+        "forced_block": True,
+        "authority_outcome": "unknown",
+        "process_instance_id": "process:stale-dispatch-migration",
+        "attempts_used": 1,
+        "unknown_outcome_rearm_count": 1,
+        "terminal_reconciliation": link,
+    }
+    outer_before = json.loads(json.dumps(outer_receipt))
+    replay = {
+        "reconciled": True,
+        "blocked": False,
+        "reason": "stale_dispatch_release_migrated_for_retry",
+        "task_id": attempt.task_alias,
+        "canonical_task_cid": nested_task_cid,
+        "attempt": 1,
+        "migration_id": migration_id,
+        "preparation_event_id": migration_preparation_event_id,
+        "state_recovery_event_id": state_recovery_event_id,
+        "migration_terminal_event_id": migration_terminal_event_id,
+        "migration_receipt_id": migration_receipt_id,
+        "legacy_claim_release_receipt_id": legacy_release_receipt_id,
+        "legacy_claim_release_event_id": legacy_release_event_id,
+        "pre_state_digest": pre_state_digest,
+        "post_state_digest": post_state_digest,
+        "provider_dispatched": False,
+        "implementation_dispatched": False,
+        "acceptance_inferred": False,
+        "retained_candidate_disposition": "preserved_unvalidated",
+        "stale_lock_cleared": False,
+        "stale_lock_clear_event_id": "",
+    }
+    migration_calls: list[tuple[object, str]] = []
+
+    class MigrationOnlyPortal:
+        def reconcile_interrupted_database_implementation_attempt(
+            self,
+            _evidence: object,
+        ) -> dict[str, object]:
+            raise AssertionError("legacy interrupted-retry adapter was selected")
+
+        def reconcile_stale_dispatch_release_migration(
+            self,
+            evidence: object,
+            *,
+            expected_pre_state_digest: str,
+        ) -> dict[str, object]:
+            migration_calls.append((evidence, expected_pre_state_digest))
+            return dict(replay)
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    bridge.portal_factory = lambda _paths, _alias: MigrationOnlyPortal()
+    bridge._binding_lookup = lambda _attempt: dict(durable_binding)
+    monkeypatch.setattr(bridge, "_read_binding", lambda _path: dict(binding))
+    monkeypatch.setattr(bridge, "_verify_binding_identity", lambda _value: None)
+    monkeypatch.setattr(
+        bridge,
+        "load_reconciliation_receipt",
+        lambda _attempt, receipt_id, required_stage="": (
+            dict(prepared) if receipt_id == prepared_id else dict(barrier)
+        ),
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_interrupted_implementation_retry_evidence",
+        lambda _attempt, _binding: None,
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_stale_dispatch_migration_retry_evidence",
+        lambda _attempt, _binding: dict(source),
+    )
+    state_snapshots = [
+        (
+            {
+                "implementation_in_progress": False,
+                "active_task_id": "",
+                "active_attempt": 0,
+                "active_phase": "",
+                "implementation_attempts": {attempt.task_alias: 1},
+            },
+            pre_state_digest,
+        ),
+        (
+            {
+                "implementation_in_progress": False,
+                "active_task_id": "",
+                "active_attempt": 0,
+                "active_phase": "",
+                "implementation_attempts": {},
+            },
+            post_state_digest,
+        ),
+    ]
+
+    def strict_state(_path: Path) -> tuple[dict[str, object], str]:
+        assert state_snapshots
+        state, digest = state_snapshots.pop(0)
+        return dict(state), digest
+
+    monkeypatch.setattr(bridge, "_strict_state_record", strict_state)
+    original_rearm = bridge._interrupted_implementation_rearm_evidence
+    rearm_calls: list[str] = []
+
+    def observe_rearm(
+        candidate_attempt: object,
+        candidate_receipt: object,
+    ) -> dict[str, object] | None:
+        rearm_calls.append(str(getattr(candidate_attempt, "attempt_id", "")))
+        assert isinstance(candidate_receipt, dict)
+        return original_rearm(candidate_attempt, candidate_receipt)
+
+    monkeypatch.setattr(
+        bridge,
+        "_interrupted_implementation_rearm_evidence",
+        observe_rearm,
+    )
+
+    evidence = bridge.no_provider_dispatch_rearm_evidence(
+        attempt,
+        outer_block_receipt=outer_receipt,
+    )
+
+    assert evidence is not None
+    assert evidence["schema"] == (
+        DATABASE_PORTAL_STALE_DISPATCH_MIGRATION_REARM_EVIDENCE_SCHEMA
+    )
+    assert rearm_calls == [attempt.attempt_id]
+    assert migration_calls == [(source, pre_state_digest)]
+    assert state_snapshots == []
+    assert outer_receipt == outer_before
+    assert outer_receipt["attempt_number"] == (
+        outer_receipt["attempts_used"]
+        + outer_receipt["unknown_outcome_rearm_count"]
+    )
+    assert evidence["provider_dispatched"] is False
+    assert evidence["implementation_dispatched"] is False
+    assert evidence["validation_attempted"] is False
+    assert evidence["commit_created"] is False
+    assert evidence["merge_attempted"] is False
+    assert evidence["acceptance_inferred"] is False
+    assert evidence["stale_lock_cleared"] is False
+    assert evidence["stale_lock_clear_event_id"] == ""
+    assert DatabaseImplementationDaemon._valid_no_provider_rearm_evidence(
+        evidence,
+        task=attempt,
+        original=outer_receipt,
+        expected_evidence_id=evidence["evidence_id"],
+    )
+
+    wrong_schema = {
+        **dict(evidence),
+        "schema": DATABASE_PORTAL_INTERRUPTED_IMPLEMENTATION_REARM_EVIDENCE_SCHEMA,
+    }
+    wrong_schema.pop("evidence_id")
+    wrong_schema["evidence_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            wrong_schema,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert not DatabaseImplementationDaemon._valid_no_provider_rearm_evidence(
+        wrong_schema,
+        task=attempt,
+        original=outer_receipt,
+        expected_evidence_id=wrong_schema["evidence_id"],
+    )
+
+    wrong_policy = {
+        **outer_receipt,
+        "operation": "unreviewed_stale_dispatch_release",
+    }
+    assert bridge.no_provider_dispatch_rearm_evidence(
+        attempt,
+        outer_block_receipt=wrong_policy,
+    ) is None
+    assert rearm_calls == [attempt.attempt_id]
+    assert migration_calls == [(source, pre_state_digest)]
+
+    valid_replay = dict(replay)
+    replay_tampers = {
+        "extra_key": {**valid_replay, "unreviewed_replay_field": True},
+        "wrong_task_id": {
+            **valid_replay,
+            "task_id": "PCTDD-WRONG",
+        },
+        "wrong_canonical_task_cid": {
+            **valid_replay,
+            "canonical_task_cid": content_identity(
+                {"nested-task": "wrong"}
+            ),
+        },
+        "wrong_attempt": {**valid_replay, "attempt": 2},
+        "false_lock_with_event": {
+            **valid_replay,
+            "stale_lock_cleared": False,
+            "stale_lock_clear_event_id": "sha256:" + "d" * 64,
+        },
+        "cleared_lock_without_event": {
+            **valid_replay,
+            "stale_lock_cleared": True,
+            "stale_lock_clear_event_id": "",
+        },
+    }
+    for case, tampered_replay in replay_tampers.items():
+        replay.clear()
+        replay.update(tampered_replay)
+        state_snapshots.extend(
+            [
+                (
+                    {
+                        "implementation_in_progress": False,
+                        "active_task_id": "",
+                        "active_attempt": 0,
+                        "active_phase": "",
+                        "implementation_attempts": {attempt.task_alias: 1},
+                    },
+                    pre_state_digest,
+                ),
+                (
+                    {
+                        "implementation_in_progress": False,
+                        "active_task_id": "",
+                        "active_attempt": 0,
+                        "active_phase": "",
+                        "implementation_attempts": {},
+                    },
+                    post_state_digest,
+                ),
+            ]
+        )
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            attempt,
+            outer_block_receipt=outer_receipt,
+        ) is None, case
+        assert state_snapshots == [], case
+    replay.clear()
+    replay.update(valid_replay)
+
+
 def test_interrupted_rearm_uses_production_run_once_link_and_terminal_saga(
     tmp_path: Path,
 ) -> None:
@@ -1701,7 +2114,6 @@ def test_interrupted_rearm_uses_production_run_once_link_and_terminal_saga(
             outcome="raised",
             body={
                 "exception_type": "DatabasePortalBridgeError",
-                "message": "interrupted nested implementation recovered",
             },
         )
         assert bridge._binding_recorder is not None
@@ -2227,6 +2639,85 @@ def test_malformed_terminal_candidate_does_not_starve_unrelated_rearm(
         assert generic is not None and generic.status == "retrying"
     finally:
         successor.close()
+
+
+def test_read_only_terminal_quarantine_does_not_starve_ready_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:terminal-quarantine-ready-dispatch",
+        provider_calls=provider_calls,
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        quarantine = {
+            "task_cid": "task:cid:quarantined",
+            "task_alias": "PCTDD-QUARANTINED",
+            "operation": "database_terminal_landed_completion",
+            "recovered": False,
+            "rearmed": False,
+            "blocked": True,
+            "reason": "terminal_landed_candidate_policy_invalid",
+        }
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_blocked_unknown_outcome_tasks",
+            lambda: [quarantine],
+        )
+
+        result = daemon.run_once()
+
+        assert result["claimed_task_cid"] == "task:cid:001"
+        assert provider_calls == ["task:cid:001"]
+        assert result["unknown_outcome_rearms"] == [quarantine]
+    finally:
+        daemon.close()
+
+
+def test_terminal_recovery_blocker_still_fences_ready_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:terminal-recovery-blocks-ready-dispatch",
+        provider_calls=provider_calls,
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        blocked = {
+            "task_cid": "task:cid:quarantined",
+            "task_alias": "PCTDD-QUARANTINED",
+            "operation": "database_terminal_landed_completion",
+            "recovered": False,
+            "rearmed": False,
+            "blocked": True,
+            "reason": "terminal_landed_candidate_recovery_blocked",
+            "error_type": "DatabaseImplementationConflictError",
+            "error": "partial barrier state requires another recovery pass",
+        }
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_blocked_unknown_outcome_tasks",
+            lambda: [blocked],
+        )
+
+        result = daemon.run_once()
+
+        assert result["implementation_result"] is None
+        assert result["selection_idle_reason"] == (
+            "database_no_provider_rearm_recovery_fenced"
+        )
+        assert result["unknown_outcome_rearms"] == [blocked]
+        assert provider_calls == []
+    finally:
+        daemon.close()
 
 
 def test_terminal_candidate_quarantine_covers_full_bounded_page(

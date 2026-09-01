@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import signal
 import stat
 import subprocess
@@ -70,6 +71,10 @@ _PCTDD_WORKTREE_SUBMODULE_PATHS = (
     "external/ipfs_accelerate",
     "external/ipfs_datasets",
     "external/ipfs_kit",
+)
+_PROVIDER_ROUTE_BACKOFF_CAP = getattr(
+    database_portal_bridge_module,
+    "DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_BACKOFF_SECONDS",
 )
 
 
@@ -138,6 +143,7 @@ def _seed_interrupted_database_portal_attempt(
     owner_session_id: str = "",
     seed_nested_state: bool = True,
     task_track: str = "implementation",
+    max_task_attempts: int = 3,
     worktree_submodule_paths: tuple[str, ...] = _PCTDD_WORKTREE_SUBMODULE_PATHS,
 ) -> tuple[
     Path,
@@ -181,13 +187,13 @@ def _seed_interrupted_database_portal_attempt(
             "main",
             "--implement",
             "--max-task-attempts",
-            "3",
+            str(max_task_attempts),
             "--once",
         ]
     )
     daemon = DatabaseImplementationDaemon(
         database_path=repo / "control.duckdb",
-        max_task_attempts=3,
+        max_task_attempts=max_task_attempts,
         owner_session_id=owner_session_id,
         authority_mode="embedded_exclusive",
         task_source_kind="duckdb",
@@ -313,6 +319,7 @@ def _database_portal_successor(
     task_shard_count: int = 1,
     task_shard_index: int = 0,
     strict_task_sharding: bool = False,
+    max_task_attempts: int = 3,
 ) -> DatabaseImplementationDaemon:
     daemon_args = [
             "--task-source-kind",
@@ -333,7 +340,7 @@ def _database_portal_successor(
             "main",
             "--implement",
             "--max-task-attempts",
-            "3",
+            str(max_task_attempts),
             "--once",
             "--task-shard-count",
             str(task_shard_count),
@@ -345,7 +352,7 @@ def _database_portal_successor(
     args = parse_args(daemon_args)
     successor = DatabaseImplementationDaemon(
         database_path=repo / "control.duckdb",
-        max_task_attempts=3,
+        max_task_attempts=max_task_attempts,
         owner_session_id=owner_session_id,
         authority_mode="embedded_exclusive",
         task_source_kind="duckdb",
@@ -569,6 +576,229 @@ def _rewrite_active_event_chain(
     )
 
 
+def _rewrite_as_pre_dispatch_provider_deferral(
+    paths: object,
+    *,
+    interleave_lock_clear: bool = False,
+    retained_effect_event: Mapping[str, object] | None = None,
+    mutate: Callable[[list[dict[str, object]]], None] | None = None,
+) -> None:
+    """Seal the exact pre-dispatch deferral history seen for PCTDD-006/007.
+
+    The selected task remains ready and no nested implementation attempt is
+    consumed.  PCTDD-007 also contained a valid lock-cleanup diagnostic for a
+    different task between selection and deferral; that event must neither
+    authorize the recovery nor make the faithful history ambiguous.
+    """
+
+    envelope_fields = {
+        "type",
+        "timestamp",
+        "stream_id",
+        "snapshot_id",
+        "sequence",
+        "previous_event_id",
+        "event_id",
+    }
+
+    def replace(events: list[dict[str, object]]) -> None:
+        selected = json.loads(
+            json.dumps(
+                next(
+                    event
+                    for event in events
+                    if event.get("type") == "task_selected"
+                )
+            )
+        )
+        daemon_pass = json.loads(
+            json.dumps(
+                next(
+                    event
+                    for event in reversed(events)
+                    if event.get("type") == "daemon_pass"
+                )
+            )
+        )
+        envelope = {
+            key: selected[key]
+            for key in envelope_fields
+        }
+        dirty_submodule = {
+            **envelope,
+            "type": "dirty_submodule_reset_deferred",
+            "attempted": True,
+            "dirty_count": 1,
+            "generated_artifact_preservation": [],
+            "reset": [
+                {
+                    "dirty_paths": [
+                        (
+                            "ipfs_accelerate_py/agent_supervisor/"
+                            "todo_daemon/database_portal_bridge.py"
+                        ),
+                        (
+                            "ipfs_accelerate_py/agent_supervisor/"
+                            "todo_daemon/implementation_daemon.py"
+                        ),
+                    ],
+                    "path": "external/ipfs_accelerate",
+                    "preserved": True,
+                    "reason": "non_destructive_reconciliation",
+                    "reset_ok": False,
+                    "update_ok": False,
+                }
+            ],
+        }
+        retry_deferred = {
+            **envelope,
+            "type": "implementation_retry_deferred",
+            "task_id": selected["task_id"],
+            "attempt": 1,
+            "skipped": True,
+            "reason": (
+                "authenticated_Grok_4.5_primary_is_unavailable;_"
+                "Codex_requires_typed_hard-quota_exhaustion_authority"
+            ),
+            "backoff_seconds": 300,
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "diagnostic_receipt_id": "",
+            "active_task_cleared": True,
+            "canonical_task_key": selected["canonical_task_key"],
+            "canonical_task_cid": selected["canonical_task_cid"],
+            "board_namespace": selected["board_namespace"],
+        }
+        idle_reason = (
+            "implementation_retry_deferred:"
+            "authenticated_Grok_4.5_primary_is_unavailable;_"
+            "Codex_requires_typed_hard-quota_exhaustion_authority"
+        )
+        daemon_pass.update(
+            {
+                "completed_count": 0,
+                "ready_count": 1,
+                "selectable_ready_count": 0,
+                "eligible_ready_count": 0,
+                "strict_deprioritized_ready_count": 0,
+                "waiting_count": 0,
+                "blocked_count": 0,
+                "active_task_id": "",
+                "selection_idle_reason": idle_reason,
+                "max_task_attempts": 1,
+                "ordinary_provider_dispatch_allowed": True,
+                "execution_slice_task_statuses": {
+                    selected["task_id"]: "ready"
+                },
+                "execution_slice_task_cids_by_id": {
+                    selected["task_id"]: selected["canonical_task_cid"]
+                },
+            }
+        )
+        for key in tuple(daemon_pass):
+            if key.endswith("_task_ids"):
+                daemon_pass[key] = []
+        replacement = [dirty_submodule, selected]
+        if interleave_lock_clear:
+            replacement.append(
+                {
+                    **envelope,
+                    "type": "implementation_resource_claim_lock_cleared",
+                    "task_id": "PCTDD-005",
+                    "lock_path": (
+                        "/tmp/implementation-resource-claims/"
+                        "submodule-pctdd-005.lock"
+                    ),
+                    "branch": "",
+                    "lock_owner_pid": 2_013_755,
+                }
+            )
+        replacement.append(retry_deferred)
+        if retained_effect_event is not None:
+            replacement.append(
+                json.loads(json.dumps(dict(retained_effect_event)))
+            )
+        replacement.append(daemon_pass)
+        if mutate is not None:
+            mutate(replacement)
+        for sequence, event in enumerate(replacement, start=1):
+            event["sequence"] = sequence
+        events[:] = replacement
+
+    _rewrite_active_event_chain(paths, replace)
+
+
+def _quiesce_pre_dispatch_provider_deferral_state(paths: object) -> None:
+    """Remove every nested execution/attempt effect from the test state."""
+
+    # The predecessor setup-failure fixture creates implementation artifacts
+    # that the real PCTDD-006/007 pre-dispatch attempts never created.  Remove
+    # only those tmp-path fixture artifacts so the positive test binds the
+    # exact historical attempt-root population.
+    for name in ("implementation-logs", "implementation_checkpoints"):
+        shutil.rmtree(Path(paths.root) / name, ignore_errors=False)
+    (Path(paths.root) / ".implementation.lock.update.lock").unlink()
+
+    task = parse_task_file(
+        paths.task_projection,
+        task_header_prefix="## PCTDD-001",
+    )[0]
+    state = PortalTaskState.load(paths.state)
+    state.task_statuses[task.task_id] = "ready"
+    state.ready_task_ids = [task.task_id]
+    state.ready_count = 1
+    state.selectable_ready_task_ids = []
+    state.selectable_ready_count = 0
+    state.eligible_ready_task_ids = []
+    state.eligible_ready_count = 0
+    state.strict_deprioritized_ready_task_ids = []
+    state.strict_deprioritized_ready_count = 0
+    state.waiting_task_ids = []
+    state.waiting_count = 0
+    state.blocked_task_ids = []
+    state.blocked_count = 0
+    state.completed_task_ids = []
+    state.completed_count = 0
+    state.selection_idle_reason = (
+        "implementation_retry_deferred:"
+        "authenticated_Grok_4.5_primary_is_unavailable;_"
+        "Codex_requires_typed_hard-quota_exhaustion_authority"
+    )
+    state.implementation_attempts = {}
+    state.implementation_attempts_by_cid = {}
+    state.protected_implementation_attempts = {}
+    state.active_provider_runner = {}
+    for field in (
+        "active_task_id",
+        "active_task_key",
+        "active_task_cid",
+        "active_task_title",
+        "active_task_track",
+        "active_task_started_at",
+        "active_phase",
+        "active_phase_started_at",
+        "active_phase_detail",
+        "active_log_path",
+        "active_worktree_path",
+        "active_branch",
+        "last_implementation_task_id",
+        "last_implementation_task_key",
+        "last_implementation_task_cid",
+        "last_implementation_started_at",
+        "last_implementation_finished_at",
+        "last_implementation_log_path",
+        "last_implementation_worktree_path",
+        "last_implementation_branch",
+        "last_implementation_commit",
+    ):
+        setattr(state, field, "")
+    state.active_attempt = 0
+    state.last_implementation_returncode = None
+    state.last_merge_error = ""
+    state.implementation_in_progress = False
+    state.save(paths.state)
+
+
 def _set_terminal_submodule_cleanup(
     events: list[dict[str, object]],
     cleanup: list[dict[str, object]],
@@ -741,6 +971,372 @@ def test_exact_nested_setup_failure_rearms_without_same_turn_dispatch(
         assert event["nested_event_head_id"] == (
             receipt["no_provider_rearm_evidence"]["event_head_id"]
         )
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "interleave_lock_clear",
+    (False, True),
+    ids=("pctdd-006", "pctdd-007-diagnostic-interleaving"),
+)
+def test_exact_pre_dispatch_provider_deferral_rearms_without_nested_effect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interleave_lock_clear: bool,
+) -> None:
+    """Admit the exact sealed P006/P007 route, including P007 diagnostics."""
+
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    _quiesce_pre_dispatch_provider_deferral_state(paths)
+    _rewrite_as_pre_dispatch_provider_deferral(
+        paths,
+        interleave_lock_clear=interleave_lock_clear,
+    )
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+
+        evidence = bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        )
+
+        assert evidence is not None
+        assert evidence["schema"] == (
+            database_portal_bridge_module.DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA
+        )
+        assert evidence["nested_attempt"] == 1
+        assert evidence["provider_dispatched"] is False
+        assert evidence["attempt_consumed"] is False
+        assert evidence["validation_attempted"] is False
+        assert evidence["commit_created"] is False
+        assert evidence["merge_attempted"] is False
+        assert evidence["acceptance_inferred"] is False
+        assert evidence["route_deferred"] is True
+        assert evidence["nested_state_quiescent"] is True
+        assert evidence["diagnostic_event_count"] == (
+            1 + int(interleave_lock_clear)
+        )
+        assert evidence["deferred_reason"] == (
+            "authenticated_Grok_4.5_primary_is_unavailable;_"
+            "Codex_requires_typed_hard-quota_exhaustion_authority"
+        )
+        assert evidence["deferred_backoff_seconds"] == 300
+        assert evidence["diagnostic_receipt_id"] == ""
+
+        events = [
+            json.loads(line)
+            for line in Path(paths.events)
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip()
+        ]
+        selected = next(
+            event for event in events if event["type"] == "task_selected"
+        )
+        deferred = next(
+            event
+            for event in events
+            if event["type"] == "implementation_retry_deferred"
+        )
+        daemon_pass = next(
+            event for event in events if event["type"] == "daemon_pass"
+        )
+        manifest = json.loads(
+            Path(str(paths.events) + ".manifest.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert evidence["task_selected_event_id"] == selected["event_id"]
+        assert evidence["retry_deferred_event_id"] == deferred["event_id"]
+        assert evidence["daemon_pass_event_id"] == daemon_pass["event_id"]
+        assert evidence["event_manifest_digest"] == manifest[
+            "manifest_digest"
+        ]
+        assert evidence["event_count"] == len(events)
+        assert evidence["event_head_sequence"] == len(events)
+        assert evidence["event_head_id"] == events[-1]["event_id"]
+        assert DatabaseImplementationDaemon._valid_no_provider_rearm_evidence(
+            evidence,
+            task=terminal,
+            original=task.body["completion_receipt"],
+            expected_evidence_id=evidence["evidence_id"],
+        )
+
+        result = daemon.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_unknown_outcomes_rearmed"
+        )
+        assert result["implementation_result"] is None
+        assert len(result["unknown_outcome_rearms"]) == 1
+        rearm = result["unknown_outcome_rearms"][0]
+        assert rearm["task_cid"] == attempt.task_cid
+        assert rearm["previous_attempt_id"] == attempt.attempt_id
+        assert rearm["provider_dispatched"] is False
+        assert rearm["unknown_outcome_rearm_count"] == 1
+        rearmed = daemon.task_source.get(attempt.task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        rearm_receipt = rearmed.body["completion_receipt"]
+        assert rearm_receipt["attempts_used"] == 0
+        assert rearm_receipt["retry_exhausted"] is False
+        assert rearm_receipt["unknown_outcome_rearm_count"] == 1
+        assert rearm_receipt["no_provider_rearm_evidence_id"] == evidence[
+            "evidence_id"
+        ]
+    finally:
+        daemon.close()
+
+
+def test_pre_dispatch_provider_deferral_recovery_is_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reject malformed, effectful, duplicate, or ambiguously bound routes."""
+
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    original_events = [
+        json.loads(line)
+        for line in Path(paths.events)
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    retained_effect = next(
+        event
+        for event in original_events
+        if event.get("type") == "implementation_finished"
+    )
+    _quiesce_pre_dispatch_provider_deferral_state(paths)
+
+    def retry_event(events: list[dict[str, object]]) -> dict[str, object]:
+        return next(
+            event
+            for event in events
+            if event.get("type") == "implementation_retry_deferred"
+        )
+
+    def drop_dirty_diagnostic(
+        events: list[dict[str, object]],
+    ) -> None:
+        events[:] = [
+            event
+            for event in events
+            if event.get("type") != "dirty_submodule_reset_deferred"
+        ]
+
+    def duplicate_lock_diagnostic(
+        events: list[dict[str, object]],
+    ) -> None:
+        lock = next(
+            event
+            for event in events
+            if event.get("type")
+            == "implementation_resource_claim_lock_cleared"
+        )
+        events.insert(events.index(lock) + 1, json.loads(json.dumps(lock)))
+
+    mutations: tuple[
+        tuple[str, Callable[[list[dict[str, object]]], None]], ...
+    ] = (
+        ("missing-dirty-diagnostic", drop_dirty_diagnostic),
+        ("duplicate-lock-diagnostic", duplicate_lock_diagnostic),
+        (
+            "unknown-field",
+            lambda events: retry_event(events).__setitem__(
+                "unreviewed_field", True
+            ),
+        ),
+        (
+            "wrong-task",
+            lambda events: retry_event(events).__setitem__(
+                "task_id", "PCTDD-WRONG"
+            ),
+        ),
+        (
+            "wrong-canonical-cid",
+            lambda events: retry_event(events).__setitem__(
+                "canonical_task_cid", "baguqeera-wrong"
+            ),
+        ),
+        (
+            "wrong-attempt",
+            lambda events: retry_event(events).__setitem__("attempt", 2),
+        ),
+        (
+            "wrong-reason",
+            lambda events: retry_event(events).__setitem__(
+                "reason", "unreviewed_provider_route"
+            ),
+        ),
+        (
+            "wrong-backoff",
+            lambda events: retry_event(events).__setitem__(
+                "backoff_seconds", 301
+            ),
+        ),
+        (
+            "attempt-consumed",
+            lambda events: retry_event(events).__setitem__(
+                "attempt_consumed", True
+            ),
+        ),
+        (
+            "provider-dispatched",
+            lambda events: retry_event(events).__setitem__(
+                "provider_dispatched", True
+            ),
+        ),
+        (
+            "diagnostic-is-selected-task",
+            lambda events: next(
+                event
+                for event in events
+                if event.get("type")
+                == "implementation_resource_claim_lock_cleared"
+            ).__setitem__("task_id", "PCTDD-001"),
+        ),
+        (
+            "nonfinite-backoff",
+            lambda events: retry_event(events).__setitem__(
+                "backoff_seconds", float("nan")
+            ),
+        ),
+        (
+            "duplicate-selection",
+            lambda events: events.insert(
+                2,
+                json.loads(
+                    json.dumps(
+                        next(
+                            event
+                            for event in events
+                            if event.get("type") == "task_selected"
+                        )
+                    )
+                ),
+            ),
+        ),
+        (
+            "ambiguous-deferral",
+            lambda events: events.insert(
+                -1,
+                json.loads(json.dumps(retry_event(events))),
+            ),
+        ),
+    )
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+        receipt = dict(task.body["completion_receipt"])
+
+        for case, mutation in mutations:
+            _rewrite_as_pre_dispatch_provider_deferral(
+                paths,
+                interleave_lock_clear=True,
+                mutate=mutation,
+            )
+            assert bridge.no_provider_dispatch_rearm_evidence(
+                terminal,
+                outer_block_receipt=receipt,
+            ) is None, case
+
+        _rewrite_as_pre_dispatch_provider_deferral(
+            paths,
+            interleave_lock_clear=True,
+            retained_effect_event=retained_effect,
+        )
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=receipt,
+        ) is None, "effect evidence"
+
+        _rewrite_as_pre_dispatch_provider_deferral(
+            paths,
+            interleave_lock_clear=True,
+        )
+        for field, value in (
+            ("task_cid", "task:cid:wrong"),
+            ("attempt_id", "attempt:wrong"),
+            ("attempt_number", terminal.attempt_number + 1),
+        ):
+            tampered_receipt = {**receipt, field: value}
+            assert bridge.no_provider_dispatch_rearm_evidence(
+                terminal,
+                outer_block_receipt=tampered_receipt,
+            ) is None, f"outer {field}"
+    finally:
+        daemon.close()
+
+
+def test_pre_dispatch_provider_deferral_rejects_unexpected_attempt_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    _quiesce_pre_dispatch_provider_deferral_state(paths)
+    _rewrite_as_pre_dispatch_provider_deferral(paths)
+    unexpected = Path(paths.root) / "unreviewed-provider-authority.json"
+    unexpected.write_text("{}\n", encoding="utf-8")
+    unexpected.chmod(0o600)
+    try:
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is None
+        assert unexpected.read_bytes() == b"{}\n"
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
+def test_pre_dispatch_provider_deferral_rejects_nonready_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, bridge, attempt, paths = (
+        _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
+    )
+    _quiesce_pre_dispatch_provider_deferral_state(paths)
+    _rewrite_as_pre_dispatch_provider_deferral(paths)
+    binding = json.loads(Path(paths.binding).read_text(encoding="utf-8"))
+    ready_projection = Path(paths.task_projection).read_text(encoding="utf-8")
+    nonready_projection = ready_projection.replace(
+        "- Status: ready",
+        "- Status: in_progress",
+    )
+    assert nonready_projection != ready_projection
+    Path(paths.task_projection).write_text(
+        nonready_projection,
+        encoding="utf-8",
+    )
+    try:
+        # Status is the one intentionally mutable projection field.  Prove
+        # that the rejection comes from the exact ready-state policy rather
+        # than an unrelated immutable-binding mismatch.
+        assert bridge._verify_projection(paths, binding) == nonready_projection
+        task = daemon.task_source.get(attempt.task_cid)
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert task is not None and terminal is not None
+
+        assert bridge.no_provider_dispatch_rearm_evidence(
+            terminal,
+            outer_block_receipt=task.body["completion_receipt"],
+        ) is None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
     finally:
         daemon.close()
 
@@ -3826,6 +4422,458 @@ def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
     attempt_boards = list((tmp_path / "attempts").glob("*/task-projection.md"))
     assert len(attempt_boards) == 1
     assert "Projection authority: false" in attempt_boards[0].read_text(encoding="utf-8")
+
+
+def _provider_deferral_bridge(
+    tmp_path: Path,
+    implementation_result: Mapping[str, object],
+) -> DatabasePortalExecutionBridge:
+    portal = SimpleNamespace(
+        run_once=lambda: {
+            "implementation_result": dict(implementation_result),
+        },
+        close_event_runtime=lambda: None,
+    )
+    return DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+    )
+
+
+def _exact_structured_provider_deferral() -> dict[str, object]:
+    return {
+        "deferred": True,
+        "skipped": True,
+        "task_id": "LGSWF-004",
+        "attempt": 1,
+        "attempt_consumed": False,
+        "provider_dispatched": False,
+        "diagnostic_receipt_id": "",
+        "active_task_cleared": True,
+        "backoff_seconds": 17,
+        # Deliberately contains none of the legacy reason-text keywords.
+        "reason": "sealed_route_yielded_before_model_invocation",
+    }
+
+
+def test_bridge_raises_typed_provider_route_deferral_from_structured_result(
+    tmp_path: Path,
+) -> None:
+    bridge = _provider_deferral_bridge(
+        tmp_path,
+        _exact_structured_provider_deferral(),
+    )
+
+    with pytest.raises(
+        database_portal_bridge_module.DatabasePortalProviderRouteDeferred,
+        match="sealed_route_yielded_before_model_invocation",
+    ):
+        bridge.run_provider(_attempt())
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("backoff_seconds", 0),
+        (
+            "backoff_seconds",
+            _PROVIDER_ROUTE_BACKOFF_CAP + 1,
+        ),
+        ("backoff_seconds", 10**30),
+        ("attempt_consumed", True),
+        ("provider_dispatched", True),
+        ("implementation_commit", "a" * 40),
+    ),
+    ids=(
+        "malformed-backoff",
+        "backoff-above-reviewed-cap",
+        "future-unbounded-backoff",
+        "attempt-consumed",
+        "provider-dispatched",
+        "contradictory-implementation-commit",
+    ),
+)
+def test_bridge_rejects_inexact_structured_provider_route_deferral(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    implementation_result = _exact_structured_provider_deferral()
+    implementation_result[field] = value
+    bridge = _provider_deferral_bridge(tmp_path, implementation_result)
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="lacks exact pre-dispatch authority",
+    ) as caught:
+        bridge.run_provider(_attempt())
+
+    assert type(caught.value) is DatabasePortalBridgeError
+
+
+@pytest.mark.parametrize(
+    "backoff_seconds",
+    (
+        _PROVIDER_ROUTE_BACKOFF_CAP + 1,
+        10**30,
+    ),
+    ids=("above-reviewed-cap", "future-unbounded"),
+)
+def test_typed_provider_route_deferral_rejects_unbounded_backoff(
+    backoff_seconds: int,
+) -> None:
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="malformed or future-unbounded",
+    ) as caught:
+        database_portal_bridge_module.DatabasePortalProviderRouteDeferred(
+            "provider route unavailable",
+            backoff_seconds=backoff_seconds,
+        )
+
+    assert type(caught.value) is DatabasePortalBridgeError
+
+
+def _callback_boundary_state_for_provider_journal(
+    body: Mapping[str, object],
+    *,
+    outcome: str = "deferred",
+    updated_at_ms: int = 1_000_000,
+) -> Mapping[str, object]:
+    provider_dispatch = {
+        "outcome": outcome,
+        "body": dict(body),
+        "updated_at_ms": updated_at_ms,
+    }
+    daemon = SimpleNamespace(
+        _callback_authority_population_errors=lambda _attempt: (),
+        _dispatch_journal_entry=lambda _attempt, *, dispatch_kind, **_kwargs: (
+            provider_dispatch if dispatch_kind == "provider" else None
+        ),
+        provider_invocation_recorded=lambda *_args, **_kwargs: None,
+        effect_claim_recorded=lambda *_args, **_kwargs: None,
+        _database_portal_attempt_binding=lambda _attempt: {
+            "stage": "portal_entered",
+        },
+    )
+    return DatabaseImplementationDaemon._database_callback_boundary_state(
+        daemon,
+        _attempt(),
+    )
+
+
+def test_typed_provider_route_deferred_journal_is_before_callback_boundary(
+) -> None:
+    state = _callback_boundary_state_for_provider_journal(
+        {
+            "exception_type": "DatabasePortalProviderRouteDeferred",
+            "backoff_seconds": 5,
+            "retry_not_before_ms": 1_005_000,
+        }
+    )
+
+    assert state["safe_preentry_provider_deferred"] is True
+    assert state["portal_binding_stage"] == "portal_entered"
+    assert state["callback_boundary_crossed"] is False
+    assert state["callback_authority_incomplete"] is False
+
+
+@pytest.mark.parametrize(
+    "body",
+    (
+        {
+            "exception_type": "DatabasePortalProviderRouteDeferred",
+            "unreviewed_authority": False,
+        },
+        {"exception_type": "DatabasePortalBridgeDeferred"},
+    ),
+    ids=("extra-body-field", "generic-deferred"),
+)
+def test_inexact_provider_route_deferred_journal_is_callback_uncertainty(
+    body: Mapping[str, object],
+) -> None:
+    state = _callback_boundary_state_for_provider_journal(body)
+
+    assert state["safe_preentry_provider_deferred"] is False
+    assert state["callback_boundary_crossed"] is True
+    assert state["callback_authority_incomplete"] is True
+
+
+@pytest.mark.parametrize(
+    "body",
+    (
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-callback-dispatch@1"
+            ),
+            "outcome": "unknown_until_callback_returns",
+        },
+        {
+            "resumed_from": "deferred",
+            "preentry_publication_retry_count": 0,
+        },
+        {
+            "resumed_from": "deferred",
+            "preentry_publication_retry_count": 0,
+            "unreviewed_recovery_authority": True,
+        },
+    ),
+    ids=("initial", "resumed", "wrong-started-body"),
+)
+def test_started_provider_journal_remains_callback_uncertainty(
+    body: Mapping[str, object],
+) -> None:
+    state = _callback_boundary_state_for_provider_journal(
+        body,
+        outcome="started",
+    )
+
+    assert state["provider_dispatch"] == {
+        "outcome": "started",
+        "body": dict(body),
+        "updated_at_ms": 1_000_000,
+    }
+    assert state["safe_preentry_provider_deferred"] is False
+    assert state["callback_boundary_crossed"] is True
+    assert state["callback_authority_incomplete"] is True
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_provider_route_deferred_cooldown_polls_without_redispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_interrupted_database_portal_attempt(
+            tmp_path,
+            seed_nested_state=False,
+        )
+    )
+    attempt = daemon.commit_phase(attempt, "context", body={})
+    clock = {"now_ms": 1_000_000}
+    monkeypatch.setattr(daemon, "_now_ms", lambda: clock["now_ms"])
+    callback_calls: list[int] = []
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        callback_calls.append(clock["now_ms"])
+        if len(callback_calls) == 1:
+            raise (
+                database_portal_bridge_module.DatabasePortalProviderRouteDeferred(
+                    "provider route unavailable",
+                    backoff_seconds=5,
+                )
+            )
+        return {"status": "succeeded", "accepted": True}
+
+    def journal_row() -> tuple[object, ...]:
+        row = daemon._require_connection().execute(
+            """
+            SELECT outcome, body_json, updated_at_ms
+            FROM attempt_dispatch_journal
+            WHERE attempt_id = ? AND dispatch_kind = 'provider'
+              AND idempotency_key = ?
+            """,
+            [attempt.attempt_id, f"provider:{attempt.attempt_id}"],
+        ).fetchone()
+        assert row is not None
+        if isinstance(row, Mapping):
+            return tuple(
+                row[name]
+                for name in ("outcome", "body_json", "updated_at_ms")
+            )
+        return tuple(row)
+
+    try:
+        with pytest.raises(
+            database_portal_bridge_module.DatabasePortalProviderRouteDeferred
+        ):
+            daemon.run_provider(attempt, provider_fn=provider)
+
+        deferred_row = journal_row()
+        deferred_body = json.loads(str(deferred_row[1]))
+        retry_not_before_ms = clock["now_ms"] + 5_000
+        assert deferred_row[0] == "deferred"
+        assert deferred_body == {
+            "exception_type": "DatabasePortalProviderRouteDeferred",
+            "backoff_seconds": 5,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+        assert callback_calls == [1_000_000]
+
+        for poll_time in (1_000_001, retry_not_before_ms - 1):
+            clock["now_ms"] = poll_time
+            with pytest.raises(
+                database_portal_bridge_module.DatabasePortalProviderRouteDeferred
+            ) as deferred:
+                daemon.run_provider(attempt, provider_fn=provider)
+            assert deferred.value.backoff_seconds == 5
+            assert deferred.value.retry_not_before_ms == retry_not_before_ms
+            assert journal_row() == deferred_row
+            assert callback_calls == [1_000_000]
+
+        clock["now_ms"] = retry_not_before_ms
+        updated, result, duplicated = daemon.run_provider(
+            attempt,
+            provider_fn=provider,
+        )
+
+        assert duplicated is False
+        assert result == {"status": "succeeded", "accepted": True}
+        assert updated.phase_committed("provider")
+        assert callback_calls == [1_000_000, retry_not_before_ms]
+        committed = daemon._dispatch_journal_entry(
+            updated,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        assert committed is not None
+        assert committed["outcome"] == "committed"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    "body",
+    (
+        {
+            "exception_type": "DatabasePortalProviderRouteDeferred",
+            "backoff_seconds": 5,
+        },
+        {
+            "exception_type": "DatabasePortalProviderRouteDeferred",
+            "backoff_seconds": 5,
+            "retry_not_before_ms": 1_005_000,
+            "unreviewed_authority": False,
+        },
+        {
+            "exception_type": "DatabasePortalProviderRouteDeferred",
+            "backoff_seconds": True,
+            "retry_not_before_ms": 1_005_000,
+        },
+    ),
+    ids=("missing-deadline", "extra-field", "boolean-backoff"),
+)
+def test_malformed_provider_route_deferred_cooldown_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    body: Mapping[str, object],
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_interrupted_database_portal_attempt(
+            tmp_path,
+            seed_nested_state=False,
+        )
+    )
+    monkeypatch.setattr(daemon, "_now_ms", lambda: 1_000_001)
+    daemon._begin_callback_dispatch(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=f"provider:{attempt.attempt_id}",
+    )
+    daemon._record_callback_dispatch_outcome(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=f"provider:{attempt.attempt_id}",
+        outcome="deferred",
+        body=body,
+    )
+    before = daemon._dispatch_journal_entry(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=f"provider:{attempt.attempt_id}",
+    )
+    callback_calls: list[str] = []
+
+    def forbidden(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        callback_calls.append("provider")
+        raise AssertionError("malformed cooldown dispatched provider")
+
+    try:
+        with pytest.raises(DatabaseImplementationAuthorityError):
+            daemon.run_provider(attempt, provider_fn=forbidden)
+        assert callback_calls == []
+        assert daemon._dispatch_journal_entry(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        ) == before
+        current = daemon.get_attempt(attempt.attempt_id)
+        assert current is not None
+        assert not current.phase_committed("provider")
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    "backoff_seconds",
+    (_PROVIDER_ROUTE_BACKOFF_CAP + 1, 10**30),
+    ids=("above-reviewed-cap", "future-unbounded"),
+)
+def test_unbounded_provider_route_cooldown_cannot_mutate_journal_or_task(
+    tmp_path: Path,
+    backoff_seconds: int,
+) -> None:
+    _repo, daemon, _bridge, attempt, _paths = (
+        _seed_interrupted_database_portal_attempt(
+            tmp_path,
+            seed_nested_state=False,
+            max_task_attempts=1,
+        )
+    )
+    key = f"provider:{attempt.attempt_id}"
+    daemon._begin_callback_dispatch(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=key,
+    )
+    before_journal = daemon._dispatch_journal_entry(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=key,
+    )
+    before_task = daemon.task_source.get_task(attempt.task_cid)
+    before_attempt = daemon.get_attempt(attempt.attempt_id)
+    assert before_journal is not None
+    assert before_task is not None
+    assert before_attempt is not None
+
+    try:
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="exceeds the reviewed cap",
+        ):
+            daemon._record_callback_dispatch_outcome(
+                attempt,
+                dispatch_kind="provider",
+                idempotency_key=key,
+                outcome="deferred",
+                body={
+                    "exception_type": "DatabasePortalProviderRouteDeferred",
+                    "backoff_seconds": backoff_seconds,
+                    "retry_not_before_ms": 1_000_000
+                    + (backoff_seconds * 1_000),
+                },
+                updated_at_ms=1_000_000,
+            )
+
+        assert daemon._dispatch_journal_entry(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=key,
+        ) == before_journal
+        current_task = daemon.task_source.get_task(attempt.task_cid)
+        current_attempt = daemon.get_attempt(attempt.attempt_id)
+        assert current_task is not None
+        assert current_attempt is not None
+        assert current_task.to_dict() == before_task.to_dict()
+        assert current_attempt.to_dict() == before_attempt.to_dict()
+        assert daemon.claim_next() is None
+    finally:
+        daemon.close()
 
 
 @pytest.mark.parametrize("canonical_cid", [None, "cid:wrong-projection"])
@@ -8455,6 +9503,1038 @@ def test_pre_cas_terminal_saga_replays_without_regeneration_or_dispatch(
             successor.close()
 
 
+def _seed_provider_route_deferred_pre_cas_saga(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, DatabaseTaskAttempt]:
+    """Crash after the exact non-consuming saga barrier, before task CAS."""
+
+    repo, predecessor, bridge, attempt, _paths = (
+        _seed_interrupted_database_portal_attempt(
+            tmp_path,
+            max_task_attempts=1,
+        )
+    )
+    record = predecessor.task_source.get_task(attempt.task_cid)
+    assert record is not None
+    _paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    predecessor._begin_callback_dispatch(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=f"provider:{attempt.attempt_id}",
+    )
+    predecessor._record_database_portal_attempt_binding(
+        attempt,
+        binding,
+        "portal_entered",
+    )
+    deferred_at_ms = predecessor._now_ms()
+    predecessor._record_callback_dispatch_outcome(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=f"provider:{attempt.attempt_id}",
+        outcome="deferred",
+        body={
+            "exception_type": "DatabasePortalProviderRouteDeferred",
+            "backoff_seconds": 5,
+            "retry_not_before_ms": deferred_at_ms + 5_000,
+        },
+        updated_at_ms=deferred_at_ms,
+    )
+
+    class QuiescedProviderRoute:
+        def reconcile_quiesced_active_attempt(self) -> dict[str, object]:
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "provider_route_deferred_quiesced",
+            }
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    bridge.portal_factory = lambda _paths, _alias: QuiescedProviderRoute()
+
+    def fail_after_saga(*_args: object, **_kwargs: object) -> object:
+        saga = predecessor._database_portal_terminal_reconciliation_saga(
+            attempt
+        )
+        assert saga is not None and saga["stage"] == "commit_barrier"
+        assert saga["intended_database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        task = predecessor.task_source.get_task(attempt.task_cid)
+        assert task is not None and task.status == "in_progress"
+        assert task.body["completion_receipt"]["attempts_used"] == 1
+        raise RuntimeError("injected after provider-route saga barrier")
+
+    monkeypatch.setattr(
+        predecessor,
+        "_finalize_failed_attempt",
+        fail_after_saga,
+    )
+    with pytest.raises(RuntimeError, match="provider-route saga barrier"):
+        predecessor.reconcile_quiesced_database_portal_attempts(
+            trigger="database_daemon_startup",
+            force=True,
+        )
+    predecessor.close()
+    return repo, attempt
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_provider_route_pre_cas_saga_replay_refunds_attempt_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, attempt = _seed_provider_route_deferred_pre_cas_saga(
+        tmp_path,
+        monkeypatch,
+    )
+    successor = _database_portal_successor(
+        repo,
+        max_task_attempts=1,
+    )
+    callback_calls: list[str] = []
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        callback_calls.append("callback")
+        raise AssertionError("provider-route saga replay reached a callback")
+
+    successor._provider_fn = forbidden
+    successor._effect_fn = forbidden
+    successor._validation_fn = forbidden
+    bridge = successor._database_portal_bridge
+    assert bridge is not None
+    bridge.portal_factory = forbidden
+    try:
+        result = successor.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_portal_reconciliation_completed"
+        ), result
+        replayed = [
+            item
+            for item in result["database_portal_reconciliation"]["attempts"]
+            if item.get("attempt_id") == attempt.attempt_id
+            and item.get("reason") == "terminal_reconciliation_saga_replayed"
+        ]
+        assert len(replayed) == 1
+        assert replayed[0]["database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+
+        terminal = successor.get_attempt(attempt.attempt_id)
+        assert terminal is not None and terminal.status == "failed"
+        failed_body = successor.phase_history(terminal.attempt_id)[-1]["body"]
+        assert failed_body["database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        assert failed_body["attempt_consumed"] is False
+
+        task = successor.task_source.get_task(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        retry_receipt = dict(task.body.get("completion_receipt") or {})
+        assert retry_receipt["attempt_consumed"] is False
+        assert retry_receipt["attempts_used"] == 0
+        assert retry_receipt["max_task_attempts"] == 1
+        assert retry_receipt["retry_exhausted"] is False
+        link = retry_receipt["terminal_reconciliation"]
+        assert link["intended_database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+
+        saga = successor._database_portal_terminal_reconciliation_saga(
+            terminal
+        )
+        assert saga is not None and saga["stage"] == "terminal"
+        assert saga["intended_database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        terminal_receipt = bridge.load_reconciliation_receipt(
+            terminal,
+            saga["receipt_id"],
+            required_stage="terminal",
+        )
+        assert terminal_receipt["database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        assert terminal_receipt["intended_database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        assert terminal_receipt["database_attempt_status"] == "failed"
+        assert terminal_receipt["database_attempt_phase"] == "failed"
+        assert callback_calls == []
+
+        before_deadline = successor.run_once()
+        assert before_deadline["implementation_result"] is None
+        assert before_deadline["selection_idle_reason"] == (
+            "database_provider_route_cooldown_active"
+        )
+        assert successor.claim_next() is None
+        assert callback_calls == []
+
+        monkeypatch.setattr(
+            successor,
+            "_now_ms",
+            lambda: int(retry_receipt["retry_not_before_ms"]),
+        )
+        reclaimed = successor.claim_next()
+        assert reclaimed is not None
+        assert reclaimed.task_cid == attempt.task_cid
+        assert reclaimed.attempt_number == attempt.attempt_number + 1
+        assert reclaimed.body["retry_budget"]["attempts_used"] == 1
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize("journal_mutation", ("absent", "malformed"))
+def test_provider_route_pre_cas_saga_replay_requires_current_exact_journal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    journal_mutation: str,
+) -> None:
+    repo, attempt = _seed_provider_route_deferred_pre_cas_saga(
+        tmp_path,
+        monkeypatch,
+    )
+    successor = _database_portal_successor(
+        repo,
+        max_task_attempts=1,
+    )
+    if journal_mutation == "absent":
+        successor._require_connection().execute(
+            """
+            DELETE FROM attempt_dispatch_journal
+            WHERE attempt_id = ? AND dispatch_kind = 'provider'
+              AND idempotency_key = ?
+            """,
+            [attempt.attempt_id, f"provider:{attempt.attempt_id}"],
+        )
+    else:
+        successor._require_connection().execute(
+            """
+            UPDATE attempt_dispatch_journal
+            SET body_json = ?
+            WHERE attempt_id = ? AND dispatch_kind = 'provider'
+              AND idempotency_key = ?
+            """,
+            [
+                json.dumps(
+                    {
+                        "exception_type": (
+                            "DatabasePortalProviderRouteDeferred"
+                        ),
+                        "backoff_seconds": 5,
+                        "retry_not_before_ms": 1,
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                attempt.attempt_id,
+                f"provider:{attempt.attempt_id}",
+            ],
+        )
+    callback_calls: list[str] = []
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        callback_calls.append("callback")
+        raise AssertionError("inexact provider-route saga reached a callback")
+
+    successor._provider_fn = forbidden
+    successor._effect_fn = forbidden
+    successor._validation_fn = forbidden
+    bridge = successor._database_portal_bridge
+    assert bridge is not None
+    bridge.portal_factory = forbidden
+    try:
+        result = successor.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_portal_reconciliation_blocked"
+        ), result
+        blocked = [
+            item
+            for item in result["database_portal_reconciliation"]["attempts"]
+            if item.get("attempt_id") == attempt.attempt_id
+            and item.get("reason")
+            == "database_portal_pre_cas_saga_replay_invalid"
+        ]
+        assert len(blocked) == 1
+        assert "exact pre-dispatch authority" in blocked[0]["error"]
+        current = successor.get_attempt(attempt.attempt_id)
+        assert current is not None and current.status == "running"
+        task = successor.task_source.get_task(attempt.task_cid)
+        assert task is not None and task.status == "in_progress"
+        assert task.body["completion_receipt"]["attempts_used"] == 1
+        saga = successor._database_portal_terminal_reconciliation_saga(
+            current
+        )
+        assert saga is not None and saga["stage"] == "commit_barrier"
+        assert saga["intended_database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+def _seed_provider_route_deferred_post_cas_saga(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, DatabaseTaskAttempt]:
+    """Crash after the non-consuming task CAS but before FAILED projection."""
+
+    repo, predecessor, bridge, attempt, _paths = (
+        _seed_interrupted_database_portal_attempt(
+            tmp_path,
+            seed_nested_state=False,
+            max_task_attempts=1,
+        )
+    )
+    record = predecessor.task_source.get_task(attempt.task_cid)
+    assert record is not None
+    _paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    predecessor._begin_callback_dispatch(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=f"provider:{attempt.attempt_id}",
+    )
+    predecessor._record_database_portal_attempt_binding(
+        attempt,
+        binding,
+        "portal_entered",
+    )
+    deferred_at_ms = predecessor._now_ms()
+    predecessor._record_callback_dispatch_outcome(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=f"provider:{attempt.attempt_id}",
+        outcome="deferred",
+        body={
+            "exception_type": "DatabasePortalProviderRouteDeferred",
+            "backoff_seconds": 5,
+            "retry_not_before_ms": deferred_at_ms + 5_000,
+        },
+        updated_at_ms=deferred_at_ms,
+    )
+
+    class QuiescedProviderRoute:
+        def reconcile_quiesced_active_attempt(self) -> dict[str, object]:
+            return {
+                "reconciled": True,
+                "blocked": False,
+                "reason": "provider_route_deferred_quiesced",
+            }
+
+        def close_event_runtime(self) -> None:
+            return None
+
+    bridge.portal_factory = lambda _paths, _alias: QuiescedProviderRoute()
+
+    def fail_release(*_args: object, **_kwargs: object) -> object:
+        saga = predecessor._database_portal_terminal_reconciliation_saga(
+            attempt
+        )
+        assert saga is not None and saga["stage"] == "commit_barrier"
+        assert saga["intended_database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        task = predecessor.task_source.get_task(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        receipt = dict(task.body.get("completion_receipt") or {})
+        assert receipt["attempt_consumed"] is False
+        assert receipt["attempts_used"] == 0
+        assert receipt["max_task_attempts"] == 1
+        assert receipt["retry_exhausted"] is False
+        assert receipt["terminal_reconciliation"][
+            "intended_database_disposition"
+        ] == "provider_route_deferred_rearmed"
+        raise RuntimeError("injected after provider-route task CAS")
+
+    monkeypatch.setattr(predecessor.coordinator, "release", fail_release)
+    with pytest.raises(RuntimeError, match="provider-route task CAS"):
+        predecessor.reconcile_quiesced_database_portal_attempts(
+            trigger="database_daemon_startup",
+            force=True,
+        )
+    current = predecessor.get_attempt(attempt.attempt_id)
+    assert current is not None and current.status == "running"
+    assert all(
+        phase["phase"] != "failed"
+        for phase in predecessor.phase_history(attempt.attempt_id)
+    )
+    predecessor.close()
+    return repo, attempt
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_provider_route_post_cas_saga_replay_preserves_nonconsuming_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, attempt = _seed_provider_route_deferred_post_cas_saga(
+        tmp_path,
+        monkeypatch,
+    )
+    successor = _database_portal_successor(
+        repo,
+        max_task_attempts=1,
+    )
+    callback_calls: list[str] = []
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        callback_calls.append("callback")
+        raise AssertionError("post-CAS provider-route replay reached callback")
+
+    successor._provider_fn = forbidden
+    successor._effect_fn = forbidden
+    successor._validation_fn = forbidden
+    bridge = successor._database_portal_bridge
+    assert bridge is not None
+    bridge.portal_factory = forbidden
+    try:
+        result = successor.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_portal_reconciliation_completed"
+        ), result
+        replayed = [
+            item
+            for item in result["database_portal_reconciliation"]["attempts"]
+            if item.get("attempt_id") == attempt.attempt_id
+            and item.get("reason") == "terminal_reconciliation_saga_replayed"
+        ]
+        assert len(replayed) == 1
+        assert replayed[0]["database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+
+        terminal = successor.get_attempt(attempt.attempt_id)
+        assert terminal is not None and terminal.status == "failed"
+        failed_phases = [
+            phase
+            for phase in successor.phase_history(terminal.attempt_id)
+            if phase["phase"] == "failed"
+        ]
+        assert len(failed_phases) == 1
+        failed_body = failed_phases[0]["body"]
+        assert failed_body["database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        assert failed_body["attempt_consumed"] is False
+
+        task = successor.task_source.get_task(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        receipt = dict(task.body.get("completion_receipt") or {})
+        assert receipt["attempt_consumed"] is False
+        assert receipt["attempts_used"] == 0
+        assert receipt["max_task_attempts"] == 1
+        assert receipt["retry_exhausted"] is False
+
+        saga = successor._database_portal_terminal_reconciliation_saga(
+            terminal
+        )
+        assert saga is not None and saga["stage"] == "terminal"
+        terminal_receipt = bridge.load_reconciliation_receipt(
+            terminal,
+            saga["receipt_id"],
+            required_stage="terminal",
+        )
+        assert terminal_receipt["database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        assert terminal_receipt["database_attempt_status"] == "failed"
+        assert terminal_receipt["database_attempt_phase"] == "failed"
+        assert callback_calls == []
+
+        settled_claim = successor.coordinator.get_task_claim(
+            terminal.claim_id
+        )
+        assert settled_claim is not None
+        assert str(settled_claim.state.value) == "released"
+        assert successor._retry_budget_state(task)["retry_exhausted"] is False
+        assert successor._automatic_claim_forbidden(task) is False
+        assert successor._provider_route_retry_cooldown_state(task) == "active"
+        assert successor.claim_next() is None
+        monkeypatch.setattr(
+            successor,
+            "_now_ms",
+            lambda: int(receipt["retry_not_before_ms"]),
+        )
+        assert successor._provider_route_retry_cooldown_state(task) == "expired"
+        reclaimed = successor.claim_next()
+        assert reclaimed is not None
+        assert reclaimed.task_cid == attempt.task_cid
+        assert reclaimed.attempt_number == attempt.attempt_number + 1
+        assert reclaimed.body["retry_budget"]["attempts_used"] == 1
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    ("accounting_field", "accounting_value"),
+    (
+        ("attempts_used", 1),
+        ("max_task_attempts", 2),
+    ),
+)
+def test_provider_route_retry_cooldown_rejects_tampered_refund_accounting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    accounting_field: str,
+    accounting_value: int,
+) -> None:
+    repo, attempt = _seed_provider_route_deferred_pre_cas_saga(
+        tmp_path,
+        monkeypatch,
+    )
+    successor = _database_portal_successor(
+        repo,
+        max_task_attempts=1,
+    )
+    callback_calls: list[str] = []
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        callback_calls.append("callback")
+        raise AssertionError("tampered provider-route refund reached callback")
+
+    successor._provider_fn = forbidden
+    successor._effect_fn = forbidden
+    successor._validation_fn = forbidden
+    bridge = successor._database_portal_bridge
+    assert bridge is not None
+    bridge.portal_factory = forbidden
+    try:
+        replayed = successor.run_once()
+        assert replayed["selection_idle_reason"] == (
+            "database_portal_reconciliation_completed"
+        )
+        task = successor.task_source.get_task(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        exact_receipt = dict(task.body["completion_receipt"])
+        tampered_receipt = {
+            **exact_receipt,
+            accounting_field: accounting_value,
+        }
+        tampered_body = {
+            **dict(task.body),
+            "completion_receipt": tampered_receipt,
+        }
+        with successor.task_source._intent._connection(
+            write=True
+        ) as connection:
+            connection.execute(
+                "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+                [
+                    json.dumps(
+                        tampered_body,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                    attempt.task_cid,
+                ],
+            )
+        current = successor.task_source.get_task(attempt.task_cid)
+        assert current is not None
+        deadline = int(exact_receipt["retry_not_before_ms"])
+        assert successor._provider_route_retry_cooldown_state(
+            current,
+            now_ms=deadline,
+        ) == "invalid"
+        monkeypatch.setattr(successor, "_now_ms", lambda: deadline)
+        assert successor.claim_next() is None
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    "backoff_seconds",
+    (_PROVIDER_ROUTE_BACKOFF_CAP + 1, 10**30),
+    ids=("above-reviewed-cap", "future-unbounded"),
+)
+def test_provider_route_retry_cooldown_rejects_unbounded_persisted_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    backoff_seconds: int,
+) -> None:
+    repo, attempt = _seed_provider_route_deferred_pre_cas_saga(
+        tmp_path,
+        monkeypatch,
+    )
+    successor = _database_portal_successor(repo, max_task_attempts=1)
+    callback_calls: list[str] = []
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        callback_calls.append("callback")
+        raise AssertionError("unbounded provider-route cooldown reached callback")
+
+    successor._provider_fn = forbidden
+    successor._effect_fn = forbidden
+    successor._validation_fn = forbidden
+    bridge = successor._database_portal_bridge
+    assert bridge is not None
+    bridge.portal_factory = forbidden
+    try:
+        replayed = successor.run_once()
+        assert replayed["selection_idle_reason"] == (
+            "database_portal_reconciliation_completed"
+        )
+        terminal = successor.get_attempt(attempt.attempt_id)
+        task = successor.task_source.get_task(attempt.task_cid)
+        assert terminal is not None and terminal.status == "failed"
+        assert task is not None and task.status == "retrying"
+        receipt = dict(task.body["completion_receipt"])
+        dispatch = successor._dispatch_journal_entry(
+            terminal,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{terminal.attempt_id}",
+        )
+        assert dispatch is not None
+        updated_at_ms = int(dispatch["updated_at_ms"])
+        deadline = updated_at_ms + (backoff_seconds * 1_000)
+        forged_dispatch_body = {
+            "exception_type": "DatabasePortalProviderRouteDeferred",
+            "backoff_seconds": backoff_seconds,
+            "retry_not_before_ms": deadline,
+        }
+        successor._require_connection().execute(
+            """
+            UPDATE attempt_dispatch_journal
+            SET body_json = ?
+            WHERE attempt_id = ? AND dispatch_kind = 'provider'
+              AND idempotency_key = ?
+            """,
+            [
+                json.dumps(
+                    forged_dispatch_body,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                terminal.attempt_id,
+                f"provider:{terminal.attempt_id}",
+            ],
+        )
+        forged_receipt = {
+            **receipt,
+            "backoff_seconds": backoff_seconds,
+            "retry_not_before_ms": deadline,
+        }
+        forged_task_body = {
+            **dict(task.body),
+            "completion_receipt": forged_receipt,
+        }
+        with successor.task_source._intent._connection(
+            write=True
+        ) as connection:
+            connection.execute(
+                "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+                [
+                    json.dumps(
+                        forged_task_body,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                    terminal.task_cid,
+                ],
+            )
+
+        forged_task = successor.task_source.get_task(terminal.task_cid)
+        assert forged_task is not None
+        forged_journal = successor._dispatch_journal_entry(
+            terminal,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{terminal.attempt_id}",
+        )
+        boundary = successor._database_callback_boundary_state(terminal)
+        assert boundary["safe_provider_route_deferred"] is False
+        assert boundary["callback_boundary_crossed"] is True
+        assert successor._provider_route_retry_cooldown_state(
+            forged_task,
+            now_ms=deadline,
+        ) == "invalid"
+        monkeypatch.setattr(successor, "_now_ms", lambda: deadline)
+        before_task = forged_task.to_dict()
+        assert successor.claim_next() is None
+        after_task = successor.task_source.get_task(terminal.task_cid)
+        assert after_task is not None
+        assert after_task.to_dict() == before_task
+        assert successor._dispatch_journal_entry(
+            terminal,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{terminal.attempt_id}",
+        ) == forged_journal
+        attempt_count = successor._require_connection().execute(
+            "SELECT COUNT(*) FROM database_task_attempts WHERE task_cid = ?",
+            [terminal.task_cid],
+        ).fetchone()
+        assert attempt_count is not None and int(attempt_count[0]) == 1
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "receipt_implementation_commit",
+        "receipt_provider_dispatched",
+        "receipt_policy_mismatch",
+        "control_extra_field",
+        "control_wrong_task",
+        "control_empty_execution_spec",
+        "retry_policy_mismatch",
+        "retry_malformed",
+        "retry_configured_cap_mismatch",
+    ),
+)
+def test_provider_route_nonconsuming_receipt_rejects_control_policy_and_extras(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    repo, attempt = _seed_provider_route_deferred_pre_cas_saga(
+        tmp_path,
+        monkeypatch,
+    )
+    successor = _database_portal_successor(repo, max_task_attempts=1)
+    callback_calls: list[str] = []
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        callback_calls.append("callback")
+        raise AssertionError("inexact provider-route receipt reached callback")
+
+    successor._provider_fn = forbidden
+    successor._effect_fn = forbidden
+    successor._validation_fn = forbidden
+    bridge = successor._database_portal_bridge
+    assert bridge is not None
+    bridge.portal_factory = forbidden
+    try:
+        replayed = successor.run_once()
+        assert replayed["selection_idle_reason"] == (
+            "database_portal_reconciliation_completed"
+        )
+        terminal = successor.get_attempt(attempt.attempt_id)
+        task = successor.task_source.get_task(attempt.task_cid)
+        assert terminal is not None and terminal.status == "failed"
+        assert task is not None and task.status == "retrying"
+        attempt_body = dict(terminal.body)
+        control_claim = dict(attempt_body["control_claim"])
+        retry_budget = dict(attempt_body["retry_budget"])
+        receipt = dict(task.body["completion_receipt"])
+
+        if mutation == "receipt_implementation_commit":
+            receipt["implementation_commit"] = "a" * 40
+        elif mutation == "receipt_provider_dispatched":
+            receipt["provider_dispatched"] = False
+        elif mutation == "receipt_policy_mismatch":
+            receipt["policy_mismatch"] = False
+        elif mutation == "control_extra_field":
+            control_claim["completion_policy"] = "unreviewed"
+        elif mutation == "control_wrong_task":
+            control_claim["task_cid"] = "task:wrong-control-claim"
+        elif mutation == "control_empty_execution_spec":
+            control_claim["execution_spec_cid"] = ""
+        elif mutation == "retry_policy_mismatch":
+            retry_budget["policy_mismatch"] = True
+        elif mutation == "retry_malformed":
+            retry_budget["malformed"] = True
+        else:
+            assert mutation == "retry_configured_cap_mismatch"
+            retry_budget["configured_max_task_attempts"] = 2
+
+        attempt_body["control_claim"] = control_claim
+        attempt_body["retry_budget"] = retry_budget
+        successor._require_connection().execute(
+            "UPDATE database_task_attempts SET body_json = ? "
+            "WHERE attempt_id = ?",
+            [
+                json.dumps(
+                    attempt_body,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                terminal.attempt_id,
+            ],
+        )
+        task_body = {
+            **dict(task.body),
+            "completion_receipt": receipt,
+        }
+        with successor.task_source._intent._connection(
+            write=True
+        ) as connection:
+            connection.execute(
+                "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+                [
+                    json.dumps(
+                        task_body,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                    task.task_cid,
+                ],
+            )
+
+        current_attempt = successor.get_attempt(terminal.attempt_id)
+        current_task = successor.task_source.get_task(task.task_cid)
+        assert current_attempt is not None
+        assert current_task is not None
+        current_receipt = dict(current_task.body["completion_receipt"])
+        assert not successor._exact_provider_route_nonconsuming_receipt(
+            current_receipt,
+            current_attempt,
+        )
+        deadline = int(receipt["retry_not_before_ms"])
+        assert successor._provider_route_retry_cooldown_state(
+            current_task,
+            now_ms=deadline,
+        ) == "invalid"
+        monkeypatch.setattr(successor, "_now_ms", lambda: deadline)
+        before_task = current_task.to_dict()
+        assert successor.claim_next() is None
+        after_task = successor.task_source.get_task(task.task_cid)
+        assert after_task is not None
+        assert after_task.to_dict() == before_task
+        attempt_count = successor._require_connection().execute(
+            "SELECT COUNT(*) FROM database_task_attempts WHERE task_cid = ?",
+            [task.task_cid],
+        ).fetchone()
+        assert attempt_count is not None and int(attempt_count[0]) == 1
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    "callback_authority",
+    ("dispatch_journal", "provider_result", "effect_result"),
+)
+def test_provider_route_retry_cooldown_rejects_alternate_callback_keys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    callback_authority: str,
+) -> None:
+    repo, attempt = _seed_provider_route_deferred_pre_cas_saga(
+        tmp_path,
+        monkeypatch,
+    )
+    successor = _database_portal_successor(
+        repo,
+        max_task_attempts=1,
+    )
+    callback_calls: list[str] = []
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        callback_calls.append("callback")
+        raise AssertionError("alternate callback authority reached callback")
+
+    successor._provider_fn = forbidden
+    successor._effect_fn = forbidden
+    successor._validation_fn = forbidden
+    bridge = successor._database_portal_bridge
+    assert bridge is not None
+    bridge.portal_factory = forbidden
+    try:
+        replayed = successor.run_once()
+        assert replayed["selection_idle_reason"] == (
+            "database_portal_reconciliation_completed"
+        )
+        terminal = successor.get_attempt(attempt.attempt_id)
+        assert terminal is not None and terminal.status == "failed"
+        task = successor.task_source.get_task(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        receipt = dict(task.body["completion_receipt"])
+        recorded_at_ms = int(receipt["retry_not_before_ms"])
+        connection = successor._require_connection()
+        if callback_authority == "dispatch_journal":
+            connection.execute(
+                """
+                INSERT INTO attempt_dispatch_journal(
+                    dispatch_id, attempt_id, task_cid, dispatch_kind,
+                    idempotency_key, owner_session_id, fencing_token,
+                    fence_epoch, started_at_ms, updated_at_ms, outcome,
+                    body_json
+                ) VALUES (?, ?, ?, 'provider', ?, ?, ?, ?, ?, ?,
+                          'started', ?)
+                """,
+                [
+                    "dispatch:alternate-key",
+                    attempt.attempt_id,
+                    attempt.task_cid,
+                    f"provider:alternate:{attempt.attempt_id}",
+                    attempt.owner_session_id,
+                    int(attempt.fencing_token),
+                    int(attempt.fence_epoch),
+                    recorded_at_ms,
+                    recorded_at_ms,
+                    json.dumps(
+                        {
+                            "schema": (
+                                "ipfs_accelerate_py/agent-supervisor/"
+                                "database-callback-dispatch@1"
+                            ),
+                            "outcome": "unknown_until_callback_returns",
+                        },
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                ],
+            )
+            expected_error = "dispatch_population:unexpected_idempotency_key"
+        elif callback_authority == "provider_result":
+            connection.execute(
+                """
+                INSERT INTO provider_invocations(
+                    invocation_id, attempt_id, task_cid, idempotency_key,
+                    owner_session_id, recorded_at_ms, result_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    "provider-invocation:alternate-key",
+                    attempt.attempt_id,
+                    attempt.task_cid,
+                    f"provider:alternate:{attempt.attempt_id}",
+                    attempt.owner_session_id,
+                    recorded_at_ms,
+                    "{}",
+                ],
+            )
+            expected_error = "provider_population:unexpected_idempotency_key"
+        else:
+            connection.execute(
+                """
+                INSERT INTO effect_claims(
+                    effect_id, attempt_id, task_cid, effect_key,
+                    idempotency_key, owner_session_id, recorded_at_ms,
+                    result_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    "effect-claim:alternate-key",
+                    attempt.attempt_id,
+                    attempt.task_cid,
+                    "effect:alternate",
+                    f"effect:alternate:{attempt.attempt_id}",
+                    attempt.owner_session_id,
+                    recorded_at_ms,
+                    "{}",
+                ],
+            )
+            expected_error = "effect_population:unexpected_idempotency_key"
+
+        boundary = successor._database_callback_boundary_state(terminal)
+        assert expected_error in boundary["callback_receipt_errors"]
+        assert boundary["callback_boundary_crossed"] is True
+        assert boundary["callback_authority_incomplete"] is True
+        assert successor._provider_route_retry_cooldown_state(
+            task,
+            now_ms=recorded_at_ms,
+        ) == "invalid"
+        monkeypatch.setattr(successor, "_now_ms", lambda: recorded_at_ms)
+        assert successor.claim_next() is None
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize(
+    "accounting_tamper",
+    (
+        "nonconsuming_omitted",
+        "nonconsuming_true",
+        "consuming_false",
+    ),
+)
+def test_terminal_repair_rejects_disposition_attempt_accounting_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    accounting_tamper: str,
+) -> None:
+    if accounting_tamper == "consuming_false":
+        daemon, bridge, terminal, _paths = (
+            _seed_terminal_blocked_landed_candidate(tmp_path)
+        )
+    else:
+        repo, attempt = _seed_provider_route_deferred_pre_cas_saga(
+            tmp_path,
+            monkeypatch,
+        )
+        daemon = _database_portal_successor(
+            repo,
+            max_task_attempts=1,
+        )
+        first = daemon.run_once()
+        assert first["selection_idle_reason"] == (
+            "database_portal_reconciliation_completed"
+        )
+        terminal = daemon.get_attempt(attempt.attempt_id)
+        assert terminal is not None and terminal.status == "failed"
+        bridge = daemon._database_portal_bridge
+        assert bridge is not None
+
+    failed_phases = [
+        phase
+        for phase in daemon.phase_history(terminal.attempt_id)
+        if phase["phase"] == "failed"
+    ]
+    assert len(failed_phases) == 1
+    failed_body = dict(failed_phases[0]["body"])
+    if accounting_tamper == "nonconsuming_omitted":
+        assert failed_body["database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        failed_body.pop("attempt_consumed", None)
+    elif accounting_tamper == "nonconsuming_true":
+        assert failed_body["database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        failed_body["attempt_consumed"] = True
+    else:
+        assert failed_body["database_disposition"] == (
+            "blocked_unknown_outcome"
+        )
+        failed_body["attempt_consumed"] = False
+    daemon._require_connection().execute(
+        """
+        UPDATE attempt_phases
+        SET body_json = ?
+        WHERE attempt_id = ? AND phase = 'failed'
+        """,
+        [
+            json.dumps(failed_body, separators=(",", ":"), sort_keys=True),
+            terminal.attempt_id,
+        ],
+    )
+    try:
+        repairs = daemon._repair_database_portal_terminal_receipts(
+            bridge=bridge,
+            trigger="tampered_attempt_accounting",
+            exact_attempt=terminal,
+        )
+
+        assert len(repairs) == 1
+        assert repairs[0]["blocked"] is True
+        assert repairs[0]["reason"] == (
+            "terminal_reconciliation_receipt_repair_failed"
+        )
+        assert repairs[0]["error"] == (
+            "terminal phase disposition contradicts attempt accounting"
+        )
+    finally:
+        daemon.close()
+
+
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_superseded_pre_cas_saga_blocks_if_exact_old_epoch_reappears(
     tmp_path: Path,
@@ -9752,6 +11832,116 @@ def test_elapsed_postentry_generic_portal_deferred_blocks_without_redispatch(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_expired_provider_route_cooldown_refunds_outer_attempt_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, predecessor, bridge, attempt, _paths = (
+        _seed_interrupted_database_portal_attempt(
+            tmp_path,
+            max_task_attempts=1,
+        )
+    )
+    record = predecessor.task_source.get_task(attempt.task_cid)
+    assert record is not None
+    _projection_paths, binding = bridge._ensure_attempt_projection(
+        attempt,
+        record,
+    )
+    for name in ("implementation-logs", "implementation_checkpoints"):
+        (Path(_paths.root) / name).mkdir()
+    (Path(_paths.root) / ".implementation.lock.update.lock").touch()
+    _quiesce_pre_dispatch_provider_deferral_state(_paths)
+    deferred_at_ms = 1_000_000
+    backoff_seconds = 5
+    monkeypatch.setattr(predecessor, "_now_ms", lambda: deferred_at_ms)
+    predecessor._begin_callback_dispatch(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=f"provider:{attempt.attempt_id}",
+    )
+    predecessor._record_database_portal_attempt_binding(
+        attempt,
+        binding,
+        "portal_entered",
+    )
+    predecessor._record_callback_dispatch_outcome(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=f"provider:{attempt.attempt_id}",
+        outcome="deferred",
+        body={
+            "exception_type": "DatabasePortalProviderRouteDeferred",
+            "backoff_seconds": backoff_seconds,
+            "retry_not_before_ms": (
+                deferred_at_ms + (backoff_seconds * 1_000)
+            ),
+        },
+    )
+    boundary = predecessor._database_callback_boundary_state(attempt)
+    assert boundary["safe_preentry_provider_deferred"] is True
+    assert boundary["callback_boundary_crossed"] is False
+    assert boundary["callback_authority_incomplete"] is False
+    predecessor.close()
+
+    successor = _database_portal_successor(
+        repo,
+        max_task_attempts=1,
+    )
+    monkeypatch.setattr(successor, "_now_ms", lambda: 2_000_000_000_000)
+    callback_calls: list[str] = []
+
+    def forbidden_callback(*_args: object, **_kwargs: object) -> object:
+        callback_calls.append("callback")
+        raise AssertionError("expired provider-route cooldown was dispatched")
+
+    successor._provider_fn = forbidden_callback
+    successor._effect_fn = forbidden_callback
+    successor._validation_fn = forbidden_callback
+    try:
+        restarted_attempt = successor.get_attempt(attempt.attempt_id)
+        assert restarted_attempt is not None
+        restarted_boundary = successor._database_callback_boundary_state(
+            restarted_attempt
+        )
+        assert restarted_boundary["safe_preentry_provider_deferred"] is True
+        assert restarted_boundary["callback_boundary_crossed"] is False
+
+        first = successor.run_once()
+        assert first["implementation_result"] is None
+        assert first["selection_idle_reason"] == (
+            "database_portal_reconciliation_completed"
+        )
+        reconciled = first["database_portal_reconciliation"]["attempts"][0]
+        assert reconciled["reconciled"] is True
+        assert reconciled["blocked"] is False
+        assert reconciled["database_disposition"] == (
+            "provider_route_deferred_rearmed"
+        )
+        assert reconciled["retry_receipt"]["attempt_consumed"] is False
+        assert reconciled["retry_receipt"]["attempts_used"] == 0
+
+        terminal = successor.get_attempt(attempt.attempt_id)
+        assert terminal is not None and terminal.status == "failed"
+        task = successor.task_source.get_task(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        retry_receipt = dict(task.body.get("completion_receipt") or {})
+        assert retry_receipt["attempts_used"] == 0
+        assert retry_receipt["max_task_attempts"] == 1
+        assert retry_receipt["retry_exhausted"] is False
+        assert callback_calls == []
+
+        reclaimed = successor.claim_next()
+        assert reclaimed is not None
+        assert reclaimed.task_cid == attempt.task_cid
+        assert reclaimed.attempt_number == attempt.attempt_number + 1
+        assert reclaimed.body["retry_budget"]["attempts_used"] == 1
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_exact_preentry_portal_deferred_remains_before_callback_boundary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -11037,3 +13227,421 @@ def test_database_shared_loop_launch_and_restart_adopt_exact_owner_identity(
     assert persisted.command == tuple(spec.command)
     assert dict(persisted.owner_scope) == expected_scope
     assert persisted.process_birth == birth
+
+
+def _replay_exact_provider_route_cooldown_for_run_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[
+    Path,
+    DatabaseImplementationDaemon,
+    DatabaseTaskAttempt,
+    dict[str, object],
+    list[str],
+]:
+    """Return one exact active cooldown after its restart saga replay."""
+
+    repo, attempt = _seed_provider_route_deferred_pre_cas_saga(
+        tmp_path,
+        monkeypatch,
+    )
+    successor = _database_portal_successor(
+        repo,
+        max_task_attempts=1,
+    )
+    callback_calls: list[str] = []
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        callback_calls.append("callback")
+        raise AssertionError("provider-route cooldown projection reached callback")
+
+    successor._provider_fn = forbidden
+    successor._effect_fn = forbidden
+    successor._validation_fn = forbidden
+    bridge = successor._database_portal_bridge
+    assert bridge is not None
+    bridge.portal_factory = forbidden
+    replayed = successor.run_once()
+    assert replayed["selection_idle_reason"] == (
+        "database_portal_reconciliation_completed"
+    )
+    task = successor.task_source.get_task(attempt.task_cid)
+    assert task is not None and task.status == "retrying"
+    receipt = dict(task.body["completion_receipt"])
+    assert receipt["reason"] == "provider_route_deferred_rearmed"
+    assert receipt["attempt_consumed"] is False
+    assert callback_calls == []
+    return repo, successor, attempt, receipt, callback_calls
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_run_once_projects_active_provider_route_cooldown_wake(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, successor, attempt, receipt, callback_calls = (
+        _replay_exact_provider_route_cooldown_for_run_once(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+    deadline = int(receipt["retry_not_before_ms"])
+    now_ms = deadline - 2_500
+    monkeypatch.setattr(successor, "_now_ms", lambda: now_ms)
+    try:
+        result = successor.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_provider_route_cooldown_active"
+        )
+        assert result["implementation_result"] is None
+        assert result["unchanged"] is True
+        assert result["write_count"] == 0
+        backpressure = result["provider_route_cooldown_backpressure"]
+        assert set(backpressure) == {
+            "schema",
+            "active_tasks",
+            "invalid_tasks",
+            "earliest_retry_not_before_ms",
+        }
+        assert backpressure["schema"] == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-provider-route-cooldown-backpressure@1"
+        )
+        assert backpressure["active_tasks"] == [
+            {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+                "backoff_seconds": receipt["backoff_seconds"],
+                "retry_not_before_ms": deadline,
+            }
+        ]
+        assert backpressure["invalid_tasks"] == []
+        assert backpressure["earliest_retry_not_before_ms"] == deadline
+        assert result["next_wake_after_seconds"] == pytest.approx(2.5)
+        assert 0 < result["next_wake_after_seconds"] <= int(
+            receipt["backoff_seconds"]
+        )
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_run_once_projects_missing_attempt_cooldown_as_typed_invalid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, successor, attempt, receipt, callback_calls = (
+        _replay_exact_provider_route_cooldown_for_run_once(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+    connection = successor._require_connection()
+    connection.execute(
+        "DELETE FROM attempt_phases WHERE attempt_id = ?",
+        [attempt.attempt_id],
+    )
+    connection.execute(
+        "DELETE FROM database_task_attempts WHERE attempt_id = ?",
+        [attempt.attempt_id],
+    )
+    successor.close()
+
+    restarted = _database_portal_successor(
+        repo,
+        max_task_attempts=1,
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        callback_calls.append("callback")
+        raise AssertionError("missing cooldown attempt reached callback")
+
+    restarted._provider_fn = forbidden
+    restarted._effect_fn = forbidden
+    restarted._validation_fn = forbidden
+    bridge = restarted._database_portal_bridge
+    assert bridge is not None
+    bridge.portal_factory = forbidden
+    monkeypatch.setattr(
+        restarted,
+        "_now_ms",
+        lambda: int(receipt["retry_not_before_ms"]) - 1,
+    )
+    try:
+        result = restarted.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_provider_route_cooldown_invalid"
+        )
+        assert result["implementation_result"] is None
+        backpressure = result["provider_route_cooldown_backpressure"]
+        assert set(backpressure) == {
+            "schema",
+            "active_tasks",
+            "invalid_tasks",
+        }
+        assert backpressure["schema"] == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-provider-route-cooldown-backpressure@1"
+        )
+        assert backpressure["active_tasks"] == []
+        assert backpressure["invalid_tasks"] == [
+            {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+            }
+        ]
+        assert "earliest_retry_not_before_ms" not in backpressure
+        assert "next_wake_after_seconds" not in result
+        assert callback_calls == []
+    finally:
+        restarted.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+@pytest.mark.parametrize("replacement_epoch", ("execution", "validation"))
+def test_replaced_task_epoch_rejects_stale_provider_route_cooldown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement_epoch: str,
+) -> None:
+    _repo, successor, attempt, receipt, callback_calls = (
+        _replay_exact_provider_route_cooldown_for_run_once(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+    original_control = dict(attempt.body["control_claim"])
+    replacement: dict[str, object] = {
+        "task_cid": attempt.task_cid,
+        "task_id": "PCTDD-001",
+        "goal_cid": "goal:pctdd",
+        "status": "ready",
+        "track": "implementation",
+        "validation_commands": ["python -m pytest focused.py"],
+    }
+    if replacement_epoch == "execution":
+        replacement["execution_epoch_marker"] = "replacement-v2"
+    else:
+        replacement["validation_commands"] = [
+            "python -m pytest replacement-focused.py"
+        ]
+    successor.materialize_population(
+        {
+            "repository_tree_id": "tree:provider-route-epoch-replacement",
+            "tasks": [replacement],
+        }
+    )
+    current = successor.task_source.get_task(attempt.task_cid)
+    assert current is not None
+    if replacement_epoch == "validation":
+        replacement_body = {
+            **dict(current.body),
+            "completion_receipt": receipt,
+        }
+        with successor.task_source._intent._connection(
+            write=True
+        ) as connection:
+            connection.execute(
+                "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+                [
+                    json.dumps(
+                        replacement_body,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
+                    attempt.task_cid,
+                ],
+            )
+        current = successor.task_source.get_task(attempt.task_cid)
+        assert current is not None
+        assert successor._retry_budget_validation_spec_cid(current) != (
+            original_control["validation_spec_cid"]
+        )
+    else:
+        assert current.body["completion_receipt"] == receipt
+        assert successor._task_execution_spec_cid(current) != (
+            original_control["execution_spec_cid"]
+        )
+
+    deadline = int(receipt["retry_not_before_ms"])
+    monkeypatch.setattr(successor, "_now_ms", lambda: deadline - 1)
+    try:
+        assert successor._provider_route_retry_cooldown_state(current) == (
+            "invalid"
+        )
+        result = successor.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_provider_route_cooldown_invalid"
+        )
+        backpressure = result["provider_route_cooldown_backpressure"]
+        assert backpressure["active_tasks"] == []
+        assert backpressure["invalid_tasks"] == [
+            {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+            }
+        ]
+        assert "earliest_retry_not_before_ms" not in backpressure
+        assert "next_wake_after_seconds" not in result
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_run_once_clamps_rollback_wake_to_admitted_route_backoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, successor, _attempt, receipt, callback_calls = (
+        _replay_exact_provider_route_cooldown_for_run_once(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+    monkeypatch.setattr(successor, "_now_ms", lambda: 1)
+    try:
+        result = successor.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_provider_route_cooldown_active"
+        )
+        admitted_backoff = float(receipt["backoff_seconds"])
+        assert result["next_wake_after_seconds"] == admitted_backoff
+        assert 0 < result["next_wake_after_seconds"] <= (
+            _PROVIDER_ROUTE_BACKOFF_CAP
+        )
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_exact_task_replay_preserves_active_route_cooldown_across_revision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, successor, attempt, receipt, callback_calls = (
+        _replay_exact_provider_route_cooldown_for_run_once(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+    before = successor.task_source.get_task(attempt.task_cid)
+    assert before is not None
+    before_execution_spec = successor._task_execution_spec_cid(before)
+    before_validation_spec = successor._retry_budget_validation_spec_cid(
+        before
+    )
+    successor.materialize_population(
+        {
+            "repository_tree_id": "tree:shutdown-reconciliation",
+            "tasks": [
+                {
+                    "task_cid": attempt.task_cid,
+                    "task_id": "PCTDD-001",
+                    "goal_cid": "goal:pctdd",
+                    "status": "ready",
+                    "track": "implementation",
+                    "validation_commands": [
+                        "python -m pytest focused.py"
+                    ],
+                }
+            ],
+        }
+    )
+    replayed = successor.task_source.get_task(attempt.task_cid)
+    assert replayed is not None and replayed.status == "retrying"
+    assert replayed.revision == before.revision + 1
+    assert replayed.body["completion_receipt"] == receipt
+    assert successor._task_execution_spec_cid(replayed) == (
+        before_execution_spec
+    )
+    assert successor._retry_budget_validation_spec_cid(replayed) == (
+        before_validation_spec
+    )
+    deadline = int(receipt["retry_not_before_ms"])
+    monkeypatch.setattr(successor, "_now_ms", lambda: deadline - 1)
+    try:
+        assert successor._provider_route_retry_cooldown_state(replayed) == (
+            "active"
+        )
+        result = successor.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_provider_route_cooldown_active"
+        )
+        assert result["provider_route_cooldown_backpressure"][
+            "active_tasks"
+        ][0]["task_cid"] == attempt.task_cid
+        assert callback_calls == []
+    finally:
+        successor.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_run_once_prioritizes_tampered_route_cooldown_over_retry_exhaustion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, successor, attempt, receipt, callback_calls = (
+        _replay_exact_provider_route_cooldown_for_run_once(
+            tmp_path,
+            monkeypatch,
+        )
+    )
+    task = successor.task_source.get_task(attempt.task_cid)
+    assert task is not None
+    tampered_receipt = {
+        **receipt,
+        "attempts_used": 1,
+    }
+    tampered_body = {
+        **dict(task.body),
+        "completion_receipt": tampered_receipt,
+    }
+    with successor.task_source._intent._connection(
+        write=True
+    ) as connection:
+        connection.execute(
+            "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+            [
+                json.dumps(
+                    tampered_body,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                attempt.task_cid,
+            ],
+        )
+    current = successor.task_source.get_task(attempt.task_cid)
+    assert current is not None
+    assert successor._retry_budget_state(current)["retry_exhausted"] is True
+    deadline = int(receipt["retry_not_before_ms"])
+    monkeypatch.setattr(successor, "_now_ms", lambda: deadline - 1)
+    try:
+        assert successor._provider_route_retry_cooldown_state(current) == (
+            "invalid"
+        )
+        result = successor.run_once()
+
+        assert result["selection_idle_reason"] == (
+            "database_provider_route_cooldown_invalid"
+        )
+        assert result["provider_route_cooldown_backpressure"][
+            "invalid_tasks"
+        ] == [
+            {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+            }
+        ]
+        assert result["retry_exhausted_task_cids"] == [attempt.task_cid]
+        assert "next_wake_after_seconds" not in result
+        assert callback_calls == []
+    finally:
+        successor.close()

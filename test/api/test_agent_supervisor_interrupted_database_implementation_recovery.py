@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import threading
@@ -292,6 +293,930 @@ def _seed_interrupted_implementation(
     }
     evidence["evidence_id"] = daemon._database_recovery_sha256(evidence)
     return daemon, evidence, claim_path, dirty_candidate
+
+
+def _state_sha256(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _seed_stale_dispatch_release_migration(
+    tmp_path: Path,
+) -> tuple[
+    PortalImplementationDaemon,
+    dict[str, Any],
+    Path,
+    Path,
+    Path,
+    str,
+]:
+    daemon, evidence, claim_path, dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    receipt = evidence["reconciliation_receipt"]
+    nested = receipt["nested_state"]
+    portal = receipt["portal_reconciliation"]
+    lifecycle = portal["worktree_lifecycle_reconciliation"]
+    claim_summary = portal["task_claim_reconciliation"]
+    recovery = portal["attempt_recovery"]
+    workspace = Path(nested["active_worktree_path"])
+    record = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert record is not None
+    state = PortalTaskState.load(daemon.state_path)
+    task_id = nested["active_task_id"]
+    task_cid = claim_summary["canonical_task_cid"]
+    attempt = nested["active_attempt"]
+
+    nested.update(
+        {
+            "present": True,
+            "active_phase_detail": "provider_launch_birth",
+            "state_digest": "sha256:" + "a" * 64,
+        }
+    )
+    portal.update({"attempt": attempt, "task_id": task_id})
+    portal["protected_path_reconciliation"] = {
+        "blocked": False,
+        "critical_section_entered": False,
+        "reason": "no_active_snapshot",
+        "scan_outside_lease": True,
+    }
+    lifecycle.update(
+        {
+            "canonical_task_cid": task_cid,
+            "owner_pid": record.owner.pid,
+            "owner_state_dir": record.state_dir,
+            "reason": "worktree_lifecycle_already_terminal",
+        }
+    )
+    claim_summary["claim_path"] = str(claim_path)
+    recovery["canonical_task_key"] = state.last_implementation_task_key
+    clear_epoch = _timestamp()
+    portal["reconciled_at"] = clear_epoch
+    state.heartbeat_at = clear_epoch
+    state.last_progress_at = clear_epoch
+    state.save(daemon.state_path)
+    # The historical outer attempt receipt retained its original collection
+    # timestamp while the nested Portal reconciliation happened later.  Keep
+    # those exact time slices distinct so the migration test matches the live
+    # PCTDD-005/PCTDD-034 artifacts.
+    receipt["reconciled_at"] = _timestamp(-3600)
+    receipt.update(
+        {
+            "interface": "DatabasePortalExecutionBridge@1",
+            "attempt_id": "attempt:stale-dispatch-migration",
+            "claim_id": "claim:stale-dispatch-migration",
+            "task_cid": content_identity({"outer-task": task_id}),
+            # Deliberately distinct from the nested attempt.  PCTDD-034's
+            # live outer retry is 5 while its nested implementation retry is
+            # 1; neither authority may be projected onto the other.
+            "attempt_number": 5,
+            "owner_session_id": "session:stale-dispatch-migration",
+            "fencing_token": 5,
+            "fence_epoch": 2,
+            "attempt_root": str(daemon.state_path.parent),
+            "trigger": "database_daemon_startup",
+        }
+    )
+    provider_fence = receipt["provider_runner_fence"]
+    container_fence = {
+        "attempt": attempt,
+        "detail": {},
+        "reason": "ordinary_grok_orphan_container_absent",
+        "removed": False,
+        "runner_pid": provider_fence["pid"],
+        "runner_receipt_id": content_identity({"runner": "receipt"}),
+        "safe_to_restart": True,
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "ordinary-grok-orphan-container-fence@1"
+        ),
+        "task_id": task_id,
+        "task_revision_cid": task_cid,
+        "workspace_path": str(workspace),
+    }
+    container_fence["receipt_id"] = content_identity(container_fence)
+    provider_fence.update(
+        {
+            "container_fence": container_fence,
+            "parent_pid_before_fence": 0,
+        }
+    )
+    receipt.pop("receipt_id", None)
+    receipt["receipt_id"] = daemon._database_recovery_sha256(receipt)
+    evidence = {
+        "schema": daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_RETRY_SCHEMA,
+        "binding_id": receipt["binding_id"],
+        "reconciliation_receipt": receipt,
+    }
+    evidence["evidence_id"] = daemon._database_recovery_sha256(evidence)
+
+    claim = daemon._load_exact_json_object(claim_path)
+    assert claim is not None
+    claim_id = content_identity(claim)
+    lease_id = str(claim["lease_id"])
+    basis = {
+        "schema": daemon_module.IMPLEMENTATION_TASK_CLAIM_RELEASE_SCHEMA,
+        "operation": "release_quiesced_implementation_task_claim",
+        "task_id": task_id,
+        "canonical_task_cid": task_cid,
+        "attempt": attempt,
+        "task_status": "todo",
+        "claim": {
+            "path": str(claim_path),
+            "claim_id": claim_id,
+            "lease_id": lease_id,
+            "owner_pid": claim["pid"],
+            "state_dir": daemon_module.normalize_workspace_path(
+                daemon.state_path.parent.resolve()
+            ),
+            "state_path": daemon_module.normalize_workspace_path(
+                daemon.state_path.resolve()
+            ),
+            "legacy_worktree_root_missing": not bool(
+                str(claim.get("worktree_root") or "").strip()
+            ),
+        },
+        "worktree_lifecycle": {
+            "record_id": record.record_id,
+            "lease_id": record.lease_id,
+            "fence": record.fence,
+            "state": record.state.value,
+            "workspace_path": record.workspace_path,
+            "terminal_reason": record.terminal_reason,
+        },
+        "task_source_identity": None,
+        "stale_dispatch_intent_released_for_retry": True,
+    }
+    operation_id = content_identity(basis)
+    prepared_at = _timestamp(-1)
+    released_at = _timestamp()
+    receipt_body = {
+        **basis,
+        "operation_id": operation_id,
+        "phase": "released",
+        "prepared_at": prepared_at,
+        "released_at": released_at,
+    }
+    release_receipt_id = content_identity(receipt_body)
+    release_receipt_path = daemon._task_claim_release_receipt_path(
+        canonical_task_cid=task_cid,
+        attempt=attempt,
+        lease_id=lease_id,
+    )
+    daemon_module.write_json_atomic(
+        release_receipt_path,
+        {**receipt_body, "receipt_id": release_receipt_id},
+    )
+    claim_path.unlink()
+
+    daemon = _restart_daemon(daemon)
+    release_event = {
+        "reconciled": True,
+        "blocked": False,
+        "reason": "quiesced_task_claim_released",
+        "task_id": task_id,
+        "canonical_task_cid": task_cid,
+        "attempt": attempt,
+        "task_status": "todo",
+        "claim_path": str(claim_path),
+        "claim_id": claim_id,
+        "claim_lease_id": lease_id,
+        "owner_pid": claim["pid"],
+        "state_dir": basis["claim"]["state_dir"],
+        "lifecycle_record_id": record.record_id,
+        "lifecycle_fence": record.fence,
+        "operation_id": operation_id,
+        "released_at": released_at,
+        "receipt_id": release_receipt_id,
+        "receipt_path": str(release_receipt_path),
+        "stale_dispatch_intent_released_for_retry": True,
+    }
+    daemon._record_event("implementation_task_claim_released", release_event)
+    daemon._record_event(
+        "implementation_shutdown_reconciled",
+        {
+            "task_id": task_id,
+            "attempt": attempt,
+            "reconciled": True,
+            "blocked": False,
+            "reason": "already_quiesced",
+            "reconciled_at": portal["reconciled_at"],
+            "protected_path_reconciliation": portal[
+                "protected_path_reconciliation"
+            ],
+            "worktree_lifecycle_reconciliation": {
+                "blocked": False,
+                "reconciled": False,
+                "reason": "no_active_worktree",
+            },
+            "task_claim_reconciliation": release_event,
+            "attempt_recovery": {},
+            "stale_lock_cleared": False,
+        },
+    )
+    return (
+        daemon,
+        evidence,
+        claim_path,
+        release_receipt_path,
+        dirty_candidate,
+        _state_sha256(daemon.state_path),
+    )
+
+
+def test_stale_dispatch_release_migration_refunds_once_and_replays_after_restart(
+    tmp_path: Path,
+) -> None:
+    (
+        daemon,
+        evidence,
+        claim_path,
+        release_receipt_path,
+        dirty_candidate,
+        pre_state_digest,
+    ) = _seed_stale_dispatch_release_migration(tmp_path)
+    release_receipt_bytes = release_receipt_path.read_bytes()
+
+    first = daemon.reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+    event_count = len(_events(daemon))
+    daemon = _restart_daemon(daemon)
+    second = daemon.reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+
+    assert first == second
+    assert first["reconciled"] is True, first
+    assert first["blocked"] is False
+    assert first["reason"] == "stale_dispatch_release_migrated_for_retry"
+    assert first["provider_dispatched"] is False
+    assert first["implementation_dispatched"] is False
+    assert first["acceptance_inferred"] is False
+    assert first["retained_candidate_disposition"] == "preserved_unvalidated"
+    assert evidence["reconciliation_receipt"]["reconciled_at"] != (
+        evidence["reconciliation_receipt"]["portal_reconciliation"][
+            "reconciled_at"
+        ]
+    )
+    assert not claim_path.exists()
+    assert release_receipt_path.read_bytes() == release_receipt_bytes
+    assert dirty_candidate.read_text(encoding="utf-8") == "CANDIDATE = True\n"
+    state = PortalTaskState.load(daemon.state_path)
+    task_cid = evidence["reconciliation_receipt"][
+        "portal_reconciliation"
+    ]["task_claim_reconciliation"]["canonical_task_cid"]
+    assert "PCTDD-034" not in state.implementation_attempts
+    assert task_cid not in state.implementation_attempts_by_cid
+    events = _events(daemon)
+    assert len(events) == event_count
+    migration_types = [
+        event["type"]
+        for event in events
+        if event["type"]
+        in {
+            daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_PREPARATION_EVENT,
+            "implementation_state_recovered",
+            daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_TERMINAL_EVENT,
+        }
+    ]
+    assert migration_types == [
+        daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_PREPARATION_EVENT,
+        "implementation_state_recovered",
+        daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_TERMINAL_EVENT,
+    ]
+    by_id = {event["event_id"]: event for event in events}
+    assert first["preparation_event_id"] in by_id
+    assert first["state_recovery_event_id"] in by_id
+    assert first["migration_terminal_event_id"] in by_id
+    assert not any(
+        event["type"]
+        in {
+            "task_completed",
+            "implementation_finished",
+            "implementation_candidate_merged",
+            "merge_finished",
+        }
+        for event in events
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    [
+        ("claim_reappears", "stale_dispatch_migration_claim_reappeared"),
+        ("release_extra_field", "stale_dispatch_migration_release_invalid"),
+        (
+            "duplicate_release_event",
+            "stale_dispatch_migration_release_event_ambiguous",
+        ),
+        ("terminal_event", "stale_dispatch_migration_terminal_present"),
+        ("boolean_counter", "stale_dispatch_migration_attempt_count_invalid"),
+        (
+            "competing_retry_preparation",
+            "stale_dispatch_migration_preparation_ambiguous",
+        ),
+    ],
+)
+def test_stale_dispatch_release_migration_rejects_nonexact_suffix(
+    tmp_path: Path,
+    mutation: str,
+    expected_reason: str,
+) -> None:
+    (
+        daemon,
+        evidence,
+        claim_path,
+        release_receipt_path,
+        dirty_candidate,
+        pre_state_digest,
+    ) = _seed_stale_dispatch_release_migration(tmp_path)
+    receipt = evidence["reconciliation_receipt"]
+    portal = receipt["portal_reconciliation"]
+    task_id = receipt["task_alias"]
+    task_cid = portal["task_claim_reconciliation"]["canonical_task_cid"]
+    attempt = receipt["nested_state"]["active_attempt"]
+
+    if mutation == "claim_reappears":
+        daemon_module.write_json_atomic(claim_path, {"foreign": True})
+    elif mutation == "release_extra_field":
+        release_receipt = json.loads(
+            release_receipt_path.read_text(encoding="utf-8")
+        )
+        release_receipt["unexpected"] = "authority expansion"
+        daemon_module.write_json_atomic(release_receipt_path, release_receipt)
+    elif mutation == "duplicate_release_event":
+        release_event = next(
+            event
+            for event in _events(daemon)
+            if event["type"] == "implementation_task_claim_released"
+        )
+        duplicate_payload = {
+            name: value
+            for name, value in release_event.items()
+            if name not in daemon_module._PORTAL_EVENT_ENVELOPE_FIELDS
+        }
+        daemon._record_event(
+            "implementation_task_claim_released",
+            duplicate_payload,
+        )
+    elif mutation == "terminal_event":
+        daemon._record_event(
+            "implementation_timeout",
+            {
+                "task_id": task_id,
+                "canonical_task_cid": task_cid,
+                "attempt": attempt,
+            },
+        )
+    elif mutation == "boolean_counter":
+        raw_state = json.loads(daemon.state_path.read_text(encoding="utf-8"))
+        raw_state["implementation_attempts"][task_id] = True
+        daemon_module.write_json_atomic(daemon.state_path, raw_state)
+    elif mutation == "competing_retry_preparation":
+        daemon._record_event(
+            "interrupted_implementation_retry_prepared",
+            {
+                "task_id": task_id,
+                "canonical_task_cid": task_cid,
+                "attempt": attempt,
+                "interrupted_retry_id": content_identity(
+                    {"competing": "retry"}
+                ),
+            },
+        )
+    else:  # pragma: no cover - closed parameter vocabulary
+        raise AssertionError(mutation)
+
+    result = daemon.reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == expected_reason
+    assert result["provider_dispatched"] is False
+    assert result["implementation_dispatched"] is False
+    assert result["acceptance_inferred"] is False
+    assert dirty_candidate.read_text(encoding="utf-8") == "CANDIDATE = True\n"
+    assert not any(
+        event["type"]
+        in {
+            daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_PREPARATION_EVENT,
+            "implementation_state_recovered",
+            daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_TERMINAL_EVENT,
+        }
+        for event in _events(daemon)
+    )
+
+
+def test_stale_dispatch_migration_rejects_extended_preparation_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, _, _, dirty_candidate, pre_state_digest = (
+        _seed_stale_dispatch_release_migration(tmp_path)
+    )
+    original = daemon._record_event
+
+    def record_extended(event_type: str, payload: dict[str, Any]) -> None:
+        if (
+            event_type
+            == daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_PREPARATION_EVENT
+        ):
+            payload = {**payload, "unexpected": "authority expansion"}
+        original(event_type, payload)
+
+    monkeypatch.setattr(daemon, "_record_event", record_extended)
+
+    result = daemon.reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+
+    assert result["reason"] == "stale_dispatch_migration_preparation_invalid"
+    assert dirty_candidate.read_text(encoding="utf-8") == "CANDIDATE = True\n"
+    events = _events(daemon)
+    assert sum(
+        event["type"]
+        == daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_PREPARATION_EVENT
+        for event in events
+    ) == 1
+    assert not any(
+        event["type"]
+        in {
+            "implementation_state_recovered",
+            daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_TERMINAL_EVENT,
+        }
+        for event in events
+    )
+
+
+def test_stale_dispatch_migration_rejects_extended_terminal_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, _, _, dirty_candidate, pre_state_digest = (
+        _seed_stale_dispatch_release_migration(tmp_path)
+    )
+    original = daemon._record_event
+
+    def record_extended(event_type: str, payload: dict[str, Any]) -> None:
+        if event_type == daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_TERMINAL_EVENT:
+            payload = {**payload, "unexpected": "authority expansion"}
+        original(event_type, payload)
+
+    monkeypatch.setattr(daemon, "_record_event", record_extended)
+
+    result = daemon.reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+
+    assert result["reason"] == "stale_dispatch_migration_terminal_invalid"
+    assert result["provider_dispatched"] is False
+    assert result["implementation_dispatched"] is False
+    assert result["acceptance_inferred"] is False
+    assert dirty_candidate.read_text(encoding="utf-8") == "CANDIDATE = True\n"
+    events = _events(daemon)
+    assert sum(
+        event["type"] == "implementation_state_recovered"
+        for event in events
+    ) == 1
+    assert sum(
+        event["type"]
+        == daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_TERMINAL_EVENT
+        for event in events
+    ) == 1
+
+
+def test_stale_dispatch_migration_rejects_state_drift_after_preparation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, _, _, dirty_candidate, pre_state_digest = (
+        _seed_stale_dispatch_release_migration(tmp_path)
+    )
+    original = daemon._record_event
+
+    def record_then_drift(event_type: str, payload: dict[str, Any]) -> None:
+        original(event_type, payload)
+        if (
+            event_type
+            == daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_PREPARATION_EVENT
+        ):
+            state = PortalTaskState.load(daemon.state_path)
+            state.selection_idle_reason = "unrelated_state_drift"
+            state.save(daemon.state_path)
+
+    monkeypatch.setattr(daemon, "_record_event", record_then_drift)
+
+    result = daemon.reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+
+    assert result["reason"] == "stale_dispatch_migration_pre_state_changed"
+    assert dirty_candidate.read_text(encoding="utf-8") == "CANDIDATE = True\n"
+    assert not any(
+        event["type"]
+        in {
+            "implementation_state_recovered",
+            daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_TERMINAL_EVENT,
+        }
+        for event in _events(daemon)
+    )
+
+
+def test_stale_dispatch_migration_selector_is_disjoint_from_normal_retry(
+    tmp_path: Path,
+) -> None:
+    attempt = SimpleNamespace(
+        attempt_id="outer-attempt:migration-selector",
+        claim_id="outer-claim:migration-selector",
+        task_cid="outer-task:migration-selector",
+        task_alias="PCTDD-034",
+        attempt_number=5,
+        owner_session_id="outer-owner:migration-selector",
+        fencing_token=11,
+        fence_epoch=7,
+        lease_id="outer-lease:migration-selector",
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=object(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    bridge.attempt_root.mkdir()
+    paths = bridge._paths(attempt)
+    paths.root.mkdir()
+    binding = {
+        "binding_id": "sha256:" + "b" * 64,
+        "task_alias": attempt.task_alias,
+    }
+    nested_task_cid = content_identity({"nested": "task"})
+    workspace = str(tmp_path / "retained-candidate")
+    persisted = bridge.persist_reconciliation_receipt(
+        attempt,
+        {
+            "stage": "blocked",
+            "trigger": "database_daemon_startup",
+            "reconciled_at": _timestamp(),
+            "reconciled": False,
+            "blocked": True,
+            "reason": "nested_portal_attempt_reconciliation_blocked",
+            "binding_id": binding["binding_id"],
+            "task_alias": attempt.task_alias,
+            "nested_state": {
+                "present": True,
+                "state_path": str(paths.state),
+                "state_digest": "sha256:" + "c" * 64,
+                "active": True,
+                "active_phase": "implementing",
+                "active_task_id": attempt.task_alias,
+                "active_attempt": 1,
+                "active_worktree_path": workspace,
+                "active_branch": "implementation/pctdd-034-attempt-1",
+            },
+            "provider_runner_fence": {
+                "applicable": True,
+                "fenced": True,
+                "safe_to_restart": True,
+                "reason": "ordinary_provider_runner_exact_birth_fenced",
+                "pid": 2**30 - 73,
+            },
+            "provider_runner_reconciliation_authority": (
+                "ordinary_provider_runner_fence"
+            ),
+            "portal_reconciliation": {
+                "blocked": True,
+                "reconciled": False,
+                "reason": "task_claim_reconciliation_blocked",
+                "protected_path_reconciliation": {
+                    "blocked": False,
+                    "critical_section_entered": False,
+                    "reason": "no_active_snapshot",
+                    "scan_outside_lease": True,
+                },
+                "worktree_lifecycle_reconciliation": {
+                    "blocked": False,
+                    "reconciled": True,
+                    "state": "terminal",
+                    "task_id": attempt.task_alias,
+                    "canonical_task_cid": nested_task_cid,
+                    "attempt": 1,
+                    "workspace_path": workspace,
+                    "record_id": content_identity({"lifecycle": "record"}),
+                    "fence": 4,
+                },
+                "task_claim_reconciliation": {
+                    "blocked": True,
+                    "reconciled": False,
+                    "reason": "canonical_task_not_terminal",
+                    "observed_task_status": "todo",
+                    "task_id": attempt.task_alias,
+                    "canonical_task_cid": nested_task_cid,
+                },
+                "attempt_recovery": {
+                    "consumed": False,
+                    "attempt": 1,
+                    "task_id": attempt.task_alias,
+                    "canonical_task_cid": nested_task_cid,
+                    "previous_display_count": 1,
+                    "previous_cid_count": 1,
+                },
+            },
+            "terminal_provider_evidence": False,
+        },
+    )
+
+    migration = bridge._stale_dispatch_migration_retry_evidence(
+        attempt,
+        binding,
+    )
+
+    assert migration is not None
+    assert migration["schema"] == (
+        daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_RETRY_SCHEMA
+    )
+    unsigned = dict(migration)
+    evidence_id = unsigned.pop("evidence_id")
+    assert bridge._interrupted_implementation_retry_evidence(
+        attempt,
+        binding,
+    ) is None
+    assert evidence_id == "sha256:" + hashlib.sha256(
+        json.dumps(
+            unsigned,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert migration["reconciliation_receipt"]["receipt_id"] == (
+        persisted["receipt_id"]
+    )
+
+
+def test_stale_dispatch_migration_clears_one_exact_stale_lock_idempotently(
+    tmp_path: Path,
+) -> None:
+    daemon, evidence, _, _, dirty_candidate, pre_state_digest = (
+        _seed_stale_dispatch_release_migration(tmp_path)
+    )
+    state = PortalTaskState.load(daemon.state_path)
+    receipt = evidence["reconciliation_receipt"]
+    portal = receipt["portal_reconciliation"]
+    task_id = receipt["task_alias"]
+    task_cid = portal["task_claim_reconciliation"]["canonical_task_cid"]
+    lock_path = daemon._implementation_lock_path()
+    daemon_module.write_json_atomic(
+        lock_path,
+        {
+            "kind": "implementation",
+            "lease_id": "stale-migration-lock",
+            "pid": 2**30 - 91,
+            "owner_script": "historical-supervisor.py",
+            "repo_root": str(daemon.repo_root.resolve()),
+            "state_dir": str(daemon.state_path.parent.resolve()),
+            "task_id": task_id,
+            "canonical_task_key": state.last_implementation_task_key,
+            "canonical_task_cid": task_cid,
+            "board_namespace": state.task_identities[task_id][
+                "board_namespace"
+            ],
+            "attempt": 1,
+            "started_at": state.last_implementation_started_at,
+        },
+    )
+
+    first = daemon.reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+    second = _restart_daemon(
+        daemon
+    ).reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+
+    assert first == second
+    assert first["reconciled"] is True, first
+    assert first["stale_lock_cleared"] is True
+    assert not lock_path.exists()
+    assert dirty_candidate.read_text(encoding="utf-8") == "CANDIDATE = True\n"
+
+
+@pytest.mark.parametrize("duplicate_field", ["lease_id", "task_id"])
+def test_stale_dispatch_migration_retains_lock_with_duplicate_json_key(
+    tmp_path: Path,
+    duplicate_field: str,
+) -> None:
+    daemon, evidence, _, _, dirty_candidate, pre_state_digest = (
+        _seed_stale_dispatch_release_migration(tmp_path)
+    )
+    state = PortalTaskState.load(daemon.state_path)
+    receipt = evidence["reconciliation_receipt"]
+    portal = receipt["portal_reconciliation"]
+    task_id = receipt["task_alias"]
+    task_cid = portal["task_claim_reconciliation"]["canonical_task_cid"]
+    lock_path = daemon._implementation_lock_path()
+    lock = {
+        "kind": "implementation",
+        "lease_id": "stale-migration-duplicate-lock",
+        "pid": 2**30 - 95,
+        "owner_script": "historical-supervisor.py",
+        "repo_root": str(daemon.repo_root.resolve()),
+        "state_dir": str(daemon.state_path.parent.resolve()),
+        "task_id": task_id,
+        "canonical_task_key": state.last_implementation_task_key,
+        "canonical_task_cid": task_cid,
+        "board_namespace": state.task_identities[task_id]["board_namespace"],
+        "attempt": 1,
+        "started_at": state.last_implementation_started_at,
+    }
+    encoded = json.dumps(lock, separators=(",", ":"), sort_keys=True)
+    field_encoding = (
+        json.dumps(duplicate_field)
+        + ":"
+        + json.dumps(lock[duplicate_field])
+    )
+    malformed = encoded.replace(
+        field_encoding,
+        field_encoding + "," + field_encoding,
+        1,
+    )
+    lock_path.write_text(malformed, encoding="utf-8")
+
+    result = daemon.reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+
+    assert result["blocked"] is True
+    assert result["reason"] == "stale_dispatch_migration_lock_malformed"
+    assert lock_path.read_text(encoding="utf-8") == malformed
+    assert dirty_candidate.read_text(encoding="utf-8") == "CANDIDATE = True\n"
+
+
+def test_stale_dispatch_migration_replays_unlink_before_lock_clear_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, _, _, dirty_candidate, pre_state_digest = (
+        _seed_stale_dispatch_release_migration(tmp_path)
+    )
+    state = PortalTaskState.load(daemon.state_path)
+    receipt = evidence["reconciliation_receipt"]
+    portal = receipt["portal_reconciliation"]
+    task_id = receipt["task_alias"]
+    task_cid = portal["task_claim_reconciliation"]["canonical_task_cid"]
+    lock_path = daemon._implementation_lock_path()
+    daemon_module.write_json_atomic(
+        lock_path,
+        {
+            "kind": "implementation",
+            "lease_id": "stale-migration-crash-lock",
+            "pid": 2**30 - 93,
+            "owner_script": "historical-supervisor.py",
+            "repo_root": str(daemon.repo_root.resolve()),
+            "state_dir": str(daemon.state_path.parent.resolve()),
+            "task_id": task_id,
+            "canonical_task_key": state.last_implementation_task_key,
+            "canonical_task_cid": task_cid,
+            "board_namespace": state.task_identities[task_id][
+                "board_namespace"
+            ],
+            "attempt": 1,
+            "started_at": state.last_implementation_started_at,
+        },
+    )
+    original_record = daemon._record_event
+    injected = {"raised": False}
+
+    def crash_before_lock_clear_event(
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        if (
+            event_type
+            == daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_LOCK_CLEAR_EVENT
+            and not injected["raised"]
+        ):
+            injected["raised"] = True
+            raise RuntimeError("crash after stale lock unlink")
+        original_record(event_type, payload)
+
+    monkeypatch.setattr(
+        daemon,
+        "_record_event",
+        crash_before_lock_clear_event,
+    )
+    with pytest.raises(RuntimeError, match="crash after stale lock unlink"):
+        daemon.reconcile_stale_dispatch_release_migration(
+            evidence,
+            expected_pre_state_digest=pre_state_digest,
+        )
+    assert not lock_path.exists()
+
+    restarted = _restart_daemon(daemon)
+    result = restarted.reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+    replay = _restart_daemon(
+        restarted
+    ).reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+
+    assert result == replay
+    assert result["reconciled"] is True, result
+    assert result["stale_lock_cleared"] is True
+    assert dirty_candidate.read_text(encoding="utf-8") == "CANDIDATE = True\n"
+    events = _events(restarted)
+    assert sum(
+        event["type"]
+        == daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_PREPARATION_EVENT
+        for event in events
+    ) == 1
+    assert sum(
+        event["type"]
+        == daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_LOCK_CLEAR_EVENT
+        for event in events
+    ) == 1
+    assert sum(
+        event["type"]
+        == daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_TERMINAL_EVENT
+        for event in events
+    ) == 1
+
+
+def test_stale_dispatch_migration_tolerates_unrelated_event_interleaving(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, evidence, _, _, dirty_candidate, pre_state_digest = (
+        _seed_stale_dispatch_release_migration(tmp_path)
+    )
+    original_record = daemon._record_event
+    injected = {"done": False}
+
+    def interleave_before_terminal(
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        if (
+            event_type
+            == daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_TERMINAL_EVENT
+            and not injected["done"]
+        ):
+            injected["done"] = True
+            original_record(
+                "migration_interleaving_diagnostic",
+                {"detail": "unrelated concurrent audit"},
+            )
+        original_record(event_type, payload)
+
+    monkeypatch.setattr(daemon, "_record_event", interleave_before_terminal)
+    result = daemon.reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+    replay = _restart_daemon(
+        daemon
+    ).reconcile_stale_dispatch_release_migration(
+        evidence,
+        expected_pre_state_digest=pre_state_digest,
+    )
+
+    assert result == replay
+    assert result["reconciled"] is True, result
+    events = _events(daemon)
+    recovery = next(
+        event
+        for event in events
+        if event["type"] == "implementation_state_recovered"
+    )
+    diagnostic = next(
+        event
+        for event in events
+        if event["type"] == "migration_interleaving_diagnostic"
+    )
+    terminal = next(
+        event
+        for event in events
+        if event["type"]
+        == daemon_module.STALE_DISPATCH_RELEASE_MIGRATION_TERMINAL_EVENT
+    )
+    assert recovery["sequence"] < diagnostic["sequence"] < terminal["sequence"]
+    assert terminal["previous_event_id"] == diagnostic["event_id"]
+    assert dirty_candidate.read_text(encoding="utf-8") == "CANDIDATE = True\n"
 
 
 def _mutate_first_clear_authority(
