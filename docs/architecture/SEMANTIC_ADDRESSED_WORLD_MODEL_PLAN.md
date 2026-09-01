@@ -2038,8 +2038,10 @@ recomputed through the canonical task/goal/plan projection using watermark
 291; it is not inherited from M37 merely because the expected value is equal.
 M38's initial control commit is
 `e6763e2ba64eac282fb2b3e6a8f38c05dc2db8df` with tree
-`78927b797c7f80dca7e80ae542f3f7e06d95cbc3`. The reseal binds authority
-CID `sha256:b8275acc53fa5fcbce1186ff48f249adab7381828805e1545220547d259afaef`.
+`78927b797c7f80dca7e80ae542f3f7e06d95cbc3`. The first reseal is
+`a241ca013e91f0c9a9a0aa4b26261663c03cf80a`. The subsequent evidence-projection
+reseal binds authority
+CID `sha256:887bc167b1996fa988c73106a062ddfbe798077cb0871ee3667ca82d14d5c00a`.
 M38 is selected before M37 only when its complete protected-control
 triplet and source chain validate.
 

@@ -5025,7 +5025,7 @@ def test_m38_authority_pins_custody_restart_and_preserves_m37() -> None:
     )
     if identity_state == "sealed":
         assert expected_authority_cid == (
-            "sha256:b8275acc53fa5fcbce1186ff48f249adab7381828805e1545220547d259afaef"
+            "sha256:887bc167b1996fa988c73106a062ddfbe798077cb0871ee3667ca82d14d5c00a"
         )
     assert seal[f"{key}_cid"] == reference["authority_cid"] == expected_authority_cid
     assert reference["schema"] == "sawm/operator-control-authority-reference@1"
@@ -5185,7 +5185,6 @@ def test_m38_dependency_validator_rejects_noncanonical_pending_identities(
     chain["initial_control_commit"] = arbitrary_commit
     chain["initial_control_tree"] = arbitrary_tree
     chain["initial_control_blobs"] = arbitrary_blobs
-    chain["final_reseal_parent"] = arbitrary_commit
     monkeypatch.setattr(
         materializer, "_M38_INITIAL_CONTROL_COMMIT", arbitrary_commit
     )
@@ -5544,7 +5543,7 @@ def test_m38_evidence_projection_rejects_an_orphan_row() -> None:
 
     with pytest.raises(
         materializer.MigrationRequired,
-        match="M38 evidence-node/event projection differs",
+        match="M38 preserved evidence_nodes projection differs",
     ):
         materializer._verify_m38_evidence_projection(
             Connection(), watermark=290

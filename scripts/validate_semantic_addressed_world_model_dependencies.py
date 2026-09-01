@@ -3226,8 +3226,11 @@ def _m38_source_chain_identity_state(
         != materializer._M38_INITIAL_CONTROL_COMMIT
         or chain.get("initial_control_tree")
         != materializer._M38_INITIAL_CONTROL_TREE
+        or chain.get("first_reseal_commit")
+        != materializer._M38_FIRST_RESEAL_COMMIT
+        or chain.get("first_reseal_tree") != materializer._M38_FIRST_RESEAL_TREE
         or chain.get("final_reseal_parent")
-        != materializer._M38_INITIAL_CONTROL_COMMIT
+        != materializer._M38_FIRST_RESEAL_COMMIT
         or dict(control_blobs) != dict(materializer._M38_INITIAL_CONTROL_BLOBS)
         or set(control_blobs) != set(materializer._M38_OPERATOR_CONTROL_PATHS)
         or len(runtime_blobs) != 4
@@ -3263,8 +3266,6 @@ def _m38_source_chain_identity_state(
         == "PENDING_M38_INITIAL_CONTROL_COMMIT"
         and chain.get("initial_control_tree")
         == "PENDING_M38_INITIAL_CONTROL_TREE"
-        and chain.get("final_reseal_parent")
-        == "PENDING_M38_INITIAL_CONTROL_COMMIT"
         and dict(control_blobs) == expected_placeholder_blobs
     ):
         return "placeholder"
@@ -3383,7 +3384,7 @@ def _m38_pre_authoritative_custody_restart_successor_errors(
         if (
             state == "sealed"
             and expected_cid
-            != "sha256:b8275acc53fa5fcbce1186ff48f249adab7381828805e1545220547d259afaef"
+            != "sha256:887bc167b1996fa988c73106a062ddfbe798077cb0871ee3667ca82d14d5c00a"
         ):
             errors.append("M38 sealed custody restart CID differs")
         failed = expected.get("failed_m37_pre_authority_attempt", {})

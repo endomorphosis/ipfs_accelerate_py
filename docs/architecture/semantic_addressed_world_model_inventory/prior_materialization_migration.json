@@ -1,5 +1,5 @@
 {
-  "pre_authoritative_custody_restart_successor_materialization": {"authority_cid":"sha256:b8275acc53fa5fcbce1186ff48f249adab7381828805e1545220547d259afaef","migration_revision":"SAWM-R2-M38","schema":"sawm/operator-control-authority-reference@1"},
+  "pre_authoritative_custody_restart_successor_materialization": {"authority_cid":"sha256:887bc167b1996fa988c73106a062ddfbe798077cb0871ee3667ca82d14d5c00a","migration_revision":"SAWM-R2-M38","schema":"sawm/operator-control-authority-reference@1"},
   "post_reboot_generation_restart_successor_materialization": {"authority_cid":"sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795","migration_revision":"SAWM-R2-M37","schema":"sawm/operator-control-authority-reference@1"},
   "operator_task_binding_correction_successor_materialization": {"authority_cid":"sha256:d366f997c8972a3fb9a76ecd386c80f3a33d3001e215ca0f8cb60c0c653f760c","migration_revision":"SAWM-R2-M36","schema":"sawm/operator-control-authority-reference@1"},
   "immutable_authority_identity_normalization_successor_materialization": {"authority_cid":"sha256:be555c52e0ddf0737b1f3796ab21618e11226c7fae14d176c50d0cb4edfaf5d6","migration_revision":"SAWM-R2-M35","schema":"sawm/operator-control-authority-reference@1"},
