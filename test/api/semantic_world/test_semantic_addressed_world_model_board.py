@@ -5809,6 +5809,69 @@ def test_m43_dispatch_is_newest_and_receipt_follows_live_verification() -> None:
         "_M42_SUCCESSOR_KEY"
     )
 
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        DuckDBRow,
+    )
+
+    event_body = json.dumps(
+        {
+            "body": {
+                "receipt": {
+                    "attempt_id": "attempt-1",
+                    "claim_id": "claim-1",
+                    "lease_id": "lease-1",
+                    "operation": "attempt_lifecycle_recovered",
+                },
+                "revision": 11,
+                "status": "in_progress",
+                "task_alias": "SAWM-006",
+            }
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    quack_row = DuckDBRow(
+        ("event_id", "global_sequence", "body_json"),
+        ("event-293", 293, event_body),
+    )
+    cursor = SimpleNamespace(fetchall=lambda: [quack_row])
+    connection = SimpleNamespace(execute=lambda *_args: cursor)
+    assert materializer._m43_operational_suffix_on(connection) == [
+        {
+            "attempt_id": "attempt-1",
+            "claim_id": "claim-1",
+            "event_id": "event-293",
+            "global_sequence": 293,
+            "lease_id": "lease-1",
+            "operation": "attempt_lifecycle_recovered",
+            "revision": 11,
+            "status": "in_progress",
+            "task_alias": "SAWM-006",
+        }
+    ]
+    count_row = DuckDBRow(
+        ("evidence_event_count", "validation_event_count"),
+        (18, 1),
+    )
+    count_cursor = SimpleNamespace(fetchone=lambda: count_row)
+    count_connection = SimpleNamespace(execute=lambda *_args: count_cursor)
+    assert materializer._m43_event_type_counts_on(
+        count_connection, 296
+    ) == (18, 1)
+    assert "_m43_event_type_counts_on(" in inspect.getsource(
+        materializer._materialize_m43
+    )
+    assert "_m43_event_type_counts_on(" in inspect.getsource(
+        materializer._verify_m43_live_materialization
+    )
+    legacy_verifier = inspect.getsource(materializer._verify_store)
+    assert "recovery_revision_rows = _positional_rows(" in legacy_verifier
+    assert (
+        '"recorded_at": str(recovery_revision_rows[0][1])'
+        in legacy_verifier
+    )
+    assert '"recorded_at": recovery_event["recorded_at"]' not in legacy_verifier
+
 
 def test_m42_dispatch_precedes_m41_and_receipt_follows_live_verification() -> None:
     materializer = _load(

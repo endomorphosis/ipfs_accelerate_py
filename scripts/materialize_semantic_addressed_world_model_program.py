@@ -19998,6 +19998,22 @@ def _verify_store(
                     operational_event_ids[alias] = event["event_id"]
 
                 recovery_receipt = _task_recovery_receipt(population)
+                recovery_revision_rows = _positional_rows(
+                    connection.execute(
+                        "SELECT status, recorded_at FROM task_revisions "
+                        "WHERE task_cid = ? AND revision = ?",
+                        [migration["prior_task_cids"]["SAWM-001"], 7],
+                    ).fetchall(),
+                    2,
+                )
+                if (
+                    len(recovery_revision_rows) != 1
+                    or str(recovery_revision_rows[0][0]) != "todo"
+                    or not str(recovery_revision_rows[0][1])
+                ):
+                    raise MigrationRequired(
+                        "operator task-recovery revision differs"
+                    )
                 expected_recovery_body = {
                     "task_cid": migration["prior_task_cids"]["SAWM-001"],
                     "task_alias": "SAWM-001",
@@ -20006,7 +20022,10 @@ def _verify_store(
                     "status": "todo",
                     "revision": 7,
                     "receipt": recovery_receipt,
-                    "recorded_at": recovery_event["recorded_at"],
+                    # The task revision and its event envelope use consecutive
+                    # authority timestamps and may cross a clock tick. Bind
+                    # the nested task body to the exact revision row.
+                    "recorded_at": str(recovery_revision_rows[0][1]),
                 }
                 if (
                     recovery_event["event_type"]
@@ -60030,11 +60049,14 @@ def _verify_m43_preserved_m42_projection(
 
 
 def _m43_operational_suffix_on(connection: Any) -> list[dict[str, Any]]:
-    rows = connection.execute(
-        "SELECT event_id,global_sequence,body_json FROM domain_events "
-        "WHERE global_sequence>? AND global_sequence<=? ORDER BY global_sequence",
-        [_M42_TARGET_EVENT_WATERMARK, _M43_PRIOR_EVENT_WATERMARK],
-    ).fetchall()
+    rows = _positional_rows(
+        connection.execute(
+            "SELECT event_id,global_sequence,body_json FROM domain_events "
+            "WHERE global_sequence>? AND global_sequence<=? ORDER BY global_sequence",
+            [_M42_TARGET_EVENT_WATERMARK, _M43_PRIOR_EVENT_WATERMARK],
+        ).fetchall(),
+        3,
+    )
     normalized: list[dict[str, Any]] = []
     for event_id, sequence, raw_body in rows:
         envelope = _m38_parse_json(raw_body)
@@ -60056,6 +60078,33 @@ def _m43_operational_suffix_on(connection: Any) -> list[dict[str, Any]]:
             }
         )
     return normalized
+
+
+def _m43_event_type_counts_on(
+    connection: Any,
+    watermark: int,
+) -> tuple[int, int]:
+    """Normalize local tuple and live Quack mapping rows before comparison."""
+
+    row = connection.execute(
+        "SELECT "
+        "SUM(CASE WHEN event_type='intent.evidence_recorded' THEN 1 ELSE 0 END),"
+        "SUM(CASE WHEN event_type='intent.validation_recorded' THEN 1 ELSE 0 END) "
+        "FROM domain_events WHERE global_sequence<=?",
+        [watermark],
+    ).fetchone()
+    if row is None:
+        raise MigrationRequired("M43 event-type count row is unavailable")
+    try:
+        normalized = _positional_rows([row], 2)
+    except (IndexError, KeyError, TypeError) as exc:
+        raise MigrationRequired("M43 event-type count row is malformed") from exc
+    if (
+        len(normalized) != 1
+        or any(type(value) is not int for value in normalized[0])
+    ):
+        raise MigrationRequired("M43 event-type count row differs")
+    return normalized[0]
 
 
 def _check_m43_prestart_admission(
@@ -60207,13 +60256,8 @@ def _check_m43_prestart_admission(
         evidence_count = int(
             connection.execute("SELECT COUNT(*) FROM evidence_nodes").fetchone()[0]
         )
-        event_type_counts = tuple(
-            connection.execute(
-                "SELECT "
-                "SUM(CASE WHEN event_type='intent.evidence_recorded' THEN 1 ELSE 0 END),"
-                "SUM(CASE WHEN event_type='intent.validation_recorded' THEN 1 ELSE 0 END) "
-                "FROM domain_events"
-            ).fetchone()
+        event_type_counts = _m43_event_type_counts_on(
+            connection, _M43_PRIOR_EVENT_WATERMARK
         )
         task_rows = connection.execute(
             "SELECT task_alias,status,revision FROM tasks ORDER BY task_alias"
@@ -68641,14 +68685,8 @@ def _verify_m43_live_materialization(
         evidence_count = int(
             connection.execute("SELECT COUNT(*) FROM evidence_nodes").fetchone()[0]
         )
-        raw_counts = tuple(
-            connection.execute(
-                "SELECT "
-                "SUM(CASE WHEN event_type='intent.evidence_recorded' THEN 1 ELSE 0 END),"
-                "SUM(CASE WHEN event_type='intent.validation_recorded' THEN 1 ELSE 0 END) "
-                "FROM domain_events WHERE global_sequence<=?",
-                [_M43_TARGET_EVENT_WATERMARK],
-            ).fetchone()
+        raw_counts = _m43_event_type_counts_on(
+            connection, _M43_TARGET_EVENT_WATERMARK
         )
     if (
         not _m39_exact_row_matches(
@@ -72703,14 +72741,8 @@ def _materialize_m43(
                         "SELECT COUNT(*) FROM evidence_nodes"
                     ).fetchone()[0]
                 )
-                raw_counts = tuple(
-                    connection.execute(
-                        "SELECT "
-                        "SUM(CASE WHEN event_type='intent.evidence_recorded' THEN 1 ELSE 0 END),"
-                        "SUM(CASE WHEN event_type='intent.validation_recorded' THEN 1 ELSE 0 END) "
-                        "FROM domain_events WHERE global_sequence<=?",
-                        [_M43_PRIOR_EVENT_WATERMARK],
-                    ).fetchone()
+                raw_counts = _m43_event_type_counts_on(
+                    connection, _M43_PRIOR_EVENT_WATERMARK
                 )
             if (
                 legacy.get("target_event_id")
