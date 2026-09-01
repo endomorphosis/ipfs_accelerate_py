@@ -1999,7 +1999,49 @@ as completion nor grants a worker self-approval.  Reuse of the one-shot
 prestart authorization is rejected after generation 30 or the M37 receipt
 exists.
 
-## 46. M38 pre-authoritative custody restart successor
+## 46. M39 committed-M38-evidence reconciliation successor
+
+`SAWM-R2-M39` is the append-only successor for the partial M38 outcome. It
+preserves immutable event 291 and its evidence node exactly as committed by
+source `35b73c5505ac00eea1453d9f90a25b70235a3e92`, tree
+`20699f01927a26e9f4a5b432c1ca4217b170b846`, under historical M38 authority
+`sha256:c6d6c0b6951301d6b8bda94efade51d3e6ceb25dac3a82cdbc100e189c9cac19`.
+The M38 receipt is absent because the process stopped after the event commit
+and before receipt publication. M39 never reconstructs, rewrites, or
+retroactively receipts that event.
+
+The M39 authority CID is
+`sha256:7b986174605b4f2739abf69473d0ce27dfe880d551c55144f076b8f981f633c2`.
+Its source chain preserves the M38 control base
+`1ef0e89b5c4dd4418485adce4c9e6a0d66d18f94` / tree
+`cd02f2ea823e1369bc9d453c473a503929bb8d6a`, the canonical JSON comparison
+repair `146653af91fe3846cb98e49a54ae1173e3a3dc66` / tree
+`08c7ee04a5119ab091e70f4225303b83d2d8a5b0`, the complete-envelope correction
+`32d2966c4944157d664748c536cfa167f7ae38f5` / tree
+`eb62a255c6ebb8f15ebc9a69a9b850cb73e7983b`, and the sound event-derived
+projection repair `b581305f42ad4eda6b3d749680e79107c1c150b3` / tree
+`c870812938d25731d11a694a2365c1650c03204c`. The final M39 control commit must
+be the direct child of that C1 repair and modify exactly the nine protected
+operator-control paths.
+
+M39 remains on the exact ready generation-30 owner and authorizes no restart,
+owner replacement, database copy, or direct DuckDB writer. Through the live
+authenticated Quack owner it verifies the complete event-291 envelope,
+evidence identity, event prefix, task/goal/plan projection, semantic digest,
+and absence of both M37 and M38 receipts before appending exactly one distinct
+reconciliation evidence event 292. The target task/goal/plan projection is
+`baguqeera6t2s6prg5atpg4gkgrlmqclu34firbn4z2o3wsgv6btp7p6q66tq`.
+The sound projection derives 48 to 49 evidence nodes and 37 to 38 evidence
+events while retaining 11 validation and 11 passed-validation events.
+
+The non-authoritative `m39-source-successor-receipt.json` is published last
+and idempotently only after event 292 and the complete projection verify.
+Partial or mixed M39 declarations fail closed, and key presence selects M39
+before M38 even when the M39 value is null or malformed. No M39 action changes
+a task, goal, plan, accepted completion, coordination event, provider result,
+or implementation evidence, and no worker may approve the transition.
+
+## 47. M38 pre-authoritative custody restart successor
 
 `SAWM-R2-M38` preserves M37 as immutable source history and explicitly
 supersedes its failed, unmaterialized restart attempt. The module-form M37
@@ -2047,7 +2089,7 @@ verification compares canonical inner evidence/event bodies, including
 Quack envelope JSON. M38 is selected before M37 only when its complete
 protected-control triplet and source chain validate.
 
-## 47. Current limitations at seal time
+## 48. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

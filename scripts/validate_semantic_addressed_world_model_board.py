@@ -388,7 +388,31 @@ def _m16_migration_errors(
         return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
-    # Live M38 event bodies are Quack envelopes; verification uses inner JSON.
+def _m39_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Reuse the exact M39 committed-event reconciliation contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m39_committed_m38_evidence_reconciliation_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
+            )
+        )
+    except Exception as exc:
+        return [f"M39 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+# Live M38 event bodies are Quack envelopes; verification compares canonical JSON.
 def _m38_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -924,12 +948,60 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M38 before every historical successor.  Consequently
+    Key presence selects M39 before every historical successor. Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m39_key = "committed_m38_evidence_reconciliation_successor_materialization"
+    m39_presence = (
+        m39_key in scheduler,
+        m39_key in migration,
+        f"{m39_key}_cid" in seal,
+    )
+    if any(m39_presence):
+        errors = _m39_migration_errors(scheduler, seal, migration)
+        if not all(m39_presence):
+            errors.append("M39 reconciliation authority is only partially declared")
+        # M38 ended after its event commit but before receipt publication. Mask
+        # its live/source-head validator only after M39 verifies the immutable
+        # event-291 authority and the complete three-surface successor seal.
+        if errors:
+            return errors
+        for validator in (
+            _m36_migration_errors,
+            _m35_migration_errors,
+            _m34_migration_errors,
+            _m33_migration_errors,
+            _m32_migration_errors,
+            _m31_migration_errors,
+            _m30_migration_errors,
+            _m29_migration_errors,
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(
+                    scheduler,
+                    seal,
+                    migration,
+                    require_active_runtime=False,
+                )
+            )
+        return errors
 
     m38_key = "pre_authoritative_custody_restart_successor_materialization"
     m38_presence = (
@@ -3551,6 +3623,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m39_key = "committed_m38_evidence_reconciliation_successor_materialization"
+    m39_selected = any(
+        (
+            m39_key in config,
+            m39_key in migration,
+            f"{m39_key}_cid" in seal,
+        )
+    )
     m38_key = "pre_authoritative_custody_restart_successor_materialization"
     m38_selected = any(
         (
@@ -3680,7 +3760,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     multi_lane_selected = (
-        m38_selected
+        m39_selected
+        or m38_selected
         or m37_selected
         or m36_selected
         or m35_selected
@@ -3703,7 +3784,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or config.get("max_lanes") != expected_lane_count
     ):
         config_errors.append(
-            "four lanes are required for M38/M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
+            "four lanes are required for M39/M38/M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
             if multi_lane_selected
             else "one lane is required until sidecars are lane-scoped"
         )
@@ -3885,6 +3966,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m39_selected
+        else "run-r2-m27"
         if m38_selected
         else "run-r2-m27"
         if m37_selected
@@ -3949,6 +4032,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_generation = (
         "30"
+        if m39_selected
+        else "30"
         if m38_selected
         else "30"
         if m37_selected
@@ -4013,6 +4098,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m39_selected
+        else 24070
         if m38_selected
         else 24070
         if m37_selected
@@ -4090,7 +4177,78 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m38_selected:
+    if m39_selected:
+        successor = config.get(m39_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer._expected_m39_committed_m38_evidence_reconciliation_authority()
+            )
+            reference = dict(materializer._m39_authority_reference())
+            expected_seal_cid = materializer._identity(expected)
+            source_chain = expected.get("source_chain", {})
+            prior = expected.get("prior_authority", {})
+            contract = expected.get("live_preflight_contract", {})
+            preservation = expected.get("preservation", {})
+            if (
+                successor != reference
+                or migration.get(m39_key) != reference
+                or seal.get(f"{m39_key}_cid") != expected_seal_cid
+                or expected_seal_cid
+                != "sha256:7b986174605b4f2739abf69473d0ce27dfe880d551c55144f076b8f981f633c2"
+                or expected.get("schema")
+                != "sawm/committed-m38-evidence-reconciliation-successor-authorization@1"
+                or expected.get("migration_revision") != "SAWM-R2-M39"
+                or expected.get("target_generation") != 30
+                or expected.get("target_event_watermark") != 292
+                or expected.get("target_projection_cid")
+                != "baguqeera6t2s6prg5atpg4gkgrlmqclu34firbn4z2o3wsgv6btp7p6q66tq"
+                or source_chain.get("base_control_commit")
+                != "1ef0e89b5c4dd4418485adce4c9e6a0d66d18f94"
+                or source_chain.get("json_comparison_repair_commit")
+                != "146653af91fe3846cb98e49a54ae1173e3a3dc66"
+                or source_chain.get("canonical_envelope_repair_commit")
+                != "32d2966c4944157d664748c536cfa167f7ae38f5"
+                or source_chain.get("materializer_repair_commit")
+                != "b581305f42ad4eda6b3d749680e79107c1c150b3"
+                or source_chain.get("materializer_repair_tree")
+                != "c870812938d25731d11a694a2365c1650c03204c"
+                or source_chain.get("final_control_parent")
+                != "b581305f42ad4eda6b3d749680e79107c1c150b3"
+                or int(source_chain.get("bounded_repair_commit_count") or 0) != 3
+                or prior.get("event_watermark") != 291
+                or prior.get("receipt_present") is not False
+                or prior.get("authorization_cid")
+                != "sha256:c6d6c0b6951301d6b8bda94efade51d3e6ceb25dac3a82cdbc100e189c9cac19"
+                or contract.get("generation_restart_authorized") is not False
+                or contract.get("m38_receipt_must_be_absent") is not True
+                or preservation.get("committed_m38_event_291_preserved_exactly")
+                is not True
+                or preservation.get("m38_receipt_created_or_rewritten") is not False
+                or module._m39_committed_m38_evidence_reconciliation_successor_errors(
+                    config, seal, migration, root=root
+                )
+            ):
+                config_errors.append(
+                    "M39 committed-M38 reconciliation authority/CID/source differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M39 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M39 active runtime paths are not exactly preserved")
+    elif m38_selected:
         successor = config.get(m38_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"

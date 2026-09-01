@@ -3197,7 +3197,216 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
-    # Live M38 event bodies are Quack envelopes; verification uses inner JSON.
+def _m39_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    """Return true when any protected surface declares the M39 successor."""
+
+    key = "committed_m38_evidence_reconciliation_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m39_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    """Require the exact bounded repairs and direct nine-path M39 control child."""
+
+    try:
+        chain = authority.get("source_chain", {})
+        json_blobs = chain.get("json_comparison_repair_blobs", {})
+        envelope_blobs = chain.get("canonical_envelope_repair_blobs", {})
+        materializer_blobs = chain.get("materializer_repair_blobs", {})
+        if (
+            not isinstance(chain, Mapping)
+            or not isinstance(json_blobs, Mapping)
+            or not isinstance(envelope_blobs, Mapping)
+            or not isinstance(materializer_blobs, Mapping)
+            or chain.get("base_control_commit")
+            != "1ef0e89b5c4dd4418485adce4c9e6a0d66d18f94"
+            or chain.get("base_control_tree")
+            != "cd02f2ea823e1369bc9d453c473a503929bb8d6a"
+            or chain.get("json_comparison_repair_parent")
+            != "1ef0e89b5c4dd4418485adce4c9e6a0d66d18f94"
+            or chain.get("json_comparison_repair_commit")
+            != "146653af91fe3846cb98e49a54ae1173e3a3dc66"
+            or chain.get("json_comparison_repair_tree")
+            != "08c7ee04a5119ab091e70f4225303b83d2d8a5b0"
+            or dict(json_blobs)
+            != dict(materializer._M39_JSON_COMPARISON_REPAIR_BLOBS)
+            or chain.get("canonical_envelope_repair_parent")
+            != "146653af91fe3846cb98e49a54ae1173e3a3dc66"
+            or chain.get("canonical_envelope_repair_commit")
+            != "32d2966c4944157d664748c536cfa167f7ae38f5"
+            or chain.get("canonical_envelope_repair_tree")
+            != "eb62a255c6ebb8f15ebc9a69a9b850cb73e7983b"
+            or dict(envelope_blobs)
+            != dict(materializer._M39_CANONICAL_ENVELOPE_REPAIR_BLOBS)
+            or chain.get("materializer_repair_parent")
+            != "32d2966c4944157d664748c536cfa167f7ae38f5"
+            or chain.get("materializer_repair_commit")
+            != "b581305f42ad4eda6b3d749680e79107c1c150b3"
+            or chain.get("materializer_repair_tree")
+            != "c870812938d25731d11a694a2365c1650c03204c"
+            or dict(materializer_blobs)
+            != dict(materializer._M39_MATERIALIZER_REPAIR_BLOBS)
+            or int(chain.get("bounded_repair_commit_count") or 0) != 3
+            or chain.get("final_control_parent")
+            != "b581305f42ad4eda6b3d749680e79107c1c150b3"
+            or chain.get("final_control_commit_is_current_head") is not True
+            or int(chain.get("final_control_commit_count") or 0) != 1
+            or set(authority.get("operator_control_paths", ()))
+            != set(materializer._M39_OPERATOR_CONTROL_PATHS)
+            or set(materializer_blobs)
+            != {
+                "scripts/materialize_semantic_addressed_world_model_program.py",
+                "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+            }
+            or set(envelope_blobs)
+            != {"scripts/materialize_semantic_addressed_world_model_program.py"}
+            or len(json_blobs) != 8
+        ):
+            raise RuntimeError("M39 sealed source-chain identity fields differ")
+        if not hasattr(materializer, "_assert_m39_source_delta"):
+            raise RuntimeError("M39 final source-delta verifier is unavailable")
+        population = materializer.build_population(root)
+        materializer._assert_m39_source_delta(root, population, authority)
+        return []
+    except Exception as exc:
+        return [
+            "M39 exact bounded-repair/control source chain differs: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m39_committed_m38_evidence_reconciliation_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Validate M39 before permitting it to mask M38's partial live attempt."""
+
+    key = "committed_m38_evidence_reconciliation_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m39_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M39 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer._expected_m39_committed_m38_evidence_reconciliation_authority()
+        )
+        contract = materializer._validated_m39_live_preflight_contract(expected)
+        reference = dict(materializer._m39_authority_reference())
+        expected_cid = materializer._identity(expected)
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append("M39 reconciliation authority is only partially declared")
+        if scheduler.get(key) != reference or migration.get(key) != reference:
+            errors.append("M39 reconciliation reference differs")
+        if seal.get(f"{key}_cid") != expected_cid:
+            errors.append("M39 reconciliation CID differs")
+        materializer._assert_m39_historical_m38_controls(
+            scheduler, migration, seal
+        )
+        prior = expected.get("prior_authority", {})
+        derivation = expected.get("target_projection_derivation", {})
+        preservation = expected.get("preservation", {})
+        changes = expected.get("exact_changes", {})
+        required_functions = (
+            "_assert_m39_source_delta",
+            "_m39_expected_historical_m38_rows",
+            "_verify_m39_committed_m38_event",
+            "_inspect_m39_live_projection",
+            "_verify_m39_live_materialization",
+            "_expected_m39_source_successor_receipt",
+            "_materialize_m39",
+            "_check_m39_materialized",
+        )
+        if (
+            expected.get("schema")
+            != "sawm/committed-m38-evidence-reconciliation-successor-authorization@1"
+            or expected.get("migration_revision") != "SAWM-R2-M39"
+            or expected.get("migration_kind") != key
+            or expected.get("supersession_mode")
+            != "append_only_committed_m38_evidence_reconciliation_source_seal"
+            or expected_cid
+            != "sha256:7b986174605b4f2739abf69473d0ce27dfe880d551c55144f076b8f981f633c2"
+            or expected.get("target_generation") != 30
+            or expected.get("target_event_watermark") != 292
+            or expected.get("target_projection_cid")
+            != "baguqeera6t2s6prg5atpg4gkgrlmqclu34firbn4z2o3wsgv6btp7p6q66tq"
+            or prior.get("event_watermark") != 291
+            or prior.get("event_id")
+            != "baguqeeraixekx362a3e3ip42kxxpfkw23fldkpf74iqcnwkv3ihmibb3ibaq"
+            or prior.get("evidence_id")
+            != "baguqeeraycvlnf2opjttijhwva5ve4shweerffcgl4jq2sjyxwal5gojmoka"
+            or prior.get("authorization_cid")
+            != "sha256:c6d6c0b6951301d6b8bda94efade51d3e6ceb25dac3a82cdbc100e189c9cac19"
+            or prior.get("receipt_present") is not False
+            or prior.get("failure_stage")
+            != "after_event_commit_before_receipt_publication"
+            or contract.get("generation_restart_authorized") is not False
+            or contract.get("m38_receipt_must_be_absent") is not True
+            or contract.get("prior_event_watermark") != 291
+            or contract.get("target_event_watermark") != 292
+            or derivation.get("recomputed_not_inherited") is not True
+            or preservation.get("committed_m38_event_291_preserved_exactly")
+            is not True
+            or preservation.get("m38_receipt_created_or_rewritten") is not False
+            or preservation.get("same_live_generation_30_owner") is not True
+            or changes.get("event_suffix_length") != 1
+            or changes.get("evidence_node_changes") != 1
+            or changes.get("evidence_event_changes") != 1
+            or changes.get("store_generation_row_changes") != 0
+            or changes.get("state_server_row_changes") != 0
+            or changes.get("accepted_completion_changes") != 0
+            or any(not hasattr(materializer, name) for name in required_functions)
+        ):
+            errors.append("M39 committed-M38 reconciliation delta is not exact")
+        if require_active_runtime:
+            runtime = scheduler.get("runtime_paths")
+            program = scheduler.get("database_program")
+            owner = scheduler.get("quack_owner")
+            target_root = str(expected["target_runtime_root"])
+            if (
+                not isinstance(program, Mapping)
+                or program.get("store_generation") != "30"
+                or program.get("store_id") != expected["target_store_id"]
+                or not isinstance(owner, Mapping)
+                or owner.get("database_path") != expected["target_store_id"]
+                or owner.get("port") != 24_070
+                or runtime
+                != {
+                    "root": target_root,
+                    "state": f"{target_root}/state",
+                    "worktrees": f"{target_root}/worktrees",
+                    "merge_queue": f"{target_root}/merge-queue",
+                    "logs": f"{target_root}/logs",
+                    "generated_runtime_artifacts_are_completion_authority": False,
+                }
+            ):
+                errors.append("scheduler M39 target/runtime binding is not exact")
+        errors.extend(_m39_source_chain_errors(root, materializer, expected))
+        return errors
+    except Exception as exc:
+        return [
+            "M39 committed-M38 reconciliation authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+# Live M38 event bodies are Quack envelopes; verification compares canonical JSON.
 def _m38_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -10939,6 +11148,69 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m39_key = "committed_m38_evidence_reconciliation_successor_materialization"
+    m39_presence = (
+        m39_key in scheduler,
+        m39_key in migration,
+        f"{m39_key}_cid" in seal,
+    )
+    if any(m39_presence):
+        if not all(m39_presence):
+            return effective, ["active M39 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m39_nested_source_materializer",
+                REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M39 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer._expected_m39_committed_m38_evidence_reconciliation_authority()
+            )
+            materializer._validated_m39_live_preflight_contract(authority)
+            reference = dict(materializer._m39_authority_reference())
+            expected_cid = materializer._identity(authority)
+            materializer._assert_m39_historical_m38_controls(
+                scheduler, migration, seal
+            )
+        except Exception as exc:
+            return effective, [f"active M39 nested-source authority unavailable: {exc}"]
+        if (
+            scheduler.get(m39_key) != reference
+            or migration.get(m39_key) != reference
+            or seal.get(f"{m39_key}_cid") != expected_cid
+            or expected_cid
+            != "sha256:7b986174605b4f2739abf69473d0ce27dfe880d551c55144f076b8f981f633c2"
+        ):
+            return effective, ["active M39 nested-source authority differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(authority.get("current_datasets_gitlink") or ""),
+                str(authority.get("current_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(authority.get("current_kit_gitlink") or ""),
+                str(authority.get("current_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M39 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     m38_key = "pre_authoritative_custody_restart_successor_materialization"
     m38_presence = (
         m38_key in scheduler,
@@ -11847,6 +12119,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m39_key = "committed_m38_evidence_reconciliation_successor_materialization"
+        m39_presence = (
+            m39_key in scheduler_probe,
+            m39_key in migration_probe,
+            f"{m39_key}_cid" in seal,
+        )
         m38_key = "pre_authoritative_custody_restart_successor_materialization"
         m38_presence = (
             m38_key in scheduler_probe,
@@ -11969,7 +12247,38 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m38_presence):
+        if any(m39_presence):
+            scheduled = scheduler_probe.get(m39_key)
+            migrated = migration_probe.get(m39_key)
+            if not all(m39_presence) or scheduled != migrated:
+                unexpected = ["M39 authority is partial or differs across controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m39_source_status_materializer",
+                    root / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M39 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer._expected_m39_committed_m38_evidence_reconciliation_authority()
+                    )
+                    reference = dict(materializer._m39_authority_reference())
+                    expected_seal_cid = materializer._identity(expected)
+                    if (
+                        scheduled != reference
+                        or seal.get(f"{m39_key}_cid") != expected_seal_cid
+                        or expected_seal_cid
+                        != "sha256:7b986174605b4f2739abf69473d0ce27dfe880d551c55144f076b8f981f633c2"
+                    ):
+                        unexpected = ["M39 authority/CID differs across controls"]
+                    else:
+                        unexpected = _m39_source_chain_errors(
+                            root, materializer, expected
+                        )
+        elif any(m38_presence):
             scheduled = scheduler_probe.get(m38_key)
             migrated = migration_probe.get(m38_key)
             if not all(m38_presence) or scheduled != migrated:
@@ -13050,6 +13359,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m39_declared = _m39_successor_declared(scheduler, seal, migration)
         m38_declared = _m38_successor_declared(scheduler, seal, migration)
         m37_declared = _m37_successor_declared(scheduler, seal, migration)
         m36_declared = _m36_successor_declared(scheduler, seal, migration)
@@ -13064,7 +13374,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m38_declared
+            m39_declared
+            or m38_declared
             or m37_declared
             or m36_declared
             or m35_declared
@@ -13079,7 +13390,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m38_declared:
+            if m39_declared:
+                protocol_errors.extend(
+                    _m39_committed_m38_evidence_reconciliation_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+            if m38_declared and not m39_declared:
                 protocol_errors.extend(
                     _m38_pre_authoritative_custody_restart_successor_errors(
                         scheduler, seal, migration, root=root
@@ -13098,7 +13415,9 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not (m38_declared or m37_declared),
+                        require_active_runtime=not (
+                            m39_declared or m38_declared or m37_declared
+                        ),
                     )
                 )
             if m35_declared:

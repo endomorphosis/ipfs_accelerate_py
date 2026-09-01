@@ -1390,6 +1390,145 @@ _M33_PLAN_MIGRATION_DIGEST = (
     "sha256:43eb5eb9b3f05c6ffe00c918901524e61c4a94a8d7334a3a3261ef95870cc73b"
 )
 
+# M39 preserves the already-committed M38 event 291 exactly as written by the
+# historical 35b73c5 source.  That event and its evidence-node projection are
+# authoritative history even though the M38 process stopped before publishing
+# its non-authoritative receipt.  M39 never reconstructs event 291 from the
+# newer M38 source controls.  It verifies the complete immutable event/evidence
+# projection and appends one adjacent reconciliation evidence event through the
+# same exact live generation-30 Quack owner, publishing its receipt last.
+_M39_MIGRATION_REVISION = "SAWM-R2-M39"
+_M39_SUPERSESSION_MODE = (
+    "append_only_committed_m38_evidence_reconciliation_source_seal"
+)
+_M39_SUPERSESSION_REASON = (
+    "committed_m38_evidence_reconciliation_successor_materialization"
+)
+_M39_CONTROL_RECORDED_AT = "2026-09-01T02:30:00Z"
+_M39_PRIOR_EVENT_WATERMARK = 291
+_M39_TARGET_EVENT_WATERMARK = 292
+_M39_TARGET_GENERATION = 30
+_M39_TARGET_PLAN_REVISION = 28
+_M39_TARGET_QUACK_PORT = 24_070
+_M39_PRIOR_EVENT_PREFIX_SHA256 = (
+    "b165e93caaff9ecffb1c29512e83795f2ce516d75a7bfbff8aed1ca714a57f0d"
+)
+_M39_PRIOR_PROJECTION_CID = (
+    "baguqeeravycbuo73fyu5mpad55qi5duk3la53lubqeu7nu6kjtnahehjtnsq"
+)
+_M39_TARGET_PROJECTION_CID = (
+    "baguqeera6t2s6prg5atpg4gkgrlmqclu34firbn4z2o3wsgv6btp7p6q66tq"
+)
+_M39_SEMANTIC_AUTHORITY_DIGEST = (
+    "sha256:f51d9cb949538441218254297e279fa2bf5884e1bdc9d20693cf8213db841dde"
+)
+_M39_PRIOR_EVIDENCE_NODE_COUNT = 48
+_M39_PRIOR_EVIDENCE_EVENT_COUNT = 37
+_M39_PRIOR_VALIDATION_EVENT_COUNT = 11
+_M39_PRIOR_PASSED_VALIDATION_EVENT_COUNT = 11
+_M39_TARGET_EVIDENCE_NODE_COUNT = 49
+_M39_TARGET_EVIDENCE_EVENT_COUNT = 38
+_M39_TARGET_VALIDATION_EVENT_COUNT = 11
+_M39_TARGET_PASSED_VALIDATION_EVENT_COUNT = 11
+_M39_M38_EVENT_ID = (
+    "baguqeeraixekx362a3e3ip42kxxpfkw23fldkpf74iqcnwkv3ihmibb3ibaq"
+)
+_M39_M38_EVIDENCE_ID = (
+    "baguqeeraycvlnf2opjttijhwva5ve4shweerffcgl4jq2sjyxwal5gojmoka"
+)
+_M39_M38_EVIDENCE_DIGEST = (
+    "sha256:53b389c65a2ca7ccb7fabb3709374b99a9ecbfa27587499783283edc4c2738ed"
+)
+_M39_M38_EVIDENCE_KIND = (
+    "operator_control_plane_pre_authoritative_custody_restart_successor"
+)
+_M39_M38_RECORDED_AT = "2026-09-01T01:10:00Z"
+_M39_M38_SOURCE_HEAD = "35b73c5505ac00eea1453d9f90a25b70235a3e92"
+_M39_M38_SOURCE_TREE = "20699f01927a26e9f4a5b432c1ca4217b170b846"
+_M39_M38_SOURCE_BINDING_CID = (
+    "sha256:3b126920c07fafb7e0758657051e0e0d7a210e76ceaeb4f2cfcdad5be7b65ddc"
+)
+_M39_M38_AUTHORITY_CID = (
+    "sha256:c6d6c0b6951301d6b8bda94efade51d3e6ceb25dac3a82cdbc100e189c9cac19"
+)
+_M39_M38_PROGRAM_DEFINITION_CID = (
+    "sha256:f581af1f2234c127231b47bb1bb8d42910b984dcd1bece9a6303949ac1ba0b72"
+)
+_M39_M38_VALIDATION_DIGEST = (
+    "sha256:fe41ed6490f3a4c374d867fd341380ef60642d372b0b23c83d744287bd2f2ce2"
+)
+_M39_OPERATOR_TASK_CID = (
+    "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6"
+)
+_M39_LIVE_SERVER_ID = "server:b9be27fb-cb7f-4cf3-919f-8e9807cd9e9d"
+_M39_LIVE_PROCESS_BIRTH_ID = "birth:35978a75d075a1770e4da1f973a6f78b"
+_M39_LIVE_STARTED_AT = "2026-09-01T01:58:03Z"
+_M39_BASE_CONTROL_COMMIT = "1ef0e89b5c4dd4418485adce4c9e6a0d66d18f94"
+_M39_BASE_CONTROL_TREE = "cd02f2ea823e1369bc9d453c473a503929bb8d6a"
+_M39_JSON_COMPARISON_REPAIR_COMMIT = "146653af91fe3846cb98e49a54ae1173e3a3dc66"
+_M39_JSON_COMPARISON_REPAIR_TREE = "08c7ee04a5119ab091e70f4225303b83d2d8a5b0"
+_M39_JSON_COMPARISON_REPAIR_BLOBS = MappingProxyType(
+    {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "4fd06d8142358b45139cd660a5e774d34dab6a85"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "b0e41e59b09b0f1ad91b59c59ec04ddd393bd768"
+        ),
+        (
+            "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ): "3f7c9bd250c5e9a07247bca568bb8a972ee9a201",
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "782ab9a753c5466e1b593e7359ec7e7ae6c4848e"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "1c67fc4034b26effde5f644ceaabc51eb7a4fade"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "7686b554ed1c958c44784a7224078b0da603ad90"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "e3d8ea3b53391756b8826e5960db2b3aad5ab8ae"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "97a89360db198072c5921b18560db89e49268b9f"
+        ),
+    }
+)
+_M39_CANONICAL_ENVELOPE_REPAIR_COMMIT = (
+    "32d2966c4944157d664748c536cfa167f7ae38f5"
+)
+_M39_CANONICAL_ENVELOPE_REPAIR_TREE = (
+    "eb62a255c6ebb8f15ebc9a69a9b850cb73e7983b"
+)
+_M39_CANONICAL_ENVELOPE_REPAIR_BLOBS = MappingProxyType(
+    {
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "34e6fa8b004e217ada75ae10da38f82ea3676886"
+        )
+    }
+)
+_M39_MATERIALIZER_REPAIR_COMMIT = "b581305f42ad4eda6b3d749680e79107c1c150b3"
+_M39_MATERIALIZER_REPAIR_TREE = "c870812938d25731d11a694a2365c1650c03204c"
+_M39_MATERIALIZER_REPAIR_BLOBS = MappingProxyType(
+    {
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "ccfa02b30789ed2848e9ea73bc820ce488178f5e"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "09726fa633acca33ade4a2003d7df5f0bd980b01"
+        ),
+    }
+)
+_M39_OPERATOR_CONTROL_PATHS = frozenset(_M33_OPERATOR_CONTROL_PATHS)
+_M39_STORE_ID = _M33_STORE_ID
+_M39_COORDINATION_STORE_ID = _M33_COORDINATION_STORE_ID
+_M39_RUNTIME_ROOT = _M33_RUNTIME_ROOT
+_M39_WORKTREE_ROOT = _M33_WORKTREE_ROOT
+_M39_DATABASE_UUID = _M33_DATABASE_UUID
+_M39_EXTENSION_FINGERPRINT = _M33_EXTENSION_FINGERPRINT
+
 # M38 preserves M37 as an immutable, failed, pre-authoritative attempt.  The
 # failed native start normalized the physical DuckDB checkpoint/read replica,
 # but it did not publish a generation-30 owner, event 291, or an M37 receipt.
@@ -7719,6 +7858,340 @@ def _validated_m38_live_preflight_contract(
     return contract
 
 
+def _m39_historical_m38_authority() -> dict[str, Any]:
+    """Reconstruct only the authority that immutable event 291 actually bound."""
+
+    authority = json.loads(
+        _canonical(
+            _expected_m38_pre_authoritative_custody_restart_authority()
+        ).decode("utf-8")
+    )
+    chain = authority["source_chain"]
+    for prefix in ("third", "fourth", "fifth"):
+        for suffix in ("parent", "commit", "tree"):
+            chain.pop(f"{prefix}_reseal_{suffix}", None)
+    chain["final_reseal_parent"] = _M38_SECOND_RESEAL_COMMIT
+    chain["final_reseal_commit_count"] = 3
+    chain["control_commit_count"] = 4
+    if _identity(authority) != _M39_M38_AUTHORITY_CID:
+        raise MaterializationError(
+            "M39 historical event-291 M38 authority reconstruction differs"
+        )
+    return authority
+
+
+def _m39_historical_m38_body(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the exact M38 body committed at event 291, never a newer rewrite."""
+
+    authority = _m39_historical_m38_authority()
+    body = {
+        "schema": "sawm/pre-authoritative-custody-restart-source-seal@1",
+        "authority": "operator_control_plane",
+        "migration_revision": _M38_MIGRATION_REVISION,
+        "migration_kind": _M38_SUPERSESSION_REASON,
+        "supersession_mode": _M38_SUPERSESSION_MODE,
+        "program_definition_cid": _M39_M38_PROGRAM_DEFINITION_CID,
+        "current_source_binding_cid": _M39_M38_SOURCE_BINDING_CID,
+        "current_source_head": _M39_M38_SOURCE_HEAD,
+        "current_source_tree": _M39_M38_SOURCE_TREE,
+        "validation_digest": _M39_M38_VALIDATION_DIGEST,
+        "authorization_cid": _M39_M38_AUTHORITY_CID,
+        "runtime_binding": authority["runtime_binding"],
+        "prior_authority": authority["prior_authority"],
+        "m36_historical_anchor": authority["m36_historical_anchor"],
+        "post_m36_operational_suffix": authority["post_m36_operational_suffix"],
+        "stopped_owner": authority["stopped_owner"],
+        "stale_owner_recovery": authority["stale_owner_recovery"],
+        "superseded_m37_authority": authority["superseded_m37_authority"],
+        "failed_m37_pre_authority_attempt": authority[
+            "failed_m37_pre_authority_attempt"
+        ],
+        "pre_authoritative_custody_repair": authority[
+            "pre_authoritative_custody_repair"
+        ],
+        "stale_lane_pid_repair": authority["stale_lane_pid_repair"],
+        "preserved_plan_anchor": authority["preserved_plan_anchor"],
+        "live_preflight_contract": authority["live_preflight_contract"],
+        "target_authority": authority["target_authority"],
+        "target_projection_derivation": authority[
+            "target_projection_derivation"
+        ],
+        "accepted_control_plane_repair": authority[
+            "accepted_control_plane_repair"
+        ],
+        "source_chain": authority["source_chain"],
+        "exact_changes": authority["exact_changes"],
+        "preservation": authority["preservation"],
+        "authenticated_mutation_route": {
+            "transport": "quack_proxy_only",
+            "pre_authoritative_custody_repair_source_verified": True,
+            "endpoint_from_live_owner_discovery": True,
+            "token_from_secret_handoff_or_environment_only": True,
+            "token_in_argv": False,
+            "token_in_evidence": False,
+            "direct_authoritative_file_opened": False,
+        },
+        "scheduler_runtime_root": config["runtime_paths"]["root"],
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    if (
+        _identity(body) != _M39_M38_EVIDENCE_DIGEST
+        or body["current_source_head"] != _M39_M38_SOURCE_HEAD
+        or body["current_source_tree"] != _M39_M38_SOURCE_TREE
+    ):
+        raise MaterializationError("M39 historical M38 event body differs")
+    return body
+
+
+def _expected_m39_committed_m38_evidence_reconciliation_authority() -> dict[str, Any]:
+    """Return the closed append-only authority for reconciling event 291."""
+
+    m38 = _expected_m38_pre_authoritative_custody_restart_authority()
+    historical_m38 = _m39_historical_m38_authority()
+    runtime = dict(m38["runtime_binding"])
+    runtime.update(
+        {
+            "prior_event_watermark": _M39_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M39_TARGET_EVENT_WATERMARK,
+            "store_generation": _M39_TARGET_GENERATION,
+        }
+    )
+    return {
+        "schema": (
+            "sawm/committed-m38-evidence-reconciliation-successor-authorization@1"
+        ),
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": _M39_MIGRATION_REVISION,
+        "migration_kind": _M39_SUPERSESSION_REASON,
+        "supersession_mode": _M39_SUPERSESSION_MODE,
+        "control_recorded_at": _M39_CONTROL_RECORDED_AT,
+        "target_store_id": _M39_STORE_ID,
+        "target_coordination_store_id": _M39_COORDINATION_STORE_ID,
+        "target_runtime_root": _M39_RUNTIME_ROOT,
+        "target_generation": _M39_TARGET_GENERATION,
+        "target_quack_port": _M39_TARGET_QUACK_PORT,
+        "target_plan_revision": _M39_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M39_TARGET_EVENT_WATERMARK,
+        "target_projection_cid": _M39_TARGET_PROJECTION_CID,
+        "prior_database_uuid": _M39_DATABASE_UUID,
+        "runtime_binding": runtime,
+        "prior_authority": {
+            "schema": "sawm/committed-m38-evidence-event-authority@1",
+            "migration_revision": _M38_MIGRATION_REVISION,
+            "event_watermark": _M39_PRIOR_EVENT_WATERMARK,
+            "event_id": _M39_M38_EVENT_ID,
+            "event_type": "intent.evidence_recorded",
+            "evidence_id": _M39_M38_EVIDENCE_ID,
+            "evidence_kind": _M39_M38_EVIDENCE_KIND,
+            "evidence_digest": _M39_M38_EVIDENCE_DIGEST,
+            "operator_task_cid": _M39_OPERATOR_TASK_CID,
+            "recorded_at": _M39_M38_RECORDED_AT,
+            "owner_id": "sawm-r2-m38-live-source-sealer",
+            "source_head": _M39_M38_SOURCE_HEAD,
+            "source_tree": _M39_M38_SOURCE_TREE,
+            "source_binding_cid": _M39_M38_SOURCE_BINDING_CID,
+            "authorization_cid": _M39_M38_AUTHORITY_CID,
+            "program_definition_cid": _M39_M38_PROGRAM_DEFINITION_CID,
+            "validation_digest": _M39_M38_VALIDATION_DIGEST,
+            "event_prefix_sha256": _M39_PRIOR_EVENT_PREFIX_SHA256,
+            "projection_cid": _M39_PRIOR_PROJECTION_CID,
+            "semantic_authority_digest": _M39_SEMANTIC_AUTHORITY_DIGEST,
+            "evidence_node_count": _M39_PRIOR_EVIDENCE_NODE_COUNT,
+            "evidence_event_count": _M39_PRIOR_EVIDENCE_EVENT_COUNT,
+            "validation_event_count": _M39_PRIOR_VALIDATION_EVENT_COUNT,
+            "passed_validation_event_count": (
+                _M39_PRIOR_PASSED_VALIDATION_EVENT_COUNT
+            ),
+            "receipt_path": f"{_M39_RUNTIME_ROOT}/m38-source-successor-receipt.json",
+            "receipt_present": False,
+            "failure_stage": "after_event_commit_before_receipt_publication",
+            "immutable_and_not_reconstructed": True,
+        },
+        "historical_m38_authority": historical_m38,
+        "historical_m38_reference": {
+            "schema": "sawm/operator-control-authority-reference@1",
+            "migration_revision": _M38_MIGRATION_REVISION,
+            "authority_cid": _M39_M38_AUTHORITY_CID,
+        },
+        "live_preflight_contract": {
+            "schema": "sawm/live-preflight-contract@1",
+            "migration_revision": _M39_MIGRATION_REVISION,
+            "successor_class": "committed_m38_evidence_reconciliation",
+            "target_store_id": _M39_STORE_ID,
+            "database_uuid": _M39_DATABASE_UUID,
+            "target_generation": _M39_TARGET_GENERATION,
+            "prior_event_watermark": _M39_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M39_TARGET_EVENT_WATERMARK,
+            "target_plan_revision": _M39_TARGET_PLAN_REVISION,
+            "prior_projection_cid": _M39_PRIOR_PROJECTION_CID,
+            "target_projection_cid": _M39_TARGET_PROJECTION_CID,
+            "prior_event_id": _M39_M38_EVENT_ID,
+            "prior_evidence_id": _M39_M38_EVIDENCE_ID,
+            "semantic_authority_digest": _M39_SEMANTIC_AUTHORITY_DIGEST,
+            "live_server_id": _M39_LIVE_SERVER_ID,
+            "live_process_birth_id": _M39_LIVE_PROCESS_BIRTH_ID,
+            "live_started_at": _M39_LIVE_STARTED_AT,
+            "generation_restart_authorized": False,
+            "m37_receipt_must_be_absent": True,
+            "m38_receipt_must_be_absent": True,
+        },
+        "live_owner": {
+            "schema": "sawm/exact-live-owner-binding@1",
+            "status": "ready",
+            "store_id": _M39_STORE_ID,
+            "database_uuid": _M39_DATABASE_UUID,
+            "generation": _M39_TARGET_GENERATION,
+            "listen_uri": "quack:127.0.0.1:24070",
+            "extension_fingerprint": _M39_EXTENSION_FINGERPRINT,
+            "server_id": _M39_LIVE_SERVER_ID,
+            "process_birth_id": _M39_LIVE_PROCESS_BIRTH_ID,
+            "started_at": _M39_LIVE_STARTED_AT,
+        },
+        "target_authority": {
+            "event_watermark": _M39_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M39_TARGET_PROJECTION_CID,
+            "plan_revision": _M39_TARGET_PLAN_REVISION,
+            "operator_task_alias": "SAWM-000",
+            "operator_task_cid": _M39_OPERATOR_TASK_CID,
+            "operator_task_status": "completed",
+            "operator_task_revision": 2,
+            "evidence_kind": (
+                "operator_control_plane_committed_m38_evidence_"
+                "reconciliation_successor"
+            ),
+        },
+        "target_projection_derivation": {
+            "schema": "sawm/program-projection-watermark-derivation@1",
+            "prior_projection_cid": _M39_PRIOR_PROJECTION_CID,
+            "prior_event_watermark": _M39_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M39_TARGET_EVENT_WATERMARK,
+            "target_projection_cid": _M39_TARGET_PROJECTION_CID,
+            "task_goal_plan_heads_preserved": True,
+            "recomputed_not_inherited": True,
+        },
+        "source_chain": {
+            "base_control_commit": _M39_BASE_CONTROL_COMMIT,
+            "base_control_tree": _M39_BASE_CONTROL_TREE,
+            "json_comparison_repair_parent": _M39_BASE_CONTROL_COMMIT,
+            "json_comparison_repair_commit": (
+                _M39_JSON_COMPARISON_REPAIR_COMMIT
+            ),
+            "json_comparison_repair_tree": _M39_JSON_COMPARISON_REPAIR_TREE,
+            "json_comparison_repair_blobs": dict(
+                _M39_JSON_COMPARISON_REPAIR_BLOBS
+            ),
+            "canonical_envelope_repair_parent": (
+                _M39_JSON_COMPARISON_REPAIR_COMMIT
+            ),
+            "canonical_envelope_repair_commit": (
+                _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT
+            ),
+            "canonical_envelope_repair_tree": (
+                _M39_CANONICAL_ENVELOPE_REPAIR_TREE
+            ),
+            "canonical_envelope_repair_blobs": dict(
+                _M39_CANONICAL_ENVELOPE_REPAIR_BLOBS
+            ),
+            "materializer_repair_parent": (
+                _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT
+            ),
+            "materializer_repair_commit": _M39_MATERIALIZER_REPAIR_COMMIT,
+            "materializer_repair_tree": _M39_MATERIALIZER_REPAIR_TREE,
+            "materializer_repair_blobs": dict(_M39_MATERIALIZER_REPAIR_BLOBS),
+            "bounded_repair_commit_count": 3,
+            "final_control_parent": _M39_MATERIALIZER_REPAIR_COMMIT,
+            "final_control_commit_is_current_head": True,
+            "final_control_commit_count": 1,
+        },
+        "operator_control_paths": sorted(_M39_OPERATOR_CONTROL_PATHS),
+        "expected_task_heads": dict(m38["expected_task_heads"]),
+        "current_datasets_gitlink": m38["current_datasets_gitlink"],
+        "current_datasets_tree": m38["current_datasets_tree"],
+        "current_kit_gitlink": m38["current_kit_gitlink"],
+        "current_kit_tree": m38["current_kit_tree"],
+        "ordinary_source_changes": 0,
+        "exact_changes": {
+            "event_suffix_length": 1,
+            "evidence_node_changes": 1,
+            "evidence_event_changes": 1,
+            "validation_event_changes": 0,
+            "passed_validation_event_changes": 0,
+            "store_generation_row_changes": 0,
+            "state_server_row_changes": 0,
+            "credential_row_changes": 0,
+            "server_epoch_row_changes": 0,
+            "capability_snapshot_row_changes": 0,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "goal_revision_changes": 0,
+            "plan_revision_changes": 0,
+            "effect_claim_changes": 0,
+            "merge_attempt_changes": 0,
+            "implementation_commit_changes": 0,
+            "implementation_provider_invocations": 0,
+            "coordination_semantic_changes": 0,
+            "accepted_definition_changes": 0,
+            "accepted_completion_changes": 0,
+        },
+        "preservation": {
+            "committed_m38_event_291_preserved_exactly": True,
+            "committed_m38_evidence_node_preserved_exactly": True,
+            "m37_receipt_created_or_rewritten": False,
+            "m38_receipt_created_or_rewritten": False,
+            "same_live_generation_30_owner": True,
+            "same_database_uuid": True,
+            "same_runtime_root": True,
+            "same_store_path": True,
+            "coordination_semantic_changes": 0,
+            "task_goal_plan_heads_preserved": True,
+            "worker_self_approval": False,
+        },
+    }
+
+
+def _m39_authority_reference() -> dict[str, Any]:
+    return {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": _M39_MIGRATION_REVISION,
+        "authority_cid": _identity(
+            _expected_m39_committed_m38_evidence_reconciliation_authority()
+        ),
+    }
+
+
+def _validated_m39_live_preflight_contract(
+    authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Validate M39's closed no-restart reconciliation contract."""
+
+    expected = _expected_m39_committed_m38_evidence_reconciliation_authority()
+    contract = authority.get("live_preflight_contract")
+    live_owner = authority.get("live_owner")
+    if (
+        dict(authority) != expected
+        or not isinstance(contract, Mapping)
+        or not isinstance(live_owner, Mapping)
+        or contract.get("migration_revision") != _M39_MIGRATION_REVISION
+        or contract.get("prior_event_watermark") != _M39_PRIOR_EVENT_WATERMARK
+        or contract.get("target_event_watermark") != _M39_TARGET_EVENT_WATERMARK
+        or contract.get("target_generation") != _M39_TARGET_GENERATION
+        or contract.get("prior_projection_cid") != _M39_PRIOR_PROJECTION_CID
+        or contract.get("target_projection_cid") != _M39_TARGET_PROJECTION_CID
+        or contract.get("prior_event_id") != _M39_M38_EVENT_ID
+        or contract.get("prior_evidence_id") != _M39_M38_EVIDENCE_ID
+        or contract.get("generation_restart_authorized") is not False
+        or contract.get("m37_receipt_must_be_absent") is not True
+        or contract.get("m38_receipt_must_be_absent") is not True
+        or live_owner.get("server_id") != _M39_LIVE_SERVER_ID
+        or live_owner.get("process_birth_id") != _M39_LIVE_PROCESS_BIRTH_ID
+        or live_owner.get("started_at") != _M39_LIVE_STARTED_AT
+    ):
+        raise MaterializationError("M39 live preflight contract differs")
+    return contract
+
+
 def _expected_m37_post_reboot_generation_restart_authority() -> dict[str, Any]:
     """Return the closed generation-30/event-291 reboot recovery authority."""
 
@@ -9875,6 +10348,50 @@ def _expected_m29_committed_evidence_verification_authority() -> dict[str, Any]:
             "worker_self_approval": False,
         },
     }
+
+
+def _m39_successor_configured(config: Mapping[str, Any]) -> bool:
+    key = _M39_SUPERSESSION_REASON
+    if key not in config:
+        return False
+    expected = _m39_authority_reference()
+    observed = config.get(key)
+    if type(observed) is not dict or observed != expected:
+        raise MaterializationError(
+            "M39 committed M38 evidence reconciliation authority is invalid"
+        )
+    return True
+
+
+def _m39_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M39_SUPERSESSION_REASON
+    migration = _load_json(
+        root / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if not any(presence):
+        return False
+    if not all(presence):
+        raise MaterializationError(
+            "M39 committed M38 evidence reconciliation authority is only "
+            "partially declared"
+        )
+    reference = _m39_authority_reference()
+    if (
+        migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError(
+            "M39 committed M38 evidence reconciliation authority differs "
+            "across controls"
+        )
+    return _m39_successor_configured(config)
 
 
 def _m38_successor_configured(config: Mapping[str, Any]) -> bool:
@@ -28547,6 +29064,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m39_successor_configured_on_any_surface(root, config):
+        return _check_m39_materialized(root, config_file)
     if _m38_successor_configured_on_any_surface(root, config):
         return _check_m38_materialized(root, config_file)
     if _m37_successor_configured_on_any_surface(root, config):
@@ -54010,6 +54529,313 @@ def _materialize_m26(
     }
 
 
+def _assert_m39_historical_m38_controls(
+    scheduler: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    seal: Mapping[str, Any],
+) -> None:
+    """Preserve current M38 controls and event 291's older exact authority."""
+
+    key = _M38_SUPERSESSION_REASON
+    current_reference = _m38_authority_reference()
+    if (
+        scheduler.get(key) != current_reference
+        or migration.get(key) != current_reference
+        or seal.get(f"{key}_cid") != current_reference["authority_cid"]
+        or _identity(_m39_historical_m38_authority())
+        != _M39_M38_AUTHORITY_CID
+    ):
+        raise MaterializationError("M39 historical M38 control/event authority differs")
+
+
+def _m39_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    expected = _expected_m39_committed_m38_evidence_reconciliation_authority()
+    reference = _m39_authority_reference()
+    key = _M39_SUPERSESSION_REASON
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if not isinstance(inventory, Mapping):
+        raise MaterializationError("M39 migration inventory is invalid")
+    _assert_m39_historical_m38_controls(config, inventory, seal)
+    if (
+        config.get(key) != reference
+        or inventory.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+        or reference["authority_cid"] != _identity(expected)
+    ):
+        raise MaterializationError("M39 authority differs across protected controls")
+    _validated_m39_live_preflight_contract(expected)
+    return expected
+
+
+def _assert_m39_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Require exact base -> M38 verifier repair -> one current control commit."""
+
+    current = str(population["source_binding"]["head"])
+    chain = authority.get("source_chain")
+    control_paths = set(authority.get("operator_control_paths") or ())
+    json_paths = set(_M39_JSON_COMPARISON_REPAIR_BLOBS)
+    envelope_paths = set(_M39_CANONICAL_ENVELOPE_REPAIR_BLOBS)
+    repair_paths = set(_M39_MATERIALIZER_REPAIR_BLOBS)
+    json_parents = _git(
+        root,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        _M39_JSON_COMPARISON_REPAIR_COMMIT,
+    ).split()
+    envelope_parents = _git(
+        root,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT,
+    ).split()
+    repair_parents = _git(
+        root,
+        "rev-list",
+        "--parents",
+        "-n",
+        "1",
+        _M39_MATERIALIZER_REPAIR_COMMIT,
+    ).split()
+    current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
+    if (
+        current
+        in {
+            _M39_BASE_CONTROL_COMMIT,
+            _M39_JSON_COMPARISON_REPAIR_COMMIT,
+            _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT,
+            _M39_MATERIALIZER_REPAIR_COMMIT,
+        }
+        or not isinstance(chain, Mapping)
+        or control_paths != set(_M39_OPERATOR_CONTROL_PATHS)
+        or _M39_OPERATOR_CONTROL_PATHS != _M38_OPERATOR_CONTROL_PATHS
+        or chain.get("base_control_commit") != _M39_BASE_CONTROL_COMMIT
+        or chain.get("base_control_tree") != _M39_BASE_CONTROL_TREE
+        or chain.get("json_comparison_repair_parent")
+        != _M39_BASE_CONTROL_COMMIT
+        or chain.get("json_comparison_repair_commit")
+        != _M39_JSON_COMPARISON_REPAIR_COMMIT
+        or chain.get("json_comparison_repair_tree")
+        != _M39_JSON_COMPARISON_REPAIR_TREE
+        or chain.get("json_comparison_repair_blobs")
+        != dict(_M39_JSON_COMPARISON_REPAIR_BLOBS)
+        or chain.get("canonical_envelope_repair_parent")
+        != _M39_JSON_COMPARISON_REPAIR_COMMIT
+        or chain.get("canonical_envelope_repair_commit")
+        != _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT
+        or chain.get("canonical_envelope_repair_tree")
+        != _M39_CANONICAL_ENVELOPE_REPAIR_TREE
+        or chain.get("canonical_envelope_repair_blobs")
+        != dict(_M39_CANONICAL_ENVELOPE_REPAIR_BLOBS)
+        or chain.get("materializer_repair_parent")
+        != _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT
+        or chain.get("materializer_repair_commit")
+        != _M39_MATERIALIZER_REPAIR_COMMIT
+        or chain.get("materializer_repair_tree") != _M39_MATERIALIZER_REPAIR_TREE
+        or chain.get("materializer_repair_blobs")
+        != dict(_M39_MATERIALIZER_REPAIR_BLOBS)
+        or int(chain.get("bounded_repair_commit_count") or 0) != 3
+        or chain.get("final_control_parent") != _M39_MATERIALIZER_REPAIR_COMMIT
+        or chain.get("final_control_commit_is_current_head") is not True
+        or int(chain.get("final_control_commit_count") or 0) != 1
+        or json_parents
+        != [_M39_JSON_COMPARISON_REPAIR_COMMIT, _M39_BASE_CONTROL_COMMIT]
+        or envelope_parents
+        != [
+            _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT,
+            _M39_JSON_COMPARISON_REPAIR_COMMIT,
+        ]
+        or repair_parents
+        != [
+            _M39_MATERIALIZER_REPAIR_COMMIT,
+            _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT,
+        ]
+        or current_parents != [current, _M39_MATERIALIZER_REPAIR_COMMIT]
+        or _git(root, "rev-parse", f"{_M39_BASE_CONTROL_COMMIT}^{{tree}}")
+        != _M39_BASE_CONTROL_TREE
+        or _git(
+            root, "rev-parse", f"{_M39_JSON_COMPARISON_REPAIR_COMMIT}^{{tree}}"
+        )
+        != _M39_JSON_COMPARISON_REPAIR_TREE
+        or _git(
+            root,
+            "rev-parse",
+            f"{_M39_CANONICAL_ENVELOPE_REPAIR_COMMIT}^{{tree}}",
+        )
+        != _M39_CANONICAL_ENVELOPE_REPAIR_TREE
+        or _git(
+            root, "rev-parse", f"{_M39_MATERIALIZER_REPAIR_COMMIT}^{{tree}}"
+        )
+        != _M39_MATERIALIZER_REPAIR_TREE
+        or _m27_name_status(
+            root, _M39_BASE_CONTROL_COMMIT, _M39_JSON_COMPARISON_REPAIR_COMMIT
+        )
+        != {path: "M" for path in json_paths}
+        or _m27_name_status(
+            root,
+            _M39_JSON_COMPARISON_REPAIR_COMMIT,
+            _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT,
+        )
+        != {path: "M" for path in envelope_paths}
+        or _m27_name_status(
+            root,
+            _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT,
+            _M39_MATERIALIZER_REPAIR_COMMIT,
+        )
+        != {path: "M" for path in repair_paths}
+        or _m27_name_status(root, _M39_MATERIALIZER_REPAIR_COMMIT, current)
+        != {path: "M" for path in control_paths}
+        or population["source_binding"].get("tree")
+        != _git(root, "rev-parse", f"{current}^{{tree}}")
+        or int(authority.get("ordinary_source_changes", -1)) != 0
+    ):
+        raise MaterializationError("M39 exact repair/control source chain differs")
+    for commit, blobs, label in (
+        (
+            _M39_JSON_COMPARISON_REPAIR_COMMIT,
+            _M39_JSON_COMPARISON_REPAIR_BLOBS,
+            "JSON-comparison repair",
+        ),
+        (
+            _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT,
+            _M39_CANONICAL_ENVELOPE_REPAIR_BLOBS,
+            "canonical-envelope repair",
+        ),
+        (
+            _M39_MATERIALIZER_REPAIR_COMMIT,
+            _M39_MATERIALIZER_REPAIR_BLOBS,
+            "materializer repair",
+        ),
+    ):
+        for path, oid in blobs.items():
+            if _git(root, "rev-parse", f"{commit}:{path}") != oid:
+                raise MaterializationError(f"M39 {label} blob differs: {path}")
+    for dependency, gitlink_key, tree_key, population_key in (
+        (
+            "ipfs_datasets_py",
+            "current_datasets_gitlink",
+            "current_datasets_tree",
+            "datasets_gitlink",
+        ),
+        ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree", "kit_gitlink"),
+    ):
+        gitlink = str(authority[gitlink_key])
+        if (
+            any(
+                _git(root, "rev-parse", f"{head}:{dependency}") != gitlink
+                for head in (
+                    _M39_BASE_CONTROL_COMMIT,
+                    _M39_JSON_COMPARISON_REPAIR_COMMIT,
+                    _M39_CANONICAL_ENVELOPE_REPAIR_COMMIT,
+                    _M39_MATERIALIZER_REPAIR_COMMIT,
+                    current,
+                )
+            )
+            or population["source_binding"].get(population_key) != gitlink
+            or _git(root / dependency, "rev-parse", f"{gitlink}^{{tree}}")
+            != authority[tree_key]
+        ):
+            raise MaterializationError(f"M39 {dependency} authority differs")
+
+
+def _m39_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    runtime = authority["runtime_binding"]
+    program = config.get("database_program")
+    owner = config.get("quack_owner")
+    expected_runtime_paths = {
+        "root": _M39_RUNTIME_ROOT,
+        "state": f"{_M39_RUNTIME_ROOT}/state",
+        "worktrees": _M39_WORKTREE_ROOT,
+        "merge_queue": f"{_M39_RUNTIME_ROOT}/merge-queue",
+        "logs": f"{_M39_RUNTIME_ROOT}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+    if (
+        not isinstance(program, Mapping)
+        or not isinstance(owner, Mapping)
+        or program.get("store_id") != _M39_STORE_ID
+        or program.get("store_generation") != str(_M39_TARGET_GENERATION)
+        or program.get("quack_endpoint") != runtime["quack_endpoint"]
+        or program.get("worktree_root") != _M39_WORKTREE_ROOT
+        or owner.get("database_path") != _M39_STORE_ID
+        or owner.get("store_id") != _M39_STORE_ID
+        or owner.get("port") != _M39_TARGET_QUACK_PORT
+        or owner.get("state_dir") != f"{_M39_RUNTIME_ROOT}/quack-owner"
+        or config.get("runtime_paths") != expected_runtime_paths
+    ):
+        raise MaterializationError("scheduler M39 runtime binding differs")
+    control = (root / _M39_STORE_ID).resolve()
+    coordination = (root / _M39_COORDINATION_STORE_ID).resolve()
+    if not control.is_relative_to(root) or not coordination.is_relative_to(root):
+        raise MaterializationError("M39 runtime path escapes repository")
+    return control, coordination
+
+
+def _m39_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    authority = _expected_m39_committed_m38_evidence_reconciliation_authority()
+    return {
+        "schema": "sawm/committed-m38-evidence-reconciliation-source-seal@1",
+        "authority": "operator_control_plane",
+        "migration_revision": _M39_MIGRATION_REVISION,
+        "migration_kind": _M39_SUPERSESSION_REASON,
+        "supersession_mode": _M39_SUPERSESSION_MODE,
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "current_source_head": population["source_binding"]["head"],
+        "current_source_tree": population["source_binding"]["tree"],
+        "validation_digest": validation_digest,
+        "authorization_cid": _identity(authority),
+        "runtime_binding": authority["runtime_binding"],
+        "prior_authority": authority["prior_authority"],
+        "historical_m38_reference": authority["historical_m38_reference"],
+        "live_owner": authority["live_owner"],
+        "live_preflight_contract": authority["live_preflight_contract"],
+        "target_authority": authority["target_authority"],
+        "target_projection_derivation": authority[
+            "target_projection_derivation"
+        ],
+        "source_chain": authority["source_chain"],
+        "exact_changes": authority["exact_changes"],
+        "preservation": authority["preservation"],
+        "authenticated_mutation_route": {
+            "transport": "quack_proxy_only",
+            "exact_live_generation_30_owner_required": True,
+            "endpoint_from_live_owner_discovery": True,
+            "token_from_secret_handoff_or_environment_only": True,
+            "token_in_argv": False,
+            "token_in_evidence": False,
+            "direct_authoritative_file_opened": False,
+        },
+        "scheduler_runtime_root": config["runtime_paths"]["root"],
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
 def _assert_m38_historical_m37_triplet(
     scheduler: Mapping[str, Any],
     migration: Mapping[str, Any],
@@ -61699,6 +62525,37 @@ def _m38_parse_json(value: Any) -> Any:
     return json.loads(str(value))
 
 
+def _m39_exact_row_matches(
+    row: Any,
+    columns: tuple[str, ...],
+    expected: tuple[Any, ...],
+) -> bool:
+    """Compare a Quack row by selected column name and canonical JSON body.
+
+    Quack may return tuples or mappings, and JSON values may already be decoded
+    or may arrive as text/bytes.  Mapping insertion order and representation of
+    ``body_json`` are transport details, not authority-bearing row order.
+    """
+
+    if row is None or len(columns) != len(expected):
+        return False
+    try:
+        if isinstance(row, Mapping):
+            if set(row) != set(columns):
+                return False
+            values = tuple(row[column] for column in columns)
+        else:
+            values = tuple(row)
+            if len(values) != len(columns):
+                return False
+        if values[:-1] != expected[:-1]:
+            return False
+        observed_body = _canonical(_m38_parse_json(values[-1])).decode("utf-8")
+    except (KeyError, TypeError, ValueError, UnicodeError):
+        return False
+    return observed_body == expected[-1]
+
+
 def _m38_projection_cid_at_watermark(source: Any, watermark: int) -> str:
     """Recompute the canonical snapshot projection with an explicit watermark."""
 
@@ -62193,6 +63050,607 @@ def _verify_m38_evidence_projection(
         ),
         "complete_evidence_projection_verified": True,
     }
+
+
+def _m39_expected_historical_m38_rows(
+    config: Mapping[str, Any],
+) -> tuple[dict[str, Any], tuple[Any, ...], tuple[Any, ...]]:
+    """Reconstruct the closed event-291 rows from its historical authority."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    body = _m39_historical_m38_body(config)
+    event_body = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": _M39_M38_EVIDENCE_ID,
+        "body": {
+            "evidence_id": _M39_M38_EVIDENCE_ID,
+            "parent_evidence_id": "",
+            "task_cid": _M39_OPERATOR_TASK_CID,
+            "evidence_kind": _M39_M38_EVIDENCE_KIND,
+            "digest": _M39_M38_EVIDENCE_DIGEST,
+            "body": body,
+            "created_at": _M39_M38_RECORDED_AT,
+            "revision": 0,
+        },
+        "recorded_at": _M39_M38_RECORDED_AT,
+        "owner_id": "sawm-r2-m38-live-source-sealer",
+    }
+    evidence_id = content_identity(
+        {
+            "task_cid": _M39_OPERATOR_TASK_CID,
+            "evidence_kind": _M39_M38_EVIDENCE_KIND,
+            "digest": _M39_M38_EVIDENCE_DIGEST,
+            "body": body,
+        }
+    )
+    event_id = content_identity(
+        {
+            "stream_id": "stream:intent",
+            "sequence": _M39_PRIOR_EVENT_WATERMARK,
+            "global_sequence": _M39_PRIOR_EVENT_WATERMARK,
+            "event_type": "intent.evidence_recorded",
+            "body": event_body,
+        }
+    )
+    if evidence_id != _M39_M38_EVIDENCE_ID or event_id != _M39_M38_EVENT_ID:
+        raise MaterializationError("M39 historical M38 event identities differ")
+    evidence_row = (
+        evidence_id,
+        "",
+        _M39_OPERATOR_TASK_CID,
+        _M39_M38_EVIDENCE_KIND,
+        _M39_M38_EVIDENCE_DIGEST,
+        _M39_M38_RECORDED_AT,
+        _canonical(body).decode("utf-8"),
+    )
+    event_row = (
+        event_id,
+        "stream:intent",
+        _M39_PRIOR_EVENT_WATERMARK,
+        _M39_PRIOR_EVENT_WATERMARK,
+        "intent.evidence_recorded",
+        _M39_OPERATOR_TASK_CID,
+        "",
+        "session:intent",
+        _M39_M38_RECORDED_AT,
+        _canonical(event_body).decode("utf-8"),
+    )
+    return body, evidence_row, event_row
+
+
+def _verify_m39_committed_m38_event(
+    connection: Any,
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify all identity-bearing fields of committed M38 event 291."""
+
+    body, expected_evidence, expected_event = _m39_expected_historical_m38_rows(
+        config
+    )
+    evidence = connection.execute(
+        "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+        "created_at,body_json FROM evidence_nodes WHERE evidence_id=?",
+        [_M39_M38_EVIDENCE_ID],
+    ).fetchone()
+    event = connection.execute(
+        "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+        "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+        "WHERE global_sequence=?",
+        [_M39_PRIOR_EVENT_WATERMARK],
+    ).fetchone()
+    if not _m39_exact_row_matches(
+        evidence,
+        (
+            "evidence_id",
+            "parent_evidence_id",
+            "task_cid",
+            "evidence_kind",
+            "digest",
+            "created_at",
+            "body_json",
+        ),
+        expected_evidence,
+    ) or not _m39_exact_row_matches(
+        event,
+        (
+            "event_id",
+            "stream_id",
+            "sequence",
+            "global_sequence",
+            "event_type",
+            "task_cid",
+            "attempt_id",
+            "session_id",
+            "recorded_at",
+            "body_json",
+        ),
+        expected_event,
+    ):
+        raise MigrationRequired("M39 committed M38 event/evidence rows differ")
+    projection = _m38_evidence_projection_from_events(
+        connection, watermark=_M39_PRIOR_EVENT_WATERMARK
+    )
+    if (
+        projection["evidence_node_count"] != _M39_PRIOR_EVIDENCE_NODE_COUNT
+        or projection["evidence_event_count"] != _M39_PRIOR_EVIDENCE_EVENT_COUNT
+        or projection["validation_event_count"]
+        != _M39_PRIOR_VALIDATION_EVENT_COUNT
+        or projection["passed_validation_event_count"]
+        != _M39_PRIOR_PASSED_VALIDATION_EVENT_COUNT
+        or projection["validation_evidence_node_count"]
+        != _M39_PRIOR_VALIDATION_EVENT_COUNT
+    ):
+        raise MigrationRequired("M39 committed M38 evidence projection differs")
+    return {
+        "historical_m38_body": body,
+        "prior_m38_event_id": _M39_M38_EVENT_ID,
+        "prior_m38_evidence_id": _M39_M38_EVIDENCE_ID,
+        "committed_m38_event_id": _M39_M38_EVENT_ID,
+        "committed_m38_evidence_id": _M39_M38_EVIDENCE_ID,
+        "prior_evidence_node_count": projection["evidence_node_count"],
+        "prior_evidence_event_count": projection["evidence_event_count"],
+        "prior_validation_event_count": projection["validation_event_count"],
+        "prior_passed_validation_event_count": projection[
+            "passed_validation_event_count"
+        ],
+        "committed_m38_event_and_evidence_verified": True,
+    }
+
+
+def _m39_expected_event_body(
+    body: Mapping[str, Any],
+    *,
+    evidence_id: str,
+    digest: str,
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    target = authority["target_authority"]
+    inner = {
+        "evidence_id": evidence_id,
+        "parent_evidence_id": "",
+        "task_cid": target["operator_task_cid"],
+        "evidence_kind": target["evidence_kind"],
+        "digest": digest,
+        "body": dict(body),
+        "created_at": _M39_CONTROL_RECORDED_AT,
+        "revision": 0,
+    }
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": evidence_id,
+        "body": inner,
+        "recorded_at": _M39_CONTROL_RECORDED_AT,
+        "owner_id": "sawm-r2-m39-live-source-sealer",
+    }
+
+
+def _inspect_m39_live_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    *,
+    expected_event_watermark: int,
+    expected_projection_cid: str,
+) -> dict[str, Any]:
+    return _inspect_m37_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=expected_event_watermark,
+        expected_projection_cid=expected_projection_cid,
+    )
+
+
+def _verify_m39_live_materialization(
+    source: Any,
+    identity: Mapping[str, Any],
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    *,
+    repository_root: Path | None = None,
+) -> dict[str, Any]:
+    """Verify immutable event 291 plus M39's sole event 292 and live owner."""
+
+    verification_root = (
+        REPO_ROOT if repository_root is None else Path(repository_root).resolve()
+    )
+    control, coordination = _m39_target_paths(
+        verification_root, config, authority
+    )
+    preserved = _verify_m37_preserved_receipts(
+        verification_root, control, coordination
+    )
+    for revision in ("m37", "m38"):
+        if os.path.lexists(
+            control.parent / f"{revision}-source-successor-receipt.json"
+        ):
+            raise MigrationRequired(
+                f"M39 superseded {revision.upper()} receipt unexpectedly exists"
+            )
+    body = _m39_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence_id = content_identity(
+        {
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": body,
+        }
+    )
+    event_body = _m39_expected_event_body(
+        body, evidence_id=evidence_id, digest=digest, authority=authority
+    )
+    expected_event_id = content_identity(
+        {
+            "stream_id": "stream:intent",
+            "sequence": _M39_TARGET_EVENT_WATERMARK,
+            "global_sequence": _M39_TARGET_EVENT_WATERMARK,
+            "event_type": "intent.evidence_recorded",
+            "body": event_body,
+        }
+    )
+    head = _inspect_m39_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M39_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=_M39_TARGET_PROJECTION_CID,
+    )
+    if (
+        _m38_projection_cid_at_watermark(source, _M39_PRIOR_EVENT_WATERMARK)
+        != _M39_PRIOR_PROJECTION_CID
+        or _m38_projection_cid_at_watermark(source, _M39_TARGET_EVENT_WATERMARK)
+        != _M39_TARGET_PROJECTION_CID
+    ):
+        raise MigrationRequired("M39 prior/target projection derivation differs")
+    restart = _inspect_m37_generation_restart_rows(source, identity, authority)
+    if (
+        restart.get("live_server_id") != _M39_LIVE_SERVER_ID
+        or restart.get("live_process_birth_id") != _M39_LIVE_PROCESS_BIRTH_ID
+        or restart.get("live_started_at") != _M39_LIVE_STARTED_AT
+        or identity.get("server_id") != _M39_LIVE_SERVER_ID
+        or identity.get("process_birth_id") != _M39_LIVE_PROCESS_BIRTH_ID
+        or identity.get("started_at") != _M39_LIVE_STARTED_AT
+    ):
+        raise MigrationRequired("M39 exact live generation-30 owner differs")
+    with source.intent._connection(write=False) as connection:
+        prior = _verify_m39_committed_m38_event(connection, config)
+        evidence = connection.execute(
+            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+            "created_at,body_json FROM evidence_nodes WHERE evidence_id=?",
+            [evidence_id],
+        ).fetchone()
+        event = connection.execute(
+            "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+            "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+            "WHERE global_sequence=?",
+            [_M39_TARGET_EVENT_WATERMARK],
+        ).fetchone()
+        prior_prefix = _event_prefix_digest(
+            connection, _M39_PRIOR_EVENT_WATERMARK
+        )
+        prefix = _event_prefix_digest(connection, _M39_TARGET_EVENT_WATERMARK)
+        evidence_projection = _verify_m38_evidence_projection(
+            connection, watermark=_M39_TARGET_EVENT_WATERMARK
+        )
+        semantic = _semantic_authority_digest_on(connection)
+    expected_evidence = (
+        evidence_id,
+        "",
+        target["operator_task_cid"],
+        target["evidence_kind"],
+        digest,
+        _M39_CONTROL_RECORDED_AT,
+        _canonical(body).decode("utf-8"),
+    )
+    expected_event = (
+        expected_event_id,
+        "stream:intent",
+        _M39_TARGET_EVENT_WATERMARK,
+        _M39_TARGET_EVENT_WATERMARK,
+        "intent.evidence_recorded",
+        target["operator_task_cid"],
+        "",
+        "session:intent",
+        _M39_CONTROL_RECORDED_AT,
+        _canonical(event_body).decode("utf-8"),
+    )
+    if (
+        not _m39_exact_row_matches(
+            evidence,
+            (
+                "evidence_id",
+                "parent_evidence_id",
+                "task_cid",
+                "evidence_kind",
+                "digest",
+                "created_at",
+                "body_json",
+            ),
+            expected_evidence,
+        )
+        or not _m39_exact_row_matches(
+            event,
+            (
+                "event_id",
+                "stream_id",
+                "sequence",
+                "global_sequence",
+                "event_type",
+                "task_cid",
+                "attempt_id",
+                "session_id",
+                "recorded_at",
+                "body_json",
+            ),
+            expected_event,
+        )
+        or prior_prefix
+        != (_M39_PRIOR_EVENT_PREFIX_SHA256, _M39_PRIOR_EVENT_WATERMARK)
+        or prefix[1] != _M39_TARGET_EVENT_WATERMARK
+        or semantic != _M39_SEMANTIC_AUTHORITY_DIGEST
+        or evidence_projection["evidence_node_count"]
+        != _M39_TARGET_EVIDENCE_NODE_COUNT
+        or evidence_projection["evidence_event_count"]
+        != _M39_TARGET_EVIDENCE_EVENT_COUNT
+        or evidence_projection["validation_event_count"]
+        != _M39_TARGET_VALIDATION_EVENT_COUNT
+        or evidence_projection["passed_validation_event_count"]
+        != _M39_TARGET_PASSED_VALIDATION_EVENT_COUNT
+        or evidence_projection["validation_evidence_node_count"]
+        != _M39_TARGET_VALIDATION_EVENT_COUNT
+        or evidence_projection["evidence_node_count"]
+        != prior["prior_evidence_node_count"] + 1
+        or evidence_projection["evidence_event_count"]
+        != prior["prior_evidence_event_count"] + 1
+        or evidence_projection["validation_event_count"]
+        != prior["prior_validation_event_count"]
+        or evidence_projection["passed_validation_event_count"]
+        != prior["prior_passed_validation_event_count"]
+    ):
+        raise MigrationRequired("M39 exact target event/evidence authority differs")
+    return {
+        **head,
+        **restart,
+        **{key: value for key, value in prior.items() if key != "historical_m38_body"},
+        "migration_digest": digest,
+        "migration_evidence_id": evidence_id,
+        "migration_evidence_event_id": expected_event_id,
+        "target_event_prefix_sha256": prefix[0],
+        "prior_event_prefix_verified": True,
+        "prior_projection_recomputed": True,
+        "target_projection_recomputed": True,
+        "m37_receipt_absence_verified": True,
+        "m38_receipt_absence_verified": True,
+        "m38_receipt_created_or_rewritten": False,
+        "same_live_generation_30_owner": True,
+        "m36_historical_anchor_verified": preserved[
+            "m36_historical_anchor_verified"
+        ],
+        "stale_owner_recovery_receipt_verified": preserved[
+            "stale_owner_recovery_receipt_verified"
+        ],
+        **evidence_projection,
+        "semantic_authority_digest": semantic,
+        "full_event_and_evidence_body_verified": True,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "plan_revision_changes": 0,
+        "goal_revision_changes": 0,
+        "evidence_node_changes": 1,
+        "evidence_event_changes": 1,
+        "validation_event_changes": 0,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "coordination_semantic_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _expected_m39_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": (
+            "sawm/non-authoritative-committed-m38-evidence-reconciliation-receipt@1"
+        ),
+        "authoritative": False,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M39_MIGRATION_REVISION,
+        "migration_kind": _M39_SUPERSESSION_REASON,
+        "supersession_mode": _M39_SUPERSESSION_MODE,
+        f"{_M39_SUPERSESSION_REASON}_cid": _identity(authority),
+        "historical_m38_authority_cid": _M39_M38_AUTHORITY_CID,
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "validation_digest": validation_digest,
+        "database_path": _M39_STORE_ID,
+        "coordination_path": _M39_COORDINATION_STORE_ID,
+        "target_generation": _M39_TARGET_GENERATION,
+        "target_plan_revision": _M39_TARGET_PLAN_REVISION,
+        "prior_event_watermark": _M39_PRIOR_EVENT_WATERMARK,
+        "target_event_watermark": _M39_TARGET_EVENT_WATERMARK,
+        "prior_projection_cid": _M39_PRIOR_PROJECTION_CID,
+        "projection_cid": _M39_TARGET_PROJECTION_CID,
+        "prior_m38_event_id": verified["prior_m38_event_id"],
+        "prior_m38_evidence_id": verified["prior_m38_evidence_id"],
+        "committed_m38_event_id": verified["committed_m38_event_id"],
+        "committed_m38_evidence_id": verified["committed_m38_evidence_id"],
+        "migration_digest": verified["migration_digest"],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "migration_evidence_event_id": verified["migration_evidence_event_id"],
+        "prior_event_prefix_sha256": _M39_PRIOR_EVENT_PREFIX_SHA256,
+        "target_event_prefix_sha256": verified["target_event_prefix_sha256"],
+        "semantic_authority_digest": verified["semantic_authority_digest"],
+        "prior_evidence_node_count": verified["prior_evidence_node_count"],
+        "evidence_node_count": verified["evidence_node_count"],
+        "prior_evidence_event_count": verified["prior_evidence_event_count"],
+        "evidence_event_count": verified["evidence_event_count"],
+        "prior_validation_event_count": verified[
+            "prior_validation_event_count"
+        ],
+        "validation_event_count": verified["validation_event_count"],
+        "prior_passed_validation_event_count": verified[
+            "prior_passed_validation_event_count"
+        ],
+        "passed_validation_event_count": verified[
+            "passed_validation_event_count"
+        ],
+        "evidence_projection_digest": verified["evidence_projection_digest"],
+        "complete_evidence_projection_verified": verified[
+            "complete_evidence_projection_verified"
+        ],
+        "committed_m38_event_and_evidence_verified": verified[
+            "committed_m38_event_and_evidence_verified"
+        ],
+        "m37_receipt_absence_verified": verified[
+            "m37_receipt_absence_verified"
+        ],
+        "m38_receipt_absence_verified": verified[
+            "m38_receipt_absence_verified"
+        ],
+        "m38_receipt_created_or_rewritten": verified[
+            "m38_receipt_created_or_rewritten"
+        ],
+        "same_live_generation_30_owner": verified[
+            "same_live_generation_30_owner"
+        ],
+        "live_server_id": verified["live_server_id"],
+        "live_process_birth_id": verified["live_process_birth_id"],
+        "live_started_at": verified["live_started_at"],
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "full_event_and_evidence_body_verified": True,
+        "prior_event_prefix_verified": True,
+        "prior_projection_recomputed": True,
+        "target_projection_recomputed": True,
+        "plan_revision_changes": 0,
+        "goal_revision_changes": 0,
+        "evidence_node_changes": 1,
+        "evidence_event_changes": 1,
+        "validation_event_changes": 0,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "coordination_semantic_changes": 0,
+        "m39_coordination_write_count": 0,
+        "historical_receipts_reverified_after_event": True,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _ensure_m39_source_successor_receipt(
+    root: Path, control: Path, expected: Mapping[str, Any]
+) -> Mapping[str, Any]:
+    """Publish M39's non-authoritative marker last and idempotently."""
+
+    path = control.parent / "m39-source-successor-receipt.json"
+    descriptors: list[int] = []
+    temporary: Path | None = None
+    try:
+        # Acquire predecessor publication locks in revision order.  This
+        # excludes a late M37/M38 receipt publisher that only knows its own
+        # historical lock while M39 performs the final absence check.
+        for revision in ("m37", "m38", "m39"):
+            lock_path = (
+                control.parent
+                / f".{revision}-source-successor-receipt.publish.lock"
+            )
+            descriptor = os.open(
+                lock_path,
+                os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            lock_stat = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(lock_stat.st_mode)
+                or lock_stat.st_nlink != 1
+                or stat.S_IMODE(lock_stat.st_mode) != 0o600
+                or lock_stat.st_uid != os.geteuid()
+            ):
+                os.close(descriptor)
+                raise MigrationRequired("M39 receipt-chain publication lock is unsafe")
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            descriptors.append(descriptor)
+        for revision in ("m37", "m38"):
+            if os.path.lexists(
+                control.parent / f"{revision}-source-successor-receipt.json"
+            ):
+                raise MigrationRequired(
+                    f"M39 superseded {revision.upper()} receipt unexpectedly exists"
+                )
+        if os.path.lexists(path):
+            receipt_stat = os.lstat(path)
+            if (
+                not stat.S_ISREG(receipt_stat.st_mode)
+                or receipt_stat.st_nlink != 1
+                or stat.S_IMODE(receipt_stat.st_mode) != 0o600
+                or receipt_stat.st_uid != os.geteuid()
+            ):
+                raise MigrationRequired("M39 source successor receipt mode is unsafe")
+            observed, _ = _load_nofollow_json(
+                path, root=root, noun="M39 source successor receipt"
+            )
+            if observed != dict(expected):
+                raise MigrationRequired("M39 source successor receipt differs")
+            return dict(observed)
+        temporary = path.with_name(
+            f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+        )
+        out = os.open(
+            temporary,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            os.write(out, _canonical(expected) + b"\n")
+            os.fsync(out)
+        finally:
+            os.close(out)
+        os.replace(temporary, path)
+        temporary = None
+        directory = os.open(
+            path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        return dict(expected)
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+        for descriptor in reversed(descriptors):
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(descriptor)
 
 
 def _m38_expected_event_body(
@@ -63419,6 +64877,252 @@ def _verify_m36_preserved_files(
     ):
         raise MigrationRequired("M36 preserved M34 source receipt differs")
     return observed
+
+
+def _check_m39_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    """Verify M39's receipt-last event-291 reconciliation successor."""
+
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m39_source_binding_authority(root, population, config)
+    _assert_m39_source_delta(root, population, authority)
+    control, coordination = _m39_target_paths(root, config, authority)
+    receipt_path = control.parent / "m39-source-successor-receipt.json"
+    if not os.path.lexists(receipt_path):
+        raise MigrationRequired("M39 source successor receipt is missing")
+    for revision in ("m37", "m38"):
+        if os.path.lexists(
+            control.parent / f"{revision}-source-successor-receipt.json"
+        ):
+            raise MigrationRequired(
+                f"M39 superseded {revision.upper()} receipt unexpectedly exists"
+            )
+    preserved = _verify_m37_preserved_receipts(root, control, coordination)
+    validation_digest = _m7_validation_digest(root, population)
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        authority,
+        owner_id="sawm-r2-m39-live-source-sealer",
+    ) as (source, identity):
+        verified = _verify_m39_live_materialization(
+            source,
+            identity,
+            population,
+            config,
+            authority,
+            validation_digest,
+            repository_root=root,
+        )
+    observed, _ = _load_nofollow_json(
+        receipt_path, root=root, noun="M39 source successor receipt"
+    )
+    expected = _expected_m39_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    if observed != expected:
+        raise MigrationRequired("M39 source successor receipt differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_committed_m38_evidence_reconciliation_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "prior_receipt": preserved["m36_receipt"],
+        "stale_owner_recovery_receipt": preserved[
+            "stale_owner_recovery_receipt"
+        ],
+        "receipt": observed,
+        **verified,
+    }
+
+
+def _materialize_m39(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Append only event 292 after proving immutable partial M38 history."""
+
+    del config_file
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m39_source_binding_authority(root, population, config)
+    _assert_m39_source_delta(root, population, authority)
+    control, coordination = _m39_target_paths(root, config, authority)
+    receipt_path = control.parent / "m39-source-successor-receipt.json"
+    for revision in ("m37", "m38"):
+        if os.path.lexists(
+            control.parent / f"{revision}-source-successor-receipt.json"
+        ):
+            raise MigrationRequired(
+                f"M39 superseded {revision.upper()} receipt unexpectedly exists"
+            )
+    preserved = _verify_m37_preserved_receipts(root, control, coordination)
+    validation_digest = _m7_validation_digest(root, population)
+    body = _m39_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence_id = content_identity(
+        {
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": body,
+        }
+    )
+    appended = False
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        authority,
+        owner_id="sawm-r2-m39-live-source-sealer",
+    ) as (source, identity):
+        snapshot = source.snapshot()
+        if snapshot.event_cursor == _M39_PRIOR_EVENT_WATERMARK:
+            if os.path.lexists(receipt_path):
+                raise MigrationRequired(
+                    "M39 source receipt exists before its accepted event"
+                )
+            _inspect_m39_live_projection(
+                source,
+                population,
+                authority,
+                expected_event_watermark=_M39_PRIOR_EVENT_WATERMARK,
+                expected_projection_cid=_M39_PRIOR_PROJECTION_CID,
+            )
+            if (
+                _m38_projection_cid_at_watermark(
+                    source, _M39_PRIOR_EVENT_WATERMARK
+                )
+                != _M39_PRIOR_PROJECTION_CID
+                or _m38_projection_cid_at_watermark(
+                    source, _M39_TARGET_EVENT_WATERMARK
+                )
+                != _M39_TARGET_PROJECTION_CID
+            ):
+                raise MigrationRequired(
+                    "M39 prior/target projection derivation differs"
+                )
+            restart = _inspect_m37_generation_restart_rows(
+                source, identity, authority
+            )
+            if (
+                restart.get("live_server_id") != _M39_LIVE_SERVER_ID
+                or restart.get("live_process_birth_id")
+                != _M39_LIVE_PROCESS_BIRTH_ID
+                or restart.get("live_started_at") != _M39_LIVE_STARTED_AT
+            ):
+                raise MigrationRequired("M39 exact live generation-30 owner differs")
+            with source.intent._connection(write=False) as connection:
+                prior = _verify_m39_committed_m38_event(connection, config)
+                complete_prior = _verify_m38_evidence_projection(
+                    connection, watermark=_M39_PRIOR_EVENT_WATERMARK
+                )
+                target_evidence_exists = connection.execute(
+                    "SELECT 1 FROM evidence_nodes WHERE evidence_id=?",
+                    [evidence_id],
+                ).fetchone()
+                prior_prefix = _event_prefix_digest(
+                    connection, _M39_PRIOR_EVENT_WATERMARK
+                )
+                semantic = _semantic_authority_digest_on(connection)
+            if (
+                prior["prior_evidence_node_count"]
+                != complete_prior["evidence_node_count"]
+                or prior["prior_evidence_event_count"]
+                != complete_prior["evidence_event_count"]
+                or target_evidence_exists is not None
+                or prior_prefix
+                != (_M39_PRIOR_EVENT_PREFIX_SHA256, _M39_PRIOR_EVENT_WATERMARK)
+                or semantic != _M39_SEMANTIC_AUTHORITY_DIGEST
+            ):
+                raise MigrationRequired("M39 prior event/evidence authority differs")
+            from ipfs_accelerate_py.agent_supervisor.task_sources import (
+                intent_repository,
+            )
+
+            original_clock = intent_repository._utc_iso
+
+            def fixed_m39_utc_iso(_moment: Any = None) -> str:
+                return _M39_CONTROL_RECORDED_AT
+
+            intent_repository._utc_iso = fixed_m39_utc_iso
+            try:
+                try:
+                    evidence_receipt = source.record_evidence(
+                        task_cid=target["operator_task_cid"],
+                        evidence_kind=target["evidence_kind"],
+                        digest=digest,
+                        body=body,
+                    )
+                except Exception:
+                    raise MaterializationError(
+                        "authenticated M39 evidence append failed"
+                    ) from None
+            finally:
+                clock_interference = (
+                    intent_repository._utc_iso is not fixed_m39_utc_iso
+                )
+                intent_repository._utc_iso = original_clock
+            if clock_interference or not evidence_receipt.changed:
+                raise MaterializationError("M39 evidence append clock/CAS differed")
+            appended = True
+        elif snapshot.event_cursor != _M39_TARGET_EVENT_WATERMARK:
+            raise MigrationRequired("M39 live event head is neither prior nor target")
+        verified = _verify_m39_live_materialization(
+            source,
+            identity,
+            population,
+            config,
+            authority,
+            validation_digest,
+            repository_root=root,
+        )
+        if verified["migration_evidence_id"] != evidence_id:
+            raise MaterializationError("M39 evidence identity differs")
+    preserved_after = _verify_m37_preserved_receipts(
+        root, control, coordination
+    )
+    if preserved_after != preserved:
+        raise MigrationRequired("M39 predecessor receipts changed")
+    expected_receipt = _expected_m39_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    receipt = _ensure_m39_source_successor_receipt(
+        root, control, expected_receipt
+    )
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": (
+            "materialized_committed_m38_evidence_reconciliation_successor"
+            if appended
+            else "checked_committed_m38_evidence_reconciliation_successor"
+        ),
+        "migration_required": False,
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "prior_receipt": preserved["m36_receipt"],
+        "stale_owner_recovery_receipt": preserved[
+            "stale_owner_recovery_receipt"
+        ],
+        "receipt": receipt,
+        **verified,
+    }
 
 
 def _check_m38_materialized(root: Path, config_file: Path) -> dict[str, Any]:
@@ -65784,6 +67488,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m39_successor_configured_on_any_surface(root, config):
+        return _materialize_m39(root, config_file, config)
     if _m38_successor_configured_on_any_surface(root, config):
         return _materialize_m38(root, config_file, config)
     if _m37_successor_configured_on_any_surface(root, config):
@@ -66114,6 +67820,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 any(
                     key in config
                     for key in (
+                        "committed_m38_evidence_reconciliation_successor_materialization",
                         "pre_authoritative_custody_restart_successor_materialization",
                         "post_reboot_generation_restart_successor_materialization",
                         "operator_task_binding_correction_successor_materialization",
