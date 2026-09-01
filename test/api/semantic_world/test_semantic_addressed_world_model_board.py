@@ -4869,6 +4869,56 @@ def test_m39_live_verifier_requires_exact_plus_one_evidence_only_delta() -> None
     assert "_M39_LIVE_PROCESS_BIRTH_ID" in source
 
 
+def test_m39_restart_rows_use_sealed_historical_stopped_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m39_restart_authority_test",
+    )
+    authority = (
+        materializer._expected_m39_committed_m38_evidence_reconciliation_authority()
+    )
+    observed: list[object] = []
+
+    def inspect_restart(
+        source: object, identity: object, historical: object
+    ) -> dict[str, bool]:
+        observed.extend((source, identity, historical))
+        return {"generation_29_30_restart_rows_verified": True}
+
+    monkeypatch.setattr(
+        materializer, "_inspect_m37_generation_restart_rows", inspect_restart
+    )
+    source = object()
+    identity = {"server_id": materializer._M39_LIVE_SERVER_ID}
+
+    assert materializer._inspect_m39_generation_restart_rows(
+        source, identity, authority
+    ) == {"generation_29_30_restart_rows_verified": True}
+    historical = authority["historical_m38_authority"]
+    assert observed == [source, identity, historical]
+    assert historical["stopped_owner"]["generation"] == 29
+    assert materializer._identity(historical) == materializer._M39_M38_AUTHORITY_CID
+    for m39_path in (
+        materializer._verify_m39_live_materialization,
+        materializer._materialize_m39,
+    ):
+        source_text = inspect.getsource(m39_path)
+        assert "_inspect_m39_generation_restart_rows" in source_text
+        assert "_inspect_m37_generation_restart_rows" not in source_text
+
+    malformed = dict(authority)
+    malformed.pop("historical_m38_authority")
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="historical M38 generation-restart authority differs",
+    ):
+        materializer._inspect_m39_generation_restart_rows(
+            source, identity, malformed
+        )
+
+
 def test_m21_generation_realization_authority_is_exact_and_presence_first() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",

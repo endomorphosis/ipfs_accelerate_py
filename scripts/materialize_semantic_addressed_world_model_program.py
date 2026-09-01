@@ -63246,6 +63246,25 @@ def _inspect_m39_live_projection(
     )
 
 
+def _inspect_m39_generation_restart_rows(
+    source: Any,
+    identity: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify generation 29/30 through M39's sealed historical authority."""
+
+    historical = authority.get("historical_m38_authority")
+    if (
+        not isinstance(historical, Mapping)
+        or _identity(historical) != _M39_M38_AUTHORITY_CID
+        or not isinstance(historical.get("stopped_owner"), Mapping)
+    ):
+        raise MigrationRequired(
+            "M39 historical M38 generation-restart authority differs"
+        )
+    return _inspect_m37_generation_restart_rows(source, identity, historical)
+
+
 def _verify_m39_live_materialization(
     source: Any,
     identity: Mapping[str, Any],
@@ -63315,7 +63334,7 @@ def _verify_m39_live_materialization(
         != _M39_TARGET_PROJECTION_CID
     ):
         raise MigrationRequired("M39 prior/target projection derivation differs")
-    restart = _inspect_m37_generation_restart_rows(source, identity, authority)
+    restart = _inspect_m39_generation_restart_rows(source, identity, authority)
     if (
         restart.get("live_server_id") != _M39_LIVE_SERVER_ID
         or restart.get("live_process_birth_id") != _M39_LIVE_PROCESS_BIRTH_ID
@@ -65014,7 +65033,7 @@ def _materialize_m39(
                 raise MigrationRequired(
                     "M39 prior/target projection derivation differs"
                 )
-            restart = _inspect_m37_generation_restart_rows(
+            restart = _inspect_m39_generation_restart_rows(
                 source, identity, authority
             )
             if (
