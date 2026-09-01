@@ -2048,7 +2048,7 @@ def test_promoted_completion_is_enumerated_and_reconciled_while_live(
 def test_ordinary_succeeded_completion_is_not_reinterpreted_as_preparation(
     tmp_path: Path,
 ) -> None:
-    coordinator, _clock = _open(tmp_path)
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
     try:
         coordinator.register_task(
             task_cid="task:controller-completed",
@@ -2058,11 +2058,13 @@ def test_ordinary_succeeded_completion_is_not_reinterpreted_as_preparation(
             task_cid="task:controller-completed",
             owner_session_id="session:historical-worker",
         )
+        clock.advance(10_000)
+        coordinator.expire_task_claim(claim, now_ms=clock())
         coordinator.mark_task_complete(
             claim.task_cid,
             status=AttemptStatus.SUCCEEDED.value,
             body={
-                "schema": "pctdd/g9-orphan-terminal-coordination-completion@1",
+                "schema": "pctdd/orphan-terminal-coordination-completion@1",
                 "task_cid": claim.task_cid,
                 "claim_id": claim.claim_id,
                 "operator_owned": True,
@@ -2073,10 +2075,100 @@ def test_ordinary_succeeded_completion_is_not_reinterpreted_as_preparation(
         # two-phase preparation barriers.  A historical matching claim must
         # not make the daemon reinterpret their closed schema and crash-loop.
         assert coordinator.list_unsettled_task_completions(limit=10) == []
-        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.EXPIRED
         assert coordinator.claimability(claim.task_cid)["completion_status"] == (
             AttemptStatus.SUCCEEDED.value
         )
+
+        # A non-preparation logical completion that sorts first must not
+        # consume a bounded recovery slot or starve a real promoted barrier.
+        coordinator.register_task(
+            task_cid="task:authoritative-promoted",
+            task_id="AUTHORITATIVE-PROMOTED",
+        )
+        promoted_claim = coordinator.claim_task(
+            task_cid="task:authoritative-promoted",
+            owner_session_id="session:current-worker",
+        )
+        prepared = coordinator.prepare_task_completion(
+            promoted_claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:authoritative-promoted",
+        )
+        coordinator.complete_task_claim(
+            promoted_claim,
+            control_completion_receipt=_completed_control_task(prepared),
+        )
+        bounded = coordinator.list_unsettled_task_completions(limit=1)
+        assert [item["task_cid"] for item in bounded] == [promoted_claim.task_cid]
+    finally:
+        coordinator.close()
+
+
+def test_non_authoritative_literal_prepared_completion_fails_closed(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:malformed-prepared",
+            task_id="MALFORMED-PREPARED",
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:malformed-prepared",
+            owner_session_id="session:malformed",
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:malformed-prepared",
+        )
+        malformed = dict(prepared)
+        malformed["schema"] = "pctdd/orphan-terminal-coordination-completion@1"
+        coordinator.mark_task_complete(
+            claim.task_cid,
+            status="prepared",
+            body=malformed,
+        )
+
+        with pytest.raises(
+            DatabaseCoordinationStaleFenceError,
+            match="prepared completion schema is not authoritative",
+        ):
+            coordinator.list_unsettled_task_completions(limit=10)
+    finally:
+        coordinator.close()
+
+
+def test_forged_promoted_preparation_digest_fails_closed(tmp_path: Path) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:forged-promoted",
+            task_id="FORGED-PROMOTED",
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:forged-promoted",
+            owner_session_id="session:forged",
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=2,
+            evidence_digest="sha256:forged-promoted",
+        )
+        forged = dict(prepared)
+        forged["preparation_digest"] = "sha256:forged"
+        coordinator.mark_task_complete(
+            claim.task_cid,
+            status=AttemptStatus.SUCCEEDED.value,
+            body=forged,
+        )
+
+        with pytest.raises(
+            DatabaseCoordinationStaleFenceError,
+            match="prepared completion digest does not match its bound body",
+        ):
+            coordinator.list_unsettled_task_completions(limit=10)
     finally:
         coordinator.close()
 
