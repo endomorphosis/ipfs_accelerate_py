@@ -2570,7 +2570,9 @@ class SchemaProtocolChangeAnalyzer:
         field_changes: Sequence[SchemaFieldChange | Mapping[str, Any]] = (),
         roots: PropagationAuthorityRoots | None = None,
         evidence_refs: Sequence[str] = (),
+        ast_report: Any | None = None,
     ) -> SchemaProtocolImpact:
+        ast_evidence = require_ast_before_schema_protocol_analysis(ast_report)
         bound_roots = _roots(roots or self.roots or delta.roots)
         if bound_roots.to_dict() != delta.roots.to_dict():
             # Require exact root binding when both provided.
@@ -2909,7 +2911,9 @@ class SchemaProtocolChangeAnalyzer:
             serialization_impacts=tuple(serialization_impacts),
             protocol_impacts=tuple(protocol_impacts),
             frontier_consumer_ids=tuple(frontier_ids),
-            evidence_refs=_string_tuple(evidence_refs, "evidence_refs"),
+            evidence_refs=_string_tuple(
+                tuple(evidence_refs) + ast_evidence, "evidence_refs"
+            ),
         )
 
 
@@ -2920,6 +2924,7 @@ def build_schema_protocol_impact(
     field_changes: Sequence[SchemaFieldChange | Mapping[str, Any]] = (),
     roots: PropagationAuthorityRoots | None = None,
     evidence_refs: Sequence[str] = (),
+    ast_report: Any | None = None,
 ) -> SchemaProtocolImpact:
     """Functional façade over :class:`SchemaProtocolChangeAnalyzer`."""
     return SchemaProtocolChangeAnalyzer(roots=roots or delta.roots).analyze(
@@ -2927,7 +2932,33 @@ def build_schema_protocol_impact(
         consumers,
         field_changes=field_changes,
         evidence_refs=evidence_refs,
+        ast_report=ast_report,
     )
+
+
+def require_ast_before_schema_protocol_analysis(report: Any | None) -> tuple[str, ...]:
+    """Validate optional AST-stage evidence before schema impact consumes it.
+
+    Existing typed-delta callers may omit this evidence.  If a report is
+    supplied, it must prove that AST/symbol inspection completed without a
+    model call; unresolved dynamic facts stay visible as evidence rather than
+    being mistaken for closed schema coverage.
+    """
+
+    if report is None:
+        return ()
+    if not bool(getattr(report, "ast_completed", False)):
+        raise SchemaProtocolChangeImpactAuthorityError(
+            "schema/protocol analysis requires a completed AST/symbol report"
+        )
+    if getattr(report, "model_invocation_count", None) != 0:
+        raise SchemaProtocolChangeImpactAuthorityError(
+            "AST/symbol report must record zero model invocations"
+        )
+    refs = tuple(
+        sorted(set(str(item) for item in getattr(report, "uncertainty_refs", ())))
+    )
+    return tuple(f"ast_uncertainty:{item}" for item in refs)
 
 
 def required_consumer_roles() -> frozenset[str]:
@@ -2991,4 +3022,5 @@ __all__ = [
     "extract_field_changes",
     "required_consumer_roles",
     "required_schema_surfaces",
+    "require_ast_before_schema_protocol_analysis",
 ]
