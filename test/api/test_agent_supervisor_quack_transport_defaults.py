@@ -521,6 +521,72 @@ def test_unstall_stale_in_progress_tasks_retries_dead_gate(tmp_path) -> None:
     assert rows["PCCE-022"] == ("in_progress", 1)
 
 
+def test_unstall_orphans_in_progress_on_owner_restart(tmp_path) -> None:
+    import duckdb
+    from datetime import datetime, timedelta, timezone
+
+    connection = duckdb.connect(":memory:")
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL
+        )
+        """
+    )
+    now = datetime(2026, 9, 1, 6, 40, tzinfo=timezone.utc)
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?)",
+        [
+            "cid-011",
+            "ASEH-011",
+            "in_progress",
+            882,
+            (now - timedelta(minutes=35)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ],
+    )
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?)",
+        [
+            "cid-031",
+            "ASEH-031",
+            "in_progress",
+            786,
+            (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ],
+    )
+    kept = unstall_stale_in_progress_tasks(
+        connection,
+        now=now,
+        stale_seconds=16_200,
+        allow_projection_only=True,
+    )
+    assert kept["unstalled"] == []
+    result = unstall_stale_in_progress_tasks(
+        connection,
+        now=now,
+        stale_seconds=16_200,
+        allow_projection_only=True,
+        orphan_previous_generation=True,
+    )
+    aliases = [item["task_alias"] for item in result["unstalled"]]
+    assert aliases == ["ASEH-011", "ASEH-031"]
+    assert {item["reason"] for item in result["unstalled"]} == {
+        "orphaned_previous_owner_generation"
+    }
+    rows = {
+        str(row[0]): (row[1], row[2])
+        for row in connection.execute(
+            "SELECT task_alias, status, revision FROM tasks"
+        ).fetchall()
+    }
+    assert rows["ASEH-011"] == ("retrying", 883)
+    assert rows["ASEH-031"] == ("retrying", 787)
+
+
 def test_unstall_refuses_projection_only_mutation_without_fixture_authority() -> None:
     import duckdb
     from datetime import datetime, timedelta, timezone

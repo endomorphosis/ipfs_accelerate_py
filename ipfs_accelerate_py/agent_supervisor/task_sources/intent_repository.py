@@ -3635,6 +3635,7 @@ class IntentRepository:
         *,
         now: datetime | None = None,
         stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+        orphan_previous_generation: bool = False,
     ) -> dict[str, Any]:
         """Retry stale gates through the canonical event-sourced transition.
 
@@ -3760,6 +3761,7 @@ class IntentRepository:
                 now=now,
                 stale_seconds=stale_seconds,
                 canonical_transition=transition,
+                orphan_previous_generation=orphan_previous_generation,
             )
 
     # -- readiness / selection -----------------------------------------------
