@@ -268,10 +268,15 @@ def _sensor_id(*parts: str) -> str:
 
 
 def _identity_digest(value: str) -> int:
-    """Map free-form identity text to a stable non-negative integer digest."""
+    """Map free-form identity text to a stable measured-integer digest.
+
+    An 8-byte SHA-256 prefix is a uint64 and routinely exceeds ``MAX_INTEGER``.
+    Fold into the measured-integer domain so identity samples cannot fail
+    closed as ``BenchmarkTelemetryError`` after a successful provider map.
+    """
 
     digest = hashlib.sha256(value.encode("utf-8")).digest()
-    return int.from_bytes(digest[:8], "big")
+    return int.from_bytes(digest[:8], "big") % (MAX_INTEGER + 1)
 
 
 def seconds_to_millionths(seconds: float | int) -> int:
