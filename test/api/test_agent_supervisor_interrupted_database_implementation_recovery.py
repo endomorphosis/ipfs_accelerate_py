@@ -295,6 +295,39 @@ def _seed_interrupted_implementation(
     return daemon, evidence, claim_path, dirty_candidate
 
 
+def test_quiesced_dead_dispatch_intent_claim_releases_for_retry(
+    tmp_path: Path,
+) -> None:
+    """Already-idle nested Portal with a dead todo claim must unstick.
+
+    Markdown still todo is retry authority.  Releasing that leftover lock must
+    not complete the task and must not keep the outer lane fenced.
+    """
+
+    daemon, _evidence, claim_path, _dirty_candidate = (
+        _seed_interrupted_implementation(tmp_path)
+    )
+    state = PortalTaskState.load(daemon.state_path)
+    assert not state.implementation_in_progress
+    assert not state.active_task_id
+    assert claim_path.exists()
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    claim = result.get("task_claim_reconciliation") or {}
+    assert result.get("blocked") is False, result
+    assert result.get("reason") == "already_quiesced"
+    assert claim.get("reason") == "quiesced_task_claim_released"
+    assert claim.get("task_status") == "todo"
+    assert claim.get("stale_dispatch_intent_released_for_retry") is True
+    assert not claim_path.exists()
+    task = daemon._load_tasks()[0]
+    assert task.status == "todo"
+    assert not any(
+        event.get("type") == "task_completed" for event in _events(daemon)
+    )
+
+
 def _state_sha256(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 

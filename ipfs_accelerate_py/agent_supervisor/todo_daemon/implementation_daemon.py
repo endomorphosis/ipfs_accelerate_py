@@ -12692,6 +12692,7 @@ class PortalImplementationDaemon:
         unfinished_candidate: Mapping[str, Any] | None = None,
         released_unfinished_retry_id: str = "",
         claim_guard_held: bool = False,
+        allow_stale_dispatch_intent_retry: bool = False,
     ) -> dict[str, Any]:
         """Release one exact dead claim after terminal or staged-retry proof."""
 
@@ -13075,6 +13076,20 @@ class PortalImplementationDaemon:
                         if key != "task"
                     }
                     authority_reason = ""
+            stale_dispatch_intent_retry = False
+            if (
+                allow_stale_dispatch_intent_retry
+                and record is not None
+                and authority_reason == "canonical_task_not_terminal"
+                and task_status == "todo"
+                and not released_unfinished_retry_id
+                and unfinished_candidate is None
+            ):
+                # Nested Portal already idle, claim owner dead, markdown still
+                # todo.  That leftover dispatch-intent lock is retry authority,
+                # not a whole-lane startup fence and not completion authority.
+                authority_reason = ""
+                stale_dispatch_intent_retry = True
             if record is None or authority_reason:
                 return blocked(
                     authority_reason,
@@ -13132,6 +13147,8 @@ class PortalImplementationDaemon:
                 basis["unfinished_validation_candidate"] = (
                     unfinished_candidate_authority
                 )
+            if stale_dispatch_intent_retry:
+                basis["stale_dispatch_intent_released_for_retry"] = True
             operation_id = content_identity(basis)
             receipt_path = self._task_claim_release_receipt_path(
                 canonical_task_cid=canonical_task_cid,
@@ -13257,6 +13274,8 @@ class PortalImplementationDaemon:
             result["unfinished_validation_candidate"] = (
                 unfinished_candidate_authority
             )
+        if stale_dispatch_intent_retry:
+            result["stale_dispatch_intent_released_for_retry"] = True
         self._record_event("implementation_task_claim_released", result)
         if released_unfinished_retry_id:
             expected_event_payload = dict(result)
@@ -13458,7 +13477,10 @@ class PortalImplementationDaemon:
             )
 
         task_claim_reconciliation = (
-            self._reconcile_quiesced_implementation_task_claim(state)
+            self._reconcile_quiesced_implementation_task_claim(
+                state,
+                allow_stale_dispatch_intent_retry=not had_active_state,
+            )
         )
         if task_claim_reconciliation.get("blocked", False):
             result = {
