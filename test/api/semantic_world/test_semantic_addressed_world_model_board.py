@@ -4977,7 +4977,10 @@ def test_m39_stale_owner_recovery_requires_a_generation_31_successor() -> None:
 
     with pytest.raises(
         operator.OperatorError,
-        match="sealed generation-31 successor",
+        match=(
+            "M43 binds a cleanly stopped generation-30 owner; use the sealed "
+            "generation-31 quack-start path"
+        ),
     ):
         operator._recover_stale_quack(config)
 
@@ -5227,6 +5230,7 @@ def test_m40_operator_selects_newest_authority_by_key_presence() -> None:
             config,
         )
     )
+    historical_config["database_program"]["store_generation"] = "30"
     active = operator._active_source_repair_materialization(historical_config)
     assert active["migration_revision"] == "SAWM-R2-M40"
     assert active["target_event_watermark"] == 292
@@ -5917,6 +5921,7 @@ def test_m41_operator_selects_newest_authority_by_key_presence() -> None:
             config,
         )
     )
+    historical_config["database_program"]["store_generation"] = "30"
     active = operator._active_source_repair_materialization(historical_config)
     assert active["migration_revision"] == "SAWM-R2-M41"
     assert active["target_event_watermark"] == 292
@@ -10231,9 +10236,9 @@ def test_m31_authority_pins_dead_pid_event_281_and_generation_29() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    # M31 remains immutable history while M37 is the current generation-30
+    # M31 remains immutable history while M43 is the current generation-31
     # restart authority.
-    assert scheduler["database_program"]["store_generation"] == "30"
+    assert scheduler["database_program"]["store_generation"] == "31"
     assert authority["migration_revision"] == "SAWM-R2-M31"
     assert authority["prior_authority"]["event_watermark"] == 281
     assert authority["target_event_watermark"] == 282
@@ -10409,8 +10414,8 @@ def test_m30_authority_pins_stopped_event_280_and_generation_28() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    # M30 remains immutable history while the current M37 owner is generation 30.
-    assert scheduler["database_program"]["store_generation"] == "30"
+    # M30 remains immutable history while the current M43 owner is generation 31.
+    assert scheduler["database_program"]["store_generation"] == "31"
     assert authority["schema"].endswith("authorization@2")
     assert authority["authorization_revision"] == 2
     assert authority["control_recorded_at"] == "2026-08-31T15:59:48Z"
@@ -11645,7 +11650,7 @@ def test_m27_dead_owner_resume_authority_runtime_and_source_chain_are_exact(
     assert config["database_program"]["store_id"].endswith(
         "run-r2-m27/control.duckdb"
     )
-    assert config["database_program"]["store_generation"] == "30"
+    assert config["database_program"]["store_generation"] == "31"
     assert m27_config["database_program"]["store_generation"] == "26"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
@@ -13895,9 +13900,9 @@ def test_m22_scheduler_authority_is_preserved_under_m27_runtime() -> None:
     assert config["database_program"]["store_id"] == (
         f"{current_runtime}/control.duckdb"
     )
-    # M37 restarted the owner at generation 30 without changing the M27
+    # M43 advances the owner to generation 31 without changing the M27
     # runtime namespace.
-    assert config["database_program"]["store_generation"] == "30"
+    assert config["database_program"]["store_generation"] == "31"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
     )
@@ -16957,9 +16962,9 @@ def test_m17_namespace_is_preserved_as_historical_under_m27() -> None:
     assert authority["target_generation"] == 18
     assert authority["target_quack_port"] == 24_060
     assert config["runtime_paths"]["root"].endswith("run-r2-m27")
-    # The M17 authority remains historical while M37 owns generation 30 in the
+    # The M17 authority remains historical while M43 owns generation 31 in the
     # M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "30"
+    assert config["database_program"]["store_generation"] == "31"
     assert config["quack_owner"]["port"] == 24_070
 
 
@@ -18079,9 +18084,9 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m27() -> None:
         "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
     )
     assert config["runtime_paths"] != historical_runtime
-    # The M15 authority remains historical while M37 owns generation 30 in the
+    # The M15 authority remains historical while M43 owns generation 31 in the
     # M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "30"
+    assert config["database_program"]["store_generation"] == "31"
     assert config["quack_owner"]["port"] == 24_070
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 
