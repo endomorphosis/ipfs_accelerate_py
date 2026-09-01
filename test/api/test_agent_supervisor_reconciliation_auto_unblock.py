@@ -231,6 +231,207 @@ def test_cleanup_removes_merged_worktree_with_matching_submodule_working_tree(
     assert not any(item["kind"] == "dirty_backlogged_worktree" for item in records)
 
 
+def test_no_delta_nested_gitlink_rescue_is_attested_once(
+    tmp_path: Path,
+) -> None:
+    repo, _submodule = _seed_parent_with_submodule(tmp_path)
+    branch = "implementation/no-delta-nested-gitlink"
+    _git(repo, "branch", branch)
+    worktree_root = repo / "worktrees"
+    worktree = worktree_root / "attempt"
+    _git(repo, "worktree", "add", str(worktree), branch)
+    _git(
+        worktree,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+    )
+    (worktree / "ipfs_datasets_py" / "untracked.py").write_text(
+        "VALUE = 'nested only'\n",
+        encoding="utf-8",
+    )
+    status_lines = subprocess.run(
+        ["git", "status", "--short", "--ignore-submodules=none"],
+        cwd=worktree,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.splitlines()
+    assert status_lines == [" ? ipfs_datasets_py"]
+    original_head = _git(worktree, "rev-parse", "HEAD^{commit}")
+    original_tree = _git(worktree, "rev-parse", "HEAD^{tree}")
+    supervisor = _supervisor(repo, worktree_root=worktree_root)
+
+    result = supervisor._rescue_dirty_worktree(
+        worktree,
+        branch=branch,
+        head=original_head,
+        target_ref="main",
+        status_lines=status_lines,
+        reason="test_nested_gitlink",
+    )
+
+    assert result["preserved"] is True
+    assert result["reason"] == "no_staged_rescue_delta_attested"
+    rescue_branch = str(result["rescue_branch"])
+    rescue_head = _git(worktree, "rev-parse", "HEAD^{commit}")
+    assert rescue_branch.startswith("rescue/worktree/")
+    assert rescue_head != original_head
+    assert _git(worktree, "rev-parse", "HEAD^{tree}") == original_tree
+    assert _git(worktree, "rev-list", "--parents", "-n", "1", "HEAD") == (
+        f"{rescue_head} {original_head}"
+    )
+    metadata = _git(worktree, "show", "-s", "--format=%ae%n%s%n%b", "HEAD")
+    assert metadata.splitlines()[0] == "implementation-supervisor@example.invalid"
+    assert f"Rescue dirty worktree {branch}" in metadata
+    assert f"Original branch: {branch}" in metadata
+
+    repeated = supervisor._rescue_dirty_worktree(
+        worktree,
+        branch=rescue_branch,
+        head=rescue_head,
+        target_ref="main",
+        status_lines=status_lines,
+        reason="test_restart",
+    )
+
+    assert repeated["reason"] == "existing_rescue_attestation"
+    assert repeated["rescue_branch"] == rescue_branch
+    assert _git(worktree, "rev-parse", "HEAD^{commit}") == rescue_head
+
+
+def test_no_delta_rescue_attestation_ignores_hooks_and_global_signing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo, _submodule = _seed_parent_with_submodule(tmp_path)
+    branch = "implementation/hostile-git-configuration"
+    _git(repo, "branch", branch)
+    worktree_root = repo / "worktrees"
+    worktree = worktree_root / "attempt"
+    _git(repo, "worktree", "add", str(worktree), branch)
+    _git(
+        worktree,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+    )
+    (worktree / "ipfs_datasets_py" / "untracked.py").write_text(
+        "VALUE = 'nested only'\n",
+        encoding="utf-8",
+    )
+    status_lines = subprocess.run(
+        ["git", "status", "--short", "--ignore-submodules=none"],
+        cwd=worktree,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.splitlines()
+    assert status_lines == [" ? ipfs_datasets_py"]
+
+    hook_marker = tmp_path / "commit-hook-ran"
+    hooks = tmp_path / "hostile-hooks"
+    hooks.mkdir()
+    pre_commit = hooks / "pre-commit"
+    pre_commit.write_text(
+        "#!/bin/sh\n"
+        f"printf hook > {hook_marker}\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    pre_commit.chmod(0o755)
+    _git(worktree, "config", "core.hooksPath", str(hooks))
+
+    gpg_marker = tmp_path / "global-gpg-ran"
+    fake_gpg = tmp_path / "hostile-gpg"
+    fake_gpg.write_text(
+        "#!/bin/sh\n"
+        f"printf gpg > {gpg_marker}\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    fake_gpg.chmod(0o755)
+    hostile_global = tmp_path / "hostile-global.gitconfig"
+    _git(
+        repo,
+        "config",
+        "--file",
+        str(hostile_global),
+        "commit.gpgSign",
+        "true",
+    )
+    _git(
+        repo,
+        "config",
+        "--file",
+        str(hostile_global),
+        "gpg.program",
+        str(fake_gpg),
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(hostile_global))
+
+    original_head = _git(worktree, "rev-parse", "HEAD^{commit}")
+    supervisor = _supervisor(repo, worktree_root=worktree_root)
+    result = supervisor._rescue_dirty_worktree(
+        worktree,
+        branch=branch,
+        head=original_head,
+        target_ref="main",
+        status_lines=status_lines,
+        reason="test_hostile_git_configuration",
+    )
+
+    assert result["preserved"] is True
+    assert result["reason"] == "no_staged_rescue_delta_attested"
+    assert _git(worktree, "rev-parse", "HEAD^1") == original_head
+    assert not hook_marker.exists()
+    assert not gpg_marker.exists()
+
+
+def test_loose_rescue_metadata_is_not_an_existing_attestation(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    rescue_branch = "rescue/worktree/forged-loose-metadata"
+    _git(repo, "checkout", "-b", rescue_branch)
+    _git(
+        repo,
+        "-c",
+        "user.name=Implementation Supervisor",
+        "-c",
+        "user.email=implementation-supervisor@example.invalid",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "Rescue dirty worktree implementation/forged",
+        "-m",
+        "Original branch: implementation/forged",
+    )
+    forged_head = _git(repo, "rev-parse", "HEAD^{commit}")
+    supervisor = _supervisor(repo, worktree_root=repo / "worktrees")
+
+    result = supervisor._rescue_dirty_worktree(
+        repo,
+        branch=rescue_branch,
+        head=forged_head,
+        target_ref="main",
+        status_lines=[],
+        reason="test_forged_metadata",
+    )
+
+    assert result["preserved"] is True
+    assert result["reason"] == "legacy_rescue_requires_lifecycle_binding"
+    assert result["rescue_commit"] == forged_head
+    assert _git(repo, "rev-parse", "HEAD^{commit}") == forged_head
+
+
 def test_reconcile_skips_completed_rescue_leftover_before_preflight(
     tmp_path: Path,
 ) -> None:

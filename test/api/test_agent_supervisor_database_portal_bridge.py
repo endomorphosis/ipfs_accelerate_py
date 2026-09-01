@@ -1683,6 +1683,100 @@ def test_bridge_exactly_retires_preserved_superseded_attempt_lifecycle(
     assert portals[0].checkout_lease_released is True
 
 
+def test_bridge_attests_legacy_no_delta_rescue_before_recovery(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    original_branch = predecessor.branch.removeprefix("refs/heads/")
+
+    def git(*arguments: str) -> str:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=workspace,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    original_head = git("rev-parse", "HEAD^{commit}")
+    original_tree = git("rev-parse", "HEAD^{tree}")
+    rescue_branch = "rescue/worktree/legacy-no-delta"
+    git("checkout", "-q", "-b", rescue_branch)
+
+    provider = bridge.run_provider(attempt)
+
+    assert provider["accepted"] is True
+    attestation_head = git("rev-parse", "HEAD^{commit}")
+    assert attestation_head != original_head
+    assert git("rev-parse", "HEAD^{tree}") == original_tree
+    assert git("rev-parse", f"refs/heads/{original_branch}^{{commit}}") == (
+        original_head
+    )
+    metadata = git("show", "-s", "--format=%ae%n%s%n%b", "HEAD")
+    assert metadata.splitlines()[0] == "implementation-supervisor@example.invalid"
+    assert f"Rescue dirty worktree {original_branch}" in metadata
+    assert f"Original branch: {original_branch}" in metadata
+    receipt = json.loads(
+        (
+            bridge._paths(attempt).root
+            / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+        ).read_text(encoding="utf-8")
+    )
+    preservation = receipt["preservation"]
+    assert preservation["head"] == attestation_head
+    assert preservation["tree"] == original_tree
+    assert preservation["preservation_mode"] == (
+        f"legacy_no_delta_rescue_attestation:{attestation_head}"
+    )
+    assert receipt["provider_dispatched"] is False
+    assert receipt["task_completion_authority"] is False
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    assert portals and portals[0].run_count == 1
+
+
+def test_bridge_rejects_legacy_rescue_with_uncommitted_root_delta(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path)
+    )
+    original_head = subprocess.run(
+        ["git", "rev-parse", "HEAD^{commit}"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "checkout", "-q", "-b", "rescue/worktree/unsafe-root-delta"],
+        cwd=workspace,
+        check=True,
+    )
+    (workspace / "seed.py").write_text("SEED = False\n", encoding="utf-8")
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_legacy_rescue_delta_unsafe",
+    ):
+        bridge.run_provider(attempt)
+
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD^{commit}"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == original_head
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None and predecessor.is_nonterminal
+    assert portals and portals[0].run_count == 0
+
+
 def test_bridge_preserves_receipt_then_retires_exact_dead_active_marker(
     tmp_path: Path,
 ) -> None:
@@ -1958,6 +2052,72 @@ def test_bridge_content_addresses_exact_declared_nested_output_before_clearance(
     )
     assert lifecycle_receipt["preservation"]["preservation_mode"] == (
         clearance["preservation"]["preservation_mode"]
+    )
+    assert portals and portals[0].run_count == 1
+
+
+def test_bridge_attests_live_shape_legacy_rescue_and_preserves_nested_output(
+    tmp_path: Path,
+) -> None:
+    nested_path = "ipfs_datasets_py/program_execution_trace.py"
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+            nested_output_path=nested_path,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    original_branch = predecessor.branch.removeprefix("refs/heads/")
+
+    def git(*arguments: str) -> str:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=workspace,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    original_head = git("rev-parse", "HEAD^{commit}")
+    original_tree = git("rev-parse", "HEAD^{tree}")
+    git("checkout", "-q", "-b", "rescue/worktree/live-shape-legacy")
+    assert subprocess.run(
+        ["git", "status", "--short", "--ignore-submodules=none"],
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines() == [" ? external/ipfs_datasets_py"]
+
+    result = bridge.run_provider(attempt)
+
+    assert result["accepted"] is True
+    attestation_head = git("rev-parse", "HEAD^{commit}")
+    assert git("rev-list", "--parents", "-n", "1", "HEAD") == (
+        f"{attestation_head} {original_head}"
+    )
+    assert git("rev-parse", "HEAD^{tree}") == original_tree
+    assert git("rev-parse", f"refs/heads/{original_branch}^{{commit}}") == (
+        original_head
+    )
+    prior_root = Path(predecessor.state_dir)
+    preservation_paths = tuple(
+        prior_root.glob("cross-attempt-declared-output-preservation-*.json")
+    )
+    assert len(preservation_paths) == 1
+    preservation = json.loads(preservation_paths[0].read_text(encoding="utf-8"))
+    receipt = json.loads(
+        (
+            bridge._paths(attempt).root
+            / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+        ).read_text(encoding="utf-8")
+    )
+    assert receipt["preservation"]["head"] == attestation_head
+    assert receipt["preservation"]["preservation_mode"] == (
+        "content_addressed_declared_nested_outputs:"
+        f"{preservation['preservation_id']}"
     )
     assert portals and portals[0].run_count == 1
 

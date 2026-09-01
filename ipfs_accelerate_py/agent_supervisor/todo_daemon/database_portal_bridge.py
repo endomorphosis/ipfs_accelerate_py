@@ -4683,6 +4683,363 @@ class DatabasePortalExecutionBridge:
             ),
         }
 
+    def _validated_rescue_attestation(
+        self,
+        *,
+        repository: Path,
+        workspace: Path,
+        branch_name: str,
+        original_branch: str,
+        head_id: str,
+        tree_id: str,
+    ) -> dict[str, str]:
+        """Validate an exact single-parent supervisor rescue commit."""
+
+        metadata = self._git_observation(
+            workspace,
+            "show",
+            "-s",
+            "--format=%ae%x00%s%x00%b",
+            "HEAD",
+        )
+        parents = self._git_observation(
+            workspace,
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            "HEAD",
+        )
+        current_ref = self._git_observation(
+            repository,
+            "rev-parse",
+            f"refs/heads/{branch_name}^{{commit}}",
+        )
+        original_ref = self._git_observation(
+            repository,
+            "rev-parse",
+            f"refs/heads/{original_branch}^{{commit}}",
+        )
+        current_tree = self._git_observation(
+            workspace,
+            "rev-parse",
+            "HEAD^{tree}",
+        )
+        original_tree = self._git_observation(
+            repository,
+            "rev-parse",
+            f"refs/heads/{original_branch}^{{tree}}",
+        )
+        fields = str(metadata.stdout or "").split("\x00", 2)
+        body_fields = (
+            tuple(line.strip() for line in fields[2].splitlines() if line.strip())
+            if len(fields) == 3
+            else ()
+        )
+        subject = fields[1].strip() if len(fields) == 3 else ""
+        original_head = (
+            body_fields[1].removeprefix("Original HEAD: ")
+            if len(body_fields) == 3
+            else ""
+        )
+        parent_fields = str(parents.stdout or "").strip().split()
+        cleanup_reason = (
+            body_fields[2].removeprefix("Cleanup reason: ")
+            if len(body_fields) == 3
+            else ""
+        )
+        if (
+            not branch_name.startswith("rescue/worktree/")
+            or not original_branch
+            or original_branch.startswith("rescue/worktree/")
+            or any(
+                result.returncode != 0
+                for result in (
+                    metadata,
+                    parents,
+                    current_ref,
+                    original_ref,
+                    current_tree,
+                    original_tree,
+                )
+            )
+            or len(fields) != 3
+            or fields[0].strip()
+            != "implementation-supervisor@example.invalid"
+            or subject != f"Rescue dirty worktree {original_branch}"
+            or len(body_fields) != 3
+            or body_fields[0] != f"Original branch: {original_branch}"
+            or body_fields[1] != f"Original HEAD: {original_head}"
+            or re.fullmatch(r"[0-9a-f]{40}", original_head) is None
+            or not cleanup_reason
+            or body_fields[2] != f"Cleanup reason: {cleanup_reason}"
+            or parent_fields != [head_id, original_head]
+            or str(current_ref.stdout or "").strip() != head_id
+            or str(original_ref.stdout or "").strip() != original_head
+            or str(current_tree.stdout or "").strip() != tree_id
+            or re.fullmatch(
+                r"[0-9a-f]{40}",
+                str(original_tree.stdout or "").strip(),
+            )
+            is None
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_rescue_receipt_invalid"
+            )
+        return {
+            "attestation_head": head_id,
+            "cleanup_reason": cleanup_reason,
+            "original_head": original_head,
+            "original_tree": str(original_tree.stdout or "").strip(),
+        }
+
+    def _attest_legacy_no_delta_rescue(
+        self,
+        *,
+        repository: Path,
+        workspace: Path,
+        branch_name: str,
+        original_branch: str,
+        head_id: str,
+        tree_id: str,
+        status_bytes: bytes,
+    ) -> dict[str, Any]:
+        """Bind an old no-delta rescue branch to its lifecycle authority.
+
+        Older cleanup code could move a worktree onto ``rescue/worktree/*``
+        when only a nested gitlink was dirty, but leave the rescue ref at the
+        original commit.  Recovery cannot trust a rescue branch name alone.
+        Under the already-held checkout lease and quiescence gates, admit only
+        the exact unchanged original ref/tree and nested-gitlink-only status,
+        then create the same empty attestation commit that current cleanup
+        creates.  Any root-tree delta or ambiguous ref remains fail-closed.
+        """
+
+        if (
+            not branch_name.startswith("rescue/worktree/")
+            or not original_branch
+            or original_branch.startswith("rescue/worktree/")
+            or re.fullmatch(r"[0-9a-f]{40}", head_id) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree_id) is None
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_legacy_rescue_unbound"
+            )
+        current_ref = self._git_observation(
+            repository,
+            "rev-parse",
+            f"refs/heads/{branch_name}^{{commit}}",
+        )
+        original_ref = self._git_observation(
+            repository,
+            "rev-parse",
+            f"refs/heads/{original_branch}^{{commit}}",
+        )
+        original_tree = self._git_observation(
+            repository,
+            "rev-parse",
+            f"refs/heads/{original_branch}^{{tree}}",
+        )
+        staged = self._git_observation(workspace, "diff", "--cached", "--quiet")
+        if (
+            current_ref.returncode != 0
+            or original_ref.returncode != 0
+            or original_tree.returncode != 0
+            or staged.returncode != 0
+            or str(current_ref.stdout or "").strip() != head_id
+            or str(original_ref.stdout or "").strip() != head_id
+            or str(original_tree.stdout or "").strip() != tree_id
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_legacy_rescue_unbound"
+            )
+
+        try:
+            status_entries = tuple(
+                entry
+                for entry in status_bytes.decode("utf-8", errors="strict").split("\x00")
+                if entry
+            )
+        except UnicodeDecodeError as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_legacy_rescue_delta_unsafe"
+            ) from exc
+        nested_gitlinks: list[str] = []
+        for entry in status_entries:
+            if (
+                len(entry) < 4
+                or entry[2] != " "
+                or entry[:2] not in {" m", " ?", " M"}
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_legacy_rescue_delta_unsafe"
+                )
+            relative_text = entry[3:]
+            relative = PurePosixPath(relative_text)
+            if (
+                not relative_text
+                or relative.is_absolute()
+                or ".." in relative.parts
+                or relative.as_posix() != relative_text
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_legacy_rescue_delta_unsafe"
+                )
+            indexed = self._git_observation(
+                workspace,
+                "ls-files",
+                "--stage",
+                "-z",
+                "--",
+                relative_text,
+                text=False,
+            )
+            raw_index = bytes(indexed.stdout or b"")
+            expected_suffix = f"\t{relative_text}\x00".encode("utf-8")
+            if (
+                indexed.returncode != 0
+                or raw_index.count(b"\x00") != 1
+                or not raw_index.startswith(b"160000 ")
+                or not raw_index.endswith(expected_suffix)
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_legacy_rescue_delta_unsafe"
+                )
+            nested_gitlinks.append(relative_text)
+
+        environment = {
+            "PATH": "/usr/bin:/bin",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+        try:
+            commit = subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "--no-replace-objects",
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    "-c",
+                    "commit.gpgSign=false",
+                    "-c",
+                    "user.name=Implementation Supervisor",
+                    "-c",
+                    "user.email=implementation-supervisor@example.invalid",
+                    "commit",
+                    "--allow-empty",
+                    "--no-verify",
+                    "-m",
+                    f"Rescue dirty worktree {original_branch}",
+                    "-m",
+                    f"Original branch: {original_branch}",
+                    "-m",
+                    f"Original HEAD: {head_id}",
+                    "-m",
+                    "Cleanup reason: cross_attempt_lifecycle_legacy_no_delta_attestation",
+                ],
+                cwd=workspace,
+                env=environment,
+                capture_output=True,
+                check=False,
+                timeout=20.0,
+                text=True,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_legacy_rescue_attestation_failed"
+            ) from exc
+        if commit.returncode != 0:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_legacy_rescue_attestation_failed"
+            )
+
+        after_head = self._git_observation(workspace, "rev-parse", "HEAD^{commit}")
+        after_tree = self._git_observation(workspace, "rev-parse", "HEAD^{tree}")
+        after_branch = self._git_observation(
+            workspace,
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "HEAD",
+        )
+        after_ref = self._git_observation(
+            repository,
+            "rev-parse",
+            f"refs/heads/{branch_name}^{{commit}}",
+        )
+        after_parents = self._git_observation(
+            workspace,
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            "HEAD",
+        )
+        after_original_ref = self._git_observation(
+            repository,
+            "rev-parse",
+            f"refs/heads/{original_branch}^{{commit}}",
+        )
+        after_original_tree = self._git_observation(
+            repository,
+            "rev-parse",
+            f"refs/heads/{original_branch}^{{tree}}",
+        )
+        after_status = self._git_observation(
+            workspace,
+            "status",
+            "--ignore-submodules=none",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            text=False,
+        )
+        attestation_head = str(after_head.stdout or "").strip()
+        if (
+            after_head.returncode != 0
+            or after_tree.returncode != 0
+            or after_branch.returncode != 0
+            or after_ref.returncode != 0
+            or after_parents.returncode != 0
+            or after_original_ref.returncode != 0
+            or after_original_tree.returncode != 0
+            or after_status.returncode != 0
+            or re.fullmatch(r"[0-9a-f]{40}", attestation_head) is None
+            or attestation_head == head_id
+            or str(after_tree.stdout or "").strip() != tree_id
+            or str(after_branch.stdout or "").strip() != branch_name
+            or str(after_ref.stdout or "").strip() != attestation_head
+            or str(after_parents.stdout or "").strip().split()
+            != [attestation_head, head_id]
+            or str(after_original_ref.stdout or "").strip() != head_id
+            or str(after_original_tree.stdout or "").strip() != tree_id
+            or bytes(after_status.stdout or b"") != status_bytes
+        ):
+            raise DatabasePortalBridgeError(
+                "cross-attempt legacy rescue attestation was not exact"
+            )
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "legacy-no-delta-rescue-attestation@1"
+            ),
+            "original_branch": original_branch,
+            "original_head": head_id,
+            "tree": tree_id,
+            "rescue_branch": branch_name,
+            "attestation_head": attestation_head,
+            "nested_gitlinks": sorted(nested_gitlinks),
+            "tree_changed": False,
+            "provider_dispatched": False,
+            "mutation_authority": False,
+            "merge_authority": False,
+            "task_completion_authority": False,
+            "worker_self_approval": False,
+        }
+
     def _preserved_quiescent_worktree(
         self,
         daemon: Any,
@@ -4797,27 +5154,53 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_lifecycle_preservation_ref_changed"
             )
+        legacy_rescue_attestation: dict[str, Any] = {}
         if rescue:
-            metadata = self._git_observation(
-                workspace,
-                "show",
-                "-s",
-                "--format=%ae%x00%s%x00%b",
-                "HEAD",
-            )
-            fields = str(metadata.stdout or "").split("\x00", 2)
-            if (
-                metadata.returncode != 0
-                or len(fields) != 3
-                or fields[0].strip()
-                != "implementation-supervisor@example.invalid"
-                or fields[1].strip()
-                != f"Rescue dirty worktree {original_branch}"
-                or f"Original branch: {original_branch}" not in fields[2]
-            ):
-                raise DatabasePortalBridgeDeferred(
-                    "cross_attempt_lifecycle_rescue_receipt_invalid"
+            try:
+                rescue_attestation = self._validated_rescue_attestation(
+                    repository=repository,
+                    workspace=workspace,
+                    branch_name=branch_name,
+                    original_branch=original_branch,
+                    head_id=head_id,
+                    tree_id=tree_id,
                 )
+            except DatabasePortalBridgeDeferred:
+                legacy_rescue_attestation = self._attest_legacy_no_delta_rescue(
+                    repository=repository,
+                    workspace=workspace,
+                    branch_name=branch_name,
+                    original_branch=original_branch,
+                    head_id=head_id,
+                    tree_id=tree_id,
+                    status_bytes=bytes(status.stdout or b""),
+                )
+                head_id = str(legacy_rescue_attestation["attestation_head"])
+                rescue_attestation = self._validated_rescue_attestation(
+                    repository=repository,
+                    workspace=workspace,
+                    branch_name=branch_name,
+                    original_branch=original_branch,
+                    head_id=head_id,
+                    tree_id=tree_id,
+                )
+                if (
+                    rescue_attestation["cleanup_reason"]
+                    != "cross_attempt_lifecycle_legacy_no_delta_attestation"
+                    or rescue_attestation["original_head"]
+                    != legacy_rescue_attestation["original_head"]
+                    or rescue_attestation["original_tree"] != tree_id
+                ):
+                    raise DatabasePortalBridgeError(
+                        "cross-attempt legacy rescue attestation metadata differs"
+                    )
+            else:
+                if rescue_attestation["cleanup_reason"] == (
+                    "cross_attempt_lifecycle_legacy_no_delta_attestation"
+                ):
+                    legacy_rescue_attestation = {
+                        "attestation_head": head_id,
+                    }
         prior_directory_identity = self._seal_attempt_directory(
             prior_paths,
             attempt_id=prior_binding["attempt_id"],
@@ -4841,7 +5224,16 @@ class DatabasePortalExecutionBridge:
             "content_addressed_declared_nested_outputs:"
             f"{declared_output_preservation['preservation_id']}"
             if declared_output_preservation
-            else ("supervisor_rescue_commit" if rescue else "clean_branch_commit")
+            else (
+                "legacy_no_delta_rescue_attestation:"
+                f"{legacy_rescue_attestation['attestation_head']}"
+                if legacy_rescue_attestation
+                else (
+                    "supervisor_rescue_commit"
+                    if rescue
+                    else "clean_branch_commit"
+                )
+            )
         )
         preservation = {
             "workspace_path": str(workspace),
@@ -5169,8 +5561,23 @@ class DatabasePortalExecutionBridge:
             )
         process_inventory = preservation["process_inventory"]
         container_inventory = preservation["container_inventory"]
+        preservation_mode = str(preservation["preservation_mode"])
+        preservation_head = str(preservation["head"])
+        valid_preservation_mode = (
+            preservation_mode in {"clean_branch_commit", "supervisor_rescue_commit"}
+            or re.fullmatch(
+                r"content_addressed_declared_nested_outputs:sha256:[0-9a-f]{64}",
+                preservation_mode,
+            )
+            is not None
+            or preservation_mode
+            == f"legacy_no_delta_rescue_attestation:{preservation_head}"
+        )
         if (
-            set(process_inventory) != {"same_uid_processes_inspected"}
+            re.fullmatch(r"[0-9a-f]{40}", preservation_head) is None
+            or re.fullmatch(r"[0-9a-f]{40}", str(preservation["tree"])) is None
+            or not valid_preservation_mode
+            or set(process_inventory) != {"same_uid_processes_inspected"}
             or type(process_inventory["same_uid_processes_inspected"]) is not int
             or process_inventory["same_uid_processes_inspected"] < 0
             or set(container_inventory)

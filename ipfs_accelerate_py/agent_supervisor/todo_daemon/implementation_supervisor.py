@@ -15919,6 +15919,106 @@ class PortalImplementationSupervisor:
             f"rescue/worktree/{self._safe_rescue_branch_fragment(branch or worktree_path.name)}-{fingerprint}"
         )
 
+        # A rescue branch can survive a stopped supervisor generation.  Do not
+        # recursively rename it on every startup: a valid attestation commit is
+        # already durable, while a legacy no-delta rescue must retain its exact
+        # head so the attempt-bound lifecycle recovery gate can attest it under
+        # the checkout lease and canonical attempt authority.
+        if branch.startswith("rescue/worktree/"):
+            observation_environment = {
+                "PATH": "/usr/bin:/bin",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_NO_REPLACE_OBJECTS": "1",
+                "GIT_OPTIONAL_LOCKS": "0",
+                "GIT_TERMINAL_PROMPT": "0",
+            }
+            metadata = subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "--no-replace-objects",
+                    "show",
+                    "-s",
+                    "--format=%ae%x00%s%x00%b",
+                    "HEAD",
+                ],
+                cwd=worktree_path,
+                env=observation_environment,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=20.0,
+            )
+            parents = subprocess.run(
+                [
+                    "/usr/bin/git",
+                    "--no-replace-objects",
+                    "rev-list",
+                    "--parents",
+                    "-n",
+                    "1",
+                    "HEAD",
+                ],
+                cwd=worktree_path,
+                env=observation_environment,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=20.0,
+            )
+            fields = metadata.stdout.split("\x00", 2)
+            body_fields = (
+                tuple(line.strip() for line in fields[2].splitlines() if line.strip())
+                if len(fields) == 3
+                else ()
+            )
+            subject = fields[1].strip() if len(fields) == 3 else ""
+            original_branch = subject.removeprefix("Rescue dirty worktree ")
+            original_head = (
+                body_fields[1].removeprefix("Original HEAD: ")
+                if len(body_fields) == 3
+                else ""
+            )
+            parent_fields = parents.stdout.strip().split()
+            attested = (
+                metadata.returncode == 0
+                and parents.returncode == 0
+                and len(fields) == 3
+                and fields[0].strip()
+                == "implementation-supervisor@example.invalid"
+                and subject == f"Rescue dirty worktree {original_branch}"
+                and bool(original_branch)
+                and not original_branch.startswith("rescue/worktree/")
+                and len(body_fields) == 3
+                and body_fields[0] == f"Original branch: {original_branch}"
+                and body_fields[1] == f"Original HEAD: {original_head}"
+                and len(original_head) == 40
+                and all(char in "0123456789abcdef" for char in original_head)
+                and body_fields[2].startswith("Cleanup reason: ")
+                and body_fields[2] != "Cleanup reason: "
+                and parent_fields == [head, original_head]
+            )
+            result = {
+                "attempted": True,
+                "preserved": True,
+                "reason": (
+                    "existing_rescue_attestation"
+                    if attested
+                    else "legacy_rescue_requires_lifecycle_binding"
+                ),
+                "path": str(worktree_path),
+                "branch": branch,
+                "head": head,
+                "target_ref": target_ref,
+                "rescue_branch": branch,
+                "rescue_commit": self._git_ref_commit(worktree_path, "HEAD"),
+                "status_short": status_lines[:20],
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+            self._record_event("dirty_worktree_rescued", result)
+            return result
+
         checkout = subprocess.run(
             ["git", "checkout", "-B", rescue_branch],
             cwd=worktree_path,
@@ -15979,11 +16079,85 @@ class PortalImplementationSupervisor:
             check=False,
         )
         if staged.returncode == 0:
+            attestation_environment = {
+                "PATH": "/usr/bin:/bin",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_NO_REPLACE_OBJECTS": "1",
+                "GIT_OPTIONAL_LOCKS": "0",
+                "GIT_TERMINAL_PROMPT": "0",
+            }
+            try:
+                commit = subprocess.run(
+                    [
+                        "/usr/bin/git",
+                        "--no-replace-objects",
+                        "-c",
+                        "core.hooksPath=/dev/null",
+                        "-c",
+                        "commit.gpgSign=false",
+                        "-c",
+                        "user.name=Implementation Supervisor",
+                        "-c",
+                        "user.email=implementation-supervisor@example.invalid",
+                        "commit",
+                        "--allow-empty",
+                        "--no-verify",
+                        "-m",
+                        f"Rescue dirty worktree {branch or worktree_path.name}",
+                        "-m",
+                        f"Original branch: {branch or '(detached)'}",
+                        "-m",
+                        f"Original HEAD: {head or '(unknown)'}",
+                        "-m",
+                        f"Cleanup reason: {reason}",
+                    ],
+                    cwd=worktree_path,
+                    env=attestation_environment,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=20.0,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                result = {
+                    "attempted": True,
+                    "preserved": False,
+                    "reason": "commit_empty_rescue_attestation_failed",
+                    "path": str(worktree_path),
+                    "branch": branch,
+                    "head": head,
+                    "target_ref": target_ref,
+                    "rescue_branch": rescue_branch,
+                    "error_type": type(exc).__name__,
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                }
+                self._record_event("dirty_worktree_rescue_failed", result)
+                return result
             rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
+            if commit.returncode != 0 or not rescue_commit:
+                result = {
+                    "attempted": True,
+                    "preserved": False,
+                    "reason": "commit_empty_rescue_attestation_failed",
+                    "path": str(worktree_path),
+                    "branch": branch,
+                    "head": head,
+                    "target_ref": target_ref,
+                    "rescue_branch": rescue_branch,
+                    "returncode": commit.returncode,
+                    "stdout": commit.stdout[-4000:],
+                    "stderr": commit.stderr[-4000:],
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                }
+                self._record_event("dirty_worktree_rescue_failed", result)
+                return result
             result = {
                 "attempted": True,
                 "preserved": True,
-                "reason": "no_staged_rescue_delta",
+                "reason": "no_staged_rescue_delta_attested",
                 "path": str(worktree_path),
                 "branch": branch,
                 "head": head,
@@ -15991,6 +16165,9 @@ class PortalImplementationSupervisor:
                 "rescue_branch": rescue_branch,
                 "rescue_commit": rescue_commit,
                 "status_short": status_lines[:20],
+                "returncode": commit.returncode,
+                "stdout": commit.stdout[-4000:],
+                "stderr": commit.stderr[-4000:],
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
