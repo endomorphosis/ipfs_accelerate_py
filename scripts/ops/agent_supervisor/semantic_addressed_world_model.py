@@ -19161,7 +19161,7 @@ def _live_preflight(
                 ),
             }
         )
-    if m47_active and final_pair_marker:
+    elif m47_active and final_pair_marker:
         store_report.update(
             {
                 "coordination_path": str(
@@ -19194,7 +19194,7 @@ def _live_preflight(
                 ),
             }
         )
-    if m46_active and final_pair_marker:
+    elif m46_active and final_pair_marker:
         store_report.update(
             {
                 "coordination_path": str(

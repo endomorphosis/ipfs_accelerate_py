@@ -6054,6 +6054,16 @@ def test_m48_presence_masks_m47_across_dispatchers(
     ):
         source = inspect.getsource(function)
         assert source.index("M48") < source.index("M47")
+    live_preflight_source = inspect.getsource(operator._live_preflight)
+    assert "\n    elif m47_active and final_pair_marker:" in live_preflight_source
+    assert "\n    elif m46_active and final_pair_marker:" in live_preflight_source
+    assert live_preflight_source.index(
+        "if m48_active and final_pair_marker:"
+    ) < live_preflight_source.index(
+        "elif m47_active and final_pair_marker:"
+    ) < live_preflight_source.index(
+        "elif m46_active and final_pair_marker:"
+    )
     board_source = inspect.getsource(board.validate_program)
     assert board_source.index("_M48_SUCCESSOR_KEY") < board_source.index(
         "_M47_SUCCESSOR_KEY"
