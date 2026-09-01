@@ -5889,21 +5889,31 @@ class QuackStateServer:
                 repository.close()
             try:
                 self._refresh_read_replica()
+            except BaseException as exc:
+                # Replica projection is non-authoritative.  Fail-closing the
+                # exclusive serve here dropped SPAR-018 grant issuance
+                # (QuackStateServerNotRunningError) while the owner process
+                # was still alive.
+                self._log(
+                    "typed owner command replica refresh failed: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                self._read_replica_observation = {
+                    **self._read_replica_observation,
+                    "live": False,
+                    "refresh_failure_class": type(exc).__name__,
+                }
+            try:
                 self._write_status_strict()
             except BaseException as exc:  # commit may already be durable
                 self._log(
-                    "typed owner command replica refresh failed: "
+                    "typed owner command status publication failed: "
                     f"{type(exc).__name__}: {exc}"
                 )
                 try:
                     self._stop_transport_connection(observe_closed=True)
                 except Exception:
                     pass
-                self._read_replica_observation = {
-                    **self._read_replica_observation,
-                    "live": False,
-                    "refresh_failure_class": type(exc).__name__,
-                }
                 self._lifecycle = ServerLifecycle.FAILED
                 try:
                     self._write_status()

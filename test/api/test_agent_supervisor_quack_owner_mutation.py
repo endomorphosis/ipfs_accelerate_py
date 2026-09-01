@@ -1075,6 +1075,35 @@ def test_owner_command_requires_strict_status_publication_before_signed_success(
         server.stop()
 
 
+def test_owner_command_replica_refresh_failure_keeps_serve_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server, _identity, token, _database = _server(tmp_path)
+    request = _owner_command_request(server, token, request_id="2" * 32)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+
+    def fail_replica() -> None:
+        raise quack_server_module.QuackStateServerReadyError(
+            "injected replica refresh failure"
+        )
+
+    monkeypatch.setattr(server, "_refresh_read_replica", fail_replica)
+    try:
+        _publish(server, request)
+        assert server.service_mutation_inbox() == 1
+        response = _done(server, request)
+        assert response["ok"] is True
+        assert server.lifecycle.value == "ready"
+        assert server._read_replica_observation.get("live") is False
+        assert (
+            server._read_replica_observation.get("refresh_failure_class")
+            == "QuackStateServerReadyError"
+        )
+    finally:
+        server.stop()
+
+
 def test_uuid_processing_claim_recovers_without_repeating_committed_command(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
