@@ -87917,19 +87917,129 @@ class DatabaseImplementationDaemon:
                     blocked_revision=int(task.revision),
                     reason="terminal_claim_barrier_pending",
                 )
+                rearm_attempt = self.get_attempt(
+                    str(receipt.get("attempt_id") or "")
+                )
+                if rearm_attempt is None:
+                    continue
+                rearm_provider_dispatch = self._dispatch_journal_entry(
+                    rearm_attempt,
+                    dispatch_kind="provider",
+                    idempotency_key=f"provider:{rearm_attempt.attempt_id}",
+                )
+                rearm_phases = self.phase_history(rearm_attempt.attempt_id)
 
                 def rearm_control_task(
                     task_cid: str = str(task.task_cid),
                     expected_revision: int = int(task.revision),
-                    receipt: Mapping[str, Any] = MappingProxyType(
+                    rearm_receipt_record: Mapping[str, Any] = MappingProxyType(
                         dict(rearm_receipt)
                     ),
+                    outer_receipt_record: Mapping[str, Any] = MappingProxyType(
+                        dict(receipt)
+                    ),
+                    evidence_record: Mapping[str, Any] = MappingProxyType(
+                        dict(no_provider_evidence)
+                    ),
+                    attempt_record: Any = rearm_attempt,
+                    attempt_snapshot: Mapping[str, Any] = MappingProxyType(
+                        dict(rearm_attempt.to_dict())
+                    ),
+                    provider_dispatch_snapshot: Mapping[str, Any] | None = (
+                        MappingProxyType(dict(rearm_provider_dispatch))
+                        if isinstance(rearm_provider_dispatch, Mapping)
+                        else None
+                    ),
+                    phase_snapshot: tuple[Mapping[str, Any], ...] = tuple(
+                        MappingProxyType(dict(item)) for item in rearm_phases
+                    ),
                 ) -> Any:
-                    return self._cas_task_status_database(
-                        task_cid,
-                        expected_revision=expected_revision,
-                        new_status="retrying",
-                        receipt=receipt,
+                    def exact_control_cas() -> Any:
+                        current_attempt = self.get_attempt(
+                            str(attempt_record.attempt_id)
+                        )
+                        current_provider_dispatch = (
+                            self._dispatch_journal_entry(
+                                attempt_record,
+                                dispatch_kind="provider",
+                                idempotency_key=(
+                                    f"provider:{attempt_record.attempt_id}"
+                                ),
+                            )
+                        )
+                        if (
+                            current_attempt is None
+                            or current_attempt.to_dict()
+                            != dict(attempt_snapshot)
+                            or self.phase_history(
+                                str(attempt_record.attempt_id)
+                            )
+                            != [dict(item) for item in phase_snapshot]
+                            or (
+                                dict(current_provider_dispatch)
+                                if isinstance(
+                                    current_provider_dispatch, Mapping
+                                )
+                                else None
+                            )
+                            != (
+                                dict(provider_dispatch_snapshot)
+                                if provider_dispatch_snapshot is not None
+                                else None
+                            )
+                            or self.provider_invocation_recorded(
+                                str(attempt_record.attempt_id),
+                                idempotency_key=(
+                                    f"provider:{attempt_record.attempt_id}"
+                                ),
+                            )
+                            is not None
+                            or self.effect_claim_recorded(
+                                str(attempt_record.attempt_id),
+                                idempotency_key=(
+                                    f"effect:{attempt_record.attempt_id}"
+                                ),
+                            )
+                            is not None
+                            or self._dispatch_journal_entry(
+                                attempt_record,
+                                dispatch_kind="effect",
+                                idempotency_key=(
+                                    f"effect:{attempt_record.attempt_id}"
+                                ),
+                            )
+                            is not None
+                        ):
+                            raise DatabaseImplementationConflictError(
+                                "no-provider rearm authority changed before CAS"
+                            )
+                        return self._cas_task_status_database(
+                            task_cid,
+                            expected_revision=expected_revision,
+                            new_status="retrying",
+                            receipt=rearm_receipt_record,
+                        )
+
+                    if evidence_record.get("schema") != (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "database-portal-quiesced-stale-dispatch-release-"
+                        "rearm-evidence@1"
+                    ):
+                        return exact_control_cas()
+                    nested_barrier = getattr(
+                        self._database_portal_bridge,
+                        "execute_with_no_provider_rearm_snapshot_barrier",
+                        None,
+                    )
+                    if not callable(nested_barrier):
+                        raise DatabaseImplementationConflictError(
+                            "no-provider nested snapshot barrier is unavailable"
+                        )
+                    return nested_barrier(
+                        attempt_record,
+                        outer_block_receipt=outer_receipt_record,
+                        evidence=evidence_record,
+                        callback=exact_control_cas,
                     )
 
                 barrier_committed = False

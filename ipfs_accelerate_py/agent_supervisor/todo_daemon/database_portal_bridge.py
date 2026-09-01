@@ -25,7 +25,7 @@ import stat
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -796,6 +796,22 @@ _NO_PROVIDER_EVENT_FIELDS: Final[dict[str, frozenset[str]]] = {
             "skipped",
         }
     ),
+    "merged_worktree_cleanup": _EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "attempted",
+            "max_cleanups",
+            "prune_returncode",
+            "prune_stderr",
+            "prune_stdout",
+            "removed",
+            "removed_count",
+            "skipped",
+            "skipped_count",
+            "target_branch",
+            "worktree_root",
+        }
+    ),
     "implementation_shutdown_reconciled": _EVENT_ENVELOPE_FIELDS
     | frozenset(
         {
@@ -1083,6 +1099,17 @@ _SETUP_EVENT_FIELD_VARIANTS: Final[
                     "task_claim_reconciliation",
                     "protected_path_reconciliation",
                     "worktree_lifecycle_reconciliation",
+                }
+            ),
+            _EVENT_ENVELOPE_FIELDS
+            | frozenset(
+                {
+                    "task_id",
+                    "attempt",
+                    "worktree_path",
+                    "reconciled",
+                    "blocked",
+                    "reason",
                 }
             ),
         }
@@ -4963,6 +4990,122 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeError(
                     "database Portal stale-worktree diagnostic is malformed"
                 )
+        elif event_type == "merged_worktree_cleanup":
+            removed = event.get("removed")
+            skipped = event.get("skipped")
+            removed_fields = {"branch", "cleanup_result", "worktree_path"}
+            skipped_fields = {"branch", "reason", "worktree_path"}
+            cleanup_fields = {
+                "branch",
+                "cleaned",
+                "deleted_branch",
+                "finished_at",
+                "lifecycle_finalize",
+                "removed_worktree",
+                "started_at",
+                "submodule_cleanup",
+                "worktree_path",
+            }
+            if (
+                event.get("attempted") is not True
+                or type(event.get("max_cleanups")) is not int
+                or not 1 <= int(event["max_cleanups"]) <= 128
+                or type(event.get("prune_returncode")) is not int
+                or any(
+                    not isinstance(event.get(name), str)
+                    for name in ("prune_stderr", "prune_stdout")
+                )
+                or any(
+                    not isinstance(event.get(name), str)
+                    or not str(event.get(name) or "")
+                    for name in ("target_branch", "worktree_root")
+                )
+                or not PurePosixPath(str(event.get("worktree_root"))).is_absolute()
+                or type(event.get("removed_count")) is not int
+                or type(event.get("skipped_count")) is not int
+                or not isinstance(removed, list)
+                or not isinstance(skipped, list)
+                or int(event["removed_count"]) != len(removed)
+                or int(event["skipped_count"]) != len(skipped)
+                or len(removed) + len(skipped) > int(event["max_cleanups"])
+                or any(
+                    not isinstance(item, Mapping)
+                    or set(item) != skipped_fields
+                    or not isinstance(item.get("branch"), str)
+                    or item.get("reason") != "unmanaged_branch"
+                    or not isinstance(item.get("worktree_path"), str)
+                    or not PurePosixPath(
+                        str(item.get("worktree_path") or "")
+                    ).is_absolute()
+                    for item in skipped
+                )
+                or any(
+                    not isinstance(item, Mapping)
+                    or set(item) != removed_fields
+                    or not isinstance(item.get("branch"), str)
+                    or not str(item.get("branch") or "")
+                    or not isinstance(item.get("worktree_path"), str)
+                    or not PurePosixPath(
+                        str(item.get("worktree_path") or "")
+                    ).is_absolute()
+                    or not isinstance(item.get("cleanup_result"), Mapping)
+                    or set(item["cleanup_result"]) != cleanup_fields
+                    or item["cleanup_result"].get("branch")
+                    != item.get("branch")
+                    or item["cleanup_result"].get("worktree_path")
+                    != item.get("worktree_path")
+                    or item["cleanup_result"].get("cleaned") is not True
+                    or any(
+                        not isinstance(
+                            item["cleanup_result"].get(name), bool
+                        )
+                        for name in ("removed_worktree", "deleted_branch")
+                    )
+                    or any(
+                        not isinstance(
+                            item["cleanup_result"].get(name), str
+                        )
+                        or not str(
+                            item["cleanup_result"].get(name) or ""
+                        )
+                        for name in ("finished_at", "started_at")
+                    )
+                    or not DatabasePortalExecutionBridge._successful_submodule_cleanup_shape(
+                        item["cleanup_result"].get("submodule_cleanup")
+                    )
+                    or not _closed_typed_record_matches(
+                        item["cleanup_result"].get("lifecycle_finalize"),
+                        {
+                            "finalized": False,
+                            "reason": "no_lifecycle_record",
+                        },
+                    )
+                    for item in removed
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal merged-worktree cleanup is malformed"
+                )
+        elif event_type == "implementation_shutdown_reconciliation_blocked":
+            # This exact short producer record is emitted while the worker is
+            # still live.  The richer claim/lifecycle record remains a
+            # separate closed variant and is verified by the occurrence proof.
+            if "worktree_path" in event and not (
+                event.get("reconciled") is False
+                and event.get("blocked") is True
+                and event.get("reason") == "implementation_worker_still_active"
+                and isinstance(event.get("task_id"), str)
+                and bool(str(event.get("task_id") or ""))
+                and type(event.get("attempt")) is int
+                and int(event["attempt"]) >= 1
+                and isinstance(event.get("worktree_path"), str)
+                and PurePosixPath(
+                    str(event.get("worktree_path") or "")
+                ).is_absolute()
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal active-worker reconciliation is malformed"
+                )
         elif event_type == "implementation_task_claim_released":
             if (
                 "stale_dispatch_intent_released_for_retry" in event
@@ -5242,6 +5385,8 @@ class DatabasePortalExecutionBridge:
     def _pinned_no_provider_snapshot(
         self,
         paths: DatabasePortalAttemptPaths,
+        *,
+        _event_lock_already_held: bool = False,
     ) -> dict[str, Any]:
         """Read a closed terminal snapshot without a repairing scanner."""
         parent_fd = authority_fd = attempt_fd = -1
@@ -5257,10 +5402,15 @@ class DatabasePortalExecutionBridge:
             directory_before = self._authority_fingerprint(
                 os.fstat(attempt_fd)
             )
-            with self._shared_private_event_lock(
-                attempt_fd,
-                names_before,
-            ):
+            event_lock = (
+                nullcontext()
+                if _event_lock_already_held
+                else self._shared_private_event_lock(
+                    attempt_fd,
+                    names_before,
+                )
+            )
+            with event_lock:
                 child_snapshots: dict[str, tuple[int, ...]] = {}
 
                 def read_child(name: str, maximum: int) -> bytes:
@@ -5558,6 +5708,391 @@ class DatabasePortalExecutionBridge:
                         authority_fd=authority_fd,
                         attempt_fd=attempt_fd,
                         snapshot=snapshot,
+                    )
+            finally:
+                for descriptor in (attempt_fd, authority_fd, parent_fd):
+                    if descriptor >= 0:
+                        with suppress(OSError):
+                            os.close(descriptor)
+
+    def _read_pinned_task_claim_release_receipt(
+        self,
+        attempt_fd: int,
+        *,
+        expected_receipt_id: str,
+    ) -> dict[str, Any]:
+        """Read the one immutable quiesced-release receipt through pinned fds."""
+
+        if re.fullmatch(
+            r"baguqeera[a-z2-7]{52}", expected_receipt_id
+        ) is None:
+            raise DatabasePortalBridgeError(
+                "database Portal release receipt identity is malformed"
+            )
+        directory_name = "implementation-task-claim-release-receipts"
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        directory_fd = -1
+        try:
+            directory_fd = os.open(
+                directory_name,
+                flags,
+                dir_fd=attempt_fd,
+            )
+            directory_before = os.fstat(directory_fd)
+            directory_published = os.stat(
+                directory_name,
+                dir_fd=attempt_fd,
+                follow_symlinks=False,
+            )
+            directory_fingerprint = self._authority_fingerprint(
+                directory_before
+            )
+            if (
+                not stat.S_ISDIR(directory_before.st_mode)
+                or directory_before.st_uid != os.geteuid()
+                or directory_before.st_gid != os.getegid()
+                or int(directory_before.st_nlink) < 2
+                or stat.S_IMODE(directory_before.st_mode) != 0o775
+                or directory_fingerprint
+                != self._authority_fingerprint(directory_published)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal release receipt directory is not exact"
+                )
+            names = sorted(os.listdir(directory_fd))
+            if (
+                len(names) != 1
+                or re.fullmatch(
+                    r"canonical-task-[0-9a-f]{24}-a[1-9][0-9]*[.]json",
+                    names[0],
+                )
+                is None
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal release receipt population is ambiguous"
+                )
+            name = names[0]
+            file_flags = (
+                os.O_RDONLY
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+            )
+            file_fd = -1
+            try:
+                file_fd = os.open(name, file_flags, dir_fd=directory_fd)
+                before = os.fstat(file_fd)
+                published = os.stat(
+                    name,
+                    dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+                fingerprint = self._authority_fingerprint(before)
+                if (
+                    not stat.S_ISREG(before.st_mode)
+                    or before.st_uid != os.geteuid()
+                    or before.st_gid != os.getegid()
+                    or int(before.st_nlink) != 1
+                    or stat.S_IMODE(before.st_mode) != 0o664
+                    or int(before.st_size) > 256 * 1024
+                    or fingerprint != self._authority_fingerprint(published)
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal release receipt file is not exact"
+                    )
+                chunks: list[bytes] = []
+                remaining = 256 * 1024 + 1
+                while remaining > 0:
+                    chunk = os.read(file_fd, min(128 * 1024, remaining))
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+                raw = b"".join(chunks)
+                after = os.fstat(file_fd)
+                published_after = os.stat(
+                    name,
+                    dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+            finally:
+                if file_fd >= 0:
+                    os.close(file_fd)
+            if (
+                len(raw) > 256 * 1024
+                or len(raw) != int(before.st_size)
+                or fingerprint != self._authority_fingerprint(after)
+                or fingerprint != self._authority_fingerprint(published_after)
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal release receipt changed during read"
+                )
+            value = self._strict_json_object_bytes(
+                raw,
+                authority="task-claim release receipt",
+            )
+            unsigned = dict(value)
+            observed_receipt_id = str(
+                unsigned.pop("receipt_id", "") or ""
+            )
+            if (
+                observed_receipt_id != expected_receipt_id
+                or content_identity(unsigned) != expected_receipt_id
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal release receipt content is not exact"
+                )
+            directory_after = self._authority_fingerprint(
+                os.fstat(directory_fd)
+            )
+            directory_published_after = self._authority_fingerprint(
+                os.stat(
+                    directory_name,
+                    dir_fd=attempt_fd,
+                    follow_symlinks=False,
+                )
+            )
+            if (
+                sorted(os.listdir(directory_fd)) != names
+                or directory_after != directory_fingerprint
+                or directory_published_after != directory_fingerprint
+            ):
+                raise DatabasePortalBridgeError(
+                    "database Portal release receipt population changed"
+                )
+            return value
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "database Portal release receipt is unreadable"
+            ) from exc
+        finally:
+            if directory_fd >= 0:
+                os.close(directory_fd)
+
+    def execute_with_no_provider_rearm_snapshot_barrier(
+        self,
+        attempt: Any,
+        *,
+        outer_block_receipt: Mapping[str, Any],
+        evidence: Mapping[str, Any],
+        callback: Callable[[], Any],
+    ) -> Any:
+        """Revalidate the sealed nested head while fencing its writer.
+
+        Evidence construction and the authoritative Quack CAS are separate
+        operations.  A background Portal shutdown pass can otherwise append
+        after proof construction.  This barrier reacquires the producer's
+        shared event lock, checks the exact head/state/binding/terminal chain,
+        and invokes the supplied CAS before releasing that lock.  Any advance,
+        even a benign diagnostic advance, fails closed and may be retried from
+        a fresh proof on the next pass.
+        """
+
+        if not callable(callback) or not isinstance(evidence, Mapping):
+            raise DatabasePortalBridgeError(
+                "database Portal snapshot barrier arguments are malformed"
+            )
+        expected = dict(evidence)
+        required = {
+            "attempt_id",
+            "claim_id",
+            "task_cid",
+            "attempt_number",
+            "owner_session_id",
+            "lease_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_root_key",
+            "attempt_authority_root_digest",
+            "attempt_root_digest",
+            "attempt_directory_names_digest",
+            "binding_id",
+            "binding_admission_id",
+            "binding_admission_digest",
+            "projection_immutable_digest",
+            "prepared_reconciliation_receipt_id",
+            "commit_barrier_receipt_id",
+            "event_stream_id",
+            "event_snapshot_id",
+            "event_manifest_digest",
+            "event_count",
+            "event_head_sequence",
+            "event_head_id",
+            "state_digest",
+            "outer_block_receipt_digest",
+        }
+        if not required.issubset(expected):
+            raise DatabasePortalBridgeError(
+                "database Portal snapshot barrier evidence is incomplete"
+            )
+        exact_attempt = {
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "task_cid": str(attempt.task_cid),
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
+            "lease_id": str(attempt.lease_id),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        link = outer_block_receipt.get("terminal_reconciliation")
+        paths = self._paths(attempt)
+        expected_root = self.attempt_root / hashlib.sha256(
+            str(attempt.attempt_id).encode("utf-8")
+        ).hexdigest()[:24]
+        if (
+            any(
+                type(expected.get(name)) is not type(value)
+                or expected.get(name) != value
+                for name, value in exact_attempt.items()
+            )
+            or paths.root != expected_root
+            or expected.get("attempt_root_key") != paths.root.name
+            or expected.get("attempt_authority_root_digest")
+            != _sha256_bytes(str(self.attempt_root).encode("utf-8"))
+            or expected.get("attempt_root_digest")
+            != _sha256_bytes(str(paths.root).encode("utf-8"))
+            or expected.get("outer_block_receipt_digest")
+            != _sha256_bytes(_canonical_json(dict(outer_block_receipt)))
+            or not isinstance(link, Mapping)
+            or expected.get("prepared_reconciliation_receipt_id")
+            != link.get("prepared_reconciliation_receipt_id")
+            or expected.get("commit_barrier_receipt_id")
+            != link.get("commit_barrier_receipt_id")
+        ):
+            raise DatabasePortalBridgeError(
+                "database Portal snapshot barrier authority changed"
+            )
+
+        parent_fd = authority_fd = attempt_fd = -1
+        pinned: tuple[Any, ...] = ()
+        try:
+            parent_fd, authority_fd, attempt_fd, pinned = (
+                self._open_pinned_private_attempt_directory(
+                    authority_root=self.attempt_root,
+                    attempt_key=paths.root.name,
+                )
+            )
+            names = set(os.listdir(attempt_fd))
+            if ".portal-events.jsonl.lock" not in names:
+                raise DatabasePortalBridgeError(
+                    "database Portal snapshot barrier lock is absent"
+                )
+            with self._shared_private_event_lock(attempt_fd, names):
+                snapshot = self._pinned_no_provider_snapshot(
+                    paths,
+                    _event_lock_already_held=True,
+                )
+                binding = snapshot.get("binding")
+                manifest = snapshot.get("manifest")
+                events = snapshot.get("events")
+                if (
+                    not isinstance(binding, Mapping)
+                    or not isinstance(manifest, Mapping)
+                    or not isinstance(events, list)
+                    or expected.get("attempt_directory_names_digest")
+                    != _sha256_bytes(
+                        _canonical_json(snapshot.get("directory_names"))
+                    )
+                    or expected.get("binding_id")
+                    != binding.get("binding_id")
+                    or expected.get("projection_immutable_digest")
+                    != binding.get("projection_immutable_digest")
+                    or expected.get("state_digest")
+                    != snapshot.get("state_digest")
+                    or expected.get("event_stream_id")
+                    != manifest.get("stream_id")
+                    or expected.get("event_snapshot_id")
+                    != manifest.get("snapshot_id")
+                    or expected.get("event_manifest_digest")
+                    != manifest.get("manifest_digest")
+                    or expected.get("event_count") != len(events)
+                    or expected.get("event_head_sequence")
+                    != manifest.get("latest_sequence")
+                    or expected.get("event_head_id")
+                    != manifest.get("last_event_id")
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal snapshot advanced before control CAS"
+                    )
+                durable_binding = (
+                    self._binding_lookup(attempt)
+                    if self._binding_lookup is not None
+                    else None
+                )
+                if (
+                    not isinstance(durable_binding, Mapping)
+                    or expected.get("binding_admission_id")
+                    != durable_binding.get("record_id")
+                    or expected.get("binding_admission_digest")
+                    != _sha256_bytes(
+                        _canonical_json(dict(durable_binding))
+                    )
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal binding admission changed before CAS"
+                    )
+                prepared = self.load_reconciliation_receipt(
+                    attempt,
+                    str(expected["prepared_reconciliation_receipt_id"]),
+                    required_stage="prepared",
+                )
+                commit_barrier = self.load_reconciliation_receipt(
+                    attempt,
+                    str(expected["commit_barrier_receipt_id"]),
+                    required_stage="commit_barrier",
+                )
+                prepared_core = {
+                    name: value
+                    for name, value in prepared.items()
+                    if name not in {"stage", "receipt_id"}
+                }
+                barrier_core = {
+                    name: value
+                    for name, value in commit_barrier.items()
+                    if name
+                    not in {
+                        "stage",
+                        "receipt_id",
+                        "prepared_reconciliation_receipt_id",
+                    }
+                }
+                if (
+                    prepared.get("binding_id") != expected.get("binding_id")
+                    or commit_barrier.get(
+                        "prepared_reconciliation_receipt_id"
+                    )
+                    != prepared.get("receipt_id")
+                    or _canonical_json(prepared_core)
+                    != _canonical_json(barrier_core)
+                ):
+                    raise DatabasePortalBridgeError(
+                        "database Portal terminal barrier chain changed"
+                    )
+                release_receipt_id = str(
+                    expected.get("task_claim_release_receipt_id")
+                    or expected.get("claim_release_receipt_id")
+                    or ""
+                )
+                if release_receipt_id:
+                    self._read_pinned_task_claim_release_receipt(
+                        attempt_fd,
+                        expected_receipt_id=release_receipt_id,
+                    )
+                return callback()
+        finally:
+            try:
+                if pinned:
+                    self._verify_pinned_private_attempt_directory(
+                        parent_fd=parent_fd,
+                        authority_fd=authority_fd,
+                        attempt_fd=attempt_fd,
+                        snapshot=pinned,
                     )
             finally:
                 for descriptor in (attempt_fd, authority_fd, parent_fd):

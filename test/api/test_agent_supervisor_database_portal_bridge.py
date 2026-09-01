@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -1216,6 +1217,66 @@ def _append_identified_quiesced_release_suffix(
             "snapshot_id": str(previous["snapshot_id"]),
             "previous_event_id": str(previous["event_id"]),
         }
+        cleanup_source = next(
+            event for event in events if event.get("type") == "cleanup_finished"
+        )
+        cleanup_result = {
+            name: value
+            for name, value in cleanup_source.items()
+            if name
+            not in {
+                "event_id",
+                "previous_event_id",
+                "sequence",
+                "snapshot_id",
+                "stream_id",
+                "timestamp",
+                "type",
+            }
+        }
+        cleanup_result["lifecycle_finalize"] = {
+            "finalized": False,
+            "reason": "no_lifecycle_record",
+        }
+        merged_cleanup = {
+            **envelope,
+            "type": "merged_worktree_cleanup",
+            "attempted": True,
+            "max_cleanups": 25,
+            "prune_returncode": 0,
+            "prune_stderr": "",
+            "prune_stdout": "",
+            "removed": [
+                {
+                    "branch": cleanup_result["branch"],
+                    "cleanup_result": cleanup_result,
+                    "worktree_path": cleanup_result["worktree_path"],
+                }
+            ],
+            "removed_count": 1,
+            "skipped": [
+                {
+                    "branch": "",
+                    "reason": "unmanaged_branch",
+                    "worktree_path": str(Path(paths.root).parent / "workspace"),
+                }
+            ],
+            "skipped_count": 1,
+            "target_branch": "agent/test-live-shape-population",
+            "worktree_root": str(Path(paths.root).parent),
+        }
+        active_worker = {
+            **envelope,
+            "sequence": int(envelope["sequence"]) + 1,
+            "type": "implementation_shutdown_reconciliation_blocked",
+            "task_id": "PCTDD-007",
+            "attempt": 1,
+            "worktree_path": str(Path(paths.root).parent / "workspace"),
+            "reconciled": False,
+            "blocked": True,
+            "reason": "implementation_worker_still_active",
+        }
+        envelope["sequence"] = int(envelope["sequence"]) + 2
         cid = "baguqeera" + "a" * 52
         root = str(Path(paths.root))
         claim_path = str(Path(root).parent / "implementation-task-claims" / "claim.lock")
@@ -1309,7 +1370,14 @@ def _append_identified_quiesced_release_suffix(
             no_claim["claim_id"] = cid
             no_claim_shutdown["task_claim_reconciliation"] = no_claim
         events.extend(
-            [release, lock_clear, release_shutdown, no_claim_shutdown]
+            [
+                merged_cleanup,
+                active_worker,
+                release,
+                lock_clear,
+                release_shutdown,
+                no_claim_shutdown,
+            ]
         )
 
     _rewrite_active_event_chain(paths, append)
@@ -1345,7 +1413,9 @@ def test_pinned_snapshot_closes_identified_quiesced_release_suffix(
                 bridge._pinned_no_provider_snapshot(paths)
         else:
             snapshot = bridge._pinned_no_provider_snapshot(paths)
-            assert [event["type"] for event in snapshot["events"][-4:]] == [
+            assert [event["type"] for event in snapshot["events"][-6:]] == [
+                "merged_worktree_cleanup",
+                "implementation_shutdown_reconciliation_blocked",
                 "implementation_task_claim_released",
                 "implementation_lock_cleared",
                 "implementation_shutdown_reconciled",
@@ -1355,6 +1425,124 @@ def test_pinned_snapshot_closes_identified_quiesced_release_suffix(
             assert snapshot["events"][-1]["task_claim_reconciliation"][
                 "reason"
             ] == "no_task_claim"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("advance_head", (False, True))
+def test_no_provider_snapshot_barrier_holds_event_lock_across_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    advance_head: bool,
+) -> None:
+    daemon, bridge, attempt, paths, outer_receipt = (
+        _seed_terminal_quiescent_resource_deferral(
+            tmp_path,
+            monkeypatch,
+            shutdown_event_count=1,
+        )
+    )
+    try:
+        snapshot = bridge._pinned_no_provider_snapshot(paths)
+        binding = dict(snapshot["binding"])
+        durable = bridge._binding_lookup(attempt)
+        assert isinstance(durable, Mapping)
+        link = dict(outer_receipt["terminal_reconciliation"])
+        sha256 = database_portal_bridge_module._sha256_bytes
+        canonical = database_portal_bridge_module._canonical_json
+        evidence = {
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "task_cid": attempt.task_cid,
+            "attempt_number": attempt.attempt_number,
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": attempt.fencing_token,
+            "fence_epoch": attempt.fence_epoch,
+            "attempt_root_key": Path(paths.root).name,
+            "attempt_authority_root_digest": sha256(
+                str(bridge.attempt_root).encode("utf-8")
+            ),
+            "attempt_root_digest": sha256(
+                str(paths.root).encode("utf-8")
+            ),
+            "attempt_directory_names_digest": sha256(
+                canonical(snapshot["directory_names"])
+            ),
+            "binding_id": binding["binding_id"],
+            "binding_admission_id": durable["record_id"],
+            "binding_admission_digest": sha256(canonical(dict(durable))),
+            "projection_immutable_digest": binding[
+                "projection_immutable_digest"
+            ],
+            "prepared_reconciliation_receipt_id": link[
+                "prepared_reconciliation_receipt_id"
+            ],
+            "commit_barrier_receipt_id": link[
+                "commit_barrier_receipt_id"
+            ],
+            "event_stream_id": snapshot["manifest"]["stream_id"],
+            "event_snapshot_id": snapshot["manifest"]["snapshot_id"],
+            "event_manifest_digest": snapshot["manifest"][
+                "manifest_digest"
+            ],
+            "event_count": len(snapshot["events"]),
+            "event_head_sequence": snapshot["manifest"][
+                "latest_sequence"
+            ],
+            "event_head_id": snapshot["manifest"]["last_event_id"],
+            "state_digest": snapshot["state_digest"],
+            "outer_block_receipt_digest": sha256(
+                canonical(dict(outer_receipt))
+            ),
+        }
+        if advance_head:
+            def append_shutdown(events: list[dict[str, object]]) -> None:
+                event = json.loads(json.dumps(events[-1]))
+                event["sequence"] = int(events[-1]["sequence"]) + 1
+                event["timestamp"] = "2026-09-01T18:00:00+00:00"
+                events.append(event)
+
+            _rewrite_active_event_chain(paths, append_shutdown)
+
+        callbacks: list[str] = []
+
+        def control_cas() -> str:
+            descriptor = os.open(
+                Path(paths.root) / ".portal-events.jsonl.lock",
+                os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
+            )
+            try:
+                with pytest.raises(BlockingIOError):
+                    fcntl.flock(
+                        descriptor,
+                        fcntl.LOCK_EX | fcntl.LOCK_NB,
+                    )
+            finally:
+                os.close(descriptor)
+            callbacks.append("cas")
+            return "committed"
+
+        if advance_head:
+            with pytest.raises(
+                DatabasePortalBridgeError,
+                match="snapshot advanced before control CAS",
+            ):
+                bridge.execute_with_no_provider_rearm_snapshot_barrier(
+                    attempt,
+                    outer_block_receipt=outer_receipt,
+                    evidence=evidence,
+                    callback=control_cas,
+                )
+            assert callbacks == []
+        else:
+            assert bridge.execute_with_no_provider_rearm_snapshot_barrier(
+                attempt,
+                outer_block_receipt=outer_receipt,
+                evidence=evidence,
+                callback=control_cas,
+            ) == "committed"
+            assert callbacks == ["cas"]
     finally:
         daemon.close()
 
