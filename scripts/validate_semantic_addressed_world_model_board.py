@@ -388,6 +388,30 @@ def _m16_migration_errors(
         return [f"M16 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m38_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Reuse the exact M38 custody-first restart contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m38_pre_authoritative_custody_restart_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
+            )
+        )
+    except Exception as exc:
+        return [f"M38 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _m37_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -899,12 +923,59 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M37 before every historical successor.  Consequently
+    Key presence selects M38 before every historical successor.  Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m38_key = "pre_authoritative_custody_restart_successor_materialization"
+    m38_presence = (
+        m38_key in scheduler,
+        m38_key in migration,
+        f"{m38_key}_cid" in seal,
+    )
+    if any(m38_presence):
+        errors = _m38_migration_errors(scheduler, seal, migration)
+        if not all(m38_presence):
+            errors.append("M38 custody restart authority is only partially declared")
+        # M37 is historical but unmaterialized. Mask its live/source-head
+        # validator only after the complete M38 triplet and chain validate.
+        if errors:
+            return errors
+        for validator in (
+            _m36_migration_errors,
+            _m35_migration_errors,
+            _m34_migration_errors,
+            _m33_migration_errors,
+            _m32_migration_errors,
+            _m31_migration_errors,
+            _m30_migration_errors,
+            _m29_migration_errors,
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(
+                    scheduler,
+                    seal,
+                    migration,
+                    require_active_runtime=False,
+                )
+            )
+        return errors
 
     m37_key = "post_reboot_generation_restart_successor_materialization"
     m37_seal_key = f"{m37_key}_cid"
@@ -3479,6 +3550,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m38_key = "pre_authoritative_custody_restart_successor_materialization"
+    m38_selected = any(
+        (
+            m38_key in config,
+            m38_key in migration,
+            f"{m38_key}_cid" in seal,
+        )
+    )
     m37_key = "post_reboot_generation_restart_successor_materialization"
     m37_selected = any(
         (
@@ -3600,7 +3679,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     multi_lane_selected = (
-        m37_selected
+        m38_selected
+        or m37_selected
         or m36_selected
         or m35_selected
         or m34_selected
@@ -3622,7 +3702,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or config.get("max_lanes") != expected_lane_count
     ):
         config_errors.append(
-            "four lanes are required for M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
+            "four lanes are required for M38/M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
             if multi_lane_selected
             else "one lane is required until sidecars are lane-scoped"
         )
@@ -3804,6 +3884,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m38_selected
+        else "run-r2-m27"
         if m37_selected
         else "run-r2-m27"
         if m36_selected
@@ -3866,6 +3948,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_generation = (
         "30"
+        if m38_selected
+        else "30"
         if m37_selected
         else "29"
         if m36_selected
@@ -3928,6 +4012,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m38_selected
+        else 24070
         if m37_selected
         else 24070
         if m36_selected
@@ -4003,7 +4089,66 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m37_selected:
+    if m38_selected:
+        successor = config.get(m38_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer._expected_m38_pre_authoritative_custody_restart_authority()
+            )
+            reference = module._m38_authority_reference_for_source_state(
+                materializer, expected
+            )
+            identity_state = module._m38_source_chain_identity_state(
+                materializer, expected
+            )
+            expected_seal_cid = (
+                "sha256:PENDING_M38_AUTHORITY_CID"
+                if identity_state == "placeholder"
+                else materializer._identity(expected)
+            )
+            source_chain = expected.get("source_chain", {})
+            failed = expected.get("failed_m37_pre_authority_attempt", {})
+            derivation = expected.get("target_projection_derivation", {})
+            if (
+                successor != reference
+                or migration.get(m38_key) != reference
+                or seal.get(f"{m38_key}_cid") != expected_seal_cid
+                or source_chain.get("base_control_commit")
+                != "02a16d6c76eb2f1f165b544c8c72d62c533d7d3b"
+                or source_chain.get("runtime_repair_commit")
+                != "ad30bfa90cd0309a77a1a9936815f739e072a8a7"
+                or expected.get("control_recorded_at") != "2026-09-01T01:10:00Z"
+                or expected.get("target_event_watermark") != 291
+                or expected.get("target_projection_cid")
+                != "baguqeeravycbuo73fyu5mpad55qi5duk3la53lubqeu7nu6kjtnahehjtnsq"
+                or failed.get("failure_phase")
+                != "after_database_open_and_checkpoint_before_identity_publication"
+                or derivation.get("recomputed_not_inherited") is not True
+                or module._m38_pre_authoritative_custody_restart_successor_errors(
+                    config, seal, migration, root=root
+                )
+            ):
+                config_errors.append(
+                    "M38 custody restart authority/CID/source differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M38 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M38 active runtime paths are not exactly preserved")
+    elif m37_selected:
         successor = config.get(m37_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"

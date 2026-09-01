@@ -1999,7 +1999,49 @@ as completion nor grants a worker self-approval.  Reuse of the one-shot
 prestart authorization is rejected after generation 30 or the M37 receipt
 exists.
 
-## 46. Current limitations at seal time
+## 46. M38 pre-authoritative custody restart successor
+
+`SAWM-R2-M38` preserves M37 as immutable source history and explicitly
+supersedes its failed, unmaterialized restart attempt. The module-form M37
+start reached a native DuckDB checkpoint and refreshed the exact read replica,
+then failed before generation-30 identity publication with the typed error
+`OperatorError: sealed extension set race detector could not bind custody`.
+The failure was caused by an exhausted inotify watch quota. It created and
+then cleaned up the provisional owner marker and token handoff; neither was
+present after failure. It created no generation-30 owner or rows, no event 291
+or evidence node, no M37 receipt, and no task, goal, plan, effect-claim,
+provider, or accepted-completion change.
+
+M38 admits the resulting physical-only checkpoint normalization explicitly.
+The control store and read replica are byte-identical at
+`ea5b66208455f398502e8ad939566a5957f5bc65f35ed5afe8cc3998be66eb41`
+(43,528,192 bytes); coordination remains
+`22c1e859be94e0f15ae3c7313c2438fcc1b2d1412e0d0a7be740fa603dcbe871`.
+The authoritative semantic predecessor remains generation 29, event 290,
+projection `baguqeerahwerrrfx6cx6ukpljlp2r4i32lkac3bnhq5ej2f3hozg7cnt6shq`,
+and semantic digest
+`sha256:f51d9cb949538441218254297e279fa2bf5884e1bdc9d20693cf8213db841dde`.
+
+The accepted runtime repair reserves and verifies exact extension custody
+before any authoritative database open. Resource exhaustion now produces a
+typed external-capability terminal before checkpoint or identity mutation.
+The repair also supports only the four exact, owner-owned, provably dead lane
+PID projections observed after the reboot: it first tightens each exact legacy
+lane directory, then quarantines the raw PID bytes under lock and publishes a
+content-addressed receipt. Changed, linked, foreign, live, or ambiguous PID
+projections fail closed.
+
+M38 authorizes one generation-29 to generation-30 restart and one event 291,
+with receipt `m38-source-successor-receipt.json`. The event-291 projection
+`baguqeeravycbuo73fyu5mpad55qi5duk3la53lubqeu7nu6kjtnahehjtnsq` is
+recomputed through the canonical task/goal/plan projection using watermark
+291; it is not inherited from M37 merely because the expected value is equal.
+M38 remains non-authoritative until its exact runtime-repair commit, initial
+nine-control commit, and final reseal identities replace all `PENDING_M38_*`
+sentinels. M38 is selected before M37 only when its complete protected-control
+triplet and source chain validate.
+
+## 47. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

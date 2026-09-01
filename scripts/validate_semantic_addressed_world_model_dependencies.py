@@ -3197,6 +3197,266 @@ def _m18_portal_completion_persistence_errors(
         ]
 
 
+def _m38_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = "pre_authoritative_custody_restart_successor_materialization"
+    return any((key in scheduler, key in migration, f"{key}_cid" in seal))
+
+
+def _m38_source_chain_identity_state(
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> str:
+    chain = authority.get("source_chain", {})
+    runtime_blobs = chain.get("runtime_repair_blobs", {})
+    control_blobs = chain.get("initial_control_blobs", {})
+    if (
+        not isinstance(chain, Mapping)
+        or not isinstance(runtime_blobs, Mapping)
+        or not isinstance(control_blobs, Mapping)
+        or chain.get("runtime_repair_commit")
+        != materializer._M38_RUNTIME_REPAIR_COMMIT
+        or chain.get("runtime_repair_tree") != materializer._M38_RUNTIME_REPAIR_TREE
+        or dict(runtime_blobs) != dict(materializer._M38_RUNTIME_REPAIR_BLOBS)
+        or set(runtime_blobs) != set(materializer._M38_RUNTIME_REPAIR_PATHS)
+        or chain.get("initial_control_commit")
+        != materializer._M38_INITIAL_CONTROL_COMMIT
+        or chain.get("initial_control_tree")
+        != materializer._M38_INITIAL_CONTROL_TREE
+        or chain.get("final_reseal_parent")
+        != materializer._M38_INITIAL_CONTROL_COMMIT
+        or dict(control_blobs) != dict(materializer._M38_INITIAL_CONTROL_BLOBS)
+        or set(control_blobs) != set(materializer._M38_OPERATOR_CONTROL_PATHS)
+        or len(runtime_blobs) != 4
+        or len(control_blobs) != 9
+    ):
+        raise RuntimeError("M38 source-chain identity fields differ")
+    runtime_identities = (
+        chain.get("runtime_repair_commit"),
+        chain.get("runtime_repair_tree"),
+        *runtime_blobs.values(),
+    )
+    if not all(
+        isinstance(value, str)
+        and re.fullmatch(r"[0-9a-f]{40}", value) is not None
+        and value != "0" * 40
+        for value in runtime_identities
+    ):
+        raise RuntimeError("M38 runtime repair identities are not sealed")
+    control_identities = (
+        chain.get("initial_control_commit"),
+        chain.get("initial_control_tree"),
+        chain.get("final_reseal_parent"),
+        *control_blobs.values(),
+    )
+    if all(
+        isinstance(value, str) and value.startswith("PENDING_M38_INITIAL_")
+        for value in control_identities
+    ):
+        return "placeholder"
+    if all(
+        isinstance(value, str)
+        and re.fullmatch(r"[0-9a-f]{40}", value) is not None
+        and value != "0" * 40
+        for value in control_identities
+    ):
+        return "sealed"
+    raise RuntimeError("M38 initial-control identities mix placeholder/sealed values")
+
+
+def _m38_authority_reference_for_source_state(
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    if _m38_source_chain_identity_state(materializer, authority) == "placeholder":
+        return {
+            "schema": "sawm/operator-control-authority-reference@1",
+            "migration_revision": "SAWM-R2-M38",
+            "authority_cid": "sha256:PENDING_M38_AUTHORITY_CID",
+        }
+    return dict(materializer._m38_authority_reference())
+
+
+def _m38_source_chain_errors(
+    root: Path,
+    materializer: Any,
+    authority: Mapping[str, Any],
+) -> list[str]:
+    try:
+        chain = authority.get("source_chain", {})
+        if (
+            chain.get("base_control_commit")
+            != "02a16d6c76eb2f1f165b544c8c72d62c533d7d3b"
+            or chain.get("base_control_tree")
+            != "739df0426b5af860b461e68a4fbd9f1cc541c753"
+            or chain.get("runtime_repair_commit")
+            != "ad30bfa90cd0309a77a1a9936815f739e072a8a7"
+            or chain.get("runtime_repair_tree")
+            != "71a35a3ce148b203b4b2ee75919d51b5a4420657"
+            or set(authority.get("runtime_repair_paths", ()))
+            != set(materializer._M38_RUNTIME_REPAIR_PATHS)
+            or set(authority.get("operator_control_paths", ()))
+            != set(materializer._M38_OPERATOR_CONTROL_PATHS)
+            or _git(root, "rev-parse", "02a16d6c76eb2f1f165b544c8c72d62c533d7d3b^{tree}")
+            != "739df0426b5af860b461e68a4fbd9f1cc541c753"
+            or _git(root, "rev-parse", "ad30bfa90cd0309a77a1a9936815f739e072a8a7^{tree}")
+            != "71a35a3ce148b203b4b2ee75919d51b5a4420657"
+            or _git(
+                root,
+                "diff",
+                "--name-only",
+                "02a16d6c76eb2f1f165b544c8c72d62c533d7d3b",
+                "ad30bfa90cd0309a77a1a9936815f739e072a8a7",
+            ).splitlines()
+            != sorted(materializer._M38_RUNTIME_REPAIR_PATHS)
+        ):
+            raise RuntimeError("M38 base/runtime-repair identity differs")
+        state = _m38_source_chain_identity_state(materializer, authority)
+        if not hasattr(materializer, "_assert_m38_source_delta"):
+            raise RuntimeError("M38 final source-delta verifier is unavailable")
+        if state == "placeholder":
+            return []
+        population = materializer.build_population(root)
+        materializer._assert_m38_source_delta(root, population, authority)
+        return []
+    except Exception as exc:
+        return [
+            "M38 exact custody repair/control/reseal chain differs: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
+def _m38_pre_authoritative_custody_restart_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path = REPO_ROOT,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    key = "pre_authoritative_custody_restart_successor_materialization"
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m38_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M38 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer._expected_m38_pre_authoritative_custody_restart_authority()
+        )
+        materializer._assert_m38_historical_m37_triplet(
+            scheduler, migration, seal
+        )
+        contract = materializer._validated_m38_live_preflight_contract(expected)
+        reference = _m38_authority_reference_for_source_state(materializer, expected)
+        errors: list[str] = []
+        presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+        if not all(presence):
+            errors.append("M38 custody restart authority is only partially declared")
+        if scheduler.get(key) != reference or migration.get(key) != reference:
+            errors.append("M38 custody restart reference differs")
+        state = _m38_source_chain_identity_state(materializer, expected)
+        expected_cid = (
+            "sha256:PENDING_M38_AUTHORITY_CID"
+            if state == "placeholder"
+            else materializer._identity(expected)
+        )
+        if seal.get(f"{key}_cid") != expected_cid:
+            errors.append("M38 custody restart CID differs")
+        failed = expected.get("failed_m37_pre_authority_attempt", {})
+        custody = expected.get("pre_authoritative_custody_repair", {})
+        lane = expected.get("stale_lane_pid_repair", {})
+        derivation = expected.get("target_projection_derivation", {})
+        zero_fields = (
+            "generation_30_rows_created",
+            "event_291_rows_created",
+            "evidence_nodes_created",
+            "task_status_changes",
+            "task_revision_changes",
+            "goal_revision_changes",
+            "plan_revision_changes",
+            "effect_claim_changes",
+            "implementation_provider_invocations",
+            "accepted_completion_changes",
+        )
+        required_functions = (
+            "_assert_m38_source_delta",
+            "_check_m38_prestart_admission",
+            "_m38_projection_cid_at_watermark",
+            "_verify_m38_live_materialization",
+            "_expected_m38_source_successor_receipt",
+            "_materialize_m38",
+            "_check_m38_materialized",
+        )
+        if (
+            expected.get("schema")
+            != "sawm/pre-authoritative-custody-restart-successor-authorization@1"
+            or expected.get("migration_revision") != "SAWM-R2-M38"
+            or expected.get("migration_kind") != key
+            or expected.get("control_recorded_at") != "2026-09-01T01:10:00Z"
+            or expected.get("target_generation") != 30
+            or expected.get("target_event_watermark") != 291
+            or expected.get("target_projection_cid")
+            != "baguqeeravycbuo73fyu5mpad55qi5duk3la53lubqeu7nu6kjtnahehjtnsq"
+            or expected.get("prior_authority", {}).get("control_store_sha256")
+            != "ea5b66208455f398502e8ad939566a5957f5bc65f35ed5afe8cc3998be66eb41"
+            or expected.get("prior_authority", {}).get("read_replica_sha256")
+            != "ea5b66208455f398502e8ad939566a5957f5bc65f35ed5afe8cc3998be66eb41"
+            or expected.get("prior_authority", {}).get("event_watermark") != 290
+            or expected.get("prior_authority", {}).get("projection_cid")
+            != "baguqeerahwerrrfx6cx6ukpljlp2r4i32lkac3bnhq5ej2f3hozg7cnt6shq"
+            or expected.get("superseded_m37_authority", {}).get("authority_cid")
+            != "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
+            or failed.get("failure_phase")
+            != "after_database_open_and_checkpoint_before_identity_publication"
+            or failed.get("inotify_add_watch_errno") != 28
+            or any(failed.get(field) != 0 for field in zero_fields)
+            or custody.get("database_open_before_custody_forbidden") is not True
+            or lane.get("live_or_changed_pid_fails_closed") is not True
+            or len(lane.get("evidence", {})) != 4
+            or derivation.get("recomputed_not_inherited") is not True
+            or contract.get("pre_authoritative_custody_required") is not True
+            or any(not hasattr(materializer, name) for name in required_functions)
+        ):
+            errors.append("M38 pre-authoritative custody restart delta is not exact")
+        if require_active_runtime:
+            runtime = scheduler.get("runtime_paths")
+            program = scheduler.get("database_program")
+            owner = scheduler.get("quack_owner")
+            target_root = str(expected["target_runtime_root"])
+            if (
+                not isinstance(program, Mapping)
+                or program.get("store_generation") != "30"
+                or program.get("store_id") != expected["target_store_id"]
+                or not isinstance(owner, Mapping)
+                or owner.get("database_path") != expected["target_store_id"]
+                or owner.get("port") != 24_070
+                or runtime
+                != {
+                    "root": target_root,
+                    "state": f"{target_root}/state",
+                    "worktrees": f"{target_root}/worktrees",
+                    "merge_queue": f"{target_root}/merge-queue",
+                    "logs": f"{target_root}/logs",
+                    "generated_runtime_artifacts_are_completion_authority": False,
+                }
+            ):
+                errors.append("scheduler M38 target/runtime binding is not exact")
+        errors.extend(_m38_source_chain_errors(root, materializer, expected))
+        return errors
+    except Exception as exc:
+        return [
+            "M38 custody restart authority is unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        ]
+
+
 def _m37_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -10652,6 +10912,71 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m38_key = "pre_authoritative_custody_restart_successor_materialization"
+    m38_presence = (
+        m38_key in scheduler,
+        m38_key in migration,
+        f"{m38_key}_cid" in seal,
+    )
+    if any(m38_presence):
+        if not all(m38_presence):
+            return effective, ["active M38 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m38_nested_source_materializer",
+                REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M38 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer._expected_m38_pre_authoritative_custody_restart_authority()
+            )
+            materializer._validated_m38_live_preflight_contract(authority)
+            reference = _m38_authority_reference_for_source_state(
+                materializer, authority
+            )
+            identity_state = _m38_source_chain_identity_state(materializer, authority)
+            expected_cid = (
+                "sha256:PENDING_M38_AUTHORITY_CID"
+                if identity_state == "placeholder"
+                else materializer._identity(authority)
+            )
+        except Exception as exc:
+            return effective, [f"active M38 nested-source authority unavailable: {exc}"]
+        if (
+            scheduler.get(m38_key) != reference
+            or migration.get(m38_key) != reference
+            or seal.get(f"{m38_key}_cid") != expected_cid
+        ):
+            return effective, ["active M38 nested-source authority differs"]
+        identities = {
+            "ipfs_datasets_py": (
+                str(authority.get("current_datasets_gitlink") or ""),
+                str(authority.get("current_datasets_tree") or ""),
+            ),
+            "ipfs_kit_py": (
+                str(authority.get("current_kit_gitlink") or ""),
+                str(authority.get("current_kit_tree") or ""),
+            ),
+        }
+        if any(
+            package not in effective
+            or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            for package, (gitlink, tree) in identities.items()
+        ):
+            return effective, ["active M38 nested-source identity is invalid"]
+        for package, (gitlink, tree) in identities.items():
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
+
     m37_key = "post_reboot_generation_restart_successor_materialization"
     m37_presence = (
         m37_key in scheduler,
@@ -11495,6 +11820,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m38_key = "pre_authoritative_custody_restart_successor_materialization"
+        m38_presence = (
+            m38_key in scheduler_probe,
+            m38_key in migration_probe,
+            f"{m38_key}_cid" in seal,
+        )
         m37_key = "post_reboot_generation_restart_successor_materialization"
         m37_presence = (
             m37_key in scheduler_probe,
@@ -11611,7 +11942,45 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m37_presence):
+        if any(m38_presence):
+            scheduled = scheduler_probe.get(m38_key)
+            migrated = migration_probe.get(m38_key)
+            if not all(m38_presence) or scheduled != migrated:
+                unexpected = ["M38 authority is partial or differs across controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m38_source_status_materializer",
+                    root / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M38 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer._expected_m38_pre_authoritative_custody_restart_authority()
+                    )
+                    identity_state = _m38_source_chain_identity_state(
+                        materializer, expected
+                    )
+                    expected_seal_cid = (
+                        "sha256:PENDING_M38_AUTHORITY_CID"
+                        if identity_state == "placeholder"
+                        else materializer._identity(expected)
+                    )
+                    if (
+                        scheduled
+                        != _m38_authority_reference_for_source_state(
+                            materializer, expected
+                        )
+                        or seal.get(f"{m38_key}_cid") != expected_seal_cid
+                    ):
+                        unexpected = ["M38 authority/CID differs across controls"]
+                    else:
+                        unexpected = _m38_source_chain_errors(
+                            root, materializer, expected
+                        )
+        elif any(m37_presence):
             scheduled = scheduler_probe.get(m37_key)
             migrated = migration_probe.get(m37_key)
             if not all(m37_presence) or scheduled != migrated:
@@ -12654,6 +13023,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m38_declared = _m38_successor_declared(scheduler, seal, migration)
         m37_declared = _m37_successor_declared(scheduler, seal, migration)
         m36_declared = _m36_successor_declared(scheduler, seal, migration)
         m35_declared = _m35_successor_declared(scheduler, seal, migration)
@@ -12667,7 +13037,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m37_declared
+            m38_declared
+            or m37_declared
             or m36_declared
             or m35_declared
             or m34_declared
@@ -12681,7 +13052,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m37_declared:
+            if m38_declared:
+                protocol_errors.extend(
+                    _m38_pre_authoritative_custody_restart_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+            if m37_declared and not m38_declared:
                 protocol_errors.extend(
                     _m37_post_reboot_generation_restart_successor_errors(
                         scheduler, seal, migration, root=root
@@ -12694,7 +13071,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not m37_declared,
+                        require_active_runtime=not (m38_declared or m37_declared),
                     )
                 )
             if m35_declared:
@@ -12704,7 +13081,9 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         seal,
                         migration,
                         root=root,
-                        require_active_runtime=not (m37_declared or m36_declared),
+                        require_active_runtime=not (
+                            m38_declared or m37_declared or m36_declared
+                        ),
                     )
                 )
             if m34_declared:

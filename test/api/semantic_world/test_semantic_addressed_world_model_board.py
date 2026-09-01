@@ -27,6 +27,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "pre_authoritative_custody_restart_successor_materialization",
     "post_reboot_generation_restart_successor_materialization",
     "operator_task_binding_correction_successor_materialization",
     "immutable_authority_identity_normalization_successor_materialization",
@@ -4978,6 +4979,717 @@ def test_m29_presence_masks_m28_and_keeps_every_predecessor_historical(
     assert any("only partially declared" in error for error in errors)
 
 
+def test_m38_authority_pins_custody_restart_and_preserves_m37() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m38_authority_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m38_authority_test",
+    )
+    key = "pre_authoritative_custody_restart_successor_materialization"
+    authority = (
+        materializer._expected_m38_pre_authoritative_custody_restart_authority()
+    )
+    identity_state = dependencies._m38_source_chain_identity_state(
+        materializer, authority
+    )
+    reference = dependencies._m38_authority_reference_for_source_state(
+        materializer, authority
+    )
+    scheduler = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert scheduler[key] == reference == migration[key]
+    expected_authority_cid = (
+        "sha256:PENDING_M38_AUTHORITY_CID"
+        if identity_state == "placeholder"
+        else materializer._identity(authority)
+    )
+    assert seal[f"{key}_cid"] == reference["authority_cid"] == expected_authority_cid
+    assert reference["schema"] == "sawm/operator-control-authority-reference@1"
+    assert reference["migration_revision"] == "SAWM-R2-M38"
+    assert authority["schema"] == (
+        "sawm/pre-authoritative-custody-restart-successor-authorization@1"
+    )
+    assert authority["superseded_m37_authority"]["authority_cid"] == (
+        "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
+    )
+    assert authority["prior_authority"]["control_store_sha256"] == (
+        "ea5b66208455f398502e8ad939566a5957f5bc65f35ed5afe8cc3998be66eb41"
+    )
+    if identity_state == "placeholder":
+        assert materializer._m38_source_identities_pending() is True
+    else:
+        assert identity_state == "sealed"
+        assert materializer._m38_source_identities_pending() is False
+
+
+def test_m38_placeholder_controls_fail_closed_at_launch_boundaries() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m38_placeholder_rejection_test",
+    )
+    key = "pre_authoritative_custody_restart_successor_materialization"
+    pending = {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M38",
+        "authority_cid": "sha256:PENDING_M38_AUTHORITY_CID",
+    }
+    assert materializer._m38_successor_configured({key: pending}) is True
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M38 source identities are not resealed",
+    ):
+        materializer._assert_m38_source_delta(
+            REPO_ROOT,
+            {"source_binding": {"head": "0" * 40, "tree": "0" * 40}},
+            materializer._expected_m38_pre_authoritative_custody_restart_authority(),
+        )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M38 source identities are not resealed",
+    ):
+        materializer._m38_source_binding_authority(
+            REPO_ROOT,
+            {
+                "migration_inventory": {
+                    key: pending,
+                    "post_reboot_generation_restart_successor_materialization": {
+                        "schema": "sawm/operator-control-authority-reference@1",
+                        "migration_revision": "SAWM-R2-M37",
+                        "authority_cid": (
+                            "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
+                        ),
+                    },
+                },
+                "source_binding": {"head": "0" * 40},
+            },
+            {
+                key: pending,
+                "post_reboot_generation_restart_successor_materialization": {
+                    "schema": "sawm/operator-control-authority-reference@1",
+                    "migration_revision": "SAWM-R2-M37",
+                    "authority_cid": (
+                        "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
+                    ),
+                },
+            },
+        )
+
+
+@pytest.mark.parametrize("identity_case", ("mixed", "arbitrary", "all_zero"))
+def test_m38_rejects_nonexact_initial_control_identity_states(
+    monkeypatch: pytest.MonkeyPatch,
+    identity_case: str,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        f"sawm_materializer_m38_{identity_case}_identity_test",
+    )
+    paths = sorted(materializer._M38_OPERATOR_CONTROL_PATHS)
+    exact_pending = {
+        path: f"PENDING_M38_INITIAL_CONTROL_BLOB_{index}"
+        for index, path in enumerate(paths, start=1)
+    }
+    if identity_case == "mixed":
+        commit = "PENDING_M38_INITIAL_CONTROL_COMMIT"
+        tree = "a" * 40
+        blobs = exact_pending
+    elif identity_case == "arbitrary":
+        commit = "PENDING_M38_NOT_AN_AUTHORIZED_SENTINEL"
+        tree = "PENDING_M38_INITIAL_CONTROL_TREE"
+        blobs = exact_pending
+    else:
+        commit = tree = "0" * 40
+        blobs = {path: "0" * 40 for path in paths}
+    monkeypatch.setattr(materializer, "_M38_INITIAL_CONTROL_COMMIT", commit)
+    monkeypatch.setattr(materializer, "_M38_INITIAL_CONTROL_TREE", tree)
+    monkeypatch.setattr(materializer, "_M38_INITIAL_CONTROL_BLOBS", blobs)
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M38 initial-control identities mix placeholder and sealed values",
+    ):
+        materializer._m38_source_identities_pending()
+
+
+def test_m38_preserves_the_exact_historical_m37_triplet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m38_historical_m37_triplet_test",
+    )
+    scheduler = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    migration = json.loads(
+        (
+            REPO_ROOT
+            / "docs/architecture/semantic_addressed_world_model_inventory/"
+            "prior_materialization_migration.json"
+        ).read_text(encoding="utf-8")
+    )
+    seal = json.loads(
+        (
+            REPO_ROOT
+            / "config/semantic_addressed_world_model_dependencies.seal.json"
+        ).read_text(encoding="utf-8")
+    )
+    key = "post_reboot_generation_restart_successor_materialization"
+    materializer._assert_m38_historical_m37_triplet(
+        scheduler, migration, seal
+    )
+
+    for surface, field in (
+        (scheduler, key),
+        (migration, key),
+        (seal, f"{key}_cid"),
+    ):
+        altered = copy.deepcopy(surface)
+        del altered[field]
+        arguments = (
+            (altered, migration, seal)
+            if surface is scheduler
+            else (scheduler, altered, seal)
+            if surface is migration
+            else (scheduler, migration, altered)
+        )
+        with pytest.raises(
+            materializer.MaterializationError,
+            match="M38 historical M37 authority triplet differs",
+        ):
+            materializer._assert_m38_historical_m37_triplet(*arguments)
+
+    original = materializer._expected_m37_post_reboot_generation_restart_authority
+
+    def altered_m37_authority() -> dict[str, object]:
+        authority = copy.deepcopy(original())
+        authority["authorized"] = False
+        return authority
+
+    monkeypatch.setattr(
+        materializer,
+        "_expected_m37_post_reboot_generation_restart_authority",
+        altered_m37_authority,
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="M38 historical M37 authority triplet differs",
+    ):
+        materializer._assert_m38_historical_m37_triplet(
+            scheduler, migration, seal
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "state_root_mode",
+        "lane_mode",
+        "lane_owner",
+        "lane_symlink",
+        "pid_symlink",
+    ),
+)
+def test_m38_physical_prestart_evidence_rejects_directory_and_symlink_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        f"sawm_materializer_m38_physical_{mutation}_test",
+    )
+    root = tmp_path.resolve()
+    runtime = root / "runtime"
+    state_root = runtime / "state"
+    lane_dir = state_root / "lane-0"
+    lane_dir.mkdir(parents=True)
+    os.chmod(state_root, 0o700)
+    os.chmod(lane_dir, 0o775)
+    control = runtime / "control.duckdb"
+    replica = runtime / "control.read-replica.duckdb"
+    control.write_bytes(b"control")
+    replica.write_bytes(b"replica")
+    os.chmod(control, 0o664)
+    os.chmod(replica, 0o600)
+    pid_path = lane_dir / "sawm_lane_0_supervisor.pid"
+    pid_payload = b"123\n"
+    pid_path.write_bytes(pid_payload)
+    os.chmod(pid_path, 0o664)
+
+    control_stat = os.lstat(control)
+    replica_stat = os.lstat(replica)
+    pid_stat = os.lstat(pid_path)
+    monkeypatch.setattr(materializer, "_M38_RUNTIME_ROOT", "runtime")
+    monkeypatch.setattr(
+        materializer, "_M38_PRIOR_CONTROL_SHA256", hashlib.sha256(b"control").hexdigest()
+    )
+    monkeypatch.setattr(materializer, "_M38_PRIOR_CONTROL_SIZE", len(b"control"))
+    monkeypatch.setattr(
+        materializer, "_M38_PRIOR_CONTROL_MTIME_NS", control_stat.st_mtime_ns
+    )
+    monkeypatch.setattr(
+        materializer, "_M38_PRIOR_CONTROL_CTIME_NS", control_stat.st_ctime_ns
+    )
+    monkeypatch.setattr(
+        materializer, "_M38_READ_REPLICA_SHA256", hashlib.sha256(b"replica").hexdigest()
+    )
+    monkeypatch.setattr(materializer, "_M38_READ_REPLICA_SIZE", len(b"replica"))
+    monkeypatch.setattr(
+        materializer, "_M38_READ_REPLICA_MTIME_NS", replica_stat.st_mtime_ns
+    )
+    monkeypatch.setattr(
+        materializer, "_M38_READ_REPLICA_CTIME_NS", replica_stat.st_ctime_ns
+    )
+    expected_uid = pid_stat.st_uid + (1 if mutation == "lane_owner" else 0)
+    evidence = {
+        "lane-0": {
+            "path": "runtime/state/lane-0/sawm_lane_0_supervisor.pid",
+            "pid": 123,
+            "inode": pid_stat.st_ino,
+            "size": len(pid_payload),
+            "sha256": hashlib.sha256(pid_payload).hexdigest(),
+            "mtime_ns": pid_stat.st_mtime_ns,
+            "ctime_ns": pid_stat.st_ctime_ns,
+            "mode": 0o664,
+            "uid": expected_uid,
+            "gid": pid_stat.st_gid,
+            "link_count": 1,
+            "device": pid_stat.st_dev,
+            "owner_liveness": "dead",
+            "liveness_probe": "kill_pid_0_process_lookup_error",
+        }
+    }
+    monkeypatch.setattr(materializer, "_m38_lane_pid_evidence", lambda: evidence)
+
+    if mutation == "state_root_mode":
+        os.chmod(state_root, 0o755)
+    elif mutation == "lane_mode":
+        os.chmod(lane_dir, 0o700)
+    elif mutation == "lane_symlink":
+        shutil.rmtree(lane_dir)
+        external_lane = root / "external-lane"
+        external_lane.mkdir()
+        lane_dir.symlink_to(external_lane, target_is_directory=True)
+    elif mutation == "pid_symlink":
+        pid_path.unlink()
+        external_pid = root / "external.pid"
+        external_pid.write_bytes(pid_payload)
+        pid_path.symlink_to(external_pid)
+
+    monkeypatch.setattr(
+        materializer.os,
+        "kill",
+        lambda *_args: (_ for _ in ()).throw(ProcessLookupError()),
+    )
+    with pytest.raises(materializer.MigrationRequired):
+        materializer._verify_m38_failed_attempt_physical_evidence(root, control)
+
+
+def test_m38_prestart_rejects_a_read_replica_wal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m38_replica_wal_test",
+    )
+    root = tmp_path.resolve()
+    runtime = root / "runtime"
+    runtime.mkdir()
+    control = runtime / "control.duckdb"
+    coordination = runtime / "control.coordination.duckdb"
+    replica_wal = runtime / "control.read-replica.duckdb.wal"
+    replica_wal.write_bytes(b"unexpected WAL")
+    authority = (
+        materializer._expected_m38_pre_authoritative_custody_restart_authority()
+    )
+    stopped = authority["stopped_owner"]
+    status = {
+        "lifecycle": "stopped",
+        "recovered_stale_owner": True,
+        "recovery_stopped_at": materializer._M38_PRIOR_STOPPED_AT,
+        "identity": {
+            "status": "stopped",
+            "server_id": stopped["server_id"],
+            "process_birth_id": stopped["process_birth_id"],
+            "database_uuid": stopped["database_uuid"],
+            "store_id": stopped["store_id"],
+            "listen_uri": stopped["listen_uri"],
+            "extension_fingerprint": materializer._M38_EXTENSION_FINGERPRINT,
+            "generation": materializer._M38_PRIOR_GENERATION,
+        },
+    }
+    monkeypatch.setattr(materializer, "build_population", lambda _root: {})
+    monkeypatch.setattr(
+        materializer, "_assert_committed_clean_source", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        materializer, "_m38_source_binding_authority", lambda *_args: authority
+    )
+    monkeypatch.setattr(materializer, "_assert_m38_source_delta", lambda *_args: None)
+    monkeypatch.setattr(
+        materializer,
+        "_m38_target_paths",
+        lambda *_args: (control, coordination),
+    )
+    monkeypatch.setattr(materializer, "_assert_offline", lambda *_args: None)
+
+    def sealed_identity(path: Path, **_kwargs: object) -> tuple[str, int]:
+        if path == control:
+            return (
+                materializer._M38_PRIOR_CONTROL_SHA256,
+                materializer._M38_PRIOR_CONTROL_SIZE,
+            )
+        if path == coordination:
+            return (
+                materializer._M38_PRIOR_COORDINATION_SHA256,
+                materializer._M38_PRIOR_COORDINATION_SIZE,
+            )
+        if path.name == "quack-state-server.status.json":
+            return (
+                materializer._M37_STOPPED_STATUS_SHA256,
+                materializer._M37_STOPPED_STATUS_SIZE,
+            )
+        if path.name == "quack-stale-owner-recovery-receipt.json":
+            return (
+                materializer._M37_RECOVERY_RECEIPT_SHA256,
+                materializer._M37_RECOVERY_RECEIPT_SIZE,
+            )
+        return (
+            materializer._M37_M36_RECEIPT_SHA256,
+            materializer._M37_M36_RECEIPT_SIZE,
+        )
+
+    monkeypatch.setattr(materializer, "_stable_regular_sha256", sealed_identity)
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m37_preserved_receipts",
+        lambda *_args: {
+            "m36_historical_anchor_verified": True,
+            "m36_receipt_and_event_prefix_verified": True,
+            "stale_owner_recovery_receipt_verified": True,
+        },
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_verify_m38_failed_attempt_physical_evidence",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        materializer, "_load_nofollow_json", lambda *_args, **_kwargs: (status, "")
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_inspect_m38_stopped_projection",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("WAL must fail before database inspection")
+        ),
+    )
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M38 stopped owner status differs",
+    ):
+        materializer._check_m38_prestart_admission(root, {})
+
+
+def test_m38_evidence_projection_rejects_an_orphan_row() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m38_orphan_evidence_test",
+    )
+    inner = {
+        "evidence_id": "evidence:expected",
+        "parent_evidence_id": "",
+        "task_cid": "task:expected",
+        "evidence_kind": "operator_control",
+        "digest": "sha256:expected",
+        "body": {"bounded": True},
+        "created_at": "2026-09-01T01:10:00Z",
+        "revision": 0,
+    }
+    envelope = {
+        "event_type": "intent.evidence_recorded",
+        "subject_id": inner["evidence_id"],
+        "recorded_at": inner["created_at"],
+        "body": inner,
+    }
+    expected_row = (
+        inner["evidence_id"],
+        inner["parent_evidence_id"],
+        inner["task_cid"],
+        inner["evidence_kind"],
+        inner["digest"],
+        inner["created_at"],
+        materializer._canonical(inner["body"]).decode("utf-8"),
+    )
+    orphan_row = (
+        "evidence:orphan",
+        "",
+        "task:orphan",
+        "unbound",
+        "sha256:orphan",
+        inner["created_at"],
+        "{}",
+    )
+
+    class Result:
+        def __init__(self, rows: list[tuple[object, ...]]) -> None:
+            self._rows = rows
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return self._rows
+
+    class Connection:
+        def execute(
+            self, query: str, _parameters: object = None
+        ) -> Result:
+            if "FROM domain_events" in query:
+                return Result(
+                    [(290, "intent.evidence_recorded", json.dumps(envelope))]
+                )
+            if "FROM evidence_nodes" in query:
+                return Result(sorted([expected_row, orphan_row]))
+            raise AssertionError(f"unexpected query: {query}")
+
+    with pytest.raises(
+        materializer.MigrationRequired,
+        match="M38 evidence-node/event projection differs",
+    ):
+        materializer._verify_m38_evidence_projection(
+            Connection(), watermark=290
+        )
+
+
+def test_m38_presence_masks_m37_and_keeps_all_history_nonactive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m38_presence_test",
+    )
+    key = "pre_authoritative_custody_restart_successor_materialization"
+    reference = {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M38",
+        "authority_cid": "sha256:PENDING_M38_AUTHORITY_CID",
+    }
+    scheduler = {key: reference}
+    migration = {key: reference}
+    seal = {f"{key}_cid": "sha256:PENDING_M38_AUTHORITY_CID"}
+    monkeypatch.setattr(
+        board, "_m38_migration_errors", lambda *_args, **_kwargs: []
+    )
+    monkeypatch.setattr(
+        board,
+        "_m37_migration_errors",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("M37 must remain masked while M38 is complete")
+        ),
+    )
+    historical_calls: list[bool] = []
+
+    def historical(*_args: object, **kwargs: object) -> list[str]:
+        historical_calls.append(kwargs.get("require_active_runtime") is False)
+        return []
+
+    for name in (
+        "_m36_migration_errors", "_m35_migration_errors",
+        "_m34_migration_errors", "_m33_migration_errors",
+        "_m32_migration_errors", "_m31_migration_errors",
+        "_m30_migration_errors", "_m29_migration_errors",
+        "_m28_migration_errors", "_m27_migration_errors",
+        "_m26_migration_errors", "_m25_migration_errors",
+        "_m24_migration_errors", "_m23_migration_errors",
+        "_m22_migration_errors", "_m21_migration_errors",
+        "_m20_migration_errors", "_m19_migration_errors",
+        "_m18_migration_errors", "_m17_migration_errors",
+        "_m16_migration_errors",
+    ):
+        monkeypatch.setattr(board, name, historical)
+    assert board._active_successor_migration_errors(
+        scheduler, seal, migration
+    ) == []
+    assert historical_calls == [True] * 21
+
+
+@pytest.mark.parametrize(
+    "presence",
+    (
+        (True, False, False),
+        (False, True, False),
+        (False, False, True),
+        (True, True, False),
+        (True, False, True),
+        (False, True, True),
+    ),
+)
+def test_m38_partial_three_surface_declarations_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    presence: tuple[bool, bool, bool],
+) -> None:
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m38_partial_surface_test_" + "".join(map(str, presence)),
+    )
+    key = "pre_authoritative_custody_restart_successor_materialization"
+    reference = {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M38",
+        "authority_cid": "sha256:PENDING_M38_AUTHORITY_CID",
+    }
+    scheduler = {key: reference} if presence[0] else {}
+    migration = {key: reference} if presence[1] else {}
+    seal = {f"{key}_cid": reference["authority_cid"]} if presence[2] else {}
+    monkeypatch.setattr(board, "_m38_migration_errors", lambda *_args: [])
+    errors = board._active_successor_migration_errors(
+        scheduler, seal, migration
+    )
+    assert errors == ["M38 custody restart authority is only partially declared"]
+
+
+def test_operator_executes_m38_prestart_before_m37(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m38_runtime_precedence_test",
+    )
+    calls: list[str] = []
+    admitted = {
+        "valid": True,
+        "action": "admitted_pre_authoritative_custody_restart_to_generation_30",
+        "database_path": str((operator.REPO_ROOT / operator._M38_STORE_ID).resolve()),
+        "coordination_path": str(
+            (operator.REPO_ROOT / operator._M38_COORDINATION_STORE_ID).resolve()
+        ),
+        "prior_generation": operator._M38_PRIOR_GENERATION,
+        "target_generation": operator._M38_GENERATION,
+        "prior_event_watermark": operator._M38_PRIOR_EVENT_WATERMARK,
+        "prior_projection_cid": operator._M38_PRIOR_PROJECTION_CID,
+        "failed_m37_attempt_prestart_evidence_bound": True,
+        "post_failure_checkpoint_bytes_verified": True,
+        "read_replica_bytes_verified": True,
+        "stale_lane_pid_evidence_verified": True,
+        "target_projection_recomputed": True,
+        "pre_authoritative_custody_required": True,
+        "prestart_authorization_consumed": False,
+    }
+
+    class Materializer:
+        @staticmethod
+        def build_population(_root: Path) -> dict[str, object]:
+            return {}
+
+        @staticmethod
+        def _assert_committed_clean_source(*_args: object) -> None:
+            return None
+
+        @staticmethod
+        def _check_m38_prestart_admission(
+            _root: Path, _config: Mapping[str, object]
+        ) -> dict[str, object]:
+            calls.append("m38")
+            return admitted
+
+        @staticmethod
+        def _check_m37_prestart_admission(*_args: object) -> dict[str, object]:
+            calls.append("m37")
+            raise AssertionError("M37 must not run when M38 is declared")
+
+    monkeypatch.setattr(operator, "_validator", lambda *_args: {"valid": True})
+    monkeypatch.setattr(operator, "_materializer", Materializer)
+    marker = {"migration_revision": "SAWM-R2-M38"}
+    monkeypatch.setattr(
+        operator, "_active_source_repair_materialization", lambda _config: marker
+    )
+    result = operator._validate_offline_quack_start(
+        {
+            operator._M38_SUCCESSOR_KEY: {},
+            operator._M37_SUCCESSOR_KEY: {},
+        }
+    )
+    assert calls == ["m38"]
+    assert result["prior_authority"] == marker
+    assert result["store"] == admitted
+
+
+def test_m38_prestart_live_verification_and_receipt_controls_are_closed() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m38_closed_controls_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m38_closed_controls_test",
+    )
+    prestart = inspect.getsource(materializer._check_m38_prestart_admission)
+    live = inspect.getsource(materializer._verify_m38_live_materialization)
+    receipt = inspect.getsource(materializer._expected_m38_source_successor_receipt)
+    dispatch = inspect.getsource(materializer.materialize)
+    check_dispatch = inspect.getsource(materializer.check_materialized)
+    marker = inspect.getsource(operator._require_m38_source_successor_marker)
+    offline_start = inspect.getsource(operator._validate_offline_quack_start)
+
+    assert "_assert_offline(control)" in prestart
+    assert "if os.path.lexists(receipt_path):" in prestart
+    assert "_verify_m38_failed_attempt_physical_evidence" in prestart
+    assert 'control.parent / "control.read-replica.duckdb.wal"' in prestart
+    assert '"admitted_pre_authoritative_custody_restart_to_generation_30"' in prestart
+    assert "read_only=False" not in prestart
+    assert '"authoritative": False' in receipt
+    assert '"superseded_m37_authority_cid": _M38_M37_AUTHORITY_CID' in receipt
+    assert dispatch.index(
+        "if _m38_successor_configured_on_any_surface(root, config):"
+    ) < dispatch.index(
+        "if _m37_successor_configured_on_any_surface(root, config):"
+    )
+    assert check_dispatch.index(
+        "if _m38_successor_configured_on_any_surface(root, config):"
+    ) < check_dispatch.index(
+        "if _m37_successor_configured_on_any_surface(root, config):"
+    )
+    assert "M38 marker requires exact live materializer verification" in marker
+    assert offline_start.index("if _M38_SUCCESSOR_KEY in config:") < (
+        offline_start.index("if _M37_SUCCESSOR_KEY in config:")
+    )
+    assert "_check_m38_prestart_admission" in offline_start
+    assert '"pre_authoritative_custody_repair_source_verified": True' in live
+    assert "_verify_m38_evidence_projection" in live
+    assert "prior_evidence_event_count + 1" in live
+    assert '"failed_m37_attempt_authority_bound"' in receipt
+    assert '"sidecars_preserved"' not in receipt
+    assert '"coordination_and_historical_receipt_bytes_preserved": True' in receipt
+    assert (
+        '"sealed_prestart_contract_requires_post_failure_read_replica_identity": True'
+        in receipt
+    )
+    assert '"read_replica_rebuilt_non_authoritatively_on_start": True' in receipt
+    assert "record_completion" not in inspect.getsource(materializer._materialize_m38)
+
+
 def test_m37_authority_pins_reboot_recovery_generation_and_source_chain() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -5024,7 +5736,7 @@ def test_m37_authority_pins_reboot_recovery_generation_and_source_chain() -> Non
     )
     if identity_state == "sealed":
         assert expected_authority_cid == (
-            "sha256:186d77f8d352d66f1bbffcd8e20d611d104f96b9155794d255eecf0b149211fb"
+            "sha256:c776180b7e65de98d5de235765db60148f7693148512b335260ddb772563a795"
         )
     assert seal[f"{key}_cid"] == reference["authority_cid"] == expected_authority_cid
     assert reference["schema"] == "sawm/operator-control-authority-reference@1"
@@ -5515,6 +6227,9 @@ def test_m37_prestart_live_verification_and_receipt_controls_are_closed() -> Non
     assert 'checked.get("m36_historical_anchor_verified") is not True' in marker
     assert 'checked.get("post_m36_operational_suffix_verified") is not True' in marker
     assert 'observed.get("worker_self_approval") is not False' in marker
+    assert offline_start.index("if _M38_SUCCESSOR_KEY in config:") < (
+        offline_start.index("if _M37_SUCCESSOR_KEY in config:")
+    )
     assert offline_start.index("if _M37_SUCCESSOR_KEY in config:") < (
         offline_start.index(
             'if "operator_task_binding_correction_successor_materialization" in config:'
