@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "live_quack_catalog_compatibility_successor_materialization",
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization",
     "post_m48_successor_report_fix_materialization",
     "post_m47_clean_shutdown_restart_successor_materialization",
@@ -426,6 +427,27 @@ def test_historical_successor_controls_include_m49_before_m48() -> None:
     assert historical_migration is not None and m49_key not in historical_migration
     assert historical_seal is not None
     assert f"{m49_key}_cid" not in historical_seal
+
+
+def test_historical_successor_controls_include_m51_before_m50() -> None:
+    m51_key = "live_quack_catalog_compatibility_successor_materialization"
+    m50_key = "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
+    scheduler = {m51_key: {"revision": "M51"}, m50_key: {"revision": "M50"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m51_key}_cid": "sha256:" + "f" * 64,
+        f"{m50_key}_cid": "sha256:" + "e" * 64,
+    }
+    current, _, _ = _historical_successor_controls_at(
+        m51_key, scheduler, migration, seal
+    )
+    assert m51_key in current
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m50_key, scheduler, migration, seal)
+    )
+    assert m51_key not in historical
+    assert historical_migration is not None and m51_key not in historical_migration
+    assert historical_seal is not None and f"{m51_key}_cid" not in historical_seal
 
 
 def test_historical_successor_controls_include_m50_before_m49() -> None:
@@ -6254,6 +6276,502 @@ def test_m49_presence_masks_m48_across_all_dispatchers(
     assert dependency_source.index("m49_declared = _m49_successor_declared") < (
         dependency_source.index("m48_declared = _m48_successor_declared")
     )
+
+
+def test_m51_authority_binds_offline_catalog_and_closed_live_protocol() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m51_authority_test",
+    )
+    authority = materializer._expected_m51_live_quack_catalog_compatibility_authority()
+    contract = materializer._validated_m51_live_preflight_contract(authority)
+
+    assert materializer._identity(authority) == materializer._M51_AUTHORITY_CID
+    assert len(materializer._canonical(authority)) == materializer._M51_AUTHORITY_SIZE
+    assert materializer._m51_authority_reference()["migration_revision"] == "SAWM-R2-M51"
+    assert authority["target_generation"] == 37
+    assert authority["target_event_watermark"] == 311
+    assert contract["prior_generation"] == 36
+    assert contract["target_generation"] == 37
+    assert authority["failed_m50_attempt"]["m50_receipt_created"] is False
+    assert authority["failed_m50_attempt"]["m50_event_311_created"] is False
+    assert authority["stopped_owner"]["status_projection_stopped_at_absent"] is True
+    assert authority["stopped_owner"]["database_stopped_at"] == "2026-09-01T19:25:29Z"
+    protocol = authority["live_query_protocol"]
+    assert protocol["offline_current_database"] == "control"
+    assert protocol["offline_catalog_requires_exact_base_tables"] is True
+    assert protocol[
+        "remote_information_schema_tables_queries_for_claimed_zero_forbidden"
+    ] is True
+    assert protocol["remote_information_schema_columns_used_by_semantic_digest"] is True
+    assert protocol["claimed_zero_live_query_kind"] == "select_count_only"
+    assert protocol["claimed_zero_arbitrary_sql_forbidden"] is True
+    assert protocol["ddl_forbidden"] is True
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
+        _DDL_PREFIXES,
+    )
+    assert protocol["forbidden_ddl_prefixes"] == list(_DDL_PREFIXES)
+    assert protocol["transport_source"]["blob_oid"] == materializer._M51_DUCKDB_STATE_BLOB
+    assert protocol["mutation_source"]["blob_oid"] == materializer._M51_QUACK_OWNER_MUTATION_BLOB
+    assert protocol["guard_source"]["blob_oid"] == materializer._M51_CONTROL_PLANE_MIGRATIONS_BLOB
+    assert protocol["live_count_queries"] == dict(materializer._M51_LIVE_COUNT_QUERIES)
+    assert all(
+        query == (
+            'SELECT COUNT(*) FROM "main"."'
+            + qualified.split(".", 1)[1]
+            + '"'
+        )
+        for qualified, query in materializer._M51_LIVE_COUNT_QUERIES.items()
+    )
+    assert authority["receipt_policy"]["completion_authority"] is False
+    assert authority["receipt_policy"]["launch_authority"] is False
+
+
+def test_m51_offline_catalog_rejects_view_missing_schema_and_catalog_substitution(
+    tmp_path: Path,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m51_offline_catalog_test",
+    )
+    authority = materializer._expected_m51_live_quack_catalog_compatibility_authority()
+    connection = duckdb.connect(str(tmp_path / "control.duckdb"))
+    try:
+        for qualified in materializer._M51_ZERO_ROW_AUTHORITY_COUNTS:
+            name = qualified.split(".", 1)[1]
+            connection.execute(f'CREATE TABLE "main"."{name}" (value INTEGER)')
+        snapshot = materializer._m51_offline_catalog_snapshot(connection, authority)
+        assert snapshot["catalog_entries"] == materializer._m51_catalog_entries()
+        assert snapshot["counts"] == dict(materializer._M51_ZERO_ROW_AUTHORITY_COUNTS)
+        connection.execute('DROP TABLE "main"."provider_calls"')
+        connection.execute('CREATE VIEW "main"."provider_calls" AS SELECT 1 AS value')
+        with pytest.raises(materializer.MigrationRequired, match="offline BASE TABLE differs"):
+            materializer._m51_offline_catalog_snapshot(connection, authority)
+        connection.execute('DROP VIEW "main"."provider_calls"')
+        with pytest.raises(materializer.MigrationRequired, match="offline BASE TABLE differs"):
+            materializer._m51_offline_catalog_snapshot(connection, authority)
+        connection.execute('CREATE SCHEMA alternate')
+        connection.execute('CREATE TABLE alternate.provider_calls (value INTEGER)')
+        with pytest.raises(materializer.MigrationRequired, match="offline BASE TABLE differs"):
+            materializer._m51_offline_catalog_snapshot(connection, authority)
+    finally:
+        connection.close()
+    wrong_catalog = duckdb.connect(str(tmp_path / "not_control.duckdb"))
+    try:
+        with pytest.raises(materializer.MigrationRequired, match="current_database differs"):
+            materializer._m51_offline_catalog_snapshot(wrong_catalog, authority)
+    finally:
+        wrong_catalog.close()
+
+
+def test_m51_source_protocol_blob_tampering_fails_closed() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m51_protocol_tamper_test",
+    )
+    authority = materializer._expected_m51_live_quack_catalog_compatibility_authority()
+    tampered = copy.deepcopy(authority)
+    tampered["live_query_protocol"]["transport_source"]["blob_oid"] = "0" * 40
+    tampered["live_preflight_contract"]["live_query_protocol"] = tampered[
+        "live_query_protocol"
+    ]
+    with pytest.raises(materializer.MaterializationError, match="preflight contract differs"):
+        materializer._validated_m51_live_preflight_contract(tampered)
+
+
+@pytest.mark.parametrize("malformed", (False, 0.5, "0"))
+def test_m51_offline_catalog_rejects_coercible_or_boolean_counts(
+    malformed: object,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m51_offline_malformed_" + type(malformed).__name__,
+    )
+    authority = materializer._expected_m51_live_quack_catalog_compatibility_authority()
+
+    class Result:
+        def __init__(self, *, row=None, rows=None) -> None:
+            self.row = row
+            self.rows = rows
+
+        def fetchone(self):
+            return self.row
+
+        def fetchall(self):
+            return self.rows
+
+    class Proxy:
+        def execute(self, sql: str, parameters=None):
+            if sql == "SELECT current_database()":
+                return Result(row=("control",))
+            if "information_schema.tables" in sql:
+                schema_name, table_name = parameters
+                return Result(
+                    rows=[("control", schema_name, table_name, "BASE TABLE")]
+                )
+            assert sql in materializer._M51_LIVE_COUNT_QUERIES.values()
+            assert parameters is None
+            return Result(row=(malformed,))
+
+    with pytest.raises(materializer.MigrationRequired, match="count is malformed"):
+        materializer._m51_offline_catalog_snapshot(Proxy(), authority)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    (
+        ("schema", "sawm/tampered@1"),
+        ("authoritative", True),
+        ("prior_generation", 35),
+        ("target_generation", 38),
+        ("event_watermark", 311),
+        ("database_catalog", "other"),
+        ("catalog_entries", []),
+        ("snapshot_cid", "sha256:" + "f" * 64),
+        ("requires_fresh_live_count_revalidation", False),
+        ("remote_information_schema_tables_required_live", True),
+        ("ddl_authority", True),
+        ("worker_self_approval", True),
+    ),
+)
+def test_m51_resealed_prestart_receipt_tampering_fails_closed(
+    tmp_path: Path, field: str, replacement: object
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m51_prestart_tamper_" + field,
+    )
+    authority = materializer._expected_m51_live_quack_catalog_compatibility_authority()
+    population = {
+        "source_binding": {"source_binding_cid": "sha256:" + "1" * 64}
+    }
+    snapshot_payload = {
+        "schema": "sawm/offline-exact-base-table-snapshot@1",
+        "database_catalog": materializer._M51_DATABASE_CATALOG,
+        "catalog_entries": materializer._m51_catalog_entries(),
+        "counts": dict(materializer._M51_ZERO_ROW_AUTHORITY_COUNTS),
+        "live_query_protocol": authority["live_query_protocol"],
+    }
+    snapshot = {
+        **snapshot_payload,
+        "snapshot_cid": materializer._identity(snapshot_payload),
+    }
+    receipt = materializer._expected_m51_prestart_schema_receipt(
+        population, authority, snapshot
+    )
+    receipt[field] = replacement
+    receipt.pop("receipt_cid")
+    receipt["receipt_cid"] = materializer._identity(receipt)
+    control = tmp_path / "runtime" / "control.duckdb"
+    control.parent.mkdir()
+    path = control.parent / materializer._M51_PRESTART_SCHEMA_RECEIPT_NAME
+    path.write_text(json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8")
+    path.chmod(0o600)
+
+    with pytest.raises(materializer.MigrationRequired, match="receipt differs"):
+        materializer._load_m51_prestart_schema_receipt(
+            tmp_path, control, population, authority
+        )
+
+
+@pytest.mark.parametrize(
+    "nonzero_table", tuple(
+        "main." + name for name in (
+            "provider_calls", "provider_invocations", "provider_responses",
+            "effect_claims", "merge_attempts", "merge_bases", "merge_queue_entries",
+        )
+    )
+)
+def test_m51_live_proxy_needs_no_information_schema_and_rejects_nonzero(
+    nonzero_table: str,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m51_live_proxy_" + nonzero_table.rsplit(".", 1)[1],
+    )
+    authority = materializer._expected_m51_live_quack_catalog_compatibility_authority()
+    population = {
+        "source_binding": {"source_binding_cid": "sha256:" + "1" * 64}
+    }
+    snapshot = {
+        "catalog_entries": materializer._m51_catalog_entries(),
+        "counts": dict(materializer._M51_ZERO_ROW_AUTHORITY_COUNTS),
+        "snapshot_cid": "sha256:" + "2" * 64,
+    }
+    prestart = materializer._expected_m51_prestart_schema_receipt(
+        population, authority, snapshot
+    )
+    queries: list[str] = []
+
+    class Result:
+        def __init__(self, value: int) -> None:
+            self.value = value
+
+        def fetchone(self):
+            return (self.value,)
+
+    class Proxy:
+        def execute(self, sql: str, parameters=None):
+            assert parameters is None
+            assert "information_schema" not in sql.lower()
+            queries.append(sql)
+            qualified = next(
+                name
+                for name, exact in materializer._M51_LIVE_COUNT_QUERIES.items()
+                if exact == sql
+            )
+            return Result(1 if qualified == nonzero_table else 0)
+
+    with pytest.raises(materializer.MigrationRequired, match="claimed-zero live authority"):
+        materializer._m51_live_zero_row_authority_counts_on(
+            Proxy(), authority, prestart
+        )
+    assert queries
+    assert all(query in materializer._M51_LIVE_COUNT_QUERIES.values() for query in queries)
+
+    queries.clear()
+
+    class ZeroProxy(Proxy):
+        def execute(self, sql: str, parameters=None):
+            assert parameters is None
+            assert "information_schema" not in sql.lower()
+            queries.append(sql)
+            return Result(0)
+
+    assert materializer._m51_live_zero_row_authority_counts_on(
+        ZeroProxy(), authority, prestart
+    ) == dict(materializer._M51_ZERO_ROW_AUTHORITY_COUNTS)
+    assert queries == list(materializer._M51_LIVE_COUNT_QUERIES.values())
+
+
+@pytest.mark.parametrize("malformed", (False, 0.5, "0"))
+def test_m51_live_proxy_rejects_coercible_or_boolean_counts(malformed: object) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m51_malformed_count_" + type(malformed).__name__,
+    )
+    authority = materializer._expected_m51_live_quack_catalog_compatibility_authority()
+    snapshot = {
+        "catalog_entries": materializer._m51_catalog_entries(),
+        "counts": dict(materializer._M51_ZERO_ROW_AUTHORITY_COUNTS),
+        "snapshot_cid": "sha256:" + "2" * 64,
+    }
+    prestart = materializer._expected_m51_prestart_schema_receipt(
+        {"source_binding": {"source_binding_cid": "sha256:" + "1" * 64}},
+        authority,
+        snapshot,
+    )
+
+    class Result:
+        def fetchone(self):
+            return (malformed,)
+
+    class Proxy:
+        def execute(self, sql: str, parameters=None):
+            assert sql in materializer._M51_LIVE_COUNT_QUERIES.values()
+            assert parameters is None
+            return Result()
+
+    with pytest.raises(materializer.MigrationRequired, match="count is malformed"):
+        materializer._m51_live_zero_row_authority_counts_on(
+            Proxy(), authority, prestart
+        )
+
+
+def test_m51_presence_masks_m50_and_historical_fallback_remains(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m51_presence_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m51_presence_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m51_presence_test",
+    )
+    m51 = materializer._M51_SUPERSESSION_REASON
+    m50 = materializer._M50_SUPERSESSION_REASON
+    monkeypatch.setattr(materializer, "_load_json", lambda _path: {m51: None, m50: {}})
+    monkeypatch.setattr(
+        materializer, "_m51_successor_configured_on_any_surface", lambda *_args: True
+    )
+    monkeypatch.setattr(
+        materializer, "_check_m51_materialized", lambda *_args: {"selected": "M51"}
+    )
+    monkeypatch.setattr(
+        materializer, "_materialize_m51", lambda *_args: {"selected": "M51"}
+    )
+    monkeypatch.setattr(
+        materializer, "_m50_successor_configured_on_any_surface",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("M50 selected")),
+    )
+    assert materializer.check_materialized(REPO_ROOT) == {"selected": "M51"}
+    assert materializer.materialize(REPO_ROOT) == {"selected": "M51"}
+    monkeypatch.setattr(materializer, "build_population", lambda _root: {})
+    assert materializer.main(["check", "--repo-root", str(REPO_ROOT)]) == 0
+
+    monkeypatch.setattr(board, "_m51_migration_errors", lambda *_args: ["m51-invalid"])
+    monkeypatch.setattr(
+        board, "_m50_migration_errors",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("M50 selected")),
+    )
+    assert board._active_successor_migration_errors(
+        {m51: None, m50: {}},
+        {f"{m51}_cid": "bad", f"{m50}_cid": "history"},
+        {m51: None, m50: {}},
+    ) == ["m51-invalid"]
+
+    monkeypatch.setattr(
+        operator, "_require_m51_source_successor_marker",
+        lambda *_args, **_kwargs: MappingProxyType({"selected": "M51"}),
+    )
+    monkeypatch.setattr(
+        operator, "_require_m50_source_successor_marker",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("M50 selected")),
+    )
+    assert operator._require_active_final_pair_marker(
+        {m51: None, m50: {}}, {}, object(), checked={}
+    ) == {"selected": "M51"}
+
+    # Removing every M51 surface deliberately restores the historical M50 route.
+    monkeypatch.setattr(board, "_m50_migration_errors", lambda *_args: ["m50-history"])
+    assert board._active_successor_migration_errors(
+        {m50: None}, {f"{m50}_cid": "bad"}, {m50: None}
+    ) == ["m50-history"]
+
+
+@pytest.mark.parametrize(
+    "ddl",
+    (
+        "CREATE VIEW main.provider_calls AS SELECT 1",
+        "ATTACH 'other.duckdb' AS other",
+        "PRAGMA enable_profiling",
+        "CALL checkpoint()",
+    ),
+)
+def test_m51_landed_guard_rejects_ddl_before_transport(ddl: str) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
+        GuardedDuckDBConnection,
+        MigrationAdHocDDLError,
+    )
+
+    class Raw:
+        called = False
+
+        def execute(self, _sql: str, _parameters=None):
+            self.called = True
+            raise AssertionError("DDL reached transport")
+
+    raw = Raw()
+    guarded = GuardedDuckDBConnection(
+        raw, allow_ddl=False, compatibility_path=False
+    )
+    assert guarded.allow_ddl is False
+    with pytest.raises(MigrationAdHocDDLError):
+        guarded.execute(ddl)
+    assert raw.called is False
+
+
+def test_m51_post_receipt_interleaving_requires_fresh_live_revalidation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m51_interleaving_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m51_interleaving_test",
+    )
+    authority = materializer._expected_m51_live_quack_catalog_compatibility_authority()
+    check_source = inspect.getsource(materializer._check_m51_materialized)
+    materialize_source = inspect.getsource(materializer._materialize_m51)
+    runtime = (tmp_path / materializer._M51_STORE_ID).resolve().parent
+    runtime.mkdir(parents=True)
+    final_path = runtime / materializer._M51_FINAL_RECEIPT_NAME
+    prestart_path = runtime / materializer._M51_PRESTART_SCHEMA_RECEIPT_NAME
+    for path in (final_path, prestart_path):
+        path.write_text("{}\n", encoding="utf-8")
+        path.chmod(0o600)
+    state = {"receipt_read": False, "fresh_check_called": False}
+
+    def load_receipt(path: Path, **_kwargs):
+        if Path(path).name == materializer._M51_FINAL_RECEIPT_NAME:
+            state["receipt_read"] = True
+        return ({}, "unused")
+
+    def reject_interleaving(*_args, **_kwargs):
+        assert state["receipt_read"] is True
+        state["fresh_check_called"] = True
+        raise materializer.MigrationRequired("injected post-receipt authority mutation")
+
+    monkeypatch.setattr(operator, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(materializer, "_load_nofollow_json", load_receipt)
+    monkeypatch.setattr(materializer, "_check_m51_materialized", reject_interleaving)
+    with pytest.raises(operator.OperatorError, match="fresh live verification"):
+        operator._require_m51_source_successor_marker(
+            {materializer._M51_SUPERSESSION_REASON: materializer._m51_authority_reference()},
+            authority,
+            materializer,
+        )
+    assert state == {"receipt_read": True, "fresh_check_called": True}
+    assert check_source.index("observed, _ = _load_nofollow_json") < check_source.index(
+        "with _m28_live_source"
+    )
+    assert materialize_source.index("_m51_write_receipt_last") < materialize_source.index(
+        "checked = _check_m51_materialized"
+    )
+
+
+def test_m51_dependency_and_board_validators_are_exact_with_mocked_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m51_validator_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m51_validator_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m51_validator_test",
+    )
+    key = materializer._M51_SUPERSESSION_REASON
+    reference = materializer._m51_authority_reference()
+    scheduler = {key: reference, materializer._M50_SUPERSESSION_REASON: materializer._m50_authority_reference()}
+    migration = dict(scheduler)
+    seal = {
+        f"{key}_cid": materializer._M51_AUTHORITY_CID,
+        f"{materializer._M50_SUPERSESSION_REASON}_cid": materializer._M50_AUTHORITY_CID,
+    }
+    fake_spec = SimpleNamespace(loader=SimpleNamespace(exec_module=lambda _module: None))
+    monkeypatch.setattr(
+        dependencies.importlib.util, "spec_from_file_location", lambda *_args: fake_spec
+    )
+    monkeypatch.setattr(
+        dependencies.importlib.util, "module_from_spec", lambda _spec: materializer
+    )
+    monkeypatch.setattr(materializer, "build_population", lambda _root: {})
+    monkeypatch.setattr(
+        materializer, "_assert_m51_historical_m50_controls", lambda *_args: None
+    )
+    monkeypatch.setattr(materializer, "_assert_m51_source_delta", lambda *_args: None)
+    assert dependencies._m51_live_quack_catalog_compatibility_errors(
+        scheduler, seal, migration, root=REPO_ROOT
+    ) == []
+    partial = dependencies._m51_live_quack_catalog_compatibility_errors(
+        scheduler, {}, migration, root=REPO_ROOT
+    )
+    assert "M51 successor authority is only partially declared" in partial
+    monkeypatch.setattr(board, "_dependency_validator_module", lambda _root: dependencies)
+    assert board._m51_migration_errors(scheduler, seal, migration) == []
 
 
 def test_m50_authority_binds_fenced_generation_36_and_zero_authorities() -> None:

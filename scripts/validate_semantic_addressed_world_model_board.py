@@ -88,6 +88,13 @@ _M50_SUCCESSOR_KEY = (
 _M50_TARGET_PROJECTION_CID = (
     "baguqeeradyejswcdsx6tnmfgrvglwhvqkuewvpynydwrhlvtenacf3xg2pfa"
 )
+_M51_AUTHORITY_CID = (
+    "sha256:64c4319d273cb9d561a8176c2a152c458e58df10c612c9a9b8235b21ccd4eceb"
+)
+_M51_AUTHORITY_SIZE = 28_704
+_M51_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M51_FINAL_CONTROL_AUTHORITY_CID"
+_M51_SUCCESSOR_KEY = "live_quack_catalog_compatibility_successor_materialization"
+_M51_TARGET_PROJECTION_CID = _M50_TARGET_PROJECTION_CID
 _M50_M49_RECEIPT_CID = (
     "sha256:d5bfeb6dd987b05c2407d93f66d73c6a70bcd2b4f17e8381a93a2bb265acae47"
 )
@@ -496,6 +503,22 @@ def _m39_migration_errors(
         )
     except Exception as exc:
         return [f"M39 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m51_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Reuse M51's exact offline-catalog/live-query source contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(module._m51_live_quack_catalog_compatibility_errors(
+            scheduler, seal, migration, root=REPO_ROOT
+        ))
+    except Exception as exc:
+        return [f"M51 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _m50_migration_errors(
@@ -1296,12 +1319,38 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M50 before every historical successor. Consequently
+    Key presence selects M51 before every historical successor. Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m51_key = _M51_SUCCESSOR_KEY
+    m51_presence = (
+        m51_key in scheduler,
+        m51_key in migration,
+        f"{m51_key}_cid" in seal,
+    )
+    if any(m51_presence):
+        errors = _m51_migration_errors(scheduler, seal, migration)
+        if not all(m51_presence):
+            errors.append("M51 successor authority is only partially declared")
+        if errors:
+            return errors
+        for validator in (
+            _m36_migration_errors, _m35_migration_errors, _m34_migration_errors,
+            _m33_migration_errors, _m32_migration_errors, _m31_migration_errors,
+            _m30_migration_errors, _m29_migration_errors, _m28_migration_errors,
+            _m27_migration_errors, _m26_migration_errors, _m25_migration_errors,
+            _m24_migration_errors, _m23_migration_errors, _m22_migration_errors,
+            _m21_migration_errors, _m20_migration_errors, _m19_migration_errors,
+            _m18_migration_errors, _m17_migration_errors, _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(scheduler, seal, migration, require_active_runtime=False)
+            )
+        return errors
 
     m50_key = _M50_SUCCESSOR_KEY
     m50_presence = (
@@ -4491,6 +4540,12 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m51_key = _M51_SUCCESSOR_KEY
+    m51_selected = any((
+        m51_key in config,
+        m51_key in migration,
+        f"{m51_key}_cid" in seal,
+    ))
     m50_key = _M50_SUCCESSOR_KEY
     m50_selected = any(
         (
@@ -4959,6 +5014,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m51_selected
+        else "run-r2-m27"
         if m50_selected
         else "run-r2-m27"
         if m48_selected
@@ -5044,7 +5101,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "36"
+        "37"
+        if m51_selected
+        else "36"
         if m50_selected
         else "35"
         if m48_selected
@@ -5131,6 +5190,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m51_selected
+        else 24070
         if m50_selected
         else 24070
         if m48_selected
@@ -5230,7 +5291,72 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m50_selected:
+    if m51_selected:
+        successor = config.get(m51_key)
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = materializer._expected_m51_live_quack_catalog_compatibility_authority()
+            reference = dict(materializer._m51_authority_reference())
+            contract = materializer._validated_m51_live_preflight_contract(expected)
+            protocol = expected.get("live_query_protocol", {})
+            failed = expected.get("failed_m50_attempt", {})
+            stopped = expected.get("stopped_owner", {})
+            changes = expected.get("exact_changes", {})
+            policy = expected.get("receipt_policy", {})
+            m51_errors = module._m51_live_quack_catalog_compatibility_errors(
+                config, seal, migration, root=root
+            )
+            if (
+                successor != reference
+                or migration.get(m51_key) != reference
+                or seal.get(f"{m51_key}_cid") != _M51_AUTHORITY_CID
+                or materializer._identity(expected) != _M51_AUTHORITY_CID
+                or len(materializer._canonical(expected)) != _M51_AUTHORITY_SIZE
+                or m51_errors
+                or expected.get("migration_revision") != "SAWM-R2-M51"
+                or expected.get("migration_kind") != m51_key
+                or expected.get("authorized") is not True
+                or expected.get("target_generation") != 37
+                or expected.get("target_event_watermark") != 311
+                or expected.get("target_projection_cid") != _M51_TARGET_PROJECTION_CID
+                or contract.get("prior_generation") != 36
+                or contract.get("target_generation") != 37
+                or contract.get("prior_event_watermark") != 310
+                or contract.get("target_event_watermark") != 311
+                or stopped.get("status_projection_stopped_at_absent") is not True
+                or stopped.get("database_stopped_at") != "2026-09-01T19:25:29Z"
+                or protocol.get("offline_current_database") != "control"
+                or protocol.get(
+                    "remote_information_schema_tables_queries_for_claimed_zero_forbidden"
+                ) is not True
+                or protocol.get("claimed_zero_live_query_kind") != "select_count_only"
+                or protocol.get("claimed_zero_arbitrary_sql_forbidden") is not True
+                or protocol.get("ddl_forbidden") is not True
+                or protocol.get("forbidden_ddl_prefixes") != [
+                    "CREATE ", "ALTER ", "DROP ", "ATTACH ", "DETACH ",
+                    "COPY ", "EXPORT ", "IMPORT ", "INSTALL ", "LOAD ",
+                    "PRAGMA ", "SET ", "CALL ", "VACUUM ", "CHECKPOINT ",
+                    "FORCE ", "TRUNCATE ",
+                ]
+                or failed.get("m50_receipt_created") is not False
+                or failed.get("m50_event_311_created") is not False
+                or policy.get("completion_authority") is not False
+                or policy.get("launch_authority") is not False
+                or any(changes.get(field) != 0 for field in (
+                    "task_revision_changes", "task_status_changes",
+                    "goal_revision_changes", "goal_status_changes",
+                    "implementation_provider_invocations", "provider_call_changes",
+                    "provider_response_changes", "effect_claim_changes",
+                    "merge_attempt_changes", "merge_base_changes",
+                    "merge_queue_entry_changes", "accepted_completion_changes",
+                ))
+            ):
+                config_errors.append("M51 live-catalog authority/source seal differs")
+        except Exception as exc:
+            config_errors.append(
+                f"M51 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+    if m50_selected and not m51_selected:
         successor = config.get(m50_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
@@ -5368,7 +5494,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
             "generated_runtime_artifacts_are_completion_authority": False,
         }:
             config_errors.append("M50 active runtime paths are not exactly preserved")
-    if m49_selected and not m50_selected:
+    if m49_selected and not m50_selected and not m51_selected:
         successor = config.get(m49_key)
         runtime_root = (
             "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"

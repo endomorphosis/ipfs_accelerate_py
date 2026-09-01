@@ -2874,7 +2874,44 @@ including any row in a claimed-zero provider, effect, or merge table. The
 29,249-byte canonical M50 authority body has CID
 `sha256:57e54164eb55a8015c9324db6a414981446a2a455c0308cd65f6a8e219563ea9`.
 
-## 59. Current limitations at seal time
+## 59. M51 live Quack catalog-compatibility successor
+
+`SAWM-R2-M51` preserves the failed M50 attempt and authorizes one bounded
+generation-37 restart. Generation 36 started as
+`server:602ea88b-fdb9-413f-868a-94ad9df57743`, then stopped at
+`2026-09-01T19:25:29Z` before any event, evidence, task, goal, provider,
+effect, merge, or completion mutation. M50 created neither event 311 nor its
+final receipt. The failed live check was caused solely by the Quack projection
+omitting `information_schema.tables`, even though all seven exact
+schema-qualified authority tables were present and empty.
+
+M51 closes that transport mismatch without weakening table identity. While the
+owner is offline, native read-only DuckDB must prove that each required
+`control.main` relation is exactly one `BASE TABLE`, that the current database
+is `control`, and that all seven counts are zero. It publishes a mode-`0600`,
+non-authoritative prestart schema receipt. Live generation 37 binds that receipt
+and the sealed `open_quack_transport_connection`, `GuardedDuckDBConnection`,
+and `quack_owner_mutation@2` sources. Each claimed-zero observation issues
+exactly seven literal schema-qualified `SELECT COUNT(*)` statements and does
+not consult remote `information_schema.tables`; the separately sealed semantic
+digest may inspect `information_schema.columns`. Other closed read-only
+verification queries remain permitted. The claimed-zero path permits neither
+DDL, a compatibility path, nor arbitrary SQL.
+
+The generation-37 owner identity is runtime-generated. M51 may append exactly
+one operator evidence record at event 311 and may not change any ordinary task,
+goal, plan, provider, effect, merge, or completion authority. Its final receipt
+is published last, remains non-authoritative and deny-only, and never claims
+that point-in-time zero counts persist through filesystem publication. Every
+check, preflight, and launch reads the receipt and then freshly revalidates the
+full live authority and all seven tables. The task projection at event 311 is
+recomputed as
+`baguqeeradyejswcdsx6tnmfgrvglwhvqkuewvpynydwrhlvtenacf3xg2pfa`;
+projection identity depends on task/goal/plan heads and watermark, not the
+evidence body. The 28,704-byte canonical M51 authority has CID
+`sha256:64c4319d273cb9d561a8176c2a152c458e58df10c612c9a9b8235b21ccd4eceb`.
+
+## 60. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.
