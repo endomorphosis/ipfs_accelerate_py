@@ -7627,6 +7627,62 @@ def test_reconcile_reopens_false_terminal_seed_verification_block(
         daemon.close()
 
 
+def test_false_terminal_unstalls_portal_provider_failed_when_logs_show_grok_quota(
+    tmp_path: Path,
+) -> None:
+    """Control-plane leftover 402 blocks rearm without a local failed attempt."""
+
+    repo_root = tmp_path / "repo"
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:false-terminal-quota-log-unstall",
+        repo_root=repo_root,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="portal_provider_failed",
+        )
+        blocked = daemon.task_source.get("task:cid:001")
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        assert daemon.reconcile_false_terminal_portal_blocks() == []
+        assert daemon.task_source.get("task:cid:001").status == "blocked"
+
+        alias = str(blocked.task_alias or "")
+        log_dir = (
+            repo_root
+            / "data"
+            / "aseh"
+            / "state"
+            / "lane-1"
+            / "attempts"
+            / "leftover"
+            / "implementation-logs"
+        )
+        log_dir.mkdir(parents=True)
+        (log_dir / f"{alias.lower()}-attempt-1.log").write_text(
+            'Error: Internal error: {"message":"API error (status 402 '
+            'Payment Required): Grok Build usage balance exhausted",'
+            '"http_status":402,"promptUsage":{"inputTokens":1}}\n',
+            encoding="utf-8",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        assert outcomes[0]["reason"] == "false_terminal_portal_unstall"
+        assert outcomes[0]["previous_reason"] == "grok_quota_exhausted"
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+        receipt = retried.body["completion_receipt"]
+        assert receipt["operation"] == "database_portal_false_terminal_unstall"
+        assert receipt["previous_reason"] == "grok_quota_exhausted"
+    finally:
+        daemon.close()
+
+
 def test_reconcile_reopens_missing_task_completed_block_without_merge(
     tmp_path: Path,
 ) -> None:

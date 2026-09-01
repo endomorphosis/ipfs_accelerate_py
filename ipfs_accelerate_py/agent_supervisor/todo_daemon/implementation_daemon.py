@@ -80411,7 +80411,18 @@ class DatabaseImplementationDaemon:
                 != "database_portal_terminal_failure"
             ):
                 continue
+            alias = str(getattr(task, "task_alias", "") or "")
+            task_cid = str(getattr(task, "task_cid", "") or "")
             reason = self._database_portal_reason(receipt.get("reason"))
+            # Leftover Grok 402 blocks are stored as portal_provider_failed
+            # after the local failed-attempt row ages out of
+            # database_task_attempts. Reclassify from the implementer log
+            # so claim_next can continue without that attempt table.
+            if (
+                reason == "portal_provider_failed"
+                and self._implementation_logs_show_grok_quota(alias)
+            ):
+                reason = "grok_quota_exhausted"
             if reason not in _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS:
                 continue
             if (
@@ -80419,8 +80430,6 @@ class DatabaseImplementationDaemon:
                 and not self._shared_checkout_matches_merge_target_head()
             ):
                 continue
-            alias = str(getattr(task, "task_alias", "") or "")
-            task_cid = str(getattr(task, "task_cid", "") or "")
             landed_commit = landed.get(task_cid) or landed.get(alias)
             if landed_commit and self._git_commit_is_on_target(landed_commit):
                 continue
