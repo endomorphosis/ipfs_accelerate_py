@@ -115,6 +115,150 @@ CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA: Final[str] = (
 CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME: Final[str] = (
     "cross-attempt-lifecycle-recovery.json"
 )
+CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-cross-attempt-declared-output-preservation@1"
+)
+CROSS_ATTEMPT_PROTECTED_STATE_CLEARANCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-cross-attempt-protected-state-clearance@1"
+)
+CROSS_ATTEMPT_PROTECTED_STATE_RETIREMENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-cross-attempt-protected-state-retirement@1"
+)
+CROSS_ATTEMPT_PROTECTED_STATE_ADOPTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-cross-attempt-protected-state-adoption@1"
+)
+_DECLARED_OUTPUT_BLOB_PREFIX: Final[str] = (
+    "cross-attempt-declared-output-blob-"
+)
+_DECLARED_OUTPUT_PRESERVATION_PREFIX: Final[str] = (
+    "cross-attempt-declared-output-preservation-"
+)
+_PROTECTED_STATE_MARKER_BLOB_PREFIX: Final[str] = (
+    "cross-attempt-protected-state-marker-"
+)
+_PROTECTED_STATE_CLEARANCE_PREFIX: Final[str] = (
+    "cross-attempt-protected-state-clearance-"
+)
+_PROTECTED_STATE_RETIREMENT_PREFIX: Final[str] = (
+    "cross-attempt-protected-state-retirement-"
+)
+_PROTECTED_STATE_ADOPTION_PREFIX: Final[str] = (
+    "cross-attempt-protected-state-adoption-"
+)
+_MAX_PRESERVED_DECLARED_OUTPUT_FILES: Final[int] = 64
+_MAX_PRESERVED_DECLARED_OUTPUT_FILE_BYTES: Final[int] = 4 * 1024 * 1024
+_MAX_PRESERVED_DECLARED_OUTPUT_TOTAL_BYTES: Final[int] = 16 * 1024 * 1024
+_SUPERSEDED_LIFECYCLE_TERMINAL_REASON: Final[str] = (
+    "superseded_database_attempt_preserved"
+)
+_SENSITIVE_DECLARED_OUTPUT_PATH = re.compile(
+    r"(?i)(?:^|/)(?:\.env(?:\.|$)|\.ssh(?:/|$)|secrets?(?:/|$)|"
+    r"credentials?(?:/|$)|private[-_]?keys?(?:/|$)|[^/]*\.(?:pem|key|p12|pfx))"
+)
+_ACTIVE_PROTECTED_STATE_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "recorded_at",
+        "task_id",
+        "attempt",
+        "workspace_path",
+        "ephemeral_worktree",
+        "protected_paths",
+        "snapshot",
+    }
+)
+_PREPARED_PROTECTED_CLEARANCE_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "task_id",
+        "attempt",
+        "current_attempt_id",
+        "prior_attempt_id",
+        "current_binding_id",
+        "prior_binding_id",
+        "lifecycle_record_id",
+        "lifecycle_authority_id",
+        "lifecycle_transition_basis_id",
+        "prior_lifecycle_state",
+        "prior_lifecycle_fence",
+        "expected_terminal_lifecycle_fence",
+        "terminal_reason",
+        "database_authority_id",
+        "portal_state_binding_id",
+        "active_marker_sha256",
+        "active_marker_blob_filename",
+        "active_marker",
+        "protected_path_proof",
+        "preservation",
+        "workspace_status_id",
+        "clearance_phase",
+        "active_marker_retired",
+        "retirement_operation",
+        "worktree_deleted",
+        "provider_dispatched",
+        "mutation_authority",
+        "merge_authority",
+        "task_completion_authority",
+        "worker_self_approval",
+        "normal_validation_required",
+        "clearance_id",
+        "receipt_id",
+    }
+)
+_PROTECTED_RETIREMENT_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "prepared_clearance",
+        "prepared_clearance_filename",
+        "retired_marker_filename",
+        "active_marker_sha256",
+        "clearance_phase",
+        "active_marker_retired",
+        "retirement_operation",
+        "worktree_deleted",
+        "provider_dispatched",
+        "mutation_authority",
+        "merge_authority",
+        "task_completion_authority",
+        "worker_self_approval",
+        "normal_validation_required",
+        "retirement_id",
+        "receipt_id",
+    }
+)
+_PROTECTED_ADOPTION_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "task_id",
+        "successor_attempt_id",
+        "successor_binding_id",
+        "abandoned_attempt_id",
+        "abandoned_binding_id",
+        "prior_attempt_id",
+        "prior_binding_id",
+        "lifecycle_recovery_id",
+        "lifecycle_recovery_receipt_id",
+        "lifecycle_recovery_phase",
+        "observed_lifecycle_state",
+        "observed_lifecycle_fence",
+        "observed_lifecycle_authority_id",
+        "successor_database_authority",
+        "protected_artifacts",
+        "adoption_operation",
+        "provider_dispatched",
+        "mutation_authority",
+        "merge_authority",
+        "task_completion_authority",
+        "worker_self_approval",
+        "normal_validation_required",
+        "adoption_id",
+        "receipt_id",
+    }
+)
 _ATTEMPT_DIRECTORY = re.compile(r"[0-9a-f]{24}")
 _BINDING_FIELDS_V1: Final[frozenset[str]] = frozenset(
     {
@@ -682,6 +826,305 @@ def _atomic_write(
             ) from cleanup_failure
 
 
+def _stable_regular_descriptor_bytes(
+    descriptor: int,
+    *,
+    noun: str,
+) -> tuple[bytes, os.stat_result]:
+    """Read one already-open bounded regular file without changing its offset."""
+
+    try:
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size < 0
+            or before.st_size > _MAX_ATTEMPT_CONTROL_BYTES
+        ):
+            raise DatabasePortalBridgeError(
+                f"{noun} is not a bounded single-link regular file"
+            )
+        payload = bytearray()
+        while len(payload) <= _MAX_ATTEMPT_CONTROL_BYTES:
+            block = os.read(
+                descriptor,
+                min(
+                    65_536,
+                    _MAX_ATTEMPT_CONTROL_BYTES + 1 - len(payload),
+                ),
+            )
+            if not block:
+                break
+            payload.extend(block)
+        after = os.fstat(descriptor)
+    except OSError as exc:
+        raise DatabasePortalBridgeError(f"{noun} is unreadable") from exc
+    stable_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_gid",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if (
+        any(getattr(before, field) != getattr(after, field) for field in stable_fields)
+        or len(payload) != before.st_size
+        or len(payload) > _MAX_ATTEMPT_CONTROL_BYTES
+    ):
+        raise DatabasePortalBridgeError(f"{noun} changed while read")
+    return bytes(payload), after
+
+
+def _stable_regular_bytes(path: Path, *, noun: str) -> tuple[bytes, os.stat_result]:
+    """Read one bounded, single-link regular file and retain its exact identity."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+        os,
+        "O_NOFOLLOW",
+        0,
+    )
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise DatabasePortalBridgeError(f"{noun} is unreadable") from exc
+    try:
+        return _stable_regular_descriptor_bytes(descriptor, noun=noun)
+    finally:
+        os.close(descriptor)
+
+
+def _stable_regular_bytes_at(
+    directory_descriptor: int,
+    name: str,
+    *,
+    noun: str,
+) -> tuple[bytes, os.stat_result]:
+    """Read one direct child relative to a pinned directory descriptor."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(
+        os,
+        "O_NOFOLLOW",
+        0,
+    )
+    try:
+        descriptor = os.open(name, flags, dir_fd=directory_descriptor)
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        raise DatabasePortalBridgeError(f"{noun} is unreadable") from exc
+    try:
+        return _stable_regular_descriptor_bytes(descriptor, noun=noun)
+    finally:
+        os.close(descriptor)
+
+
+def _publish_immutable_file(
+    path: Path,
+    payload: bytes,
+    *,
+    sealed_directory_identity: Mapping[str, Any],
+) -> None:
+    """Publish a content-addressed direct child without replacing prior evidence."""
+
+    try:
+        expected_device = sealed_directory_identity["attempt_directory_device"]
+        expected_inode = sealed_directory_identity["attempt_directory_inode"]
+    except (KeyError, TypeError) as exc:
+        raise DatabasePortalBridgeError(
+            "immutable database Portal artifact lacks a sealed directory identity"
+        ) from exc
+    if (
+        type(expected_device) is not int
+        or type(expected_inode) is not int
+        or expected_device < 0
+        or expected_inode < 1
+    ):
+        raise DatabasePortalBridgeError(
+            "immutable database Portal artifact has an invalid directory identity"
+        )
+    target_name = path.name
+    if not target_name or target_name in {".", ".."}:
+        raise DatabasePortalBridgeError(
+            "immutable database Portal artifact is not a direct child"
+        )
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    directory_only = getattr(os, "O_DIRECTORY", None)
+    if nofollow is None or directory_only is None:
+        raise DatabasePortalBridgeError(
+            "immutable database Portal artifact requires no-follow access"
+        )
+
+    directory_descriptor = -1
+    temporary_descriptor = -1
+    temporary_name = ""
+    cleanup_failure: OSError | None = None
+    verification_failure: Exception | None = None
+    target_expected = False
+    try:
+        directory_descriptor = os.open(
+            path.parent,
+            os.O_RDONLY
+            | directory_only
+            | nofollow
+            | getattr(os, "O_CLOEXEC", 0),
+        )
+        directory_identity = os.fstat(directory_descriptor)
+        if (
+            not stat.S_ISDIR(directory_identity.st_mode)
+            or directory_identity.st_dev != expected_device
+            or directory_identity.st_ino != expected_inode
+        ):
+            raise DatabasePortalBridgeError(
+                "immutable database Portal artifact parent identity changed"
+            )
+        try:
+            observed, identity = _stable_regular_bytes_at(
+                directory_descriptor,
+                target_name,
+                noun="immutable database Portal artifact",
+            )
+        except FileNotFoundError:
+            pass
+        else:
+            if observed != payload or identity.st_nlink != 1:
+                raise DatabasePortalBridgeError(
+                    "immutable database Portal artifact conflicts"
+                )
+            target_expected = True
+            return
+        flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | nofollow
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        for _ in range(16):
+            candidate = f".{target_name}.{secrets.token_hex(16)}.tmp"
+            try:
+                temporary_descriptor = os.open(
+                    candidate,
+                    flags,
+                    0o600,
+                    dir_fd=directory_descriptor,
+                )
+            except FileExistsError:
+                continue
+            temporary_name = candidate
+            break
+        if temporary_descriptor < 0:
+            raise DatabasePortalBridgeError(
+                "immutable database Portal temporary name bound exhausted"
+            )
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(temporary_descriptor, remaining)
+            if written < 1:
+                raise OSError("short immutable database Portal artifact write")
+            remaining = remaining[written:]
+        os.fsync(temporary_descriptor)
+        written_identity = os.fstat(temporary_descriptor)
+        if (
+            not stat.S_ISREG(written_identity.st_mode)
+            or written_identity.st_nlink != 1
+            or written_identity.st_size != len(payload)
+        ):
+            raise DatabasePortalBridgeError(
+                "immutable database Portal temporary identity changed"
+            )
+        os.close(temporary_descriptor)
+        temporary_descriptor = -1
+        try:
+            os.link(
+                temporary_name,
+                target_name,
+                src_dir_fd=directory_descriptor,
+                dst_dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+        except FileExistsError:
+            pass
+        target_expected = True
+        os.fsync(directory_descriptor)
+    except DatabasePortalBridgeError:
+        raise
+    except OSError as exc:
+        raise DatabasePortalBridgeError(
+            "immutable database Portal artifact publication failed"
+        ) from exc
+    finally:
+        if temporary_descriptor >= 0:
+            try:
+                os.close(temporary_descriptor)
+            except OSError as exc:
+                cleanup_failure = exc
+        if temporary_name and directory_descriptor >= 0:
+            try:
+                os.unlink(temporary_name, dir_fd=directory_descriptor)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                cleanup_failure = cleanup_failure or exc
+            else:
+                try:
+                    os.fsync(directory_descriptor)
+                except OSError as exc:
+                    cleanup_failure = cleanup_failure or exc
+        if (
+            directory_descriptor >= 0
+            and cleanup_failure is None
+            and target_expected
+        ):
+            try:
+                observed, identity = _stable_regular_bytes_at(
+                    directory_descriptor,
+                    target_name,
+                    noun="immutable database Portal artifact",
+                )
+                if observed != payload or identity.st_nlink != 1:
+                    raise DatabasePortalBridgeError(
+                        "immutable database Portal artifact was not published exactly"
+                    )
+                directory_identity = os.fstat(directory_descriptor)
+                named_directory_identity = os.stat(
+                    path.parent,
+                    follow_symlinks=False,
+                )
+                if (
+                    directory_identity.st_dev != expected_device
+                    or directory_identity.st_ino != expected_inode
+                    or not stat.S_ISDIR(named_directory_identity.st_mode)
+                    or named_directory_identity.st_dev != expected_device
+                    or named_directory_identity.st_ino != expected_inode
+                ):
+                    raise DatabasePortalBridgeError(
+                        "immutable database Portal artifact parent identity changed"
+                    )
+            except FileNotFoundError as exc:
+                verification_failure = DatabasePortalBridgeError(
+                    "immutable database Portal artifact disappeared"
+                )
+                verification_failure.__cause__ = exc
+            except Exception as exc:
+                verification_failure = exc
+        if directory_descriptor >= 0:
+            try:
+                os.close(directory_descriptor)
+            except OSError as exc:
+                cleanup_failure = cleanup_failure or exc
+        if cleanup_failure is not None:
+            raise DatabasePortalBridgeError(
+                "immutable database Portal artifact cleanup was not durable"
+            ) from cleanup_failure
+        if verification_failure is not None:
+            raise verification_failure
+
+
 def _stable_regular_utf8(path: Path, *, noun: str) -> str:
     """Read one bounded single-link regular file without following symlinks."""
 
@@ -1042,6 +1485,7 @@ class DatabasePortalExecutionBridge:
         repo_root: Path | str | None = None,
         board_namespace: str = "",
         configured_board_admission_cid: str = "",
+        configured_board_live_admission: Any | None = None,
         merge_target_branch: str = "",
         task_header_prefix: str = "## ",
         max_passes: int = 4,
@@ -1058,6 +1502,45 @@ class DatabasePortalExecutionBridge:
         self.configured_board_admission_cid = str(
             configured_board_admission_cid or ""
         ).strip()
+        self._configured_board_live_admission_json = ""
+        if configured_board_live_admission is not None:
+            from ..runtime.configured_board_live_capsule import (
+                parse_configured_board_live_capsule_admission,
+            )
+
+            raw_admission = (
+                configured_board_live_admission.as_dict()
+                if callable(
+                    getattr(configured_board_live_admission, "as_dict", None)
+                )
+                else configured_board_live_admission
+            )
+            parsed_admission = parse_configured_board_live_capsule_admission(
+                raw_admission
+            )
+            if (
+                self.configured_board_admission_cid
+                and parsed_admission.admission_cid
+                != self.configured_board_admission_cid
+            ):
+                raise ValueError(
+                    "configured-board admission CID disagrees with its live capsule"
+                )
+            if (
+                self.board_namespace
+                and parsed_admission.board_namespace != self.board_namespace
+            ):
+                raise ValueError(
+                    "configured-board namespace disagrees with its live capsule"
+                )
+            self.configured_board_admission_cid = parsed_admission.admission_cid
+            # Keep only a canonical immutable serialization.  Every use which
+            # can grant source-transition authority reparses it and therefore
+            # recomputes the admission CID; a caller cannot mutate a retained
+            # mapping after construction to broaden the admitted source.
+            self._configured_board_live_admission_json = (
+                parsed_admission.to_json()
+            )
         self.merge_target_branch = str(merge_target_branch or "").strip()
         self.portal_factory = portal_factory
         self.task_header_prefix = str(task_header_prefix or "## ")
@@ -1725,6 +2208,44 @@ class DatabasePortalExecutionBridge:
             "canonical_task_key": canonical.canonical_task_key,
         }
 
+    def _prior_declared_output_paths(
+        self,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> tuple[str, ...]:
+        """Read the exact closed output scope from a sealed prior projection."""
+
+        projection = self._verify_projection(paths, binding)
+        try:
+            from .implementation_daemon import (
+                parse_task_text,
+                task_declared_output_paths,
+            )
+
+            tasks = parse_task_text(
+                projection,
+                path=paths.task_projection,
+                task_header_prefix=self.task_header_prefix,
+            )
+        except Exception as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_projection_unavailable"
+            ) from exc
+        if len(tasks) != 1 or tasks[0].task_id != binding["task_alias"]:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_projection_ambiguous"
+            )
+        outputs = tuple(task_declared_output_paths(tasks[0]))
+        if (
+            not outputs
+            or len(outputs) > _MAX_PRESERVED_DECLARED_OUTPUT_FILES
+            or len(set(outputs)) != len(outputs)
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_scope_invalid"
+            )
+        return tuple(sorted(outputs))
+
     def _prior_portal_state_binding(
         self,
         daemon: Any,
@@ -2119,11 +2640,1860 @@ class DatabasePortalExecutionBridge:
             "containers_inspected": len(container_ids),
         }
 
+    @staticmethod
+    def _canonical_recovery_path(value: Any) -> str:
+        """Return one literal repository-relative path or fail closed."""
+
+        if type(value) is not str or value != value.strip() or "\\" in value:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_path_invalid"
+            )
+        candidate = PurePosixPath(value)
+        if (
+            not value
+            or value.startswith(("/", "./", "../", "//"))
+            or candidate.as_posix() != value
+            or any(part in {"", ".", ".."} for part in candidate.parts)
+            or any(ord(character) < 32 or ord(character) == 127 for character in value)
+            or any(character in value for character in "*?[")
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_path_invalid"
+            )
+        return value
+
+    @staticmethod
+    def _nul_path_records(raw: bytes, *, reason: str) -> tuple[str, ...]:
+        records: list[str] = []
+        for value in raw.split(b"\0"):
+            if not value:
+                continue
+            try:
+                decoded = value.decode("utf-8", errors="strict")
+            except UnicodeDecodeError as exc:
+                raise DatabasePortalBridgeDeferred(reason) from exc
+            records.append(
+                DatabasePortalExecutionBridge._canonical_recovery_path(decoded)
+            )
+        if len(records) > 4096 or len(set(records)) != len(records):
+            raise DatabasePortalBridgeDeferred(reason)
+        return tuple(records)
+
+    def _direct_gitlinks(self, workspace: Path) -> dict[str, str]:
+        result = self._git_observation(
+            workspace,
+            "ls-files",
+            "--stage",
+            "-z",
+            text=False,
+        )
+        if result.returncode != 0:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_gitlink_inventory_unavailable"
+            )
+        gitlinks: dict[str, str] = {}
+        for raw in bytes(result.stdout or b"").split(b"\0"):
+            if not raw:
+                continue
+            try:
+                prefix, raw_path = raw.split(b"\t", 1)
+                mode, object_id, stage = prefix.decode("ascii").split(" ", 2)
+                path = self._canonical_recovery_path(
+                    raw_path.decode("utf-8", errors="strict")
+                )
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_gitlink_inventory_invalid"
+                ) from exc
+            if mode != "160000":
+                continue
+            if (
+                stage != "0"
+                or re.fullmatch(r"[0-9a-f]{40}", object_id) is None
+                or path in gitlinks
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_gitlink_inventory_invalid"
+                )
+            gitlinks[path] = object_id
+        if len(gitlinks) > 64:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_gitlink_inventory_bound_exceeded"
+            )
+        return gitlinks
+
+    def _nested_gitlink_state_present(self, workspace: Path) -> bool:
+        """Detect nested state, including ignored paths hidden from top Git status."""
+
+        for gitlink_path in sorted(self._direct_gitlinks(workspace)):
+            nested = workspace / gitlink_path
+            if not os.path.lexists(nested):
+                continue
+            try:
+                nested_identity = nested.lstat()
+            except OSError as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_gitlink_inventory_unavailable"
+                ) from exc
+            if not stat.S_ISDIR(nested_identity.st_mode) or nested.is_symlink():
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_gitlink_identity_unsafe"
+                )
+            if not os.path.lexists(nested / ".git"):
+                try:
+                    first_entry = next(nested.iterdir(), None)
+                except OSError as exc:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_declared_output_gitlink_inventory_unavailable"
+                    ) from exc
+                if first_entry is not None:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_declared_output_uninitialized_gitlink_nonempty"
+                    )
+                continue
+            status = self._git_observation(
+                nested,
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--ignored=matching",
+                "--ignore-submodules=none",
+                text=False,
+            )
+            if status.returncode != 0:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_gitlink_inventory_unavailable"
+                )
+            if bytes(status.stdout or b""):
+                return True
+        return False
+
+    @staticmethod
+    def _declared_output_contains_secret(path: str, text: str) -> bool:
+        if _SENSITIVE_DECLARED_OUTPUT_PATH.search(path):
+            return True
+        try:
+            from ..validation.proposal_validation import (
+                _PRIVATE_KEY_CONTENT_RE,
+                _SECRET_ASSIGNMENT_RE,
+                _is_concrete_secret_value,
+            )
+        except Exception:
+            return True
+        if _PRIVATE_KEY_CONTENT_RE.search(text):
+            return True
+        return any(
+            _is_concrete_secret_value(match.group("value"))
+            for match in _SECRET_ASSIGNMENT_RE.finditer(text)
+        )
+
+    def _declared_nested_output_observation(
+        self,
+        *,
+        daemon: Any,
+        record: Any,
+        prior_paths: DatabasePortalAttemptPaths,
+        prior_binding: Mapping[str, Any],
+        workspace: Path,
+        branch_name: str,
+        head_id: str,
+        tree_id: str,
+    ) -> tuple[dict[str, Any], dict[str, bytes]]:
+        """Prove that all dirtiness is bounded, declared nested output bytes."""
+
+        declared_outputs = {
+            self._canonical_recovery_path(path)
+            for path in self._prior_declared_output_paths(
+                prior_paths,
+                prior_binding,
+            )
+        }
+        configured_protected = tuple(
+            str(path)
+            for path in tuple(
+                getattr(daemon, "implementation_protected_paths", ()) or ()
+            )
+        )
+        if not configured_protected or any(
+            output == protected
+            or output.startswith(f"{protected.rstrip('/')}/")
+            or protected.startswith(f"{output.rstrip('/')}/")
+            for output in declared_outputs
+            for protected in configured_protected
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_protected_overlap"
+            )
+        if any(_SENSITIVE_DECLARED_OUTPUT_PATH.search(path) for path in declared_outputs):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_sensitive_path"
+            )
+
+        for arguments, reason in (
+            (
+                ("diff", "--quiet", "--ignore-submodules=all"),
+                "cross_attempt_declared_output_top_level_tracked_dirty",
+            ),
+            (
+                ("diff", "--cached", "--quiet", "--ignore-submodules=all"),
+                "cross_attempt_declared_output_top_level_staged",
+            ),
+        ):
+            observed = self._git_observation(workspace, *arguments)
+            if observed.returncode != 0:
+                raise DatabasePortalBridgeDeferred(reason)
+        for arguments, reason in (
+            (
+                ("ls-files", "--others", "--exclude-standard", "-z"),
+                "cross_attempt_declared_output_top_level_untracked",
+            ),
+            (
+                (
+                    "ls-files",
+                    "--others",
+                    "--ignored",
+                    "--exclude-standard",
+                    "-z",
+                ),
+                "cross_attempt_declared_output_top_level_ignored",
+            ),
+        ):
+            observed = self._git_observation(
+                workspace,
+                *arguments,
+                text=False,
+            )
+            if observed.returncode != 0 or bytes(observed.stdout or b""):
+                raise DatabasePortalBridgeDeferred(reason)
+
+        gitlinks = self._direct_gitlinks(workspace)
+        output_records: list[dict[str, Any]] = []
+        blob_payloads: dict[str, bytes] = {}
+        dirty_gitlinks: set[str] = set()
+        total_bytes = 0
+        for gitlink_path, expected_commit in sorted(gitlinks.items()):
+            nested = workspace / gitlink_path
+            try:
+                resolved_nested = nested.resolve(strict=True)
+                resolved_nested.relative_to(workspace.resolve(strict=True))
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if not resolved_nested.is_dir():
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_gitlink_unavailable"
+                )
+            nested_head = self._git_observation(
+                resolved_nested,
+                "rev-parse",
+                "HEAD^{commit}",
+            )
+            if (
+                nested_head.returncode != 0
+                or str(nested_head.stdout or "").strip() != expected_commit
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_gitlink_head_changed"
+                )
+            for arguments, reason in (
+                (
+                    ("diff", "--quiet", "--ignore-submodules=none"),
+                    "cross_attempt_declared_output_nested_tracked_dirty",
+                ),
+                (
+                    (
+                        "diff",
+                        "--cached",
+                        "--quiet",
+                        "--ignore-submodules=none",
+                    ),
+                    "cross_attempt_declared_output_nested_staged",
+                ),
+            ):
+                observed = self._git_observation(resolved_nested, *arguments)
+                if observed.returncode != 0:
+                    raise DatabasePortalBridgeDeferred(reason)
+            untracked_result = self._git_observation(
+                resolved_nested,
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                text=False,
+            )
+            ignored_result = self._git_observation(
+                resolved_nested,
+                "ls-files",
+                "--others",
+                "--ignored",
+                "--exclude-standard",
+                "-z",
+                text=False,
+            )
+            if untracked_result.returncode != 0 or ignored_result.returncode != 0:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_nested_inventory_unavailable"
+                )
+            untracked = self._nul_path_records(
+                bytes(untracked_result.stdout or b""),
+                reason="cross_attempt_declared_output_nested_inventory_invalid",
+            )
+            ignored = self._nul_path_records(
+                bytes(ignored_result.stdout or b""),
+                reason="cross_attempt_declared_output_nested_inventory_invalid",
+            )
+            if ignored:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_nested_ignored"
+                )
+            nested_status = self._git_observation(
+                resolved_nested,
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--ignore-submodules=none",
+                text=False,
+            )
+            if nested_status.returncode != 0:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_nested_inventory_unavailable"
+                )
+            expected_status = {
+                b"?? " + path.encode("utf-8") for path in untracked
+            }
+            actual_status = {
+                value
+                for value in bytes(nested_status.stdout or b"").split(b"\0")
+                if value
+            }
+            if actual_status != expected_status:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_nested_status_ambiguous"
+                )
+            if not untracked:
+                continue
+            dirty_gitlinks.add(gitlink_path)
+            for nested_path in untracked:
+                repository_path = f"{gitlink_path}/{nested_path}"
+                if repository_path not in declared_outputs:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_declared_output_undeclared_nested_path"
+                    )
+                output_path = resolved_nested / nested_path
+                try:
+                    lexical_identity = output_path.lstat()
+                    resolved_output = output_path.resolve(strict=True)
+                    resolved_output.relative_to(resolved_nested)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_declared_output_nested_path_escape"
+                    ) from exc
+                if (
+                    not stat.S_ISREG(lexical_identity.st_mode)
+                    or resolved_output != Path(os.path.abspath(output_path))
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_declared_output_nested_path_escape"
+                    )
+                payload, identity = _stable_regular_bytes(
+                    output_path,
+                    noun="declared nested output",
+                )
+                if (
+                    identity.st_uid != os.geteuid()
+                    or stat.S_IMODE(identity.st_mode) & 0o002
+                    or identity.st_size
+                    > _MAX_PRESERVED_DECLARED_OUTPUT_FILE_BYTES
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_declared_output_nested_identity_unsafe"
+                    )
+                try:
+                    text = payload.decode("utf-8", errors="strict")
+                except UnicodeDecodeError as exc:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_declared_output_nested_not_utf8"
+                    ) from exc
+                if "\x00" in text or self._declared_output_contains_secret(
+                    repository_path,
+                    text,
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_declared_output_secret_or_binary"
+                    )
+                total_bytes += len(payload)
+                if total_bytes > _MAX_PRESERVED_DECLARED_OUTPUT_TOTAL_BYTES:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_declared_output_total_bound_exceeded"
+                    )
+                digest = hashlib.sha256(payload).hexdigest()
+                blob_filename = f"{_DECLARED_OUTPUT_BLOB_PREFIX}{digest}.blob"
+                blob_payloads[blob_filename] = payload
+                output_records.append(
+                    {
+                        "repository_path": repository_path,
+                        "gitlink_path": gitlink_path,
+                        "nested_path": nested_path,
+                        "gitlink_commit": expected_commit,
+                        "sha256": f"sha256:{digest}",
+                        "size": len(payload),
+                        "mode": stat.S_IMODE(identity.st_mode),
+                        "blob_filename": blob_filename,
+                    }
+                )
+        if (
+            not output_records
+            or len(output_records) > _MAX_PRESERVED_DECLARED_OUTPUT_FILES
+            or len({item["repository_path"] for item in output_records})
+            != len(output_records)
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_nested_set_invalid"
+            )
+
+        top_status = self._git_observation(
+            workspace,
+            "status",
+            "--ignore-submodules=none",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            text=False,
+        )
+        if top_status.returncode != 0:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_top_level_status_unavailable"
+            )
+        status_paths: set[str] = set()
+        for value in bytes(top_status.stdout or b"").split(b"\0"):
+            if not value:
+                continue
+            try:
+                prefix = value[:3].decode("ascii")
+                status_path = self._canonical_recovery_path(
+                    value[3:].decode("utf-8", errors="strict")
+                )
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_top_level_status_ambiguous"
+                ) from exc
+            if (
+                len(value) < 4
+                or prefix[0] != " "
+                or prefix[1] not in {"?", "m", "M"}
+                or prefix[2] != " "
+                or status_path not in dirty_gitlinks
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_top_level_status_ambiguous"
+                )
+            status_paths.add(status_path)
+        if status_paths != dirty_gitlinks:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_top_level_status_ambiguous"
+            )
+        workspace_identity = workspace.lstat()
+        return (
+            {
+                "schema": CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA,
+                "task_id": str(record.task_id),
+                "attempt": int(record.attempt),
+                "prior_attempt_id": prior_binding["attempt_id"],
+                "prior_binding_id": prior_binding["binding_id"],
+                "lifecycle_record_id": str(record.record_id),
+                "workspace_path": str(workspace),
+                "workspace_device": int(workspace_identity.st_dev),
+                "workspace_inode": int(workspace_identity.st_ino),
+                "branch": branch_name,
+                "head": head_id,
+                "tree": tree_id,
+                "projection_sha256": _sha256_file(prior_paths.task_projection),
+                "declared_outputs": sorted(declared_outputs),
+                "dirty_gitlinks": sorted(dirty_gitlinks),
+                "outputs": sorted(
+                    output_records,
+                    key=lambda item: item["repository_path"],
+                ),
+                "total_bytes": total_bytes,
+                "worktree_deleted": False,
+                "provider_dispatched": False,
+                "mutation_authority": False,
+                "merge_authority": False,
+                "task_completion_authority": False,
+                "normal_validation_required": True,
+            },
+            blob_payloads,
+        )
+
+    def _preserve_declared_nested_outputs(
+        self,
+        *,
+        daemon: Any,
+        record: Any,
+        prior_paths: DatabasePortalAttemptPaths,
+        prior_binding: Mapping[str, Any],
+        prior_directory_identity: Mapping[str, Any],
+        workspace: Path,
+        branch_name: str,
+        head_id: str,
+        tree_id: str,
+    ) -> dict[str, Any]:
+        """Content-address exact declared nested output bytes without admitting them."""
+
+        first_body, blobs = self._declared_nested_output_observation(
+            daemon=daemon,
+            record=record,
+            prior_paths=prior_paths,
+            prior_binding=prior_binding,
+            workspace=workspace,
+            branch_name=branch_name,
+            head_id=head_id,
+            tree_id=tree_id,
+        )
+        preservation_id = _sha256_bytes(_canonical_json(first_body))
+        receipt = {
+            **first_body,
+            "preservation_id": preservation_id,
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        for filename, payload in sorted(blobs.items()):
+            _publish_immutable_file(
+                prior_paths.root / filename,
+                payload,
+                sealed_directory_identity=prior_directory_identity,
+            )
+        receipt_path = prior_paths.root / (
+            f"{_DECLARED_OUTPUT_PRESERVATION_PREFIX}"
+            f"{preservation_id.removeprefix('sha256:')[:24]}.json"
+        )
+        receipt_payload = json.dumps(
+            receipt,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        ).encode("utf-8") + b"\n"
+        _publish_immutable_file(
+            receipt_path,
+            receipt_payload,
+            sealed_directory_identity=prior_directory_identity,
+        )
+        second_body, second_blobs = self._declared_nested_output_observation(
+            daemon=daemon,
+            record=record,
+            prior_paths=prior_paths,
+            prior_binding=prior_binding,
+            workspace=workspace,
+            branch_name=branch_name,
+            head_id=head_id,
+            tree_id=tree_id,
+        )
+        if second_body != first_body or second_blobs != blobs:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_changed_during_preservation"
+            )
+        observed, _identity = _stable_regular_bytes(
+            receipt_path,
+            noun="declared nested output preservation receipt",
+        )
+        if observed != receipt_payload:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_preservation_receipt_changed"
+            )
+        return {
+            "preservation_id": preservation_id,
+            "receipt_id": receipt["receipt_id"],
+            "receipt_path": str(receipt_path),
+            "output_count": len(first_body["outputs"]),
+            "total_bytes": int(first_body["total_bytes"]),
+        }
+
+    def _strict_active_protected_marker(
+        self,
+        *,
+        path: Path,
+        daemon: Any,
+        record: Any,
+        workspace: Path,
+    ) -> tuple[dict[str, Any], bytes, os.stat_result]:
+        raw, identity = _stable_regular_bytes(
+            path,
+            noun="cross-attempt active protected-path marker",
+        )
+        try:
+            marker = json.loads(
+                raw.decode("utf-8", errors="strict"),
+                object_pairs_hook=_reject_duplicate_control_keys,
+                parse_constant=lambda value: (_ for _ in ()).throw(
+                    ValueError(f"nonfinite JSON constant: {value}")
+                ),
+            )
+        except (UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_snapshot_malformed"
+            ) from exc
+        configured = tuple(
+            str(value)
+            for value in tuple(
+                getattr(daemon, "implementation_protected_paths", ()) or ()
+            )
+        )
+        snapshot = marker.get("snapshot") if type(marker) is dict else None
+        if (
+            type(marker) is not dict
+            or set(marker) != _ACTIVE_PROTECTED_STATE_FIELDS
+            or marker.get("schema") != "implementation-protected-path-active-v1"
+            or type(marker.get("recorded_at")) is not str
+            or not marker["recorded_at"]
+            or marker.get("task_id") != record.task_id
+            or type(marker.get("attempt")) is not int
+            or int(marker["attempt"]) != int(record.attempt)
+            or marker.get("workspace_path") != str(workspace)
+            or marker.get("ephemeral_worktree") is not True
+            or not configured
+            or marker.get("protected_paths") != list(configured)
+            or type(snapshot) is not dict
+            or set(snapshot) != {"workspace", "shared_checkout"}
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_snapshot_binding_mismatch"
+            )
+        expected_roots = {
+            "workspace": str(workspace),
+            "shared_checkout": str(self.repo_root.resolve(strict=True)),
+        }
+        for scope, expected_root in expected_roots.items():
+            scope_snapshot = snapshot.get(scope)
+            if (
+                type(scope_snapshot) is not dict
+                or set(scope_snapshot) != {"root", "paths", "git_head"}
+                or scope_snapshot.get("root") != expected_root
+                or re.fullmatch(
+                    r"[0-9a-f]{40}",
+                    str(scope_snapshot.get("git_head") or ""),
+                )
+                is None
+                or type(scope_snapshot.get("paths")) is not dict
+                or set(scope_snapshot["paths"]) != set(configured)
+                or len(scope_snapshot["paths"]) != len(configured)
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_protected_snapshot_malformed"
+                )
+            for protected_path, protected_identity in scope_snapshot["paths"].items():
+                if type(protected_identity) is not dict:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_protected_snapshot_malformed"
+                    )
+                state = protected_identity.get("state")
+                if state == "missing":
+                    allowed_fields = {"state"}
+                elif state == "present":
+                    allowed_fields = {
+                        "state",
+                        "kind",
+                        "device",
+                        "inode",
+                        "mode",
+                        "links",
+                        "uid",
+                        "gid",
+                        "size",
+                        "mtime_ns",
+                        "ctime_ns",
+                    }
+                    kind = protected_identity.get("kind")
+                    if kind == "regular_file":
+                        allowed_fields.add("sha256")
+                    elif kind == "symlink":
+                        allowed_fields.add("symlink_target")
+                    elif kind not in {
+                        "directory",
+                        "fifo",
+                        "socket",
+                        "character_device",
+                        "block_device",
+                        "other",
+                    }:
+                        raise DatabasePortalBridgeDeferred(
+                            "cross_attempt_lifecycle_protected_snapshot_malformed"
+                        )
+                else:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_protected_snapshot_malformed"
+                    )
+                if set(protected_identity) != allowed_fields:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_protected_snapshot_malformed"
+                    )
+                if state == "present" and (
+                    any(
+                        type(protected_identity[field]) is not int
+                        or int(protected_identity[field]) < 0
+                        for field in (
+                            "device",
+                            "inode",
+                            "mode",
+                            "links",
+                            "uid",
+                            "gid",
+                            "size",
+                            "mtime_ns",
+                            "ctime_ns",
+                        )
+                    )
+                    or (
+                        protected_identity.get("kind") == "regular_file"
+                        and re.fullmatch(
+                            r"[0-9a-f]{64}",
+                            str(protected_identity.get("sha256") or ""),
+                        )
+                        is None
+                    )
+                    or (
+                        protected_identity.get("kind") == "symlink"
+                        and type(protected_identity.get("symlink_target"))
+                        is not str
+                    )
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_protected_snapshot_malformed"
+                    )
+                self._canonical_recovery_path(protected_path)
+        return marker, raw, identity
+
+    def _configured_source_transition_authority(
+        self,
+        *,
+        workspace: Path,
+        marker: Mapping[str, Any],
+        before: Mapping[str, Any],
+        after: Mapping[str, Any],
+        mutations: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Verify an exact protected update against the admitted source capsule."""
+
+        if not self._configured_board_live_admission_json or self.repo_root is None:
+            return {}
+        try:
+            from ..runtime.configured_board_live_capsule import (
+                parse_configured_board_live_capsule_admission,
+            )
+
+            parsed_admission = parse_configured_board_live_capsule_admission(
+                self._configured_board_live_admission_json
+            )
+            admission = parsed_admission.as_dict()
+        except Exception as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_configured_source_admission_invalid"
+            ) from exc
+        if (
+            parsed_admission.admission_cid
+            != self.configured_board_admission_cid
+            or (
+                self.board_namespace
+                and parsed_admission.board_namespace != self.board_namespace
+            )
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_configured_source_admission_invalid"
+            )
+        before_workspace = before.get("workspace")
+        after_workspace = after.get("workspace")
+        before_shared = before.get("shared_checkout")
+        after_shared = after.get("shared_checkout")
+        protected_paths = marker.get("protected_paths")
+        if (
+            workspace.resolve() == self.repo_root.resolve()
+            or type(before_workspace) is not dict
+            or type(after_workspace) is not dict
+            or before_workspace != after_workspace
+            or type(before_shared) is not dict
+            or type(after_shared) is not dict
+            or type(protected_paths) is not list
+            or not protected_paths
+            or protected_paths != sorted(set(map(str, protected_paths)))
+            or any(
+                str(item.get("scope") or "") != "shared_checkout"
+                for item in mutations
+            )
+        ):
+            return {}
+        before_head = str(before_shared.get("git_head") or "")
+        after_head = str(after_shared.get("git_head") or "")
+        source_head = str(admission.get("source_head") or "")
+        source_tree = str(admission.get("source_tree") or "")
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", before_head) is None
+            or re.fullmatch(r"[0-9a-f]{40}", after_head) is None
+            or source_head != after_head
+            or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+            or admission.get("admission_cid")
+            != self.configured_board_admission_cid
+            or admission.get("board_namespace") != self.board_namespace
+        ):
+            return {}
+        before_paths = before_shared.get("paths")
+        after_paths = after_shared.get("paths")
+        if (
+            type(before_paths) is not dict
+            or type(after_paths) is not dict
+            or set(map(str, before_paths)) != set(protected_paths)
+            or set(map(str, after_paths)) != set(protected_paths)
+        ):
+            return {}
+        mutation_paths: list[str] = []
+        for mutation in mutations:
+            path = str(mutation.get("path") or "")
+            if (
+                path not in before_paths
+                or path not in after_paths
+                or mutation.get("before") != before_paths[path]
+                or mutation.get("after") != after_paths[path]
+            ):
+                return {}
+            mutation_paths.append(path)
+        if (
+            not mutation_paths
+            or mutation_paths != sorted(set(mutation_paths))
+        ):
+            return {}
+
+        observed_head = self._git_observation(
+            self.repo_root, "rev-parse", "--verify", "HEAD^{commit}"
+        )
+        observed_tree = self._git_observation(
+            self.repo_root, "rev-parse", "--verify", "HEAD^{tree}"
+        )
+        source_commit_tree = self._git_observation(
+            self.repo_root,
+            "rev-parse",
+            "--verify",
+            f"{source_head}^{{tree}}",
+        )
+        ancestry = self._git_observation(
+            self.repo_root,
+            "merge-base",
+            "--is-ancestor",
+            before_head,
+            source_head,
+        )
+        status = self._git_observation(
+            self.repo_root,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--",
+            *protected_paths,
+        )
+        changed = self._git_observation(
+            self.repo_root,
+            "diff",
+            "--name-only",
+            "--no-renames",
+            before_head,
+            source_head,
+            "--",
+            *protected_paths,
+        )
+        if (
+            any(
+                result.returncode != 0
+                for result in (
+                    observed_head,
+                    observed_tree,
+                    source_commit_tree,
+                    status,
+                    changed,
+                )
+            )
+            or ancestry.returncode != 0
+            or observed_head.stdout.strip() != source_head
+            or observed_tree.stdout.strip() != source_tree
+            or source_commit_tree.stdout.strip() != source_tree
+            or status.stdout
+            or sorted(
+                line.strip()
+                for line in changed.stdout.splitlines()
+                if line.strip()
+            )
+            != mutation_paths
+        ):
+            return {}
+        artifacts = admission.get("control_artifacts")
+        if type(artifacts) is not list or not artifacts:
+            return {}
+        if [str(item.get("path") or "") for item in artifacts] != protected_paths:
+            return {}
+        verified_artifacts: list[dict[str, Any]] = []
+        for artifact in artifacts:
+            if type(artifact) is not dict or set(artifact) != {
+                "path",
+                "sha256",
+                "size",
+            }:
+                return {}
+            relative = str(artifact.get("path") or "")
+            try:
+                canonical = self._canonical_recovery_path(relative)
+                candidate = (self.repo_root / canonical).resolve(strict=True)
+                candidate.relative_to(self.repo_root.resolve(strict=True))
+                payload, _identity = _stable_regular_bytes(
+                    candidate,
+                    noun="configured-board control artifact",
+                )
+            except (
+                DatabasePortalBridgeError,
+                OSError,
+                RuntimeError,
+                ValueError,
+            ):
+                return {}
+            if (
+                len(payload) != artifact.get("size")
+                or _sha256_bytes(payload) != artifact.get("sha256")
+            ):
+                return {}
+            verified_artifacts.append(
+                {
+                    "path": canonical,
+                    "sha256": artifact["sha256"],
+                    "size": artifact["size"],
+                }
+            )
+        changed_protected_blobs: list[dict[str, Any]] = []
+        for path in mutation_paths:
+            observed_entry = self._git_observation(
+                self.repo_root,
+                "ls-tree",
+                "-z",
+                source_head,
+                "--",
+                path,
+                text=False,
+            )
+            if observed_entry.returncode != 0:
+                return {}
+            entries = observed_entry.stdout.split(b"\0")
+            if entries[-1:] != [b""] or len(entries) != 2:
+                return {}
+            try:
+                metadata, raw_path = entries[0].split(b"\t", 1)
+                mode, kind, blob_oid = metadata.decode("ascii").split(" ", 2)
+                decoded_path = raw_path.decode("utf-8")
+            except (UnicodeDecodeError, ValueError):
+                return {}
+            current_identity = after_paths[path]
+            if (
+                mode not in {"100644", "100755"}
+                or kind != "blob"
+                or re.fullmatch(r"[0-9a-f]{40}", blob_oid) is None
+                or decoded_path != path
+                or type(current_identity) is not dict
+                or current_identity.get("kind") != "regular_file"
+                or re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(current_identity.get("sha256") or ""),
+                )
+                is None
+            ):
+                return {}
+            changed_protected_blobs.append(
+                {
+                    "path": path,
+                    "mode": mode,
+                    "blob_oid": blob_oid,
+                    "sha256": current_identity["sha256"],
+                }
+            )
+        confirmed_head = self._git_observation(
+            self.repo_root, "rev-parse", "--verify", "HEAD^{commit}"
+        )
+        confirmed_tree = self._git_observation(
+            self.repo_root, "rev-parse", "--verify", "HEAD^{tree}"
+        )
+        confirmed_status = self._git_observation(
+            self.repo_root,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "--",
+            *protected_paths,
+        )
+        if (
+            confirmed_head.returncode != 0
+            or confirmed_tree.returncode != 0
+            or confirmed_status.returncode != 0
+            or confirmed_head.stdout.strip() != source_head
+            or confirmed_tree.stdout.strip() != source_tree
+            or confirmed_status.stdout
+        ):
+            return {}
+        return {
+            "authority": "configured_board_live_capsule",
+            "admission_cid": admission["admission_cid"],
+            "before_head": before_head,
+            "after_head": source_head,
+            "after_tree": source_tree,
+            "protected_paths": mutation_paths,
+            "changed_protected_blobs": changed_protected_blobs,
+            "verified_control_artifacts": verified_artifacts,
+            "operator_or_worker_identity_inferred": False,
+            "mutation_authority": False,
+            "task_completion_authority": False,
+        }
+
+    def _protected_marker_snapshot_proof(
+        self,
+        *,
+        daemon: Any,
+        workspace: Path,
+        marker: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        snapshot = getattr(daemon, "_implementation_protected_path_snapshot", None)
+        errors = getattr(daemon, "_implementation_protected_snapshot_errors", None)
+        mutations_for = getattr(
+            daemon,
+            "_implementation_protected_path_mutations",
+            None,
+        )
+        authorize = getattr(
+            daemon,
+            "_authorized_concurrent_protected_path_update",
+            None,
+        )
+        if not all(callable(value) for value in (snapshot, errors, mutations_for, authorize)):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_snapshot_authority_unavailable"
+            )
+        before = marker["snapshot"]
+        try:
+            after = snapshot(workspace)
+            snapshot_errors = errors(after)
+            mutations = mutations_for(before, after)
+        except Exception as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_snapshot_verification_unavailable"
+            ) from exc
+        if type(after) is not dict or snapshot_errors:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_snapshot_verification_failed"
+            )
+        trusted_update: dict[str, Any] = {}
+        mode = "exact_snapshot"
+        if mutations:
+            if any(
+                str(item.get("scope") or "") != "shared_checkout"
+                for item in mutations
+                if isinstance(item, Mapping)
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_protected_snapshot_mutated"
+                )
+            # A process born with a configured-board live capsule may accept
+            # only that exact admitted source generation.  Never downgrade a
+            # mismatch or malformed capsule to the older author-based rule.
+            if self._configured_board_live_admission_json:
+                trusted_update = self._configured_source_transition_authority(
+                    workspace=workspace,
+                    marker=marker,
+                    before=before,
+                    after=after,
+                    mutations=mutations,
+                )
+            else:
+                try:
+                    trusted_update = dict(
+                        authorize(
+                            workspace_path=workspace,
+                            before=before,
+                            after=after,
+                            mutations=mutations,
+                        )
+                        or {}
+                    )
+                except Exception as exc:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_protected_snapshot_authority_unavailable"
+                    ) from exc
+            if not trusted_update:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_protected_snapshot_mutated"
+                )
+            mode = "current_trusted_shared_source"
+        return {
+            "mode": mode,
+            "baseline_snapshot_id": _sha256_bytes(_canonical_json(before)),
+            "current_snapshot_id": _sha256_bytes(_canonical_json(after)),
+            "current_snapshot": after,
+            "trusted_shared_update": trusted_update,
+        }
+
+    @staticmethod
+    def _strict_protected_recovery_receipt(
+        path: Path,
+        *,
+        fields: frozenset[str],
+        schema: str,
+        noun: str,
+    ) -> dict[str, Any]:
+        raw, _identity = _stable_regular_bytes(path, noun=noun)
+        try:
+            value = json.loads(
+                raw.decode("utf-8", errors="strict"),
+                object_pairs_hook=_reject_duplicate_control_keys,
+                parse_constant=lambda constant: (_ for _ in ()).throw(
+                    ValueError(f"nonfinite JSON constant: {constant}")
+                ),
+            )
+        except (UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_retirement_receipt_malformed"
+            ) from exc
+        if type(value) is not dict or set(value) != fields or value.get("schema") != schema:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_retirement_receipt_malformed"
+            )
+        return value
+
+    def _validated_prepared_protected_clearance(
+        self,
+        receipt: Mapping[str, Any],
+        *,
+        current_binding: Mapping[str, Any],
+        prior_binding: Mapping[str, Any],
+        database_authority: Mapping[str, Any],
+        portal_state_binding: Mapping[str, Any],
+        record: Any,
+        marker: Mapping[str, Any],
+        marker_raw: bytes,
+        preservation: Mapping[str, Any],
+        status_id: str,
+        lifecycle_recovery_receipt: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        value = dict(receipt)
+        receipt_id = value.get("receipt_id")
+        receipt_body = dict(value)
+        receipt_body.pop("receipt_id", None)
+        clearance_id = receipt_body.get("clearance_id")
+        clearance_body = dict(receipt_body)
+        clearance_body.pop("clearance_id", None)
+        marker_digest = hashlib.sha256(marker_raw).hexdigest()
+        if lifecycle_recovery_receipt is None:
+            lifecycle_authority_id = _sha256_bytes(
+                _canonical_json(record.to_dict())
+            )
+            lifecycle_transition_basis_id = self._lifecycle_transition_basis_id(
+                record
+            )
+            prior_lifecycle_state = record.state.value
+            prior_lifecycle_fence = int(record.fence)
+        else:
+            lifecycle_authority_id = lifecycle_recovery_receipt[
+                "lifecycle_authority_id"
+            ]
+            lifecycle_transition_basis_id = lifecycle_recovery_receipt[
+                "lifecycle_transition_basis_id"
+            ]
+            prior_lifecycle_state = lifecycle_recovery_receipt[
+                "prior_lifecycle_state"
+            ]
+            prior_lifecycle_fence = int(
+                lifecycle_recovery_receipt["prior_lifecycle_fence"]
+            )
+        if (
+            record.is_terminal
+            and (
+                self._lifecycle_transition_basis_id(record)
+                != lifecycle_transition_basis_id
+                or int(record.fence) != prior_lifecycle_fence + 1
+                or record.terminal_reason != _SUPERSEDED_LIFECYCLE_TERMINAL_REASON
+            )
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_terminal_successor_mismatch"
+            )
+        expected = {
+            "task_id": str(record.task_id),
+            "attempt": int(record.attempt),
+            "current_attempt_id": current_binding["attempt_id"],
+            "prior_attempt_id": prior_binding["attempt_id"],
+            "current_binding_id": current_binding["binding_id"],
+            "prior_binding_id": prior_binding["binding_id"],
+            "lifecycle_record_id": str(record.record_id),
+            "lifecycle_authority_id": lifecycle_authority_id,
+            "lifecycle_transition_basis_id": lifecycle_transition_basis_id,
+            "prior_lifecycle_state": prior_lifecycle_state,
+            "prior_lifecycle_fence": prior_lifecycle_fence,
+            "expected_terminal_lifecycle_fence": prior_lifecycle_fence + 1,
+            "terminal_reason": _SUPERSEDED_LIFECYCLE_TERMINAL_REASON,
+            "database_authority_id": content_identity(database_authority),
+            "portal_state_binding_id": content_identity(portal_state_binding),
+            "active_marker_sha256": f"sha256:{marker_digest}",
+            "active_marker_blob_filename": (
+                f"{_PROTECTED_STATE_MARKER_BLOB_PREFIX}{marker_digest}.json"
+            ),
+            "active_marker": dict(marker),
+            "workspace_status_id": status_id,
+            "clearance_phase": "prepared",
+            "active_marker_retired": False,
+            "retirement_operation": "atomic_noreplace_rename_after_receipt",
+            "worktree_deleted": False,
+            "provider_dispatched": False,
+            "mutation_authority": False,
+            "merge_authority": False,
+            "task_completion_authority": False,
+            "worker_self_approval": False,
+            "normal_validation_required": True,
+        }
+        proof = value.get("protected_path_proof")
+        if (
+            set(value) != _PREPARED_PROTECTED_CLEARANCE_FIELDS
+            or value.get("schema") != CROSS_ATTEMPT_PROTECTED_STATE_CLEARANCE_SCHEMA
+            or type(receipt_id) is not str
+            or receipt_id != _sha256_bytes(_canonical_json(receipt_body))
+            or type(clearance_id) is not str
+            or clearance_id != _sha256_bytes(_canonical_json(clearance_body))
+            or any(value.get(field) != expected_value for field, expected_value in expected.items())
+            or type(proof) is not dict
+            or proof.get("baseline_snapshot_id")
+            != _sha256_bytes(_canonical_json(marker["snapshot"]))
+            or type(value.get("preservation")) is not dict
+            or self._stable_preservation_authority(value["preservation"])
+            != self._stable_preservation_authority(preservation)
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_clearance_authority_mismatch"
+            )
+        return value
+
+    def _publish_protected_retirement_receipt(
+        self,
+        *,
+        prior_paths: DatabasePortalAttemptPaths,
+        prior_directory_identity: Mapping[str, Any],
+        prepared: Mapping[str, Any],
+        prepared_filename: str,
+        retired_marker_filename: str,
+    ) -> dict[str, Any]:
+        body = {
+            "schema": CROSS_ATTEMPT_PROTECTED_STATE_RETIREMENT_SCHEMA,
+            "prepared_clearance": dict(prepared),
+            "prepared_clearance_filename": prepared_filename,
+            "retired_marker_filename": retired_marker_filename,
+            "active_marker_sha256": prepared["active_marker_sha256"],
+            "clearance_phase": "retired",
+            "active_marker_retired": True,
+            "retirement_operation": "atomic_noreplace_rename_after_receipt",
+            "worktree_deleted": False,
+            "provider_dispatched": False,
+            "mutation_authority": False,
+            "merge_authority": False,
+            "task_completion_authority": False,
+            "worker_self_approval": False,
+            "normal_validation_required": True,
+        }
+        retirement_id = _sha256_bytes(_canonical_json(body))
+        receipt = {**body, "retirement_id": retirement_id}
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        filename = (
+            f"{_PROTECTED_STATE_RETIREMENT_PREFIX}"
+            f"{retirement_id.removeprefix('sha256:')[:24]}.json"
+        )
+        payload = json.dumps(
+            receipt,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        ).encode("utf-8") + b"\n"
+        _publish_immutable_file(
+            prior_paths.root / filename,
+            payload,
+            sealed_directory_identity=prior_directory_identity,
+        )
+        observed = self._strict_protected_recovery_receipt(
+            prior_paths.root / filename,
+            fields=_PROTECTED_RETIREMENT_FIELDS,
+            schema=CROSS_ATTEMPT_PROTECTED_STATE_RETIREMENT_SCHEMA,
+            noun="protected-state retirement receipt",
+        )
+        if observed != receipt:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_retirement_receipt_changed"
+            )
+        return {**receipt, "retirement_receipt_filename": filename}
+
+    def _verify_or_finish_protected_marker_retirement(
+        self,
+        *,
+        current_binding: Mapping[str, Any],
+        prior_binding: Mapping[str, Any],
+        database_authority: Mapping[str, Any],
+        portal_state_binding: Mapping[str, Any],
+        daemon: Any,
+        record: Any,
+        prior_paths: DatabasePortalAttemptPaths,
+        prior_directory_identity: Mapping[str, Any],
+        workspace: Path,
+        preservation: Mapping[str, Any],
+        status_id: str,
+        lifecycle_recovery_receipt: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Verify, or finish only the receipt-bound post-rename crash boundary."""
+
+        families = {
+            "prepared": tuple(prior_paths.root.glob(f"{_PROTECTED_STATE_CLEARANCE_PREFIX}*.json")),
+            "marker_blob": tuple(prior_paths.root.glob(f"{_PROTECTED_STATE_MARKER_BLOB_PREFIX}*.json")),
+            "retired_marker": tuple(prior_paths.root.glob("implementation-protected-path-retired-*.json")),
+            "retirement": tuple(prior_paths.root.glob(f"{_PROTECTED_STATE_RETIREMENT_PREFIX}*.json")),
+        }
+        if not any(families.values()):
+            return {}
+        if lifecycle_recovery_receipt is None or not record.is_terminal:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_retirement_lacks_terminal_authority"
+            )
+        if any(len(paths) != 1 for name, paths in families.items() if name != "retirement") or len(families["retirement"]) > 1:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_retirement_artifacts_ambiguous"
+            )
+        prepared_path = families["prepared"][0]
+        marker_blob_path = families["marker_blob"][0]
+        retired_path = families["retired_marker"][0]
+        prepared = self._strict_protected_recovery_receipt(
+            prepared_path,
+            fields=_PREPARED_PROTECTED_CLEARANCE_FIELDS,
+            schema=CROSS_ATTEMPT_PROTECTED_STATE_CLEARANCE_SCHEMA,
+            noun="prepared protected-state clearance receipt",
+        )
+        retired_raw, _retired_identity = _stable_regular_bytes(
+            retired_path,
+            noun="retired protected-path marker",
+        )
+        marker_blob_raw, _blob_identity = _stable_regular_bytes(
+            marker_blob_path,
+            noun="protected-path marker blob",
+        )
+        marker, parsed_raw, _marker_identity = self._strict_active_protected_marker(
+            path=retired_path,
+            daemon=daemon,
+            record=record,
+            workspace=workspace,
+        )
+        if retired_raw != marker_blob_raw or parsed_raw != retired_raw:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_retired_marker_changed"
+            )
+        prepared = self._validated_prepared_protected_clearance(
+            prepared,
+            current_binding=current_binding,
+            prior_binding=prior_binding,
+            database_authority=database_authority,
+            portal_state_binding=portal_state_binding,
+            record=record,
+            marker=marker,
+            marker_raw=retired_raw,
+            preservation=preservation,
+            status_id=status_id,
+            lifecycle_recovery_receipt=lifecycle_recovery_receipt,
+        )
+        expected_prepared_filename = (
+            f"{_PROTECTED_STATE_CLEARANCE_PREFIX}"
+            f"{prepared['clearance_id'].removeprefix('sha256:')[:24]}.json"
+        )
+        expected_retired_filename = (
+            "implementation-protected-path-retired-"
+            f"{prepared['clearance_id'].removeprefix('sha256:')[:24]}.json"
+        )
+        expected_marker_blob = prepared["active_marker_blob_filename"]
+        if (
+            prepared_path.name != expected_prepared_filename
+            or retired_path.name != expected_retired_filename
+            or marker_blob_path.name != expected_marker_blob
+            or os.path.lexists(
+                prior_paths.root / "implementation-protected-path-active.json"
+            )
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_retirement_binding_mismatch"
+            )
+        current_proof = self._protected_marker_snapshot_proof(
+            daemon=daemon,
+            workspace=workspace,
+            marker=marker,
+        )
+        if current_proof.get("baseline_snapshot_id") != prepared[
+            "protected_path_proof"
+        ].get("baseline_snapshot_id"):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_retirement_snapshot_changed"
+            )
+        terminal = self._publish_protected_retirement_receipt(
+            prior_paths=prior_paths,
+            prior_directory_identity=prior_directory_identity,
+            prepared=prepared,
+            prepared_filename=expected_prepared_filename,
+            retired_marker_filename=expected_retired_filename,
+        )
+        if families["retirement"] and families["retirement"][0].name != terminal[
+            "retirement_receipt_filename"
+        ]:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_retirement_receipt_ambiguous"
+            )
+        return terminal
+
+    def _retire_dead_protected_active_marker(
+        self,
+        *,
+        attempt: Any,
+        current_binding: Mapping[str, Any],
+        prior_binding: Mapping[str, Any],
+        database_authority: Mapping[str, Any],
+        portal_state_binding: Mapping[str, Any],
+        daemon: Any,
+        record: Any,
+        prior_paths: DatabasePortalAttemptPaths,
+        prior_directory_identity: Mapping[str, Any],
+        workspace: Path,
+        preservation: Mapping[str, Any],
+        status_id: str,
+        lifecycle_recovery_receipt: Mapping[str, Any] | None,
+        perform_retirement: bool,
+        publish_prepared_clearance: bool,
+        successor_adoption: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Preserve and retire one exact dead-attempt active marker."""
+
+        active_path = prior_paths.root / "implementation-protected-path-active.json"
+        incident_path = prior_paths.root / "implementation-protected-path-incident.json"
+        if os.path.lexists(incident_path):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_incident_active"
+            )
+        marker, marker_raw, marker_identity = self._strict_active_protected_marker(
+            path=active_path,
+            daemon=daemon,
+            record=record,
+            workspace=workspace,
+        )
+        try:
+            exact_dead = daemon.worktree_lifecycle.require_exact_dead_owner(
+                record.workspace_path,
+                allow_terminal=bool(record.is_terminal),
+                **self._lifecycle_expected(record),
+            )
+        except Exception as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_marker_dead_owner_unproven"
+            ) from exc
+        if exact_dead != record:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_marker_dead_owner_changed"
+            )
+        first_proof = self._protected_marker_snapshot_proof(
+            daemon=daemon,
+            workspace=workspace,
+            marker=marker,
+        )
+        marker_digest = hashlib.sha256(marker_raw).hexdigest()
+        if lifecycle_recovery_receipt is None:
+            lifecycle_authority_id = _sha256_bytes(
+                _canonical_json(record.to_dict())
+            )
+            lifecycle_transition_basis_id = self._lifecycle_transition_basis_id(
+                record
+            )
+            prior_lifecycle_state = record.state.value
+            prior_lifecycle_fence = int(record.fence)
+        else:
+            lifecycle_authority_id = lifecycle_recovery_receipt[
+                "lifecycle_authority_id"
+            ]
+            lifecycle_transition_basis_id = lifecycle_recovery_receipt[
+                "lifecycle_transition_basis_id"
+            ]
+            prior_lifecycle_state = lifecycle_recovery_receipt[
+                "prior_lifecycle_state"
+            ]
+            prior_lifecycle_fence = int(
+                lifecycle_recovery_receipt["prior_lifecycle_fence"]
+            )
+        if (
+            record.is_terminal
+            and (
+                self._lifecycle_transition_basis_id(record)
+                != lifecycle_transition_basis_id
+                or int(record.fence) != prior_lifecycle_fence + 1
+                or record.terminal_reason != _SUPERSEDED_LIFECYCLE_TERMINAL_REASON
+            )
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_terminal_successor_mismatch"
+            )
+        marker_blob_filename = (
+            f"{_PROTECTED_STATE_MARKER_BLOB_PREFIX}{marker_digest}.json"
+        )
+        clearance_body = {
+            "schema": CROSS_ATTEMPT_PROTECTED_STATE_CLEARANCE_SCHEMA,
+            "task_id": str(record.task_id),
+            "attempt": int(record.attempt),
+            "current_attempt_id": current_binding["attempt_id"],
+            "prior_attempt_id": prior_binding["attempt_id"],
+            "current_binding_id": current_binding["binding_id"],
+            "prior_binding_id": prior_binding["binding_id"],
+            "lifecycle_record_id": str(record.record_id),
+            "lifecycle_authority_id": lifecycle_authority_id,
+            "lifecycle_transition_basis_id": lifecycle_transition_basis_id,
+            "prior_lifecycle_state": prior_lifecycle_state,
+            "prior_lifecycle_fence": prior_lifecycle_fence,
+            "expected_terminal_lifecycle_fence": prior_lifecycle_fence + 1,
+            "terminal_reason": _SUPERSEDED_LIFECYCLE_TERMINAL_REASON,
+            "database_authority_id": content_identity(database_authority),
+            "portal_state_binding_id": content_identity(portal_state_binding),
+            "active_marker_sha256": f"sha256:{marker_digest}",
+            "active_marker_blob_filename": marker_blob_filename,
+            "active_marker": marker,
+            "protected_path_proof": first_proof,
+            "preservation": self._stable_preservation_authority(preservation),
+            "workspace_status_id": status_id,
+            "clearance_phase": "prepared",
+            "active_marker_retired": False,
+            "retirement_operation": "atomic_noreplace_rename_after_receipt",
+            "worktree_deleted": False,
+            "provider_dispatched": False,
+            "mutation_authority": False,
+            "merge_authority": False,
+            "task_completion_authority": False,
+            "worker_self_approval": False,
+            "normal_validation_required": True,
+        }
+        clearance_id = _sha256_bytes(_canonical_json(clearance_body))
+        receipt = {**clearance_body, "clearance_id": clearance_id}
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        receipt_path = prior_paths.root / (
+            f"{_PROTECTED_STATE_CLEARANCE_PREFIX}"
+            f"{clearance_id.removeprefix('sha256:')[:24]}.json"
+        )
+        receipt_payload = json.dumps(
+            receipt,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        ).encode("utf-8") + b"\n"
+        existing_prepared = tuple(
+            prior_paths.root.glob(f"{_PROTECTED_STATE_CLEARANCE_PREFIX}*.json")
+        )
+        existing_blobs = tuple(
+            prior_paths.root.glob(f"{_PROTECTED_STATE_MARKER_BLOB_PREFIX}*.json")
+        )
+        existing_retired = tuple(
+            prior_paths.root.glob("implementation-protected-path-retired-*.json")
+        )
+        existing_terminal = tuple(
+            prior_paths.root.glob(f"{_PROTECTED_STATE_RETIREMENT_PREFIX}*.json")
+        )
+        if (
+            any(path.name != receipt_path.name for path in existing_prepared)
+            or any(path.name != marker_blob_filename for path in existing_blobs)
+            or existing_retired
+            or existing_terminal
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_retirement_artifacts_ambiguous"
+            )
+
+        if successor_adoption is None:
+            second_authority = self._validated_prior_authority(
+                self.prior_attempt_authority(
+                    attempt,
+                    current_binding,
+                    prior_binding,
+                ),
+                current_binding=current_binding,
+                prior_binding=prior_binding,
+            )
+            expected_second_authority = dict(database_authority)
+        else:
+            successor_binding = successor_adoption.get("current_binding")
+            successor_authority = successor_adoption.get("database_authority")
+            if type(successor_binding) is not dict or type(successor_authority) is not dict:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_successor_adoption_malformed"
+                )
+            second_authority = self._validated_prior_authority(
+                self.prior_attempt_authority(
+                    attempt,
+                    successor_binding,
+                    current_binding,
+                ),
+                current_binding=successor_binding,
+                prior_binding=current_binding,
+            )
+            expected_second_authority = successor_authority
+        second_portal = self._prior_portal_state_binding(
+            daemon,
+            prior_paths,
+            prior_binding,
+            record,
+        )
+        second_portal["attempt_directory_identity"] = dict(
+            portal_state_binding["attempt_directory_identity"]
+        )
+        second_process = self._strict_workspace_process_scan(
+            daemon.worktree_lifecycle,
+            workspace,
+        )
+        second_container = self._strict_workspace_container_scan(workspace)
+        second_marker, second_raw, second_identity = (
+            self._strict_active_protected_marker(
+                path=active_path,
+                daemon=daemon,
+                record=record,
+                workspace=workspace,
+            )
+        )
+        second_proof = self._protected_marker_snapshot_proof(
+            daemon=daemon,
+            workspace=workspace,
+            marker=second_marker,
+        )
+        second_status = self._git_observation(
+            workspace,
+            "status",
+            "--ignore-submodules=none",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            text=False,
+        )
+        preservation_mode = str(preservation.get("preservation_mode") or "")
+        if preservation_mode.startswith(
+            "content_addressed_declared_nested_outputs:"
+        ):
+            expected_preservation_id = preservation_mode.split(":", 1)[1]
+            revalidated_preservation = self._preserve_declared_nested_outputs(
+                daemon=daemon,
+                record=record,
+                prior_paths=prior_paths,
+                prior_binding=prior_binding,
+                prior_directory_identity=prior_directory_identity,
+                workspace=workspace,
+                branch_name=str(preservation["branch"]),
+                head_id=str(preservation["head"]),
+                tree_id=str(preservation["tree"]),
+            )
+            if (
+                revalidated_preservation.get("preservation_id")
+                != expected_preservation_id
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_declared_output_changed_before_marker_retirement"
+                )
+        elif self._nested_gitlink_state_present(workspace):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_declared_output_appeared_before_marker_retirement"
+            )
+        if (
+            second_authority != expected_second_authority
+            or second_portal != dict(portal_state_binding)
+            or second_marker != marker
+            or second_raw != marker_raw
+            or second_proof != first_proof
+            or second_status.returncode != 0
+            or _sha256_bytes(bytes(second_status.stdout or b""))
+            != status_id
+            or second_identity.st_dev != marker_identity.st_dev
+            or second_identity.st_ino != marker_identity.st_ino
+            or second_identity.st_mode != marker_identity.st_mode
+            or second_identity.st_size != marker_identity.st_size
+            or not isinstance(second_process, Mapping)
+            or not isinstance(second_container, Mapping)
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_marker_evidence_changed"
+            )
+        try:
+            exact_dead = daemon.worktree_lifecycle.require_exact_dead_owner(
+                record.workspace_path,
+                allow_terminal=bool(record.is_terminal),
+                **self._lifecycle_expected(record),
+            )
+        except Exception as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_marker_dead_owner_unproven"
+            ) from exc
+        if exact_dead != record:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_marker_dead_owner_changed"
+            )
+        validated_prepared = self._validated_prepared_protected_clearance(
+            receipt,
+            current_binding=current_binding,
+            prior_binding=prior_binding,
+            database_authority=database_authority,
+            portal_state_binding=portal_state_binding,
+            record=record,
+            marker=marker,
+            marker_raw=marker_raw,
+            preservation=preservation,
+            status_id=status_id,
+            lifecycle_recovery_receipt=lifecycle_recovery_receipt,
+        )
+        if publish_prepared_clearance:
+            _publish_immutable_file(
+                prior_paths.root / marker_blob_filename,
+                marker_raw,
+                sealed_directory_identity=prior_directory_identity,
+            )
+            _publish_immutable_file(
+                receipt_path,
+                receipt_payload,
+                sealed_directory_identity=prior_directory_identity,
+            )
+        elif existing_prepared or existing_blobs:
+            if len(existing_prepared) != 1 or len(existing_blobs) != 1:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_protected_preparation_ambiguous"
+                )
+            observed_prepared, _prepared_identity = _stable_regular_bytes(
+                receipt_path,
+                noun="prepared protected-state clearance receipt",
+            )
+            observed_blob, _blob_identity = _stable_regular_bytes(
+                prior_paths.root / marker_blob_filename,
+                noun="protected-state marker blob",
+            )
+            if observed_prepared != receipt_payload or observed_blob != marker_raw:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_protected_preparation_changed"
+                )
+        if not perform_retirement:
+            return {
+                "clearance_id": clearance_id,
+                "receipt_id": validated_prepared["receipt_id"],
+                "receipt_path": str(receipt_path),
+                "active_marker_retired": False,
+            }
+        if (
+            not publish_prepared_clearance
+            or lifecycle_recovery_receipt is None
+            or not record.is_terminal
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_marker_retirement_precedes_terminal_authority"
+            )
+
+        retired_path = prior_paths.root / (
+            "implementation-protected-path-retired-"
+            f"{clearance_id.removeprefix('sha256:')[:24]}.json"
+        )
+        if os.path.lexists(retired_path):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_marker_retirement_conflict"
+            )
+        directory_descriptor = -1
+        try:
+            directory_descriptor = os.open(
+                prior_paths.root,
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+            )
+            directory_identity = os.fstat(directory_descriptor)
+            if (
+                directory_identity.st_dev
+                != prior_directory_identity["attempt_directory_device"]
+                or directory_identity.st_ino
+                != prior_directory_identity["attempt_directory_inode"]
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_protected_marker_parent_changed"
+                )
+            try:
+                os.stat(
+                    retired_path.name,
+                    dir_fd=directory_descriptor,
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                pass
+            else:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_protected_marker_retirement_conflict"
+                )
+            from ..task_sources.quack_owner_mutation import (
+                _rename_noreplace_at,
+            )
+
+            _rename_noreplace_at(
+                directory_descriptor,
+                active_path.name,
+                retired_path.name,
+            )
+            os.fsync(directory_descriptor)
+        except DatabasePortalBridgeDeferred:
+            raise
+        except (ImportError, OSError, RuntimeError) as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_marker_retirement_failed"
+            ) from exc
+        finally:
+            if directory_descriptor >= 0:
+                os.close(directory_descriptor)
+        retired_raw, _retired_identity = _stable_regular_bytes(
+            retired_path,
+            noun="retired protected-path marker",
+        )
+        observed_receipt, _receipt_identity = _stable_regular_bytes(
+            receipt_path,
+            noun="protected-path clearance receipt",
+        )
+        if (
+            retired_raw != marker_raw
+            or observed_receipt != receipt_payload
+            or os.path.lexists(active_path)
+        ):
+            raise DatabasePortalBridgeError(
+                "cross-attempt protected-path marker retirement was not durable"
+            )
+        terminal_receipt = self._publish_protected_retirement_receipt(
+            prior_paths=prior_paths,
+            prior_directory_identity=prior_directory_identity,
+            prepared=receipt,
+            prepared_filename=receipt_path.name,
+            retired_marker_filename=retired_path.name,
+        )
+        return {
+            "clearance_id": clearance_id,
+            "receipt_id": receipt["receipt_id"],
+            "receipt_path": str(receipt_path),
+            "retired_marker_path": str(retired_path),
+            "retirement_id": terminal_receipt["retirement_id"],
+            "retirement_receipt_id": terminal_receipt["receipt_id"],
+            "retirement_receipt_path": str(
+                prior_paths.root
+                / terminal_receipt["retirement_receipt_filename"]
+            ),
+        }
+
     def _preserved_quiescent_worktree(
         self,
         daemon: Any,
         record: Any,
         prior_paths: DatabasePortalAttemptPaths,
+        *,
+        attempt: Any,
+        current_binding: Mapping[str, Any],
+        prior_binding: Mapping[str, Any],
+        database_authority: Mapping[str, Any],
+        portal_state_binding: Mapping[str, Any],
+        lifecycle_recovery_receipt: Mapping[str, Any] | None,
+        perform_marker_retirement: bool,
+        publish_marker_clearance: bool,
+        successor_adoption: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Prove that a dead attempt's bytes are committed and quiescent."""
 
@@ -2152,14 +4522,12 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_lifecycle_binding_mismatch"
             )
-        for protected_name in (
-            "implementation-protected-path-active.json",
-            "implementation-protected-path-incident.json",
-        ):
-            if os.path.lexists(prior_paths.root / protected_name):
-                raise DatabasePortalBridgeDeferred(
-                    "cross_attempt_lifecycle_protected_state_active"
-                )
+        incident_path = prior_paths.root / "implementation-protected-path-incident.json"
+        active_path = prior_paths.root / "implementation-protected-path-active.json"
+        if os.path.lexists(incident_path):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_incident_active"
+            )
 
         process_inventory = self._strict_workspace_process_scan(
             daemon.worktree_lifecycle,
@@ -2193,7 +4561,6 @@ class DatabasePortalExecutionBridge:
             ) from exc
         if (
             status.returncode != 0
-            or bytes(status.stdout or b"")
             or head.returncode != 0
             or tree.returncode != 0
             or branch.returncode != 0
@@ -2247,7 +4614,32 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeDeferred(
                     "cross_attempt_lifecycle_rescue_receipt_invalid"
                 )
-        return {
+        prior_directory_identity = self._seal_attempt_directory(
+            prior_paths,
+            attempt_id=prior_binding["attempt_id"],
+            create=False,
+        )
+        status_bytes = bytes(status.stdout or b"")
+        declared_output_preservation: dict[str, Any] = {}
+        if status_bytes or self._nested_gitlink_state_present(workspace):
+            declared_output_preservation = self._preserve_declared_nested_outputs(
+                daemon=daemon,
+                record=record,
+                prior_paths=prior_paths,
+                prior_binding=prior_binding,
+                prior_directory_identity=prior_directory_identity,
+                workspace=workspace,
+                branch_name=branch_name,
+                head_id=head_id,
+                tree_id=tree_id,
+            )
+        preservation_mode = (
+            "content_addressed_declared_nested_outputs:"
+            f"{declared_output_preservation['preservation_id']}"
+            if declared_output_preservation
+            else ("supervisor_rescue_commit" if rescue else "clean_branch_commit")
+        )
+        preservation = {
             "workspace_path": str(workspace),
             "branch": branch_name,
             "head": head_id,
@@ -2257,10 +4649,49 @@ class DatabasePortalExecutionBridge:
             "workspace_mode": int(workspace_identity.st_mode),
             "process_inventory": process_inventory,
             "container_inventory": container_inventory,
-            "preservation_mode": (
-                "supervisor_rescue_commit" if rescue else "clean_branch_commit"
-            ),
+            "preservation_mode": preservation_mode,
         }
+        if os.path.lexists(active_path):
+            self._retire_dead_protected_active_marker(
+                attempt=attempt,
+                current_binding=current_binding,
+                prior_binding=prior_binding,
+                database_authority=database_authority,
+                portal_state_binding=portal_state_binding,
+                daemon=daemon,
+                record=record,
+                prior_paths=prior_paths,
+                prior_directory_identity=prior_directory_identity,
+                workspace=workspace,
+                preservation=preservation,
+                status_id=_sha256_bytes(status_bytes),
+                lifecycle_recovery_receipt=lifecycle_recovery_receipt,
+                perform_retirement=perform_marker_retirement,
+                publish_prepared_clearance=publish_marker_clearance,
+                successor_adoption=successor_adoption,
+            )
+        else:
+            recovered_retirement = self._verify_or_finish_protected_marker_retirement(
+                current_binding=current_binding,
+                prior_binding=prior_binding,
+                database_authority=database_authority,
+                portal_state_binding=portal_state_binding,
+                daemon=daemon,
+                record=record,
+                prior_paths=prior_paths,
+                prior_directory_identity=prior_directory_identity,
+                workspace=workspace,
+                preservation=preservation,
+                status_id=_sha256_bytes(status_bytes),
+                lifecycle_recovery_receipt=lifecycle_recovery_receipt,
+            )
+            if recovered_retirement and (
+                lifecycle_recovery_receipt is None or not record.is_terminal
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_retirement_lacks_terminal_authority"
+                )
+        return preservation
 
     @staticmethod
     def _stable_preservation_authority(
@@ -2694,6 +5125,854 @@ class DatabasePortalExecutionBridge:
             )
         return terminal
 
+    @staticmethod
+    def _protected_recovery_artifacts(root: Path) -> tuple[dict[str, Any], ...]:
+        """Read the bounded protected-recovery artifact set exactly once."""
+
+        records: list[dict[str, Any]] = []
+        try:
+            entries = root.iterdir()
+            for entry in entries:
+                name = entry.name
+                selected = (
+                    name
+                    in {
+                        "implementation-protected-path-active.json",
+                        "implementation-protected-path-incident.json",
+                    }
+                    or name.startswith(_PROTECTED_STATE_CLEARANCE_PREFIX)
+                    or name.startswith(_PROTECTED_STATE_MARKER_BLOB_PREFIX)
+                    or name.startswith("implementation-protected-path-retired-")
+                    or name.startswith(_PROTECTED_STATE_RETIREMENT_PREFIX)
+                    or name.startswith(_PROTECTED_STATE_ADOPTION_PREFIX)
+                )
+                if not selected:
+                    continue
+                if len(records) >= 32:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_protected_artifact_bound_exceeded"
+                    )
+                payload, _identity = _stable_regular_bytes(
+                    entry,
+                    noun="protected-state recovery artifact",
+                )
+                records.append(
+                    {
+                        "filename": name,
+                        "sha256": _sha256_bytes(payload),
+                        "size": len(payload),
+                        "payload": payload,
+                    }
+                )
+        except DatabasePortalBridgeDeferred:
+            raise
+        except OSError as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_artifact_scan_failed"
+            ) from exc
+        return tuple(sorted(records, key=lambda item: item["filename"]))
+
+    def _verify_completed_protected_history(
+        self,
+        *,
+        recovery: Mapping[str, Any],
+        record: Any,
+        prior_paths: DatabasePortalAttemptPaths,
+        abandoned_binding: Mapping[str, Any],
+        prior_binding: Mapping[str, Any],
+        artifacts: Sequence[Mapping[str, Any]],
+    ) -> None:
+        """Verify and ignore one exact closed historical marker recovery."""
+
+        if (
+            recovery.get("phase") != "committed"
+            or not record.is_terminal
+            or recovery.get("terminal_lifecycle_authority_id")
+            != _sha256_bytes(_canonical_json(record.to_dict()))
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_completed_history_unproven"
+            )
+        if not artifacts:
+            return
+        by_prefix = {
+            "active": [
+                item
+                for item in artifacts
+                if item["filename"]
+                == "implementation-protected-path-active.json"
+            ],
+            "incident": [
+                item
+                for item in artifacts
+                if item["filename"]
+                == "implementation-protected-path-incident.json"
+            ],
+            "prepared": [
+                item
+                for item in artifacts
+                if item["filename"].startswith(_PROTECTED_STATE_CLEARANCE_PREFIX)
+            ],
+            "blob": [
+                item
+                for item in artifacts
+                if item["filename"].startswith(_PROTECTED_STATE_MARKER_BLOB_PREFIX)
+            ],
+            "retired": [
+                item
+                for item in artifacts
+                if item["filename"].startswith(
+                    "implementation-protected-path-retired-"
+                )
+            ],
+            "retirement": [
+                item
+                for item in artifacts
+                if item["filename"].startswith(_PROTECTED_STATE_RETIREMENT_PREFIX)
+            ],
+            "adoption": [
+                item
+                for item in artifacts
+                if item["filename"].startswith(_PROTECTED_STATE_ADOPTION_PREFIX)
+            ],
+        }
+        if (
+            by_prefix["active"]
+            or by_prefix["incident"]
+            or any(
+                len(by_prefix[name]) != 1
+                for name in ("prepared", "blob", "retired", "retirement")
+            )
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_completed_history_ambiguous"
+            )
+        prepared_item = by_prefix["prepared"][0]
+        blob_item = by_prefix["blob"][0]
+        retired_item = by_prefix["retired"][0]
+        retirement_item = by_prefix["retirement"][0]
+        prepared = self._strict_protected_recovery_receipt(
+            prior_paths.root / prepared_item["filename"],
+            fields=_PREPARED_PROTECTED_CLEARANCE_FIELDS,
+            schema=CROSS_ATTEMPT_PROTECTED_STATE_CLEARANCE_SCHEMA,
+            noun="completed protected-state clearance receipt",
+        )
+        retirement = self._strict_protected_recovery_receipt(
+            prior_paths.root / retirement_item["filename"],
+            fields=_PROTECTED_RETIREMENT_FIELDS,
+            schema=CROSS_ATTEMPT_PROTECTED_STATE_RETIREMENT_SCHEMA,
+            noun="completed protected-state retirement receipt",
+        )
+        clearance_receipt_id = prepared.get("receipt_id")
+        clearance_body = dict(prepared)
+        clearance_body.pop("receipt_id", None)
+        clearance_id = clearance_body.pop("clearance_id", None)
+        retirement_receipt_id = retirement.get("receipt_id")
+        retirement_body = dict(retirement)
+        retirement_body.pop("receipt_id", None)
+        retirement_id = retirement_body.pop("retirement_id", None)
+        marker_raw = bytes(blob_item["payload"])
+        try:
+            marker = json.loads(
+                marker_raw.decode("utf-8", errors="strict"),
+                object_pairs_hook=_reject_duplicate_control_keys,
+                parse_constant=lambda constant: (_ for _ in ()).throw(
+                    ValueError(f"nonfinite JSON constant: {constant}")
+                ),
+            )
+        except (UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_completed_marker_malformed"
+            ) from exc
+        marker_digest = hashlib.sha256(marker_raw).hexdigest()
+        stable_recovery_preservation = self._stable_preservation_authority(
+            recovery["preservation"]
+        )
+        if (
+            type(marker) is not dict
+            or set(marker) != _ACTIVE_PROTECTED_STATE_FIELDS
+            or bytes(retired_item["payload"]) != marker_raw
+            or prepared.get("active_marker") != marker
+            or prepared.get("active_marker_sha256") != f"sha256:{marker_digest}"
+            or prepared.get("active_marker_blob_filename")
+            != blob_item["filename"]
+            or prepared.get("current_attempt_id")
+            != abandoned_binding["attempt_id"]
+            or prepared.get("prior_attempt_id") != prior_binding["attempt_id"]
+            or prepared.get("current_binding_id")
+            != abandoned_binding["binding_id"]
+            or prepared.get("prior_binding_id") != prior_binding["binding_id"]
+            or prepared.get("lifecycle_record_id")
+            != recovery["lifecycle_record_id"]
+            or prepared.get("lifecycle_authority_id")
+            != recovery["lifecycle_authority_id"]
+            or prepared.get("lifecycle_transition_basis_id")
+            != recovery["lifecycle_transition_basis_id"]
+            or prepared.get("prior_lifecycle_state")
+            != recovery["prior_lifecycle_state"]
+            or prepared.get("prior_lifecycle_fence")
+            != recovery["prior_lifecycle_fence"]
+            or prepared.get("expected_terminal_lifecycle_fence")
+            != recovery["expected_terminal_lifecycle_fence"]
+            or prepared.get("terminal_reason") != recovery["terminal_reason"]
+            or prepared.get("database_authority_id")
+            != content_identity(recovery["database_authority"])
+            or prepared.get("portal_state_binding_id")
+            != content_identity(recovery["portal_state_binding"])
+            or type(prepared.get("preservation")) is not dict
+            or self._stable_preservation_authority(prepared["preservation"])
+            != stable_recovery_preservation
+            or clearance_id != _sha256_bytes(_canonical_json(clearance_body))
+            or clearance_receipt_id
+            != _sha256_bytes(
+                _canonical_json({**clearance_body, "clearance_id": clearance_id})
+            )
+            or prepared_item["filename"]
+            != f"{_PROTECTED_STATE_CLEARANCE_PREFIX}{str(clearance_id).removeprefix('sha256:')[:24]}.json"
+            or retired_item["filename"]
+            != "implementation-protected-path-retired-"
+            f"{str(clearance_id).removeprefix('sha256:')[:24]}.json"
+            or retirement.get("prepared_clearance") != prepared
+            or retirement.get("prepared_clearance_filename")
+            != prepared_item["filename"]
+            or retirement.get("retired_marker_filename")
+            != retired_item["filename"]
+            or retirement.get("active_marker_sha256")
+            != prepared["active_marker_sha256"]
+            or retirement_id != _sha256_bytes(_canonical_json(retirement_body))
+            or retirement_receipt_id
+            != _sha256_bytes(
+                _canonical_json({**retirement_body, "retirement_id": retirement_id})
+            )
+            or any(
+                prepared.get(field) is not expected
+                for field, expected in {
+                    "active_marker_retired": False,
+                    "worktree_deleted": False,
+                    "provider_dispatched": False,
+                    "mutation_authority": False,
+                    "merge_authority": False,
+                    "task_completion_authority": False,
+                    "worker_self_approval": False,
+                    "normal_validation_required": True,
+                }.items()
+            )
+            or any(
+                retirement.get(field) is not expected
+                for field, expected in {
+                    "active_marker_retired": True,
+                    "worktree_deleted": False,
+                    "provider_dispatched": False,
+                    "mutation_authority": False,
+                    "merge_authority": False,
+                    "task_completion_authority": False,
+                    "worker_self_approval": False,
+                    "normal_validation_required": True,
+                }.items()
+            )
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_completed_history_changed"
+            )
+        for item in by_prefix["adoption"]:
+            adoption = self._strict_protected_recovery_receipt(
+                prior_paths.root / item["filename"],
+                fields=_PROTECTED_ADOPTION_FIELDS,
+                schema=CROSS_ATTEMPT_PROTECTED_STATE_ADOPTION_SCHEMA,
+                noun="completed protected-state adoption receipt",
+            )
+            adoption_receipt_id = adoption.get("receipt_id")
+            adoption_body = dict(adoption)
+            adoption_body.pop("receipt_id", None)
+            adoption_id = adoption_body.pop("adoption_id", None)
+            if (
+                adoption.get("lifecycle_recovery_id") != recovery["recovery_id"]
+                or adoption.get("abandoned_attempt_id")
+                != abandoned_binding["attempt_id"]
+                or adoption.get("abandoned_binding_id")
+                != abandoned_binding["binding_id"]
+                or adoption.get("prior_attempt_id") != prior_binding["attempt_id"]
+                or adoption.get("prior_binding_id") != prior_binding["binding_id"]
+                or adoption_id != _sha256_bytes(_canonical_json(adoption_body))
+                or adoption_receipt_id
+                != _sha256_bytes(
+                    _canonical_json({**adoption_body, "adoption_id": adoption_id})
+                )
+                or any(
+                    adoption.get(field) is not expected
+                    for field, expected in {
+                        "provider_dispatched": False,
+                        "mutation_authority": False,
+                        "merge_authority": False,
+                        "task_completion_authority": False,
+                        "worker_self_approval": False,
+                        "normal_validation_required": True,
+                    }.items()
+                )
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_completed_adoption_changed"
+                )
+
+    def _resume_abandoned_recovery_transaction(
+        self,
+        *,
+        attempt: Any,
+        binding: Mapping[str, Any],
+        daemon: Any,
+        candidates: Sequence[tuple[DatabasePortalAttemptPaths, dict[str, Any]]],
+        records: Sequence[Any],
+    ) -> dict[str, Any] | None:
+        """Adopt and finish one exact DB-authorized prior recovery transaction."""
+
+        current_paths = self._paths(attempt)
+        current_directory_identity = self._seal_attempt_directory(
+            current_paths,
+            attempt_id=binding["attempt_id"],
+            create=False,
+        )
+        if (
+            self._strict_binding(current_paths.binding) != dict(binding)
+            or not self._verify_projection(current_paths, binding)
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_current_binding_changed"
+            )
+        by_binding = {candidate[1]["binding_id"]: candidate for candidate in candidates}
+        if len(by_binding) != len(candidates):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_prior_binding_ambiguous"
+            )
+        transactions: list[
+            tuple[
+                DatabasePortalAttemptPaths,
+                dict[str, Any],
+                DatabasePortalAttemptPaths,
+                dict[str, Any],
+                dict[str, Any],
+                Any,
+                dict[str, int],
+                dict[str, int],
+                str,
+                tuple[dict[str, Any], ...],
+            ]
+        ] = []
+        for abandoned_paths, abandoned_binding in candidates:
+            recovery_path = (
+                abandoned_paths.root / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+            )
+            if not os.path.lexists(recovery_path):
+                continue
+            recovery_raw, _recovery_identity = _stable_regular_bytes(
+                recovery_path,
+                noun="abandoned lifecycle recovery receipt",
+            )
+            recovery = self._read_recovery_receipt(recovery_path)
+            if (
+                recovery.get("current_binding_id")
+                != abandoned_binding["binding_id"]
+                or recovery.get("current_attempt_id")
+                != abandoned_binding["attempt_id"]
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_abandoned_recovery_binding_mismatch"
+                )
+            prior_candidate = by_binding.get(recovery.get("prior_binding_id"))
+            if prior_candidate is None:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_abandoned_recovery_prior_missing"
+                )
+            prior_paths, prior_binding = prior_candidate
+            recovery = self._validated_recovery_receipt(
+                recovery,
+                current_binding=abandoned_binding,
+                prior_binding=prior_binding,
+            )
+            matching_records = [
+                record
+                for record in records
+                if record.record_id == recovery["lifecycle_record_id"]
+                and str(Path(record.state_dir).resolve(strict=False))
+                == str(prior_paths.root.resolve(strict=True))
+                and self._lifecycle_transition_basis_id(record)
+                == recovery["lifecycle_transition_basis_id"]
+                and (
+                    (
+                        record.is_terminal
+                        and int(record.fence)
+                        == int(recovery["expected_terminal_lifecycle_fence"])
+                        and record.terminal_reason == recovery["terminal_reason"]
+                    )
+                    or (
+                        record.is_nonterminal
+                        and int(record.fence)
+                        == int(recovery["prior_lifecycle_fence"])
+                        and record.state.value == recovery["prior_lifecycle_state"]
+                        and _sha256_bytes(_canonical_json(record.to_dict()))
+                        == recovery["lifecycle_authority_id"]
+                    )
+                )
+            ]
+            if len(matching_records) != 1:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_abandoned_transaction_unproven"
+                )
+            abandoned_directory_identity = self._seal_attempt_directory(
+                abandoned_paths,
+                attempt_id=abandoned_binding["attempt_id"],
+                create=False,
+            )
+            prior_directory_identity = self._seal_attempt_directory(
+                prior_paths,
+                attempt_id=prior_binding["attempt_id"],
+                create=False,
+            )
+            artifacts = self._protected_recovery_artifacts(prior_paths.root)
+            if recovery["phase"] == "committed":
+                self._verify_completed_protected_history(
+                    recovery=recovery,
+                    record=matching_records[0],
+                    prior_paths=prior_paths,
+                    abandoned_binding=abandoned_binding,
+                    prior_binding=prior_binding,
+                    artifacts=artifacts,
+                )
+                continue
+            transactions.append(
+                (
+                    abandoned_paths,
+                    abandoned_binding,
+                    prior_paths,
+                    prior_binding,
+                    recovery,
+                    matching_records[0],
+                    abandoned_directory_identity,
+                    prior_directory_identity,
+                    _sha256_bytes(recovery_raw),
+                    artifacts,
+                )
+            )
+        if not transactions:
+            return None
+        if len(transactions) != 1:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_abandoned_recovery_ambiguous"
+            )
+        (
+            abandoned_paths,
+            abandoned_binding,
+            prior_paths,
+            prior_binding,
+            recovery,
+            selected_record,
+            abandoned_directory_identity,
+            prior_directory_identity,
+            recovery_digest,
+            selected_artifacts,
+        ) = transactions[0]
+        successor_authority = self._validated_prior_authority(
+            self.prior_attempt_authority(
+                attempt,
+                binding,
+                abandoned_binding,
+            ),
+            current_binding=binding,
+            prior_binding=abandoned_binding,
+        )
+        if (
+            int(successor_authority["current_attempt_number"])
+            <= int(recovery["current_attempt_number"])
+            or int(successor_authority["current_fencing_token"])
+            <= int(recovery["current_fencing_token"])
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_successor_adoption_not_newer"
+            )
+        acquire = getattr(daemon, "_acquire_checkout_mutation_lease", None)
+        release = getattr(daemon, "_release_checkout_mutation_lease", None)
+        if not callable(acquire) or not callable(release):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_checkout_lock_unavailable"
+            )
+        checkout_lease: Any | None = None
+        try:
+            checkout_lease, outcome, _owner, _waited = acquire(
+                task_id=selected_record.task_id,
+                attempt=int(selected_record.attempt),
+                branch=selected_record.branch,
+                operation="cross_attempt_successor_adoption",
+                timeout_seconds=0.0,
+            )
+            if checkout_lease is None or outcome != "acquired":
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_checkout_lock_busy"
+                )
+            if (
+                self._seal_attempt_directory(
+                    current_paths,
+                    attempt_id=binding["attempt_id"],
+                    create=False,
+                )
+                != current_directory_identity
+                or self._seal_attempt_directory(
+                    abandoned_paths,
+                    attempt_id=abandoned_binding["attempt_id"],
+                    create=False,
+                )
+                != abandoned_directory_identity
+                or self._seal_attempt_directory(
+                    prior_paths,
+                    attempt_id=prior_binding["attempt_id"],
+                    create=False,
+                )
+                != prior_directory_identity
+                or self._strict_binding(current_paths.binding) != dict(binding)
+                or self._strict_binding(abandoned_paths.binding)
+                != abandoned_binding
+                or self._strict_binding(prior_paths.binding) != prior_binding
+                or not self._verify_projection(current_paths, binding)
+                or not self._verify_projection(abandoned_paths, abandoned_binding)
+                or not self._verify_projection(prior_paths, prior_binding)
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_adoption_binding_changed"
+                )
+            locked_recovery_raw, _locked_recovery_identity = _stable_regular_bytes(
+                abandoned_paths.root
+                / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME,
+                noun="locked abandoned lifecycle recovery receipt",
+            )
+            locked_recovery = self._validated_recovery_receipt(
+                self._read_recovery_receipt(
+                    abandoned_paths.root
+                    / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+                ),
+                current_binding=abandoned_binding,
+                prior_binding=prior_binding,
+            )
+            locked_successor_authority = self._validated_prior_authority(
+                self.prior_attempt_authority(
+                    attempt,
+                    binding,
+                    abandoned_binding,
+                ),
+                current_binding=binding,
+                prior_binding=abandoned_binding,
+            )
+            locked_artifacts = self._protected_recovery_artifacts(
+                prior_paths.root
+            )
+            if (
+                _sha256_bytes(locked_recovery_raw) != recovery_digest
+                or locked_recovery != recovery
+                or locked_successor_authority != successor_authority
+                or locked_artifacts != selected_artifacts
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_adoption_evidence_changed"
+                )
+            try:
+                exact_record = daemon.worktree_lifecycle.require_exact_dead_owner(
+                    selected_record.workspace_path,
+                    allow_terminal=bool(selected_record.is_terminal),
+                    **self._lifecycle_expected(selected_record),
+                )
+            except Exception as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_abandoned_record_changed"
+                ) from exc
+            if exact_record != selected_record:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_abandoned_record_changed"
+                )
+            portal_state = self._prior_portal_state_binding(
+                daemon,
+                prior_paths,
+                prior_binding,
+                exact_record,
+            )
+            portal_state["attempt_directory_identity"] = prior_directory_identity
+            if portal_state != recovery["portal_state_binding"]:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_abandoned_portal_state_changed"
+                )
+            artifact_records = [
+                {
+                    "filename": item["filename"],
+                    "sha256": item["sha256"],
+                    "size": item["size"],
+                }
+                for item in locked_artifacts
+            ]
+            adoption_body = {
+                "schema": CROSS_ATTEMPT_PROTECTED_STATE_ADOPTION_SCHEMA,
+                "task_id": exact_record.task_id,
+                "successor_attempt_id": binding["attempt_id"],
+                "successor_binding_id": binding["binding_id"],
+                "abandoned_attempt_id": abandoned_binding["attempt_id"],
+                "abandoned_binding_id": abandoned_binding["binding_id"],
+                "prior_attempt_id": prior_binding["attempt_id"],
+                "prior_binding_id": prior_binding["binding_id"],
+                "lifecycle_recovery_id": recovery["recovery_id"],
+                "lifecycle_recovery_receipt_id": recovery["receipt_id"],
+                "lifecycle_recovery_phase": recovery["phase"],
+                "observed_lifecycle_state": exact_record.state.value,
+                "observed_lifecycle_fence": int(exact_record.fence),
+                "observed_lifecycle_authority_id": _sha256_bytes(
+                    _canonical_json(exact_record.to_dict())
+                ),
+                "successor_database_authority": successor_authority,
+                "protected_artifacts": sorted(
+                    artifact_records,
+                    key=lambda item: item["filename"],
+                ),
+                "adoption_operation": "finish_exact_prepared_recovery_only",
+                "provider_dispatched": False,
+                "mutation_authority": False,
+                "merge_authority": False,
+                "task_completion_authority": False,
+                "worker_self_approval": False,
+                "normal_validation_required": True,
+            }
+            adoption_id = _sha256_bytes(_canonical_json(adoption_body))
+            adoption_receipt = {**adoption_body, "adoption_id": adoption_id}
+            adoption_receipt["receipt_id"] = _sha256_bytes(
+                _canonical_json(adoption_receipt)
+            )
+            adoption_filename = (
+                f"{_PROTECTED_STATE_ADOPTION_PREFIX}"
+                f"{adoption_id.removeprefix('sha256:')[:24]}.json"
+            )
+            _publish_immutable_file(
+                prior_paths.root / adoption_filename,
+                json.dumps(
+                    adoption_receipt,
+                    indent=2,
+                    sort_keys=True,
+                    allow_nan=False,
+                ).encode("utf-8")
+                + b"\n",
+                sealed_directory_identity=prior_directory_identity,
+            )
+            observed_adoption = self._strict_protected_recovery_receipt(
+                prior_paths.root / adoption_filename,
+                fields=_PROTECTED_ADOPTION_FIELDS,
+                schema=CROSS_ATTEMPT_PROTECTED_STATE_ADOPTION_SCHEMA,
+                noun="protected-state successor adoption receipt",
+            )
+            if observed_adoption != adoption_receipt:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_successor_adoption_changed"
+                )
+            successor_adoption = {
+                "current_binding": dict(binding),
+                "database_authority": successor_authority,
+            }
+            if exact_record.is_nonterminal:
+                preterminal_preservation = self._preserved_quiescent_worktree(
+                    daemon,
+                    exact_record,
+                    prior_paths,
+                    attempt=attempt,
+                    current_binding=abandoned_binding,
+                    prior_binding=prior_binding,
+                    database_authority=recovery["database_authority"],
+                    portal_state_binding=portal_state,
+                    lifecycle_recovery_receipt=recovery,
+                    perform_marker_retirement=False,
+                    publish_marker_clearance=True,
+                    successor_adoption=successor_adoption,
+                )
+                if self._stable_preservation_authority(
+                    preterminal_preservation
+                ) != self._stable_preservation_authority(
+                    recovery["preservation"]
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_adoption_preservation_changed"
+                    )
+                repeated_authority = self._validated_prior_authority(
+                    self.prior_attempt_authority(
+                        attempt,
+                        binding,
+                        abandoned_binding,
+                    ),
+                    current_binding=binding,
+                    prior_binding=abandoned_binding,
+                )
+                if repeated_authority != successor_authority:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_successor_authority_changed"
+                    )
+                try:
+                    exact_dead = daemon.worktree_lifecycle.require_exact_dead_owner(
+                        exact_record.workspace_path,
+                        **self._lifecycle_expected(exact_record),
+                    )
+                    if exact_dead != exact_record:
+                        raise DatabasePortalBridgeDeferred(
+                            "cross_attempt_lifecycle_abandoned_record_changed"
+                        )
+                    daemon.worktree_lifecycle.finalize_exact_dead_owner(
+                        exact_record.workspace_path,
+                        expected_owner=exact_record.owner,
+                        reason=recovery["terminal_reason"],
+                        retain_terminal=True,
+                        **self._lifecycle_expected(exact_record),
+                    )
+                except DatabasePortalBridgeDeferred:
+                    raise
+                except Exception as exc:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_adoption_finalize_race"
+                    ) from exc
+                terminal = self._verify_terminal_lifecycle(
+                    daemon.worktree_lifecycle,
+                    exact_record,
+                    terminal_reason=recovery["terminal_reason"],
+                )
+            else:
+                terminal = exact_record
+            preservation = self._preserved_quiescent_worktree(
+                daemon,
+                terminal,
+                prior_paths,
+                attempt=attempt,
+                current_binding=abandoned_binding,
+                prior_binding=prior_binding,
+                database_authority=recovery["database_authority"],
+                portal_state_binding=portal_state,
+                lifecycle_recovery_receipt=recovery,
+                perform_marker_retirement=True,
+                publish_marker_clearance=True,
+                successor_adoption=successor_adoption,
+            )
+            final_preservation = self._preserved_quiescent_worktree(
+                daemon,
+                terminal,
+                prior_paths,
+                attempt=attempt,
+                current_binding=abandoned_binding,
+                prior_binding=prior_binding,
+                database_authority=recovery["database_authority"],
+                portal_state_binding=portal_state,
+                lifecycle_recovery_receipt=recovery,
+                perform_marker_retirement=True,
+                publish_marker_clearance=True,
+                successor_adoption=successor_adoption,
+            )
+            if self._stable_preservation_authority(
+                final_preservation
+            ) != self._stable_preservation_authority(
+                recovery["preservation"]
+            ) or self._stable_preservation_authority(
+                preservation
+            ) != self._stable_preservation_authority(
+                recovery["preservation"]
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_successor_adoption_changed"
+                )
+            repeated_authority = self._validated_prior_authority(
+                self.prior_attempt_authority(
+                    attempt,
+                    binding,
+                    abandoned_binding,
+                ),
+                current_binding=binding,
+                prior_binding=abandoned_binding,
+            )
+            if repeated_authority != successor_authority:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_successor_authority_changed"
+                )
+            final_recovery_raw, _final_recovery_identity = _stable_regular_bytes(
+                abandoned_paths.root
+                / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME,
+                noun="abandoned lifecycle recovery receipt before commit",
+            )
+            if (
+                _sha256_bytes(final_recovery_raw) != recovery_digest
+                or self._validated_recovery_receipt(
+                    self._read_recovery_receipt(
+                        abandoned_paths.root
+                        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+                    ),
+                    current_binding=abandoned_binding,
+                    prior_binding=prior_binding,
+                )
+                != recovery
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_abandoned_recovery_changed"
+                )
+            committed_body = {
+                field: recovery[field]
+                for field in _RECOVERY_RECEIPT_FIELDS.difference(
+                    {"recovery_id", "receipt_id"}
+                )
+            }
+            committed_body["phase"] = "committed"
+            committed_body["terminal_lifecycle_authority_id"] = _sha256_bytes(
+                _canonical_json(terminal.to_dict())
+            )
+            committed = self._seal_recovery_receipt(committed_body)
+            if committed["recovery_id"] != recovery["recovery_id"]:
+                raise DatabasePortalBridgeError(
+                    "cross-attempt lifecycle adoption changed recovery identity"
+                )
+            _atomic_write(
+                abandoned_paths.root
+                / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME,
+                json.dumps(
+                    committed,
+                    indent=2,
+                    sort_keys=True,
+                    allow_nan=False,
+                ).encode("utf-8")
+                + b"\n",
+                sealed_directory_identity=abandoned_directory_identity,
+            )
+            observed_committed = self._validated_recovery_receipt(
+                self._read_recovery_receipt(
+                    abandoned_paths.root
+                    / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+                ),
+                current_binding=abandoned_binding,
+                prior_binding=prior_binding,
+            )
+            if observed_committed != committed:
+                raise DatabasePortalBridgeError(
+                    "cross-attempt lifecycle adopted receipt was not committed"
+                )
+            self._verify_completed_protected_history(
+                recovery=committed,
+                record=terminal,
+                prior_paths=prior_paths,
+                abandoned_binding=abandoned_binding,
+                prior_binding=prior_binding,
+                artifacts=self._protected_recovery_artifacts(prior_paths.root),
+            )
+        finally:
+            if checkout_lease is not None:
+                try:
+                    released = bool(release(checkout_lease))
+                except Exception as exc:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_checkout_lock_release_failed"
+                    ) from exc
+                if not released:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_checkout_lock_release_failed"
+                    )
+        return {
+            "attempted": True,
+            "recovered": True,
+            "adopted": True,
+            "adoption_id": adoption_id,
+            "adoption_receipt_path": str(prior_paths.root / adoption_filename),
+        }
+
     def _recover_superseded_attempt_lifecycle(
         self,
         *,
@@ -2750,6 +6029,15 @@ class DatabasePortalExecutionBridge:
             str(prior_paths.root.resolve(strict=True))
             for prior_paths, _prior_binding in candidates
         }
+        adopted = self._resume_abandoned_recovery_transaction(
+            attempt=attempt,
+            binding=binding,
+            daemon=daemon,
+            candidates=candidates,
+            records=records,
+        )
+        if adopted is not None:
+            return adopted
         # A malformed sibling joined to a live lifecycle record is relevant
         # authority, not ignorable junk.  It must block rather than disappear
         # from candidate discovery.
@@ -2871,7 +6159,7 @@ class DatabasePortalExecutionBridge:
                 "cross_attempt_lifecycle_authority_ambiguous"
             )
         prior_paths, prior_binding, record = matches[0]
-        terminal_reason = "superseded_database_attempt_preserved"
+        terminal_reason = _SUPERSEDED_LIFECYCLE_TERMINAL_REASON
         if record.is_terminal and existing_receipt is None:
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_lifecycle_terminal_evidence_unbound"
@@ -3049,6 +6337,14 @@ class DatabasePortalExecutionBridge:
                 daemon,
                 verified,
                 prior_paths,
+                attempt=attempt,
+                current_binding=binding,
+                prior_binding=prior_binding,
+                database_authority=authority,
+                portal_state_binding=portal_state_binding,
+                lifecycle_recovery_receipt=existing_receipt,
+                perform_marker_retirement=False,
+                publish_marker_clearance=False,
             )
             receipt_preservation = preservation
             if existing_receipt is not None:
@@ -3167,6 +6463,14 @@ class DatabasePortalExecutionBridge:
                 daemon,
                 verified,
                 prior_paths,
+                attempt=attempt,
+                current_binding=binding,
+                prior_binding=prior_binding,
+                database_authority=authority,
+                portal_state_binding=portal_state_binding,
+                lifecycle_recovery_receipt=existing_receipt,
+                perform_marker_retirement=False,
+                publish_marker_clearance=True,
             )
             try:
                 second_authority = self._validated_prior_authority(
@@ -3258,6 +6562,44 @@ class DatabasePortalExecutionBridge:
             ):
                 raise DatabasePortalBridgeDeferred(
                     "cross_attempt_lifecycle_terminal_basis_mismatch"
+                )
+            post_terminal_preservation = self._preserved_quiescent_worktree(
+                daemon,
+                terminal,
+                prior_paths,
+                attempt=attempt,
+                current_binding=binding,
+                prior_binding=prior_binding,
+                database_authority=authority,
+                portal_state_binding=portal_state_binding,
+                lifecycle_recovery_receipt=existing_receipt,
+                perform_marker_retirement=True,
+                publish_marker_clearance=True,
+            )
+            if self._stable_preservation_authority(
+                post_terminal_preservation
+            ) != self._stable_preservation_authority(preservation):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_post_terminal_preservation_changed"
+                )
+            final_preservation = self._preserved_quiescent_worktree(
+                daemon,
+                terminal,
+                prior_paths,
+                attempt=attempt,
+                current_binding=binding,
+                prior_binding=prior_binding,
+                database_authority=authority,
+                portal_state_binding=portal_state_binding,
+                lifecycle_recovery_receipt=existing_receipt,
+                perform_marker_retirement=True,
+                publish_marker_clearance=True,
+            )
+            if self._stable_preservation_authority(
+                final_preservation
+            ) != self._stable_preservation_authority(preservation):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_final_preservation_changed"
                 )
             committed_body = {
                 field: prepared[field]

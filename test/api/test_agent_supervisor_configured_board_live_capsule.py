@@ -804,6 +804,9 @@ def test_sealed_daemon_verified_admission_reaches_bridge_without_inner_cli(
     assert captured_bridge[0].configured_board_admission_cid == (
         admission.admission_cid
     )
+    assert json.loads(
+        captured_bridge[0]._configured_board_live_admission_json
+    ) == admission.as_dict()
     assert "--configured-board-live-admission-json" not in inner_argv
     assert daemon_module._IMPORTED_CONFIGURED_BOARD_LIVE_ADMISSION is (
         original_admission

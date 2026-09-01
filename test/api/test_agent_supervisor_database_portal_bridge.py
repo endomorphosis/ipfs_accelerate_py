@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -28,8 +29,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     database_portal_bridge as bridge_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA,
     CROSS_ATTEMPT_LIFECYCLE_AUTHORITY_SCHEMA,
     CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME,
+    CROSS_ATTEMPT_PROTECTED_STATE_CLEARANCE_SCHEMA,
+    CROSS_ATTEMPT_PROTECTED_STATE_RETIREMENT_SCHEMA,
     DATABASE_PORTAL_ACCEPTED_SOURCE_TRANSITION_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V1,
@@ -1294,6 +1298,8 @@ def _cross_attempt_recovery_fixture(
     *,
     authority_allowed: bool = True,
     prior_task_revision: int = 10,
+    protected_marker: bool = False,
+    nested_output_path: str = "",
 ) -> tuple[
     DatabasePortalExecutionBridge,
     DatabaseTaskAttempt,
@@ -1318,8 +1324,46 @@ def _cross_attempt_recovery_fixture(
     git("config", "user.name", "Portal Test")
     git("config", "user.email", "portal@example.invalid")
     (repository / "seed.py").write_text("SEED = True\n", encoding="utf-8")
-    git("add", "seed.py")
+    (repository / "control.todo.md").write_text(
+        "# protected control\n",
+        encoding="utf-8",
+    )
+    git("add", "seed.py", "control.todo.md")
     git("commit", "-q", "-m", "seed")
+
+    if nested_output_path:
+        nested_source = tmp_path / "nested-source"
+        nested_source.mkdir()
+
+        def nested_git(*arguments: str) -> str:
+            return subprocess.run(
+                ["git", *arguments],
+                cwd=nested_source,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+        nested_git("init", "-q")
+        nested_git("branch", "-M", "main")
+        nested_git("config", "user.name", "Nested Test")
+        nested_git("config", "user.email", "nested@example.invalid")
+        (nested_source / "README.md").write_text(
+            "nested\n",
+            encoding="utf-8",
+        )
+        nested_git("add", "README.md")
+        nested_git("commit", "-q", "-m", "nested seed")
+        git(
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "-q",
+            str(nested_source),
+            "external/ipfs_datasets_py",
+        )
+        git("commit", "-q", "-am", "add nested datasets authority")
 
     worktree_root = tmp_path / "worktrees"
     worktree_root.mkdir()
@@ -1327,9 +1371,27 @@ def _cross_attempt_recovery_fixture(
     prior_branch = "implementation/lgswf-004-attempt-1"
     git("branch", prior_branch)
     git("worktree", "add", "-q", str(workspace), prior_branch)
+    if nested_output_path:
+        git(
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "update",
+            "--init",
+            "-q",
+            cwd=workspace,
+        )
 
     current_record = _record()
     prior_record = _record()
+    if nested_output_path:
+        declared = f"external/ipfs_datasets_py/{nested_output_path}"
+        for selected_record in (current_record, prior_record):
+            selected_record.outputs = ({"path": declared},)
+            selected_record.body = {
+                **selected_record.body,
+                "write_scope": [declared],
+            }
     prior_record.revision = prior_task_revision
     task_source = _TaskSource(current_record)
     attempt_root = tmp_path / "attempts"
@@ -1428,6 +1490,9 @@ def _cross_attempt_recovery_fixture(
     portals: list[object] = []
 
     class RecoveryPortal(_CompletingPortal):
+        implementation_protected_paths = ("control.todo.md",)
+        repo_root = repository
+
         def __init__(self, paths: object, task_alias: str) -> None:
             super().__init__(paths, task_alias)
             self.worktree_lifecycle = store
@@ -1469,6 +1534,31 @@ def _cross_attempt_recovery_fixture(
             self.run_count += 1
             return super().run_once()
 
+        _implementation_protected_path_snapshot = (
+            PortalImplementationDaemon._implementation_protected_path_snapshot
+        )
+        _implementation_protected_path_identity = staticmethod(
+            PortalImplementationDaemon._implementation_protected_path_identity
+        )
+        _implementation_protected_snapshot_errors = staticmethod(
+            PortalImplementationDaemon._implementation_protected_snapshot_errors
+        )
+        _implementation_protected_path_mutations = (
+            PortalImplementationDaemon._implementation_protected_path_mutations
+        )
+        _implementation_protected_change_kind = staticmethod(
+            PortalImplementationDaemon._implementation_protected_change_kind
+        )
+        _authorized_concurrent_protected_path_update = (
+            PortalImplementationDaemon._authorized_concurrent_protected_path_update
+        )
+        _implementation_protected_git_head = staticmethod(
+            PortalImplementationDaemon._implementation_protected_git_head
+        )
+        _trusted_protected_path_commit = staticmethod(
+            PortalImplementationDaemon._trusted_protected_path_commit
+        )
+
     def factory(paths: object, alias: str) -> RecoveryPortal:
         portal = RecoveryPortal(paths, alias)
         portals.append(portal)
@@ -1488,7 +1578,9 @@ def _cross_attempt_recovery_fixture(
             "task_alias": current_binding["task_alias"],
             "current_attempt_id": current_binding["attempt_id"],
             "prior_attempt_id": old_binding["attempt_id"],
-            "current_attempt_number": current_attempt.attempt_number,
+            "current_attempt_number": int(
+                _attempt_value.attempt_number
+            ),
             "prior_attempt_number": prior_attempt.attempt_number,
             "current_binding_id": current_binding["binding_id"],
             "prior_binding_id": old_binding["binding_id"],
@@ -1523,6 +1615,33 @@ def _cross_attempt_recovery_fixture(
         task_header_prefix="## LGSWF-",
         prior_attempt_authority=authority,
     )
+    if nested_output_path:
+        nested_output = workspace / "external/ipfs_datasets_py" / nested_output_path
+        nested_output.parent.mkdir(parents=True, exist_ok=True)
+        nested_output.write_text("VALUE = 'preserve me'\n", encoding="utf-8")
+    if protected_marker:
+        probe = RecoveryPortal(prior_paths, current_attempt.task_alias)
+        snapshot = probe._implementation_protected_path_snapshot(workspace)
+        (prior_paths.root / "implementation-protected-path-active.json").write_text(
+            json.dumps(
+                {
+                    "schema": "implementation-protected-path-active-v1",
+                    "recorded_at": "2026-09-01T00:00:00Z",
+                    "task_id": current_attempt.task_alias,
+                    "attempt": 1,
+                    "workspace_path": str(workspace.resolve()),
+                    "ephemeral_worktree": True,
+                    "protected_paths": list(
+                        probe.implementation_protected_paths
+                    ),
+                    "snapshot": snapshot,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
     return bridge, current_attempt, store, workspace, portals
 
 
@@ -1561,6 +1680,1016 @@ def test_bridge_exactly_retires_preserved_superseded_attempt_lifecycle(
     assert workspace.is_dir()
     assert portals and portals[0].run_count == 1
     assert portals[0].checkout_lease_released is True
+
+
+def test_bridge_preserves_receipt_then_retires_exact_dead_active_marker(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    active_path = prior_root / "implementation-protected-path-active.json"
+    active_bytes = active_path.read_bytes()
+
+    result = bridge.run_provider(attempt)
+
+    assert result["accepted"] is True
+    assert not active_path.exists()
+    clearance_paths = tuple(
+        prior_root.glob("cross-attempt-protected-state-clearance-*.json")
+    )
+    retired_paths = tuple(
+        prior_root.glob("implementation-protected-path-retired-*.json")
+    )
+    marker_blobs = tuple(
+        prior_root.glob("cross-attempt-protected-state-marker-*.json")
+    )
+    assert len(clearance_paths) == len(retired_paths) == len(marker_blobs) == 1
+    assert retired_paths[0].read_bytes() == active_bytes
+    assert marker_blobs[0].read_bytes() == active_bytes
+    receipt = json.loads(clearance_paths[0].read_text(encoding="utf-8"))
+    assert receipt["schema"] == CROSS_ATTEMPT_PROTECTED_STATE_CLEARANCE_SCHEMA
+    assert receipt["protected_path_proof"]["mode"] == "exact_snapshot"
+    assert receipt["clearance_phase"] == "prepared"
+    assert receipt["active_marker_retired"] is False
+    assert receipt["retirement_operation"] == (
+        "atomic_noreplace_rename_after_receipt"
+    )
+    assert receipt["worktree_deleted"] is False
+    assert receipt["provider_dispatched"] is False
+    assert receipt["mutation_authority"] is False
+    assert receipt["merge_authority"] is False
+    assert receipt["task_completion_authority"] is False
+    assert receipt["worker_self_approval"] is False
+    assert receipt["normal_validation_required"] is True
+    retirement_paths = tuple(
+        prior_root.glob("cross-attempt-protected-state-retirement-*.json")
+    )
+    assert len(retirement_paths) == 1
+    retirement = json.loads(
+        retirement_paths[0].read_text(encoding="utf-8")
+    )
+    assert retirement["schema"] == CROSS_ATTEMPT_PROTECTED_STATE_RETIREMENT_SCHEMA
+    assert retirement["clearance_phase"] == "retired"
+    assert retirement["active_marker_retired"] is True
+    assert retirement["prepared_clearance"] == receipt
+    assert retirement["worker_self_approval"] is False
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    assert portals and portals[0].run_count == 1
+
+
+@pytest.mark.parametrize(
+    ("admit_final_source", "spoof_legacy_authority"),
+    [(True, False), (False, False), (False, True)],
+)
+def test_bridge_protected_recovery_uses_exact_live_capsule_source_transition(
+    tmp_path: Path,
+    admit_final_source: bool,
+    spoof_legacy_authority: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    repository = bridge.repo_root
+    assert repository is not None
+
+    def git(*arguments: str) -> str:
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    protected = repository / "control.todo.md"
+    protected.write_text("# operator repair\n", encoding="utf-8")
+    git("add", "control.todo.md")
+    git("commit", "-q", "-m", "bounded operator repair")
+    repair_head = git("rev-parse", "HEAD^{commit}")
+    repair_tree = git("rev-parse", "HEAD^{tree}")
+    protected.write_text("# sealed operator control\n", encoding="utf-8")
+    git("add", "control.todo.md")
+    git("commit", "-q", "-m", "seal operator control")
+    final_head = git("rev-parse", "HEAD^{commit}")
+    final_tree = git("rev-parse", "HEAD^{tree}")
+    payload = protected.read_bytes()
+    admission_cid = "baguqeera" + "c" * 48
+    admission_payload = {
+        "admission_cid": admission_cid,
+        "board_namespace": "test-board-v1",
+        "source_head": final_head if admit_final_source else repair_head,
+        "source_tree": final_tree if admit_final_source else repair_tree,
+        "control_artifacts": [
+            {
+                "path": "control.todo.md",
+                "sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
+                "size": len(payload),
+            }
+        ],
+    }
+    bridge.configured_board_admission_cid = admission_cid
+    bridge._configured_board_live_admission_json = json.dumps(
+        admission_payload,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    class ParsedAdmission:
+        def __init__(self, payload_value: dict[str, object]) -> None:
+            self.admission_cid = str(payload_value["admission_cid"])
+            self.board_namespace = str(payload_value["board_namespace"])
+            self.source_head = str(payload_value["source_head"])
+            self._payload = dict(payload_value)
+
+        def as_dict(self) -> dict[str, object]:
+            return json.loads(json.dumps(self._payload))
+
+    def parse_test_admission(value: object) -> ParsedAdmission:
+        assert isinstance(value, str)
+        payload_value = json.loads(value)
+        assert isinstance(payload_value, dict)
+        return ParsedAdmission(payload_value)
+
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        configured_board_live_capsule as live_capsule,
+    )
+
+    monkeypatch.setattr(
+        live_capsule,
+        "parse_configured_board_live_capsule_admission",
+        parse_test_admission,
+    )
+
+    if spoof_legacy_authority:
+        original_factory = bridge.portal_factory
+
+        def spoofing_factory(paths: object, alias: str) -> object:
+            portal = original_factory(paths, alias)
+            portal._authorized_concurrent_protected_path_update = (
+                lambda **_kwargs: {
+                    "authority": "spoofed_trusted_author",
+                    "mutation_authority": False,
+                    "task_completion_authority": False,
+                }
+            )
+            return portal
+
+        bridge.portal_factory = spoofing_factory
+
+    if not admit_final_source:
+        with pytest.raises(
+            DatabasePortalBridgeDeferred,
+            match="cross_attempt_lifecycle_protected_snapshot_mutated",
+        ):
+            bridge.run_provider(attempt)
+        predecessor = store.load_workspace(workspace)
+        assert predecessor is not None and predecessor.is_nonterminal
+        assert portals[-1].run_count == 0
+        return
+
+    result = bridge.run_provider(attempt)
+
+    assert result["accepted"] is True
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    clearance_paths = tuple(
+        Path(terminal.state_dir).glob(
+            "cross-attempt-protected-state-clearance-*.json"
+        )
+    )
+    assert len(clearance_paths) == 1
+    clearance = json.loads(clearance_paths[0].read_text(encoding="utf-8"))
+    trusted = clearance["protected_path_proof"]["trusted_shared_update"]
+    assert trusted["authority"] == "configured_board_live_capsule"
+    assert trusted["admission_cid"] == admission_cid
+    assert trusted["before_head"] != trusted["after_head"] == final_head
+    assert trusted["changed_protected_blobs"] == [
+        {
+            "path": "control.todo.md",
+            "mode": "100644",
+            "blob_oid": git("rev-parse", f"{final_head}:control.todo.md"),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        }
+    ]
+    assert trusted["operator_or_worker_identity_inferred"] is False
+
+
+def test_bridge_content_addresses_exact_declared_nested_output_before_clearance(
+    tmp_path: Path,
+) -> None:
+    nested_path = "ipfs_datasets_py/program_execution_trace.py"
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+            nested_output_path=nested_path,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    output_path = workspace / "external/ipfs_datasets_py" / nested_path
+    output_bytes = output_path.read_bytes()
+    output_mode = stat.S_IMODE(output_path.stat().st_mode)
+
+    result = bridge.run_provider(attempt)
+
+    assert result["accepted"] is True
+    assert output_path.read_bytes() == output_bytes
+    preservation_paths = tuple(
+        prior_root.glob("cross-attempt-declared-output-preservation-*.json")
+    )
+    blob_paths = tuple(
+        prior_root.glob("cross-attempt-declared-output-blob-*.blob")
+    )
+    clearance_paths = tuple(
+        prior_root.glob("cross-attempt-protected-state-clearance-*.json")
+    )
+    assert len(preservation_paths) == len(blob_paths) == len(clearance_paths) == 1
+    assert blob_paths[0].read_bytes() == output_bytes
+    preservation = json.loads(
+        preservation_paths[0].read_text(encoding="utf-8")
+    )
+    assert preservation["schema"] == (
+        CROSS_ATTEMPT_DECLARED_OUTPUT_PRESERVATION_SCHEMA
+    )
+    assert preservation["outputs"] == [
+        {
+            "blob_filename": blob_paths[0].name,
+            "gitlink_commit": preservation["outputs"][0]["gitlink_commit"],
+            "gitlink_path": "external/ipfs_datasets_py",
+            "mode": output_mode,
+            "nested_path": nested_path,
+            "repository_path": f"external/ipfs_datasets_py/{nested_path}",
+            "sha256": "sha256:"
+            + hashlib.sha256(output_bytes).hexdigest(),
+            "size": len(output_bytes),
+        }
+    ]
+    assert preservation["worktree_deleted"] is False
+    assert preservation["provider_dispatched"] is False
+    assert preservation["mutation_authority"] is False
+    assert preservation["merge_authority"] is False
+    assert preservation["task_completion_authority"] is False
+    assert preservation["normal_validation_required"] is True
+    clearance = json.loads(clearance_paths[0].read_text(encoding="utf-8"))
+    assert clearance["preservation"]["preservation_mode"] == (
+        "content_addressed_declared_nested_outputs:"
+        f"{preservation['preservation_id']}"
+    )
+    lifecycle_receipt = json.loads(
+        (
+            bridge._paths(attempt).root
+            / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+        ).read_text(encoding="utf-8")
+    )
+    assert lifecycle_receipt["preservation"]["preservation_mode"] == (
+        clearance["preservation"]["preservation_mode"]
+    )
+    assert portals and portals[0].run_count == 1
+
+
+@pytest.mark.parametrize(
+    "unsafe_state",
+    (
+        "incident",
+        "open_marker",
+        "workspace_binding",
+        "protected_mutation",
+    ),
+)
+def test_bridge_never_clears_ambiguous_or_mutated_protected_state(
+    tmp_path: Path,
+    unsafe_state: str,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    active_path = prior_root / "implementation-protected-path-active.json"
+    if unsafe_state == "incident":
+        (prior_root / "implementation-protected-path-incident.json").write_text(
+            "incident\n",
+            encoding="utf-8",
+        )
+    elif unsafe_state in {"open_marker", "workspace_binding"}:
+        marker = json.loads(active_path.read_text(encoding="utf-8"))
+        if unsafe_state == "open_marker":
+            marker["unexpected"] = True
+        else:
+            marker["workspace_path"] = str(tmp_path / "other-workspace")
+        active_path.write_text(
+            json.dumps(marker, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    else:
+        (workspace / "control.todo.md").write_text(
+            "# unauthorized protected mutation\n",
+            encoding="utf-8",
+        )
+
+    with pytest.raises(DatabasePortalBridgeDeferred):
+        bridge.run_provider(attempt)
+
+    assert active_path.is_file()
+    assert not tuple(
+        prior_root.glob("implementation-protected-path-retired-*.json")
+    )
+    assert not tuple(
+        prior_root.glob("cross-attempt-protected-state-retirement-*.json")
+    )
+    current = store.load_workspace(workspace)
+    assert current is not None and current.is_nonterminal
+    assert not portals or portals[0].run_count == 0
+
+
+@pytest.mark.parametrize(
+    "unsafe_output",
+    ("undeclared", "secret", "symlink", "tracked", "ignored"),
+)
+def test_bridge_never_preserves_ambiguous_or_unsafe_nested_output(
+    tmp_path: Path,
+    unsafe_output: str,
+) -> None:
+    nested_path = "ipfs_datasets_py/program_graph_builder.py"
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+            nested_output_path=nested_path,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    active_path = prior_root / "implementation-protected-path-active.json"
+    nested_root = workspace / "external/ipfs_datasets_py"
+    output_path = nested_root / nested_path
+    if unsafe_output == "undeclared":
+        (nested_root / "undeclared.py").write_text(
+            "UNDECLARED = True\n",
+            encoding="utf-8",
+        )
+    elif unsafe_output == "secret":
+        output_path.write_text(
+            "-----BEGIN PRIVATE KEY-----\nnot-a-real-key\n",
+            encoding="utf-8",
+        )
+    elif unsafe_output == "symlink":
+        output_path.unlink()
+        output_path.symlink_to("../README.md")
+    elif unsafe_output == "tracked":
+        (nested_root / "README.md").write_text(
+            "tracked mutation\n",
+            encoding="utf-8",
+        )
+    else:
+        info_exclude = Path(
+            subprocess.run(
+                ["git", "rev-parse", "--git-path", "info/exclude"],
+                cwd=nested_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+        if not info_exclude.is_absolute():
+            info_exclude = nested_root / info_exclude
+        with info_exclude.open("a", encoding="utf-8") as stream:
+            stream.write(f"/{nested_path}\n")
+
+    with pytest.raises(DatabasePortalBridgeDeferred):
+        bridge.run_provider(attempt)
+
+    assert active_path.is_file()
+    assert not tuple(
+        prior_root.glob("cross-attempt-declared-output-preservation-*.json")
+    )
+    assert not tuple(
+        prior_root.glob("cross-attempt-protected-state-retirement-*.json")
+    )
+    current = store.load_workspace(workspace)
+    assert current is not None and current.is_nonterminal
+    assert not portals or portals[0].run_count == 0
+
+
+def test_bridge_reobserves_nested_bytes_before_marker_retirement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    nested_path = "ipfs_datasets_py/program_graph_builder.py"
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+            nested_output_path=nested_path,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    active_path = prior_root / "implementation-protected-path-active.json"
+    output_path = workspace / "external/ipfs_datasets_py" / nested_path
+    original = bridge._preserve_declared_nested_outputs
+    calls = 0
+
+    def mutate_after_first_preservation(**kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        observed = original(**kwargs)
+        calls += 1
+        if calls == 1:
+            output_path.write_text("VALUE = 'changed after receipt'\n", encoding="utf-8")
+        return observed
+
+    monkeypatch.setattr(
+        bridge,
+        "_preserve_declared_nested_outputs",
+        mutate_after_first_preservation,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="changed_before_marker_retirement",
+    ):
+        bridge.run_provider(attempt)
+
+    assert active_path.is_file()
+    assert not tuple(
+        prior_root.glob("implementation-protected-path-retired-*.json")
+    )
+    current = store.load_workspace(workspace)
+    assert current is not None and current.is_nonterminal
+    assert not portals or portals[0].run_count == 0
+
+
+def test_bridge_recovers_exact_post_rename_pre_retirement_receipt_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    active_path = prior_root / "implementation-protected-path-active.json"
+    original = bridge._publish_protected_retirement_receipt
+    calls = 0
+
+    def fail_once(**kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise DatabasePortalBridgeDeferred("simulated_post_rename_crash")
+        return original(**kwargs)
+
+    monkeypatch.setattr(
+        bridge,
+        "_publish_protected_retirement_receipt",
+        fail_once,
+    )
+    with pytest.raises(DatabasePortalBridgeDeferred, match="simulated_post_rename_crash"):
+        bridge.run_provider(attempt)
+    assert not active_path.exists()
+    assert len(
+        tuple(prior_root.glob("implementation-protected-path-retired-*.json"))
+    ) == 1
+    assert not tuple(
+        prior_root.glob("cross-attempt-protected-state-retirement-*.json")
+    )
+
+    result = bridge.run_provider(attempt)
+
+    assert result["accepted"] is True
+    assert len(
+        tuple(prior_root.glob("cross-attempt-protected-state-retirement-*.json"))
+    ) == 1
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    assert portals and portals[-1].run_count == 1
+
+
+def test_bridge_resumes_terminal_cas_before_protected_marker_retirement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    active_path = prior_root / "implementation-protected-path-active.json"
+    original = bridge._retire_dead_protected_active_marker
+
+    def fail_after_terminal(**kwargs: object) -> dict[str, object]:
+        if kwargs["perform_retirement"] is True:
+            raise DatabasePortalBridgeDeferred(
+                "simulated_terminal_before_marker_retirement_crash"
+            )
+        return original(**kwargs)
+
+    monkeypatch.setattr(
+        bridge,
+        "_retire_dead_protected_active_marker",
+        fail_after_terminal,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="simulated_terminal_before_marker_retirement_crash",
+    ):
+        bridge.run_provider(attempt)
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    assert active_path.is_file()
+    recovery_path = (
+        bridge._paths(attempt).root
+        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    prepared_recovery = bridge._read_recovery_receipt(recovery_path)
+    assert prepared_recovery["phase"] == "prepared"
+    assert len(
+        tuple(prior_root.glob("cross-attempt-protected-state-clearance-*.json"))
+    ) == 1
+    assert not tuple(
+        prior_root.glob("cross-attempt-protected-state-retirement-*.json")
+    )
+
+    monkeypatch.setattr(
+        bridge,
+        "_retire_dead_protected_active_marker",
+        original,
+    )
+    result = bridge.run_provider(attempt)
+
+    assert result["accepted"] is True
+    assert not active_path.exists()
+    assert bridge._read_recovery_receipt(recovery_path)["phase"] == "committed"
+    assert len(
+        tuple(prior_root.glob("cross-attempt-protected-state-retirement-*.json"))
+    ) == 1
+    assert portals and portals[-1].run_count == 1
+
+
+def test_bridge_distinct_successor_attempt_is_unblocked_by_terminal_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    active_path = prior_root / "implementation-protected-path-active.json"
+    original = bridge._retire_dead_protected_active_marker
+
+    def fail_after_terminal(**kwargs: object) -> dict[str, object]:
+        if kwargs["perform_retirement"] is True:
+            raise DatabasePortalBridgeDeferred(
+                "simulated_dead_recovery_attempt"
+            )
+        return original(**kwargs)
+
+    monkeypatch.setattr(
+        bridge,
+        "_retire_dead_protected_active_marker",
+        fail_after_terminal,
+    )
+    with pytest.raises(DatabasePortalBridgeDeferred, match="simulated_dead"):
+        bridge.run_provider(attempt)
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    assert active_path.is_file()
+    abandoned_recovery = bridge._read_recovery_receipt(
+        bridge._paths(attempt).root / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    assert abandoned_recovery["phase"] == "prepared"
+    prepared_clearance = tuple(
+        prior_root.glob("cross-attempt-protected-state-clearance-*.json")
+    )
+    assert len(prepared_clearance) == 1
+    assert json.loads(
+        prepared_clearance[0].read_text(encoding="utf-8")
+    )["clearance_phase"] == "prepared"
+
+    monkeypatch.setattr(
+        bridge,
+        "_retire_dead_protected_active_marker",
+        original,
+    )
+    successor = replace(
+        attempt,
+        attempt_id="attempt:successor-3",
+        claim_id="claim:successor-3",
+        attempt_number=3,
+        owner_session_id="session:successor-3",
+        fencing_token=8,
+        fence_epoch=4,
+        lease_id="lease:successor-3",
+    )
+    result = bridge.run_provider(successor)
+
+    assert result["accepted"] is True
+    assert store.load_workspace(workspace) == terminal
+    assert not active_path.exists()
+    assert len(tuple(
+        prior_root.glob("cross-attempt-protected-state-retirement-*.json")
+    )) == 1
+    adoption_paths = tuple(
+        prior_root.glob("cross-attempt-protected-state-adoption-*.json")
+    )
+    assert len(adoption_paths) == 1
+    adoption = json.loads(adoption_paths[0].read_text(encoding="utf-8"))
+    assert adoption["schema"] == (
+        bridge_module.CROSS_ATTEMPT_PROTECTED_STATE_ADOPTION_SCHEMA
+    )
+    assert adoption["abandoned_binding_id"] == abandoned_recovery[
+        "current_binding_id"
+    ]
+    assert adoption["worker_self_approval"] is False
+    assert portals and portals[-1].run_count == 1
+
+    restart = replace(
+        successor,
+        attempt_id="attempt:successor-4",
+        claim_id="claim:successor-4",
+        attempt_number=4,
+        owner_session_id="session:successor-4",
+        fencing_token=9,
+        fence_epoch=5,
+        lease_id="lease:successor-4",
+    )
+    restart_result = bridge.run_provider(restart)
+
+    assert restart_result["accepted"] is True
+    assert len(tuple(
+        prior_root.glob("cross-attempt-protected-state-adoption-*.json")
+    )) == 1
+    assert portals[-1].run_count == 1
+
+
+@pytest.mark.parametrize("successor_number", [3, 4])
+def test_bridge_distinct_successor_completes_preterminal_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    successor_number: int,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None and predecessor.is_nonterminal
+    prior_root = Path(predecessor.state_dir)
+    active_path = prior_root / "implementation-protected-path-active.json"
+    original_finalize = store.finalize_exact_dead_owner
+
+    def fail_before_cas(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("simulated_preterminal_recovery_attempt_crash")
+
+    monkeypatch.setattr(store, "finalize_exact_dead_owner", fail_before_cas)
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_finalize_race",
+    ):
+        bridge.run_provider(attempt)
+    still_preterminal = store.load_workspace(workspace)
+    assert still_preterminal == predecessor
+    assert active_path.is_file()
+    recovery_path = (
+        bridge._paths(attempt).root
+        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    assert bridge._read_recovery_receipt(recovery_path)["phase"] == "prepared"
+    assert len(tuple(
+        prior_root.glob("cross-attempt-protected-state-clearance-*.json")
+    )) == 1
+
+    monkeypatch.setattr(store, "finalize_exact_dead_owner", original_finalize)
+    successor = replace(
+        attempt,
+        attempt_id=f"attempt:successor-{successor_number}-preterminal",
+        claim_id=f"claim:successor-{successor_number}-preterminal",
+        attempt_number=successor_number,
+        owner_session_id=f"session:successor-{successor_number}-preterminal",
+        fencing_token=5 + successor_number,
+        fence_epoch=1 + successor_number,
+        lease_id=f"lease:successor-{successor_number}-preterminal",
+    )
+    result = bridge.run_provider(successor)
+
+    assert result["accepted"] is True
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    assert not active_path.exists()
+    assert bridge._read_recovery_receipt(recovery_path)["phase"] == "committed"
+    assert len(tuple(
+        prior_root.glob("cross-attempt-protected-state-retirement-*.json")
+    )) == 1
+    assert len(tuple(
+        prior_root.glob("cross-attempt-protected-state-adoption-*.json")
+    )) == 1
+    assert portals and portals[-1].run_count == 1
+
+
+@pytest.mark.parametrize("race", ["receipt", "directory"])
+def test_bridge_successor_adoption_revalidates_abandoned_state_under_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    race: str,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    original_retire = bridge._retire_dead_protected_active_marker
+
+    def fail_after_terminal(**kwargs: object) -> dict[str, object]:
+        if kwargs["perform_retirement"] is True:
+            raise DatabasePortalBridgeDeferred("simulated_dead_recovery_attempt")
+        return original_retire(**kwargs)
+
+    monkeypatch.setattr(
+        bridge,
+        "_retire_dead_protected_active_marker",
+        fail_after_terminal,
+    )
+    with pytest.raises(DatabasePortalBridgeDeferred, match="simulated_dead"):
+        bridge.run_provider(attempt)
+    monkeypatch.setattr(
+        bridge,
+        "_retire_dead_protected_active_marker",
+        original_retire,
+    )
+    abandoned_paths = bridge._paths(attempt)
+    recovery_path = (
+        abandoned_paths.root / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    portal_class = type(portals[-1])
+    original_acquire = portal_class._acquire_checkout_mutation_lease
+    raced = False
+    displaced = tmp_path / "displaced-abandoned-attempt"
+
+    def race_after_candidate_scan(**kwargs: object) -> tuple[object, str, None, float]:
+        nonlocal raced
+        if not raced:
+            if race == "receipt":
+                recovery_path.write_bytes(recovery_path.read_bytes() + b" ")
+            else:
+                abandoned_paths.root.rename(displaced)
+                abandoned_paths.root.symlink_to(
+                    displaced,
+                    target_is_directory=True,
+                )
+            raced = True
+        return original_acquire(**kwargs)
+
+    monkeypatch.setattr(
+        portal_class,
+        "_acquire_checkout_mutation_lease",
+        staticmethod(race_after_candidate_scan),
+    )
+    successor = replace(
+        attempt,
+        attempt_id=f"attempt:successor-adoption-race-{race}",
+        claim_id=f"claim:successor-adoption-race-{race}",
+        attempt_number=3,
+        owner_session_id=f"session:successor-adoption-race-{race}",
+        fencing_token=8,
+        fence_epoch=4,
+        lease_id=f"lease:successor-adoption-race-{race}",
+    )
+
+    with pytest.raises(DatabasePortalBridgeError):
+        bridge.run_provider(successor)
+
+    assert raced is True
+    assert (prior_root / "implementation-protected-path-active.json").is_file()
+    assert portals[-1].run_count == 0
+
+
+def test_bridge_successor_adoption_rejects_multiple_incomplete_transactions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    original_finalize = store.finalize_exact_dead_owner
+
+    def fail_before_cas(*args: object, **kwargs: object) -> object:
+        raise RuntimeError("simulated_preterminal_recovery_attempt_crash")
+
+    monkeypatch.setattr(store, "finalize_exact_dead_owner", fail_before_cas)
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_finalize_race",
+    ):
+        bridge.run_provider(attempt)
+    monkeypatch.setattr(store, "finalize_exact_dead_owner", original_finalize)
+    first_paths = bridge._paths(attempt)
+    first_recovery = bridge._read_recovery_receipt(
+        first_paths.root / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    prior_paths = bridge._direct_attempt_paths(Path(predecessor.state_dir))
+    prior_binding = bridge._strict_binding(prior_paths.binding)
+    abandoned = replace(
+        attempt,
+        attempt_id="attempt:abandoned-3",
+        claim_id="claim:abandoned-3",
+        attempt_number=3,
+        owner_session_id="session:abandoned-3",
+        fencing_token=8,
+        fence_epoch=4,
+        lease_id="lease:abandoned-3",
+    )
+    abandoned_paths, abandoned_binding = bridge._ensure_attempt_projection(
+        abandoned,
+        _record(),
+    )
+    duplicate_body = {
+        field: first_recovery[field]
+        for field in bridge_module._RECOVERY_RECEIPT_FIELDS.difference(
+            {"recovery_id", "receipt_id"}
+        )
+    }
+    duplicate_body.update(
+        {
+            "current_attempt_id": abandoned_binding["attempt_id"],
+            "current_attempt_number": abandoned.attempt_number,
+            "current_binding_id": abandoned_binding["binding_id"],
+            "current_fencing_token": abandoned_binding["fencing_token"],
+            "database_authority": bridge._validated_prior_authority(
+                bridge.prior_attempt_authority(
+                    abandoned,
+                    abandoned_binding,
+                    prior_binding,
+                ),
+                current_binding=abandoned_binding,
+                prior_binding=prior_binding,
+            ),
+        }
+    )
+    duplicate = bridge._seal_recovery_receipt(duplicate_body)
+    (abandoned_paths.root / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME).write_text(
+        json.dumps(duplicate, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    successor = replace(
+        abandoned,
+        attempt_id="attempt:successor-4-ambiguous",
+        claim_id="claim:successor-4-ambiguous",
+        attempt_number=4,
+        owner_session_id="session:successor-4-ambiguous",
+        fencing_token=9,
+        fence_epoch=5,
+        lease_id="lease:successor-4-ambiguous",
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_abandoned_recovery_ambiguous",
+    ):
+        bridge.run_provider(successor)
+
+    assert portals[-1].run_count == 0
+
+
+def test_bridge_revalidates_retired_marker_before_committed_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    original = bridge._preserved_quiescent_worktree
+    calls = 0
+
+    def tamper_after_retirement(*args: object, **kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        preservation = original(*args, **kwargs)
+        calls += 1
+        if calls == 3:
+            retired = tuple(
+                prior_root.glob("implementation-protected-path-retired-*.json")
+            )
+            assert len(retired) == 1
+            retired[0].write_text("tampered after retirement\n", encoding="utf-8")
+        return preservation
+
+    monkeypatch.setattr(
+        bridge,
+        "_preserved_quiescent_worktree",
+        tamper_after_retirement,
+    )
+    with pytest.raises(DatabasePortalBridgeDeferred):
+        bridge.run_provider(attempt)
+
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    recovery = bridge._read_recovery_receipt(
+        bridge._paths(attempt).root / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    assert recovery["phase"] == "prepared"
+    assert not portals or portals[0].run_count == 0
+
+
+def test_bridge_noreplace_retirement_never_overwrites_racing_destination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        quack_owner_mutation,
+    )
+
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None
+    prior_root = Path(predecessor.state_dir)
+    active_path = prior_root / "implementation-protected-path-active.json"
+    original = quack_owner_mutation._rename_noreplace_at
+    raced_payload = b"racing destination must survive\n"
+
+    def race(directory_fd: int, source: str, target: str) -> None:
+        descriptor = os.open(
+            target,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+            dir_fd=directory_fd,
+        )
+        try:
+            os.write(descriptor, raced_payload)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        original(directory_fd, source, target)
+
+    monkeypatch.setattr(quack_owner_mutation, "_rename_noreplace_at", race)
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="protected_marker_retirement_failed",
+    ):
+        bridge.run_provider(attempt)
+
+    raced = tuple(prior_root.glob("implementation-protected-path-retired-*.json"))
+    assert len(raced) == 1 and raced[0].read_bytes() == raced_payload
+    assert active_path.is_file()
+    assert not tuple(
+        prior_root.glob("cross-attempt-protected-state-retirement-*.json")
+    )
+    current = store.load_workspace(workspace)
+    assert current is not None and current.is_terminal
+    assert current.terminal_reason == "superseded_database_attempt_preserved"
+    assert not portals or portals[0].run_count == 0
 
 
 def test_bridge_preserves_lifecycle_when_database_authority_rejects(
@@ -2016,15 +3145,22 @@ def test_bridge_ignores_unrelated_process_count_changes_between_scans(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bridge, attempt, store, workspace, portals = (
-        _cross_attempt_recovery_fixture(tmp_path)
+        _cross_attempt_recovery_fixture(tmp_path, protected_marker=True)
     )
-    inspected = iter((3, 4))
+    inspected = 2
+
+    def changing_process_inventory(
+        _store: object,
+        _workspace: Path,
+    ) -> dict[str, int]:
+        nonlocal inspected
+        inspected += 1
+        return {"same_uid_processes_inspected": inspected}
+
     monkeypatch.setattr(
         bridge,
         "_strict_workspace_process_scan",
-        lambda _store, _workspace: {
-            "same_uid_processes_inspected": next(inspected)
-        },
+        changing_process_inventory,
     )
 
     result = bridge.run_provider(attempt)
@@ -2032,6 +3168,13 @@ def test_bridge_ignores_unrelated_process_count_changes_between_scans(
     assert result["accepted"] is True
     terminal = store.load_workspace(workspace)
     assert terminal is not None and terminal.is_terminal
+    prior_root = Path(terminal.state_dir)
+    assert len(tuple(
+        prior_root.glob("cross-attempt-protected-state-clearance-*.json")
+    )) == 1
+    assert len(tuple(
+        prior_root.glob("cross-attempt-protected-state-retirement-*.json")
+    )) == 1
     assert portals and portals[0].run_count == 1
 
 
@@ -2155,6 +3298,95 @@ def test_bridge_atomic_write_fsyncs_file_replace_and_directory(
     assert paths.state.read_bytes() == b"durable-state"
     assert operations == ["fsync-file", "replace", "fsync-directory"]
     assert tuple(paths.root.iterdir()) == (paths.state,)
+
+
+def test_bridge_immutable_publish_rejects_parent_swap_after_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sealed = tmp_path / "sealed-attempt"
+    sealed.mkdir()
+    identity = sealed.stat()
+    displaced = tmp_path / "displaced-attempt"
+    attacker = tmp_path / "attacker-attempt"
+    attacker.mkdir()
+    target = sealed / "receipt.json"
+    real_link = bridge_module.os.link
+    swapped = False
+
+    def swap_before_link(*args: object, **kwargs: object) -> None:
+        nonlocal swapped
+        if not swapped:
+            sealed.rename(displaced)
+            sealed.symlink_to(attacker, target_is_directory=True)
+            swapped = True
+        real_link(*args, **kwargs)
+
+    monkeypatch.setattr(bridge_module.os, "link", swap_before_link)
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="parent identity changed",
+    ):
+        bridge_module._publish_immutable_file(
+            target,
+            b"sealed receipt\n",
+            sealed_directory_identity={
+                "attempt_directory_device": int(identity.st_dev),
+                "attempt_directory_inode": int(identity.st_ino),
+            },
+        )
+
+    assert swapped is True
+    assert (displaced / target.name).read_bytes() == b"sealed receipt\n"
+    assert tuple(attacker.iterdir()) == ()
+
+
+def test_bridge_immutable_publish_closes_parent_fd_on_verification_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sealed = tmp_path / "sealed-attempt"
+    sealed.mkdir()
+    identity = sealed.stat()
+    target = sealed / "receipt.json"
+    reads = 0
+
+    def fail_final_verification(
+        _directory_descriptor: int,
+        _name: str,
+        *,
+        noun: str,
+    ) -> tuple[bytes, os.stat_result]:
+        nonlocal reads
+        assert noun == "immutable database Portal artifact"
+        reads += 1
+        if reads == 1:
+            raise FileNotFoundError
+        raise DatabasePortalBridgeError("simulated immutable verification failure")
+
+    monkeypatch.setattr(
+        bridge_module,
+        "_stable_regular_bytes_at",
+        fail_final_verification,
+    )
+    descriptors_before = len(tuple(Path("/proc/self/fd").iterdir()))
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="simulated immutable verification failure",
+    ):
+        bridge_module._publish_immutable_file(
+            target,
+            b"sealed receipt\n",
+            sealed_directory_identity={
+                "attempt_directory_device": int(identity.st_dev),
+                "attempt_directory_inode": int(identity.st_ino),
+            },
+        )
+
+    assert reads == 2
+    assert len(tuple(Path("/proc/self/fd").iterdir())) == descriptors_before
 
 
 def test_database_daemon_rejects_open_superseded_binding_records() -> None:

@@ -1298,6 +1298,7 @@ def bind_database_portal_execution_from_args(
         repo_root=repo_root,
         board_namespace=str(getattr(parsed, "board_namespace", "") or ""),
         configured_board_admission_cid=configured_board_admission_cid,
+        configured_board_live_admission=configured_board_live_admission,
         merge_target_branch=str(
             getattr(parsed, "merge_target_branch", "") or ""
         ),
