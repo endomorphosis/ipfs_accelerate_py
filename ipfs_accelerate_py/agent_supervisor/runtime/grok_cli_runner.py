@@ -1864,14 +1864,17 @@ def grok_sandbox_cli_profile(isolation_backend: str) -> str | None:
     """Return the Grok ``--sandbox`` profile for one isolation backend.
 
     Custom deny profiles require Linux bubblewrap user namespaces.  On hosts
-    where ``bwrap`` cannot set a uid map, worktree isolation must use the
-    built-in ``workspace`` Landlock profile (or ``off``) or Grok never starts.
+    where ``bwrap`` cannot set a uid map, worktree isolation must disable
+    Grok's sandbox (``off``).  The ``workspace`` Landlock profile still
+    launches bwrap on this host, so it is not a recovery path here.
     """
 
     backend = str(isolation_backend or "").strip().casefold()
     if backend == GROK_ISOLATION_GROK_SANDBOX:
         return GROK_PRIMARY_SANDBOX_PROFILE
     if backend == GROK_ISOLATION_WORKTREE:
+        if sys.platform != "darwin" and not _grok_custom_sandbox_available():
+            return GROK_DISABLED_SANDBOX_PROFILE
         return GROK_WORKTREE_SANDBOX_PROFILE
     return None
 
@@ -1894,6 +1897,30 @@ def _clear_custom_grok_sandbox_profile(grok_home: Path) -> None:
         policy_path.chmod(0o600)
     except OSError:
         return
+
+
+def _command_sandbox_profile(command: Sequence[str]) -> str | None:
+    rewritten = [str(item) for item in command]
+    try:
+        index = rewritten.index("--sandbox")
+    except ValueError:
+        return None
+    if index + 1 < len(rewritten):
+        return rewritten[index + 1]
+    return None
+
+
+def _should_disable_sandbox_after_bwrap_host_failure(
+    *,
+    command: Sequence[str],
+    returncode: int,
+    error_text: str,
+) -> bool:
+    """True when Grok died on this host's bubblewrap uid-map refusal."""
+
+    if returncode == 0 or not grok_stderr_is_sandbox_host_failure(error_text):
+        return False
+    return _command_sandbox_profile(command) != GROK_DISABLED_SANDBOX_PROFILE
 
 
 def _rewrite_grok_sandbox_profile(
@@ -12330,14 +12357,41 @@ def _stream_provider_pipe_without_reserved_records(
         destination.flush()
 
 
+class _BoundedStderrTee:
+    """Copy live Grok stderr for host-failure detection without muting it."""
+
+    def __init__(self, destination: Any, *, limit: int = 65536) -> None:
+        self._destination = destination
+        self._chunks: list[str] = []
+        self._size = 0
+        self._limit = int(limit)
+
+    def write(self, data: str) -> int:
+        text = str(data)
+        self._destination.write(text)
+        if self._size < self._limit and text:
+            remain = self._limit - self._size
+            self._chunks.append(text[:remain])
+            self._size += min(len(text), remain)
+        return len(text)
+
+    def flush(self) -> None:
+        self._destination.flush()
+
+    def getvalue(self) -> str:
+        return "".join(self._chunks)
+
+
 def _run_grok_with_typed_failure_capture(
     command: Sequence[str],
     *,
     env: dict[str, str],
     provider_stdin: socket.socket | None = None,
+    stderr_capture: list[str] | None = None,
 ) -> int:
     """Run Grok with live output; stdout never grants fallback authority."""
 
+    stderr_tee = _BoundedStderrTee(sys.stderr)
     try:
         process = subprocess.Popen(
             list(command),
@@ -12362,7 +12416,7 @@ def _run_grok_with_typed_failure_capture(
     )
     stderr_thread = threading.Thread(
         target=_stream_pipe,
-        args=(process.stderr, sys.stderr),
+        args=(process.stderr, stderr_tee),
         daemon=True,
     )
     stdout_thread.start()
@@ -12370,6 +12424,8 @@ def _run_grok_with_typed_failure_capture(
     returncode = int(process.wait())
     stdout_thread.join()
     stderr_thread.join()
+    if stderr_capture is not None:
+        stderr_capture.append(stderr_tee.getvalue())
     return returncode
 
 
@@ -14727,12 +14783,13 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             error_text = error_bytes.decode("utf-8", errors="replace")
             if (
                 docker_lease is None
-                and child_returncode != 0
-                and grok_stderr_is_sandbox_host_failure(error_text)
-                and grok_sandbox_cli_profile(isolation_backend)
-                == GROK_PRIMARY_SANDBOX_PROFILE
+                and _should_disable_sandbox_after_bwrap_host_failure(
+                    command=cmd,
+                    returncode=child_returncode,
+                    error_text=error_text,
+                )
             ):
-                fallback_profile = GROK_WORKTREE_SANDBOX_PROFILE
+                fallback_profile = GROK_DISABLED_SANDBOX_PROFILE
                 cmd = _rewrite_grok_sandbox_profile(cmd, fallback_profile)
                 grok_launch_env["GROK_SANDBOX"] = fallback_profile
                 isolation_backend = GROK_ISOLATION_WORKTREE
@@ -14810,11 +14867,35 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             )
 
         try:
+            captured_stderr: list[str] = []
             primary_returncode = _run_grok_with_typed_failure_capture(
                 cmd,
                 env=grok_launch_env,
                 provider_stdin=docker_provider_stdin,
+                stderr_capture=captured_stderr,
             )
+            if (
+                docker_lease is None
+                and _should_disable_sandbox_after_bwrap_host_failure(
+                    command=cmd,
+                    returncode=primary_returncode,
+                    error_text="".join(captured_stderr),
+                )
+            ):
+                cmd = _rewrite_grok_sandbox_profile(
+                    cmd,
+                    GROK_DISABLED_SANDBOX_PROFILE,
+                )
+                grok_launch_env["GROK_SANDBOX"] = GROK_DISABLED_SANDBOX_PROFILE
+                isolation_backend = GROK_ISOLATION_WORKTREE
+                _clear_custom_grok_sandbox_profile(Path(isolated_home.name))
+                captured_stderr = []
+                primary_returncode = _run_grok_with_typed_failure_capture(
+                    cmd,
+                    env=grok_launch_env,
+                    provider_stdin=None,
+                    stderr_capture=captured_stderr,
+                )
             if docker_fence_thread is not None:
                 docker_fence_thread.join(timeout=6.0)
                 if docker_fence_thread.is_alive() or docker_fence_failures:

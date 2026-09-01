@@ -259,7 +259,12 @@ def test_publish_kubernetes_cli_logs_uses_kubectl(tmp_path, monkeypatch) -> None
     assert "quota denied" in receipt["error_snippets"][0]
 
 
-def test_worktree_isolation_uses_builtin_workspace_sandbox() -> None:
+def test_worktree_isolation_uses_builtin_workspace_sandbox(monkeypatch) -> None:
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_grok_custom_sandbox_available",
+        lambda: True,
+    )
     assert (
         grok_cli_runner.grok_sandbox_cli_profile(
             grok_cli_runner.GROK_ISOLATION_WORKTREE
@@ -283,6 +288,56 @@ def test_worktree_isolation_uses_builtin_workspace_sandbox() -> None:
     )
     assert command[command.index("--sandbox") + 1] == "workspace"
     assert grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE not in command
+
+
+def test_worktree_isolation_disables_sandbox_when_bwrap_uid_map_fails(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_grok_custom_sandbox_available",
+        lambda: False,
+    )
+    assert (
+        grok_cli_runner.grok_sandbox_cli_profile(
+            grok_cli_runner.GROK_ISOLATION_WORKTREE
+        )
+        == grok_cli_runner.GROK_DISABLED_SANDBOX_PROFILE
+    )
+    command = grok_cli_runner.build_grok_agent_command(
+        workspace=Path("/tmp/workspace"),
+        prompt_file=Path("/tmp/prompt.txt"),
+        model="grok-4.6",
+        max_turns=10,
+        permission_mode="bypassPermissions",
+        grok_bin="/usr/bin/grok",
+    )
+    assert command[command.index("--sandbox") + 1] == "off"
+
+
+def test_bwrap_host_failure_retries_by_disabling_sandbox() -> None:
+    command = [
+        "grok",
+        "--sandbox",
+        grok_cli_runner.GROK_PRIMARY_SANDBOX_PROFILE,
+        "--prompt-file",
+        "prompt.txt",
+    ]
+    assert grok_cli_runner._should_disable_sandbox_after_bwrap_host_failure(
+        command=command,
+        returncode=1,
+        error_text="bwrap: setting up uid map: Permission denied",
+    )
+    rewritten = grok_cli_runner._rewrite_grok_sandbox_profile(
+        command,
+        grok_cli_runner.GROK_DISABLED_SANDBOX_PROFILE,
+    )
+    assert rewritten[rewritten.index("--sandbox") + 1] == "off"
+    assert not grok_cli_runner._should_disable_sandbox_after_bwrap_host_failure(
+        command=rewritten,
+        returncode=1,
+        error_text="bwrap: setting up uid map: Permission denied",
+    )
 
 
 def test_grok_stderr_detects_bwrap_host_failure() -> None:
