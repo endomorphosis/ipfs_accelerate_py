@@ -34,6 +34,7 @@ ROOT_GOAL = "SAWM-G000"
 _M42_AUTHORITY_CID = (
     "sha256:1e1df3ea3d6b1805dc32f6dd43c61bb95d99e2d08da4c96872441dbc9fdbf587"
 )
+_M43_PENDING_AUTHORITY_CID = "sha256:PENDING_M43_FINAL_CONTROL_AUTHORITY_CID"
 TASK_IDS = tuple(f"SAWM-{index:03d}" for index in range(45))
 GOAL_IDS = (
     "SAWM-G000",
@@ -413,6 +414,30 @@ def _m39_migration_errors(
         )
     except Exception as exc:
         return [f"M39 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m43_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    require_active_runtime: bool = True,
+) -> list[str]:
+    """Reuse M43's exact stopped-generation lifecycle-recovery contract."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m43_dead_attempt_lifecycle_recovery_restart_successor_errors(
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_active_runtime=require_active_runtime,
+            )
+        )
+    except Exception as exc:
+        return [f"M43 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _m42_migration_errors(
@@ -1024,12 +1049,60 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M42 before every historical successor. Consequently
+    Key presence selects M43 before every historical successor. Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m43_key = "dead_attempt_lifecycle_recovery_restart_successor_materialization"
+    m43_presence = (
+        m43_key in scheduler,
+        m43_key in migration,
+        f"{m43_key}_cid" in seal,
+    )
+    if any(m43_presence):
+        errors = _m43_migration_errors(scheduler, seal, migration)
+        if not all(m43_presence):
+            errors.append("M43 successor authority is only partially declared")
+        # A malformed or unresealed M43 declaration must mask every older
+        # authority. Once M43 is exact, M42 remains mandatory immutable
+        # history but no longer owns the active runtime generation binding.
+        if errors:
+            return errors
+        for validator in (
+            _m36_migration_errors,
+            _m35_migration_errors,
+            _m34_migration_errors,
+            _m33_migration_errors,
+            _m32_migration_errors,
+            _m31_migration_errors,
+            _m30_migration_errors,
+            _m29_migration_errors,
+            _m28_migration_errors,
+            _m27_migration_errors,
+            _m26_migration_errors,
+            _m25_migration_errors,
+            _m24_migration_errors,
+            _m23_migration_errors,
+            _m22_migration_errors,
+            _m21_migration_errors,
+            _m20_migration_errors,
+            _m19_migration_errors,
+            _m18_migration_errors,
+            _m17_migration_errors,
+            _m16_migration_errors,
+        ):
+            errors.extend(
+                validator(
+                    scheduler,
+                    seal,
+                    migration,
+                    require_active_runtime=False,
+                )
+            )
+        return errors
 
     m42_key = (
         "failed_pre_authoritative_m41_evidence_projection_"
@@ -3848,6 +3921,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m43_key = "dead_attempt_lifecycle_recovery_restart_successor_materialization"
+    m43_selected = any(
+        (
+            m43_key in config,
+            m43_key in migration,
+            f"{m43_key}_cid" in seal,
+        )
+    )
     m42_key = (
         "failed_pre_authoritative_m41_evidence_projection_"
         "successor_materialization"
@@ -4014,7 +4095,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     multi_lane_selected = (
-        m42_selected
+        m43_selected
+        or m42_selected
         or m41_selected
         or m40_selected
         or m39_selected
@@ -4041,7 +4123,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or config.get("max_lanes") != expected_lane_count
     ):
         config_errors.append(
-            "four lanes are required for M42/M41/M40/M39/M38/M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
+            "four lanes are required for M43/M42/M41/M40/M39/M38/M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
             if multi_lane_selected
             else "one lane is required until sidecars are lane-scoped"
         )
@@ -4223,6 +4305,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m43_selected
+        else "run-r2-m27"
         if m42_selected
         else "run-r2-m27"
         if m41_selected
@@ -4294,7 +4378,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "30"
+        "31"
+        if m43_selected
+        else "30"
         if m42_selected
         else "30"
         if m41_selected
@@ -4367,6 +4453,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m43_selected
+        else 24070
         if m42_selected
         else 24070
         if m41_selected
@@ -4452,6 +4540,157 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
+    if m43_selected:
+        successor = config.get(m43_key)
+        runtime_root = (
+            "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
+        )
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m43_dead_attempt_lifecycle_recovery_restart_authority()
+            )
+            reference = dict(materializer._m43_authority_reference())
+            configured_cid = materializer._M43_AUTHORITY_CID
+            prior = expected.get("prior_authority", {})
+            stopped = expected.get("stopped_owner", {})
+            artifacts = expected.get("stopped_prestart_artifacts", {})
+            receipt = expected.get("preserved_m42_receipt", {})
+            repair = expected.get("accepted_lifecycle_repair", {})
+            source_chain = expected.get("source_chain", {})
+            changes = expected.get("exact_changes", {})
+            contract = expected.get("live_preflight_contract", {})
+            m42_expected = (
+                materializer
+                ._expected_m42_failed_pre_authoritative_m41_evidence_projection_successor_authority()
+            )
+            m42_reference = dict(materializer._m42_authority_reference())
+            m43_errors = module._m43_dead_attempt_lifecycle_recovery_restart_successor_errors(
+                config, seal, migration, root=root
+            )
+            if (
+                successor != reference
+                or migration.get(m43_key) != reference
+                or seal.get(f"{m43_key}_cid") != configured_cid
+                or (
+                    configured_cid == _M43_PENDING_AUTHORITY_CID
+                    and not any("not resealed" in error for error in m43_errors)
+                )
+                or (
+                    configured_cid != _M43_PENDING_AUTHORITY_CID
+                    and (
+                        materializer._identity(expected) != configured_cid
+                        or m43_errors
+                    )
+                )
+                or expected.get("schema")
+                != "sawm/dead-attempt-lifecycle-recovery-restart-authorization@1"
+                or expected.get("migration_revision") != "SAWM-R2-M43"
+                or expected.get("migration_kind") != m43_key
+                or expected.get("target_generation") != 31
+                or expected.get("target_event_watermark") != 297
+                or expected.get("target_plan_revision") != 28
+                or expected.get("target_projection_cid")
+                != "baguqeerazspjonqzwhd5e2jmnpl4lacaasfmtkziur4awfrihibnh6mxkpoa"
+                or expected.get("prior_m42_authority") != m42_expected
+                or expected.get("prior_m42_reference") != m42_reference
+                or materializer._identity(m42_expected) != _M42_AUTHORITY_CID
+                or prior.get("event_watermark") != 296
+                or prior.get("event_prefix_sha256")
+                != "89c64a4f018c2a3cfdce675eb8fb27913674e76995d64d89cabec42dd2967b70"
+                or prior.get("projection_cid")
+                != "baguqeerasguaepwupk3d5vme3cqsbicujihwvxnemnoenvdtnu3uwrscbt6q"
+                or prior.get("semantic_authority_digest")
+                != "sha256:a9f7e45d543cd983b36d475f3145344c956c547524bf33adfdc630de2bda7ae0"
+                or stopped.get("generation") != 30
+                or stopped.get("target_generation") != 31
+                or stopped.get("status") != "stopped"
+                or stopped.get("revision") != 2
+                or stopped.get("database_uuid")
+                != "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4"
+                or artifacts.get("control_sha256")
+                != "6798563648545b3fc05f1b7638ad2d0448c743d3a788bf78208a5d28a76a95f7"
+                or artifacts.get("control_size") != 43_528_192
+                or artifacts.get("coordination_sha256")
+                != "ddbdf352e6a41452c6584cfa06fc760b90a94f1ff6473ff2c5eeb93de7551785"
+                or artifacts.get("coordination_size") != 16_789_504
+                or artifacts.get("status_sha256")
+                != "3f8c1227e7bc29c3057d238e550880cdfb6144a3687a73dea12e3ca063148a4c"
+                or artifacts.get("status_size") != 2_408
+                or receipt.get("sha256")
+                != "ff9a24d339cf06eacb3573cd2825e0648a558efe5ec9539c0c4f489002ca609d"
+                or receipt.get("size") != 14_112
+                or receipt.get("receipt_cid")
+                != "sha256:31565b6bfc8e071f4278acc88fd3500ca5c4d25eee63d0131b16ceca3e7a9169"
+                or repair.get("changed_paths")
+                != sorted(materializer._M43_LIFECYCLE_REPAIR_BLOBS)
+                or repair.get("repair_parent")
+                != "a8bce148b793dcd15ac742df3a29e5773a178f28"
+                or repair.get("repair_commit")
+                != "7e3fa1170edac23149e0d1f38f5ff6b5f5ddb571"
+                or repair.get("repair_tree")
+                != "df40d6f879753c8c2ca00f35fd28054a29fd600a"
+                or repair.get("blob_oids")
+                != {
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+                    "database_portal_bridge.py": (
+                        "97f44d032063a8a98cfca277dd123c998244f076"
+                    ),
+                    "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+                    "implementation_daemon_runner.py": (
+                        "51e577170d975f056e3f97a9ded55d210bee8792"
+                    ),
+                    "test/api/test_agent_supervisor_database_portal_bridge.py": (
+                        "07fb7dd738256126c96e1370dd5a60501a13647b"
+                    ),
+                    "test/api/test_agent_supervisor_configured_board_live_capsule.py": (
+                        "4638112c6c2da24cb5912914192f332f2903bd6b"
+                    ),
+                }
+                or repair.get("path_modes")
+                != {path: "100644" for path in repair.get("changed_paths", ())}
+                or repair.get("repair_path_set_finalized")
+                is not materializer._M43_LIFECYCLE_REPAIR_PATHS_FINALIZED
+                or repair.get("newest_first_attempt_selection") is not True
+                or repair.get("prepared_receipt_precedes_lifecycle_cas") is not True
+                or repair.get("marker_retirement_is_no_replace") is not True
+                or source_chain.get("m42_final_control_commit")
+                != materializer._M43_BASE_CONTROL_COMMIT
+                or source_chain.get("lifecycle_repair_commit")
+                != materializer._M43_LIFECYCLE_REPAIR_COMMIT
+                or source_chain.get("lifecycle_repair_blobs")
+                != dict(materializer._M43_LIFECYCLE_REPAIR_BLOBS)
+                or source_chain.get("lifecycle_repair_modes")
+                != dict(materializer._M43_LIFECYCLE_REPAIR_MODES)
+                or source_chain.get("initial_control_commit")
+                != materializer._M43_INITIAL_CONTROL_COMMIT
+                or expected.get("ordinary_source_changes")
+                != len(materializer._M43_LIFECYCLE_REPAIR_BLOBS)
+                or set(expected.get("operator_control_paths", ()))
+                != set(materializer._M43_OPERATOR_CONTROL_PATHS)
+                or contract.get("generation_restart_authorized") is not True
+                or contract.get("m42_receipt_must_be_preserved") is not True
+                or changes.get("event_suffix_length") != 1
+                or changes.get("task_status_changes") != 0
+                or changes.get("accepted_completion_changes") != 0
+            ):
+                config_errors.append(
+                    "M43 stopped-generation recovery authority/source draft differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M43 authority validation unavailable: {type(exc).__name__}: {exc}"
+            )
+        if config.get("runtime_paths") != {
+            "root": runtime_root,
+            "state": f"{runtime_root}/state",
+            "worktrees": f"{runtime_root}/worktrees",
+            "merge_queue": f"{runtime_root}/merge-queue",
+            "logs": f"{runtime_root}/logs",
+            "generated_runtime_artifacts_are_completion_authority": False,
+        }:
+            config_errors.append("M43 active runtime paths are not exactly preserved")
     if m42_selected:
         successor = config.get(m42_key)
         runtime_root = (
@@ -4553,9 +4792,15 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 or contract.get("m39_receipt_must_be_absent") is not True
                 or contract.get("m40_receipt_must_be_absent") is not True
                 or contract.get("m41_receipt_must_be_absent") is not True
-                or module
-                ._m42_failed_pre_authoritative_m41_evidence_projection_successor_errors(
-                    config, seal, migration, root=root
+                or (
+                    not m43_selected
+                    and module
+                    ._m42_failed_pre_authoritative_m41_evidence_projection_successor_errors(
+                        config,
+                        seal,
+                        migration,
+                        root=root,
+                    )
                 )
             ):
                 config_errors.append(
