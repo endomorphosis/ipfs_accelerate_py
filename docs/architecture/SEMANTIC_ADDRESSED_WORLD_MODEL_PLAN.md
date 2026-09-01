@@ -2911,7 +2911,53 @@ projection identity depends on task/goal/plan heads and watermark, not the
 evidence body. The 28,704-byte canonical M51 authority has CID
 `sha256:64c4319d273cb9d561a8176c2a152c458e58df10c612c9a9b8235b21ccd4eceb`.
 
-## 60. Current limitations at seal time
+## 60. M52 test-compatibility and corrected-control-hash successor
+
+`SAWM-R2-M52` supersedes the failed, unmaterialized M51 restart without
+rewriting M51's sealed authority or its failed attempt. The M51 `quack-start`
+command exited 2 before any owner start because its sealed generation-36
+control-store SHA-256 was only 63 characters:
+`b55affbac05631759829e8d6e64a15cde1cbb1591d3d52ff59f416590c3d12b`.
+The exact mode-`0664`, 43,528,192-byte current store instead hashes to
+`b55affbac05631759829e8d6e64a15cde1cbb1591d3d52ff59f416590c3d12b8`.
+The underlying typed failure was `MigrationRequired: M51 stopped control
+store bytes/mode differ`; no M51 prestart or final receipt, owner marker,
+event 311, evidence node 56, task mutation, goal mutation, provider call,
+merge attempt, or completion authority was created.
+
+M52 also admits exactly one historical-test compatibility repair, commit
+`0437191d7894db52db1dcf6a11860811cc81bc11`, a direct child of M51 commit
+`45cc68aca8b335eae381582870584b657d254636`. Its tree is
+`3e528767267d4473fcc4ba24c1c4c7c6e4cb1843`, its binary diff SHA-256 is
+`d704a14c962e655fbaa1f71774a2321341a993c866f3fd8e8f76c01c88ef4d50`,
+and its sole mode-`100644` output is
+`test/api/semantic_world/test_semantic_addressed_world_model_board.py` with
+blob `e9f023a9bb09f358e5fdc972cfd70f591d9b87f2`. The repair reconciles the
+eight documented stale historical assertions with M51 generation 37 and
+isolates the M47 dispatcher fixture through
+`_historical_successor_controls_at`. It changes no production or runtime
+source and grants no validation, launch, task-completion, or worker
+self-approval authority.
+
+The preserved stopped authority remains generation 36, event watermark 310,
+55 evidence nodes, 44 evidence events, and the exact M50/M51 task, goal, plan,
+validation, provider, effect, merge, and completion heads. M52 alone may start
+one runtime-generated generation-37 owner and append one operator evidence
+record at event 311, yielding 56 evidence nodes and 45 evidence events. The
+target task-head projection remains
+`baguqeeradyejswcdsx6tnmfgrvglwhvqkuewvpynydwrhlvtenacf3xg2pfa` because
+that projection is deterministically bound to the unchanged task, goal, and
+plan heads plus watermark 311, not to the successor evidence body.
+
+All M51 closed-query, offline catalog, store-before-reference, exact-current-
+source, and post-receipt live revalidation gates remain in force. Presence of
+M52 on any protected surface selects it newest-first; partial or malformed M52
+cannot fall back to M51. The final M52 receipt is non-authoritative,
+deny-only, and cannot authorize launch or completion without a new full live
+verification. The 30,930-byte canonical M52 authority has CID
+`sha256:97457278d806c1706fc43ad177bea8c66f18c02f2dbcc399121c26aba926e52d`.
+
+## 61. Current limitations at seal time
 
 - R2 program-world-specific contracts, trace corpus, prediction specialists, calibrated checkpoints, required-mode roots, capstone evidence, and release benchmarks are not present at bootstrap and cannot be claimed by this document.
 - Several desired accelerator authorities exist only as related current primitives or ambient historical worktrees, not as the exact named landed services. Their tasks begin with interface reconciliation and versioned extension.

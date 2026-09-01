@@ -204,6 +204,13 @@ _M51_AUTHORITY_SIZE = 28_704
 _M51_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M51_FINAL_CONTROL_AUTHORITY_CID"
 _M51_SUCCESSOR_KEY = "live_quack_catalog_compatibility_successor_materialization"
 _M51_MIGRATION_REVISION = "SAWM-R2-M51"
+_M52_AUTHORITY_CID = (
+    "sha256:97457278d806c1706fc43ad177bea8c66f18c02f2dbcc399121c26aba926e52d"
+)
+_M52_AUTHORITY_SIZE = 30_930
+_M52_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M52_FINAL_CONTROL_AUTHORITY_CID"
+_M52_SUCCESSOR_KEY = "test_compatibility_and_control_hash_successor_materialization"
+_M52_MIGRATION_REVISION = "SAWM-R2-M52"
 _M47_AUTHORITY_CID = (
     "sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444"
 )
@@ -3435,6 +3442,93 @@ def _m18_portal_completion_persistence_errors(
             "M18 portal-completion authority is unavailable: "
             f"{type(exc).__name__}: {exc}"
         ]
+
+
+def _m52_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = _M52_SUCCESSOR_KEY
+    return key in scheduler or key in migration or f"{key}_cid" in seal
+
+
+def _m52_test_compatibility_and_control_hash_successor_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path,
+) -> list[str]:
+    """Validate M52's exact repair chain and corrected closed restart."""
+
+    errors: list[str] = []
+    key = _M52_SUCCESSOR_KEY
+    presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m52_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M52 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer
+            ._expected_m52_live_quack_catalog_compatibility_authority()
+        )
+        contract = materializer._validated_m52_live_preflight_contract(expected)
+        reference = dict(materializer._m52_authority_reference())
+        protocol = expected.get("live_query_protocol", {})
+        failed = expected.get("failed_m51_attempt", {})
+        repair = expected.get("accepted_test_compatibility_repair", {})
+        policy = expected.get("receipt_policy", {})
+        if not all(presence):
+            errors.append("M52 successor authority is only partially declared")
+        if scheduler.get(key) != reference or migration.get(key) != reference:
+            errors.append("M52 successor reference differs")
+        if seal.get(f"{key}_cid") != materializer._M52_AUTHORITY_CID:
+            errors.append("M52 successor CID differs")
+        if (
+            materializer._M52_AUTHORITY_CID == _M52_UNSEALED_AUTHORITY_CID
+            or materializer._M52_AUTHORITY_CID != _M52_AUTHORITY_CID
+            or materializer._identity(expected) != _M52_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M52_AUTHORITY_SIZE
+        ):
+            errors.append("M52 authority body/CID/size differs")
+        materializer._assert_m52_historical_m51_controls(
+            scheduler, migration, seal
+        )
+        population = materializer.build_population(root)
+        materializer._assert_m52_source_delta(root, population, expected)
+        if (
+            expected.get("migration_revision") != _M52_MIGRATION_REVISION
+            or expected.get("migration_kind") != key
+            or expected.get("target_generation") != 37
+            or expected.get("target_event_watermark") != 311
+            or contract.get("prior_generation") != 36
+            or contract.get("target_generation") != 37
+            or contract.get("prior_event_watermark") != 310
+            or contract.get("target_event_watermark") != 311
+            or contract.get("corrected_control_store_sha256")
+            != materializer._M52_PRIOR_CONTROL_SHA256
+            or len(materializer._M52_PRIOR_CONTROL_SHA256) != 64
+            or failed.get("owner_started") is not False
+            or failed.get("m51_final_receipt_created") is not False
+            or repair.get("repair_commit") != materializer._M52_REPAIR_COMMIT
+            or repair.get("changed_paths") != [materializer._M52_REPAIR_PATH]
+            or protocol.get(
+                "remote_information_schema_tables_queries_for_claimed_zero_forbidden"
+            ) is not True
+            or protocol.get("claimed_zero_arbitrary_sql_forbidden") is not True
+            or policy.get("completion_authority") is not False
+            or policy.get("launch_authority") is not False
+        ):
+            errors.append("M52 repair/hash/catalog authority contract differs")
+    except Exception as exc:
+        errors.append(f"M52 authority is unavailable: {type(exc).__name__}: {exc}")
+    return errors
 
 
 def _m51_successor_declared(
@@ -14546,6 +14640,69 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m52_key = _M52_SUCCESSOR_KEY
+    m52_presence = (
+        m52_key in scheduler,
+        m52_key in migration,
+        f"{m52_key}_cid" in seal,
+    )
+    if any(m52_presence):
+        if not all(m52_presence):
+            return effective, ["active M52 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m52_nested_source_materializer",
+                REPO_ROOT
+                / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M52 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer
+                ._expected_m52_live_quack_catalog_compatibility_authority()
+            )
+            materializer._validated_m52_live_preflight_contract(authority)
+            materializer._assert_m52_historical_m51_controls(
+                scheduler, migration, seal
+            )
+            reference = dict(materializer._m52_authority_reference())
+            population = materializer.build_population(REPO_ROOT)
+            materializer._assert_m52_source_delta(
+                REPO_ROOT, population, authority
+            )
+        except Exception as exc:
+            return effective, [
+                f"active M52 nested-source authority unavailable: {exc}"
+            ]
+        if (
+            scheduler.get(m52_key) != reference
+            or migration.get(m52_key) != reference
+            or seal.get(f"{m52_key}_cid") != _M52_AUTHORITY_CID
+            or materializer._identity(authority) != _M52_AUTHORITY_CID
+            or len(materializer._canonical(authority)) != _M52_AUTHORITY_SIZE
+        ):
+            return effective, ["active M52 nested-source authority differs"]
+        for package, gitlink_key, tree_key in (
+            ("ipfs_datasets_py", "current_datasets_gitlink", "current_datasets_tree"),
+            ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree"),
+        ):
+            gitlink = str(authority.get(gitlink_key) or "")
+            tree = str(authority.get(tree_key) or "")
+            if (
+                package not in effective
+                or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+                or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            ):
+                return effective, ["active M52 nested-source identity is invalid"]
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
     m51_key = _M51_SUCCESSOR_KEY
     m51_presence = (
         m51_key in scheduler,
@@ -16316,6 +16473,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m52_key = _M52_SUCCESSOR_KEY
+        m52_presence = (
+            m52_key in scheduler_probe,
+            m52_key in migration_probe,
+            f"{m52_key}_cid" in seal,
+        )
         m51_key = _M51_SUCCESSOR_KEY
         m51_presence = (
             m51_key in scheduler_probe,
@@ -16522,7 +16685,55 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m51_presence):
+        if any(m52_presence):
+            scheduled = scheduler_probe.get(m52_key)
+            migrated = migration_probe.get(m52_key)
+            if not all(m52_presence) or scheduled != migrated:
+                unexpected = ["M52 authority is partial or differs across controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m52_source_status_materializer",
+                    root
+                    / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M52 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer
+                        ._expected_m52_live_quack_catalog_compatibility_authority()
+                    )
+                    materializer._validated_m52_live_preflight_contract(expected)
+                    reference = dict(materializer._m52_authority_reference())
+                    try:
+                        materializer._assert_m52_historical_m51_controls(
+                            scheduler_probe, migration_probe, seal
+                        )
+                        population = materializer.build_population(root)
+                        materializer._assert_m52_source_delta(
+                            root, population, expected
+                        )
+                    except Exception as exc:
+                        unexpected = [
+                            f"M52 source controls differ: {type(exc).__name__}: {exc}"
+                        ]
+                    else:
+                        if (
+                            scheduled != reference
+                            or seal.get(f"{m52_key}_cid") != _M52_AUTHORITY_CID
+                            or materializer._identity(expected)
+                            != _M52_AUTHORITY_CID
+                            or len(materializer._canonical(expected))
+                            != _M52_AUTHORITY_SIZE
+                        ):
+                            unexpected = [
+                                "M52 authority/CID differs across controls"
+                            ]
+                        else:
+                            unexpected = []
+        elif any(m51_presence):
             scheduled = scheduler_probe.get(m51_key)
             migrated = migration_probe.get(m51_key)
             if not all(m51_presence) or scheduled != migrated:
@@ -18117,6 +18328,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m52_declared = _m52_successor_declared(scheduler, seal, migration)
         m51_declared = _m51_successor_declared(scheduler, seal, migration)
         m50_declared = _m50_successor_declared(scheduler, seal, migration)
         m49_declared = _m49_successor_declared(scheduler, seal, migration)
@@ -18144,7 +18356,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m51_declared
+            m52_declared
+            or m51_declared
             or m50_declared
             or m49_declared
             or m48_declared
@@ -18172,7 +18385,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m51_declared:
+            if m52_declared:
+                protocol_errors.extend(
+                    _m52_test_compatibility_and_control_hash_successor_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+            if m51_declared and not m52_declared:
                 protocol_errors.extend(
                     _m51_live_quack_catalog_compatibility_errors(
                         scheduler, seal, migration, root=root

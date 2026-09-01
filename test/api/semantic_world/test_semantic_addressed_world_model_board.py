@@ -430,6 +430,27 @@ def test_historical_successor_controls_include_m49_before_m48() -> None:
     assert f"{m49_key}_cid" not in historical_seal
 
 
+def test_historical_successor_controls_include_m52_before_m51() -> None:
+    m52_key = "test_compatibility_and_control_hash_successor_materialization"
+    m51_key = "live_quack_catalog_compatibility_successor_materialization"
+    scheduler = {m52_key: {"revision": "M52"}, m51_key: {"revision": "M51"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m52_key}_cid": "sha256:" + "1" * 64,
+        f"{m51_key}_cid": "sha256:" + "f" * 64,
+    }
+    current, _, _ = _historical_successor_controls_at(
+        m52_key, scheduler, migration, seal
+    )
+    assert m52_key in current
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m51_key, scheduler, migration, seal)
+    )
+    assert m52_key not in historical
+    assert historical_migration is not None and m52_key not in historical_migration
+    assert historical_seal is not None and f"{m52_key}_cid" not in historical_seal
+
+
 def test_historical_successor_controls_include_m51_before_m50() -> None:
     m51_key = "live_quack_catalog_compatibility_successor_materialization"
     m50_key = "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
@@ -5217,10 +5238,10 @@ def test_m39_dispatch_precedes_m38_and_requires_receipt_last() -> None:
     assert "event_cursor != _M39_TARGET_EVENT_WATERMARK" in core
 
 
-def test_m51_current_stale_owner_recovery_requires_generation_37_successor() -> None:
+def test_m52_current_stale_owner_recovery_requires_generation_37_successor() -> None:
     operator = _load(
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
-        "sawm_operator_m39_stale_recovery_test",
+        "sawm_operator_m52_stale_recovery_test",
     )
     config = json.loads(
         (
@@ -5232,7 +5253,7 @@ def test_m51_current_stale_owner_recovery_requires_generation_37_successor() -> 
     with pytest.raises(
         operator.OperatorError,
         match=(
-            "M51 binds a cleanly stopped generation-36 owner; use the sealed "
+            "M52 binds a cleanly stopped generation-36 owner; use the sealed "
             "generation-37 quack-start path instead of stale-owner recovery"
         ),
     ):
@@ -6279,6 +6300,88 @@ def test_m49_presence_masks_m48_across_all_dispatchers(
     )
 
 
+def test_m52_authority_binds_failed_m51_hash_and_exact_test_repair() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m52_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m52_live_quack_catalog_compatibility_authority()
+    )
+    contract = materializer._validated_m52_live_preflight_contract(authority)
+
+    assert materializer._identity(authority) == materializer._M52_AUTHORITY_CID
+    assert len(materializer._canonical(authority)) == materializer._M52_AUTHORITY_SIZE
+    assert materializer._m52_authority_reference() == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M52",
+        "authority_cid": materializer._M52_AUTHORITY_CID,
+    }
+    assert authority["target_generation"] == 37
+    assert authority["target_event_watermark"] == 311
+    assert contract["prior_generation"] == 36
+    assert contract["target_generation"] == 37
+    assert contract["prior_event_watermark"] == 310
+    assert contract["target_event_watermark"] == 311
+    assert materializer._M52_TARGET_PROJECTION_CID == (
+        materializer._M51_TARGET_PROJECTION_CID
+    )
+    failed = authority["failed_m51_attempt"]
+    assert failed["operator_exit_code"] == 2
+    assert failed["owner_started"] is False
+    assert failed["m51_prestart_receipt_created"] is False
+    assert failed["m51_final_receipt_created"] is False
+    assert len(failed["sealed_control_sha256"]) == 63
+    assert failed["actual_control_sha256"] == materializer._M52_PRIOR_CONTROL_SHA256
+    assert len(failed["actual_control_sha256"]) == 64
+    assert failed["actual_control_sha256"].endswith("b8")
+    assert failed["event_watermark_before"] == failed["event_watermark_after"] == 310
+    repair = authority["accepted_test_compatibility_repair"]
+    assert repair["repair_commit"] == materializer._M52_REPAIR_COMMIT
+    assert repair["repair_parent"] == materializer._M52_REPAIR_PARENT
+    assert repair["repair_tree"] == materializer._M52_REPAIR_TREE
+    assert repair["changed_paths"] == [materializer._M52_REPAIR_PATH]
+    assert repair["accepted_blob_oid"] == materializer._M52_REPAIR_BLOB
+    assert repair["production_source_changes"] == 0
+    assert repair["runtime_behavior_changes"] == 0
+    assert len(repair["repaired_test_ids"]) == 8
+    assert authority["receipt_policy"]["completion_authority"] is False
+    assert authority["receipt_policy"]["launch_authority"] is False
+
+
+def test_m52_projection_is_recomputed_from_event_311_heads() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m52_projection_derivation_test",
+    )
+    source = inspect.getsource(materializer._verify_m52_live_materialization)
+
+    assert "_M52_PRIOR_EVENT_WATERMARK" in source
+    assert "_M52_TARGET_EVENT_WATERMARK" in source
+    assert source.count("_m38_projection_cid_at_watermark") == 2
+    assert "_M52_PRIOR_PROJECTION_CID" in source
+    assert "_M52_TARGET_PROJECTION_CID" in source
+    assert '"target_projection_recomputed": True' in source
+
+
+def test_m52_authority_tampering_fails_closed() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m52_tamper_test",
+    )
+    authority = (
+        materializer
+        ._expected_m52_live_quack_catalog_compatibility_authority()
+    )
+    tampered = copy.deepcopy(authority)
+    tampered["failed_m51_attempt"]["actual_control_sha256"] = "0" * 64
+    with pytest.raises(
+        materializer.MaterializationError, match="preflight contract differs"
+    ):
+        materializer._validated_m52_live_preflight_contract(tampered)
+
+
 def test_m51_authority_binds_offline_catalog_and_closed_live_protocol() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -6773,6 +6876,186 @@ def test_m51_dependency_and_board_validators_are_exact_with_mocked_source(
     assert "M51 successor authority is only partially declared" in partial
     monkeypatch.setattr(board, "_dependency_validator_module", lambda _root: dependencies)
     assert board._m51_migration_errors(scheduler, seal, migration) == []
+
+
+def test_m52_presence_masks_m51_across_all_dispatchers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m52_presence_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m52_presence_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m52_presence_test",
+    )
+    m52 = materializer._M52_SUPERSESSION_REASON
+    m51 = materializer._M51_SUPERSESSION_REASON
+    monkeypatch.setattr(
+        materializer, "_load_json", lambda _path: {m52: None, m51: {}}
+    )
+    monkeypatch.setattr(
+        materializer, "_m52_successor_configured_on_any_surface", lambda *_args: True
+    )
+    monkeypatch.setattr(
+        materializer, "_check_m52_materialized", lambda *_args: {"selected": "M52"}
+    )
+    monkeypatch.setattr(
+        materializer, "_materialize_m52", lambda *_args: {"selected": "M52"}
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_m51_successor_configured_on_any_surface",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("M51 selected")),
+    )
+    assert materializer.check_materialized(REPO_ROOT) == {"selected": "M52"}
+    assert materializer.materialize(REPO_ROOT) == {"selected": "M52"}
+    monkeypatch.setattr(materializer, "build_population", lambda _root: {})
+    assert materializer.main(["check", "--repo-root", str(REPO_ROOT)]) == 0
+
+    monkeypatch.setattr(board, "_m52_migration_errors", lambda *_args: ["m52-invalid"])
+    monkeypatch.setattr(
+        board,
+        "_m51_migration_errors",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("M51 selected")),
+    )
+    assert board._active_successor_migration_errors(
+        {m52: None, m51: {}},
+        {f"{m52}_cid": "bad", f"{m51}_cid": "history"},
+        {m52: None, m51: {}},
+    ) == ["m52-invalid"]
+
+    monkeypatch.setattr(
+        operator, "_require_m52_source_successor_marker",
+        lambda *_args, **_kwargs: MappingProxyType({"selected": "M52"}),
+    )
+    monkeypatch.setattr(
+        operator, "_require_m51_source_successor_marker",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("M51 selected")),
+    )
+    assert operator._require_active_final_pair_marker(
+        {m52: None, m51: {}}, {}, object(), checked={}
+    ) == {"selected": "M52"}
+
+    # Removing every M52 surface deliberately restores historical M51.
+    monkeypatch.setattr(board, "_m51_migration_errors", lambda *_args: ["m51-history"])
+    assert board._active_successor_migration_errors(
+        {m51: None}, {f"{m51}_cid": "bad"}, {m51: None}
+    ) == ["m51-history"]
+
+
+def test_m52_post_receipt_interleaving_requires_fresh_live_revalidation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m52_interleaving_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m52_interleaving_test",
+    )
+    authority = (
+        materializer
+        ._expected_m52_live_quack_catalog_compatibility_authority()
+    )
+    check_source = inspect.getsource(materializer._check_m52_materialized)
+    materialize_source = inspect.getsource(materializer._materialize_m52)
+    runtime = (tmp_path / materializer._M52_STORE_ID).resolve().parent
+    runtime.mkdir(parents=True)
+    final_path = runtime / materializer._M52_FINAL_RECEIPT_NAME
+    prestart_path = runtime / materializer._M52_PRESTART_SCHEMA_RECEIPT_NAME
+    for path in (final_path, prestart_path):
+        path.write_text("{}\n", encoding="utf-8")
+        path.chmod(0o600)
+    state = {"receipt_read": False, "fresh_check_called": False}
+
+    def load_receipt(path: Path, **_kwargs):
+        if Path(path).name == materializer._M52_FINAL_RECEIPT_NAME:
+            state["receipt_read"] = True
+        return ({}, "unused")
+
+    def reject_interleaving(*_args, **_kwargs):
+        assert state["receipt_read"] is True
+        state["fresh_check_called"] = True
+        raise materializer.MigrationRequired(
+            "injected post-receipt authority mutation"
+        )
+
+    monkeypatch.setattr(operator, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(materializer, "_load_nofollow_json", load_receipt)
+    monkeypatch.setattr(materializer, "_check_m52_materialized", reject_interleaving)
+    with pytest.raises(operator.OperatorError, match="fresh live verification"):
+        operator._require_m52_source_successor_marker(
+            {
+                materializer._M52_SUPERSESSION_REASON:
+                materializer._m52_authority_reference()
+            },
+            authority,
+            materializer,
+        )
+    assert state == {"receipt_read": True, "fresh_check_called": True}
+    assert check_source.index("observed, _ = _load_nofollow_json") < (
+        check_source.index("with _m28_live_source")
+    )
+    assert materialize_source.index("_m52_write_receipt_last") < (
+        materialize_source.index("checked = _check_m52_materialized")
+    )
+
+
+def test_m52_dependency_and_board_validators_are_exact_with_mocked_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m52_validator_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependencies_m52_validator_test",
+    )
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m52_validator_test",
+    )
+    key = materializer._M52_SUPERSESSION_REASON
+    reference = materializer._m52_authority_reference()
+    scheduler = {
+        key: reference,
+        materializer._M51_SUPERSESSION_REASON:
+        materializer._m51_authority_reference(),
+    }
+    migration = dict(scheduler)
+    seal = {
+        f"{key}_cid": materializer._M52_AUTHORITY_CID,
+        f"{materializer._M51_SUPERSESSION_REASON}_cid":
+        materializer._M51_AUTHORITY_CID,
+    }
+    fake_spec = SimpleNamespace(loader=SimpleNamespace(exec_module=lambda _module: None))
+    monkeypatch.setattr(
+        dependencies.importlib.util, "spec_from_file_location", lambda *_args: fake_spec
+    )
+    monkeypatch.setattr(
+        dependencies.importlib.util, "module_from_spec", lambda _spec: materializer
+    )
+    monkeypatch.setattr(materializer, "build_population", lambda _root: {})
+    monkeypatch.setattr(
+        materializer, "_assert_m52_historical_m51_controls", lambda *_args: None
+    )
+    monkeypatch.setattr(materializer, "_assert_m52_source_delta", lambda *_args: None)
+    assert dependencies._m52_test_compatibility_and_control_hash_successor_errors(
+        scheduler, seal, migration, root=REPO_ROOT
+    ) == []
+    partial = dependencies._m52_test_compatibility_and_control_hash_successor_errors(
+        scheduler, {}, migration, root=REPO_ROOT
+    )
+    assert "M52 successor authority is only partially declared" in partial
+    monkeypatch.setattr(board, "_dependency_validator_module", lambda _root: dependencies)
+    assert board._m52_migration_errors(scheduler, seal, migration) == []
 
 
 def test_m50_authority_binds_fenced_generation_36_and_zero_authorities() -> None:
