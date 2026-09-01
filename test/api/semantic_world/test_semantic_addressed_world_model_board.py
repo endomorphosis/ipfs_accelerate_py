@@ -2631,13 +2631,72 @@ def test_quack_custody_blocker_main_output_is_typed_and_credential_free(
         ),
     )
 
-    assert operator.main(["--config", "unused.json", "quack-start"]) == 2
+    assert operator.main(
+        ["--config", "unused.json", "quack-start", "--foreground"]
+    ) == 2
     rendered = capsys.readouterr().out
     payload = json.loads(rendered)
     assert payload["schema"] == "sawm/quack-startup-capability-blocker@1"
     assert payload["reason_code"] == "inotify_watch_quota_exhausted"
     assert payload["authoritative_database_opened"] is False
     assert secret not in rendered
+
+
+def test_durable_operator_environment_excludes_quack_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_durable_env_test",
+    )
+    monkeypatch.setenv("PYTHONPATH", "/tmp/other")
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("SAWM_QUACK_TOKEN", "must-not-cross")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "must-not-cross")
+    environment = operator._durable_operator_environment()
+    assert environment["PYTHONPATH"].split(os.pathsep)[0] == str(operator.REPO_ROOT)
+    assert "SAWM_QUACK_TOKEN" not in environment
+    assert "IPFS_ACCELERATE_AGENT_QUACK_TOKEN" not in environment
+    assert "must-not-cross" not in json.dumps(environment)
+
+
+def test_durable_quack_start_reuses_live_owner_without_new_generation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_durable_reuse_test",
+    )
+    identity = {
+        "server_id": "server:reuse",
+        "generation": 35,
+        "secret_handle": "env://SAWM_QUACK_TOKEN",
+    }
+    monkeypatch.setattr(
+        operator,
+        "_existing_ready_quack_status",
+        lambda _config: {"identity": identity, "lifecycle": "ready"},
+    )
+    monkeypatch.setattr(
+        operator,
+        "_adopt_live_session_owner_from_status",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_launch_durable_operator_service",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("live owner must not start a new generation")
+        ),
+    )
+    assert (
+        operator._run_durable_quack_start({"quack_owner": {}}, operator.CONFIG_PATH)
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["identity"]["generation"] == 35
+    assert payload["readiness"]["reused"] is True
 
 
 def test_quack_start_closes_native_fd_when_owner_fails(

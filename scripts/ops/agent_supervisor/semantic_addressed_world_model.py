@@ -14246,9 +14246,17 @@ def _serve_sawm_owner(server: Any) -> dict[str, Any]:
     previous_term = signal.signal(signal.SIGTERM, handle_signal)
     try:
         control = server.stop_control_path()
+        from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+            QuackStateServerError,
+        )
+
         while server.lifecycle.value == "ready" and not stop_requested["value"]:
             if control.is_file():
                 break
+            try:
+                server.honor_handoff_reissue_request()
+            except QuackStateServerError:
+                pass
             _process_mutation_inbox(server, max_requests=32)
             time.sleep(0.05)
         return server.stop()
@@ -14835,6 +14843,306 @@ def _sealed_quack_native_runtime(config_path: Path) -> Iterator[Any]:
             verify_agent_supervisor_native_dependency_sealed_fd(launch)
         finally:
             os.close(descriptor)
+
+
+_DURABLE_OPERATOR_ENV_NAMES: tuple[str, ...] = (
+    "PYTHONPATH",
+    "PATH",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+)
+_DURABLE_OPERATOR_ENV_DENY_SUBSTRINGS: tuple[str, ...] = (
+    "TOKEN",
+    "SECRET",
+    "PASSWORD",
+    "CREDENTIAL",
+    "API_KEY",
+    "APIKEY",
+    "AUTHORIZATION",
+    "BEARER",
+    "QUACK_AUTH",
+)
+
+
+def _durable_unit_name(kind: str, config: Mapping[str, Any]) -> str:
+    store = str((config.get("database_program") or {}).get("store_id") or "sawm")
+    digest = hashlib.sha256(
+        f"sawm:{kind}:{store}".encode("utf-8")
+    ).hexdigest()[:16]
+    return f"sawm-{kind}-{digest}"
+
+
+def _durable_operator_environment() -> dict[str, str]:
+    """Copy only non-secret process variables into a systemd-user unit."""
+
+    environment: dict[str, str] = {}
+    pythonpath_parts = [
+        part
+        for part in str(os.environ.get("PYTHONPATH") or "").split(os.pathsep)
+        if part
+    ]
+    repo = str(REPO_ROOT)
+    if repo not in pythonpath_parts:
+        pythonpath_parts.insert(0, repo)
+    environment["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
+    for name in _DURABLE_OPERATOR_ENV_NAMES:
+        if name == "PYTHONPATH":
+            continue
+        if name in os.environ:
+            environment[name] = os.environ[name]
+    for name in environment:
+        upper = name.upper()
+        if any(token in upper for token in _DURABLE_OPERATOR_ENV_DENY_SUBSTRINGS):
+            raise OperatorError(
+                "durable operator environment refused a credential-bearing name"
+            )
+    return environment
+
+
+def _existing_ready_quack_status(
+    config: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Return the live owner status when that exact process is still ready."""
+
+    owner = config.get("quack_owner")
+    if not isinstance(owner, Mapping):
+        return None
+    status_path = REPO_ROOT / str(owner.get("state_dir") or "") / (
+        "quack-state-server.status.json"
+    )
+    if not status_path.is_file():
+        return None
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, Mapping) or payload.get("lifecycle") != "ready":
+        return None
+    identity = payload.get("identity")
+    if not isinstance(identity, Mapping):
+        return None
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        OwnerLiveness,
+        ProcessBirthIdentity,
+        owner_liveness,
+    )
+
+    try:
+        birth = ProcessBirthIdentity.from_dict(identity.get("process_birth"))
+    except (TypeError, ValueError, KeyError):
+        return None
+    if owner_liveness(birth) is not OwnerLiveness.ALIVE:
+        return None
+    return payload
+
+
+def _launch_durable_operator_service(
+    config: Mapping[str, Any],
+    config_path: Path,
+    *,
+    kind: str,
+    command: Sequence[str],
+    startup_timeout_seconds: float = 15.0,
+) -> Any:
+    """Start or reuse one systemd-user operator service.  Never passes tokens."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.durable_process import (
+        DurableProcessError,
+        DurableProcessLaunch,
+        inspect_systemd_user_service,
+        launch_systemd_user_service,
+    )
+
+    unit_name = _durable_unit_name(kind, config)
+    owner = config.get("quack_owner")
+    if not isinstance(owner, Mapping):
+        raise OperatorError("durable operator launch lacks quack_owner authority")
+    log_path = REPO_ROOT / str(owner["state_dir"]) / "logs" / f"{kind}.log"
+    try:
+        existing = inspect_systemd_user_service(unit_name)
+    except DurableProcessError:
+        existing = {
+            "running": False,
+            "unit_name": f"{unit_name}.service",
+            "pid": 0,
+            "active_state": "inactive",
+            "sub_state": "",
+        }
+    if existing.get("running") is True:
+        return DurableProcessLaunch(
+            backend="systemd-user",
+            unit_name=str(existing["unit_name"]),
+            pid=int(existing["pid"]),
+            active_state=str(existing["active_state"]),
+            sub_state=str(existing.get("sub_state") or "running"),
+            working_directory=str(REPO_ROOT),
+            log_path=str(log_path),
+        )
+    argv = [
+        sys.executable,
+        str(
+            REPO_ROOT
+            / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+        ),
+        "--config",
+        str(config_path),
+        *command,
+    ]
+    environment = _durable_operator_environment()
+    try:
+        return launch_systemd_user_service(
+            argv,
+            unit_name=unit_name,
+            working_directory=REPO_ROOT,
+            log_path=log_path,
+            environment=environment,
+            startup_timeout_seconds=startup_timeout_seconds,
+        )
+    except DurableProcessError as exc:
+        raise OperatorError(f"durable {kind} launch failed closed") from exc
+
+
+def _wait_for_durable_quack_ready(
+    config: Mapping[str, Any],
+    launch: Any,
+    *,
+    timeout_seconds: float = 180.0,
+) -> Mapping[str, Any]:
+    from ipfs_accelerate_py.agent_supervisor.runtime.durable_process import (
+        DurableProcessError,
+        inspect_systemd_user_service,
+    )
+
+    deadline = time.time() + float(timeout_seconds)
+    while time.time() < deadline:
+        last_status = _existing_ready_quack_status(config)
+        if last_status is not None:
+            return last_status
+        try:
+            inspected = inspect_systemd_user_service(launch.unit_name)
+        except DurableProcessError as exc:
+            raise OperatorError("durable Quack owner could not be inspected") from exc
+        if inspected.get("running") is not True:
+            raise OperatorError(
+                "durable Quack owner exited before becoming ready"
+            )
+        time.sleep(0.25)
+    raise OperatorError("durable Quack owner did not become ready")
+
+
+def _run_durable_quack_start(
+    config: Mapping[str, Any],
+    config_path: Path = CONFIG_PATH,
+) -> int:
+    """Start or reuse a systemd-user Quack owner that outlives this session."""
+
+    existing = _existing_ready_quack_status(config)
+    if existing is not None:
+        _adopt_live_session_owner_from_status(config, existing)
+        print(
+            json.dumps(
+                {
+                    "identity": existing.get("identity"),
+                    "readiness": {
+                        "ready": True,
+                        "live": True,
+                        "reused": True,
+                    },
+                    "durable": {"reused": True},
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    launch = _launch_durable_operator_service(
+        config,
+        config_path,
+        kind="quack",
+        command=["quack-start", "--foreground"],
+        startup_timeout_seconds=30.0,
+    )
+    status = _wait_for_durable_quack_ready(config, launch)
+    print(
+        json.dumps(
+            {
+                "identity": status.get("identity"),
+                "readiness": {"ready": True, "live": True, "reused": False},
+                "durable": launch.to_dict(),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def _run_durable_operator_launch(
+    config: Mapping[str, Any],
+    config_path: Path,
+    *,
+    duration_seconds: float,
+) -> int:
+    """Run the four-lane scheduler as a systemd-user service."""
+
+    command = ["launch", "--foreground"]
+    if math.isfinite(duration_seconds):
+        command.extend(["--duration-seconds", str(duration_seconds)])
+    launch = _launch_durable_operator_service(
+        config,
+        config_path,
+        kind="scheduler",
+        command=command,
+        startup_timeout_seconds=30.0,
+    )
+    return _emit(
+        {
+            "schema": "sawm/operator-delegation@1",
+            "valid": True,
+            "command": "launch",
+            "durable": launch.to_dict(),
+        }
+    )
+
+
+def _adopt_live_session_owner_from_status(
+    config: Mapping[str, Any],
+    status: Mapping[str, Any],
+) -> None:
+    """Move a live session-cgroup owner into the user manager.  Same generation."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.durable_process import (
+        DurableProcessError,
+        adopt_pid_into_systemd_user_service,
+        session_cgroup_owner,
+    )
+
+    identity = status.get("identity")
+    if not isinstance(identity, Mapping):
+        return
+    birth = identity.get("process_birth")
+    if not isinstance(birth, Mapping):
+        return
+    try:
+        pid = int(birth.get("pid") or 0)
+    except (TypeError, ValueError):
+        return
+    if pid <= 0 or not session_cgroup_owner(pid):
+        return
+    owner = config.get("quack_owner")
+    if not isinstance(owner, Mapping):
+        return
+    log_path = REPO_ROOT / str(owner["state_dir"]) / "logs" / "quack-adopt.log"
+    try:
+        adopt_pid_into_systemd_user_service(
+            pid,
+            unit_name=_durable_unit_name("quack", config),
+            working_directory=REPO_ROOT,
+            log_path=log_path,
+        )
+    except DurableProcessError:
+        return
 
 
 def _run_quack_start(
@@ -17767,6 +18075,54 @@ def _normalized_live_preflight_contract(
     return MappingProxyType(contract)
 
 
+def _recover_live_owner_token_handoff(
+    config: Mapping[str, Any],
+    discovery: Any,
+) -> Any:
+    """Republish a retired coordinator handoff from the still-live owner."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        QuackStateServerError,
+        recover_coordinator_handoff,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        discover_live_quack_endpoint,
+    )
+
+    expected_state_dir = (
+        REPO_ROOT / str(config["quack_owner"]["state_dir"])
+    ).resolve()
+    try:
+        status_path = Path(discovery.status_path).resolve()
+    except (OSError, TypeError, ValueError):
+        return discovery
+    if status_path.parent != expected_state_dir:
+        return discovery
+    try:
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        identity = status["identity"]
+        secret_handle = str(identity["secret_handle"])
+        server_id = str(identity["server_id"])
+    except (
+        OSError,
+        KeyError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
+        return discovery
+    try:
+        recover_coordinator_handoff(
+            state_dir=expected_state_dir,
+            secret_handle=secret_handle,
+            server_id=server_id,
+        )
+    except QuackStateServerError:
+        return discovery
+    store = REPO_ROOT / config["database_program"]["store_id"]
+    return discover_live_quack_endpoint(store)
+
+
 def _live_preflight(
     config: Mapping[str, Any],
     *,
@@ -17907,6 +18263,17 @@ def _live_preflight(
     )
     discovery = discover_live_quack_endpoint(store)
     expected_uri = str(config["database_program"]["quack_endpoint"])
+    if discovery.uri and discovery.uri == expected_uri and discovery.status_path:
+        try:
+            status_payload = json.loads(
+                Path(discovery.status_path).read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError, TypeError):
+            status_payload = None
+        if isinstance(status_payload, Mapping):
+            _adopt_live_session_owner_from_status(config, status_payload)
+        if not discovery.token:
+            discovery = _recover_live_owner_token_handoff(config, discovery)
     if not discovery.uri or discovery.uri != expected_uri or not discovery.token:
         if m49_active:
             raise OperatorError(
@@ -19854,10 +20221,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     for command in (
         "validate-dependencies", "validate-board", "materialize", "render", "check",
-        "quack-start", "quack-status", "quack-ready", "quack-stop",
+        "quack-status", "quack-ready", "quack-stop",
         "quack-recover-stale", "preflight", "dry-run",
     ):
         sub.add_parser(command)
+    quack_start = sub.add_parser("quack-start")
+    quack_start.add_argument("--foreground", action="store_true")
     launch = sub.add_parser("launch")
     launch.add_argument("--foreground", action="store_true")
     launch.add_argument("--duration-seconds", type=float, default=float("inf"))
@@ -19945,15 +20314,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             return _emit(materializer.materialize(REPO_ROOT, config_path))
         if args.command == "quack-start":
-            return _run_quack_start(config, config_path)
+            if getattr(args, "foreground", False):
+                return _run_quack_start(config, config_path)
+            return _run_durable_quack_start(config, config_path)
         if args.command == "quack-recover-stale":
             return _emit(_recover_stale_quack(config))
         if args.command in {"quack-status", "quack-ready", "quack-stop"}:
             ops = _load_script("scripts/ops/agent_supervisor/quack_state_server.py", "_sawm_landed_quack_ops")
             return int(ops.main(_quack_args(config, args.command.removeprefix("quack-"))))
+        if args.command == "launch" and not getattr(args, "foreground", False):
+            return _run_durable_operator_launch(
+                config,
+                config_path,
+                duration_seconds=float(
+                    getattr(args, "duration_seconds", float("inf"))
+                ),
+            )
 
         real_launch = args.command == "launch"
-        real_detached_launch = real_launch and not args.foreground
+        real_detached_launch = False
         from ipfs_accelerate_py.agent_supervisor.runtime import (
             configured_board_scheduler as scheduler_runtime,
         )

@@ -25,8 +25,11 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     provider_subprocess_environment,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    CONTROL_REISSUE_FILENAME,
     QuackStateServerTokenError,
     TokenVault,
+    honor_handoff_reissue_request,
+    recover_coordinator_handoff,
     retire_token_handoff,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
@@ -903,4 +906,46 @@ def test_token_handoff_mismatch_fails_closed_without_unlinking(
         )
 
     assert handoff.is_file()
+    vault.destroy()
+
+
+def test_retired_handoff_is_recovered_from_live_owner_memory(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / "quack-owner"
+    vault = TokenVault(state_dir)
+    handle = vault.mint(secret_handle="env://SAWM_QUACK_TOKEN", generation=7)
+    token = vault.resolve()
+    handoff = next(state_dir.glob("*.quack-token"))
+    retire_token_handoff(
+        state_dir=state_dir,
+        secret_handle=handle.handle,
+        expected_token=token,
+    )
+    assert not handoff.exists()
+    ticks = {"t": 0.0}
+
+    def clock() -> float:
+        return ticks["t"]
+
+    def sleep(_interval: float) -> None:
+        honor_handoff_reissue_request(
+            state_dir=state_dir,
+            vault=vault,
+            request_path=state_dir / CONTROL_REISSUE_FILENAME,
+            expected_server_id="server:sawm",
+        )
+        ticks["t"] += 0.05
+
+    recovered = recover_coordinator_handoff(
+        state_dir=state_dir,
+        secret_handle=handle.handle,
+        server_id="server:sawm",
+        clock=clock,
+        sleep=sleep,
+        timeout_seconds=1.0,
+    )
+    assert recovered["reissued"] is True
+    assert handoff.read_text(encoding="ascii") == token
+    assert vault.generation == 7
     vault.destroy()
