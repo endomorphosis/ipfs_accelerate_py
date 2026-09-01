@@ -160,8 +160,11 @@ def parse_grok_quota_error(text: str) -> dict[str, object]:
     stripped = text.strip()
     if _GROK_USAGE_LIMIT_PATTERN.fullmatch(stripped):
         return {"kind": "usage_limit", "http_status": None}
-    marker_at = stripped.find(_GROK_BALANCE_MESSAGE)
-    if marker_at >= 0:
+    search_from = len(stripped)
+    while search_from > 0:
+        marker_at = stripped.rfind(_GROK_BALANCE_MESSAGE, 0, search_from)
+        if marker_at < 0:
+            break
         start = stripped.rfind("{", 0, marker_at + 1)
         if start >= 0:
             try:
@@ -171,6 +174,7 @@ def parse_grok_quota_error(text: str) -> dict[str, object]:
             found = _grok_balance_payload(payload)
             if found:
                 return found
+        search_from = marker_at
     lowered = stripped.lower()
     prefixes = ("error: internal error:", "internal error:", "error:")
     prefix = next((item for item in prefixes if lowered.startswith(item)), "")
