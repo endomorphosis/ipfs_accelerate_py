@@ -5191,7 +5191,11 @@ class DatabaseCoordinator:
         Enumeration is a bounded coordination mutation: any exact bound lease
         whose wall-clock deadline has passed is atomically projected to
         EXPIRED before it is returned.  Already released/completed barriers
-        are validated but omitted.
+        are validated but omitted.  A logical ``succeeded`` completion enters
+        this recovery protocol only when its body explicitly claims the closed
+        preparation schema.  Ordinary controller-owned success records may
+        share a historical claim ID, but are not preparation barriers and
+        must not crash unrelated daemon work through that reinterpretation.
         """
 
         bound = max(1, min(int(limit), MAX_PREPARED_COMPLETION_QUERY))
@@ -5209,7 +5213,15 @@ class DatabaseCoordinator:
                      AND claim.claim_id = json_extract_string(
                          completion.body_json, '$.claim_id'
                      )
-                    WHERE completion.status IN (?, ?)
+                    WHERE (
+                            completion.status = ?
+                         OR (
+                                completion.status = ?
+                            AND json_extract_string(
+                                    completion.body_json, '$.schema'
+                                ) = ?
+                            )
+                          )
                       AND claim.state IN (?, ?)
                     ORDER BY
                         CASE
@@ -5224,6 +5236,7 @@ class DatabaseCoordinator:
                     [
                         PREPARED_COMPLETION_STATUS,
                         AttemptStatus.SUCCEEDED.value,
+                        TASK_COMPLETION_PREPARATION_SCHEMA,
                         LeaseState.ACCEPTED.value,
                         LeaseState.EXPIRED.value,
                         AttemptStatus.SUCCEEDED.value,

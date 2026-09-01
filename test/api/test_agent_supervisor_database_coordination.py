@@ -2045,6 +2045,42 @@ def test_promoted_completion_is_enumerated_and_reconciled_while_live(
         coordinator.close()
 
 
+def test_ordinary_succeeded_completion_is_not_reinterpreted_as_preparation(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:controller-completed",
+            task_id="CONTROLLER-COMPLETED",
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:controller-completed",
+            owner_session_id="session:historical-worker",
+        )
+        coordinator.mark_task_complete(
+            claim.task_cid,
+            status=AttemptStatus.SUCCEEDED.value,
+            body={
+                "schema": "pctdd/g9-orphan-terminal-coordination-completion@1",
+                "task_cid": claim.task_cid,
+                "claim_id": claim.claim_id,
+                "operator_owned": True,
+            },
+        )
+
+        # Controller-owned completion records are dependency authority, not
+        # two-phase preparation barriers.  A historical matching claim must
+        # not make the daemon reinterpret their closed schema and crash-loop.
+        assert coordinator.list_unsettled_task_completions(limit=10) == []
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.ACCEPTED
+        assert coordinator.claimability(claim.task_cid)["completion_status"] == (
+            AttemptStatus.SUCCEEDED.value
+        )
+    finally:
+        coordinator.close()
+
+
 def test_promoted_completion_reconciliation_expires_and_recovers_atomically(
     tmp_path: Path,
 ) -> None:
