@@ -710,7 +710,6 @@ test = ["test-only>=3"]
     assert receipt["passed"] is True
     assert receipt["projects"][0]["selected_validation_extras"] == ["test"]
     assert payloads[0]["projects"][0]["requirements"] == [
-        "packaging>=23.2",
         "pytest",
         "test-only>=3",
     ]
@@ -1485,6 +1484,89 @@ test = ["selected-only>=1"]
     assert payloads[0]["projects"][0]["requirement_marker_extras"] == ["", "test"]
 
 
+def test_pytest_preflight_does_not_stall_on_runtime_or_dev_extra_drift(
+    tmp_path,
+) -> None:
+    """ASEH-032: sealed overlays cannot grow kit runtime/dev extras."""
+
+    project = tmp_path / "ipfs_kit_py"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        """
+[project]
+name = "ipfs_kit_py"
+version = "0.3.0"
+dependencies = [
+    "aiofiles>=23.1.0",
+    "jsonpatch>=1.33",
+    "hypercorn>=0.16.0",
+    "protobuf>=5.26.0,<7.0.0",
+    "watchdog>=3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "paramiko>=3.4.0",
+]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        ["cd ipfs_kit_py && python3 -m pytest -q tests/test_context_pack_store.py"],
+        probe_runner=lambda payload, **_kwargs: _evaluate_dependency_payload(
+            payload,
+            version_getter={"pytest": "9.0.3"}.__getitem__,
+        ),
+    )
+
+    assert receipt["passed"] is True
+    assert receipt["reason"] == (
+        "approved_validation_environment_satisfies_project_dependencies"
+    )
+    assert receipt["projects"][0]["selected_validation_extras"] == []
+    assert receipt["probe"]["projects"][0]["missing"] == []
+    assert receipt["probe"]["projects"][0]["incompatible"] == []
+    assert receipt["probe"]["projects"][0]["observed"][0]["name"] == "pytest"
+
+
+def test_non_pytest_command_still_probes_runtime_dependencies(
+    tmp_path,
+) -> None:
+    project = tmp_path / "ipfs_kit_py"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        """
+[project]
+name = "ipfs_kit_py"
+version = "0.3.0"
+dependencies = ["hypercorn>=0.16.0"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    def missing_distribution(name: str) -> str:
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    receipt = preflight_validation_project_dependencies(
+        tmp_path,
+        ["cd ipfs_kit_py && python3 -c 'import ipfs_kit_py'"],
+        probe_runner=lambda payload, **_kwargs: _evaluate_dependency_payload(
+            payload,
+            version_getter=missing_distribution,
+        ),
+    )
+
+    assert receipt["passed"] is False
+    assert receipt["reason"] == "approved_validation_environment_dependency_drift"
+    assert receipt["missing_requirements"][0]["name"] == "hypercorn"
+    assert receipt["remediation"]["kind"] == (
+        "provision_approved_validation_environment"
+    )
+
+
 def test_dependency_probe_runtime_is_declared_through_packaging_source_of_truth() -> None:
     requirements = {
         line.strip()
@@ -1537,7 +1619,7 @@ dependencies = ["packaging>=23.2"]
         receipt["probe"]["probe_source_sha256"]
         == (receipt["probe"]["preflight_source_delivery"]["sha256"])
     )
-    assert receipt["probe"]["projects"][0]["observed"][0]["name"] == ("packaging")
+    assert receipt["probe"]["projects"][0]["observed"][0]["name"] == ("pytest")
 
 
 def test_dependency_preflight_event_projection_binds_full_receipt_artifact(

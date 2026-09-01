@@ -129,7 +129,6 @@ DEPENDENCY_PROBE_TIMEOUT_SECONDS = 30.0
 PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
     "test",
     "testing",
-    "dev",
 )
 PYTEST_COMMAND_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])pytest(?=$|[\s;&|])")
 _LOWER_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
@@ -1901,11 +1900,13 @@ def _pytest_validation_dependencies(
     list[dict[str, Any]],
     str,
 ]:
-    """Select ``test``, then ``testing``, then ``dev`` for pytest commands.
+    """Select ``test``, then ``testing`` for pytest commands.
 
     The runner distribution itself is always required.  At most one declared
     extra is selected so similarly named extras cannot silently combine into a
-    larger, environment-dependent contract.
+    larger, environment-dependent contract.  Kitchen-sink extras such as
+    ``dev`` (linters, SSH, browsers) are not a pytest dispatch gate; they
+    stall sealed overlays that cannot grow those packages.
     """
 
     requirements = ["pytest"]
@@ -2309,6 +2310,14 @@ def _bounded_static_project(
     requirement_marker_extras = [
         scoped_validation_extra if scoped_contract_selected else ""
     ] * len(dependencies)
+    if pytest_invoked and not scoped_contract_selected:
+        # Pytest dispatch is gated on the runner and an explicit test extra,
+        # not the full runtime closure.  Sealed validation overlays cannot
+        # grow unused runtime packages (hypercorn, paramiko, aiofiles) just
+        # to start a declared unit test; those fail later as retryable
+        # declared_validation_failed instead of stalling preflight forever.
+        dependencies = []
+        requirement_marker_extras = []
     if scoped_contract_selected:
         validation_dependencies: list[str] = []
         validation_marker_extras: list[str] = []
