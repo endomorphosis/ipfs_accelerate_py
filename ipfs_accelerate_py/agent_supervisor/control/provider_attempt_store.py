@@ -45,7 +45,15 @@ _LEGACY_EFFECT_LAUNCH_SCHEMA = (
 EFFECT_ADOPTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/provider-effect-adoption@1"
 )
-_STATES = frozenset({"reserved", "effect_started", "quarantined", "terminal"})
+_STATES = frozenset(
+    {
+        "reserved",
+        "effect_started",
+        "provider_outcome_unknown",
+        "quarantined",
+        "terminal",
+    }
+)
 _MAX_RESERVATION_BYTES = 768 * 1024
 _MAX_DOCKER_INSPECTION_BYTES = 256 * 1024
 _MAX_AUTHORIZATION_CONTEXT_BYTES = 512 * 1024
@@ -427,6 +435,8 @@ class ProviderAttemptReservation:
     effect_adoption_generation: int = 0
     effect_adoption_receipt: Mapping[str, Any] = field(default_factory=dict)
     completion_capability_sha256: str = ""
+    outcome_unknown_at_ms: int | None = None
+    outcome_unknown_reason: str = ""
     quarantine_at_ms: int | None = None
     quarantine_receipt: Mapping[str, Any] = field(default_factory=dict)
     quarantine_terminalization_receipt: Mapping[str, Any] = field(
@@ -450,7 +460,12 @@ class ProviderAttemptReservation:
 
     @property
     def effect_already_started(self) -> bool:
-        return self.state in {"effect_started", "quarantined", "terminal"}
+        return self.state in {
+            "effect_started",
+            "provider_outcome_unknown",
+            "quarantined",
+            "terminal",
+        }
 
     @property
     def terminal(self) -> bool:
@@ -2019,28 +2034,45 @@ class DurableProviderAttemptCAS:
             task_id="x", worktree_id="x", reservation_id="x",
             state="reserved", created_at_ms=1,
         )))
-        previous_expected = expected - {"terminal_cleanup_progress"}
-        legacy_expected = previous_expected - {"terminal_cleanup_authority"}
+        previous_expected = expected - {
+            "outcome_unknown_at_ms",
+            "outcome_unknown_reason",
+        }
+        legacy_expected = previous_expected - {"terminal_cleanup_progress"}
+        oldest_expected = legacy_expected - {"terminal_cleanup_authority"}
         if not isinstance(value, Mapping) or frozenset(value) not in {
             frozenset(expected),
             frozenset(previous_expected),
             frozenset(legacy_expected),
+            frozenset(oldest_expected),
         }:
             raise ProviderAttemptStoreError("attempt reservation fields are invalid")
         parsed_value = dict(value)
         if set(value) == previous_expected:
+            if value.get("schema") != CAS_SCHEMA:
+                raise ProviderAttemptStoreError(
+                    "attempt reservation fields are invalid"
+                )
+            parsed_value["outcome_unknown_at_ms"] = None
+            parsed_value["outcome_unknown_reason"] = ""
+        elif set(value) == legacy_expected:
             if value.get("schema") != _PREVIOUS_CAS_SCHEMA:
                 raise ProviderAttemptStoreError(
                     "attempt reservation fields are invalid"
                 )
+            parsed_value["terminal_cleanup_authority"] = {}
             parsed_value["terminal_cleanup_progress"] = {}
-        elif set(value) == legacy_expected:
+            parsed_value["outcome_unknown_at_ms"] = None
+            parsed_value["outcome_unknown_reason"] = ""
+        elif set(value) == oldest_expected:
             if value.get("schema") != _LEGACY_CAS_SCHEMA:
                 raise ProviderAttemptStoreError(
                     "attempt reservation fields are invalid"
                 )
             parsed_value["terminal_cleanup_authority"] = {}
             parsed_value["terminal_cleanup_progress"] = {}
+            parsed_value["outcome_unknown_at_ms"] = None
+            parsed_value["outcome_unknown_reason"] = ""
         try:
             reservation = ProviderAttemptReservation(**parsed_value)
         except (TypeError, ValueError) as exc:
@@ -2050,6 +2082,7 @@ class DurableProviderAttemptCAS:
         timestamp_fields = (
             reservation.created_at_ms,
             reservation.effect_started_at_ms,
+            reservation.outcome_unknown_at_ms,
             reservation.quarantine_at_ms,
             reservation.terminal_at_ms,
         )
@@ -2102,6 +2135,7 @@ class DurableProviderAttemptCAS:
             or reservation.effect_adoption_generation < 0
             or not isinstance(reservation.effect_adoption_receipt, Mapping)
             or not isinstance(reservation.completion_capability_sha256, str)
+            or not isinstance(reservation.outcome_unknown_reason, str)
             or not isinstance(reservation.quarantine_receipt, Mapping)
             or not isinstance(
                 reservation.quarantine_terminalization_receipt, Mapping
@@ -2137,6 +2171,8 @@ class DurableProviderAttemptCAS:
                     reservation.effect_launch_receipt,
                     reservation.effect_adoption_receipt,
                     reservation.completion_capability_sha256,
+                    reservation.outcome_unknown_at_ms,
+                    reservation.outcome_unknown_reason,
                     reservation.quarantine_at_ms,
                     reservation.quarantine_receipt,
                     reservation.quarantine_terminalization_receipt,
@@ -2158,6 +2194,8 @@ class DurableProviderAttemptCAS:
                     reservation.completion_capability_sha256,
                 )
                 is None
+                or reservation.outcome_unknown_at_ms is not None
+                or reservation.outcome_unknown_reason
                 or reservation.terminal_at_ms is not None
                 or reservation.terminal_returncode is not None
                 or reservation.terminal_outcome_id
@@ -2168,6 +2206,31 @@ class DurableProviderAttemptCAS:
                 or reservation.quarantine_receipt
                 or reservation.quarantine_terminalization_receipt
             ))
+            or (reservation.state == "provider_outcome_unknown" and (
+                reservation.effect_started_at_ms is None
+                or not _valid_effect_launch_receipt(reservation)
+                or not _valid_effect_adoption_receipt(reservation)
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    reservation.completion_capability_sha256,
+                )
+                is None
+                or reservation.outcome_unknown_at_ms is None
+                or reservation.outcome_unknown_at_ms < reservation.effect_started_at_ms
+                or not _token(
+                    reservation.outcome_unknown_reason,
+                    "outcome_unknown_reason",
+                )
+                or reservation.quarantine_at_ms is not None
+                or reservation.quarantine_receipt
+                or reservation.quarantine_terminalization_receipt
+                or reservation.terminal_at_ms is not None
+                or reservation.terminal_returncode is not None
+                or reservation.terminal_outcome_id
+                or reservation.terminal_outcome
+                or reservation.terminal_cleanup_authority
+                or reservation.terminal_cleanup_progress
+            ))
             or (reservation.state == "quarantined" and (
                 reservation.effect_started_at_ms is None
                 or not _valid_effect_launch_receipt(reservation)
@@ -2177,6 +2240,8 @@ class DurableProviderAttemptCAS:
                     reservation.completion_capability_sha256,
                 )
                 is None
+                or reservation.outcome_unknown_at_ms is not None
+                or reservation.outcome_unknown_reason
                 or reservation.quarantine_at_ms is None
                 or reservation.quarantine_at_ms
                 < reservation.effect_started_at_ms
@@ -2203,6 +2268,8 @@ class DurableProviderAttemptCAS:
                     reservation.completion_capability_sha256,
                 )
                 is None
+                or reservation.outcome_unknown_at_ms is not None
+                or reservation.outcome_unknown_reason
                 or reservation.terminal_at_ms is None
                 or reservation.terminal_returncode is None
                 or not reservation.terminal_outcome_id
@@ -2696,7 +2763,12 @@ class DurableProviderAttemptCAS:
             }
             if not self._matches(current, identity_fields):
                 raise ProviderAttemptStoreError("fallback reservation changed")
-            if current.state in {"effect_started", "terminal"}:
+            if current.state in {
+                "effect_started",
+                "provider_outcome_unknown",
+                "quarantined",
+                "terminal",
+            }:
                 return ProviderAttemptCASResult(
                     reservation=current,
                     created=False,
@@ -2855,6 +2927,69 @@ class DurableProviderAttemptCAS:
             )
         finally:
             self._unlock(descriptor)
+
+    def mark_provider_outcome_unknown(
+        self,
+        reservation: ProviderAttemptReservation,
+        *,
+        reason: str,
+        now_ms: int | None = None,
+    ) -> ProviderAttemptReservation:
+        """Persist a timeout/connection-loss outcome without replaying its effect.
+
+        This is deliberately a one-way transition from a durably started effect.
+        A later completion may still settle the same reservation, but a caller
+        cannot obtain a new launch authorization from this state.
+        """
+
+        reason_text = _token(reason, "outcome_unknown_reason")
+        descriptor, path = self._lock(reservation.logical_attempt_id)
+        try:
+            if not self._entry_exists(path):
+                raise ProviderAttemptStoreError("fallback reservation is absent")
+            current = self._read(path)
+            identity_fields = {
+                name: getattr(reservation, name)
+                for name in (
+                    "logical_attempt_id",
+                    "route_id",
+                    "decision_id",
+                    "task_id",
+                    "worktree_id",
+                    "reservation_id",
+                )
+            }
+            if not self._matches(current, identity_fields):
+                raise ProviderAttemptStoreError("fallback reservation changed")
+            if current.state == "provider_outcome_unknown":
+                if current.outcome_unknown_reason != reason_text:
+                    raise ProviderAttemptStoreError("unknown outcome reason changed")
+                return current
+            if current.state != "effect_started":
+                raise ProviderAttemptStoreError(
+                    "only a started provider effect can have an unknown outcome"
+                )
+            timestamp = _timestamp(now_ms, "outcome-unknown timestamp")
+            if timestamp < int(current.effect_started_at_ms or 0):
+                raise ProviderAttemptStoreError(
+                    "outcome-unknown timestamp predates effect start"
+                )
+            unknown = ProviderAttemptReservation(
+                **{
+                    **asdict(current),
+                    "schema": CAS_SCHEMA,
+                    "state": "provider_outcome_unknown",
+                    "outcome_unknown_at_ms": timestamp,
+                    "outcome_unknown_reason": reason_text,
+                }
+            )
+            self._write(path, unknown)
+            return unknown
+        finally:
+            self._unlock(descriptor)
+
+    # A concise name for provider adapters that already namespace attempts.
+    mark_outcome_unknown = mark_provider_outcome_unknown
 
     def claim_quarantined_terminalization(
         self,
@@ -3156,7 +3291,8 @@ class DurableProviderAttemptCAS:
                     return current
                 raise ProviderAttemptStoreError("terminal fallback result changed")
             if (
-                current.state not in {"effect_started", "quarantined"}
+                current.state
+                not in {"effect_started", "provider_outcome_unknown", "quarantined"}
                 or current.reservation_id != reservation.reservation_id
                 or current.logical_attempt_id != reservation.logical_attempt_id
                 or current.route_id != reservation.route_id
@@ -3241,6 +3377,8 @@ class DurableProviderAttemptCAS:
                     **asdict(current),
                     "schema": CAS_SCHEMA,
                     "state": "terminal",
+                    "outcome_unknown_at_ms": None,
+                    "outcome_unknown_reason": "",
                     "terminal_at_ms": timestamp,
                     "terminal_returncode": returncode,
                     "terminal_outcome_id": outcome_id,

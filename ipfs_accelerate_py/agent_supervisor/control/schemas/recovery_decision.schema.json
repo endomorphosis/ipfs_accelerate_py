@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ipfs_accelerate_py/agent-supervisor/recovery-decision@1",
+  "title": "Provider unknown-outcome recovery decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "evidence", "decision"],
+  "properties": {
+    "schema": {
+      "const": "ipfs_accelerate_py/agent-supervisor/recovery-decision@1"
+    },
+    "decision": {
+      "enum": [
+        "reconciliation_pending",
+        "retry_pending",
+        "compensated",
+        "quarantined",
+        "terminal_succeeded",
+        "terminal_failed"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_available",
+        "effect_observed",
+        "effect_absent",
+        "receipt_observed",
+        "idempotency_observed",
+        "idempotency_key",
+        "completion_observed",
+        "completion_succeeded",
+        "compensation_observed",
+        "effect_idempotent"
+      ],
+      "properties": {
+        "provider_available": {"type": "boolean"},
+        "effect_observed": {"type": "boolean"},
+        "effect_absent": {"type": "boolean"},
+        "receipt_observed": {"type": "boolean"},
+        "idempotency_observed": {"type": "boolean"},
+        "idempotency_key": {"type": "string"},
+        "completion_observed": {"type": "boolean"},
+        "completion_succeeded": {"type": "boolean"},
+        "compensation_observed": {"type": "boolean"},
+        "effect_idempotent": {"type": "boolean"}
+      }
+    }
+  }
+}
