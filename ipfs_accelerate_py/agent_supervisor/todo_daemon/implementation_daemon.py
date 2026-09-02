@@ -72475,6 +72475,7 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "bwrap: setting up uid map: Permission denied",
         "bwrap: setting up gid map: Permission denied",
         "grok_quota_exhausted",
+        "implementation_protected_path_verification_lock_timeout",
     }
 )
 # Grok/wrapper deaths and Quack attach races are retryable, but they are not
@@ -72495,6 +72496,7 @@ _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
         "bwrap: setting up uid map: Permission denied",
         "bwrap: setting up gid map: Permission denied",
         "grok_quota_exhausted",
+        "implementation_protected_path_verification_lock_timeout",
     }
 )
 _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
@@ -72508,6 +72510,7 @@ _FALSE_TERMINAL_PORTAL_UNSTALL_REASONS = frozenset(
         "bwrap: setting up gid map: Permission denied",
         "quack_transport_unavailable",
         "implementation_protected_path_mutated",
+        "implementation_protected_path_verification_lock_timeout",
         "validation_project_dependency_preflight_failed",
         "typed_portal_deferral_budget_exhausted",
         "grok_quota_exhausted",
@@ -79916,6 +79919,8 @@ class DatabaseImplementationDaemon:
             and "41487" in reason
         ) or "quack_transport_unavailable" in lowered:
             return "quack_transport_unavailable"
+        if lowered == "implementation_protected_path_verification_lock_timeout":
+            return "implementation_protected_path_verification_lock_timeout"
         return (reason or "portal_execution_deferred")[:1024]
 
     @staticmethod
