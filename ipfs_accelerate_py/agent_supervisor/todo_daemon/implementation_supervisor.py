@@ -15229,6 +15229,7 @@ class PortalImplementationSupervisor:
         try:
             from .database_portal_bridge import (
                 DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+                DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
             )
 
             pins = tuple(
@@ -15256,6 +15257,26 @@ class PortalImplementationSupervisor:
             and self.board_namespace
             == "parallel-content-sealing-proof-carrying-tdd-v1"
             and self.config.task_prefix == "## PCTDD-"
+            and DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN["task_alias"]
+            == "PCTDD-005"
+            and DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN["task_cid"]
+            == (
+                "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+            )
+            and DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN["board_namespace"]
+            == "parallel-content-sealing-proof-carrying-tdd-v1"
+            and DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN["owner_store_id"]
+            == program.store_id
+            and DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+                "control_store_generation"
+            ]
+            == program.store_generation
+            and Path(
+                DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+                    "disposition_repository_root"
+                ]
+            ).resolve(strict=True)
+            == repo_root
         )
         if not exact_authority:
             raise RuntimeError(
@@ -16702,6 +16723,7 @@ class PortalImplementationSupervisor:
         from .implementation_daemon import (
             DatabaseImplementationDaemon,
             database_fenced_provider_retained_reconciliation_valid,
+            database_pctdd005_successor_reconciliation_valid,
         )
 
         (
@@ -16906,21 +16928,15 @@ class PortalImplementationSupervisor:
                             callback=callback,
                         )
 
-                    setattr(
-                        outer_authority_cas,
-                        "__database_portal_owner_fence_held__",
-                        True,
+                    outer_authority_cas.__database_portal_owner_fence_held__ = (
+                        True
                     )
-                    setattr(
-                        outer_authority_cas,
-                        "__database_portal_checkout_mutation_lease_held__",
-                        True,
+                    outer_authority_cas.__database_portal_checkout_mutation_lease_held__ = (
+                        False
                     )
                 else:
-                    outer_authority_cas = getattr(
-                        self,
-                        "_database_portal_execute_with_fenced_provider_"
-                        "outer_authority_cas",
+                    outer_authority_cas = (
+                        self._database_portal_execute_with_fenced_provider_outer_authority_cas
                     )
                 bind_outer_authority_cas(outer_authority_cas)
             # Close the exact task-CAS-before-local-attempt crash window before
@@ -16938,11 +16954,7 @@ class PortalImplementationSupervisor:
                     "quiesced": False,
                     "safe_to_restart": False,
                 }
-            orphaned_claim_reconciliations = (
-                daemon.reconcile_retained_recovery_orphaned_claims()
-                if retained_program
-                else []
-            )
+            orphaned_claim_reconciliations: list[dict[str, Any]] = []
             shutdown_repair_deadline = time.monotonic() + 30.0
             prior_progress_token = ""
             for _page_index in range(64):
@@ -16992,6 +17004,24 @@ class PortalImplementationSupervisor:
                             "quiesced": False,
                             "safe_to_restart": False,
                         }
+                    reconcile_pctdd005 = getattr(
+                        daemon,
+                        "reconcile_pctdd005_successor_occurrence",
+                        None,
+                    )
+                    if not callable(reconcile_pctdd005):
+                        return {
+                            **dict(reconciliation),
+                            "reconciled": False,
+                            "blocked": True,
+                            "reason": (
+                                "database_portal_pctdd005_successor_"
+                                "authority_unavailable"
+                            ),
+                            "reconciliation_complete": False,
+                            "quiesced": False,
+                            "safe_to_restart": False,
+                        }
                     checkout_operation = (
                         "database_portal_retained_recovery_admission"
                     )
@@ -17032,7 +17062,55 @@ class PortalImplementationSupervisor:
                             "quiesced": False,
                             "safe_to_restart": False,
                         }
+                    bound_outer_authority_cas = getattr(
+                        daemon,
+                        "_database_portal_outer_authority_cas",
+                        None,
+                    )
+                    if not (
+                        callable(bound_outer_authority_cas)
+                        and getattr(
+                            bound_outer_authority_cas,
+                            "__database_portal_owner_fence_held__",
+                            False,
+                        )
+                        is True
+                        and getattr(
+                            bound_outer_authority_cas,
+                            "__database_portal_checkout_mutation_lease_held__",
+                            None,
+                        )
+                        is False
+                    ):
+                        self._release_supervisor_checkout_lease(
+                            checkout_lease,
+                            operation=checkout_operation,
+                        )
+                        return {
+                            **dict(reconciliation),
+                            "reconciled": False,
+                            "blocked": True,
+                            "reason": (
+                                "database_portal_retained_checkout_fence_"
+                                "binding_unavailable"
+                            ),
+                            "reconciliation_complete": False,
+                            "quiesced": False,
+                            "safe_to_restart": False,
+                        }
+                    bound_outer_authority_cas.__database_portal_checkout_mutation_lease_held__ = (
+                        True
+                    )
                     try:
+                        orphaned_claim_reconciliations.extend(
+                            daemon.reconcile_pctdd005_successor_orphaned_claims()
+                        )
+                        orphaned_claim_reconciliations.extend(
+                            daemon.reconcile_retained_recovery_orphaned_claims()
+                        )
+                        pctdd005_reconciliation = dict(
+                            reconcile_pctdd005()
+                        )
                         retained_reconciliation = dict(reconcile_retained())
                     except Exception as exc:
                         return {
@@ -17052,6 +17130,9 @@ class PortalImplementationSupervisor:
                             },
                         }
                     finally:
+                        bound_outer_authority_cas.__database_portal_checkout_mutation_lease_held__ = (
+                            False
+                        )
                         self._release_supervisor_checkout_lease(
                             checkout_lease,
                             operation=checkout_operation,
@@ -17064,14 +17145,30 @@ class PortalImplementationSupervisor:
                         "retained_occurrence_reconciliation": (
                             retained_reconciliation
                         ),
+                        "pctdd005_successor_reconciliation": (
+                            pctdd005_reconciliation
+                        ),
                     }
                     retained_matches_current = getattr(
                         daemon,
                         "retained_recovery_reconciliation_matches_current",
                         None,
                     )
+                    pctdd005_matches_current = getattr(
+                        daemon,
+                        "pctdd005_successor_reconciliation_matches_current",
+                        None,
+                    )
                     if not (
-                        retained_reconciliation.get("blocked") is False
+                        pctdd005_reconciliation.get("blocked") is False
+                        and database_pctdd005_successor_reconciliation_valid(
+                            pctdd005_reconciliation
+                        )
+                        and callable(pctdd005_matches_current)
+                        and pctdd005_matches_current(
+                            pctdd005_reconciliation
+                        )
+                        and retained_reconciliation.get("blocked") is False
                         and database_fenced_provider_retained_reconciliation_valid(
                             retained_reconciliation
                         )

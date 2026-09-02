@@ -469,6 +469,17 @@ def test_retained_manifest_uses_explicit_base_namespace_with_g9_branch(
         "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS",
         patched_pins,
     )
+    successor_pin = dict(
+        database_portal_bridge_module.DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    )
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN",
+        {
+            **successor_pin,
+            "disposition_repository_root": str(tmp_path),
+        },
+    )
     program = SimpleNamespace(
         store_id=(
             "data/agent_supervisor/"

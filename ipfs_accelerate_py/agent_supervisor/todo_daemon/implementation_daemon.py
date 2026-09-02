@@ -78260,6 +78260,22 @@ DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-fenced-provider-retained-reconciliation@2"
 )
+# Additive singleton successor for the independently reviewed PCTDD-005 r26
+# occurrence.  The @2 records above remain byte-for-byte and semantically
+# closed over their original three occurrences; the @3 chain cannot be
+# mistaken for, or consumed as, an @2 authorization.
+DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-admission@3"
+)
+DATABASE_PCTDD005_SUCCESSOR_CONSUMPTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-consumption@3"
+)
+DATABASE_PCTDD005_SUCCESSOR_RECONCILIATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-retained-reconciliation@3"
+)
 _DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_FIELDS = frozenset(
     {
         "schema",
@@ -79984,20 +80000,141 @@ def _database_fenced_provider_retained_fence_record(
     return record
 
 
+def _database_fenced_provider_recovery_authority(
+    value: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Resolve one closed manifest generation without crossing its boundary."""
+
+    try:
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+            database_fenced_provider_retained_credit,
+            database_fenced_provider_retained_manifest,
+            database_fenced_provider_retained_manifest_valid,
+            database_pctdd005_successor_credit,
+            database_pctdd005_successor_manifest,
+            database_pctdd005_successor_manifest_valid,
+        )
+    except Exception:
+        return None
+    manifest_id = str(value.get("manifest_id") or "")
+    admission_schema = str(value.get("schema") or "")
+    authorities = (
+        {
+            "manifest_id": DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            "pins": DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            "credit_builder": database_fenced_provider_retained_credit,
+            "manifest_builder": database_fenced_provider_retained_manifest,
+            "manifest_validator": database_fenced_provider_retained_manifest_valid,
+            "admission_schema": DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
+            "consumption_schema": DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_SCHEMA,
+            "reconciliation_schema": (
+                DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA
+            ),
+        },
+        {
+            "manifest_id": DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+            "pins": (DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,),
+            "credit_builder": database_pctdd005_successor_credit,
+            "manifest_builder": database_pctdd005_successor_manifest,
+            "manifest_validator": database_pctdd005_successor_manifest_valid,
+            "admission_schema": DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA,
+            "consumption_schema": DATABASE_PCTDD005_SUCCESSOR_CONSUMPTION_SCHEMA,
+            "reconciliation_schema": (
+                DATABASE_PCTDD005_SUCCESSOR_RECONCILIATION_SCHEMA
+            ),
+        },
+    )
+    matches = [
+        authority
+        for authority in authorities
+        if manifest_id == authority["manifest_id"]
+        and (
+            not admission_schema
+            or admission_schema
+            in {
+                authority["admission_schema"],
+                authority["consumption_schema"],
+            }
+        )
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _database_fenced_provider_recovery_authority_for_occurrence(
+    occurrence: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Resolve the sole manifest containing an exact immutable occurrence."""
+
+    try:
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+            database_fenced_provider_retained_credit,
+            database_fenced_provider_retained_manifest,
+            database_fenced_provider_retained_manifest_valid,
+            database_pctdd005_successor_credit,
+            database_pctdd005_successor_manifest,
+            database_pctdd005_successor_manifest_valid,
+        )
+    except Exception:
+        return None
+    candidates = (
+        {
+            "manifest_id": DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            "pins": DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            "credit_builder": database_fenced_provider_retained_credit,
+            "manifest_builder": database_fenced_provider_retained_manifest,
+            "manifest_validator": database_fenced_provider_retained_manifest_valid,
+            "admission_schema": DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
+            "consumption_schema": DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_SCHEMA,
+            "reconciliation_schema": (
+                DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA
+            ),
+        },
+        {
+            "manifest_id": DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+            "pins": (DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,),
+            "credit_builder": database_pctdd005_successor_credit,
+            "manifest_builder": database_pctdd005_successor_manifest,
+            "manifest_validator": database_pctdd005_successor_manifest_valid,
+            "admission_schema": DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA,
+            "consumption_schema": DATABASE_PCTDD005_SUCCESSOR_CONSUMPTION_SCHEMA,
+            "reconciliation_schema": (
+                DATABASE_PCTDD005_SUCCESSOR_RECONCILIATION_SCHEMA
+            ),
+        },
+    )
+    encoded = canonical_json(dict(occurrence))
+    matches = [
+        authority
+        for authority in candidates
+        if sum(
+            canonical_json(dict(pin)) == encoded
+            for pin in authority["pins"]
+            if isinstance(pin, Mapping)
+        )
+        == 1
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _database_fenced_provider_retained_occurrence_for_admission(
     value: Mapping[str, Any],
 ) -> Mapping[str, Any] | None:
     """Resolve one exact operator-owned occurrence from a compact admission."""
 
-    try:
-        from .database_portal_bridge import (
-            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
-        )
-    except Exception:
+    authority = _database_fenced_provider_recovery_authority(value)
+    if authority is None:
         return None
     matches = [
         item
-        for item in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        for item in authority["pins"]
         if isinstance(item, Mapping)
         and item.get("task_cid") == value.get("task_cid")
         and item.get("task_alias") == value.get("task_alias")
@@ -80008,7 +80145,7 @@ def _database_fenced_provider_retained_occurrence_for_admission(
 
 
 def database_fenced_provider_retained_admission_valid(value: Any) -> bool:
-    """Validate the compact, forward-only @2 recovery admission.
+    """Validate a compact, forward-only versioned recovery admission.
 
     Full inner and outer receipts are deliberately absent.  This validator
     proves only that the compact record is self-consistent with one sealed
@@ -80020,10 +80157,11 @@ def database_fenced_provider_retained_admission_valid(value: Any) -> bool:
     if not isinstance(value, Mapping):
         return False
     record = dict(value)
+    authority = _database_fenced_provider_recovery_authority(record)
     if (
         set(record) != _DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_FIELDS
-        or record.get("schema")
-        != DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
+        or authority is None
+        or record.get("schema") != authority["admission_schema"]
     ):
         return False
     unsigned = dict(record)
@@ -80039,12 +80177,7 @@ def database_fenced_provider_retained_admission_valid(value: Any) -> bool:
     if occurrence is None:
         return False
     try:
-        from .database_portal_bridge import (
-            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
-            database_fenced_provider_retained_credit,
-        )
-
-        credit = dict(database_fenced_provider_retained_credit(occurrence))
+        credit = dict(authority["credit_builder"](occurrence))
     except Exception:
         return False
     exact_occurrence_fields = {
@@ -80090,8 +80223,7 @@ def database_fenced_provider_retained_admission_valid(value: Any) -> bool:
         "one_shot": "one_shot",
     }
     if (
-        record.get("manifest_id")
-        != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+        record.get("manifest_id") != authority["manifest_id"]
         or record.get("credit_id")
         != _database_fenced_provider_retained_digest(credit)
         or any(
@@ -80143,6 +80275,16 @@ def database_fenced_provider_retained_admission_valid(value: Any) -> bool:
     return True
 
 
+def database_pctdd005_successor_admission_valid(value: Any) -> bool:
+    """Validate only the additive singleton @3 admission schema."""
+
+    return bool(
+        isinstance(value, Mapping)
+        and value.get("schema") == DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA
+        and database_fenced_provider_retained_admission_valid(value)
+    )
+
+
 def database_fenced_provider_retained_admission(
     *,
     occurrence: Mapping[str, Any],
@@ -80158,11 +80300,6 @@ def database_fenced_provider_retained_admission(
         from ..task_sources.intent_repository import (
             fenced_provider_outer_authority_population_receipt_valid,
         )
-        from .database_portal_bridge import (
-            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
-            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
-            database_fenced_provider_retained_credit,
-        )
     except Exception as exc:
         raise DatabaseImplementationConflictError(
             "retained recovery authorities are unavailable"
@@ -80173,9 +80310,16 @@ def database_fenced_provider_retained_admission(
     ):
         raise TypeError("retained recovery admission requires mappings")
     occurrence_record = dict(occurrence)
+    authority = _database_fenced_provider_recovery_authority_for_occurrence(
+        occurrence_record
+    )
+    if authority is None:
+        raise DatabaseImplementationConflictError(
+            "retained recovery occurrence has no sealed authority"
+        )
     exact_occurrences = [
         dict(item)
-        for item in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        for item in authority["pins"]
         if isinstance(item, Mapping)
         and canonical_json(dict(item)) == canonical_json(occurrence_record)
     ]
@@ -80184,7 +80328,7 @@ def database_fenced_provider_retained_admission(
             "retained recovery occurrence is not operator reviewed"
         )
     expected_credit = dict(
-        database_fenced_provider_retained_credit(exact_occurrences[0])
+        authority["credit_builder"](exact_occurrences[0])
     )
     if canonical_json(dict(credit)) != canonical_json(expected_credit):
         raise DatabaseImplementationConflictError(
@@ -80253,7 +80397,7 @@ def database_fenced_provider_retained_admission(
         or inner_subject.get("attempt_number")
         != pin["predecessor_attempt_number"]
         or inner_subject.get("recovery_manifest_id")
-        != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+        != authority["manifest_id"]
         or inner_subject.get("recovery_credit_id") != credit_id
         or outer_subject.get("expected_task_status")
         != pin["blocked_task_status"]
@@ -80294,8 +80438,8 @@ def database_fenced_provider_retained_admission(
             "retained recovery receipt bindings drifted"
         )
     record: dict[str, Any] = {
-        "schema": DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
-        "manifest_id": DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+        "schema": authority["admission_schema"],
+        "manifest_id": authority["manifest_id"],
         "credit_id": credit_id,
         "occurrence_id": _database_fenced_provider_retained_digest(pin),
         "task_cid": pin["task_cid"],
@@ -80362,10 +80506,11 @@ def database_fenced_provider_retained_consumption_valid(value: Any) -> bool:
     if not isinstance(value, Mapping):
         return False
     record = dict(value)
+    authority = _database_fenced_provider_recovery_authority(record)
     if (
         set(record) != _DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_FIELDS
-        or record.get("schema")
-        != DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_SCHEMA
+        or authority is None
+        or record.get("schema") != authority["consumption_schema"]
     ):
         return False
     unsigned = dict(record)
@@ -80418,6 +80563,17 @@ def database_fenced_provider_retained_consumption_valid(value: Any) -> bool:
     )
 
 
+def database_pctdd005_successor_consumption_valid(value: Any) -> bool:
+    """Validate only the additive singleton @3 consumption schema."""
+
+    return bool(
+        isinstance(value, Mapping)
+        and value.get("schema")
+        == DATABASE_PCTDD005_SUCCESSOR_CONSUMPTION_SCHEMA
+        and database_fenced_provider_retained_consumption_valid(value)
+    )
+
+
 def database_fenced_provider_retained_consumption_matches_admission(
     *,
     admission: Any,
@@ -80456,8 +80612,13 @@ def database_fenced_provider_retained_consumption_matches_admission(
     )
 
 
-def database_fenced_provider_retained_reconciliation_valid(value: Any) -> bool:
-    """Validate the exact terminal three-occurrence controller aggregate."""
+def _database_fenced_provider_reconciliation_valid(
+    value: Any,
+    *,
+    schema: str,
+    pins: tuple[Mapping[str, Any], ...],
+) -> bool:
+    """Validate one exact terminal controller aggregate."""
 
     if not isinstance(value, Mapping):
         return False
@@ -80476,31 +80637,26 @@ def database_fenced_provider_retained_reconciliation_valid(value: Any) -> bool:
     if (
         set(record) != fields
         or record.get("schema")
-        != DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA
+        != schema
         or record.get("attempted") is not True
         or record.get("reconciled") is not True
         or record.get("blocked") is not False
         or record.get("reason")
         != "retained_occurrence_reconciliation_complete"
-        or record.get("expected_occurrence_count") != 3
+        or record.get("expected_occurrence_count") != len(pins)
         or type(record.get("admitted_count")) is not int
         or type(record.get("already_consumed_count")) is not int
         or record["admitted_count"] < 0
         or record["already_consumed_count"] < 0
-        or record["admitted_count"] + record["already_consumed_count"] != 3
+        or record["admitted_count"] + record["already_consumed_count"]
+        != len(pins)
         or type(record.get("outcomes")) is not list
-        or len(record["outcomes"]) != 3
+        or len(record["outcomes"]) != len(pins)
     ):
         return False
-    try:
-        from .database_portal_bridge import (
-            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
-        )
-    except Exception:
-        return False
-    pins = {
+    expected_pins = {
         (str(item.get("task_alias") or ""), str(item.get("task_cid") or ""))
-        for item in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        for item in pins
         if isinstance(item, Mapping)
     }
     outcomes = record["outcomes"]
@@ -80508,7 +80664,7 @@ def database_fenced_provider_retained_reconciliation_valid(value: Any) -> bool:
         (str(item.get("task_alias") or ""), str(item.get("task_cid") or ""))
         for item in outcomes
         if isinstance(item, Mapping)
-    } != pins:
+    } != expected_pins:
         return False
     admitted = 0
     consumed = 0
@@ -80558,6 +80714,38 @@ def database_fenced_provider_retained_reconciliation_valid(value: Any) -> bool:
     )
 
 
+def database_fenced_provider_retained_reconciliation_valid(value: Any) -> bool:
+    """Validate the immutable @2 three-occurrence aggregate."""
+
+    try:
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+        )
+    except Exception:
+        return False
+    return _database_fenced_provider_reconciliation_valid(
+        value,
+        schema=DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA,
+        pins=tuple(DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS),
+    )
+
+
+def database_pctdd005_successor_reconciliation_valid(value: Any) -> bool:
+    """Validate the additive @3 singleton reconciliation result."""
+
+    try:
+        from .database_portal_bridge import (
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+        )
+    except Exception:
+        return False
+    return _database_fenced_provider_reconciliation_valid(
+        value,
+        schema=DATABASE_PCTDD005_SUCCESSOR_RECONCILIATION_SCHEMA,
+        pins=(DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,),
+    )
+
+
 def database_fenced_provider_retained_consumption(
     *,
     admission: Mapping[str, Any],
@@ -80580,8 +80768,10 @@ def database_fenced_provider_retained_consumption(
             "retained recovery consumption requires an exact admission"
         )
     admitted = dict(admission)
+    authority = _database_fenced_provider_recovery_authority(admitted)
     if (
-        expected_task_status != "retrying"
+        authority is None
+        or expected_task_status != "retrying"
         or resulting_task_status != "in_progress"
         or type(expected_task_revision) is not int
         or type(resulting_task_revision) is not int
@@ -80605,7 +80795,7 @@ def database_fenced_provider_retained_consumption(
             "retained recovery consumption transition is invalid"
         )
     record: dict[str, Any] = {
-        "schema": DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_SCHEMA,
+        "schema": authority["consumption_schema"],
         "admission_id": admitted["admission_id"],
         "manifest_id": admitted["manifest_id"],
         "credit_id": admitted["credit_id"],
@@ -89115,15 +89305,15 @@ class DatabaseImplementationDaemon:
         *,
         allowed_states: frozenset[str],
     ) -> bool:
-        """Recompute the complete V2 fence from its sealed occurrence."""
+        """Recompute the complete versioned fence from its sealed occurrence."""
 
         try:
-            from .database_portal_bridge import (
-                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
-                database_fenced_provider_retained_credit,
-            )
-
             pin = dict(occurrence)
+            authority = (
+                _database_fenced_provider_recovery_authority_for_occurrence(pin)
+            )
+            if authority is None:
+                return False
             attempt = self.get_attempt(str(pin["predecessor_attempt_id"]))
             if attempt is None:
                 return False
@@ -89143,10 +89333,10 @@ class DatabaseImplementationDaemon:
                 for target, source in attempt_bindings.items()
             ):
                 return False
-            credit = dict(database_fenced_provider_retained_credit(pin))
+            credit = dict(authority["credit_builder"](pin))
             expected = _database_fenced_provider_retained_fence_record(
                 occurrence=pin,
-                manifest_id=DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+                manifest_id=str(authority["manifest_id"]),
                 credit_id=_database_fenced_provider_retained_digest(credit),
                 attempt_id=attempt.attempt_id,
                 task_cid=attempt.task_cid,
@@ -89255,6 +89445,43 @@ class DatabaseImplementationDaemon:
             return False
         return True
 
+    def _retained_recovery_admission_population_admitted_current(
+        self,
+        admission: Mapping[str, Any],
+    ) -> bool:
+        """Require only the closed population belonging to this admission."""
+
+        authority = _database_fenced_provider_recovery_authority(admission)
+        if authority is None:
+            return False
+        if (
+            authority["admission_schema"]
+            == DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
+        ):
+            # Preserve the independently tested @2 aggregate barrier.
+            return self._retained_recovery_aggregate_admitted_current()
+        try:
+            manifest = authority["manifest_builder"]()
+            if not authority["manifest_validator"](manifest):
+                return False
+            for occurrence in authority["pins"]:
+                task = self.task_source.get(str(occurrence["task_cid"]))
+                if not (
+                    task is not None
+                    and str(getattr(task, "task_alias", "") or "")
+                    == str(occurrence["task_alias"])
+                    and self._retained_recovery_reserved_epoch_state(task)
+                    in {"admitted", "consumed"}
+                    and self._retained_recovery_dispatch_fence_is_current(
+                        occurrence,
+                        allowed_states=frozenset({"admitted"}),
+                    )
+                ):
+                    return False
+        except Exception:
+            return False
+        return True
+
     def _retained_recovery_reserved_epoch_state(self, task: Any) -> str:
         """Classify the two one-shot revisions reserved by the sealed board.
 
@@ -89268,18 +89495,23 @@ class DatabaseImplementationDaemon:
         try:
             from .database_portal_bridge import (
                 DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+                DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
             )
 
+            reserved_pins = (
+                *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+                DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+            )
             task_cid = str(getattr(task, "task_cid", "") or "")
             task_alias = str(getattr(task, "task_alias", "") or "")
             cid_matches = [
                 dict(pin)
-                for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+                for pin in reserved_pins
                 if pin.get("task_cid") == task_cid
             ]
             alias_matches = [
                 dict(pin)
-                for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+                for pin in reserved_pins
                 if task_alias and pin.get("task_alias") == task_alias
             ]
             if len(cid_matches) == 1:
@@ -89344,11 +89576,13 @@ class DatabaseImplementationDaemon:
                 task_cid = str(getattr(task, "task_cid", "") or "")
                 task_alias = str(getattr(task, "task_alias", "") or "")
                 known_cids = {
+                    "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza",
                     "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a",
                     "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq",
                     "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
                 }
                 if task_cid in known_cids or task_alias in {
+                    "PCTDD-005",
                     "PCTDD-006",
                     "PCTDD-007",
                     "PCTDD-034",
@@ -89361,21 +89595,44 @@ class DatabaseImplementationDaemon:
     def retained_recovery_reconciliation_matches_current(
         self,
         value: Any,
+        *,
+        _authority: Mapping[str, Any] | None = None,
     ) -> bool:
         """Bind a syntactic terminal aggregate to current durable state."""
 
-        if not database_fenced_provider_retained_reconciliation_valid(value):
+        if _authority is None:
+            from .database_portal_bridge import (
+                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            )
+
+            _authority = _database_fenced_provider_recovery_authority(
+                {
+                    "manifest_id": (
+                        DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+                    ),
+                    "schema": (
+                        DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
+                    ),
+                }
+            )
+        if _authority is None:
+            return False
+        pins = tuple(_authority["pins"])
+        validator = (
+            database_fenced_provider_retained_reconciliation_valid
+            if _authority["admission_schema"]
+            == DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
+            else database_pctdd005_successor_reconciliation_valid
+        )
+        if not validator(value):
             return False
         try:
-            from .database_portal_bridge import (
-                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
-            )
 
             outcomes = {
                 (item["task_alias"], item["task_cid"]): item
                 for item in value["outcomes"]
             }
-            for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS:
+            for pin in pins:
                 task = self.task_source.get(str(pin["task_cid"]))
                 outcome = outcomes[(pin["task_alias"], pin["task_cid"])]
                 receipt = dict(
@@ -89418,7 +89675,46 @@ class DatabaseImplementationDaemon:
                     return False
         except Exception:
             return False
-        return self._retained_recovery_aggregate_admitted_current()
+        if (
+            _authority["admission_schema"]
+            == DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
+        ):
+            return self._retained_recovery_aggregate_admitted_current()
+        first_task = self.task_source.get(str(pins[0]["task_cid"]))
+        receipt = dict(
+            getattr(first_task, "body", {}).get("completion_receipt") or {}
+        ) if first_task is not None else {}
+        admission = receipt.get("retained_recovery_admission")
+        return bool(
+            isinstance(admission, Mapping)
+            and self._retained_recovery_admission_population_admitted_current(
+                admission
+            )
+        )
+
+    def pctdd005_successor_reconciliation_matches_current(
+        self,
+        value: Any,
+    ) -> bool:
+        """Bind a syntactic @3 result to its singleton durable state."""
+
+        from .database_portal_bridge import (
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+        )
+
+        authority = _database_fenced_provider_recovery_authority(
+            {
+                "manifest_id": DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+                "schema": DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA,
+            }
+        )
+        return bool(
+            authority is not None
+            and self.retained_recovery_reconciliation_matches_current(
+                value,
+                _authority=authority,
+            )
+        )
 
     def _automatic_claim_forbidden_current(self, task: Any) -> bool:
         """Apply static policy plus exact irrevocable admission integrity.
@@ -89454,7 +89750,9 @@ class DatabaseImplementationDaemon:
             ):
                 return True
             return not bool(
-                self._retained_recovery_aggregate_admitted_current()
+                self._retained_recovery_admission_population_admitted_current(
+                    retained_admission
+                )
             )
         evidence = receipt.get("no_provider_rearm_evidence")
         if not isinstance(evidence, Mapping) or str(
@@ -94630,6 +94928,31 @@ class DatabaseImplementationDaemon:
         )
         if branch_status != 1:
             return False
+        pctdd005_task_cid = (
+            "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+        )
+        pctdd005_identity_named = bool(
+            pin.get("task_cid") == pctdd005_task_cid
+            or pin.get("task_alias") == "PCTDD-005"
+        )
+        if pctdd005_identity_named:
+            # PCTDD-005's exact r26 provider made no task edit before its
+            # runner was fenced, and cleanup left no candidate authority.
+            # Close this identity before the historical clean/rescue branches
+            # so a near-miss cannot launder it through either disposition.
+            return bool(
+                pin.get("task_cid") == pctdd005_task_cid
+                and pin.get("task_alias") == "PCTDD-005"
+                and mode
+                == "runner_fenced_no_task_edits_candidate_unavailable"
+                and disposition == "no_task_edits_candidate_unavailable"
+                and pin.get("retained_ref") == ""
+                and pin.get("retained_commit") == ""
+                and pin.get("retained_worktree_path") == ""
+                and pin.get("allow_pool") is False
+                and pin.get("seed_prior_attempt") is False
+                and pin.get("one_shot") is True
+            )
         if mode == "runner_fenced_clean_removed":
             return bool(
                 disposition == "clean_removed"
@@ -94691,6 +95014,8 @@ class DatabaseImplementationDaemon:
 
     def reconcile_retained_fenced_provider_occurrences(
         self,
+        *,
+        _authority: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Admit the three exact @2 occurrences without starting a worker.
 
@@ -94702,22 +95027,40 @@ class DatabaseImplementationDaemon:
         retrying -> in_progress CAS.
         """
 
-        from .database_portal_bridge import (
-            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
-            database_fenced_provider_retained_credit,
-            database_fenced_provider_retained_manifest,
-            database_fenced_provider_retained_manifest_valid,
-        )
+        if _authority is None:
+            from .database_portal_bridge import (
+                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            )
+
+            _authority = _database_fenced_provider_recovery_authority(
+                {
+                    "manifest_id": (
+                        DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+                    ),
+                    "schema": (
+                        DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
+                    ),
+                }
+            )
+        if _authority is None:
+            raise DatabaseImplementationConflictError(
+                "retained recovery authority is unavailable"
+            )
+        pins = tuple(_authority["pins"])
+        manifest_builder = _authority["manifest_builder"]
+        manifest_validator = _authority["manifest_validator"]
+        credit_builder = _authority["credit_builder"]
+        reconciliation_schema = str(_authority["reconciliation_schema"])
 
         # Rebuild the manifest before consulting task state.  This checks its
         # static content identity and closed three-occurrence population.
-        manifest = database_fenced_provider_retained_manifest()
-        if not database_fenced_provider_retained_manifest_valid(manifest):
+        manifest = manifest_builder()
+        if not manifest_validator(manifest):
             raise DatabaseImplementationConflictError(
                 "retained recovery manifest identity is not current"
             )
         expected_count = len(
-            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+            pins
         )
         outcomes: list[dict[str, Any]] = []
         admitted_count = 0
@@ -94731,7 +95074,7 @@ class DatabaseImplementationDaemon:
         # mutation fences are still held.
         preflight_outcomes: list[dict[str, Any]] = []
         preflight_failed = False
-        for immutable_pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS:
+        for immutable_pin in pins:
             pin = dict(immutable_pin)
             alias = str(pin.get("task_alias") or "")
             task_cid = str(pin.get("task_cid") or "")
@@ -94894,7 +95237,7 @@ class DatabaseImplementationDaemon:
 
         if preflight_failed:
             return {
-                "schema": DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA,
+                "schema": reconciliation_schema,
                 "attempted": True,
                 "reconciled": False,
                 "blocked": True,
@@ -94905,7 +95248,7 @@ class DatabaseImplementationDaemon:
                 "outcomes": preflight_outcomes,
             }
 
-        for immutable_pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS:
+        for immutable_pin in pins:
             pin = dict(immutable_pin)
             alias = str(pin.get("task_alias") or "")
             task_cid = str(pin.get("task_cid") or "")
@@ -94977,7 +95320,7 @@ class DatabaseImplementationDaemon:
                         "retained recovery predecessor attempt is unavailable"
                     )
                 credit = dict(
-                    database_fenced_provider_retained_credit(pin)
+                    credit_builder(pin)
                 )
                 fence = self._fenced_provider_recovery_dispatch_fence(
                     predecessor
@@ -95198,14 +95541,14 @@ class DatabaseImplementationDaemon:
         # exact consumed chain.  A partial promotion remains globally
         # nonclaimable because claim_next requires all three exact fences.
         provisional_blocked = bool(
-            expected_count != 3
+            expected_count != len(pins)
             or len(outcomes) != expected_count
             or any(item.get("blocked") is not False for item in outcomes)
             or admitted_count + already_consumed_count != expected_count
         )
         if not provisional_blocked:
             for index, immutable_pin in enumerate(
-                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+                pins
             ):
                 pin = dict(immutable_pin)
                 task = self.task_source.get(str(pin["task_cid"]))
@@ -95277,12 +95620,35 @@ class DatabaseImplementationDaemon:
                     )
                     break
 
-        blocked = bool(
-            provisional_blocked
-            or not self._retained_recovery_aggregate_admitted_current()
-        )
+        population_current = False
+        if not provisional_blocked:
+            if (
+                _authority["admission_schema"]
+                == DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
+            ):
+                population_current = (
+                    self._retained_recovery_aggregate_admitted_current()
+                )
+            else:
+                first_task = self.task_source.get(str(pins[0]["task_cid"]))
+                first_receipt = dict(
+                    getattr(first_task, "body", {}).get(
+                        "completion_receipt"
+                    )
+                    or {}
+                ) if first_task is not None else {}
+                first_admission = first_receipt.get(
+                    "retained_recovery_admission"
+                )
+                population_current = bool(
+                    isinstance(first_admission, Mapping)
+                    and self._retained_recovery_admission_population_admitted_current(
+                        first_admission
+                    )
+                )
+        blocked = bool(provisional_blocked or not population_current)
         return {
-            "schema": DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA,
+            "schema": reconciliation_schema,
             "attempted": True,
             "reconciled": not blocked,
             "blocked": blocked,
@@ -95296,6 +95662,27 @@ class DatabaseImplementationDaemon:
             "already_consumed_count": already_consumed_count,
             "outcomes": outcomes,
         }
+
+    def reconcile_pctdd005_successor_occurrence(self) -> dict[str, Any]:
+        """Independently admit the exact singleton PCTDD-005 r26 successor."""
+
+        from .database_portal_bridge import (
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+        )
+
+        authority = _database_fenced_provider_recovery_authority(
+            {
+                "manifest_id": DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+                "schema": DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA,
+            }
+        )
+        if authority is None or len(authority["pins"]) != 1:
+            raise DatabaseImplementationConflictError(
+                "PCTDD-005 successor authority is unavailable"
+            )
+        return self.reconcile_retained_fenced_provider_occurrences(
+            _authority=authority
+        )
 
     def reconcile_blocked_unknown_outcome_tasks(self) -> list[dict[str, Any]]:
         """Rearm dead unknown-outcome blocks after the blocking session ends.
@@ -96745,7 +97132,9 @@ class DatabaseImplementationDaemon:
                     task,
                     retained_admission,
                 )
-                or not self._retained_recovery_aggregate_admitted_current()
+                or not self._retained_recovery_admission_population_admitted_current(
+                    retained_admission
+                )
             ):
                 self.coordinator.release(
                     claim.as_fenced_lease(),
@@ -97949,15 +98338,15 @@ class DatabaseImplementationDaemon:
         ``sealed`` fence.
         """
 
-        from .database_portal_bridge import (
-            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
-            database_fenced_provider_retained_credit,
-        )
-
         pin = dict(occurrence)
-        expected_credit = dict(
-            database_fenced_provider_retained_credit(pin)
+        authority = _database_fenced_provider_recovery_authority_for_occurrence(
+            pin
         )
+        if authority is None:
+            raise DatabaseImplementationConflictError(
+                "retained recovery dispatch-fence authority is unavailable"
+            )
+        expected_credit = dict(authority["credit_builder"](pin))
         attempt_bindings = {
             "task_cid": "task_cid",
             "task_alias": "task_alias",
@@ -97983,7 +98372,7 @@ class DatabaseImplementationDaemon:
         credit_id = _database_fenced_provider_retained_digest(expected_credit)
         expected_fence = _database_fenced_provider_retained_fence_record(
             occurrence=pin,
-            manifest_id=DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            manifest_id=str(authority["manifest_id"]),
             credit_id=credit_id,
             attempt_id=attempt.attempt_id,
             task_cid=attempt.task_cid,
@@ -98068,7 +98457,7 @@ class DatabaseImplementationDaemon:
             and observed.get("fence_id") == fence_id
             and observed.get("evidence_id") == occurrence_id
             and observed.get("migration_manifest_id")
-            == DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+            == authority["manifest_id"]
             and observed.get("migration_credit_id") == credit_id
             and observed.get("snapshot_id") == disposition_id
             and observed.get("state") == "sealed"
@@ -100771,6 +101160,8 @@ class DatabaseImplementationDaemon:
 
     def reconcile_retained_recovery_orphaned_claims(
         self,
+        *,
+        _authority: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Repair only exact consumed R+2 orphans from the sealed manifest.
 
@@ -100781,26 +101172,36 @@ class DatabaseImplementationDaemon:
         reconciliation authorities.
         """
 
-        from .database_portal_bridge import (
-            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
-            database_fenced_provider_retained_manifest,
-            database_fenced_provider_retained_manifest_valid,
-        )
+        if _authority is None:
+            from .database_portal_bridge import (
+                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            )
 
-        if not database_fenced_provider_retained_manifest_valid(
-            database_fenced_provider_retained_manifest()
+            _authority = _database_fenced_provider_recovery_authority(
+                {
+                    "manifest_id": (
+                        DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+                    ),
+                    "schema": (
+                        DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
+                    ),
+                }
+            )
+        if _authority is None or not _authority["manifest_validator"](
+            _authority["manifest_builder"]()
         ):
             raise DatabaseImplementationConflictError(
                 "retained orphan manifest identity is not current"
             )
+        pins = tuple(_authority["pins"])
         owner_cas = self._database_portal_outer_authority_cas
         pinned_store_ids = {
             str(pin["owner_store_id"])
-            for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+            for pin in pins
         }
         pinned_generations = {
             str(pin["control_store_generation"])
-            for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+            for pin in pins
         }
         if not (
             self.authority_mode == "quack"
@@ -100828,7 +101229,7 @@ class DatabaseImplementationDaemon:
         # first release or control-task CAS.  This prevents a corrupt later pin
         # from leaving an earlier occurrence partially repaired.
         plans: list[dict[str, Any]] = []
-        for immutable_pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS:
+        for immutable_pin in pins:
             pin = dict(immutable_pin)
             task = self.task_source.get(str(pin["task_cid"]))
             if task is None or str(getattr(task, "task_alias", "") or "") != str(
@@ -101241,6 +101642,29 @@ class DatabaseImplementationDaemon:
                 }
             )
         return outcomes
+
+    def reconcile_pctdd005_successor_orphaned_claims(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Repair only the exact consumed PCTDD-005 @3 successor orphan."""
+
+        from .database_portal_bridge import (
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+        )
+
+        authority = _database_fenced_provider_recovery_authority(
+            {
+                "manifest_id": DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+                "schema": DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA,
+            }
+        )
+        if authority is None or len(authority["pins"]) != 1:
+            raise DatabaseImplementationConflictError(
+                "PCTDD-005 successor orphan authority is unavailable"
+            )
+        return self.reconcile_retained_recovery_orphaned_claims(
+            _authority=authority
+        )
 
     def reconcile_orphaned_canonical_claims(self) -> list[dict[str, Any]]:
         """Repair claim CASes that committed before local attempt insertion."""

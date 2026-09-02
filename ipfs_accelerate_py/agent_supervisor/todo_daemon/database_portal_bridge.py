@@ -750,6 +750,127 @@ DATABASE_FENCED_PROVIDER_RETAINED_CREDIT_SCHEMA: Final[str] = (
 DATABASE_FENCED_PROVIDER_RETAINED_CREDIT_FIELDS: Final[frozenset[str]] = (
     frozenset({"schema", "manifest_id", "occurrence"})
 )
+
+# This @3 authority is a singleton successor to, rather than an amendment of,
+# the exact @2 retained-occurrence manifest above.  Keeping a separate schema,
+# pin, and content address preserves every @1/@2 byte and receipt while giving
+# the controller one reviewed recovery token for the later PCTDD-005 r26
+# occurrence.  The exact r26 provider log records no task edit, while setup
+# observed unrelated dirty accelerator paths and no retained ref, commit, or
+# worktree survived cleanup.  The empty retained fields therefore deny all
+# candidate reuse and force a fresh clean-baseline task attempt; they do not
+# assert that the removed outer workspace was clean.
+DATABASE_PCTDD005_SUCCESSOR_MANIFEST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-manifest@3"
+)
+DATABASE_PCTDD005_SUCCESSOR_MANIFEST_REVISION: Final[str] = (
+    "pctdd-005-r26-successor-recovery-2026-09-02"
+)
+DATABASE_PCTDD005_SUCCESSOR_MANIFEST_CLAIM: Final[str] = (
+    "operator_reviewed_exact_pctdd005_r26_occurrence_only"
+)
+DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PREDECESSOR_ID: Final[str] = (
+    "sha256:23b7fb59fcf73c901f2b93e95b3433d2c07704beeb64121ceef911d9b4f775b1"
+)
+DATABASE_PCTDD005_SUCCESSOR_MANIFEST_FIELDS: Final[frozenset[str]] = (
+    DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_FIELDS
+)
+DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN: Final[Mapping[str, Any]] = (
+    MappingProxyType(
+        {
+            "task_cid": (
+                "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"
+            ),
+            "task_alias": "PCTDD-005",
+            "board_namespace": (
+                "parallel-content-sealing-proof-carrying-tdd-v1"
+            ),
+            "blocked_task_revision": 26,
+            "blocked_task_status": "blocked",
+            "predecessor_attempt_id": (
+                "attempt:b542756073104e90b20eb8bbeda7096a"
+            ),
+            "predecessor_claim_id": (
+                "claim:67fd00b2d4df471594d371bd36460b14"
+            ),
+            "predecessor_lease_id": (
+                "lease:aa8dce7a8e0c40dfaf1f385bb48f0887"
+            ),
+            "predecessor_owner_session_id": (
+                "embedded-store:5a477a1db9402e639fecebb83f5f0873"
+            ),
+            "predecessor_attempt_number": 6,
+            "predecessor_fencing_token": 6,
+            "predecessor_fence_epoch": 6,
+            "predecessor_branch": (
+                "implementation/pctdd-005-269d059a4ea4-attempt-1-1788325783"
+            ),
+            "recovery_mode": "runner_fenced_no_task_edits_candidate_unavailable",
+            "candidate_disposition": "no_task_edits_candidate_unavailable",
+            "disposition_repository_root": (
+                "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery"
+            ),
+            "disposition_git_common_dir": "/home/barberb/lift_coding/.git",
+            "disposition_baseline_ref": (
+                "c258b76c81fa79664c1944b6413230bda90a0f4d"
+            ),
+            "source_repository_root": (
+                "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery/"
+                "external/ipfs_datasets"
+            ),
+            "source_git_common_dir": (
+                "/home/barberb/lift_coding/.worktrees/"
+                "pctdd-g9-orphan-recovery/external/ipfs_datasets/.git"
+            ),
+            "source_relative_path": "external/ipfs_datasets",
+            "clean_baseline_ref": (
+                "fd38aa56b03bfd19a21ffd465b498d11657428fb"
+            ),
+            "retained_ref": "",
+            "retained_commit": "",
+            "retained_worktree_path": "",
+            "receipt_nonce": "retained-recovery:PCTDD-005:r26",
+            "receipt_epoch": 1,
+            "inner_query_profile_id": (
+                "sha256:1efeeb4904696fc50e0e0e8508fb131d759cb4566366d39ed5d44d2b27b12685"
+            ),
+            "outer_query_profile_id": (
+                "sha256:d38e766d6d5cde6ae0aee54c3ff731db7be31aea1826b106400fe1492682f19d"
+            ),
+            "owner_store_id": (
+                "data/agent_supervisor/"
+                "parallel_content_sealing_proof_carrying_tdd_v1_g9/"
+                "control.duckdb"
+            ),
+            "owner_generation_floor": 59,
+            "owner_database_uuid": "496924b1-85df-439c-afcf-cb39a6ed0efa",
+            "owner_schema_fingerprint": (
+                "sha256:3ea5f70cebacfe748017c9540bf87016075443f4ccc33376ec0a179ed576e190"
+            ),
+            "control_store_generation": "pctdd-v1-g9",
+            "owner_schema_revision": 1,
+            "allow_pool": False,
+            "seed_prior_attempt": False,
+            "one_shot": True,
+            "retry_policy": _DATABASE_FENCED_PROVIDER_RETAINED_RETRY_POLICY,
+            "credit_ordinal": 1,
+        }
+    )
+)
+# Filled with the SHA-256 content address of
+# ``database_pctdd005_successor_manifest()`` below.  It is deliberately not a
+# field of the body, keeping the manifest-to-credit relation acyclic.
+DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID: Final[str] = (
+    "sha256:75ef62f466ee2608da0bbc3ba5312be70af62c0713ab66ac2472fc843142b63f"
+)
+DATABASE_PCTDD005_SUCCESSOR_CREDIT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-credit@3"
+)
+DATABASE_PCTDD005_SUCCESSOR_CREDIT_FIELDS: Final[frozenset[str]] = (
+    frozenset({"schema", "manifest_id", "occurrence"})
+)
 _STALE_DISPATCH_MIGRATION_REPLAY_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "reconciled",
@@ -2918,6 +3039,128 @@ def database_fenced_provider_retained_credit_valid(value: Any) -> bool:
     )
 
 
+def _database_pctdd005_successor_manifest_body() -> dict[str, Any]:
+    """Build the acyclic body for the exact PCTDD-005 r26 successor."""
+
+    return {
+        "schema": DATABASE_PCTDD005_SUCCESSOR_MANIFEST_SCHEMA,
+        "revision": DATABASE_PCTDD005_SUCCESSOR_MANIFEST_REVISION,
+        "claim_boundary": DATABASE_PCTDD005_SUCCESSOR_MANIFEST_CLAIM,
+        "operator_owned": True,
+        "predecessor_manifest_id": (
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PREDECESSOR_ID
+        ),
+        "one_shot": True,
+        "occurrence_count": 1,
+        "occurrences": [dict(DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN)],
+    }
+
+
+def _database_pctdd005_successor_occurrence_pin(
+    occurrence: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Match only the one reviewed PCTDD-005 r26 occurrence."""
+
+    try:
+        if (
+            set(occurrence)
+            != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_OCCURRENCE_FIELDS
+        ):
+            return None
+    except (TypeError, ValueError):
+        return None
+    pin = DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    return pin if all(
+        type(occurrence.get(field)) is type(pin.get(field))
+        and occurrence.get(field) == pin.get(field)
+        for field in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_OCCURRENCE_FIELDS
+    ) else None
+
+
+def database_pctdd005_successor_manifest() -> dict[str, Any]:
+    """Return the closed singleton successor manifest for PCTDD-005 r26."""
+
+    return _database_pctdd005_successor_manifest_body()
+
+
+def database_pctdd005_successor_manifest_valid(value: Any) -> bool:
+    """Validate the exact additive @3 manifest and its static address."""
+
+    if (
+        type(value) is not dict
+        or set(value) != DATABASE_PCTDD005_SUCCESSOR_MANIFEST_FIELDS
+        or value.get("schema") != DATABASE_PCTDD005_SUCCESSOR_MANIFEST_SCHEMA
+        or value.get("revision")
+        != DATABASE_PCTDD005_SUCCESSOR_MANIFEST_REVISION
+        or value.get("claim_boundary")
+        != DATABASE_PCTDD005_SUCCESSOR_MANIFEST_CLAIM
+        or type(value.get("operator_owned")) is not bool
+        or value.get("operator_owned") is not True
+        or value.get("predecessor_manifest_id")
+        != DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PREDECESSOR_ID
+        or DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PREDECESSOR_ID
+        != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+        or type(value.get("one_shot")) is not bool
+        or value.get("one_shot") is not True
+        or type(value.get("occurrence_count")) is not int
+        or value.get("occurrence_count") != 1
+        or type(value.get("occurrences")) is not list
+        or len(value["occurrences"]) != 1
+        or type(value["occurrences"][0]) is not dict
+        or _database_pctdd005_successor_occurrence_pin(
+            value["occurrences"][0]
+        )
+        is not DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    ):
+        return False
+    return bool(
+        _sha256_bytes(_canonical_json(value))
+        == DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID
+    )
+
+
+def database_pctdd005_successor_credit(
+    occurrence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the one-shot credit for the exact singleton occurrence."""
+
+    if not database_pctdd005_successor_manifest_valid(
+        database_pctdd005_successor_manifest()
+    ):
+        raise ValueError("PCTDD-005 successor manifest is not current")
+    if not isinstance(occurrence, Mapping):
+        raise TypeError("PCTDD-005 successor occurrence must be a mapping")
+    pin = _database_pctdd005_successor_occurrence_pin(occurrence)
+    if pin is None:
+        raise ValueError(
+            "PCTDD-005 successor occurrence is not the exact manifest member"
+        )
+    return {
+        "schema": DATABASE_PCTDD005_SUCCESSOR_CREDIT_SCHEMA,
+        "manifest_id": DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+        "occurrence": dict(pin),
+    }
+
+
+def database_pctdd005_successor_credit_valid(value: Any) -> bool:
+    """Validate the exact acyclic credit derived from the @3 manifest."""
+
+    if (
+        type(value) is not dict
+        or set(value) != DATABASE_PCTDD005_SUCCESSOR_CREDIT_FIELDS
+        or value.get("schema") != DATABASE_PCTDD005_SUCCESSOR_CREDIT_SCHEMA
+        or value.get("manifest_id")
+        != DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID
+        or type(value.get("occurrence")) is not dict
+        or _database_pctdd005_successor_occurrence_pin(value["occurrence"])
+        is not DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    ):
+        return False
+    return database_pctdd005_successor_manifest_valid(
+        database_pctdd005_successor_manifest()
+    )
+
+
 def _sha256_file(path: Path) -> str:
     try:
         return _sha256_bytes(path.read_bytes())
@@ -3807,14 +4050,18 @@ class DatabasePortalExecutionBridge:
         )
         attempt_cid = str(getattr(attempt, "task_cid", "") or "")
         attempt_alias = str(getattr(attempt, "task_alias", "") or "")
+        reserved_pins = (
+            *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+        )
         cid_matches = [
             pin
-            for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+            for pin in reserved_pins
             if pin.get("task_cid") == attempt_cid
         ]
         alias_matches = [
             pin
-            for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+            for pin in reserved_pins
             if attempt_alias and pin.get("task_alias") == attempt_alias
         ]
         if len(cid_matches) == 1 and (
@@ -16036,6 +16283,15 @@ __all__ = (
     "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PREDECESSOR_ID",
     "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_REVISION",
     "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_SCHEMA",
+    "DATABASE_PCTDD005_SUCCESSOR_CREDIT_FIELDS",
+    "DATABASE_PCTDD005_SUCCESSOR_CREDIT_SCHEMA",
+    "DATABASE_PCTDD005_SUCCESSOR_MANIFEST_CLAIM",
+    "DATABASE_PCTDD005_SUCCESSOR_MANIFEST_FIELDS",
+    "DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID",
+    "DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN",
+    "DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PREDECESSOR_ID",
+    "DATABASE_PCTDD005_SUCCESSOR_MANIFEST_REVISION",
+    "DATABASE_PCTDD005_SUCCESSOR_MANIFEST_SCHEMA",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_AUTHORIZATION_SCHEMA",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_FIELDS",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA",
@@ -16059,4 +16315,8 @@ __all__ = (
     "database_fenced_provider_retained_credit_valid",
     "database_fenced_provider_retained_manifest",
     "database_fenced_provider_retained_manifest_valid",
+    "database_pctdd005_successor_credit",
+    "database_pctdd005_successor_credit_valid",
+    "database_pctdd005_successor_manifest",
+    "database_pctdd005_successor_manifest_valid",
 )
