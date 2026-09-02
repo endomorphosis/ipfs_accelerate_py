@@ -6689,6 +6689,7 @@ class PortalSupervisorConfig:
     max_task_attempts: int = 0
     daemon_interval: float = 300.0
     task_prefix: str = TASK_HEADER_PREFIX
+    board_namespace: str = ""
     state_prefix: str = "portal"
     database_program: DatabaseProgramConfig | None = None
     database_owner_session_id: str = ""
@@ -7033,6 +7034,7 @@ class PortalImplementationSupervisor:
         self._last_control_plane_source_probe_monotonic = 0.0
         todo_path = Path(config.todo_path)
         self.board_namespace = infer_board_namespace(
+            board_namespace=config.board_namespace,
             merge_target_branch=config.merge_target_branch,
             todo_path=todo_path,
             state_prefix=config.state_prefix,
@@ -7045,16 +7047,20 @@ class PortalImplementationSupervisor:
             todo_path=todo_path,
             state_prefix=config.state_prefix,
             source_kind="" if ingest_todo else "duckdb",
-            ensure_branch=False,
+            ensure_branch=True,
             ensure_worktree=False,
             ingest_todo=ingest_todo,
         )
         self.board_control_plane_status = isolated
         resolved_branch = str(isolated.get("implementation_branch") or "").strip()
+        branch_reason = str(
+            (isolated.get("branch_result") or {}).get("reason") or ""
+        )
         if (
             resolved_branch
             and not self.config.manual_completion_authority_revalidation_only
             and not str(self.config.merge_target_branch or "").strip()
+            and branch_reason in {"created", "already_exists"}
         ):
             self.config.merge_target_branch = resolved_branch
 
@@ -14623,6 +14629,7 @@ class PortalImplementationSupervisor:
                 / f"{self.config.state_prefix}_events.jsonl"
             ),
             repo_root=self.config.repo_root,
+            board_namespace=self.board_namespace,
             task_header_prefix=self.config.task_prefix,
             implement=False,
             implementation_command=self.config.implementation_command,
@@ -15213,7 +15220,9 @@ class PortalImplementationSupervisor:
                 "control.duckdb"
             )
             and program.store_generation == "pctdd-v1-g9"
-            and self.config.task_prefix.startswith("PCTDD-")
+            and self.board_namespace
+            == "parallel-content-sealing-proof-carrying-tdd-v1"
+            and self.config.task_prefix == "## PCTDD-"
         )
         if not declared_candidate:
             return False
@@ -15244,7 +15253,9 @@ class PortalImplementationSupervisor:
                 for item in pins
             }
             == {repo_root}
-            and self.config.task_prefix.startswith("PCTDD-")
+            and self.board_namespace
+            == "parallel-content-sealing-proof-carrying-tdd-v1"
+            and self.config.task_prefix == "## PCTDD-"
         )
         if not exact_authority:
             raise RuntimeError(
@@ -16805,6 +16816,7 @@ class PortalImplementationSupervisor:
                 strategy_path=paths.strategy,
                 events_path=paths.events,
                 repo_root=self.config.repo_root,
+                board_namespace=self.board_namespace,
                 task_header_prefix=f"## {task_alias}",
                 implement=False,
                 implementation_command=self.config.implementation_command,
@@ -22568,6 +22580,7 @@ class PortalImplementationSupervisor:
                 "repo_root": str(self.config.repo_root.resolve(strict=False)),
                 "state_dir": str(self.config.state_dir.resolve(strict=False)),
                 "state_prefix": str(self.config.state_prefix),
+                "board_namespace": self.board_namespace,
                 "todo_path": str(self.config.todo_path.resolve(strict=False)),
                 "daemon_entrypoint": daemon_entrypoint,
             }
@@ -22612,6 +22625,7 @@ class PortalImplementationSupervisor:
             belongs = (
                 exact_option("--state-dir", str(self.config.state_dir))
                 and exact_option("--state-prefix", self.config.state_prefix)
+                and exact_option("--board-namespace", self.board_namespace)
                 and exact_option("--todo-path", str(self.config.todo_path))
             )
             if (
@@ -23022,6 +23036,8 @@ class PortalImplementationSupervisor:
                     str(self.config.state_dir),
                     "--task-prefix",
                     self.config.task_prefix,
+                    "--board-namespace",
+                    self.board_namespace,
                     "--state-prefix",
                     self.config.state_prefix,
                     "--max-task-attempts",
@@ -24066,6 +24082,8 @@ class PortalImplementationSupervisor:
             str(effective_shard_index)
         }:
             return False
+        if option_values("--board-namespace") != {self.board_namespace}:
+            return False
         if (
             self.config.database_program is not None
             and self.config.database_program.task_source_kind == "duckdb"
@@ -24199,6 +24217,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--task-prefix",
         default=TASK_HEADER_PREFIX,
         help="Markdown heading prefix for tasks, for example '## PORTAL-' or '## AGENT-'",
+    )
+    parser.add_argument(
+        "--board-namespace",
+        default="",
+        help="Canonical task-board namespace for branch and lock isolation.",
     )
     parser.add_argument(
         "--state-prefix",
@@ -24987,6 +25010,7 @@ def supervisor_config_from_args(
         max_task_attempts=max(0, int(getattr(args, "max_task_attempts", 0))),
         daemon_interval=args.daemon_interval,
         task_prefix=args.task_prefix,
+        board_namespace=str(getattr(args, "board_namespace", "") or ""),
         state_prefix=args.state_prefix,
         database_program=database_program,
         database_owner_session_id=str(

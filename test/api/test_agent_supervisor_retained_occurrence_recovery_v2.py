@@ -35,6 +35,12 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as daemon_module,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_supervisor as supervisor_module,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    database_portal_bridge as database_portal_bridge_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_FENCED_PROVIDER_RETAINED_CREDIT_SCHEMA,
     DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
@@ -404,6 +410,80 @@ def test_retained_manifest_is_closed_separate_and_pins_exact_dispositions() -> N
         assert pin["candidate_disposition"] == "rescue_quarantined"
         assert str(pin["retained_ref"]).startswith("refs/")
         assert len(str(pin["retained_commit"])) == 40
+
+
+def test_retained_manifest_uses_explicit_base_namespace_with_g9_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base_namespace = "parallel-content-sealing-proof-carrying-tdd-v1"
+    g9_namespace = "parallel-content-sealing-proof-carrying-tdd-v1-g9"
+    merge_branch = f"agent/{g9_namespace}"
+    todo_path = tmp_path / "parallel_content_sealing_proof_carrying_tdd.todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    config = supervisor_module.PortalSupervisorConfig(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        state_dir=state_dir,
+        task_prefix="## PCTDD-",
+        board_namespace=base_namespace,
+        merge_target_branch=merge_branch,
+        repo_root=tmp_path,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "isolate_board_runtime",
+        lambda **_kwargs: {
+            "implementation_branch": merge_branch,
+            "branch_result": {"reason": "already_exists"},
+        },
+    )
+    supervisor = PortalImplementationSupervisor(config)
+    assert supervisor.board_namespace == base_namespace
+    command = supervisor._build_daemon_command()
+    namespace_index = command.index("--board-namespace")
+    assert command[namespace_index + 1] == base_namespace
+    assert supervisor._managed_daemon_matches_command_line(" ".join(command))
+    assert supervisor._managed_daemon_command_belongs_to_scope(command)
+    foreign_command = list(command)
+    foreign_command[namespace_index + 1] = g9_namespace
+    assert not supervisor._managed_daemon_matches_command_line(
+        " ".join(foreign_command)
+    )
+    assert not supervisor._managed_daemon_command_belongs_to_scope(
+        foreign_command
+    )
+
+    patched_pins = tuple(
+        {
+            **dict(item),
+            "disposition_repository_root": str(tmp_path),
+        }
+        for item in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+    )
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS",
+        patched_pins,
+    )
+    program = SimpleNamespace(
+        store_id=(
+            "data/agent_supervisor/"
+            "parallel_content_sealing_proof_carrying_tdd_v1_g9/"
+            "control.duckdb"
+        ),
+        store_generation="pctdd-v1-g9",
+    )
+    assert supervisor._retained_fenced_provider_program_applicable(program)
+
+    supervisor.config.task_prefix = "## PCTDD-X"
+    assert not supervisor._retained_fenced_provider_program_applicable(program)
+    supervisor.config.task_prefix = "## PCTDD-"
+    supervisor.board_namespace = g9_namespace
+    assert not supervisor._retained_fenced_provider_program_applicable(program)
 
 
 def test_credit_is_acyclic_closed_and_rejects_unknown_or_cross_pin_data() -> None:

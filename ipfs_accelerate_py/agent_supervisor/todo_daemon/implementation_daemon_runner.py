@@ -1375,6 +1375,9 @@ def bind_database_portal_execution_from_args(
             strategy_path=paths.strategy,
             events_path=paths.events,
             repo_root=repo_root,
+            board_namespace=str(
+                getattr(parsed, "board_namespace", "") or ""
+            ),
             # This is a private one-task projection selected by the durable
             # database claim.  A successor lane's current scheduler prefix may
             # exclude a predecessor attempt, but cleanup must still parse the
@@ -1615,6 +1618,9 @@ def build_portal_implementation_daemon_from_args(
         strategy_path=state_paths["strategy_path"],
         events_path=state_paths["events_path"],
         repo_root=repo_root,
+        board_namespace=str(
+            getattr(parsed, "board_namespace", "") or ""
+        ),
         task_header_prefix=parsed.task_prefix,
         implement=parsed.implement,
         implementation_command=parsed.implementation_command or None,
