@@ -1,0 +1,6 @@
+# PCPR-055 declared artifact checksums.
+# Wheel, sdist, container, and signature identities stay typed unavailable.
+# Hashes were not invented. This is not a live signed release.
+b6aa0de74f4b3a5563bfc7ee95aaefdff436927235c289cd3ec09b50f1d2ead6  packaging/pcpr/locks/cpython312/release.txt
+73ceba98c2224ed6b58182e7e439cf19ccb28f0e3ff057435ec998e87e547fd6  packaging/pcpr/sbom/cpython312/release.sbom.json
+b1c5718ee82c6f313be5190310a8efb5c360a0dd7a7ca4c6c2d441044e2715fa  packaging/pcpr/provenance/cpython312/release.provenance.json
