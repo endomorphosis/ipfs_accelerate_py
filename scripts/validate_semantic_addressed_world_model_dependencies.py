@@ -16594,6 +16594,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m53_key = _M53_SUCCESSOR_KEY
+        m53_presence = (
+            m53_key in scheduler_probe,
+            m53_key in migration_probe,
+            f"{m53_key}_cid" in seal,
+        )
         m52_key = _M52_SUCCESSOR_KEY
         m52_presence = (
             m52_key in scheduler_probe,
@@ -16806,7 +16812,42 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m52_presence):
+        if any(m53_presence):
+            scheduled = scheduler_probe.get(m53_key)
+            migrated = migration_probe.get(m53_key)
+            if not all(m53_presence) or scheduled != migrated:
+                unexpected = ["M53 authority is partial or differs across controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m53_source_status_materializer",
+                    root
+                    / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M53 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer
+                        ._expected_m53_post_reboot_stale_ready_restart_authority()
+                    )
+                    materializer._validated_m53_live_preflight_contract(expected)
+                    reference = dict(materializer._m53_authority_reference())
+                    if (
+                        scheduled != reference
+                        or seal.get(f"{m53_key}_cid") != _M53_AUTHORITY_CID
+                        or materializer._identity(expected)
+                        != _M53_AUTHORITY_CID
+                        or len(materializer._canonical(expected))
+                        != _M53_AUTHORITY_SIZE
+                    ):
+                        unexpected = [
+                            "M53 authority/CID differs across controls"
+                        ]
+                    else:
+                        unexpected = []
+        elif any(m52_presence):
             scheduled = scheduler_probe.get(m52_key)
             migrated = migration_probe.get(m52_key)
             if not all(m52_presence) or scheduled != migrated:
@@ -18449,6 +18490,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m53_declared = _m53_successor_declared(scheduler, seal, migration)
         m52_declared = _m52_successor_declared(scheduler, seal, migration)
         m51_declared = _m51_successor_declared(scheduler, seal, migration)
         m50_declared = _m50_successor_declared(scheduler, seal, migration)
@@ -18477,7 +18519,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m52_declared
+            m53_declared
+            or m52_declared
             or m51_declared
             or m50_declared
             or m49_declared
@@ -18506,7 +18549,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m52_declared:
+            if m53_declared:
+                protocol_errors.extend(
+                    _m53_post_reboot_stale_ready_restart_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+            if m52_declared and not m53_declared:
                 protocol_errors.extend(
                     _m52_test_compatibility_and_control_hash_successor_errors(
                         scheduler, seal, migration, root=root
@@ -19358,6 +19407,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             protocol_errors.append("closed atomic mutation catalog is absent")
         if "read_only=True" not in operator_source or "canonical writer without loading or serving Quack" not in operator_source:
             protocol_errors.append("read-only Quack replica / sealed writer boundary is absent")
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "post_reboot_stale_ready_generation_37_restart_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M53 authority by fail-closed key presence"
+            )
         if not _has_presence_based_key_selection(
             operator_source,
             "detached_coordinator_pid_recovery_successor_materialization",
