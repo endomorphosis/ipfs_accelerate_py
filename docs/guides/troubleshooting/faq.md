@@ -58,13 +58,10 @@ the [installation guide](../getting-started/installation.md).
 
 ### What are the minimum requirements?
 
-Packaging metadata in `pyproject.toml` and `setup.py` declares **Python 3.8 or
-newer**, but that is not a proven runtime floor for the current core. For
-example, `ipfs_accelerate_py/ipfs_accelerate.py` evaluates PEP 604 annotations
-such as `object | None` without postponed annotations; those runtime semantics
-arrived in Python 3.10. Treat Python 3.8/3.9 core compatibility as a code-owned
-metadata/runtime mismatch. Use Python 3.10+ for the current core unless you have
-independently validated an older interpreter.
+Packaging metadata in `pyproject.toml` and `setup.py` declares **Python 3.12 or
+newer**. Classifiers list only Python 3.12, the version this tree's CI
+workflows declare and the campaign canonical interpreter. Older interpreters
+are not declared and are not a live support claim.
 
 The baseline deployment target is **CPU/local** operation. GPU frameworks,
 browser stacks, IPFS, running MCP/P2P services, and analysis features are

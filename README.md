@@ -4,7 +4,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/ipfs-accelerate-py.svg)](https://pypi.org/project/ipfs-accelerate-py/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![Documentation](https://img.shields.io/badge/docs-index-brightgreen.svg)](docs/INDEX.md)
 
 ---

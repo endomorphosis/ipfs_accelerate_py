@@ -30,7 +30,7 @@ updated to this page.
 
 ## Requirements
 
-- Python 3.8 or newer (`requires-python = ">=3.8"` in `pyproject.toml`)
+- Python 3.12 or newer (`requires-python = ">=3.12"` in `pyproject.toml`)
 - A supported OS (Linux, macOS, or Windows) and a working toolchain for any
   native optional dependency you install
 - Network access when downloading packages or models
@@ -126,8 +126,8 @@ After install, `pyproject.toml` registers (among others):
 
 | Command | Entry point |
 | --- | --- |
-| `ipfs-accelerate` | `ipfs_accelerate_py.cli_entry:main` (canonical product CLI) |
-| `ipfs_accelerate` | `ipfs_accelerate_py.ai_inference_cli:main` (separate underscore parser) |
+| `ipfs-accelerate` | `ipfs_accelerate_py.cli_entry:main` (stable product CLI) |
+| `ipfs_accelerate` | `ipfs_accelerate_py.ai_inference_cli:main` (documented compatibility alias for the historical inference CLI) |
 | `ipfs-accelerate-llama-cpp-serve` | llama.cpp helper |
 | `ipfs-accelerate-agent-*` | Agent supervisor daemons and helpers |
 

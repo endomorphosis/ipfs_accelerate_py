@@ -139,7 +139,9 @@ def test_current_head_scan_measures_known_false_authority_paths() -> None:
     git_deps = paths["accelerate_mutable_git_branch_deps"]
     assert git_deps.present is True
     python_floor = paths["accelerate_python_floor_metadata_drift"]
-    assert python_floor.present is True
+    assert python_floor.present is False
+    assert python_floor.evidence_kind == "measured"
+    assert python_floor.remediating_task == "PCPR-036"
     duckdb = paths["accelerate_direct_duckdb_task_state"]
     assert duckdb.present is True
     assert duckdb.category == "competing_authority"

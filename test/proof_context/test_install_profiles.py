@@ -271,7 +271,7 @@ def test_metadata_declares_closed_bounded_profile_graph() -> None:
     # Composition keeps the accelerator's established interpreter and dynamic
     # core dependency contract. PCCE's cross-repository authorities are an
     # explicit capability extra instead of replacing the whole project graph.
-    assert project["requires-python"] == ">=3.8"
+    assert project["requires-python"] == ">=3.12"
     assert project["dynamic"] == ["dependencies"]
     assert tuple(extras[CORE_EXTRA]) == CORE_REQUIREMENTS
     assert tuple(inventory["core-distributions"]) == CORE_REQUIREMENTS
@@ -347,7 +347,7 @@ def test_artifacts_bind_metadata_entrypoint_and_evaluation_surface(
 
     assert metadata["Name"] == "ipfs_accelerate_py"
     assert metadata["Version"] == "0.0.45"
-    assert metadata["Requires-Python"] == ">=3.8"
+    assert metadata["Requires-Python"] == ">=3.12"
     assert sorted(
         _canonical_requirement(str(item)) for item in proof_context_core
     ) == sorted(

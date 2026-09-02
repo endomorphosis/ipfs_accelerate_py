@@ -13,14 +13,10 @@ authors = [
 ]
 description = "A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 license = { text = "GNU Affero General Public License v3 or later (AGPLv3+)" }
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
@@ -33,6 +29,8 @@ Homepage = "https://github.com/endomorphosis/ipfs_accelerate_py"
 Issues = "https://github.com/endomorphosis/ipfs_accelerate_py/issues"
 
 [project.scripts]
+# Stable command is ipfs-accelerate. ipfs_accelerate is a documented
+# compatibility alias for the historical inference CLI (PCPR-036).
 ipfs_accelerate = "ipfs_accelerate_py.ai_inference_cli:main"
 ipfs-accelerate = "ipfs_accelerate_py.cli_entry:main"
 ipfs-accelerate-agent-objective-daemon = "ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon:main"
@@ -265,7 +263,7 @@ all = [
 
 [tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight]
 schema = "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@4"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 authority = { file = "requirements.txt", sha256 = "db63abfc0624140dfb23b96d8d024d48a83013626fc227a56c4c26ad6682cc01", extra = "testing", extra-requirements-sha256 = "77fa42b129c722ddf2b7146aaaf22aba08e3b0f4c134af42a5af9db3d4e093cc" }
 
 [[tool.ipfs-accelerate-agent-supervisor.project-dependency-preflight.targets]]

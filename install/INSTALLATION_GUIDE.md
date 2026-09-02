@@ -382,13 +382,13 @@ chmod +x install/install.sh
 ```
 
 ### Python Not Found
-The installer looks for Python in this order:
-1. `python3.12`, `python3.11`, `python3.10`, `python3.9`
+The installer looks for Python 3.12 or newer in this order:
+1. `python3.12`
 2. `python3`
 3. `python`
 4. `py` (Windows only)
 
-Install Python 3.8+ from:
+Install Python 3.12+ from:
 - **Linux:** System package manager
 - **macOS:** https://www.python.org/downloads/ or `brew install python`
 - **Windows:** https://www.python.org/downloads/

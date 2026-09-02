@@ -1437,7 +1437,7 @@ def qualify_current_head_inventory() -> InventoryVerdict:
 # Pinned identity of the ordinary current-head inventory verdict.  Drift
 # means the default payload changed and the outer receipt must be regenerated.
 CURRENT_HEAD_NON_PROMOTION_VERDICT_CID: Final = (
-    "baguqeeraossnqpwfmgxwzhx4bmaaqdg2oiumoqujgxh2uz3dhzconolfepqa"
+    "baguqeerahmrsggarz6dz75v6e56ddgamkqy65zz7vikkscjacoljhqkfxqzq"
 )
 
 
