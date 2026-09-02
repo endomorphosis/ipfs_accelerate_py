@@ -217,6 +217,19 @@ _M63_SUCCESSOR_KEY = (
 _M63_CONTROL_RECORDED_AT = "2026-09-02T17:00:00Z"
 _M63_PRIOR_PROJECTION_CID = _M61_TARGET_PROJECTION_CID
 _M63_TARGET_PROJECTION_CID = _M62_TARGET_PROJECTION_CID
+_M64_AUTHORITY_CID = (
+    "sha256:ed8dc06b15554c3cd101c197d0654c77649fad67252a0564a63e63c61d0f9d5e"
+)
+_M64_AUTHORITY_SIZE = 17_288
+_M64_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M64_FINAL_CONTROL_AUTHORITY_CID"
+_M64_SUCCESSOR_KEY = (
+    "post_m63_operator_source_checkout_bootstrap_successor_materialization"
+)
+_M64_CONTROL_RECORDED_AT = "2026-09-02T17:40:00Z"
+_M64_PRIOR_PROJECTION_CID = _M63_TARGET_PROJECTION_CID
+_M64_TARGET_PROJECTION_CID = (
+    "baguqeera2snnowvc5ghzw6kzc3pczfkxewkvvgthuineie4tpqf3pdwcsq7q"
+)
 _M50_M49_RECEIPT_CID = (
     "sha256:d5bfeb6dd987b05c2407d93f66d73c6a70bcd2b4f17e8381a93a2bb265acae47"
 )
@@ -727,6 +740,8 @@ def _m63_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
     migration: Mapping[str, Any],
+    *,
+    require_current_source: bool = True,
 ) -> list[str]:
     """Validate M63's generation-43 event-331-to-332 recovery seal."""
 
@@ -734,11 +749,33 @@ def _m63_migration_errors(
         module = _dependency_validator_module(REPO_ROOT)
         return list(
             module._m63_failed_pre_authoritative_m62_float_bounds_successor_errors(
-                scheduler, seal, migration, root=REPO_ROOT
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_current_source=require_current_source,
             )
         )
     except Exception as exc:
         return [f"M63 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m64_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Validate M64's generation-43 event-332-to-333 bootstrap seal."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m64_post_m63_operator_source_checkout_bootstrap_successor_errors(
+                scheduler, seal, migration, root=REPO_ROOT
+            )
+        )
+    except Exception as exc:
+        return [f"M64 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _m60_migration_errors(
@@ -1677,12 +1714,47 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M63 before every historical successor. Consequently
+    Key presence selects M64 before every historical successor. Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m64_key = _M64_SUCCESSOR_KEY
+    m64_presence = (
+        m64_key in scheduler,
+        m64_key in migration,
+        f"{m64_key}_cid" in seal,
+    )
+    if any(m64_presence):
+        errors = _m64_migration_errors(scheduler, seal, migration)
+        if not all(m64_presence):
+            errors.append("M64 successor authority is only partially declared")
+        if errors:
+            return errors
+        m63_key = _M63_SUCCESSOR_KEY
+        m63_presence = (
+            m63_key in scheduler,
+            m63_key in migration,
+            f"{m63_key}_cid" in seal,
+        )
+        if not all(m63_presence):
+            return [
+                "M64 successor does not preserve the immutable M63 controls"
+            ]
+        historical_scheduler = dict(scheduler)
+        historical_migration = dict(migration)
+        historical_seal = dict(seal)
+        historical_scheduler.pop(m64_key, None)
+        historical_migration.pop(m64_key, None)
+        historical_seal.pop(f"{m64_key}_cid", None)
+        return _active_successor_migration_errors(
+            historical_scheduler,
+            historical_seal,
+            historical_migration,
+            require_current_source=False,
+        )
 
     m63_key = _M63_SUCCESSOR_KEY
     m63_presence = (
@@ -1691,7 +1763,12 @@ def _active_successor_migration_errors(
         f"{m63_key}_cid" in seal,
     )
     if any(m63_presence):
-        errors = _m63_migration_errors(scheduler, seal, migration)
+        errors = _m63_migration_errors(
+            scheduler,
+            seal,
+            migration,
+            require_current_source=require_current_source,
+        )
         if not all(m63_presence):
             errors.append("M63 successor authority is only partially declared")
         if errors:
@@ -5275,8 +5352,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m64_key = _M64_SUCCESSOR_KEY
+    m64_selected = any((
+        m64_key in config,
+        m64_key in migration,
+        f"{m64_key}_cid" in seal,
+    ))
     m63_key = _M63_SUCCESSOR_KEY
-    m63_selected = any((
+    # Treat M64 as an M63-or-newer sentinel for historical-selection guards;
+    # the exact M63 validation block below excludes M64 explicitly.
+    m63_selected = m64_selected or any((
         m63_key in config,
         m63_key in migration,
         f"{m63_key}_cid" in seal,
@@ -6155,7 +6240,96 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m63_selected:
+    if m64_selected:
+        successor = config.get(m64_key)
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m64_post_m63_operator_source_checkout_bootstrap_authority()
+            )
+            reference = dict(materializer._m64_authority_reference())
+            contract = materializer._validated_m64_live_preflight_contract(expected)
+            configured = materializer._m64_successor_configured_on_any_surface(
+                root, config
+            )
+            materializer._assert_m64_historical_m63_controls(
+                config, migration, seal
+            )
+            materializer._assert_m64_source_delta(
+                root, materializer.build_population(root), expected
+            )
+            m64_errors = list(
+                module._m64_post_m63_operator_source_checkout_bootstrap_successor_errors(
+                    config, seal, migration, root=root
+                )
+            )
+            prior = expected.get("prior_authority")
+            chain = expected.get("source_chain")
+            preservation = expected.get("preservation")
+            if (
+                successor != reference
+                or migration.get(m64_key) != reference
+                or seal.get(f"{m64_key}_cid") != _M64_AUTHORITY_CID
+                or materializer._identity(expected) != _M64_AUTHORITY_CID
+                or len(materializer._canonical(expected)) != _M64_AUTHORITY_SIZE
+                or _M64_AUTHORITY_CID == _M64_UNSEALED_AUTHORITY_CID
+                or materializer._M64_AUTHORITY_CID != _M64_AUTHORITY_CID
+                or materializer._M64_AUTHORITY_SIZE != _M64_AUTHORITY_SIZE
+                or configured is not True
+                or expected.get("authorized") is not True
+                or expected.get("authority") != "operator_control_plane"
+                or expected.get("migration_revision") != "SAWM-R2-M64"
+                or expected.get("migration_kind") != m64_key
+                or expected.get("control_recorded_at") != _M64_CONTROL_RECORDED_AT
+                or expected.get("target_generation") != 43
+                or expected.get("target_event_watermark") != 333
+                or expected.get("target_projection_cid")
+                != _M64_TARGET_PROJECTION_CID
+                or not isinstance(prior, Mapping)
+                or prior.get("authority_cid") != _M63_AUTHORITY_CID
+                or prior.get("event_watermark") != 332
+                or prior.get("projection_cid") != _M64_PRIOR_PROJECTION_CID
+                or prior.get("receipt_cid")
+                != "sha256:079ef7bfa47484538c66a9a5dda6d5f31d69dc9d5c8d7b58f8fb9212c0c3cc5f"
+                or prior.get("receipt_sha256")
+                != "19e922fa7104c3acbaeca22501be2a644e4f20ac16f02acf3157908bb01520e6"
+                or prior.get("receipt_size") != 5_205
+                or contract.get("target_generation") != 43
+                or contract.get("prior_event_watermark") != 332
+                or contract.get("target_event_watermark") != 333
+                or contract.get("prior_projection_cid")
+                != _M64_PRIOR_PROJECTION_CID
+                or contract.get("target_projection_cid")
+                != _M64_TARGET_PROJECTION_CID
+                or contract.get("same_live_owner_required") is not True
+                or contract.get("generation_restart_authorized") is not False
+                or contract.get("m63_receipt_must_be_preserved") is not True
+                or contract.get("event_332_must_be_preserved") is not True
+                or contract.get("evidence_node_65_must_be_preserved") is not True
+                or contract.get("event_333_must_be_absent_before_append") is not True
+                or contract.get("evidence_node_66_must_be_absent_before_append") is not True
+                or not isinstance(chain, Mapping)
+                or chain.get("repair_diff_sha256")
+                != "756e630d7d2d923b6d94ef62ec83d0a4f34690f66870c509fbe1e1fce9765343"
+                or chain.get("final_control_parent")
+                != "f0961c6cae91a670840fad53422185476edf6f01"
+                or chain.get("repair_commit_count") != 1
+                or chain.get("final_control_commit_count") != 1
+                or chain.get("current_commit_identity_embedded_in_authority") is not False
+                or expected.get("ordinary_source_changes") != 2
+                or not isinstance(preservation, Mapping)
+                or preservation.get("m63_receipt_preserved_exactly") is not True
+                or preservation.get("m63_receipt_created_or_rewritten") is not False
+                or preservation.get("event_332_preserved_exactly") is not True
+            ):
+                m64_errors.append("M64 successor authority binding differs")
+            config_errors.extend(m64_errors)
+        except Exception as exc:
+            config_errors.append(
+                f"M64 successor authority unavailable: {type(exc).__name__}: {exc}"
+            )
+    if m63_selected and not m64_selected:
         successor = config.get(m63_key)
         try:
             module, materializer = _m26_validation_modules(root)

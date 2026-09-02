@@ -87,7 +87,71 @@ print(json.dumps({
         "configured_board_scheduler.py"
     ).resolve()
 
+
+def test_operator_help_keeps_source_checkout_bootstrap_inert(
+    tmp_path: Path,
+) -> None:
+    """CLI discovery must not mutate import paths or import the scheduler."""
+
+    script = (
+        REPO_ROOT
+        / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    )
+    probe = r'''
+import json, runpy, sys
+script = sys.argv[1]
+runtime_name = "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler"
+before_path = list(sys.path)
+before_runtime = runtime_name in sys.modules
+sys.argv = [script, "--help"]
+try:
+    runpy.run_path(script, run_name="__main__")
+except SystemExit as exc:
+    code = exc.code
+else:
+    code = None
+print(json.dumps({
+    "code": code,
+    "path_unchanged": list(sys.path) == before_path,
+    "runtime_imported": runtime_name in sys.modules and not before_runtime,
+}, sort_keys=True))
+'''
+    environment = {
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": os.environ.get("PATH", ""),
+        "PYTHONHASHSEED": "0",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+    }
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            probe,
+            str(script),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    observed = json.loads(completed.stdout.splitlines()[-1])
+    assert observed == {
+        "code": 0,
+        "path_unchanged": True,
+        "runtime_imported": False,
+    }
+
+
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "post_m63_operator_source_checkout_bootstrap_successor_materialization",
     "failed_pre_authoritative_m62_float_bounds_successor_materialization",
     "post_m61_sealed_credential_ack_startup_grace_successor_materialization",
     "post_m60_mappingproxy_identity_normalization_successor_materialization",
@@ -628,6 +692,179 @@ def test_historical_successor_controls_include_m61_before_m60() -> None:
     assert historical_migration is not None and m61_key not in historical_migration
     assert historical_seal is not None
     assert f"{m61_key}_cid" not in historical_seal
+
+
+def test_historical_successor_controls_include_m64_before_m63() -> None:
+    """M63 fixtures remove M64 while current M64 remains presence-first."""
+
+    m64_key = "post_m63_operator_source_checkout_bootstrap_successor_materialization"
+    m63_key = "failed_pre_authoritative_m62_float_bounds_successor_materialization"
+    scheduler = {m64_key: {"revision": "M64"}, m63_key: {"revision": "M63"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m64_key}_cid": "sha256:" + "1" * 64,
+        f"{m63_key}_cid": "sha256:" + "0" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m64_key, scheduler, migration, seal
+    )
+    assert current[m64_key] == scheduler[m64_key]
+    assert current_migration is not None
+    assert current_migration[m64_key] == migration[m64_key]
+    assert current_seal is not None
+    assert current_seal[f"{m64_key}_cid"] == seal[f"{m64_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m63_key, scheduler, migration, seal)
+    )
+    assert m64_key not in historical
+    assert historical_migration is not None and m64_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m64_key}_cid" not in historical_seal
+
+
+def test_materialize_and_launch_select_m64_before_m63_and_auto_append() -> None:
+    materialize_source = (
+        REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py"
+    ).read_text(encoding="utf-8")
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    m64_dispatch = "if _m64_successor_configured_on_any_surface(root, config):"
+    m63_dispatch = "if _m63_successor_configured_on_any_surface(root, config):"
+    assert m64_dispatch in materialize_source
+    assert m63_dispatch in materialize_source
+    assert materialize_source.find(m64_dispatch) < materialize_source.find(m63_dispatch)
+    assert materialize_source.find("def _materialize_m64(") < (
+        materialize_source.find("def materialize(")
+    )
+    assert "def _check_m64_materialized(" in materialize_source
+    assert "M64 automatic successor materialize failed" in operator_source
+    assert "def _verify_m64_live_head_task_projection(" in operator_source
+    assert operator_source.find("def _verify_m64_live_head_task_projection(") < (
+        operator_source.find("def _verify_m63_live_head_task_projection(")
+    )
+    m64_marker_dispatch = (
+        "if _M64_SUCCESSOR_KEY in config:\n"
+        "        return _require_m64_source_successor_marker"
+    )
+    m63_marker_dispatch = (
+        "if _M63_SUCCESSOR_KEY in config:\n"
+        "        return _require_m63_source_successor_marker"
+    )
+    assert m64_marker_dispatch in operator_source
+    assert m63_marker_dispatch in operator_source
+    assert operator_source.find(m64_marker_dispatch) < operator_source.find(
+        m63_marker_dispatch
+    )
+
+
+def test_m64_validators_treat_m63_as_immutable_history() -> None:
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m64_historical_m63_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m64_historical_m63_test",
+    )
+    board_source = inspect.getsource(board._active_successor_migration_errors)
+    dependency_source = inspect.getsource(dependencies.validate_dependencies)
+    assert "m64_key = _M64_SUCCESSOR_KEY" in board_source
+    assert "require_current_source=False" in board_source
+    assert "m64_declared = _m64_successor_declared" in dependency_source
+    assert "if m64_declared" in dependency_source
+    assert "if m63_declared and not m64_declared" in dependency_source
+    m63_errors_source = inspect.getsource(
+        dependencies._m63_failed_pre_authoritative_m62_float_bounds_successor_errors
+    )
+    assert "require_current_source: bool = True" in m63_errors_source
+    assert "if require_current_source:" in m63_errors_source
+
+
+def test_m64_authority_seals_scoped_bootstrap_and_exact_source_chain() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m64_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m64_post_m63_operator_source_checkout_bootstrap_authority()
+    )
+    contract = materializer._validated_m64_live_preflight_contract(authority)
+    prior = authority["prior_authority"]
+    repair = authority["accepted_control_plane_repair"]
+    chain = authority["source_chain"]
+
+    assert not materializer._M64_AUTHORITY_CID.endswith(
+        "PENDING_M64_FINAL_CONTROL_AUTHORITY_CID"
+    )
+    assert materializer._identity(authority) == materializer._M64_AUTHORITY_CID
+    assert len(materializer._canonical(authority)) == materializer._M64_AUTHORITY_SIZE
+    assert authority["migration_revision"] == "SAWM-R2-M64"
+    assert authority["control_recorded_at"] == "2026-09-02T17:40:00Z"
+    assert authority["target_generation"] == 43
+    assert authority["target_event_watermark"] == 333
+    assert prior["event_watermark"] == 332
+    assert prior["receipt_cid"] == (
+        "sha256:079ef7bfa47484538c66a9a5dda6d5f31d69dc9d5c8d7b58f8fb9212c0c3cc5f"
+    )
+    assert prior["receipt_sha256"] == (
+        "19e922fa7104c3acbaeca22501be2a644e4f20ac16f02acf3157908bb01520e6"
+    )
+    assert prior["receipt_size"] == 5_205
+    assert authority["source_checkout_bootstrap"] == {
+        "schema": "sawm/operator-source-checkout-bootstrap@1",
+        "helper": "_configured_board_scheduler_runtime",
+        "scope": "deferred_operational_scheduler_import",
+        "entrypoint": (
+            "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+        ),
+        "repository_root_expression": "Path(__file__).resolve().parents[3]",
+        "sys_path_insertion": "sys.path.insert(0, str(REPO_ROOT))",
+        "insertion_guard": "str(REPO_ROOT) not in sys.path",
+        "insertion_precedes_package_import": True,
+        "authoritative_checkout_selected_during_scoped_import": True,
+        "configured_scheduler_module": (
+            "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler"
+        ),
+        "caller_sys_path_restored_exactly": True,
+        "module_import_mutates_sys_path": False,
+        "cli_help_mutates_sys_path": False,
+        "ambient_pythonpath_required": False,
+        "editable_install_required": False,
+        "network_or_installer_used": False,
+    }
+    assert repair["repair_parent"] == "d5c314eaad3f7a2a2363043bd79482c1672e6e03"
+    assert repair["repair_commit"] == "f0961c6cae91a670840fad53422185476edf6f01"
+    assert repair["repair_tree"] == "b71f2f5d2c6961f2dbe10458b9f356e51eb474cb"
+    assert repair["repair_diff_sha256"] == (
+        "756e630d7d2d923b6d94ef62ec83d0a4f34690f66870c509fbe1e1fce9765343"
+    )
+    assert repair["blob_oids"] == {
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "a019d84685b2a7c4b7f1488b37ad956a8e84ea82"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "7de3fb0b9b756e84c8d568612a77c21e5d24afd4"
+        ),
+    }
+    assert set(repair["blob_modes"].values()) == {"100644"}
+    assert chain["repair_commits"] == [
+        {
+            "commit": "f0961c6cae91a670840fad53422185476edf6f01",
+            "parent": "d5c314eaad3f7a2a2363043bd79482c1672e6e03",
+            "tree": "b71f2f5d2c6961f2dbe10458b9f356e51eb474cb",
+        }
+    ]
+    assert chain["final_control_parent"] == repair["repair_commit"]
+    assert chain["repair_commit_count"] == 1
+    assert chain["final_control_commit_count"] == 1
+    assert contract["event_332_must_be_preserved"] is True
+    assert contract["event_333_must_be_absent_before_append"] is True
+    assert authority["preservation"]["m63_receipt_preserved_exactly"] is True
+    assert authority["preservation"]["m62_receipt_remains_absent"] is True
 
 
 def test_historical_successor_controls_include_m63_before_m62() -> None:
