@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -104,3 +105,112 @@ def test_wrapper_fails_before_launch_when_subreaper_is_unavailable(
 
     assert result == native_cli_subreaper._CONFINEMENT_FAILURE_EXIT_CODE
     assert launched is False
+
+
+def test_wrapper_passes_only_the_explicit_verified_fd(tmp_path: Path) -> None:
+    read_fd, write_fd = os.pipe()
+    inner = f"import os;os.write({write_fd},b'phase-frame')"
+    result = subprocess.Popen(
+        [
+            sys.executable,
+            "-I",
+            str(Path(native_cli_subreaper.__file__).resolve(strict=True)),
+            "--pass-fd",
+            str(write_fd),
+            "--",
+            sys.executable,
+            "-c",
+            inner,
+        ],
+        cwd=tmp_path,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        pass_fds=(write_fd,),
+        start_new_session=True,
+    )
+    os.close(write_fd)
+    assert result.wait(timeout=10) == 0
+    assert os.read(read_fd, 64) == b"phase-frame"
+    assert os.read(read_fd, 1) == b""
+    os.close(read_fd)
+
+
+@pytest.mark.parametrize("raw_fd", ["0", "01", "-1", "not-a-fd", "999999"])
+def test_wrapper_rejects_malformed_or_unavailable_fd_before_launch(
+    tmp_path: Path,
+    raw_fd: str,
+) -> None:
+    marker = tmp_path / f"launched-{raw_fd.replace('/', '_')}"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            str(Path(native_cli_subreaper.__file__).resolve(strict=True)),
+            "--pass-fd",
+            raw_fd,
+            "--",
+            sys.executable,
+            "-c",
+            f"import pathlib;pathlib.Path({str(marker)!r}).write_text('launched')",
+        ],
+        cwd=tmp_path,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == native_cli_subreaper._CONFINEMENT_FAILURE_EXIT_CODE
+    assert not marker.exists()
+
+
+def test_explicit_fd_wrapper_reaps_detached_descendant_before_exit(
+    tmp_path: Path,
+) -> None:
+    read_fd, write_fd = os.pipe()
+    descendant_pid_path = tmp_path / "fd-descendant.pid"
+    escaped_write_path = tmp_path / "fd-escaped-write"
+    descendant_script = (
+        "import pathlib,time;"
+        "time.sleep(0.4);"
+        f"pathlib.Path({str(escaped_write_path)!r}).write_text('escaped');"
+        "time.sleep(60)"
+    )
+    direct_script = (
+        "import os,pathlib,subprocess,sys;"
+        "child=subprocess.Popen("
+        f"[sys.executable,'-c',{descendant_script!r}],"
+        "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,"
+        "stderr=subprocess.DEVNULL,close_fds=True,start_new_session=True);"
+        f"pathlib.Path({str(descendant_pid_path)!r}).write_text(str(child.pid));"
+        f"os.write({write_fd},b'phase-frame')"
+    )
+    result = subprocess.Popen(
+        [
+            sys.executable,
+            "-I",
+            str(Path(native_cli_subreaper.__file__).resolve(strict=True)),
+            "--pass-fd",
+            str(write_fd),
+            "--",
+            sys.executable,
+            "-c",
+            direct_script,
+        ],
+        cwd=tmp_path,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        pass_fds=(write_fd,),
+        start_new_session=True,
+    )
+    os.close(write_fd)
+    assert result.wait(timeout=10) == 0
+    assert os.read(read_fd, 64) == b"phase-frame"
+    assert os.read(read_fd, 1) == b""
+    os.close(read_fd)
+    descendant_pid = int(descendant_pid_path.read_text(encoding="utf-8"))
+    time.sleep(0.6)
+    assert not escaped_write_path.exists()
+    assert not _process_is_live(descendant_pid)

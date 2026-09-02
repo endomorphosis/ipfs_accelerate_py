@@ -26,6 +26,33 @@ _TERMINATION_POLL_SECONDS = 0.01
 _termination_signal = 0
 
 
+def _parse_command(
+    arguments: Sequence[str],
+) -> tuple[tuple[str, ...], tuple[int, ...]] | None:
+    """Parse the closed wrapper CLI and verify its one optional inherited FD."""
+
+    values = list(arguments)
+    pass_fds: tuple[int, ...] = ()
+    if values[:1] == ["--pass-fd"]:
+        if len(values) < 4:
+            return None
+        raw_fd = values[1]
+        if not raw_fd.isascii() or not raw_fd.isdecimal() or raw_fd.startswith("0"):
+            return None
+        inherited_fd = int(raw_fd)
+        if inherited_fd <= 2:
+            return None
+        try:
+            os.fstat(inherited_fd)
+        except OSError:
+            return None
+        pass_fds = (inherited_fd,)
+        values = values[2:]
+    if len(values) < 2 or values[0] != "--" or not values[1]:
+        return None
+    return tuple(values[1:]), pass_fds
+
+
 def _enable_child_subreaper() -> bool:
     """Enable and verify the Linux child-subreaper contract."""
 
@@ -125,9 +152,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
 
     global _termination_signal
     _termination_signal = 0
-    values = list(sys.argv[1:] if arguments is None else arguments)
-    if len(values) < 2 or values[0] != "--" or not values[1]:
+    parsed = _parse_command(sys.argv[1:] if arguments is None else arguments)
+    if parsed is None:
         return _CONFINEMENT_FAILURE_EXIT_CODE
+    command, pass_fds = parsed
     if not _enable_child_subreaper():
         return _CONFINEMENT_FAILURE_EXIT_CODE
 
@@ -145,11 +173,12 @@ def main(arguments: Sequence[str] | None = None) -> int:
     process: subprocess.Popen[bytes] | None = None
     try:
         process = subprocess.Popen(
-            values[1:],
+            command,
             stdin=None,
             stdout=None,
             stderr=None,
             close_fds=True,
+            pass_fds=pass_fds,
             start_new_session=False,
         )
         while process.poll() is None:
