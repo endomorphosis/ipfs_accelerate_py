@@ -97335,32 +97335,64 @@ def _inspect_m58_generation_restart_rows(
 
 
 def _verify_m58_exact_evidence_projection(
-    connection: Any, *, watermark: int
+    connection: Any,
+    *,
+    watermark: int,
+    observed_watermark: int | None = None,
 ) -> dict[str, Any]:
-    """Reconcile every physical evidence row with events plus M42's sealed overlay."""
+    """Reconcile a historical prefix against an exact observed evidence head.
+
+    ``evidence_nodes`` does not carry an event watermark.  A later, valid
+    evidence event therefore makes an otherwise exact historical projection a
+    proper subset of the physical table.  When ``observed_watermark`` is
+    supplied, verify the complete physical table against that exact later
+    event projection, then derive the requested historical prefix from the
+    same immutable event history.  The default remains the original strict
+    current-head check.
+    """
 
     if int(watermark) < _M42_LEGACY_PROJECTION_WATERMARK:
         raise MigrationRequired("M58 evidence watermark predates the sealed overlay")
-    event_projection = _m38_evidence_projection_from_events(
-        connection, watermark=int(watermark)
-    )
+    prefix_watermark = int(watermark)
+    if observed_watermark is None:
+        head_watermark = prefix_watermark
+    elif type(observed_watermark) is not int or observed_watermark < prefix_watermark:
+        raise MigrationRequired("M58 observed evidence watermark is invalid")
+    else:
+        head_watermark = observed_watermark
+
     legacy_projection = _m38_evidence_projection_from_events(
         connection, watermark=_M42_LEGACY_PROJECTION_WATERMARK
     )
     transformed_legacy = _m42_apply_exact_legacy_evidence_overlay(
         legacy_projection["rows"], watermark=_M42_LEGACY_PROJECTION_WATERMARK
     )
-    expected_by_id = {
-        str(row[0]): tuple(row) for row in event_projection["rows"]
-    }
-    if len(expected_by_id) != len(event_projection["rows"]):
-        raise MigrationRequired("M58 event-derived evidence identities duplicate")
-    for row in transformed_legacy:
-        evidence_id = str(row[0])
-        if evidence_id not in expected_by_id:
-            raise MigrationRequired("M58 sealed legacy evidence identity is missing")
-        expected_by_id[evidence_id] = tuple(row)
-    expected_rows = sorted(expected_by_id.values(), key=lambda row: str(row[0]))
+
+    def expected_projection_at(
+        target_watermark: int,
+    ) -> tuple[dict[str, Any], list[tuple[Any, ...]]]:
+        projection = _m38_evidence_projection_from_events(
+            connection, watermark=target_watermark
+        )
+        expected_by_id = {
+            str(row[0]): tuple(row) for row in projection["rows"]
+        }
+        if len(expected_by_id) != len(projection["rows"]):
+            raise MigrationRequired("M58 event-derived evidence identities duplicate")
+        for row in transformed_legacy:
+            evidence_id = str(row[0])
+            if evidence_id not in expected_by_id:
+                raise MigrationRequired("M58 sealed legacy evidence identity is missing")
+            expected_by_id[evidence_id] = tuple(row)
+        return projection, sorted(
+            expected_by_id.values(), key=lambda row: str(row[0])
+        )
+
+    event_projection, expected_rows = expected_projection_at(prefix_watermark)
+    if head_watermark == prefix_watermark:
+        head_expected_rows = expected_rows
+    else:
+        _head_projection, head_expected_rows = expected_projection_at(head_watermark)
     columns = (
         "evidence_id",
         "parent_evidence_id",
@@ -97381,7 +97413,8 @@ def _verify_m58_exact_evidence_projection(
     actual_by_id = {str(row[0]): tuple(row) for row in actual_rows}
     if (
         len(actual_by_id) != len(actual_rows)
-        or actual_by_id != {str(row[0]): row for row in expected_rows}
+        or actual_by_id != {str(row[0]): row for row in head_expected_rows}
+        or any(actual_by_id.get(str(row[0])) != row for row in expected_rows)
     ):
         raise MigrationRequired("M58 complete evidence/event projection conflicts")
     projection_digest = _identity(
@@ -98552,7 +98585,10 @@ def _verify_m59_preserved_m58_receipt(
 
 
 def _verify_m59_preserved_m58_materialization(
-    connection: Any, receipt: Mapping[str, Any]
+    connection: Any,
+    receipt: Mapping[str, Any],
+    *,
+    observed_watermark: int | None = None,
 ) -> dict[str, Any]:
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
         content_identity,
@@ -98594,7 +98630,9 @@ def _verify_m59_preserved_m58_materialization(
         "owner_id": "sawm-r2-m58-live-source-sealer",
     }
     projection = _verify_m58_exact_evidence_projection(
-        connection, watermark=_M59_PRIOR_EVENT_WATERMARK
+        connection,
+        watermark=_M59_PRIOR_EVENT_WATERMARK,
+        observed_watermark=observed_watermark,
     )
     if (
         tuple(evidence_row[:6])
@@ -98748,7 +98786,9 @@ def _verify_m59_live_materialization(
             connection, _M59_TARGET_EVENT_WATERMARK
         )
         preserved = _verify_m59_preserved_m58_materialization(
-            connection, m58_receipt
+            connection,
+            m58_receipt,
+            observed_watermark=_M59_TARGET_EVENT_WATERMARK,
         )
         evidence_projection = _verify_m58_exact_evidence_projection(
             connection, watermark=_M59_TARGET_EVENT_WATERMARK

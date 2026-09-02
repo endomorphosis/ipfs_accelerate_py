@@ -2220,11 +2220,22 @@ def test_m58_reconciles_every_evidence_row_with_the_m42_overlay(
         "2026-09-02T00:00:00Z",
         '{"revision":2}',
     )
+    later_successor = (
+        "evidence:later-successor",
+        "",
+        "task:later-successor",
+        "operator_evidence",
+        "sha256:" + "4" * 64,
+        "2026-09-02T00:00:01Z",
+        '{"revision":3}',
+    )
 
     def event_projection(_connection: object, *, watermark: int) -> dict[str, object]:
         rows = [legacy_raw]
-        if watermark != materializer._M42_LEGACY_PROJECTION_WATERMARK:
+        if watermark >= materializer._M58_PRIOR_EVENT_WATERMARK:
             rows.append(successor)
+        if watermark > materializer._M58_PRIOR_EVENT_WATERMARK:
+            rows.append(later_successor)
         return {
             "rows": rows,
             "evidence_event_count": len(rows),
@@ -2268,6 +2279,15 @@ def test_m58_reconciles_every_evidence_row_with_the_m42_overlay(
     assert verified["evidence_node_count"] == 2
     assert verified["complete_evidence_projection_verified"] is True
 
+    connection.rows.append(later_successor)
+    historical = materializer._verify_m58_exact_evidence_projection(
+        connection,
+        watermark=materializer._M58_PRIOR_EVENT_WATERMARK,
+        observed_watermark=materializer._M58_PRIOR_EVENT_WATERMARK + 1,
+    )
+    assert historical["evidence_node_count"] == 2
+    assert historical["complete_evidence_projection_verified"] is True
+
     connection.rows.append(
         (
             "evidence:unbacked",
@@ -2281,7 +2301,9 @@ def test_m58_reconciles_every_evidence_row_with_the_m42_overlay(
     )
     with pytest.raises(materializer.MigrationRequired):
         materializer._verify_m58_exact_evidence_projection(
-            connection, watermark=materializer._M58_PRIOR_EVENT_WATERMARK
+            connection,
+            watermark=materializer._M58_PRIOR_EVENT_WATERMARK,
+            observed_watermark=materializer._M58_PRIOR_EVENT_WATERMARK + 1,
         )
 
 
