@@ -14742,6 +14742,24 @@ def _effective_nested_source_authorities(
             or len(materializer._canonical(authority)) != _M53_AUTHORITY_SIZE
         ):
             return effective, ["active M53 nested-source authority differs"]
+        for package, gitlink_key, tree_key in (
+            ("ipfs_datasets_py", "current_datasets_gitlink", "current_datasets_tree"),
+            ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree"),
+        ):
+            gitlink = str(authority.get(gitlink_key) or "")
+            tree = str(authority.get(tree_key) or "")
+            if (
+                package not in effective
+                or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+                or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            ):
+                return effective, ["active M53 nested-source identity is invalid"]
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
         return effective, []
     m52_key = _M52_SUCCESSOR_KEY
     m52_presence = (
