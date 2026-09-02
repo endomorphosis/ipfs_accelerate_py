@@ -121010,44 +121010,29 @@ class DatabaseImplementationDaemon:
         if not self._task_outputs_landed_on_target(task):
             return None
         proof, digest = self._landed_merge_repair_proof(task)
-        owner_recorded = self._apply_owner_command_validation_result(
-            task_cid=str(task.task_cid),
-            outcome="passed",
-            evidence_digest=digest,
-            argv=["database-landed-merge-repair"],
-            body=proof,
-        )
-        if owner_recorded is None:
-            self.task_source.record_validation_result(
-                task_cid=str(task.task_cid),
-                outcome="passed",
-                evidence_digest=digest,
-                argv=["database-landed-merge-repair"],
-                body=proof,
-            )
-        refreshed = self.task_source.get(task.task_cid)
-        if refreshed is None:
-            raise DatabaseImplementationAuthorityError(
-                "landed merge repair lost the control task"
-            )
+        # Do not INSERT another validation_runs row. SPAR-017 already has
+        # thousands of identical landed-merge digests; each idle tick minted a
+        # new run_id, then FatalException-poisoned the exclusive writer and
+        # starved the rest of the board. Completion CAS admits the digest
+        # in-transaction via _admit_landed_merge_repair_evidence_on.
         self._cas_task_status_database(
-            refreshed.task_cid,
-            expected_revision=int(refreshed.revision),
+            str(task.task_cid),
+            expected_revision=int(task.revision),
             new_status="completed",
             receipt={**proof, "evidence_digest": digest},
             evidence_digests=[digest],
         )
         self._record_event(
             "landed_merge_repaired",
-            task_cid=str(refreshed.task_cid),
+            task_cid=str(task.task_cid),
             body={
                 "evidence_digest": digest,
                 "landed_outputs": list(proof["landed_outputs"]),
             },
         )
         return {
-            "task_cid": str(refreshed.task_cid),
-            "task_alias": str(refreshed.task_alias),
+            "task_cid": str(task.task_cid),
+            "task_alias": str(getattr(task, "task_alias", "") or ""),
             "completed": True,
             "reason": "database_landed_merge_repair",
             "evidence_digest": digest,

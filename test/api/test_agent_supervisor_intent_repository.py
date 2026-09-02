@@ -1496,6 +1496,85 @@ def test_landed_merge_repair_completes_after_stale_validation_evidence(
         repo.close()
 
 
+def test_landed_merge_repair_does_not_mass_delete_historical_digest_nodes(
+    tmp_path: Path,
+) -> None:
+    repo = open_intent_repository(tmp_path / "control.duckdb")
+    try:
+        ids = _seed_graph(repo)
+        digest = ids["evidence_digest"]
+        extra_ids = [
+            content_identity(
+                {
+                    "task_cid": ids["task_a"],
+                    "evidence_kind": "validation",
+                    "digest": digest,
+                    "run_id": f"run:{index}",
+                }
+            )
+            for index in range(5)
+        ]
+        with repo._connection(write=True) as connection:  # noqa: SLF001
+            for evidence_id in extra_ids:
+                connection.execute(
+                    """
+                    INSERT INTO evidence_nodes (
+                        evidence_id, parent_evidence_id, task_cid, evidence_kind,
+                        digest, created_at, body_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        evidence_id,
+                        "",
+                        ids["task_a"],
+                        "validation",
+                        digest,
+                        "2020-01-01T00:00:00+00:00",
+                        "{}",
+                    ],
+                )
+            before = int(
+                connection.execute(
+                    "SELECT COUNT(*) AS n FROM evidence_nodes WHERE task_cid = ? AND digest = ?",
+                    [ids["task_a"], digest],
+                ).fetchone()[0]
+            )
+        assert before == 5
+        result = repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=1,
+            new_status="completed",
+            receipt={
+                "operation": LANDED_MERGE_REPAIR_OPERATION,
+                "evidence_digest": digest,
+                "landed_outputs": ["intent_repository.py"],
+            },
+            evidence_digests=[digest],
+        )
+        assert result.changed is True
+        with repo._connection(write=False) as connection:  # noqa: SLF001
+            after = int(
+                connection.execute(
+                    "SELECT COUNT(*) AS n FROM evidence_nodes WHERE task_cid = ? AND digest = ?",
+                    [ids["task_a"], digest],
+                ).fetchone()[0]
+            )
+            leftover = {
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT evidence_id FROM evidence_nodes WHERE task_cid = ?",
+                    [ids["task_a"]],
+                ).fetchall()
+            }
+        assert after == 6
+        assert leftover.issuperset(set(extra_ids))
+        completed = repo.get_task(ids["task_a"])
+        assert completed is not None
+        assert completed["status"] == "completed"
+    finally:
+        repo.close()
+
+
 def test_reopened_source_infers_one_task_bound_root_without_cross_goal_guess(
     tmp_path: Path,
 ) -> None:

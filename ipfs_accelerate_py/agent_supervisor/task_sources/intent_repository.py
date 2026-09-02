@@ -7898,7 +7898,14 @@ class IntentRepository:
         evidence_digests: Sequence[str],
         now: str,
     ) -> None:
-        """Refresh repair validation evidence inside the completion CAS."""
+        """Refresh one repair evidence node inside the completion CAS.
+
+        SPAR-017 accumulated thousands of identical landed-merge digest rows.
+        Deleting every historical node by digest in this transaction
+        FatalException-poisoned the exclusive writer. Upsert the stable
+        repair evidence_id only; ``missing_current_evidence_on`` admits any
+        fresh digest match and ignores stale siblings.
+        """
 
         for raw in evidence_digests:
             digest = _identifier(raw, noun="evidence_digest")
@@ -7911,8 +7918,8 @@ class IntentRepository:
                 }
             )
             connection.execute(
-                "DELETE FROM evidence_nodes WHERE task_cid = ? AND digest = ?",
-                [task_cid, digest],
+                "DELETE FROM evidence_nodes WHERE evidence_id = ?",
+                [evidence_id],
             )
             connection.execute(
                 """

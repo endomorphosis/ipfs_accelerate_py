@@ -2677,6 +2677,63 @@ def test_landed_quarantined_task_with_outputs_is_completed(
         daemon.close()
 
 
+def test_landed_merge_repair_does_not_insert_another_validation_run(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path)
+    control_path = tmp_path / "lane" / "control.duckdb"
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo, control_path=control_path)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["outputs"] = [{"path": "landed.py"}]
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt={
+                "operation": "database_portal_neutral_failure_quarantine",
+                "retry_suppressed": True,
+            },
+        )
+        proof, digest = daemon._landed_merge_repair_proof(
+            daemon.task_source.get("task:cid:001")
+        )
+        daemon.task_source.record_validation_result(
+            task_cid="task:cid:001",
+            outcome="passed",
+            evidence_digest=digest,
+            argv=["database-landed-merge-repair"],
+            body=proof,
+        )
+
+        def _validation_run_count() -> int:
+            intent = daemon.task_source._intent
+            with intent._connection(write=False) as connection:  # noqa: SLF001
+                row = connection.execute(
+                    "SELECT COUNT(*) AS n FROM validation_runs WHERE task_cid = ?",
+                    ["task:cid:001"],
+                ).fetchone()
+            return int(row[0])
+
+        before = _validation_run_count()
+        assert before == 1
+        result = daemon.run_once()
+        repaired = result["landed_merge_reconciliations"]
+        assert repaired
+        assert repaired[0]["completed"] is True
+        assert _validation_run_count() == before
+        completed = daemon.task_source.get("task:cid:001")
+        assert completed is not None
+        assert completed.status == "completed"
+    finally:
+        daemon.close()
+
+
 def test_landed_merge_defers_after_owner_fatal(tmp_path: Path) -> None:
     daemon = _open_daemon(tmp_path / "lane")
     try:

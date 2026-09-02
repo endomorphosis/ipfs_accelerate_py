@@ -5989,11 +5989,17 @@ class QuackStateServer:
                     token = self._quack_owner_command_hmac_token(request)
                 except DuckDBConnectionPolicyError:
                     token = self._vault.resolve(self._identity.secret_handle)
+                detail = " ".join(str(exc).split())
+                if len(detail) > 240:
+                    detail = detail[:240] + "..."
+                rejected = f"typed owner command rejected: {type(exc).__name__}"
+                if detail:
+                    rejected = f"{rejected}: {detail}"
                 response = quack_owner_command_response(
                     request,
                     token=token,
                     error_code=quack_owner_command_error_code(exc),
-                    error_message=f"typed owner command rejected: {type(exc).__name__}",
+                    error_message=rejected,
                 )
                 _atomic_write_json(done, response, mode=0o600)
                 published = True
