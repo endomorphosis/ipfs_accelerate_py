@@ -393,16 +393,18 @@ PATH_CLASS_CATALOG: Final[tuple[PathClassRecipe, ...]] = (
             "production_authorized."
         ),
         relpaths=(
+            "ipfs_accelerate_py/compatibility/simulation/fabricated_hardware.py",
+            "ipfs_accelerate_py/assurance/hardware_capability_ladder.py",
             "ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
             "ipfs_accelerate_py/worker/cuda_utils.py",
             "ipfs_accelerate_py/hf_model_server/hardware/detector.py",
             "ipfs_accelerate_py/kit/hardware_kit.py",
         ),
         needles=(
-            "_create_mock_hardware_detection",
-            "create_cuda_mock_implementation",
-            'cuda_info["available"] = True',
-            "Available hardware",
+            "instantiate_mock_hardware_detection",
+            "create_simulated_cuda_implementation",
+            "production_authorized",
+            "device_visibility_is_not_qualification",
         ),
     ),
     _recipe(

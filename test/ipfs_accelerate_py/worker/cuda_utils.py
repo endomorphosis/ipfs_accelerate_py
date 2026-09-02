@@ -24,6 +24,9 @@ class cuda_utils:
         self.resources = resources
         self.metadata = metadata
 
+        if self.resources is None:
+            self.resources = {}
+
         # Initialize core resources
         self.init()
 
@@ -31,17 +34,31 @@ class cuda_utils:
         os.makedirs(os.path.expanduser("~/.cache/ipfs_accelerate/locks"), exist_ok=True)
 
     def init(self):
-        """Initialize required dependencies"""
+        """Initialize required dependencies.
+
+        PCPR-031: missing PyTorch is typed unavailable, never a MagicMock that
+        can report CUDA ``is_available()`` as true.
+        """
+        from ipfs_accelerate_py.compatibility.simulation.fabricated_hardware import (
+            UnavailableTorch,
+            torch_is_fabricated,
+        )
+
+        if self.resources is None:
+            self.resources = {}
         if "torch" not in list(self.resources.keys()):
             try:
                 import torch
 
                 self.torch = torch
             except ImportError:
-                print("PyTorch not available, using mock")
-                self.torch = MagicMock()
+                print("PyTorch not available; CUDA remains typed unavailable")
+                self.torch = UnavailableTorch()
         else:
             self.torch = self.resources["torch"]
+            if torch_is_fabricated(self.torch):
+                print("Injected torch stand-in is not live CUDA; treating as unavailable")
+                self.torch = UnavailableTorch()
 
         if "transformers" not in list(self.resources.keys()):
             try:
@@ -76,8 +93,15 @@ class cuda_utils:
             torch.device: CUDA device object, or None if not available
         """
         try:
-            # Check if CUDA is available
-            if not self.torch.cuda.is_available():
+            from ipfs_accelerate_py.compatibility.simulation.fabricated_hardware import (
+                torch_is_fabricated,
+            )
+
+            if torch_is_fabricated(self.torch):
+                print("CUDA is typed unavailable (no live torch); not a measured False probe")
+                return None
+            cuda_available = self.torch.cuda.is_available()
+            if cuda_available is not True:
                 print("CUDA is not available on this system")
                 return None
 
@@ -415,99 +439,24 @@ class cuda_utils:
             "cuda_memory_used_mb": memory_used,
         }
 
-    def create_cuda_mock_implementation(self, model_type, shape_info=None):
+    def create_cuda_mock_implementation(
+        self, model_type, shape_info=None, *, explicit_simulation=False
+    ):
         """
-        Create a mock CUDA implementation for testing
+        Create a mock CUDA implementation for testing.
 
-        Args:
-            model_type: Type of model to mock ('lm', 'embed', 'whisper', etc.)
-            shape_info: Optional shape information for outputs
-
-        Returns:
-            tuple: Mock objects required for CUDA implementation
+        PCPR-031: requires explicit simulation. The mock is labeled Simulated
+        and never reports live CUDA availability or production_authorized.
         """
-        # Create mock device
-        mock_device = MagicMock()
-        mock_device.type = "cuda"
-        mock_device.index = 0
+        from ipfs_accelerate_py.compatibility.simulation.fabricated_hardware import (
+            create_simulated_cuda_implementation,
+        )
 
-        # Create mock CUDA functions
-        cuda_functions = {
-            "is_available": MagicMock(return_value=True),
-            "get_device_name": MagicMock(return_value="Mock CUDA Device"),
-            "device_count": MagicMock(return_value=1),
-            "current_device": MagicMock(return_value=0),
-            "empty_cache": MagicMock(),
-        }
-
-        # Create appropriate mock objects based on model type
-        if model_type == "lm":
-            # Language model mocks
-            mock_model = MagicMock()
-            mock_model.to.return_value = mock_model
-            mock_model.half.return_value = mock_model
-            mock_model.eval.return_value = mock_model
-            mock_model.generate.return_value = self.torch.tensor([[1, 2, 3, 4, 5]])
-
-            # Handler that simulates CUDA acceleration
-            def handler(prompt, max_new_tokens=100, temperature=0.7):
-                return {
-                    "text": f"(MOCK CUDA) Generated text for: {prompt[:20]}...",
-                    "implementation_type": "MOCK",
-                    "device": "cuda:0",
-                }
-
-            return None, MagicMock(), handler, None, 8
-
-        elif model_type == "embed":
-            # Embedding model mocks
-            mock_model = MagicMock()
-            mock_model.to.return_value = mock_model
-            mock_model.half.return_value = mock_model
-            mock_model.eval.return_value = mock_model
-
-            # Handler that returns mock embeddings
-            def handler(text):
-                embed_dim = shape_info or 768
-                # Create tensor with proper device info
-                embedding = self.torch.zeros(embed_dim)
-                embedding.requires_grad = False
-                embedding._mock_device = "cuda:0"  # Simulate CUDA tensor
-                return {"embedding": embedding, "implementation_type": "MOCK", "device": "cuda:0"}
-
-            return None, MagicMock(), handler, None, 16
-
-        elif model_type in ["clip", "xclip"]:
-            # Multimodal model mocks
-            def handler(text=None, image=None):
-                text_embed = self.torch.zeros(512)
-                image_embed = self.torch.zeros(512)
-
-                # Add mock device info
-                text_embed._mock_device = "cuda:0"
-                image_embed._mock_device = "cuda:0"
-
-                return {
-                    "text_embedding": text_embed,
-                    "image_embedding": image_embed,
-                    "similarity": self.torch.tensor([0.75]),
-                    "implementation_type": "MOCK",
-                    "device": "cuda:0",
-                }
-
-            return None, MagicMock(), handler, None, 8
-
-        # Default catch-all mock
-        return (
-            None,
-            MagicMock(),
-            lambda x: {
-                "output": "(MOCK CUDA) Output",
-                "implementation_type": "MOCK",
-                "device": "cuda:0",
-            },
-            None,
-            8,
+        return create_simulated_cuda_implementation(
+            model_type,
+            shape_info,
+            torch_module=self.torch,
+            explicit_simulation=explicit_simulation,
         )
 
     def get_implementation_type(self, endpoint=None, tokenizer=None, prefix="", real_impl=None):

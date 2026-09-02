@@ -127,16 +127,20 @@ class HardwareKit:
         """
         Detect CUDA GPUs.
 
-        Returns:
-            Dictionary with CUDA info
+        PCPR-031: nvidia-smi or torch.cuda.is_available is device visibility,
+        not production_authorized. Missing tools stay typed unavailable.
         """
-        cuda_info = {
-            "available": False,
-            "devices": [],
-        }
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            attach_ladder,
+            from_device_visibility,
+            from_measured_absence,
+            unavailable_backend,
+        )
+
+        cuda_info = unavailable_backend("cuda", devices=[])
+        cuda_info["declared"] = True
 
         try:
-            # Try using nvidia-smi
             result = subprocess.run(
                 [
                     "nvidia-smi",
@@ -148,41 +152,69 @@ class HardwareKit:
                 timeout=5,
             )
 
-            if result.returncode == 0:
-                cuda_info["available"] = True
+            if result.returncode == 0 and result.stdout.strip():
+                devices = []
                 for line in result.stdout.strip().split("\n"):
                     if line:
                         parts = [p.strip() for p in line.split(",")]
                         if len(parts) >= 2:
-                            cuda_info["devices"].append(
+                            devices.append(
                                 {
                                     "name": parts[0],
                                     "memory": parts[1] if len(parts) > 1 else "Unknown",
                                     "driver": parts[2] if len(parts) > 2 else "Unknown",
                                 }
                             )
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-            logger.debug(f"CUDA not detected: {e}")
+                if devices:
+                    cuda_info = from_device_visibility(
+                        "cuda",
+                        devices=devices,
+                        extra={"probe": "nvidia-smi"},
+                    )
+        except FileNotFoundError:
+            logger.debug("nvidia-smi not on PATH; CUDA probe remains typed unavailable")
+        except subprocess.TimeoutExpired as e:
+            logger.debug(f"CUDA nvidia-smi timed out: {e}")
 
-        # Try PyTorch CUDA detection
         try:
             import torch
 
-            if torch.cuda.is_available():
-                cuda_info["available"] = True
+            cuda_info["installed"] = True
+            cuda_info["pytorch_version"] = torch.__version__
+            if torch.cuda.is_available() is True:
+                cuda_info = from_device_visibility(
+                    "cuda",
+                    devices=cuda_info.get("devices") or [],
+                    extra={
+                        "probe": "torch.cuda.is_available",
+                        "pytorch_version": torch.__version__,
+                        "cuda_version": torch.version.cuda,
+                    },
+                )
                 cuda_info["pytorch_version"] = torch.__version__
                 cuda_info["cuda_version"] = torch.version.cuda
-                if not cuda_info["devices"]:
+                if not cuda_info.get("devices"):
                     for i in range(torch.cuda.device_count()):
                         cuda_info["devices"].append(
                             {"name": torch.cuda.get_device_name(i), "index": i}
                         )
+            elif torch.cuda.is_available() is False and cuda_info.get("detected") is not True:
+                cuda_info = from_measured_absence(
+                    "cuda",
+                    extra={
+                        "probe": "torch.cuda.is_available",
+                        "pytorch_version": torch.__version__,
+                    },
+                )
+                cuda_info["devices"] = []
+                cuda_info["pytorch_version"] = torch.__version__
         except ImportError:
-            pass
+            if cuda_info.get("detected") is not True:
+                cuda_info.setdefault("installed", None)
         except Exception as e:
             logger.debug(f"PyTorch CUDA detection failed: {e}")
 
-        return cuda_info
+        return attach_ladder(cuda_info)
 
     def detect_rocm(self) -> Dict[str, Any]:
         """
@@ -192,8 +224,17 @@ class HardwareKit:
             Dictionary with ROCm info
         """
         rocm_info = {
-            "available": False,
+            "available": None,
             "devices": [],
+            "declared": True,
+            "installed": None,
+            "detected": None,
+            "qualified": False,
+            "production_authorized": False,
+            "origin": "absent",
+            "live": False,
+            "evidence_kind": "unavailable",
+            "outcome": "Unavailable",
         }
 
         try:
@@ -203,12 +244,20 @@ class HardwareKit:
             )
 
             if result.returncode == 0:
+                rocm_info["detected"] = True
                 rocm_info["available"] = True
-                # Parse output for device names
+                rocm_info["installed"] = True
+                rocm_info["origin"] = "hermetic_observed"
+                rocm_info["evidence_kind"] = "measured"
+                rocm_info["qualified"] = False
+                rocm_info["production_authorized"] = False
+                rocm_info["live"] = False
                 for line in result.stdout.strip().split("\n"):
                     if "GPU" in line:
                         rocm_info["devices"].append({"info": line.strip()})
-        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        except FileNotFoundError:
+            logger.debug("rocm-smi not on PATH; ROCm remains typed unavailable")
+        except subprocess.TimeoutExpired as e:
             logger.debug(f"ROCm not detected: {e}")
 
         return rocm_info
@@ -220,21 +269,25 @@ class HardwareKit:
         Returns:
             Dictionary with Metal info
         """
-        metal_info = {
-            "available": False,
-        }
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            attach_ladder,
+            from_platform_presence,
+            unavailable_backend,
+        )
 
-        # Check if on macOS
         if platform.system() == "Darwin":
-            metal_info["available"] = True
-            metal_info["platform"] = "macOS"
-            metal_info["machine"] = platform.machine()
+            metal_info = from_platform_presence(
+                "metal",
+                platform_name="macOS",
+                extra={
+                    "machine": platform.machine(),
+                    "apple_silicon": platform.machine() == "arm64",
+                    "platform_presence_is_not_qualification": True,
+                },
+            )
+            return attach_ladder(metal_info)
 
-            # Check for Apple Silicon
-            if platform.machine() == "arm64":
-                metal_info["apple_silicon"] = True
-
-        return metal_info
+        return attach_ladder(unavailable_backend("metal"))
 
     def detect_webgpu(self) -> Dict[str, Any]:
         """
@@ -243,7 +296,16 @@ class HardwareKit:
         Returns:
             Dictionary with WebGPU info
         """
-        webgpu_info = {"available": False, "note": "WebGPU requires browser environment"}
+        webgpu_info = {
+            "available": None,
+            "note": "WebGPU requires browser environment",
+            "production_authorized": False,
+            "qualified": False,
+            "live": False,
+            "origin": "absent",
+            "evidence_kind": "unavailable",
+            "outcome": "Unavailable",
+        }
 
         # WebGPU is primarily browser-based
         # Check if we're in a web environment
@@ -263,7 +325,16 @@ class HardwareKit:
         Returns:
             Dictionary with WebNN info
         """
-        webnn_info = {"available": False, "note": "WebNN requires browser environment"}
+        webnn_info = {
+            "available": None,
+            "note": "WebNN requires browser environment",
+            "production_authorized": False,
+            "qualified": False,
+            "live": False,
+            "origin": "absent",
+            "evidence_kind": "unavailable",
+            "outcome": "Unavailable",
+        }
 
         # WebNN is primarily browser-based
         # Check if we're in a web environment
@@ -302,17 +373,17 @@ class HardwareKit:
 
         # CUDA
         cuda_info = self.detect_cuda()
-        if cuda_info["available"]:
+        if cuda_info.get("available") is True:
             accelerators["cuda"] = cuda_info
 
         # ROCm
         rocm_info = self.detect_rocm()
-        if rocm_info["available"]:
+        if rocm_info.get("available") is True:
             accelerators["rocm"] = rocm_info
 
         # Metal
         metal_info = self.detect_metal()
-        if metal_info["available"]:
+        if metal_info.get("available") is True:
             accelerators["metal"] = metal_info
 
         # WebGPU (if applicable)
@@ -347,25 +418,51 @@ class HardwareKit:
 
     def _test_cuda(self, test_level: str) -> Dict[str, Any]:
         """Test CUDA functionality."""
-        result = {"available": False, "tests_passed": False}
+        result = {
+            "available": None,
+            "tests_passed": False,
+            "production_authorized": False,
+            "qualified": False,
+            "live": False,
+            "origin": "absent",
+            "evidence_kind": "unavailable",
+            "outcome": "Unavailable",
+            "canary_passed": None,
+        }
 
         try:
             import torch
 
-            if torch.cuda.is_available():
+            result["installed"] = True
+            if torch.cuda.is_available() is True:
                 result["available"] = True
+                result["detected"] = True
+                result["origin"] = "hermetic_observed"
+                result["evidence_kind"] = "measured"
+                result["live"] = False
+                result["production_authorized"] = False
+                result["qualified"] = False
 
                 if test_level == "basic":
-                    # Basic test: create a tensor
                     x = torch.ones(10, device="cuda")
+                    del x
+                    result["canary_passed"] = True
                     result["tests_passed"] = True
                     result["device_count"] = torch.cuda.device_count()
                 elif test_level == "comprehensive":
-                    # More comprehensive test
                     x = torch.randn(1000, 1000, device="cuda")
                     y = torch.matmul(x, x)
+                    del x, y
+                    result["canary_passed"] = True
                     result["tests_passed"] = True
                     result["device_count"] = torch.cuda.device_count()
+            elif torch.cuda.is_available() is False:
+                result["available"] = False
+                result["detected"] = False
+                result["origin"] = "hermetic_observed"
+                result["evidence_kind"] = "measured"
+        except ImportError:
+            result["error"] = "torch_unavailable"
         except Exception as e:
             result["error"] = str(e)
 
@@ -373,7 +470,17 @@ class HardwareKit:
 
     def _test_cpu(self, test_level: str) -> Dict[str, Any]:
         """Test CPU functionality."""
-        result = {"available": True, "tests_passed": False}
+        result = {
+            "available": True,
+            "tests_passed": False,
+            "declared": True,
+            "production_authorized": False,
+            "qualified": False,
+            "live": False,
+            "origin": "declared",
+            "evidence_kind": "measured",
+            "outcome": "Unavailable",
+        }
 
         try:
             if test_level == "basic":

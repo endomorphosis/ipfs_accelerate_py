@@ -356,36 +356,36 @@
     {
       "dynamic_uncertainty": false,
       "kind": "simulated hardware",
-      "nominated_symbol": "create_cuda_mock_implementation",
+      "nominated_symbol": "create_simulated_cuda_implementation",
       "origin_taint": "simulation",
-      "path": "ipfs_accelerate_py/worker/cuda_utils.py",
+      "path": "ipfs_accelerate_py/compatibility/simulation/fabricated_hardware.py",
       "path_id": "cuda-mock-impl",
       "present": true,
       "production_authority": false,
-      "reachability": "production_reachable",
+      "reachability": "compatibility_only",
       "source_span": {
-        "end_line": 433,
-        "path": "ipfs_accelerate_py/worker/cuda_utils.py",
-        "start_line": 433
+        "end_line": 233,
+        "path": "ipfs_accelerate_py/compatibility/simulation/fabricated_hardware.py",
+        "start_line": 233
       },
       "uncertainty": "cuda_mock_implementation_must_not_prove_device_capability"
     },
     {
       "dynamic_uncertainty": false,
       "kind": "simulated hardware",
-      "nominated_symbol": "_create_mock_hardware_detection",
+      "nominated_symbol": "MockHardwareDetection",
       "origin_taint": "simulation",
-      "path": "ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
+      "path": "ipfs_accelerate_py/compatibility/simulation/fabricated_hardware.py",
       "path_id": "simulated-hw-legacy",
       "present": true,
       "production_authority": false,
       "reachability": "compatibility_only",
       "source_span": {
-        "end_line": 223,
-        "path": "ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
-        "start_line": 223
+        "end_line": 105,
+        "path": "ipfs_accelerate_py/compatibility/simulation/fabricated_hardware.py",
+        "start_line": 105
       },
-      "uncertainty": "legacy_mock_hardware_detection_is_not_a_live_probe"
+      "uncertainty": "quarantined_mock_hardware_detection_is_not_a_live_probe"
     }
   ],
   "production_flow_invariant": "No compatibility, fixture, or simulation origin may satisfy a production capability, execution-success, proof, completion, or release predicate.",

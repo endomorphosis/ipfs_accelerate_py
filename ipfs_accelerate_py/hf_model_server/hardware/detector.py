@@ -1,7 +1,11 @@
 """
 Hardware Detection and Selection
 
-Detect available hardware and select optimal hardware for models
+Detect available hardware and select optimal hardware for models.
+
+PCPR-031: detection is a ladder rung, not qualification. Package import,
+adapter presence, and device visibility never imply production_authorized.
+Missing environments stay typed unavailable (available is None).
 """
 
 import logging
@@ -14,19 +18,38 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class HardwareCapability:
-    """Hardware capability information"""
+    """Hardware capability information.
+
+    ``available`` is a detection flag only. ``production_authorized`` is never
+    implied by visibility, import, or configuration.
+    """
 
     name: str
-    available: bool
+    available: Optional[bool] = None
     device_count: int = 0
     memory_total_mb: float = 0
     memory_available_mb: float = 0
     compute_capability: Optional[str] = None
     metadata: Dict = None
+    declared: bool = False
+    installed: Optional[bool] = None
+    detected: Optional[bool] = None
+    canary_passed: Optional[bool] = None
+    model_compatible: Optional[bool] = None
+    resource_sufficient: Optional[bool] = None
+    qualified: bool = False
+    production_authorized: bool = False
+    origin: str = "absent"
+    live: bool = False
+    evidence_kind: str = "unavailable"
+    outcome: str = "Unavailable"
 
     def __post_init__(self):
         if self.metadata is None:
             self.metadata = {}
+        self.production_authorized = False
+        self.qualified = False
+        self.live = False
 
 
 class HardwareDetector:
@@ -57,8 +80,13 @@ class HardwareDetector:
             "cpu": self._detect_cpu(),
         }
 
-        available = [name for name, cap in self.capabilities.items() if cap.available]
-        logger.info(f"Available hardware: {', '.join(available)}")
+        detected = [
+            name for name, cap in self.capabilities.items() if cap.available is True
+        ]
+        logger.info(
+            "Detected hardware (not production_authorized): "
+            f"{', '.join(detected) if detected else 'none'}"
+        )
 
     def _detect_cuda(self) -> HardwareCapability:
         """Detect CUDA/NVIDIA GPU"""
@@ -80,12 +108,45 @@ class HardwareDetector:
                     memory_total_mb=memory_total,
                     memory_available_mb=memory_available,
                     compute_capability=compute_capability,
-                    metadata={"torch_version": torch.__version__},
+                    metadata={
+                        "torch_version": torch.__version__,
+                        "device_visibility_is_not_qualification": True,
+                    },
+                    declared=True,
+                    installed=True,
+                    detected=True,
+                    canary_passed=None,
+                    qualified=False,
+                    production_authorized=False,
+                    origin="hermetic_observed",
+                    live=False,
+                    evidence_kind="measured",
+                    outcome="Unavailable",
                 )
+        except ImportError:
+            logger.debug("CUDA typed unavailable: torch is not installed")
+            return HardwareCapability(
+                name="cuda",
+                available=None,
+                origin="absent",
+                evidence_kind="unavailable",
+                outcome="Unavailable",
+            )
         except Exception as e:
             logger.debug(f"CUDA not available: {e}")
 
-        return HardwareCapability(name="cuda", available=False)
+        return HardwareCapability(
+            name="cuda",
+            available=False,
+            declared=True,
+            installed=True,
+            detected=False,
+            production_authorized=False,
+            origin="hermetic_observed",
+            live=False,
+            evidence_kind="measured",
+            outcome="Unavailable",
+        )
 
     def _detect_rocm(self) -> HardwareCapability:
         """Detect ROCm/AMD GPU"""
@@ -98,12 +159,38 @@ class HardwareDetector:
                     name="rocm",
                     available=True,
                     device_count=device_count,
-                    metadata={"torch_version": torch.__version__},
+                    metadata={
+                        "torch_version": torch.__version__,
+                        "device_visibility_is_not_qualification": True,
+                    },
+                    declared=True,
+                    installed=True,
+                    detected=True,
+                    qualified=False,
+                    production_authorized=False,
+                    origin="hermetic_observed",
+                    live=False,
+                    evidence_kind="measured",
+                    outcome="Unavailable",
                 )
+        except ImportError:
+            return HardwareCapability(
+                name="rocm",
+                available=None,
+                origin="absent",
+                evidence_kind="unavailable",
+                outcome="Unavailable",
+            )
         except Exception as e:
             logger.debug(f"ROCm not available: {e}")
 
-        return HardwareCapability(name="rocm", available=False)
+        return HardwareCapability(
+            name="rocm",
+            available=None,
+            origin="absent",
+            evidence_kind="unavailable",
+            outcome="Unavailable",
+        )
 
     def _detect_mps(self) -> HardwareCapability:
         """Detect Apple Metal Performance Shaders"""
@@ -115,12 +202,38 @@ class HardwareDetector:
                     name="mps",
                     available=True,
                     device_count=1,
-                    metadata={"torch_version": torch.__version__},
+                    metadata={
+                        "torch_version": torch.__version__,
+                        "device_visibility_is_not_qualification": True,
+                    },
+                    declared=True,
+                    installed=True,
+                    detected=True,
+                    qualified=False,
+                    production_authorized=False,
+                    origin="hermetic_observed",
+                    live=False,
+                    evidence_kind="measured",
+                    outcome="Unavailable",
                 )
+        except ImportError:
+            return HardwareCapability(
+                name="mps",
+                available=None,
+                origin="absent",
+                evidence_kind="unavailable",
+                outcome="Unavailable",
+            )
         except Exception as e:
             logger.debug(f"MPS not available: {e}")
 
-        return HardwareCapability(name="mps", available=False)
+        return HardwareCapability(
+            name="mps",
+            available=None,
+            origin="absent",
+            evidence_kind="unavailable",
+            outcome="Unavailable",
+        )
 
     def _detect_openvino(self) -> HardwareCapability:
         """Detect OpenVINO"""
@@ -129,14 +242,40 @@ class HardwareDetector:
 
             return HardwareCapability(
                 name="openvino",
-                available=True,
-                device_count=1,
-                metadata={"version": openvino.__version__},
+                available=False,
+                device_count=0,
+                metadata={
+                    "version": openvino.__version__,
+                    "package_import_is_not_qualification": True,
+                },
+                declared=True,
+                installed=True,
+                detected=None,
+                qualified=False,
+                production_authorized=False,
+                origin="declared",
+                live=False,
+                evidence_kind="measured",
+                outcome="Unavailable",
+            )
+        except ImportError:
+            return HardwareCapability(
+                name="openvino",
+                available=None,
+                origin="absent",
+                evidence_kind="unavailable",
+                outcome="Unavailable",
             )
         except Exception as e:
             logger.debug(f"OpenVINO not available: {e}")
 
-        return HardwareCapability(name="openvino", available=False)
+        return HardwareCapability(
+            name="openvino",
+            available=None,
+            origin="absent",
+            evidence_kind="unavailable",
+            outcome="Unavailable",
+        )
 
     def _detect_qnn(self) -> HardwareCapability:
         """Detect Qualcomm Neural Network SDK"""
@@ -147,7 +286,14 @@ class HardwareDetector:
         except Exception as e:
             logger.debug(f"QNN not available: {e}")
 
-        return HardwareCapability(name="qnn", available=False)
+        return HardwareCapability(
+            name="qnn",
+            available=None,
+            origin="absent",
+            evidence_kind="unavailable",
+            outcome="Unavailable",
+            production_authorized=False,
+        )
 
     def _detect_cpu(self) -> HardwareCapability:
         """Detect CPU (always available)"""
@@ -161,23 +307,51 @@ class HardwareDetector:
                 device_count=1,
                 memory_total_mb=memory.total / (1024**2),
                 memory_available_mb=memory.available / (1024**2),
+                declared=True,
+                installed=True,
+                detected=True,
+                qualified=False,
+                production_authorized=False,
+                origin="declared",
+                live=False,
+                evidence_kind="measured",
+                outcome="Unavailable",
             )
         except Exception as e:
-            # CPU should always be available even if psutil fails
-            return HardwareCapability(name="cpu", available=True, device_count=1)
+            # A running process implies a declared CPU host, not qualification.
+            del e
+            return HardwareCapability(
+                name="cpu",
+                available=True,
+                device_count=1,
+                declared=True,
+                installed=True,
+                detected=None,
+                qualified=False,
+                production_authorized=False,
+                origin="declared",
+                live=False,
+                evidence_kind="measured",
+                outcome="Unavailable",
+            )
 
     def get_capability(self, hardware: str) -> Optional[HardwareCapability]:
         """Get capability for specific hardware"""
         return self.capabilities.get(hardware)
 
     def is_available(self, hardware: str) -> bool:
-        """Check if hardware is available"""
+        """Check if hardware is detected. Detection is not production_authorized."""
         cap = self.capabilities.get(hardware)
-        return cap.available if cap else False
+        return bool(cap is not None and cap.available is True)
+
+    def is_production_authorized(self, hardware: str) -> bool:
+        """Production execution requires the full ladder. This detector never grants it."""
+        cap = self.capabilities.get(hardware)
+        return bool(cap is not None and cap.production_authorized is True)
 
     def get_available_hardware(self) -> List[str]:
-        """Get list of available hardware"""
-        return [name for name, cap in self.capabilities.items() if cap.available]
+        """Get list of detected hardware. Detection is not qualification."""
+        return [name for name, cap in self.capabilities.items() if cap.available is True]
 
     def get_best_hardware(
         self, supported_hardware: List[str], preferred_order: List[str] = None
@@ -237,10 +411,16 @@ class HardwareSelector:
         hardware = self.detector.get_best_hardware(supported, preferred_order)
 
         if hardware:
-            reason = f"Selected {hardware} (available and supported)"
+            reason = (
+                f"Selected {hardware} (detected and supported; "
+                "detection is not production_authorized)"
+            )
             return hardware, reason
         else:
-            reason = "No suitable hardware available, falling back to CPU"
+            reason = (
+                "No suitable detected hardware; falling back to declared CPU "
+                "baseline (not production_authorized)"
+            )
             return "cpu", reason
 
     def track_load(self, hardware: str, delta: int = 1):

@@ -499,9 +499,9 @@ def create_cuda_mock_implementation(
         tuple: Mock objects required for CUDA implementation
 
     Note:
-        When simulate_real=True, the returned implementation will report itself as REAL
-        with the is_real_simulation attribute and implementation_type fields set.
-        This allows test files to correctly detect these implementations as REAL.
+        PCPR-031: simulated CUDA is never live. ``simulate_real`` only adds
+        extra simulated stats; it cannot mint implementation_type REAL,
+        live CUDA availability, or production_authorized.
     """
     try:
         import torch
@@ -524,18 +524,20 @@ def create_cuda_mock_implementation(
     mock_device.type = "cuda"
     mock_device.index = 0
 
-    # Create mock CUDA functions
+    # Create mock CUDA functions. is_available is not a live CUDA claim.
     cuda_functions = {
-        "is_available": MagicMock(return_value=True),
-        "get_device_name": MagicMock(return_value="Mock CUDA Device"),
-        "device_count": MagicMock(return_value=1),
+        "is_available": MagicMock(return_value=False),
+        "get_device_name": MagicMock(return_value="Simulated CUDA Device"),
+        "device_count": MagicMock(return_value=0),
         "current_device": MagicMock(return_value=0),
         "empty_cache": MagicMock(),
+        "origin": "simulated",
+        "live": False,
+        "production_authorized": False,
     }
 
-    # Set implementation type based on simulation setting
-    implementation_type = "REAL" if simulate_real else "MOCK"
-    implementation_prefix = "(REAL-CUDA)" if simulate_real else "(MOCK CUDA)"
+    implementation_type = "MOCK"
+    implementation_prefix = "(MOCK CUDA)"
 
     # Set custom attribute to help detect simulated real implementations
     mock_model = MagicMock()

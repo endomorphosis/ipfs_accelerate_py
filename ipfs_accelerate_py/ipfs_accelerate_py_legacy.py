@@ -197,8 +197,17 @@ class ipfs_accelerate_py:
         logger.info("IPFS Accelerate Python framework initialized")
 
     def _setup_hardware_detection(self):
-        """Set up hardware detection system if available."""
+        """Set up hardware detection. Missing probes stay typed unavailable.
+
+        PCPR-031: ordinary setup never instantiates mock hardware detection.
+        Mock hardware is quarantined behind the compatibility/simulation
+        namespace and is never live.
+        """
         try:
+            from ipfs_accelerate_py.compatibility.simulation.fabricated_hardware import (
+                load_ordinary_hardware_detection,
+            )
+
             # First try to import from parent directory
             if importlib.util.find_spec("hardware_detection") is not None:
                 import hardware_detection
@@ -217,35 +226,26 @@ class ipfs_accelerate_py:
                 self.hardware_detection = hardware_detection
                 logger.info("Hardware detection system initialized from test directory")
             else:
-                # Create a mock hardware detection system
-                self.hardware_detection = self._create_mock_hardware_detection()
-                logger.warning("Using mock hardware detection system")
+                self.hardware_detection = load_ordinary_hardware_detection()
+                logger.warning(
+                    "Hardware detection unavailable; using typed unavailable stand-in "
+                    "(not mock, not live, not production_authorized)"
+                )
         except Exception as e:
             logger.error(f"Error initializing hardware detection: {e}")
-            self.hardware_detection = self._create_mock_hardware_detection()
+            from ipfs_accelerate_py.compatibility.simulation.fabricated_hardware import (
+                load_ordinary_hardware_detection,
+            )
 
-    def _create_mock_hardware_detection(self):
-        """Create a mock hardware detection module."""
-        from types import ModuleType
+            self.hardware_detection = load_ordinary_hardware_detection()
 
-        mock_module = ModuleType("mock_hardware_detection")
+    def _create_mock_hardware_detection(self, *, explicit_simulation: bool = False):
+        """Quarantined mock hardware detection. Requires explicit simulation."""
+        from ipfs_accelerate_py.compatibility.simulation.fabricated_hardware import (
+            mock_hardware_detection_module,
+        )
 
-        def detect_all_hardware():
-            return {
-                "cpu": {"available": True, "cores": 1},
-                "cuda": {"available": False},
-                "openvino": {"available": False},
-                "mps": {"available": False},
-                "rocm": {"available": False},
-                "qualcomm": {"available": False},
-                "webnn": {"available": False},
-                "webgpu": {"available": False},
-            }
-
-        # Support both function names for compatibility
-        mock_module.detect_all_hardware = detect_all_hardware
-        mock_module.detect_hardware = detect_all_hardware
-        return mock_module
+        return mock_hardware_detection_module(explicit_simulation=explicit_simulation)
 
     def _setup_resource_pool(self):
         """Set up resource pool for optimal hardware usage if available."""
@@ -421,9 +421,13 @@ class ipfs_accelerate_py:
             "endpoints": {"local_endpoints": {}, "api_endpoints": {}, "libp2p_endpoints": {}},
         }
 
-        # Detect available hardware
+        # Detect available hardware. Missing probes stay typed unavailable.
         available_hardware = {}
         try:
+            from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+                unavailable_hardware_map,
+            )
+
             if hasattr(self, "hardware_detection"):
                 # Try both function names for compatibility
                 if hasattr(self.hardware_detection, "detect_all_hardware"):
@@ -431,30 +435,14 @@ class ipfs_accelerate_py:
                 else:
                     available_hardware = self.hardware_detection.detect_hardware()
             else:
-                # Default to CPU only if hardware detection is not available
-                available_hardware = {
-                    "cpu": {"available": True, "cores": 1},
-                    "cuda": {"available": False},
-                    "openvino": {"available": False},
-                    "mps": {"available": False},
-                    "rocm": {"available": False},
-                    "qualcomm": {"available": False},
-                    "webnn": {"available": False},
-                    "webgpu": {"available": False},
-                }
+                available_hardware = unavailable_hardware_map()
         except Exception as e:
             logger.error(f"Error detecting hardware: {e}")
-            # Default to CPU only if hardware detection fails
-            available_hardware = {
-                "cpu": {"available": True, "cores": 1},
-                "cuda": {"available": False},
-                "openvino": {"available": False},
-                "mps": {"available": False},
-                "rocm": {"available": False},
-                "qualcomm": {"available": False},
-                "webnn": {"available": False},
-                "webgpu": {"available": False},
-            }
+            from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+                unavailable_hardware_map,
+            )
+
+            available_hardware = unavailable_hardware_map()
 
         # Classify models by family if possible
         model_families = {}
