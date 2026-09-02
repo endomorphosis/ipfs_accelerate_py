@@ -791,6 +791,19 @@ def test_historical_outer_authority_accepts_task_level_validation_and_rejects_or
     )
     assert not fenced_provider_outer_authority_population_receipt_valid(orphaned)
 
+    orphaned_result = copy.deepcopy(receipt)
+    orphaned_result["groups"]["validation_results"]["rows"][0]["run_id"] = (
+        "run:orphan"
+    )
+    _rehash_outer_receipt_group(orphaned_result, "validation_results")
+    assert not _fenced_provider_outer_groups_semantically_valid(
+        orphaned_result["groups"],
+        orphaned_result["subject"],
+    )
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        orphaned_result
+    )
+
 
 def test_standard_outer_authority_preserves_attempt_bound_validation_run(
     tmp_path: Path,
