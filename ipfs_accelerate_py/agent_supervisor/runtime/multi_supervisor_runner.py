@@ -23,7 +23,16 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any, Callable, ClassVar, Mapping, MutableMapping, Protocol, Sequence
+from typing import (
+    Any,
+    BinaryIO,
+    Callable,
+    ClassVar,
+    Mapping,
+    MutableMapping,
+    Protocol,
+    Sequence,
+)
 
 try:
     import fcntl
@@ -4210,6 +4219,129 @@ def _wait_for_detached_active_binding(
     )
 
 
+def _detached_terminal_fence_timeout(args: argparse.Namespace) -> float:
+    """Bound a detached coordinator's complete serialized track teardown."""
+
+    grace = max(0.1, float(getattr(args, "stop_grace_seconds", 10.0)))
+    try:
+        track_count = max(1, len(tracks_from_parsed_args(args)))
+    except (AttributeError, TypeError, ValueError):
+        track_count = 1
+    # ``stop_tracks`` fences tracks serially.  Each lifecycle termination and
+    # reap can consume roughly two grace intervals plus its identity-proof
+    # margin; retain a final publication/fsync margin for the terminal receipt.
+    return max(5.0, track_count * ((2.0 * grace) + 2.0) + 3.0)
+
+
+def _wait_for_detached_terminal_fence(
+    master_pid_path: Path,
+    process: subprocess.Popen[bytes],
+    *,
+    not_before_epoch_nanoseconds: int,
+    timeout_seconds: float,
+) -> dict[str, Any]:
+    """Require durable proof that a failed detached birth fenced all tracks."""
+
+    current_path = _terminal_receipt_path(master_pid_path)
+    deadline = time.monotonic() + max(0.1, float(timeout_seconds))
+    last_reason = "terminal_receipt_absent"
+    while time.monotonic() < deadline:
+        # A receipt read only counts as post-exit evidence when the coordinator
+        # was already observed exited before that read.  If exit races the
+        # first read, loop once more: the child cannot publish anything after
+        # exit, so that stable reread closes the final atomic-replace window.
+        exited_before_read = process.poll() is not None
+        try:
+            payload, _evidence = _read_stable_regular_json(current_path)
+        except _StableArtifactChangedError:
+            payload = None
+            last_reason = "terminal_receipt_changing"
+        if payload is not None:
+            try:
+                _self_identifying_run_artifact_cid(payload)
+            except ValueError:
+                last_reason = "terminal_receipt_identity_invalid"
+            else:
+                started_at = payload.get(
+                    "run_started_at_epoch_nanoseconds"
+                )
+                if (
+                    payload.get("schema")
+                    == MULTI_SUPERVISOR_TERMINAL_RECEIPT_SCHEMA
+                    and payload.get("master_pid") == int(process.pid)
+                    and isinstance(started_at, int)
+                    and not isinstance(started_at, bool)
+                    and int(started_at) >= int(not_before_epoch_nanoseconds)
+                    and payload.get("all_trees_fenced") is True
+                    and payload.get("task_completion_authority") is False
+                    and exited_before_read
+                ):
+                    return payload
+                last_reason = "terminal_receipt_not_fenced_or_not_current"
+        exited_after_read = process.poll() is not None
+        if exited_before_read:
+            if payload is None:
+                last_reason = "coordinator_exited_without_terminal_receipt"
+            break
+        if exited_after_read:
+            continue
+        time.sleep(0.02)
+    raise ValueError(
+        "detached runner cleanup lacks current all-trees-fenced terminal "
+        f"proof reason={last_reason}"
+    )
+
+
+def _fence_unpublished_detached_coordinator(
+    master_pid_path: Path,
+    master_descriptor: int,
+    master_identity: tuple[int, int],
+    process: subprocess.Popen[bytes],
+    *,
+    grace_seconds: float,
+) -> None:
+    """Fence a coordinator while an exact empty PID gate proves no activation."""
+
+    if int(process.pid) <= 0 or int(process.pid) == os.getpid():
+        raise ValueError("unpublished detached coordinator PID is not fenceable")
+    grace = max(0.1, float(grace_seconds))
+    # The child must acquire this same lock and observe a published PID before
+    # it can install an active binding or start any separate-session tracks.
+    # Holding the lock while fencing therefore turns the exact empty
+    # reservation into a no-activation proof, not a bare PID assumption.
+    with serialized_lock_update(master_pid_path):
+        _validate_reserved_pid_projection_locked(
+            master_pid_path,
+            master_descriptor,
+            master_identity,
+        )
+        if process.poll() is None:
+            try:
+                os.killpg(int(process.pid), signal.SIGTERM)
+            except OSError:
+                pass
+            try:
+                process.wait(timeout=grace)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(int(process.pid), signal.SIGKILL)
+                except OSError:
+                    pass
+                try:
+                    process.wait(timeout=grace)
+                except subprocess.TimeoutExpired as exc:
+                    raise ValueError(
+                        "unpublished detached coordinator did not exit"
+                    ) from exc
+        if process.poll() is None:
+            raise ValueError("unpublished detached coordinator remains live")
+        _validate_reserved_pid_projection_locked(
+            master_pid_path,
+            master_descriptor,
+            master_identity,
+        )
+
+
 def _pid_projection_quarantine_directory(pid_path: Path) -> Path:
     """Return a verified owner-only directory for stale PID evidence."""
 
@@ -5238,6 +5370,115 @@ def _discard_reserved_pid_projection(
             and stat.S_IMODE(observed.st_mode) == 0o600
         ):
             pid_path.unlink()
+            _fsync_directory(pid_path.parent)
+
+
+_LaunchLogIdentity = tuple[int, int, int, int, int, int, int, int]
+
+
+def _launch_log_identity(metadata: os.stat_result) -> _LaunchLogIdentity:
+    """Return the exact fields that prove an empty launch log is unchanged."""
+
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(metadata.st_uid),
+        int(metadata.st_nlink),
+        int(metadata.st_size),
+        int(metadata.st_mtime_ns),
+        int(metadata.st_ctime_ns),
+    )
+
+
+def _discard_new_unborn_launch_log(
+    log_path: Path,
+    identity: _LaunchLogIdentity,
+) -> None:
+    """Durably remove only an exact empty log created for no child birth."""
+
+    try:
+        observed = os.lstat(log_path)
+    except FileNotFoundError:
+        return
+    if (
+        _launch_log_identity(observed) != identity
+        or stat.S_ISLNK(observed.st_mode)
+        or not stat.S_ISREG(observed.st_mode)
+        or int(observed.st_nlink) != 1
+        or int(observed.st_uid) != os.geteuid()
+        or int(observed.st_size) != 0
+    ):
+        raise ValueError(
+            "new supervisor launch log changed before no-birth rollback"
+        )
+    log_path.unlink()
+    _fsync_directory(log_path.parent)
+
+
+def _open_supervisor_launch_log(
+    log_path: Path,
+) -> tuple[BinaryIO, _LaunchLogIdentity | None]:
+    """Open a track log and identify only a file exclusively created here."""
+
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(log_path, flags, 0o600)
+    except FileExistsError:
+        # A pre-existing log is never rollback-owned by this birth attempt.
+        existing_flags = os.O_WRONLY | os.O_APPEND
+        existing_flags |= getattr(os, "O_CLOEXEC", 0)
+        existing_flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(log_path, existing_flags)
+        try:
+            opened = os.fstat(descriptor)
+            named = os.lstat(log_path)
+            if (
+                (int(opened.st_dev), int(opened.st_ino))
+                != (int(named.st_dev), int(named.st_ino))
+                or stat.S_ISLNK(named.st_mode)
+                or not stat.S_ISREG(opened.st_mode)
+                or not stat.S_ISREG(named.st_mode)
+                or int(opened.st_nlink) != 1
+                or int(named.st_nlink) != 1
+                or int(opened.st_uid) != os.geteuid()
+                or int(named.st_uid) != os.geteuid()
+                or stat.S_IMODE(opened.st_mode) & 0o022
+                or stat.S_IMODE(named.st_mode) & 0o022
+            ):
+                raise ValueError(
+                    "existing supervisor launch log is not a safe owned file"
+                )
+            return os.fdopen(descriptor, "ab"), None
+        except BaseException:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            raise
+    identity: _LaunchLogIdentity | None = None
+    try:
+        opened = os.fstat(descriptor)
+        identity = _launch_log_identity(opened)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or int(opened.st_nlink) != 1
+            or int(opened.st_uid) != os.geteuid()
+            or stat.S_IMODE(opened.st_mode) != 0o600
+            or int(opened.st_size) != 0
+        ):
+            raise ValueError("new supervisor launch log is not a safe empty file")
+        return os.fdopen(descriptor, "ab"), identity
+    except BaseException:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        if identity is not None:
+            _discard_new_unborn_launch_log(log_path, identity)
+        raise
 
 
 def daemon_pid_health_fields(
@@ -6740,128 +6981,193 @@ def start_track(
         # until the parent captures its exact lifecycle birth and explicitly
         # releases one byte.  Thus even a /proc identity failure cannot race a
         # daemon preclaim or provider effect.
-        gate_read_fd, gate_write_fd = os.pipe()
-        supervisor_argv = [
-            *common_args,
-            *resolved.extra_args,
-            "--accepted-control-plane-pin-json",
-            accepted_control_plane_pin_json(accepted_control_plane_pin),
-            "--accepted-control-plane-fd",
-            str(accepted_control_plane_descriptor),
-        ]
-        child_command = build_sealed_control_plane_module_command(
-            python_executable=python_executable,
-            pin=accepted_control_plane_pin,
-            descriptor=accepted_control_plane_descriptor,
-            module_name=(
-                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
-                "implementation_supervisor"
-            ),
-            argv=supervisor_argv,
-        )
-        gate_argv = [
-            PLAN_BOUND_LAUNCH_GATE_MARKER,
-            str(gate_read_fd),
-            str(accepted_tree_root),
-            accepted_control_plane_pin_json(accepted_control_plane_pin),
-            str(accepted_control_plane_descriptor),
-            recovery_authorization_cid or "-",
-            "--",
-            *child_command,
-        ]
-        command = build_sealed_control_plane_module_command(
-            python_executable=python_executable,
-            pin=accepted_control_plane_pin,
-            descriptor=accepted_control_plane_descriptor,
-            module_name=PLAN_BOUND_LAUNCH_GATE_MODULE,
-            argv=gate_argv,
-        )
-    resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
-    resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            gate_read_fd, gate_write_fd = os.pipe()
+            supervisor_argv = [
+                *common_args,
+                *resolved.extra_args,
+                "--accepted-control-plane-pin-json",
+                accepted_control_plane_pin_json(accepted_control_plane_pin),
+                "--accepted-control-plane-fd",
+                str(accepted_control_plane_descriptor),
+            ]
+            child_command = build_sealed_control_plane_module_command(
+                python_executable=python_executable,
+                pin=accepted_control_plane_pin,
+                descriptor=accepted_control_plane_descriptor,
+                module_name=(
+                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                    "implementation_supervisor"
+                ),
+                argv=supervisor_argv,
+            )
+            gate_argv = [
+                PLAN_BOUND_LAUNCH_GATE_MARKER,
+                str(gate_read_fd),
+                str(accepted_tree_root),
+                accepted_control_plane_pin_json(accepted_control_plane_pin),
+                str(accepted_control_plane_descriptor),
+                recovery_authorization_cid or "-",
+                "--",
+                *child_command,
+            ]
+            command = build_sealed_control_plane_module_command(
+                python_executable=python_executable,
+                pin=accepted_control_plane_pin,
+                descriptor=accepted_control_plane_descriptor,
+                module_name=PLAN_BOUND_LAUNCH_GATE_MODULE,
+                argv=gate_argv,
+            )
+        except BaseException:
+            for descriptor in (gate_read_fd, gate_write_fd):
+                if descriptor is not None:
+                    try:
+                        os.close(descriptor)
+                    except OSError:
+                        pass
+            gate_read_fd = None
+            gate_write_fd = None
+            raise
     pid_reservation_fd: int | None = None
     pid_reservation_identity: tuple[int, int] | None = None
-    if plan_bound_dispatch:
-        (
-            pid_reservation_fd,
-            pid_reservation_identity,
-        ) = _reserve_owned_pid_projection(resolved.supervisor_pid_path)
-    configuration_root = "sha256:" + hashlib.sha256(
-        json.dumps(
-            command, separators=(",", ":"), ensure_ascii=False
-        ).encode("utf-8")
-    ).hexdigest()
-    state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
-    run_root = state_root / "lifecycle-runs" / resolved.name
-    status_path = _inferred_supervisor_status_path(resolved)
-    profile = LifecycleProfile(
-        target_id=f"supervisor-track:{resolved.name}",
-        run_id=(
-            "multi-supervisor:"
-            + hashlib.sha256(
-                f"{repo_root.resolve()}:{resolved.name}".encode("utf-8")
-            ).hexdigest()
-        ),
-        configuration_root=configuration_root,
-        repository_root=str(repo_root.resolve()),
-        state_root=str(state_root),
-        run_root=str(run_root),
-        argv=tuple(command),
-        cwd=str(repo_root.resolve()),
-        health_path=(
-            str(status_path.resolve(strict=False))
-            if status_path is not None
-            and _path_within(status_path.resolve(strict=False), state_root)
-            else ""
-        ),
-    )
-    try:
-        out_handle = resolved.log_path.open("ab")
-    except BaseException:
+    out_handle: BinaryIO | None = None
+    fresh_log_identity: _LaunchLogIdentity | None = None
+
+    def discard_unborn_launch_resources() -> None:
+        """Release every resource allocated before a child can be born."""
+
+        nonlocal gate_read_fd, gate_write_fd, pid_reservation_fd
+        nonlocal out_handle, fresh_log_identity
+        if out_handle is not None:
+            try:
+                out_handle.close()
+            except OSError:
+                pass
+            out_handle = None
+        for descriptor_name in ("gate_read_fd", "gate_write_fd"):
+            descriptor = (
+                gate_read_fd
+                if descriptor_name == "gate_read_fd"
+                else gate_write_fd
+            )
+            if descriptor is not None:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+                if descriptor_name == "gate_read_fd":
+                    gate_read_fd = None
+                else:
+                    gate_write_fd = None
         if pid_reservation_fd is not None:
-            os.close(pid_reservation_fd)
+            try:
+                os.close(pid_reservation_fd)
+            except OSError:
+                pass
+            pid_reservation_fd = None
+        cleanup_error: BaseException | None = None
         if pid_reservation_identity is not None:
-            _discard_reserved_pid_projection(
-                resolved.supervisor_pid_path,
+            try:
+                _discard_reserved_pid_projection(
+                    resolved.supervisor_pid_path,
+                    pid_reservation_identity,
+                )
+            except BaseException as exc:
+                cleanup_error = exc
+        if fresh_log_identity is not None:
+            try:
+                _discard_new_unborn_launch_log(
+                    resolved.log_path,
+                    fresh_log_identity,
+                )
+            except BaseException as exc:
+                if cleanup_error is None:
+                    cleanup_error = exc
+            fresh_log_identity = None
+        if cleanup_error is not None:
+            raise cleanup_error
+
+    try:
+        resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
+        resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
+        configuration_root = "sha256:" + hashlib.sha256(
+            json.dumps(
+                command, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8")
+        ).hexdigest()
+        state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
+        run_root = state_root / "lifecycle-runs" / resolved.name
+        status_path = _inferred_supervisor_status_path(resolved)
+        profile = LifecycleProfile(
+            target_id=f"supervisor-track:{resolved.name}",
+            run_id=(
+                "multi-supervisor:"
+                + hashlib.sha256(
+                    f"{repo_root.resolve()}:{resolved.name}".encode("utf-8")
+                ).hexdigest()
+            ),
+            configuration_root=configuration_root,
+            repository_root=str(repo_root.resolve()),
+            state_root=str(state_root),
+            run_root=str(run_root),
+            argv=tuple(command),
+            cwd=str(repo_root.resolve()),
+            health_path=(
+                str(status_path.resolve(strict=False))
+                if status_path is not None
+                and _path_within(status_path.resolve(strict=False), state_root)
+                else ""
+            ),
+        )
+        launch_environment = profile.launch_environment(0)
+        if plan_bound_dispatch:
+            # Isolated absolute-script launch bootstraps only its own accepted
+            # repository root.  Build a positive environment in the parent
+            # before the interpreter is born; clearing loader knobs in the
+            # bootstrap would be too late for LD_PRELOAD.
+            ambient_names = {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ"}
+            lifecycle_names = {
+                RUN_ID_ENV,
+                PROFILE_ID_ENV,
+                TARGET_ID_ENV,
+                REPOSITORY_ROOT_ENV,
+                STATE_ROOT_ENV,
+                RUN_ROOT_ENV,
+                FENCING_EPOCH_ENV,
+                CONFIGURATION_ROOT_ENV,
+            }
+            route_names = {
+                *ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
+                *_ROUTE_AUTHORIZATION_ENV_NAMES,
+                *_PROVIDER_EXECUTABLE_ENV_NAMES,
+            }
+            explicit_profile = dict(profile.environment)
+            disallowed_profile_names = set(explicit_profile) - route_names
+            if disallowed_profile_names:
+                raise ValueError(
+                    "plan-bound lifecycle profile contains non-route "
+                    "environment"
+                )
+            positive_names = ambient_names | lifecycle_names | route_names
+            launch_environment = {
+                name: value
+                for name, value in launch_environment.items()
+                if name in positive_names
+            }
+            launch_environment["PATH"] = "/usr/bin:/bin"
+            (
+                pid_reservation_fd,
                 pid_reservation_identity,
+            ) = _reserve_owned_pid_projection(
+                resolved.supervisor_pid_path
             )
+        out_handle, fresh_log_identity = _open_supervisor_launch_log(
+            resolved.log_path
+        )
+    except BaseException:
+        discard_unborn_launch_resources()
         raise
-    launch_environment = profile.launch_environment(0)
-    if plan_bound_dispatch:
-        # Isolated absolute-script launch bootstraps only its own accepted
-        # repository root.  Build a positive environment in the parent before
-        # the interpreter is born; clearing loader knobs in the bootstrap
-        # would be too late for LD_PRELOAD.  The sealed native dependency's
-        # DT_NEEDED resolution is intentionally bounded to the host's default
-        # system ABI, not caller-provided loader/search configuration.
-        ambient_names = {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-        lifecycle_names = {
-            RUN_ID_ENV,
-            PROFILE_ID_ENV,
-            TARGET_ID_ENV,
-            REPOSITORY_ROOT_ENV,
-            STATE_ROOT_ENV,
-            RUN_ROOT_ENV,
-            FENCING_EPOCH_ENV,
-            CONFIGURATION_ROOT_ENV,
-        }
-        route_names = {
-            *ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
-            *_ROUTE_AUTHORIZATION_ENV_NAMES,
-            *_PROVIDER_EXECUTABLE_ENV_NAMES,
-        }
-        explicit_profile = dict(profile.environment)
-        disallowed_profile_names = set(explicit_profile) - route_names
-        if disallowed_profile_names:
-            raise ValueError(
-                "plan-bound lifecycle profile contains non-route environment"
-            )
-        positive_names = ambient_names | lifecycle_names | route_names
-        launch_environment = {
-            name: value
-            for name, value in launch_environment.items()
-            if name in positive_names
-        }
-        launch_environment["PATH"] = "/usr/bin:/bin"
+    assert out_handle is not None
     process: subprocess.Popen[bytes] | None = None
     try:
         try:
@@ -6912,6 +7218,9 @@ def start_track(
                     "run window closed during supervisor process birth"
                 )
         except BaseException as exc:
+            if process is None:
+                discard_unborn_launch_resources()
+                raise
             if gate_read_fd is not None:
                 try:
                     os.close(gate_read_fd)
@@ -6932,27 +7241,6 @@ def start_track(
                     resolved.supervisor_pid_path,
                     pid_reservation_identity,
                 )
-            if process is not None:
-                fenced, _member_pids = _terminate_managed_process(
-                    process,
-                    grace_seconds=2.0,
-                )
-                if isinstance(exc, SupervisorRunInterrupted) and fenced:
-                    raise
-                raise SupervisorTrackStartError(
-                    "supervisor launch setup failed after process birth",
-                    pid=int(process.pid),
-                    profile=profile,
-                    all_trees_fenced=fenced,
-                    cause_type=type(exc).__name__,
-                ) from exc
-            raise
-    finally:
-        try:
-            out_handle.close()
-        except BaseException as exc:
-            if process is None:
-                raise
             fenced, _member_pids = _terminate_managed_process(
                 process,
                 grace_seconds=2.0,
@@ -6960,12 +7248,32 @@ def start_track(
             if isinstance(exc, SupervisorRunInterrupted) and fenced:
                 raise
             raise SupervisorTrackStartError(
-                "supervisor log handoff failed after process birth",
+                "supervisor launch setup failed after process birth",
                 pid=int(process.pid),
                 profile=profile,
                 all_trees_fenced=fenced,
                 cause_type=type(exc).__name__,
             ) from exc
+    finally:
+        if out_handle is not None:
+            try:
+                out_handle.close()
+            except BaseException as exc:
+                if process is None:
+                    raise
+                fenced, _member_pids = _terminate_managed_process(
+                    process,
+                    grace_seconds=2.0,
+                )
+                if isinstance(exc, SupervisorRunInterrupted) and fenced:
+                    raise
+                raise SupervisorTrackStartError(
+                    "supervisor log handoff failed after process birth",
+                    pid=int(process.pid),
+                    profile=profile,
+                    all_trees_fenced=fenced,
+                    cause_type=type(exc).__name__,
+                ) from exc
     assert process is not None
 
     def abort_started_process(exc: BaseException, message: str) -> None:
@@ -10721,6 +11029,13 @@ def run_supervisor_tracks(
                 "teardown aggregation failed closed "
                 f"error_type={type(exc).__name__}"
             )
+        # This STORE_FAST is the semantic outcome boundary.  Freeze before the
+        # final pending-signal sample: a signal already pending at the boundary
+        # is conservatively included below, while a Python-handler delivery
+        # after it is routed to ``post_outcome_signals`` for caller-policy
+        # replay.  Sampling first would leave a check-then-freeze gap in which
+        # a pending signal could follow a falsely completed receipt.
+        terminal_outcome_frozen = True
         pending_before_receipt = signal.sigpending().intersection(
             teardown_signal_set
         )
@@ -10728,12 +11043,6 @@ def run_supervisor_tracks(
             pending_signum = min(int(item) for item in pending_before_receipt)
             interrupted = f"received signal {pending_signum}"
         consume_blocked_teardown_signals(pending_before_receipt)
-        if transition_signals and not interrupted:
-            interrupted = f"received signal {transition_signals[0]}"
-        if transition_signals or pending_before_receipt:
-            safe_teardown_emit(
-                f"interrupted during teardown: {interrupted}"
-            )
         final_all_trees_fenced = bool(
             stop_payload["all_trees_fenced"]
             and start_failure_all_trees_fenced
@@ -10743,13 +11052,13 @@ def run_supervisor_tracks(
                 "supervisor shutdown could not prove every process tree "
                 "fenced; operator repair is required"
             )
-        # This STORE_FAST is the semantic outcome boundary.  A Python signal
-        # handler runs wholly before or after it: earlier deliveries are in
-        # ``interrupted`` below, while later deliveries are replayed under the
-        # restored caller disposition.  Freezing before payload construction
-        # permits exactly one terminal receipt write, so no provisional
-        # completed receipt can survive a failed interrupted rewrite.
-        terminal_outcome_frozen = True
+        transition_signal_snapshot = tuple(transition_signals)
+        if transition_signal_snapshot and not interrupted:
+            interrupted = f"received signal {transition_signal_snapshot[0]}"
+        if transition_signal_snapshot or pending_before_receipt:
+            safe_teardown_emit(
+                f"interrupted during teardown: {interrupted}"
+            )
         interruption_snapshot = str(interrupted)
         terminal_kind = (
             "interrupted"
@@ -11261,20 +11570,56 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
             not_before_epoch_nanoseconds=launch_not_before_ns,
         )
     except BaseException:
+        unpublished_fenced = False
         if (
             process is not None
-            and process.poll() is None
             and int(process.pid) > 0
             and int(process.pid) != os.getpid()
         ):
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-                process.wait(timeout=2.0)
-            except (OSError, subprocess.TimeoutExpired):
+            if not pid_published:
                 try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except OSError:
+                    _fence_unpublished_detached_coordinator(
+                        master_pid,
+                        master_descriptor,
+                        master_identity,
+                        process,
+                        grace_seconds=float(
+                            getattr(args, "stop_grace_seconds", 10.0)
+                        ),
+                    )
+                except (OSError, ValueError):
+                    # A non-empty or replaced reservation means publication
+                    # may have progressed far enough for activation.  It must
+                    # use the stronger terminal-receipt proof below.
                     pass
+                else:
+                    unpublished_fenced = True
+            if not unpublished_fenced:
+                if process.poll() is None:
+                    try:
+                        os.killpg(process.pid, signal.SIGTERM)
+                    except OSError:
+                        # The coordinator may have crossed its exit boundary
+                        # between observation and delivery.  Only its durable
+                        # terminal receipt can prove whether separate-session
+                        # tracks were fenced.
+                        pass
+                try:
+                    _wait_for_detached_terminal_fence(
+                        master_pid,
+                        process,
+                        not_before_epoch_nanoseconds=launch_not_before_ns,
+                        timeout_seconds=_detached_terminal_fence_timeout(args),
+                    )
+                except (OSError, ValueError) as fence_exc:
+                    # Never SIGKILL only an activated coordinator: its managed
+                    # tracks use distinct sessions and could survive.  Preserve
+                    # exact artifacts for typed recovery and refuse to claim a
+                    # completed detached-launch rollback.
+                    raise ValueError(
+                        "detached runner active-binding failure could not prove "
+                        "all managed trees fenced"
+                    ) from fence_exc
         if not pid_published:
             _discard_reserved_pid_projection(master_pid, master_identity)
         raise

@@ -1131,6 +1131,135 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
         shutil.rmtree(runtime_root, ignore_errors=True)
 
 
+def test_plan_bound_prebirth_failure_closes_gate_and_pid_reservation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_head = _git(REPO_ROOT, "rev-parse", "HEAD").stdout.strip()
+    source_tree = _git(REPO_ROOT, "rev-parse", "HEAD^{tree}").stdout.strip()
+    control_plane_pin, control_plane_launch = _test_sealed_control_plane(
+        tmp_path,
+        source_head=source_head,
+        source_tree=source_tree,
+    )
+    runtime_relative = Path("data/agent_supervisor") / (
+        "plan-bound-prebirth-cleanup-"
+        + _test_lifecycle_token(tmp_path, "prebirth-cleanup")
+    )
+    runtime_root = REPO_ROOT / runtime_relative
+    lane_relative = runtime_relative / "lane-0"
+    lane_root = REPO_ROOT / lane_relative
+    supervisor_pid = lane_root / "supervisor.pid"
+    store_relative = runtime_relative / "plan-revision-store"
+    plan_args = (
+        "--state-dir",
+        str(lane_relative),
+        "--state-prefix",
+        "prebirth_cleanup",
+        "--plan-bound-dispatch",
+        "--plan-revision-store-path",
+        str(store_relative),
+        "--plan-bound-revision-cid",
+        "revision:test",
+        "--plan-bound-plan-root-cid",
+        "plan-root:test",
+        "--plan-bound-execution-plan-cid",
+        "execution-plan:test",
+        "--plan-bound-capacity-snapshot-id",
+        "capacity:test",
+        "--plan-bound-slice-manifest-cid",
+        "manifest:test",
+        "--plan-bound-slice-id",
+        "slice:test",
+        "--plan-bound-source-head",
+        source_head,
+        "--plan-bound-source-tree",
+        source_tree,
+        "--plan-bound-task-source-revision",
+        "task-source:test",
+        "--plan-bound-configuration-root",
+        "configuration:test",
+        "--plan-bound-accepted-tree-root",
+        str(REPO_ROOT),
+        "--plan-bound-lane-id",
+        "lane-0",
+        "--execution-slice-task-id",
+        "TEST-A",
+        "--execution-slice-task-cid",
+        "task-cid:test-a",
+    )
+    track = multi_runner_module.SupervisorTrack(
+        name="prebirth-cleanup",
+        script_path=Path(multi_runner_module.PLAN_BOUND_ACCEPTED_ENTRY_PATH),
+        log_path=lane_root / "supervisor.log",
+        supervisor_pid_path=supervisor_pid,
+        daemon_pid_path=lane_root / "daemon.pid",
+        supervisor_status_path=lane_root / "supervisor-status.json",
+        extra_args=plan_args,
+    )
+    opened_gate_fds: list[int] = []
+    opened_reservation_fds: list[int] = []
+    observe_next_pipe = {"enabled": False}
+    original_pipe = os.pipe
+    original_reserve = multi_runner_module._reserve_owned_pid_projection
+
+    def observed_pipe():
+        descriptors = original_pipe()
+        if observe_next_pipe["enabled"]:
+            opened_gate_fds.extend(descriptors)
+            observe_next_pipe["enabled"] = False
+        return descriptors
+
+    def mark_accepted_tree_validated(**_kwargs):
+        observe_next_pipe["enabled"] = True
+
+    def observed_reserve(path, **kwargs):
+        descriptor, identity = original_reserve(path, **kwargs)
+        opened_reservation_fds.append(descriptor)
+        return descriptor, identity
+
+    monkeypatch.setattr(multi_runner_module.os, "pipe", observed_pipe)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_validate_plan_bound_accepted_tree",
+        mark_accepted_tree_validated,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_reserve_owned_pid_projection",
+        observed_reserve,
+    )
+    try:
+        with pytest.raises(
+            multi_runner_module.SupervisorRunWindowExpired,
+            match="run window closed before supervisor process birth",
+        ):
+            multi_runner_module.start_track(
+                track,
+                repo_root=REPO_ROOT,
+                common_args=(),
+                python_executable=sys.executable,
+                accepted_control_plane_pin=control_plane_pin,
+                accepted_control_plane_descriptor=(
+                    control_plane_launch.descriptor
+                ),
+                birth_deadline_monotonic_seconds=0.0,
+                output=lambda _message: None,
+            )
+
+        assert len(opened_gate_fds) == 2
+        for descriptor in opened_gate_fds:
+            with pytest.raises(OSError):
+                os.fstat(descriptor)
+        assert len(opened_reservation_fds) == 1
+        with pytest.raises(OSError):
+            os.fstat(opened_reservation_fds[0])
+        assert not supervisor_pid.exists()
+        assert not (lane_root / "supervisor.log").exists()
+    finally:
+        shutil.rmtree(runtime_root, ignore_errors=True)
+
+
 def test_legacy_track_in_mixed_runner_inherits_no_sealed_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
