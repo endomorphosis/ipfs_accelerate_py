@@ -194,6 +194,15 @@ DATABASE_READINESS_OBSERVATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-readiness-observation@1"
 )
 DATABASE_IDLE_DAEMON_STALL_REASON = "ready_work_idle_daemon_stall"
+DATABASE_AUTHORITY_WATCHDOG_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-authority-watchdog@1"
+)
+SHARED_AUTHORITY_TERMINAL_STATUS = "shared_authority_terminal"
+SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND = (
+    "shared_database_authority_unavailable"
+)
+DATABASE_AUTHORITY_UNAVAILABLE_REASON = "database_authority_unavailable"
+DATABASE_AUTHORITY_UNAVAILABLE_MIN_PROBES = 3
 SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/supervisor-maintenance-receipt@1"
 )
@@ -6814,6 +6823,10 @@ class PortalImplementationSupervisor:
         self.restart_count = 0
         self.last_start_at: float | None = None
         self._last_supervisor_maintenance_at: float = 0.0
+        self._database_authority_unavailable_since_monotonic: float | None = (
+            None
+        )
+        self._database_authority_unavailable_probe_count = 0
         self._worktree_worker_phase = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
         self._checkout_mutation_context = threading.local()
@@ -7346,6 +7359,196 @@ class PortalImplementationSupervisor:
                 "reason": "authoritative_readiness_unavailable",
                 "error_type": type(exc).__name__,
             }
+
+    def _database_authority_unavailable_after_seconds(self) -> float:
+        """Return the existing-watchdog-bound authority outage window.
+
+        A Quack query can fail transiently while the owner refreshes its served
+        replica.  Reuse the already configured daemon/check intervals and the
+        database pass-heartbeat floor rather than introducing an unsealed
+        recovery knob.  The independent minimum-probe gate below prevents a
+        single slow observation from exhausting this window.
+        """
+
+        return max(
+            self._database_pass_heartbeat_stale_after_seconds(),
+            float(self.config.check_interval) * 3.0,
+            float(self.config.daemon_interval) * 3.0,
+        )
+
+    def _database_authority_watchdog_observation(
+        self,
+        readiness: Mapping[str, Any],
+        *,
+        now_monotonic: float,
+    ) -> dict[str, Any]:
+        """Advance or reset the bounded, non-authoritative outage circuit.
+
+        This state is process-local evidence only.  It cannot recover Quack,
+        change the configured generation, complete a task, or consume a task
+        attempt/provider invocation.  A successful authenticated authority
+        query resets it completely.
+        """
+
+        threshold = self._database_authority_unavailable_after_seconds()
+        available = readiness.get("available") is True
+        if available:
+            previous_count = self._database_authority_unavailable_probe_count
+            self._database_authority_unavailable_since_monotonic = None
+            self._database_authority_unavailable_probe_count = 0
+            return {
+                "schema": DATABASE_AUTHORITY_WATCHDOG_SCHEMA,
+                "state": "available",
+                "unavailable_probe_count": 0,
+                "unavailable_age_seconds": 0.0,
+                "unavailable_after_seconds": threshold,
+                "minimum_unavailable_probes": (
+                    DATABASE_AUTHORITY_UNAVAILABLE_MIN_PROBES
+                ),
+                "recovered_from_probe_count": int(previous_count),
+                "terminal": False,
+            }
+
+        since = self._database_authority_unavailable_since_monotonic
+        if since is None or now_monotonic < since:
+            since = now_monotonic
+            self._database_authority_unavailable_since_monotonic = since
+            self._database_authority_unavailable_probe_count = 0
+        self._database_authority_unavailable_probe_count += 1
+        count = self._database_authority_unavailable_probe_count
+        age = max(0.0, now_monotonic - since)
+        terminal = bool(
+            count >= DATABASE_AUTHORITY_UNAVAILABLE_MIN_PROBES
+            and age >= threshold
+        )
+        return {
+            "schema": DATABASE_AUTHORITY_WATCHDOG_SCHEMA,
+            "state": "terminal" if terminal else "suspect",
+            "unavailable_probe_count": int(count),
+            "unavailable_age_seconds": round(age, 3),
+            "unavailable_after_seconds": threshold,
+            "minimum_unavailable_probes": (
+                DATABASE_AUTHORITY_UNAVAILABLE_MIN_PROBES
+            ),
+            "terminal": terminal,
+        }
+
+    def _database_authority_terminal_guard(
+        self,
+        *,
+        state: PortalTaskState,
+        child: Any,
+    ) -> dict[str, Any]:
+        """Prove a lane can stop without fencing live protected work."""
+
+        blockers: list[str] = []
+        preserved_fences: list[str] = []
+        if self._active_agent_worker_processes():
+            blockers.append("implementation_worker_active")
+        if self._active_validation_subprocess_exists():
+            blockers.append("validation_worker_active")
+        child_pid = int(getattr(child, "pid", 0) or 0)
+        if child_pid <= 0 or not process_is_running(child_pid):
+            blockers.append("managed_child_not_live")
+        elif descendant_processes(child_pid):
+            blockers.append("managed_child_has_descendants")
+        if self._current_supervisor_checkout_lease() is not None:
+            blockers.append("supervisor_checkout_transaction_active")
+        lock_path = self._repo_merge_lock_path()
+        if lock_path.is_symlink() or lock_path.exists():
+            preserved_fences.append(
+                "checkout_mutation_lease_record"
+                if (
+                    self._path_is_regular_nofollow(lock_path)
+                    and read_checkout_mutation_lease(lock_path) is not None
+                )
+                else "checkout_mutation_lease_record_unverifiable"
+            )
+        legacy_lock_path = checkout_mutation_lock_path(self.config.repo_root)
+        if legacy_lock_path != lock_path and (
+            legacy_lock_path.is_symlink() or legacy_lock_path.exists()
+        ):
+            preserved_fences.append(
+                "legacy_checkout_mutation_lease_record"
+                if (
+                    self._path_is_regular_nofollow(legacy_lock_path)
+                    and read_checkout_mutation_lease(legacy_lock_path) is not None
+                )
+                else "legacy_checkout_mutation_lease_record_unverifiable"
+            )
+        return {
+            "safe": not blockers,
+            "blockers": blockers,
+            # Durable lock bytes are preserved for operator recovery, but
+            # their mere presence is not proof that an effect is still live.
+            # The owning lane's in-process lease and process tree above are
+            # the stop blockers.  Treating an orphaned record as live would
+            # recreate the permanent dead-authority wait this circuit breaks.
+            "preserved_fences": preserved_fences,
+            "attempt_budget_consumed": False,
+            "provider_invocation_consumed": False,
+            "task_completion_authority": False,
+            "generation_restart_authorized": False,
+            "operator_successor_required": True,
+            # These local fields can remain stale after the authority or
+            # worker dies.  Retain them as evidence but never let an
+            # uncorroborated boolean hide shared-authority loss forever.
+            "local_active_task_id": str(state.active_task_id or ""),
+            "local_implementation_in_progress": bool(
+                state.implementation_in_progress
+            ),
+        }
+
+    def _database_authority_watchdog_fields(
+        self,
+        *,
+        readiness: Mapping[str, Any],
+        circuit: Mapping[str, Any],
+        guard: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return a secret-free, generation-bound status projection."""
+
+        program = self.config.database_program
+        fields: dict[str, Any] = {
+            "database_authority_watchdog": dict(circuit),
+            "authoritative_readiness_available": (
+                readiness.get("available") is True
+            ),
+            "authoritative_readiness_reason": str(
+                readiness.get("reason") or ""
+            ),
+            "authoritative_readiness_error_type": "",
+            "authoritative_readiness_task_source_revision": int(
+                readiness.get("task_source_revision") or 0
+            ),
+            "configured_store_generation": str(
+                getattr(program, "store_generation", "") or ""
+            ),
+            "attempt_budget_consumed": False,
+            "provider_invocation_consumed": False,
+            "task_completion_authority": False,
+            "generation_restart_authorized": False,
+            "control_plane_reload_authorized": False,
+            "operator_successor_required": (
+                readiness.get("available") is not True
+            ),
+            # SupervisorLoop status extras are update-only.  Publish closed
+            # reset values on every observation so a recovered authority
+            # cannot leave a prior pending-terminal diagnostic behind.
+            "shared_authority_terminal": False,
+            "shared_authority_terminal_pending": False,
+            "terminal_kind": "",
+            "database_authority_terminal_guard": {},
+        }
+        if readiness.get("error_type"):
+            # Error class is sufficient for diagnosis; exception text may
+            # contain a URI, path, or third-party payload and is never copied.
+            fields["authoritative_readiness_error_type"] = str(
+                readiness.get("error_type") or ""
+            )
+        if guard is not None:
+            fields["database_authority_terminal_guard"] = dict(guard)
+        return fields
 
     def _database_pass_heartbeat_stale_after_seconds(self) -> float:
         return max(
@@ -10375,8 +10578,96 @@ class PortalImplementationSupervisor:
         self._refresh_loop_proof_rollout_status(_loop)
         control_plane_status = self._control_plane_status_projection()
         self._set_loop_status_fields(_loop, control_plane_status)
+        now_monotonic = time.monotonic()
+        now_ts = time.time()
+        min_interval = max(1.0, float(self.config.check_interval))
+        if (
+            not control_plane_status["control_plane_update_pending"]
+            and now_monotonic - self._last_supervisor_maintenance_at
+            < min_interval
+        ):
+            return SupervisorLoopDecision.keep_running()
+
+        state = PortalTaskState.load(self.config.state_path)
+        stuck, reason = self.is_stuck(state, now_ts=now_ts)
+        database_authority = self._database_authority_enabled()
+        readiness: dict[str, Any] | None = None
+        if database_authority:
+            readiness = self._authoritative_runnable_work_status()
+            circuit = self._database_authority_watchdog_observation(
+                readiness,
+                now_monotonic=now_monotonic,
+            )
+            readiness_fields = {
+                **self._database_authority_watchdog_fields(
+                    readiness=readiness,
+                    circuit=circuit,
+                ),
+                "board_maintenance_leader": self._is_board_maintenance_leader(),
+                "authoritative_ready_task_ids": list(
+                    readiness.get("ready_task_ids") or ()
+                )[:64],
+                "authoritative_same_shard_ready_task_ids": list(
+                    readiness.get("same_shard_ready_task_ids") or ()
+                )[:64],
+                "authoritative_active_task_ids": list(
+                    readiness.get("active_task_ids") or ()
+                )[:64],
+                "authoritative_same_shard_active_task_ids": list(
+                    readiness.get("same_shard_active_task_ids") or ()
+                )[:64],
+            }
+            self._set_loop_status_fields(_loop, readiness_fields)
+            if readiness.get("available") is not True:
+                # A failed authority observation is watchdog maintenance.
+                # Account for it before this unavailable-path return so a dead
+                # endpoint is probed at the configured cadence rather than
+                # once per fast SupervisorLoop poll.  Healthy observations
+                # retain the existing immediate legacy-cleanup retry path.
+                self._last_supervisor_maintenance_at = now_monotonic
+                # An unavailable canonical query is never evidence that the
+                # board is idle.  Transient failures preserve the child; a
+                # persistent failure may stop only after every live mutation,
+                # worker, validation, descendant, and protected lease is gone.
+                if circuit.get("terminal") is True:
+                    guard = self._database_authority_terminal_guard(
+                        state=state,
+                        child=_child,
+                    )
+                    terminal_fields = {
+                        **self._database_authority_watchdog_fields(
+                            readiness=readiness,
+                            circuit=circuit,
+                            guard=guard,
+                        ),
+                        "shared_authority_terminal": guard.get("safe") is True,
+                        "shared_authority_terminal_pending": (
+                            guard.get("safe") is not True
+                        ),
+                        "terminal_kind": (
+                            SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND
+                            if circuit.get("terminal") is True
+                            else ""
+                        ),
+                        "active_task_id": str(state.active_task_id or ""),
+                        "task_shard_index": int(self.config.task_shard_index),
+                    }
+                    self._set_loop_status_fields(_loop, terminal_fields)
+                    if guard.get("safe") is True:
+                        self._record_event(
+                            "shared_database_authority_terminal",
+                            terminal_fields,
+                        )
+                        return SupervisorLoopDecision.stop(
+                            DATABASE_AUTHORITY_UNAVAILABLE_REASON,
+                            status=SHARED_AUTHORITY_TERMINAL_STATUS,
+                        )
+                return SupervisorLoopDecision.keep_running()
+
+        # Shared database authority is probed before a source-reload deferral:
+        # stale local active-task fields must not mask a dead Quack owner.  A
+        # healthy authority retains the existing no-mid-task-reload behavior.
         if control_plane_status["control_plane_update_pending"]:
-            state = PortalTaskState.load(self.config.state_path)
             active = bool(
                 state.active_task_id
                 or state.implementation_in_progress
@@ -10411,54 +10702,11 @@ class PortalImplementationSupervisor:
                 "control_plane_source_changed",
                 status=CONTROL_PLANE_RELOAD_STATUS,
             )
-        now_monotonic = time.monotonic()
-        now_ts = time.time()
-        min_interval = max(1.0, float(self.config.check_interval))
-        if now_monotonic - self._last_supervisor_maintenance_at < min_interval:
-            return SupervisorLoopDecision.keep_running()
 
-        state = PortalTaskState.load(self.config.state_path)
-        stuck, reason = self.is_stuck(state, now_ts=now_ts)
         if state.active_task_id and not stuck:
             return SupervisorLoopDecision.keep_running()
 
-        database_authority = self._database_authority_enabled()
-        if database_authority and not stuck:
-            readiness = self._authoritative_runnable_work_status()
-            readiness_fields = {
-                "board_maintenance_leader": self._is_board_maintenance_leader(),
-                "authoritative_readiness_available": (
-                    readiness.get("available") is True
-                ),
-                "authoritative_readiness_reason": str(
-                    readiness.get("reason") or ""
-                ),
-                "authoritative_readiness_task_source_revision": int(
-                    readiness.get("task_source_revision") or 0
-                ),
-                "authoritative_ready_task_ids": list(
-                    readiness.get("ready_task_ids") or ()
-                )[:64],
-                "authoritative_same_shard_ready_task_ids": list(
-                    readiness.get("same_shard_ready_task_ids") or ()
-                )[:64],
-                "authoritative_active_task_ids": list(
-                    readiness.get("active_task_ids") or ()
-                )[:64],
-                "authoritative_same_shard_active_task_ids": list(
-                    readiness.get("same_shard_active_task_ids") or ()
-                )[:64],
-            }
-            if readiness.get("error_type"):
-                readiness_fields["authoritative_readiness_error_type"] = str(
-                    readiness.get("error_type") or ""
-                )
-            self._set_loop_status_fields(_loop, readiness_fields)
-            if readiness.get("available") is not True:
-                # An unavailable canonical query is never evidence that the
-                # board is idle. Preserve the child and all live/protected locks.
-                return SupervisorLoopDecision.keep_running()
-
+        if database_authority and not stuck and readiness is not None:
             ready_task_ids = list(readiness.get("ready_task_ids") or ())
             same_shard_ready_task_ids = list(
                 readiness.get("same_shard_ready_task_ids") or ()

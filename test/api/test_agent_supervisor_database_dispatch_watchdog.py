@@ -29,7 +29,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     publish_database_daemon_pass_heartbeat,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    DATABASE_AUTHORITY_UNAVAILABLE_REASON,
     DATABASE_IDLE_DAEMON_STALL_REASON,
+    SHARED_AUTHORITY_TERMINAL_STATUS,
+    SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND,
     SUPERVISOR_MAINTENANCE_RECEIPT_SCHEMA,
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
@@ -473,6 +476,345 @@ def test_database_watchdog_preserves_child_when_readiness_is_unavailable(
 
     assert decision.action == "continue"
     assert maintenance_calls == []
+
+
+def test_database_watchdog_persistent_authority_loss_is_typed_terminal(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "QuackUnavailable",
+            "error": "must-not-enter-status",
+            "task_source_revision": 0,
+            "ready_task_ids": [],
+            "same_shard_ready_task_ids": [],
+            "active_task_ids": [],
+            "same_shard_active_task_ids": [],
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_authority_unavailable_after_seconds",
+        lambda: 0.0,
+    )
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    events: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda kind, detail: events.append((kind, dict(detail))),
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={}),
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    decisions = []
+    for _index in range(3):
+        supervisor._last_supervisor_maintenance_at = 0.0
+        decisions.append(
+            supervisor._supervisor_loop_watchdog_decision(loop, child, {})
+        )
+    first, second, third = decisions
+
+    assert first.action == "continue"
+    assert second.action == "continue"
+    assert third.action == "stop"
+    assert third.reason == DATABASE_AUTHORITY_UNAVAILABLE_REASON
+    assert third.status == SHARED_AUTHORITY_TERMINAL_STATUS
+    fields = loop.config.status_extra_fields
+    assert fields["shared_authority_terminal"] is True
+    assert fields["terminal_kind"] == (
+        SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND
+    )
+    assert fields["task_completion_authority"] is False
+    assert fields["generation_restart_authorized"] is False
+    assert fields["operator_successor_required"] is True
+    assert fields["database_authority_terminal_guard"]["safe"] is True
+    assert fields["database_authority_terminal_guard"][
+        "attempt_budget_consumed"
+    ] is False
+    assert fields["database_authority_terminal_guard"][
+        "provider_invocation_consumed"
+    ] is False
+    assert "must-not-enter-status" not in json.dumps(fields, sort_keys=True)
+    assert [kind for kind, _detail in events] == [
+        "shared_database_authority_terminal"
+    ]
+
+
+def test_database_watchdog_authority_circuit_resets_after_live_query(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    observations = iter(
+        (
+            {
+                "available": False,
+                "reason": "authoritative_readiness_unavailable",
+                "error_type": "QuackUnavailable",
+            },
+            _ready_observation(same_shard=False),
+            {
+                "available": False,
+                "reason": "authoritative_readiness_unavailable",
+                "error_type": "QuackUnavailable",
+            },
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: next(observations),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_authority_unavailable_after_seconds",
+        lambda: 0.0,
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={}),
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    for _index in range(3):
+        supervisor._last_supervisor_maintenance_at = 0.0
+        assert supervisor._supervisor_loop_watchdog_decision(
+            loop, child, {}
+        ).action == "continue"
+
+    circuit = loop.config.status_extra_fields[
+        "database_authority_watchdog"
+    ]
+    assert circuit["state"] == "suspect"
+    assert circuit["unavailable_probe_count"] == 1
+
+
+def test_database_watchdog_live_query_clears_pending_terminal_diagnostics(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    observations = iter(
+        (
+            {
+                "available": False,
+                "reason": "authoritative_readiness_unavailable",
+                "error_type": "QuackUnavailable",
+            },
+            {
+                "available": False,
+                "reason": "authoritative_readiness_unavailable",
+                "error_type": "QuackUnavailable",
+            },
+            {
+                "available": False,
+                "reason": "authoritative_readiness_unavailable",
+                "error_type": "QuackUnavailable",
+            },
+            _ready_observation(same_shard=False),
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: next(observations),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_authority_unavailable_after_seconds",
+        lambda: 0.0,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_active_agent_worker_processes",
+        lambda: [os.getpid()],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [],
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={}),
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    for _index in range(3):
+        supervisor._last_supervisor_maintenance_at = 0.0
+        assert supervisor._supervisor_loop_watchdog_decision(
+            loop, child, {}
+        ).action == "continue"
+    assert loop.config.status_extra_fields[
+        "shared_authority_terminal_pending"
+    ] is True
+
+    supervisor._last_supervisor_maintenance_at = 0.0
+    assert supervisor._supervisor_loop_watchdog_decision(
+        loop, child, {}
+    ).action == "continue"
+    fields = loop.config.status_extra_fields
+    assert fields["shared_authority_terminal"] is False
+    assert fields["shared_authority_terminal_pending"] is False
+    assert fields["terminal_kind"] == ""
+    assert fields["database_authority_terminal_guard"] == {}
+    assert fields["operator_successor_required"] is False
+    assert fields["authoritative_readiness_error_type"] == ""
+
+
+def test_database_watchdog_defers_authority_terminal_for_live_worker(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "QuackUnavailable",
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_authority_unavailable_after_seconds",
+        lambda: 0.0,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_active_agent_worker_processes",
+        lambda: [os.getpid()],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "descendant_processes",
+        lambda _pid: [],
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={}),
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    for _index in range(3):
+        supervisor._last_supervisor_maintenance_at = 0.0
+        decision = supervisor._supervisor_loop_watchdog_decision(
+            loop, child, {}
+        )
+
+    assert decision.action == "continue"
+    fields = loop.config.status_extra_fields
+    assert fields["shared_authority_terminal"] is False
+    assert fields["shared_authority_terminal_pending"] is True
+    assert fields["terminal_kind"] == (
+        SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND
+    )
+    assert fields["database_authority_terminal_guard"]["safe"] is False
+    assert "implementation_worker_active" in fields[
+        "database_authority_terminal_guard"
+    ]["blockers"]
+
+
+def test_database_authority_failure_probe_uses_configured_watchdog_cadence(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_authoritative_runnable_work_status",
+        lambda: calls.append(True)
+        or {
+            "available": False,
+            "reason": "authoritative_readiness_unavailable",
+            "error_type": "QuackUnavailable",
+        },
+    )
+    monotonic_now = [100.0]
+    monkeypatch.setattr(
+        implementation_supervisor_module.time,
+        "monotonic",
+        lambda: monotonic_now[0],
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    assert supervisor._supervisor_loop_watchdog_decision(
+        None, child, {}
+    ).action == "continue"
+    monotonic_now[0] = 100.25
+    assert supervisor._supervisor_loop_watchdog_decision(
+        None, child, {}
+    ).action == "continue"
+    monotonic_now[0] = 101.0
+    assert supervisor._supervisor_loop_watchdog_decision(
+        None, child, {}
+    ).action == "continue"
+
+    assert calls == [True, True]
+    assert supervisor._database_authority_unavailable_probe_count == 2
+
+
+def test_database_authority_terminal_guard_does_not_trust_stale_local_flags(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    state = PortalTaskState(
+        active_task_id="SAWM-006",
+        implementation_in_progress=True,
+    )
+
+    guard = supervisor._database_authority_terminal_guard(
+        state=state,
+        child=SimpleNamespace(pid=os.getpid()),
+    )
+
+    assert guard["safe"] is True
+    assert guard["blockers"] == []
+    assert guard["local_active_task_id"] == "SAWM-006"
+    assert guard["local_implementation_in_progress"] is True
+
+
+def test_database_authority_terminal_guard_preserves_orphaned_lock_evidence(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, lane_index=1)
+    _make_idle_recycle_safe(supervisor, monkeypatch)
+    lock_path = supervisor._repo_merge_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text("not-a-lease", encoding="utf-8")
+
+    guard = supervisor._database_authority_terminal_guard(
+        state=PortalTaskState(),
+        child=SimpleNamespace(pid=os.getpid()),
+    )
+
+    assert guard["safe"] is True
+    assert guard["blockers"] == []
+    assert guard["preserved_fences"] == [
+        "checkout_mutation_lease_record_unverifiable"
+    ]
+    assert lock_path.read_text(encoding="utf-8") == "not-a-lease"
 
 
 def test_database_watchdog_never_recycles_through_protected_checkout_lock(
