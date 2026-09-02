@@ -29,11 +29,11 @@
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/overlap_gap_matrix.json": "4c59e622a6497ad3538e20b23557b1acd37a6e14e78ba7de4dfc0321cce445d8",
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/repository_baseline.json": "6ef71a960844a5b49b13293de74b9ae8dc8c70e714beac4e1671f3c7ba61107a",
     "docs/architecture/semantic_preserving_autonomous_remodularization_inventory/rollout_baseline.json": "b77373a0cefd1ea29058ed8a30cd1bb97be8bef6e420385629c5ff69fd5d3f39",
-    "scripts/materialize_semantic_preserving_remodularization_program.py": "6089c398c70cc7c1d8626451414e951a6d21b9599e6ef641d17c6a3e4c940dc3",
+    "scripts/materialize_semantic_preserving_remodularization_program.py": "dd80fcfb28b1bdfddc6f6b84427746686e1d39c014d9688e48a5ff7076f743cd",
     "scripts/ops/agent_supervisor/semantic_preserving_remodularization.py": "e0e105751262e6e2958d27f371b44dde8ccad2ec6af5eea4808e90044d4fe6e7",
     "scripts/validate_semantic_preserving_remodularization_board.py": "2f6cbe622e97e207ac6c901ccf1e70244739214b25e710c244d9c5b2b7c8d00d",
     "scripts/validate_semantic_preserving_remodularization_dependencies.py": "d42033c1c2f51c1f9d208bba2ec8e4144cc6e4b8c8625d318ae789ec2496af23",
-    "test/api/semantic_refactoring/test_bootstrap_controls.py": "4b553042a2373269ff501af1a4d342e177bc83da1a472c898b59d9b5e62960da"
+    "test/api/semantic_refactoring/test_bootstrap_controls.py": "d42f741d7a9a6650293d11afec52299407d16eb650d6dd656cfaa5888c3a062d"
   },
   "dependency_count": 109,
   "dependency_edges": [
@@ -491,7 +491,7 @@
     "SPAR-000 is operator-only"
   ],
   "schema": "spar/dependency-source-seal@1",
-  "seal_cid": "sha256:29a167b08593bf4d1461879e1e83822c2f075b9a9a2635f3db7b5462c2680413",
+  "seal_cid": "sha256:8fcd12fee05bb465e77096e16534ea8a976935893a8e6a0c6f9fa7ff7198386a",
   "source_binding": {
     "accelerator": {
       "commit": "e3c9831d4465d0e9f1aba336994a385541611895",

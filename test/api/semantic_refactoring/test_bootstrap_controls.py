@@ -1741,6 +1741,88 @@ def test_owner_projection_monitor_does_not_force_bounce_when_listener_is_up(
         monitor.stop()
 
 
+def test_owner_projection_monitor_never_force_recovers_from_tcp_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    recover_force: list[bool] = []
+    publishes = {"n": 0}
+
+    def publish(*_args: object, **_kwargs: object) -> dict[str, object]:
+        publishes["n"] += 1
+        if publishes["n"] == 2:
+            raise RuntimeError("DuckDB connection is unusable after an uncertain transaction")
+        return {"ok": True}
+
+    def recover(_server: object, *, force: bool = False) -> bool:
+        recover_force.append(force)
+        return False
+
+    monkeypatch.setattr(materializer, "_publish_live_projection", publish)
+    monkeypatch.setattr(materializer, "_process_mutations", lambda *_a, **_k: None)
+    monkeypatch.setattr(materializer, "_recover_poisoned_owner_connection", recover)
+    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: False)
+    server = SimpleNamespace(
+        process_mutation_inbox=lambda: None,
+        _connection=SimpleNamespace(path=tmp_path / "control.duckdb"),
+        config=SimpleNamespace(database_path=tmp_path / "control.duckdb"),
+    )
+    inbox = tmp_path / "registry" / "mutations"
+    inbox.mkdir(parents=True)
+    monitor = materializer._OwnerProjectionMonitor(
+        server,
+        {"owner": tmp_path / "owner"},
+        mutation_dir=inbox,
+        on_failure=lambda _exc: None,
+    )
+    monitor.start()
+    try:
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and not recover_force:
+            time.sleep(0.02)
+        assert recover_force == [False]
+    finally:
+        monitor.stop()
+
+
+def test_recover_does_not_restart_serve_for_usable_handle_when_probe_says_down(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+    starts: list[bool] = []
+
+    class _Owner:
+        def __init__(self) -> None:
+            self._poisoned = False
+            self.path = tmp_path / "control.duckdb"
+            self.reconnected = 0
+
+        def reconnect_exclusive_owner(self) -> None:
+            self.reconnected += 1
+
+    owner = _Owner()
+    server = SimpleNamespace(
+        _connection=owner,
+        _owner_transaction_lock=threading.RLock(),
+        _command_gateway=SimpleNamespace(_connection=owner),
+        _transport_connection=owner,
+        config=SimpleNamespace(database_path=tmp_path / "control.duckdb"),
+        transport=SimpleNamespace(start=lambda *_a, **_k: starts.append(True)),
+        _identity=SimpleNamespace(server_id="server:x", generation=1),
+        _vault=SimpleNamespace(resolve=lambda *_a, **_k: "token"),
+        _bound_port=46731,
+        _lifecycle="failed",
+    )
+    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: False)
+
+    assert materializer._recover_poisoned_owner_connection(server, force=True) is False
+    assert owner.reconnected == 0
+    assert starts == []
+    assert server._connection is owner
+
+
 def test_owner_projection_monitor_drains_signed_owner_commands(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -2148,10 +2148,10 @@ def _recover_poisoned_owner_connection(
                 server._transport_connection = replacement
             native_replaced = True
         restored_serve = False
-        if not _owner_listener_ready(server):
-            # Reconnecting a poisoned exclusive handle leaves TCP down.
-            # Restart serve only when ECONNREFUSED proves the listener is
-            # actually gone; a live serve must not be rebound.
+        if native_replaced:
+            # Only rebind quack_serve after this recover actually replaced
+            # the native handle. A false ECONNREFUSED probe used to restart
+            # a live serve and drop SPAR-018's typed bind.
             restored_serve = _restart_owner_serve_if_down(
                 server,
                 getattr(server, "_connection", None),
@@ -3239,14 +3239,16 @@ class _OwnerProjectionMonitor:
                 recover_error_type = ""
                 recover_error = ""
                 connection = getattr(self.server, "_connection", None)
-                # A live-query IOException while the TCP listener is still
-                # bound is a contended handshake, not a down serve. Forcing
-                # transport restart drops every typed lane and loops.
+                # Never force-recover from a TCP probe. A handshake timeout
+                # or false ECONNREFUSED during backlog used to bounce
+                # quack_serve and invalidate every typed grant, so SPAR-018
+                # never completed CAS. Reconnect only when the exclusive
+                # wrapper is actually unusable.
                 listener_ready = _owner_listener_ready(self.server)
                 try:
                     recovered = _recover_poisoned_owner_connection(
                         self.server,
-                        force=not listener_ready,
+                        force=False,
                     )
                 except Exception as recover_exc:
                     recovered = False
