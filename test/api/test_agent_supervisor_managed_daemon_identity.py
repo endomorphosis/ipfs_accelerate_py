@@ -585,6 +585,241 @@ def _predecessor_owner_identity(
     return command, scope
 
 
+def _legacy_namespace_omitted_identity(
+    supervisor: PortalImplementationSupervisor,
+    *,
+    pid: int,
+) -> tuple[list[str], dict[str, str]]:
+    command, scope = _predecessor_owner_identity(supervisor, pid=pid)
+    namespace_index = command.index("--board-namespace")
+    del command[namespace_index : namespace_index + 2]
+    scope.pop("board_namespace")
+    return command, scope
+
+
+def test_dead_legacy_namespace_omitted_identity_is_quarantined(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 353
+    command, scope = _legacy_namespace_omitted_identity(
+        supervisor,
+        pid=pid,
+    )
+    identity_path = _write_identity(
+        supervisor,
+        pid=pid,
+        command=tuple(command),
+        owner_scope=scope,
+    )
+    original = identity_path.read_bytes()
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.DEAD,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_pid",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_lane_process",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail("dead predecessor was signalled"),
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is True
+    assert result["blocked"] is False
+    assert result["reason"] == (
+        "orphaned_dead_managed_database_identity_quarantined"
+    )
+    assert Path(result["quarantined"]["identity"]).read_bytes() == original
+    assert not identity_path.exists()
+    assert not supervisor._managed_daemon_pid_path().exists()
+
+
+@pytest.mark.parametrize("liveness", [OwnerLiveness.ALIVE, OwnerLiveness.UNKNOWN])
+def test_non_dead_legacy_namespace_omitted_identity_stays_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    liveness: OwnerLiveness,
+) -> None:
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 354
+    command, scope = _legacy_namespace_omitted_identity(
+        supervisor,
+        pid=pid,
+    )
+    identity_path = _write_identity(
+        supervisor,
+        pid=pid,
+        command=tuple(command),
+        owner_scope=scope,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: liveness,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail("predecessor was signalled"),
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "orphaned_managed_database_identity_scope_mismatch"
+    )
+    assert identity_path.exists()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "wrong_namespace_argv",
+        "duplicate_namespace_argv",
+        "empty_namespace_argv",
+        "namespace_scope_present",
+        "namespace_scope_only",
+        "namespace_command_only",
+        "scope_drift",
+        "argv_drift",
+    ],
+)
+def test_legacy_namespace_match_rejects_additional_drift(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 355
+    command, scope = _legacy_namespace_omitted_identity(
+        supervisor,
+        pid=pid,
+    )
+    if mutation == "wrong_namespace_argv":
+        command.extend(("--board-namespace", "foreign-board"))
+    elif mutation == "duplicate_namespace_argv":
+        command.extend(
+            (
+                "--board-namespace",
+                supervisor.board_namespace,
+                "--board-namespace",
+                supervisor.board_namespace,
+            )
+        )
+    elif mutation == "empty_namespace_argv":
+        command.extend(("--board-namespace", ""))
+    elif mutation == "namespace_scope_present":
+        scope["board_namespace"] = "foreign-board"
+    elif mutation == "namespace_scope_only":
+        scope["board_namespace"] = supervisor.board_namespace
+    elif mutation == "namespace_command_only":
+        command.extend(("--board-namespace", supervisor.board_namespace))
+    elif mutation == "scope_drift":
+        scope["state_prefix"] = "foreign-state-prefix"
+    else:
+        command.append("--foreign-lane-argument")
+    identity_path = _write_identity(
+        supervisor,
+        pid=pid,
+        command=tuple(command),
+        owner_scope=scope,
+    )
+    identity = supervisor_module.load_supervised_child_identity(identity_path)
+
+    if mutation == "empty_namespace_argv":
+        assert identity is None
+        result = supervisor.ensure_managed_daemon_pid_file()
+        assert result["blocked"] is True
+        assert result["reason"] == (
+            "orphaned_managed_database_identity_unproven"
+        )
+        return
+    assert identity is not None
+    assert not (
+        supervisor._managed_daemon_identity_matches_legacy_namespace_lane_scope(
+            identity,
+            pid=pid,
+        )
+    )
+
+
+def test_dead_legacy_identity_does_not_hide_live_legacy_lane_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    identity_pid = 356
+    live_pid = 357
+    command, scope = _legacy_namespace_omitted_identity(
+        supervisor,
+        pid=identity_pid,
+    )
+    identity_path = _write_identity(
+        supervisor,
+        pid=identity_pid,
+        command=tuple(command),
+        owner_scope=scope,
+    )
+    original = identity_path.read_bytes()
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: OwnerLiveness.DEAD,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_pid",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_list_process_details",
+        lambda: [(live_pid, " ".join(command))],
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "process_is_running",
+        lambda pid: int(pid) == live_pid,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_command_argv",
+        lambda pid: tuple(command) if int(pid) == live_pid else None,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "terminate_pid_tree",
+        lambda *_args, **_kwargs: pytest.fail("legacy lane process was signalled"),
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "matching_managed_daemon_lane_ownership_unproven"
+    )
+    assert result["pid"] == live_pid
+    assert result["lane_process"]["reason"] == (
+        "legacy_namespace_omitted_lane_argv"
+    )
+    assert identity_path.read_bytes() == original
+
+
 def test_dead_predecessor_owner_session_identity_is_quarantined(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

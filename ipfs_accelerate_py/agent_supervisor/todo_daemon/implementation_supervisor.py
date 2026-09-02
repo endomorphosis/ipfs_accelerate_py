@@ -22922,6 +22922,78 @@ class PortalImplementationSupervisor:
             and observed_command[0] == expected_command[0]
         )
 
+    def _managed_daemon_identity_matches_legacy_namespace_lane_scope(
+        self,
+        identity: Any,
+        *,
+        pid: int,
+    ) -> bool:
+        """Match the exact predecessor form that omitted board namespace.
+
+        Older supervisors did not forward ``--board-namespace`` to managed
+        daemons and consequently omitted the field from the identity scope.
+        Accept only that single omission, while continuing to treat the
+        owner-session value as the sole reboot-volatile lane value.  This
+        matcher is used only to establish custody of a proven-dead identity or
+        to detect a live predecessor; it never adopts or signals that process.
+        """
+
+        if (
+            not self._database_managed_daemon_identity_required()
+            or identity.process_birth.pid != int(pid)
+        ):
+            return False
+        expected_scope = self._managed_daemon_owner_scope()
+        observed_scope = dict(identity.owner_scope)
+        if (
+            "board_namespace" not in expected_scope
+            or "board_namespace" in observed_scope
+            or set(observed_scope)
+            != set(expected_scope) - {"board_namespace"}
+            or "database_owner_session_id" not in expected_scope
+            or type(expected_scope["database_owner_session_id"]) is not str
+            or not expected_scope["database_owner_session_id"]
+            or type(observed_scope.get("database_owner_session_id")) is not str
+            or not observed_scope["database_owner_session_id"]
+        ):
+            return False
+        expected_owner = expected_scope.pop("database_owner_session_id")
+        expected_scope.pop("board_namespace")
+        observed_owner = observed_scope.pop("database_owner_session_id")
+        if observed_scope != expected_scope:
+            return False
+
+        expected_command = self._command_without_exact_owner_session(
+            self._build_daemon_command()
+        )
+        observed_command = self._command_without_exact_owner_session(
+            identity.command
+        )
+        if expected_command is None or observed_command is None:
+            return False
+        namespace_positions = [
+            index
+            for index, token in enumerate(expected_command[0])
+            if token == "--board-namespace"
+        ]
+        if len(namespace_positions) != 1:
+            return False
+        namespace_index = namespace_positions[0]
+        if (
+            namespace_index + 1 >= len(expected_command[0])
+            or expected_command[0][namespace_index + 1] != self.board_namespace
+        ):
+            return False
+        expected_legacy_command = (
+            expected_command[0][:namespace_index]
+            + expected_command[0][namespace_index + 2 :]
+        )
+        return bool(
+            expected_command[1] == expected_owner
+            and observed_command[1] == observed_owner
+            and observed_command[0] == expected_legacy_command
+        )
+
     def _exact_managed_daemon_identity_is_live(self, pid: int) -> bool:
         identity = load_supervised_child_identity(
             self._managed_daemon_identity_path()
@@ -23466,6 +23538,23 @@ class PortalImplementationSupervisor:
         )
         if expected is None:
             return {"pid": 0, "reason": "desired_lane_command_malformed"}
+        namespace_positions = [
+            index
+            for index, token in enumerate(expected[0])
+            if token == "--board-namespace"
+        ]
+        if (
+            len(namespace_positions) != 1
+            or namespace_positions[0] + 1 >= len(expected[0])
+            or expected[0][namespace_positions[0] + 1]
+            != self.board_namespace
+        ):
+            return {"pid": 0, "reason": "desired_lane_namespace_malformed"}
+        namespace_index = namespace_positions[0]
+        legacy_namespace_omitted_argv = (
+            expected[0][:namespace_index]
+            + expected[0][namespace_index + 2 :]
+        )
         excluded = set(exclude_pids or ())
         excluded.add(os.getpid())
         for pid, command_line in self._list_process_details():
@@ -23477,10 +23566,17 @@ class PortalImplementationSupervisor:
                 if observed_argv is not None
                 else None
             )
-            if observed is not None and observed[0] == expected[0]:
+            if observed is not None and observed[0] in {
+                expected[0],
+                legacy_namespace_omitted_argv,
+            }:
                 return {
                     "pid": int(pid),
-                    "reason": "exact_durable_lane_argv",
+                    "reason": (
+                        "exact_durable_lane_argv"
+                        if observed[0] == expected[0]
+                        else "legacy_namespace_omitted_lane_argv"
+                    ),
                     "owner_session_id": observed[1],
                 }
             if observed_argv is not None:
@@ -23491,10 +23587,20 @@ class PortalImplementationSupervisor:
                 )
             except ValueError:
                 nominated = None
-            if nominated is not None and nominated[0] == expected[0]:
+            if nominated is not None and nominated[0] in {
+                expected[0],
+                legacy_namespace_omitted_argv,
+            }:
                 return {
                     "pid": int(pid),
-                    "reason": "durable_lane_process_observation_inconclusive",
+                    "reason": (
+                        "durable_lane_process_observation_inconclusive"
+                        if nominated[0] == expected[0]
+                        else (
+                            "legacy_namespace_omitted_lane_process_"
+                            "observation_inconclusive"
+                        )
+                    ),
                     "owner_session_id": nominated[1],
                 }
         return None
@@ -23551,7 +23657,17 @@ class PortalImplementationSupervisor:
                     identity,
                     pid=identity_pid,
                 )
-                if not scope_exact and not lane_exact:
+                legacy_namespace_lane_exact = (
+                    self._managed_daemon_identity_matches_legacy_namespace_lane_scope(
+                        identity,
+                        pid=identity_pid,
+                    )
+                )
+                if (
+                    not scope_exact
+                    and not lane_exact
+                    and not legacy_namespace_lane_exact
+                ):
                     return {
                         "repaired": False,
                         "blocked": True,
@@ -23565,9 +23681,11 @@ class PortalImplementationSupervisor:
                 liveness = supervised_child_identity_liveness(identity)
                 if not scope_exact:
                     # Quack session identity may change across an orderly
-                    # controller restart.  Only the exact same durable lane
-                    # with a proven-dead predecessor is mutable; ALIVE and
-                    # UNKNOWN identities retain custody and block launch.
+                    # controller restart. The one predecessor schema that
+                    # omitted board namespace is also recognized, but only
+                    # when every other durable lane field is exact. Only a
+                    # proven-dead predecessor is mutable; ALIVE and UNKNOWN
+                    # identities retain custody and block launch.
                     if liveness is not OwnerLiveness.DEAD:
                         return {
                             "repaired": False,
