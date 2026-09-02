@@ -1,4 +1,5 @@
 {
+  "post_m55_live_ready_owner_missing_client_token_vault_restart_successor_materialization": {"authority_cid":"sha256:68d8ce25334ca14915eaad83a5eb63b5e03845f11a516423b17a5f144ca84e7a","migration_revision":"SAWM-R2-M56","schema":"sawm/operator-control-authority-reference@1"},
   "live_ready_owner_missing_client_token_vault_restart_successor_materialization": {"authority_cid":"sha256:fd5d70d8f5f82fe78b4880b2298c8efd1c7bdae2739d6a21933bbab6d24c0c3c","migration_revision":"SAWM-R2-M55","schema":"sawm/operator-control-authority-reference@1"},
   "post_reboot_stale_ready_generation_37_restart_successor_materialization": {"authority_cid":"sha256:a0e0e768087e70a27aff88ae1959a638534ef6f9e5b94e8b6d4030b15b01edc8","migration_revision":"SAWM-R2-M53","schema":"sawm/operator-control-authority-reference@1"},
   "test_compatibility_and_control_hash_successor_materialization": {"authority_cid":"sha256:97457278d806c1706fc43ad177bea8c66f18c02f2dbcc399121c26aba926e52d","migration_revision":"SAWM-R2-M52","schema":"sawm/operator-control-authority-reference@1"},
@@ -232,7 +233,7 @@
     "endpoint_secret_handle": "env://SAWM_QUACK_TOKEN",
     "quack_endpoint": "quack:127.0.0.1:24070",
     "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb",
-    "store_generation": "40",
+    "store_generation": "41",
     "schema_revision": "datasets-authoritative-operational-v1",
     "event_store_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/events",
     "runtime_registry_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/registry",
