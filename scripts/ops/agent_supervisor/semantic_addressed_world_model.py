@@ -19577,7 +19577,7 @@ def _live_preflight(
     if m55_active:
         try:
             cursor = int(live.snapshot().event_cursor)
-            if cursor == _M55_PRIOR_EVENT_WATERMARK:
+            if cursor in {_M55_PRIOR_EVENT_WATERMARK, _M55_TARGET_EVENT_WATERMARK}:
                 materializer.materialize(REPO_ROOT, CONFIG_PATH)
                 live = DatabaseTaskSource(
                     discovery.uri,
@@ -19586,7 +19586,7 @@ def _live_preflight(
                     plan_root_cid=population["plan_root_cid"],
                     owner_id="sawm-r2-live-preflight",
                 )
-            elif cursor != _M55_TARGET_EVENT_WATERMARK:
+            else:
                 raise OperatorError("M55 live event head is neither 320 nor 321")
         except OperatorError:
             raise
