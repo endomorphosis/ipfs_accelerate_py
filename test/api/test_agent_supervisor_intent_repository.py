@@ -38,6 +38,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS,
+    FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_POPULATION_RECEIPT_SCHEMA,
     INTENT_REPOSITORY_INTERFACE,
     MAX_FENCED_PROVIDER_OUTER_DERIVED_IDS,
     MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS,
@@ -58,6 +59,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     _fenced_provider_outer_sha256,
     fenced_provider_outer_authority_population_receipt_valid,
     open_intent_repository,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.retained_recovery_contracts import (
+    database_fenced_provider_historical_occurrence_authority,
+    database_portal_controller_quiescence_receipt,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     _PinnedFencedIntentRepository,
@@ -358,6 +363,106 @@ def _read_outer_receipt(
     return receipt
 
 
+def _historical_authority_for_subject(
+    subject: dict[str, object],
+) -> dict[str, object]:
+    controller = database_portal_controller_quiescence_receipt(
+        cleanup={
+            "pid": 9001,
+            "managed_daemon_identity_record_id": "identity:outer:9001",
+            "managed_daemon_process_birth": {
+                "pid": 9001,
+                "start_time_ticks": 91,
+                "boot_id": "boot:outer",
+                "parent_pid": 9000,
+            },
+            "quiesced": True,
+            "remaining_pid": None,
+            "markers_removed": True,
+            "daemon_fence": {
+                "fenced": True,
+                "safe_to_restart": True,
+                "reason": "managed_daemon_owned_process_fenced",
+            },
+            "provider_runner_fence": {
+                "applicable": False,
+                "fenced": False,
+                "safe_to_restart": True,
+                "reason": "ordinary_provider_runner_receipt_absent",
+            },
+        },
+        board_namespace="parallel-content-sealing-proof-carrying-tdd-v1",
+        state_prefix="outer",
+        owner_store_id=str(subject["expected_store_id"]),
+        control_store_generation="pctdd-v1-g9",
+        trigger="supervisor_startup_prelaunch",
+        controller_process_birth={
+            "pid": 9000,
+            "start_time_ticks": 81,
+            "boot_id": "boot:outer",
+            "parent_pid": 1,
+        },
+        owner_mutation_fence_held=True,
+        managed_daemon_launch_lock_held=True,
+    )
+    inner_subject = {
+        "task_cid": subject["task_cid"],
+        "task_alias": subject["task_alias"],
+        "task_revision": subject["task_revision"],
+        "attempt_id": subject["attempt_id"],
+        "claim_id": subject["claim_id"],
+        "lease_id": subject["lease_id"],
+        "attempt_number": 1,
+        "owner_session_id": subject["owner_session_id"],
+        "fencing_token": subject["fencing_token"],
+        "fence_epoch": subject["fence_epoch"],
+        "recovery_manifest_id": "sha256:" + "1" * 64,
+        "recovery_credit_id": "sha256:" + "2" * 64,
+    }
+    terminal = {
+        "attempt_id": subject["attempt_id"],
+        "task_cid": subject["task_cid"],
+        "claim_id": subject["claim_id"],
+        "attempt_number": 1,
+        "owner_session_id": subject["owner_session_id"],
+        "lease_id": subject["lease_id"],
+        "fencing_token": subject["fencing_token"],
+        "fence_epoch": subject["fence_epoch"],
+        "intended_database_disposition": "blocked_unknown_outcome",
+        "evidence_id": "baguqeera" + "a" * 52,
+        "prepared_reconciliation_receipt_id": "sha256:" + "3" * 64,
+        "commit_barrier_receipt_id": "sha256:" + "4" * 64,
+        "stage": "terminal",
+        "receipt_id": "sha256:" + "5" * 64,
+        "record_json": {
+            "canonical_sha256": "sha256:" + "6" * 64,
+            "canonical_byte_length": 512,
+        },
+    }
+    return dict(
+        database_fenced_provider_historical_occurrence_authority(
+            inner_receipt={
+                "receipt_nonce": subject["receipt_nonce"],
+                "receipt_epoch": subject["receipt_epoch"],
+                "receipt_cid": "sha256:" + "7" * 64,
+                "subject": inner_subject,
+                "groups": {
+                    "database_portal_terminal_reconciliations": {
+                        "count": 1,
+                        "rows": [terminal],
+                    }
+                },
+            },
+            controller_quiescence_receipt=controller,
+            board_namespace=(
+                "parallel-content-sealing-proof-carrying-tdd-v1"
+            ),
+            owner_store_id=str(subject["expected_store_id"]),
+            control_store_generation="pctdd-v1-g9",
+        )
+    )
+
+
 def _seed_outer_receipt_relations(
     repo: IntentRepository,
     subject: dict[str, object],
@@ -553,6 +658,70 @@ def test_outer_authority_receipt_is_closed_exact_and_commits_json_payloads(
 
         with pytest.raises(Exception, match="retained controller"):
             repo.fenced_provider_outer_authority_population_receipt(**subject)
+
+
+def test_historical_outer_authority_requires_exact_central_absence_and_lane_evidence(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        normalized = _read_outer_receipt(repo, binding, subject)
+        with repo._connection(write=True) as connection:
+            connection.execute(
+                "DELETE FROM leases WHERE task_cid = ?", [subject["task_cid"]]
+            )
+            connection.execute(
+                "DELETE FROM task_claims WHERE task_cid = ?",
+                [subject["task_cid"]],
+            )
+            connection.execute(
+                "DELETE FROM task_attempts WHERE task_cid = ?",
+                [subject["task_cid"]],
+            )
+        historical = _historical_authority_for_subject(subject)
+        receipt = _read_outer_receipt(
+            repo,
+            binding,
+            {**subject, "historical_occurrence_authority": historical},
+        )
+
+    assert receipt["schema"] == (
+        FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_POPULATION_RECEIPT_SCHEMA
+    )
+    assert receipt["groups"]["task_attempts"]["count"] == 0
+    assert receipt["groups"]["task_claims"]["count"] == 0
+    assert receipt["groups"]["leases"]["count"] == 0
+    assert receipt["cross_store_context"][
+        "historical_occurrence_authority"
+    ] == historical
+    assert fenced_provider_outer_authority_population_receipt_valid(receipt)
+
+    ambiguous = copy.deepcopy(receipt)
+    ambiguous["groups"]["task_attempts"]["rows"] = copy.deepcopy(
+        normalized["groups"]["task_attempts"]["rows"]
+    )
+    _rehash_outer_receipt_group(ambiguous, "task_attempts")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        ambiguous
+    )
+
+    wrong_lane = copy.deepcopy(receipt)
+    wrong_lane["cross_store_context"]["historical_occurrence_authority"][
+        "subject"
+    ]["claim_id"] = "claim:foreign"
+    historical_unsigned = dict(
+        wrong_lane["cross_store_context"]["historical_occurrence_authority"]
+    )
+    historical_unsigned.pop("authority_id")
+    wrong_lane["cross_store_context"]["historical_occurrence_authority"][
+        "authority_id"
+    ] = _fenced_provider_outer_sha256(historical_unsigned)
+    unsigned = dict(wrong_lane)
+    unsigned.pop("receipt_cid")
+    wrong_lane["receipt_cid"] = _fenced_provider_outer_sha256(unsigned)
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        wrong_lane
+    )
 
 
 def test_outer_authority_receipt_uses_real_quack_attached_schema_catalog(

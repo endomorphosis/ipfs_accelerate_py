@@ -15,6 +15,9 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     DatabaseProgramConfig,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    ProcessBirthIdentity,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources import (
     database_task_source as database_task_source_module,
 )
@@ -53,19 +56,32 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DATABASE_FENCED_PROVIDER_INNER_POPULATION_RECEIPT_SCHEMA,
     DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
+    DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA,
+    DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_CONSUMPTION_SCHEMA,
+    DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_RECONCILIATION_SCHEMA,
     DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA,
     DATABASE_PCTDD005_SUCCESSOR_CONSUMPTION_SCHEMA,
     DatabaseImplementationConflictError,
+    DatabaseImplementationDaemon,
+    database_fenced_provider_historical_retained_consumption,
+    database_fenced_provider_historical_retained_consumption_matches_admission,
     database_fenced_provider_retained_admission,
     database_fenced_provider_retained_admission_valid,
     database_fenced_provider_retained_consumption,
     database_fenced_provider_retained_consumption_matches_admission,
     database_pctdd005_successor_admission_valid,
     database_pctdd005_successor_consumption_valid,
+    database_pctdd005_successor_reconciliation_valid,
+    database_pctdd005_historical_successor_admission_valid,
+    database_pctdd005_historical_successor_consumption_valid,
+    database_pctdd005_historical_successor_reconciliation_valid,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
     PortalSupervisorConfig,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.retained_recovery_contracts import (
+    database_portal_controller_quiescence_receipt_valid,
 )
 from test.api.test_agent_supervisor_database_implementation_daemon import (
     _open_daemon,
@@ -268,6 +284,115 @@ def test_pctdd005_admission_and_consumption_are_versioned_and_cross_closed(
             resulting_task_revision=pin["blocked_task_revision"] + 3,
             resulting_task_status="in_progress",
         )
+
+
+def test_pctdd005_historical_chain_is_additive_and_cross_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin, legacy_admission = _admission(monkeypatch)
+    admission = dict(legacy_admission)
+    admission["schema"] = (
+        DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA
+    )
+    admission["historical_occurrence_authority_id"] = "sha256:" + "8" * 64
+    admission["controller_quiescence_receipt_id"] = "sha256:" + "9" * 64
+    admission.pop("admission_id")
+    admission["admission_id"] = _sha256(admission)
+    assert database_pctdd005_historical_successor_admission_valid(admission)
+    assert not database_pctdd005_successor_admission_valid(admission)
+
+    consumption = dict(
+        database_fenced_provider_historical_retained_consumption(
+            admission=admission,
+            attempt_id="attempt:pctdd005-historical",
+            claim_id="claim:pctdd005-historical",
+            lease_id="lease:pctdd005-historical",
+            owner_session_id="owner:pctdd005-historical",
+            attempt_number=8,
+            fencing_token=8,
+            fence_epoch=8,
+            expected_task_revision=pin["blocked_task_revision"] + 1,
+            expected_task_status="retrying",
+            resulting_task_revision=pin["blocked_task_revision"] + 2,
+            resulting_task_status="in_progress",
+        )
+    )
+    assert (
+        consumption["schema"]
+        == DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_CONSUMPTION_SCHEMA
+    )
+    assert database_pctdd005_historical_successor_consumption_valid(
+        consumption
+    )
+    assert not database_pctdd005_successor_consumption_valid(consumption)
+    assert (
+        database_fenced_provider_historical_retained_consumption_matches_admission(
+            admission=admission,
+            consumption=consumption,
+        )
+    )
+
+    reconciliation = {
+        "schema": (
+            DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_RECONCILIATION_SCHEMA
+        ),
+        "attempted": True,
+        "reconciled": True,
+        "blocked": False,
+        "reason": "retained_occurrence_reconciliation_complete",
+        "expected_occurrence_count": 1,
+        "admitted_count": 1,
+        "already_consumed_count": 0,
+        "outcomes": [
+            {
+                "task_alias": pin["task_alias"],
+                "task_cid": pin["task_cid"],
+                "reconciled": True,
+                "blocked": False,
+                "reason": "retained_occurrence_admitted",
+                "admission_id": admission["admission_id"],
+                "consumption_id": "",
+            }
+        ],
+    }
+    assert database_pctdd005_historical_successor_reconciliation_valid(
+        reconciliation
+    )
+    assert not database_pctdd005_successor_reconciliation_valid(reconciliation)
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon._task_source = SimpleNamespace(
+        get=lambda _task_cid: SimpleNamespace(
+            body={
+                "completion_receipt": {
+                    "retained_recovery_admission": admission
+                }
+            }
+        )
+    )
+    daemon.open = lambda: daemon
+    daemon._retained_recovery_admission_is_current_for_task = (
+        lambda *_args, **_kwargs: True
+    )
+    daemon._retained_recovery_admission_population_admitted_current = (
+        lambda *_args, **_kwargs: True
+    )
+    assert daemon.pctdd005_successor_reconciliation_matches_current(
+        reconciliation
+    )
+    legacy_splice = dict(admission)
+    legacy_splice["schema"] = DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA
+    daemon._task_source = SimpleNamespace(
+        get=lambda _task_cid: SimpleNamespace(
+            body={
+                "completion_receipt": {
+                    "retained_recovery_admission": legacy_splice
+                }
+            }
+        )
+    )
+    assert not daemon.pctdd005_successor_reconciliation_matches_current(
+        reconciliation
+    )
 
 
 @pytest.mark.parametrize(
@@ -548,6 +673,7 @@ def _lease_scoped_reconciliation_supervisor(
         def __init__(self, **kwargs: Any) -> None:
             self.task_source = kwargs["task_source"]
             self._database_portal_outer_authority_cas = None
+            self.controller_quiescence_receipts: list[Any] = []
             daemons.append(self)
 
         def bind_execution_callbacks(self, **_kwargs: Any) -> None:
@@ -593,14 +719,26 @@ def _lease_scoped_reconciliation_supervisor(
             self._assert_lease("retained_orphan")
             return []
 
-        def reconcile_pctdd005_successor_occurrence(self) -> dict[str, Any]:
+        def reconcile_pctdd005_successor_occurrence(
+            self,
+            *,
+            controller_quiescence_receipt: Any = None,
+        ) -> dict[str, Any]:
             self._assert_lease("pctdd005_occurrence")
+            self.controller_quiescence_receipts.append(
+                controller_quiescence_receipt
+            )
             return {"blocked": False}
 
         def reconcile_retained_fenced_provider_occurrences(
             self,
+            *,
+            controller_quiescence_receipt: Any = None,
         ) -> dict[str, Any]:
             self._assert_lease("retained_occurrence")
+            self.controller_quiescence_receipts.append(
+                controller_quiescence_receipt
+            )
             return {"blocked": False}
 
         def pctdd005_successor_reconciliation_matches_current(
@@ -646,6 +784,11 @@ def _lease_scoped_reconciliation_supervisor(
     monkeypatch.setattr(
         daemon_module,
         "database_pctdd005_successor_reconciliation_valid",
+        lambda _value: True,
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "database_fenced_provider_any_retained_reconciliation_valid",
         lambda _value: True,
     )
     monkeypatch.setattr(
@@ -729,6 +872,63 @@ def test_retained_recovery_checkout_capability_is_true_only_inside_lease(
         "__database_portal_checkout_mutation_lease_held__",
         None,
     ) is False
+
+
+def test_retained_recovery_forwards_one_controller_authenticated_quiescence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, program, _events, daemons = (
+        _lease_scoped_reconciliation_supervisor(tmp_path, monkeypatch)
+    )
+    controller_birth = ProcessBirthIdentity(
+        pid=700,
+        start_time_ticks=17,
+        boot_id="boot:controller",
+        parent_pid=1,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_birth",
+        lambda _pid: controller_birth,
+    )
+    cleanup = {
+        "pid": None,
+        "managed_daemon_identity_record_id": "",
+        "managed_daemon_process_birth": None,
+        "quiesced": True,
+        "remaining_pid": None,
+        "markers_removed": True,
+        "daemon_fence": {
+            "fenced": False,
+            "safe_to_restart": True,
+            "reason": "managed_daemon_not_recorded",
+        },
+        "provider_runner_fence": {
+            "applicable": False,
+            "fenced": False,
+            "safe_to_restart": True,
+            "reason": "ordinary_provider_runner_receipt_absent",
+        },
+    }
+
+    result = supervisor._reconcile_interrupted_database_portal_attempts_bound(
+        program,
+        owner_fence_held=True,
+        managed_daemon_launch_lock_held=True,
+        managed_daemon_cleanup=cleanup,
+        trigger="supervisor_startup_prelaunch",
+    )
+
+    assert result["reconciled"] is True
+    assert len(daemons) == 1
+    assert len(daemons[0].controller_quiescence_receipts) == 2
+    first, second = daemons[0].controller_quiescence_receipts
+    assert first == second
+    assert database_portal_controller_quiescence_receipt_valid(first)
+    assert first["controller_process_birth"] == controller_birth.to_dict()
+    assert first["owner_mutation_fence_held"] is True
+    assert first["managed_daemon_launch_lock_held"] is True
 
 
 def test_retained_recovery_checkout_capability_resets_when_reconcile_raises(

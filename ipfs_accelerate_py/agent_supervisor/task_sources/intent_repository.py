@@ -94,6 +94,12 @@ FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "fenced-provider-outer-authority-population-receipt@1"
 )
+FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_POPULATION_RECEIPT_SCHEMA: Final[
+    str
+] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-provider-outer-authority-population-receipt@2"
+)
 FENCED_PROVIDER_OUTER_AUTHORITY_QUERY_PROFILE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "fenced-provider-outer-authority-population-query@1"
@@ -106,6 +112,10 @@ FENCED_PROVIDER_OUTER_CROSS_STORE_CONTEXT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "fenced-provider-outer-cross-store-context@1"
 )
+FENCED_PROVIDER_OUTER_HISTORICAL_CROSS_STORE_CONTEXT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-provider-outer-cross-store-context@2"
+)
 FENCED_PROVIDER_OUTER_MUTATION_BARRIER_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "fenced-provider-outer-mutation-barrier@1"
@@ -113,6 +123,11 @@ FENCED_PROVIDER_OUTER_MUTATION_BARRIER_SCHEMA: Final[str] = (
 FENCED_PROVIDER_OUTER_AUTHORITY_CLAIM_BOUNDARY: Final[str] = (
     "controller_observation_of_exact_named_query_profile_populations_from_an_"
     "authenticated_quack_replica_and_no_quack_admitted_publication_record"
+)
+FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_CLAIM_BOUNDARY: Final[str] = (
+    "controller_observation_of_exact_current_task_and_publication_"
+    "populations_plus_separately_authenticated_lane_local_historical_"
+    "occurrence_authority"
 )
 FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS: Final[tuple[str, ...]] = (
     "provider_may_have_run",
@@ -125,6 +140,13 @@ FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS: Final[tuple[str, ...]] = (
     "coordination_lease_context_requires_current_inner_receipt_equality",
     "self_hash_is_integrity_not_quack_owner_authentication",
     "standalone_or_replayed_receipt_is_not_admission_authority",
+)
+FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_NONCLAIMS: Final[tuple[str, ...]] = (
+    *FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS,
+    "absent_normalized_attempt_claim_and_lease_rows_do_not_mean_the_"
+    "historical_lane_records_never_existed",
+    "lane_local_history_requires_the_exact_inner_terminal_and_controller_"
+    "quiescence_authority_bound_by_this_receipt",
 )
 
 INTENT_STREAM_ID: Final[str] = "stream:intent"
@@ -2456,6 +2478,66 @@ def _fenced_provider_outer_groups_semantically_valid(
     return True
 
 
+def _fenced_provider_outer_historical_context_valid(
+    value: Any,
+    *,
+    subject: Mapping[str, Any],
+) -> bool:
+    """Bind the compact lane authority to the exact outer subject."""
+
+    try:
+        from .retained_recovery_contracts import (
+            database_fenced_provider_historical_occurrence_authority_valid,
+        )
+    except Exception:
+        return False
+    if (
+        not isinstance(value, Mapping)
+        or set(value)
+        != {
+            "schema",
+            "coordination_lease_id",
+            "admission_requirement",
+            "historical_occurrence_authority",
+        }
+        or value.get("schema")
+        != FENCED_PROVIDER_OUTER_HISTORICAL_CROSS_STORE_CONTEXT_SCHEMA
+        or value.get("admission_requirement")
+        != (
+            "must_equal_current_inner_terminal_and_controller_quiescence_"
+            "authority_before_admission"
+        )
+    ):
+        return False
+    historical = value.get("historical_occurrence_authority")
+    if not database_fenced_provider_historical_occurrence_authority_valid(
+        historical
+    ):
+        return False
+    historical_subject = historical["subject"]
+    exact = {
+        "task_cid": subject.get("task_cid"),
+        "task_alias": subject.get("task_alias"),
+        "task_revision": subject.get("task_revision"),
+        "attempt_id": subject.get("attempt_id"),
+        "claim_id": subject.get("claim_id"),
+        "owner_session_id": subject.get("owner_session_id"),
+        "fencing_token": subject.get("fencing_token"),
+        "fence_epoch": subject.get("fence_epoch"),
+    }
+    return bool(
+        value.get("coordination_lease_id")
+        == historical_subject.get("lease_id")
+        and all(
+            type(historical_subject.get(name)) is type(expected)
+            and historical_subject.get(name) == expected
+            for name, expected in exact.items()
+        )
+        and historical.get("owner_store_id")
+        == subject.get("expected_store_id")
+    )
+
+
 def fenced_provider_outer_authority_population_receipt_valid(value: Any) -> bool:
     """Validate a closed outer owner receipt without opening a database."""
 
@@ -2480,13 +2562,34 @@ def fenced_provider_outer_authority_population_receipt_valid(value: Any) -> bool
         "receipt_cid",
     }:
         return False
-    if (
+    historical = bool(
         receipt.get("schema")
-        != FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_RECEIPT_SCHEMA
-        or receipt.get("claim_boundary")
-        != FENCED_PROVIDER_OUTER_AUTHORITY_CLAIM_BOUNDARY
-        or receipt.get("nonclaims")
-        != list(FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS)
+        == FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_POPULATION_RECEIPT_SCHEMA
+    )
+    expected_schema = (
+        FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_POPULATION_RECEIPT_SCHEMA
+        if historical
+        else FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_RECEIPT_SCHEMA
+    )
+    expected_claim_boundary = (
+        FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_CLAIM_BOUNDARY
+        if historical
+        else FENCED_PROVIDER_OUTER_AUTHORITY_CLAIM_BOUNDARY
+    )
+    expected_nonclaims = (
+        FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_NONCLAIMS
+        if historical
+        else FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS
+    )
+    # The SQL/profile bytes are unchanged: @2 observes the same complete
+    # populations and adds a stronger cross-store admission rule.  Versioning
+    # the receipt avoids silently changing @1 while preserving the sealed
+    # operator pin to this exact physical query profile.
+    expected_profile_id = _fenced_provider_outer_query_profile_id()
+    if (
+        receipt.get("schema") != expected_schema
+        or receipt.get("claim_boundary") != expected_claim_boundary
+        or receipt.get("nonclaims") != list(expected_nonclaims)
         or receipt.get("transaction_boundary")
         != (
             "single_authenticated_quack_replica_read_transaction_under_"
@@ -2494,8 +2597,7 @@ def fenced_provider_outer_authority_population_receipt_valid(value: Any) -> bool
         )
         or receipt.get("persistence_policy")
         != "ephemeral_access_controlled_full_receipt_compact_cid_only"
-        or receipt.get("query_profile_id")
-        != _fenced_provider_outer_query_profile_id()
+        or receipt.get("query_profile_id") != expected_profile_id
         or type(receipt.get("receipt_nonce")) is not str
         or not receipt.get("receipt_nonce")
         or len(receipt["receipt_nonce"].encode("utf-8")) > MAX_ID_BYTES
@@ -2580,16 +2682,6 @@ def fenced_provider_outer_authority_population_receipt_valid(value: Any) -> bool
             )
         )
         or not isinstance(cross_store_context, Mapping)
-        or set(cross_store_context)
-        != {
-            "schema",
-            "coordination_lease_id",
-            "admission_requirement",
-        }
-        or cross_store_context.get("schema")
-        != FENCED_PROVIDER_OUTER_CROSS_STORE_CONTEXT_SCHEMA
-        or cross_store_context.get("admission_requirement")
-        != "must_equal_corrected_current_inner_receipt_before_admission"
         or type(cross_store_context.get("coordination_lease_id")) is not str
         or not cross_store_context.get("coordination_lease_id")
         or len(
@@ -2610,6 +2702,25 @@ def fenced_provider_outer_authority_population_receipt_valid(value: Any) -> bool
             "successful_merge_attempt_count",
         }
         or any(type(member) is not int or member != 0 for member in assessment.values())
+    ):
+        return False
+    if historical:
+        if not _fenced_provider_outer_historical_context_valid(
+            cross_store_context,
+            subject=subject,
+        ):
+            return False
+    elif (
+        set(cross_store_context)
+        != {
+            "schema",
+            "coordination_lease_id",
+            "admission_requirement",
+        }
+        or cross_store_context.get("schema")
+        != FENCED_PROVIDER_OUTER_CROSS_STORE_CONTEXT_SCHEMA
+        or cross_store_context.get("admission_requirement")
+        != "must_equal_corrected_current_inner_receipt_before_admission"
     ):
         return False
     binding = authority["owner_binding"]
@@ -2683,7 +2794,7 @@ def fenced_provider_outer_authority_population_receipt_valid(value: Any) -> bool
         if row.get("task_cid") == subject["task_cid"]
         and row.get("revision") == subject["task_revision"]
     ]
-    if (
+    current_task_valid = bool(
         len(task_rows) != 1
         or task_rows[0].get("task_cid") != subject["task_cid"]
         or task_rows[0].get("task_alias") != subject["task_alias"]
@@ -2699,7 +2810,14 @@ def fenced_provider_outer_authority_population_receipt_valid(value: Any) -> bool
         != subject["expected_task_status"]
         or current_revision_rows[0].get("body_json")
         != task_rows[0].get("body_json")
-        or not any(
+        or subject["expected_store_id"] != binding["store_id"]
+        or subject["expected_store_generation"] != binding["generation"]
+        or dict(assessment) != _fenced_provider_outer_publication_assessment(groups)
+    )
+    if current_task_valid:
+        return False
+    normalized_history_valid = bool(
+        any(
             row.get("attempt_id") == subject["attempt_id"]
             and row.get("task_cid") == subject["task_cid"]
             and row.get("owner_session_id") == subject["owner_session_id"]
@@ -2707,7 +2825,7 @@ def fenced_provider_outer_authority_population_receipt_valid(value: Any) -> bool
             and row.get("fence_epoch") == subject["fence_epoch"]
             for row in attempt_rows
         )
-        or not any(
+        and any(
             row.get("claim_id") == subject["claim_id"]
             and row.get("task_cid") == subject["task_cid"]
             and row.get("owner_session_id") == subject["owner_session_id"]
@@ -2715,16 +2833,21 @@ def fenced_provider_outer_authority_population_receipt_valid(value: Any) -> bool
             and row.get("fence_epoch") == subject["fence_epoch"]
             for row in claim_rows
         )
-        or len(lease_rows) != 1
-        or lease_rows[0].get("task_cid") != subject["task_cid"]
-        or lease_rows[0].get("claim_cid") != subject["claim_id"]
-        or lease_rows[0].get("owner_session_id") != subject["owner_session_id"]
-        or lease_rows[0].get("fencing_token") != subject["fencing_token"]
-        or lease_rows[0].get("fence_epoch") != subject["fence_epoch"]
-        or subject["expected_store_id"] != binding["store_id"]
-        or subject["expected_store_generation"] != binding["generation"]
-        or dict(assessment) != _fenced_provider_outer_publication_assessment(groups)
-    ):
+        and len(lease_rows) == 1
+        and lease_rows[0].get("task_cid") == subject["task_cid"]
+        and lease_rows[0].get("claim_cid") == subject["claim_id"]
+        and lease_rows[0].get("owner_session_id") == subject["owner_session_id"]
+        and lease_rows[0].get("fencing_token") == subject["fencing_token"]
+        and lease_rows[0].get("fence_epoch") == subject["fence_epoch"]
+    )
+    if historical:
+        # The successor exists specifically for a split authority.  Any
+        # normalized row makes the population ambiguous and therefore blocks;
+        # callers must use the unchanged v1 route when normalized history is
+        # genuinely current.
+        if attempt_rows or claim_rows or lease_rows:
+            return False
+    elif not normalized_history_valid:
         return False
     if receipt.get("task_population_root") != _fenced_provider_outer_sha256(
         dict(groups)
@@ -3086,6 +3209,7 @@ class IntentRepository:
         receipt_epoch: int,
         controller_replica_observation: Mapping[str, Any],
         controller_mutation_barrier: Mapping[str, Any],
+        historical_occurrence_authority: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Capture one exact owner assertion inside a caller-owned snapshot."""
 
@@ -3120,16 +3244,54 @@ class IntentRepository:
                 noun="expected_store_generation",
             ),
         }
-        cross_store_context = {
-            "schema": FENCED_PROVIDER_OUTER_CROSS_STORE_CONTEXT_SCHEMA,
-            "coordination_lease_id": _identifier(
-                lease_id,
-                noun="coordination_lease_id",
-            ),
-            "admission_requirement": (
-                "must_equal_corrected_current_inner_receipt_before_admission"
-            ),
-        }
+        historical = historical_occurrence_authority is not None
+        if historical:
+            if not _fenced_provider_outer_historical_context_valid(
+                {
+                    "schema": (
+                        FENCED_PROVIDER_OUTER_HISTORICAL_CROSS_STORE_CONTEXT_SCHEMA
+                    ),
+                    "coordination_lease_id": lease_id,
+                    "admission_requirement": (
+                        "must_equal_current_inner_terminal_and_controller_"
+                        "quiescence_authority_before_admission"
+                    ),
+                    "historical_occurrence_authority": dict(
+                        historical_occurrence_authority
+                    ),
+                },
+                subject=subject,
+            ):
+                raise IntentRepositoryIntegrityError(
+                    "historical outer receipt authority is not exact"
+                )
+            cross_store_context = {
+                "schema": (
+                    FENCED_PROVIDER_OUTER_HISTORICAL_CROSS_STORE_CONTEXT_SCHEMA
+                ),
+                "coordination_lease_id": _identifier(
+                    lease_id,
+                    noun="coordination_lease_id",
+                ),
+                "admission_requirement": (
+                    "must_equal_current_inner_terminal_and_controller_"
+                    "quiescence_authority_before_admission"
+                ),
+                "historical_occurrence_authority": dict(
+                    historical_occurrence_authority
+                ),
+            }
+        else:
+            cross_store_context = {
+                "schema": FENCED_PROVIDER_OUTER_CROSS_STORE_CONTEXT_SCHEMA,
+                "coordination_lease_id": _identifier(
+                    lease_id,
+                    noun="coordination_lease_id",
+                ),
+                "admission_requirement": (
+                    "must_equal_corrected_current_inner_receipt_before_admission"
+                ),
+            }
         nonce = _identifier(receipt_nonce, noun="receipt_nonce")
         epoch = _fenced_provider_outer_positive_int(
             receipt_epoch,
@@ -3343,10 +3505,30 @@ class IntentRepository:
             raise IntentRepositoryIntegrityError(
                 "task already has admitted completion or merge publication"
             )
+        if historical and (
+            groups["task_attempts"]["rows"]
+            or groups["task_claims"]["rows"]
+            or groups["leases"]["rows"]
+        ):
+            raise IntentRepositoryIntegrityError(
+                "historical outer authority conflicts with normalized history"
+            )
         receipt: dict[str, Any] = {
-            "schema": FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_RECEIPT_SCHEMA,
-            "claim_boundary": FENCED_PROVIDER_OUTER_AUTHORITY_CLAIM_BOUNDARY,
-            "nonclaims": list(FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS),
+            "schema": (
+                FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_POPULATION_RECEIPT_SCHEMA
+                if historical
+                else FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_RECEIPT_SCHEMA
+            ),
+            "claim_boundary": (
+                FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_CLAIM_BOUNDARY
+                if historical
+                else FENCED_PROVIDER_OUTER_AUTHORITY_CLAIM_BOUNDARY
+            ),
+            "nonclaims": list(
+                FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_NONCLAIMS
+                if historical
+                else FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS
+            ),
             "transaction_boundary": (
                 "single_authenticated_quack_replica_read_transaction_under_"
                 "controller_barrier"

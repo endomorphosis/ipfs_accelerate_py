@@ -31,6 +31,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_RECEIPT_SCHEMA,
+    FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_POPULATION_RECEIPT_SCHEMA,
+    FENCED_PROVIDER_OUTER_HISTORICAL_CROSS_STORE_CONTEXT_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as daemon_module,
@@ -54,17 +56,32 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DATABASE_FENCED_PROVIDER_INNER_POPULATION_RECEIPT_SCHEMA,
+    DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA,
+    DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_CONSUMPTION_SCHEMA,
+    DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_RECONCILIATION_SCHEMA,
     DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
     DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_SCHEMA,
     DATABASE_RETRY_BUDGET_SCHEMA,
     DatabaseImplementationConflictError,
+    DatabaseImplementationDaemon,
+    database_fenced_provider_historical_retained_admission,
+    database_fenced_provider_historical_retained_admission_valid,
+    database_fenced_provider_historical_retained_consumption,
+    database_fenced_provider_historical_retained_consumption_matches_admission,
+    database_fenced_provider_historical_retained_consumption_valid,
+    database_fenced_provider_historical_retained_reconciliation_valid,
     database_fenced_provider_retained_admission,
     database_fenced_provider_retained_admission_valid,
     database_fenced_provider_retained_consumption,
     database_fenced_provider_retained_consumption_valid,
+    database_fenced_provider_retained_reconciliation_valid,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.retained_recovery_contracts import (
+    database_fenced_provider_historical_occurrence_authority,
+    database_portal_controller_quiescence_receipt,
 )
 from test.api.test_agent_supervisor_database_implementation_daemon import (
     _open_daemon,
@@ -587,6 +604,255 @@ def test_admission_binds_leaf_cids_without_recursively_persisting_receipts(
     tampered = dict(admission)
     tampered["owner_live_generation"] = 59
     assert not database_fenced_provider_retained_admission_valid(tampered)
+
+
+def test_admission_accepts_only_cross_bound_historical_outer_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    occurrence = _pin("PCTDD-006")
+    credit = dict(database_fenced_provider_retained_credit(occurrence))
+    inner, outer = _fake_receipts(occurrence, credit)
+    terminal = {
+        "attempt_id": occurrence["predecessor_attempt_id"],
+        "task_cid": occurrence["task_cid"],
+        "claim_id": occurrence["predecessor_claim_id"],
+        "attempt_number": occurrence["predecessor_attempt_number"],
+        "owner_session_id": occurrence["predecessor_owner_session_id"],
+        "lease_id": occurrence["predecessor_lease_id"],
+        "fencing_token": occurrence["predecessor_fencing_token"],
+        "fence_epoch": occurrence["predecessor_fence_epoch"],
+        "intended_database_disposition": "blocked_unknown_outcome",
+        "evidence_id": "baguqeera" + "a" * 52,
+        "prepared_reconciliation_receipt_id": "sha256:" + "3" * 64,
+        "commit_barrier_receipt_id": "sha256:" + "4" * 64,
+        "stage": "terminal",
+        "receipt_id": "sha256:" + "5" * 64,
+        "record_json": {
+            "canonical_sha256": "sha256:" + "6" * 64,
+            "canonical_byte_length": 1024,
+        },
+    }
+    inner["groups"]["database_portal_terminal_reconciliations"] = {
+        "count": 1,
+        "rows": [terminal],
+    }
+    controller = dict(
+        database_portal_controller_quiescence_receipt(
+            cleanup={
+                "pid": 501,
+                "managed_daemon_identity_record_id": "identity:pctdd:501",
+                "managed_daemon_process_birth": {
+                    "pid": 501,
+                    "start_time_ticks": 31,
+                    "boot_id": "boot:pctdd",
+                    "parent_pid": 500,
+                },
+                "quiesced": True,
+                "remaining_pid": None,
+                "markers_removed": True,
+                "daemon_fence": {
+                    "fenced": True,
+                    "safe_to_restart": True,
+                    "reason": "managed_daemon_owned_process_fenced",
+                },
+                "provider_runner_fence": {
+                    "applicable": False,
+                    "fenced": False,
+                    "safe_to_restart": True,
+                    "reason": "ordinary_provider_runner_receipt_absent",
+                },
+            },
+            board_namespace=occurrence["board_namespace"],
+            state_prefix="pctdd_g9",
+            owner_store_id=occurrence["owner_store_id"],
+            control_store_generation=occurrence[
+                "control_store_generation"
+            ],
+            trigger="supervisor_startup_prelaunch",
+            controller_process_birth={
+                "pid": 500,
+                "start_time_ticks": 21,
+                "boot_id": "boot:pctdd",
+                "parent_pid": 1,
+            },
+            owner_mutation_fence_held=True,
+            managed_daemon_launch_lock_held=True,
+        )
+    )
+    historical = dict(
+        database_fenced_provider_historical_occurrence_authority(
+            inner_receipt=inner,
+            controller_quiescence_receipt=controller,
+            board_namespace=occurrence["board_namespace"],
+            owner_store_id=occurrence["owner_store_id"],
+            control_store_generation=occurrence[
+                "control_store_generation"
+            ],
+        )
+    )
+    outer["schema"] = (
+        FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_POPULATION_RECEIPT_SCHEMA
+    )
+    outer["cross_store_context"] = {
+        "schema": FENCED_PROVIDER_OUTER_HISTORICAL_CROSS_STORE_CONTEXT_SCHEMA,
+        "coordination_lease_id": occurrence["predecessor_lease_id"],
+        "admission_requirement": (
+            "must_equal_current_inner_terminal_and_controller_quiescence_"
+            "authority_before_admission"
+        ),
+        "historical_occurrence_authority": historical,
+    }
+
+    monkeypatch.setattr(
+        daemon_module,
+        "database_fenced_provider_inner_population_receipt_valid",
+        lambda value: isinstance(value, Mapping),
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "fenced_provider_outer_authority_population_receipt_valid",
+        lambda value: isinstance(value, Mapping),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        intent_repository_module,
+        "fenced_provider_outer_authority_population_receipt_valid",
+        lambda value: isinstance(value, Mapping),
+    )
+    admission = database_fenced_provider_historical_retained_admission(
+        occurrence=occurrence,
+        credit=credit,
+        inner_receipt=inner,
+        outer_receipt=outer,
+        expected_task_revision=occurrence["blocked_task_revision"],
+        expected_task_status=occurrence["blocked_task_status"],
+        historical_occurrence_authority=historical,
+        controller_quiescence_receipt=controller,
+    )
+    assert (
+        admission["schema"]
+        == DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA
+    )
+    assert database_fenced_provider_historical_retained_admission_valid(
+        admission
+    )
+    assert not database_fenced_provider_retained_admission_valid(admission)
+    consumption = dict(
+        database_fenced_provider_historical_retained_consumption(
+            admission=admission,
+            attempt_id="attempt:historical-successor",
+            claim_id="claim:historical-successor",
+            lease_id="lease:historical-successor",
+            owner_session_id="owner:historical-successor",
+            attempt_number=12,
+            fencing_token=12,
+            fence_epoch=12,
+            expected_task_revision=occurrence["blocked_task_revision"] + 1,
+            expected_task_status="retrying",
+            resulting_task_revision=occurrence["blocked_task_revision"] + 2,
+            resulting_task_status="in_progress",
+        )
+    )
+    assert (
+        consumption["schema"]
+        == DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_CONSUMPTION_SCHEMA
+    )
+    assert database_fenced_provider_historical_retained_consumption_valid(
+        consumption
+    )
+    assert not database_fenced_provider_retained_consumption_valid(consumption)
+    assert (
+        database_fenced_provider_historical_retained_consumption_matches_admission(
+            admission=admission,
+            consumption=consumption,
+        )
+    )
+
+    reconciliation = {
+        "schema": (
+            DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_RECONCILIATION_SCHEMA
+        ),
+        "attempted": True,
+        "reconciled": True,
+        "blocked": False,
+        "reason": "retained_occurrence_reconciliation_complete",
+        "expected_occurrence_count": 3,
+        "admitted_count": 3,
+        "already_consumed_count": 0,
+        "outcomes": [
+            {
+                "task_alias": pin["task_alias"],
+                "task_cid": pin["task_cid"],
+                "reconciled": True,
+                "blocked": False,
+                "reason": "retained_occurrence_admitted",
+                "admission_id": "sha256:" + str(index) * 64,
+                "consumption_id": "",
+            }
+            for index, pin in enumerate(
+                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+                start=1,
+            )
+        ],
+    }
+    assert database_fenced_provider_historical_retained_reconciliation_valid(
+        reconciliation
+    )
+    assert not database_fenced_provider_retained_reconciliation_valid(
+        reconciliation
+    )
+    current_tasks = {
+        pin["task_cid"]: SimpleNamespace(
+            body={
+                "completion_receipt": {
+                        "retained_recovery_admission": {
+                            "schema": (
+                                DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA
+                            ),
+                            "admission_id": reconciliation["outcomes"][index][
+                            "admission_id"
+                        ]
+                    }
+                }
+            }
+        )
+        for index, pin in enumerate(
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        )
+    }
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon._task_source = SimpleNamespace(get=current_tasks.get)
+    daemon.open = lambda: daemon
+    daemon._retained_recovery_admission_is_current_for_task = (
+        lambda *_args, **_kwargs: True
+    )
+    daemon._retained_recovery_aggregate_admitted_current = lambda: True
+    assert daemon.retained_recovery_reconciliation_matches_current(
+        reconciliation
+    )
+    first_task = current_tasks[
+        DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS[0]["task_cid"]
+    ]
+    first_task.body["completion_receipt"]["retained_recovery_admission"][
+        "schema"
+    ] = DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
+    assert not daemon.retained_recovery_reconciliation_matches_current(
+        reconciliation
+    )
+
+    stale_controller = dict(controller)
+    stale_controller["receipt_id"] = "sha256:" + "9" * 64
+    with pytest.raises(DatabaseImplementationConflictError):
+        database_fenced_provider_historical_retained_admission(
+            occurrence=occurrence,
+            credit=credit,
+            inner_receipt=inner,
+            outer_receipt=outer,
+            expected_task_revision=occurrence["blocked_task_revision"],
+            expected_task_status=occurrence["blocked_task_status"],
+            historical_occurrence_authority=historical,
+            controller_quiescence_receipt=stale_controller,
+        )
 
 
 @pytest.mark.parametrize(

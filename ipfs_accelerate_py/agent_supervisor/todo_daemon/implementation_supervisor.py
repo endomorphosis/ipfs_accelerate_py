@@ -7587,6 +7587,8 @@ class PortalImplementationSupervisor:
                                             retained_startup = self._reconcile_interrupted_database_portal_attempts_bound(
                                                 fenced_program,
                                                 owner_fence_held=True,
+                                                managed_daemon_launch_lock_held=True,
+                                                managed_daemon_cleanup=quiescence,
                                                 trigger="supervisor_startup_prelaunch",
                                             )
                                         if not self._retained_startup_allows_normal_launch(
@@ -15157,6 +15159,8 @@ class PortalImplementationSupervisor:
                         return self._reconcile_interrupted_database_portal_attempts_bound(
                             _fenced_database_program,
                             owner_fence_held=True,
+                            managed_daemon_launch_lock_held=True,
+                            managed_daemon_cleanup=cleanup,
                         )
                 return self._reconcile_interrupted_database_portal_attempts()
             daemon = self._build_worktree_reconciliation_daemon()
@@ -15215,6 +15219,8 @@ class PortalImplementationSupervisor:
                     return self._reconcile_interrupted_database_portal_attempts_bound(
                         fenced_program,
                         owner_fence_held=True,
+                        managed_daemon_launch_lock_held=True,
+                        managed_daemon_cleanup=quiescence,
                     )
 
     def _retained_fenced_provider_program_applicable(
@@ -16376,6 +16382,47 @@ class PortalImplementationSupervisor:
         if not callable(callback):
             raise TypeError("outer authority CAS callback must be callable")
         subject_map = dict(subject)
+        controller_quiescence = subject_map.pop(
+            "controller_quiescence_receipt", None
+        )
+        historical_authority = subject_map.get(
+            "historical_occurrence_authority"
+        )
+        if (controller_quiescence is None) != (historical_authority is None):
+            raise RuntimeError(
+                "historical outer authority requires its controller receipt"
+            )
+        if controller_quiescence is not None:
+            from ..task_sources.retained_recovery_contracts import (
+                database_fenced_provider_historical_occurrence_authority_valid,
+                database_portal_controller_quiescence_receipt_valid,
+            )
+
+            if not (
+                database_portal_controller_quiescence_receipt_valid(
+                    controller_quiescence
+                )
+                and database_fenced_provider_historical_occurrence_authority_valid(
+                    historical_authority
+                )
+                and historical_authority.get(
+                    "controller_quiescence_receipt_id"
+                )
+                == controller_quiescence.get("receipt_id")
+                and controller_quiescence.get("board_namespace")
+                == self.board_namespace
+                and controller_quiescence.get("state_prefix")
+                == self.config.state_prefix
+                and controller_quiescence.get("owner_store_id")
+                == program.store_id
+                and controller_quiescence.get("control_store_generation")
+                == program.store_generation
+                and controller_quiescence.get("controller_process_birth")
+                == read_process_birth(os.getpid()).to_dict()
+            ):
+                raise RuntimeError(
+                    "historical outer authority controller receipt is stale"
+                )
         generation_floor = subject_map.pop("minimum_store_generation", None)
         expected_database_uuid = subject_map.pop("expected_database_uuid", None)
         expected_schema_fingerprint = subject_map.pop(
@@ -16741,11 +16788,52 @@ class PortalImplementationSupervisor:
                 else:
                     os.environ[name] = str(value)
 
+    def _database_portal_controller_quiescence_receipt(
+        self,
+        *,
+        cleanup: Mapping[str, Any],
+        program: DatabaseProgramConfig,
+        trigger: str,
+        owner_fence_held: bool,
+        managed_daemon_launch_lock_held: bool,
+    ) -> Mapping[str, Any]:
+        """Issue one controller-bound death receipt while both locks remain held."""
+
+        from ..task_sources.retained_recovery_contracts import (
+            database_portal_controller_quiescence_receipt,
+        )
+
+        if not (owner_fence_held and managed_daemon_launch_lock_held):
+            raise RuntimeError(
+                "retained historical recovery lacks owner/launch fences"
+            )
+        birth_before = read_process_birth(os.getpid())
+        receipt = database_portal_controller_quiescence_receipt(
+            cleanup=cleanup,
+            board_namespace=self.board_namespace,
+            state_prefix=self.config.state_prefix,
+            owner_store_id=program.store_id,
+            control_store_generation=program.store_generation,
+            trigger=trigger,
+            controller_process_birth=birth_before.to_dict(),
+            owner_mutation_fence_held=owner_fence_held,
+            managed_daemon_launch_lock_held=(
+                managed_daemon_launch_lock_held
+            ),
+        )
+        if read_process_birth(os.getpid()) != birth_before:
+            raise RuntimeError(
+                "controller process identity changed during quiescence receipt"
+            )
+        return MappingProxyType(dict(receipt))
+
     def _reconcile_interrupted_database_portal_attempts_bound(
         self,
         program: DatabaseProgramConfig,
         *,
         owner_fence_held: bool = False,
+        managed_daemon_launch_lock_held: bool = False,
+        managed_daemon_cleanup: Mapping[str, Any] | None = None,
         trigger: str = "supervisor_signal_shutdown",
     ) -> dict[str, Any]:
         """Run reconciliation with the accepted program bindings active."""
@@ -16753,8 +16841,7 @@ class PortalImplementationSupervisor:
         from .database_portal_bridge import DatabasePortalExecutionBridge
         from .implementation_daemon import (
             DatabaseImplementationDaemon,
-            database_fenced_provider_retained_reconciliation_valid,
-            database_pctdd005_successor_reconciliation_valid,
+            database_fenced_provider_any_retained_reconciliation_valid,
         )
 
         (
@@ -16775,6 +16862,26 @@ class PortalImplementationSupervisor:
         owner_fenced_task_source: Any | None = None
         owner_binding: dict[str, Any] | None = None
         owner_barrier: dict[str, Any] | None = None
+        retained_program = self._retained_fenced_provider_program_applicable(
+            program
+        )
+        controller_quiescence_receipt: Mapping[str, Any] | None = None
+        if retained_program and managed_daemon_cleanup is not None:
+            if not isinstance(managed_daemon_cleanup, Mapping):
+                raise RuntimeError(
+                    "retained historical recovery has malformed cleanup"
+                )
+            controller_quiescence_receipt = (
+                self._database_portal_controller_quiescence_receipt(
+                    cleanup=managed_daemon_cleanup,
+                    program=program,
+                    trigger=trigger,
+                    owner_fence_held=owner_fence_held,
+                    managed_daemon_launch_lock_held=(
+                        managed_daemon_launch_lock_held
+                    ),
+                )
+            )
         if owner_fence_held:
             from ..task_sources.database_task_source import DatabaseTaskSource
             from ..task_sources.duckdb_state import _resolve_quack_token_handle
@@ -16973,9 +17080,6 @@ class PortalImplementationSupervisor:
             # Close the exact task-CAS-before-local-attempt crash window before
             # ordinary Portal reconciliation.  This performs no callback and
             # consumes any retained one-shot chain permanently before release.
-            retained_program = self._retained_fenced_provider_program_applicable(
-                program
-            )
             if retained_program and not owner_fence_held:
                 return {
                     "reconciled": False,
@@ -17139,10 +17243,28 @@ class PortalImplementationSupervisor:
                         orphaned_claim_reconciliations.extend(
                             daemon.reconcile_retained_recovery_orphaned_claims()
                         )
-                        pctdd005_reconciliation = dict(
-                            reconcile_pctdd005()
-                        )
-                        retained_reconciliation = dict(reconcile_retained())
+                        if controller_quiescence_receipt is None:
+                            pctdd005_reconciliation = dict(
+                                reconcile_pctdd005()
+                            )
+                            retained_reconciliation = dict(
+                                reconcile_retained()
+                            )
+                        else:
+                            pctdd005_reconciliation = dict(
+                                reconcile_pctdd005(
+                                    controller_quiescence_receipt=(
+                                        controller_quiescence_receipt
+                                    )
+                                )
+                            )
+                            retained_reconciliation = dict(
+                                reconcile_retained(
+                                    controller_quiescence_receipt=(
+                                        controller_quiescence_receipt
+                                    )
+                                )
+                            )
                     except Exception as exc:
                         return {
                             **dict(reconciliation),
@@ -17192,7 +17314,7 @@ class PortalImplementationSupervisor:
                     )
                     if not (
                         pctdd005_reconciliation.get("blocked") is False
-                        and database_pctdd005_successor_reconciliation_valid(
+                        and database_fenced_provider_any_retained_reconciliation_valid(
                             pctdd005_reconciliation
                         )
                         and callable(pctdd005_matches_current)
@@ -17200,7 +17322,7 @@ class PortalImplementationSupervisor:
                             pctdd005_reconciliation
                         )
                         and retained_reconciliation.get("blocked") is False
-                        and database_fenced_provider_retained_reconciliation_valid(
+                        and database_fenced_provider_any_retained_reconciliation_valid(
                             retained_reconciliation
                         )
                         and callable(retained_matches_current)
@@ -24055,6 +24177,16 @@ class PortalImplementationSupervisor:
                         markers_removed = False
         return {
             "pid": pid,
+            "managed_daemon_identity_record_id": (
+                str(initial_identity.record_id or "")
+                if initial_identity is not None
+                else ""
+            ),
+            "managed_daemon_process_birth": (
+                initial_identity.process_birth.to_dict()
+                if initial_identity is not None
+                else None
+            ),
             "terminated": terminated,
             "quiesced": bool(
                 remaining_pid is None

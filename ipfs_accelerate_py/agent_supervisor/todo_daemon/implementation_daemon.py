@@ -78276,6 +78276,35 @@ DATABASE_PCTDD005_SUCCESSOR_RECONCILIATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-fenced-provider-retained-reconciliation@3"
 )
+# Additive successors for the split-store historical authority.  These
+# schemas are deliberately distinct from @2/@3 because the latter require
+# normalized owner-store attempt/claim/lease rows.  The @4/@5 records bind
+# the exact lane-local occurrence authority and controller quiescence receipt
+# instead; a consumer can therefore never reinterpret an old compact record.
+DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-admission@4"
+)
+DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_CONSUMPTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-consumption@4"
+)
+DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_RECONCILIATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-retained-reconciliation@4"
+)
+DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-admission@5"
+)
+DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_CONSUMPTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-consumption@5"
+)
+DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_RECONCILIATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-retained-reconciliation@5"
+)
 _DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_FIELDS = frozenset(
     {
         "schema",
@@ -78355,6 +78384,20 @@ _DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_FIELDS = frozenset(
         "consumed_before_worker_start",
         "one_shot",
         "consumption_id",
+    }
+)
+_DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_FIELDS = frozenset(
+    {
+        *_DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_FIELDS,
+        "historical_occurrence_authority_id",
+        "controller_quiescence_receipt_id",
+    }
+)
+_DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_CONSUMPTION_FIELDS = frozenset(
+    {
+        *_DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_FIELDS,
+        "historical_occurrence_authority_id",
+        "controller_quiescence_receipt_id",
     }
 )
 DATABASE_EMPTY_CANONICAL_LIST_DIGEST = (
@@ -80064,6 +80107,73 @@ def _database_fenced_provider_recovery_authority(
     return matches[0] if len(matches) == 1 else None
 
 
+def _database_fenced_provider_historical_recovery_authority(
+    value: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Resolve one additive split-store authority without widening @2/@3."""
+
+    manifest_id = str(value.get("manifest_id") or "")
+    schema = str(value.get("schema") or "")
+    base = _database_fenced_provider_recovery_authority(
+        {"manifest_id": manifest_id}
+    )
+    if base is None:
+        return None
+    if base["admission_schema"] == (
+        DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
+    ):
+        historical_schemas = {
+            "admission_schema": (
+                DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA
+            ),
+            "consumption_schema": (
+                DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_CONSUMPTION_SCHEMA
+            ),
+            "reconciliation_schema": (
+                DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_RECONCILIATION_SCHEMA
+            ),
+        }
+    elif base["admission_schema"] == DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA:
+        historical_schemas = {
+            "admission_schema": (
+                DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA
+            ),
+            "consumption_schema": (
+                DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_CONSUMPTION_SCHEMA
+            ),
+            "reconciliation_schema": (
+                DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_RECONCILIATION_SCHEMA
+            ),
+        }
+    else:
+        return None
+    if schema and schema not in {
+        historical_schemas["admission_schema"],
+        historical_schemas["consumption_schema"],
+        historical_schemas["reconciliation_schema"],
+    }:
+        return None
+    return {
+        **dict(base),
+        "legacy_admission_schema": base["admission_schema"],
+        "legacy_consumption_schema": base["consumption_schema"],
+        "legacy_reconciliation_schema": base["reconciliation_schema"],
+        **historical_schemas,
+    }
+
+
+def _database_fenced_provider_any_recovery_authority(
+    value: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Resolve exactly one legacy or historical compact authority."""
+
+    legacy = _database_fenced_provider_recovery_authority(value)
+    historical = _database_fenced_provider_historical_recovery_authority(value)
+    if legacy is not None and historical is not None:
+        return None
+    return historical if historical is not None else legacy
+
+
 def _database_fenced_provider_recovery_authority_for_occurrence(
     occurrence: Mapping[str, Any],
 ) -> Mapping[str, Any] | None:
@@ -80129,7 +80239,7 @@ def _database_fenced_provider_retained_occurrence_for_admission(
 ) -> Mapping[str, Any] | None:
     """Resolve one exact operator-owned occurrence from a compact admission."""
 
-    authority = _database_fenced_provider_recovery_authority(value)
+    authority = _database_fenced_provider_any_recovery_authority(value)
     if authority is None:
         return None
     matches = [
@@ -80285,7 +80395,84 @@ def database_pctdd005_successor_admission_valid(value: Any) -> bool:
     )
 
 
-def database_fenced_provider_retained_admission(
+def database_fenced_provider_historical_retained_admission_valid(
+    value: Any,
+) -> bool:
+    """Validate only an additive @4/@5 split-store admission."""
+
+    if not isinstance(value, Mapping):
+        return False
+    record = dict(value)
+    authority = _database_fenced_provider_historical_recovery_authority(record)
+    if (
+        set(record)
+        != _DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_FIELDS
+        or authority is None
+        or record.get("schema") != authority["admission_schema"]
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(record.get(name) or ""),
+            )
+            is None
+            for name in (
+                "historical_occurrence_authority_id",
+                "controller_quiescence_receipt_id",
+            )
+        )
+    ):
+        return False
+    unsigned = dict(record)
+    admission_id = str(unsigned.pop("admission_id", "") or "")
+    if (
+        re.fullmatch(r"sha256:[0-9a-f]{64}", admission_id) is None
+        or _database_fenced_provider_retained_digest(unsigned) != admission_id
+    ):
+        return False
+    projected = dict(record)
+    projected.pop("historical_occurrence_authority_id")
+    projected.pop("controller_quiescence_receipt_id")
+    projected["schema"] = authority["legacy_admission_schema"]
+    projected.pop("admission_id")
+    projected["admission_id"] = _database_fenced_provider_retained_digest(
+        projected
+    )
+    return database_fenced_provider_retained_admission_valid(projected)
+
+
+def database_pctdd005_historical_successor_admission_valid(value: Any) -> bool:
+    """Validate only the additive singleton @5 split-store admission."""
+
+    return bool(
+        isinstance(value, Mapping)
+        and value.get("schema")
+        == DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA
+        and database_fenced_provider_historical_retained_admission_valid(value)
+    )
+
+
+def _database_fenced_provider_any_retained_admission_valid(value: Any) -> bool:
+    """Dispatch without allowing a version to choose another validator."""
+
+    if not isinstance(value, Mapping):
+        return False
+    schema = value.get("schema")
+    if schema in {
+        DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
+        DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA,
+    }:
+        return database_fenced_provider_retained_admission_valid(value)
+    if schema in {
+        DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA,
+        DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA,
+    }:
+        return database_fenced_provider_historical_retained_admission_valid(
+            value
+        )
+    return False
+
+
+def _database_fenced_provider_retained_admission(
     *,
     occurrence: Mapping[str, Any],
     credit: Mapping[str, Any],
@@ -80293,8 +80480,11 @@ def database_fenced_provider_retained_admission(
     outer_receipt: Mapping[str, Any],
     expected_task_revision: int,
     expected_task_status: str,
+    historical_mode: bool,
+    historical_occurrence_authority: Mapping[str, Any] | None = None,
+    controller_quiescence_receipt: Mapping[str, Any] | None = None,
 ) -> Mapping[str, Any]:
-    """Join exact inner and outer receipts into one compact @2 admission."""
+    """Join exact receipts into one explicitly selected compact authority."""
 
     try:
         from ..task_sources.intent_repository import (
@@ -80310,12 +80500,23 @@ def database_fenced_provider_retained_admission(
     ):
         raise TypeError("retained recovery admission requires mappings")
     occurrence_record = dict(occurrence)
-    authority = _database_fenced_provider_recovery_authority_for_occurrence(
+    legacy_authority = _database_fenced_provider_recovery_authority_for_occurrence(
         occurrence_record
+    )
+    if legacy_authority is None:
+        raise DatabaseImplementationConflictError(
+            "retained recovery occurrence has no sealed authority"
+        )
+    authority = (
+        _database_fenced_provider_historical_recovery_authority(
+            {"manifest_id": legacy_authority["manifest_id"]}
+        )
+        if historical_mode
+        else legacy_authority
     )
     if authority is None:
         raise DatabaseImplementationConflictError(
-            "retained recovery occurrence has no sealed authority"
+            "retained recovery occurrence authority version is unavailable"
         )
     exact_occurrences = [
         dict(item)
@@ -80350,6 +80551,87 @@ def database_fenced_provider_retained_admission(
         )
     inner = dict(inner_receipt)
     outer = dict(outer_receipt)
+    historical_outer = bool(
+        outer.get("schema")
+        == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "fenced-provider-outer-authority-population-receipt@2"
+        )
+    )
+    if historical_outer is not historical_mode:
+        raise DatabaseImplementationConflictError(
+            "retained recovery outer receipt authority version is wrong"
+        )
+    if historical_mode:
+        try:
+            from ..task_sources.retained_recovery_contracts import (
+                database_fenced_provider_historical_occurrence_authority,
+                database_fenced_provider_historical_occurrence_authority_valid,
+                database_portal_controller_quiescence_receipt_valid,
+            )
+        except Exception as exc:
+            raise DatabaseImplementationConflictError(
+                "historical retained recovery authority is unavailable"
+            ) from exc
+        historical_context = outer.get("cross_store_context")
+        observed_historical = (
+            historical_context.get("historical_occurrence_authority")
+            if isinstance(historical_context, Mapping)
+            else None
+        )
+        if not (
+            isinstance(historical_occurrence_authority, Mapping)
+            and isinstance(controller_quiescence_receipt, Mapping)
+            and database_fenced_provider_historical_occurrence_authority_valid(
+                historical_occurrence_authority
+            )
+            and database_portal_controller_quiescence_receipt_valid(
+                controller_quiescence_receipt
+            )
+            and observed_historical == dict(historical_occurrence_authority)
+            and historical_occurrence_authority.get(
+                "controller_quiescence_receipt_id"
+            )
+            == controller_quiescence_receipt.get("receipt_id")
+        ):
+            raise DatabaseImplementationConflictError(
+                "historical retained recovery evidence is incomplete"
+            )
+        try:
+            reconstructed_historical = dict(
+                database_fenced_provider_historical_occurrence_authority(
+                    inner_receipt=inner,
+                    controller_quiescence_receipt=(
+                        controller_quiescence_receipt
+                    ),
+                    board_namespace=str(
+                        exact_occurrences[0]["board_namespace"]
+                    ),
+                    owner_store_id=str(
+                        exact_occurrences[0]["owner_store_id"]
+                    ),
+                    control_store_generation=str(
+                        exact_occurrences[0]["control_store_generation"]
+                    ),
+                )
+            )
+        except (TypeError, ValueError) as exc:
+            raise DatabaseImplementationConflictError(
+                "historical retained recovery evidence does not reconstruct"
+            ) from exc
+        if reconstructed_historical != dict(
+            historical_occurrence_authority
+        ):
+            raise DatabaseImplementationConflictError(
+                "historical retained recovery evidence changed authority"
+            )
+    elif (
+        historical_occurrence_authority is not None
+        or controller_quiescence_receipt is not None
+    ):
+        raise DatabaseImplementationConflictError(
+            "legacy outer authority cannot carry historical evidence"
+        )
     inner_subject = inner.get("subject")
     outer_subject = outer.get("subject")
     cross_store = outer.get("cross_store_context")
@@ -80492,12 +80774,76 @@ def database_fenced_provider_retained_admission(
         "retry_policy": pin["retry_policy"],
         "one_shot": True,
     }
+    if historical_mode:
+        record.update(
+            {
+                "historical_occurrence_authority_id": str(
+                    historical_occurrence_authority.get("authority_id") or ""
+                ),
+                "controller_quiescence_receipt_id": str(
+                    controller_quiescence_receipt.get("receipt_id") or ""
+                ),
+            }
+        )
     record["admission_id"] = _database_fenced_provider_retained_digest(record)
-    if not database_fenced_provider_retained_admission_valid(record):
+    validator = (
+        database_fenced_provider_historical_retained_admission_valid
+        if historical_mode
+        else database_fenced_provider_retained_admission_valid
+    )
+    if not validator(record):
         raise DatabaseImplementationConflictError(
             "retained recovery admission failed closed validation"
         )
     return MappingProxyType(record)
+
+
+def database_fenced_provider_retained_admission(
+    *,
+    occurrence: Mapping[str, Any],
+    credit: Mapping[str, Any],
+    inner_receipt: Mapping[str, Any],
+    outer_receipt: Mapping[str, Any],
+    expected_task_revision: int,
+    expected_task_status: str,
+) -> Mapping[str, Any]:
+    """Build the unchanged normalized-history @2/@3 admission."""
+
+    return _database_fenced_provider_retained_admission(
+        occurrence=occurrence,
+        credit=credit,
+        inner_receipt=inner_receipt,
+        outer_receipt=outer_receipt,
+        expected_task_revision=expected_task_revision,
+        expected_task_status=expected_task_status,
+        historical_mode=False,
+    )
+
+
+def database_fenced_provider_historical_retained_admission(
+    *,
+    occurrence: Mapping[str, Any],
+    credit: Mapping[str, Any],
+    inner_receipt: Mapping[str, Any],
+    outer_receipt: Mapping[str, Any],
+    expected_task_revision: int,
+    expected_task_status: str,
+    historical_occurrence_authority: Mapping[str, Any],
+    controller_quiescence_receipt: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Build an additive split-store @4/@5 admission."""
+
+    return _database_fenced_provider_retained_admission(
+        occurrence=occurrence,
+        credit=credit,
+        inner_receipt=inner_receipt,
+        outer_receipt=outer_receipt,
+        expected_task_revision=expected_task_revision,
+        expected_task_status=expected_task_status,
+        historical_mode=True,
+        historical_occurrence_authority=historical_occurrence_authority,
+        controller_quiescence_receipt=controller_quiescence_receipt,
+    )
 
 
 def database_fenced_provider_retained_consumption_valid(value: Any) -> bool:
@@ -80574,6 +80920,86 @@ def database_pctdd005_successor_consumption_valid(value: Any) -> bool:
     )
 
 
+def database_fenced_provider_historical_retained_consumption_valid(
+    value: Any,
+) -> bool:
+    """Validate only an additive @4/@5 split-store consumption."""
+
+    if not isinstance(value, Mapping):
+        return False
+    record = dict(value)
+    authority = _database_fenced_provider_historical_recovery_authority(record)
+    if (
+        set(record)
+        != _DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_CONSUMPTION_FIELDS
+        or authority is None
+        or record.get("schema") != authority["consumption_schema"]
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(record.get(name) or ""),
+            )
+            is None
+            for name in (
+                "historical_occurrence_authority_id",
+                "controller_quiescence_receipt_id",
+            )
+        )
+    ):
+        return False
+    unsigned = dict(record)
+    consumption_id = str(unsigned.pop("consumption_id", "") or "")
+    if (
+        re.fullmatch(r"sha256:[0-9a-f]{64}", consumption_id) is None
+        or _database_fenced_provider_retained_digest(unsigned)
+        != consumption_id
+    ):
+        return False
+    projected = dict(record)
+    projected.pop("historical_occurrence_authority_id")
+    projected.pop("controller_quiescence_receipt_id")
+    projected["schema"] = authority["legacy_consumption_schema"]
+    projected.pop("consumption_id")
+    projected["consumption_id"] = _database_fenced_provider_retained_digest(
+        projected
+    )
+    return database_fenced_provider_retained_consumption_valid(projected)
+
+
+def database_pctdd005_historical_successor_consumption_valid(value: Any) -> bool:
+    """Validate only the additive singleton @5 split-store consumption."""
+
+    return bool(
+        isinstance(value, Mapping)
+        and value.get("schema")
+        == DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_CONSUMPTION_SCHEMA
+        and database_fenced_provider_historical_retained_consumption_valid(
+            value
+        )
+    )
+
+
+def _database_fenced_provider_any_retained_consumption_valid(value: Any) -> bool:
+    """Dispatch a compact consumption by its closed schema."""
+
+    if not isinstance(value, Mapping):
+        return False
+    schema = value.get("schema")
+    if schema in {
+        DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_SCHEMA,
+        DATABASE_PCTDD005_SUCCESSOR_CONSUMPTION_SCHEMA,
+    }:
+        return database_fenced_provider_retained_consumption_valid(value)
+    if schema in {
+        DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_CONSUMPTION_SCHEMA,
+        DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_CONSUMPTION_SCHEMA,
+    }:
+        return database_fenced_provider_historical_retained_consumption_valid(
+            value
+        )
+    return False
+
+
 def database_fenced_provider_retained_consumption_matches_admission(
     *,
     admission: Any,
@@ -80610,6 +81036,84 @@ def database_fenced_provider_retained_consumption_matches_admission(
         == consumption.get("expected_task_revision") + 1
         and consumption.get("resulting_task_status") == "in_progress"
     )
+
+
+def database_fenced_provider_historical_retained_consumption_matches_admission(
+    *,
+    admission: Any,
+    consumption: Any,
+) -> bool:
+    """Close an @4/@5 consumption over its exact split-store admission."""
+
+    if not (
+        database_fenced_provider_historical_retained_admission_valid(admission)
+        and database_fenced_provider_historical_retained_consumption_valid(
+            consumption
+        )
+    ):
+        return False
+    admission_authority = _database_fenced_provider_historical_recovery_authority(
+        admission
+    )
+    consumption_authority = (
+        _database_fenced_provider_historical_recovery_authority(consumption)
+    )
+    exact = (
+        "manifest_id",
+        "credit_id",
+        "occurrence_id",
+        "task_cid",
+        "task_alias",
+        "recovery_mode",
+        "candidate_disposition",
+        "historical_occurrence_authority_id",
+        "controller_quiescence_receipt_id",
+    )
+    return bool(
+        admission_authority is not None
+        and consumption_authority is not None
+        and admission_authority["admission_schema"] == admission.get("schema")
+        and consumption_authority["consumption_schema"]
+        == consumption.get("schema")
+        and consumption.get("admission_id") == admission.get("admission_id")
+        and all(consumption.get(name) == admission.get(name) for name in exact)
+        and consumption.get("expected_task_revision")
+        == admission.get("expected_task_revision") + 1
+        and consumption.get("expected_task_status") == "retrying"
+        and consumption.get("resulting_task_revision")
+        == consumption.get("expected_task_revision") + 1
+        and consumption.get("resulting_task_status") == "in_progress"
+    )
+
+
+def _database_fenced_provider_any_retained_consumption_matches_admission(
+    *,
+    admission: Any,
+    consumption: Any,
+) -> bool:
+    """Require both records to select the same closed authority generation."""
+
+    if not isinstance(admission, Mapping) or not isinstance(
+        consumption, Mapping
+    ):
+        return False
+    if admission.get("schema") in {
+        DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
+        DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA,
+    }:
+        return database_fenced_provider_retained_consumption_matches_admission(
+            admission=admission,
+            consumption=consumption,
+        )
+    if admission.get("schema") in {
+        DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA,
+        DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA,
+    }:
+        return database_fenced_provider_historical_retained_consumption_matches_admission(
+            admission=admission,
+            consumption=consumption,
+        )
+    return False
 
 
 def _database_fenced_provider_reconciliation_valid(
@@ -80746,6 +81250,67 @@ def database_pctdd005_successor_reconciliation_valid(value: Any) -> bool:
     )
 
 
+def database_fenced_provider_historical_retained_reconciliation_valid(
+    value: Any,
+) -> bool:
+    """Validate the additive @4 split-store three-occurrence aggregate."""
+
+    try:
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+        )
+    except Exception:
+        return False
+    return _database_fenced_provider_reconciliation_valid(
+        value,
+        schema=DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_RECONCILIATION_SCHEMA,
+        pins=tuple(DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS),
+    )
+
+
+def database_pctdd005_historical_successor_reconciliation_valid(
+    value: Any,
+) -> bool:
+    """Validate the additive @5 split-store singleton aggregate."""
+
+    try:
+        from .database_portal_bridge import (
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+        )
+    except Exception:
+        return False
+    return _database_fenced_provider_reconciliation_valid(
+        value,
+        schema=DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_RECONCILIATION_SCHEMA,
+        pins=(DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,),
+    )
+
+
+def database_fenced_provider_any_retained_reconciliation_valid(
+    value: Any,
+) -> bool:
+    """Dispatch a terminal aggregate only by its explicit closed schema."""
+
+    if not isinstance(value, Mapping):
+        return False
+    validators = {
+        DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA: (
+            database_fenced_provider_retained_reconciliation_valid
+        ),
+        DATABASE_PCTDD005_SUCCESSOR_RECONCILIATION_SCHEMA: (
+            database_pctdd005_successor_reconciliation_valid
+        ),
+        DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_RECONCILIATION_SCHEMA: (
+            database_fenced_provider_historical_retained_reconciliation_valid
+        ),
+        DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_RECONCILIATION_SCHEMA: (
+            database_pctdd005_historical_successor_reconciliation_valid
+        ),
+    }
+    validator = validators.get(value.get("schema"))
+    return bool(validator is not None and validator(value))
+
+
 def database_fenced_provider_retained_consumption(
     *,
     admission: Mapping[str, Any],
@@ -80824,6 +81389,100 @@ def database_fenced_provider_retained_consumption(
     if not database_fenced_provider_retained_consumption_valid(record):
         raise DatabaseImplementationConflictError(
             "retained recovery consumption failed closed validation"
+        )
+    return MappingProxyType(record)
+
+
+def database_fenced_provider_historical_retained_consumption(
+    *,
+    admission: Mapping[str, Any],
+    attempt_id: str,
+    claim_id: str,
+    lease_id: str,
+    owner_session_id: str,
+    attempt_number: int,
+    fencing_token: int,
+    fence_epoch: int,
+    expected_task_revision: int,
+    expected_task_status: str,
+    resulting_task_revision: int,
+    resulting_task_status: str,
+) -> Mapping[str, Any]:
+    """Construct one durable @4/@5 consumption before worker creation."""
+
+    if not database_fenced_provider_historical_retained_admission_valid(
+        admission
+    ):
+        raise DatabaseImplementationConflictError(
+            "historical retained consumption requires an exact admission"
+        )
+    admitted = dict(admission)
+    authority = _database_fenced_provider_historical_recovery_authority(
+        admitted
+    )
+    if (
+        authority is None
+        or expected_task_status != "retrying"
+        or resulting_task_status != "in_progress"
+        or type(expected_task_revision) is not int
+        or type(resulting_task_revision) is not int
+        or resulting_task_revision != expected_task_revision + 1
+        or expected_task_revision
+        != int(admitted["expected_task_revision"]) + 1
+        or any(
+            type(value) is not str or not value
+            for value in (attempt_id, claim_id, lease_id, owner_session_id)
+        )
+        or any(
+            type(value) is not int or value < minimum
+            for value, minimum in (
+                (attempt_number, 1),
+                (fencing_token, 0),
+                (fence_epoch, 0),
+            )
+        )
+    ):
+        raise DatabaseImplementationConflictError(
+            "historical retained consumption transition is invalid"
+        )
+    record: dict[str, Any] = {
+        "schema": authority["consumption_schema"],
+        "admission_id": admitted["admission_id"],
+        "manifest_id": admitted["manifest_id"],
+        "credit_id": admitted["credit_id"],
+        "occurrence_id": admitted["occurrence_id"],
+        "task_cid": admitted["task_cid"],
+        "task_alias": admitted["task_alias"],
+        "recovery_mode": admitted["recovery_mode"],
+        "candidate_disposition": admitted["candidate_disposition"],
+        "historical_occurrence_authority_id": admitted[
+            "historical_occurrence_authority_id"
+        ],
+        "controller_quiescence_receipt_id": admitted[
+            "controller_quiescence_receipt_id"
+        ],
+        "attempt_id": attempt_id,
+        "claim_id": claim_id,
+        "lease_id": lease_id,
+        "owner_session_id": owner_session_id,
+        "attempt_number": attempt_number,
+        "fencing_token": fencing_token,
+        "fence_epoch": fence_epoch,
+        "expected_task_revision": expected_task_revision,
+        "expected_task_status": expected_task_status,
+        "resulting_task_revision": resulting_task_revision,
+        "resulting_task_status": resulting_task_status,
+        "consumed_before_worker_start": True,
+        "one_shot": True,
+    }
+    record["consumption_id"] = _database_fenced_provider_retained_digest(
+        record
+    )
+    if not database_fenced_provider_historical_retained_consumption_valid(
+        record
+    ):
+        raise DatabaseImplementationConflictError(
+            "historical retained consumption failed closed validation"
         )
     return MappingProxyType(record)
 
@@ -89242,7 +89901,7 @@ class DatabaseImplementationDaemon:
     ) -> bool:
         """Bind an exact consumed pair to its current canonical task epoch."""
 
-        if not database_fenced_provider_retained_consumption_matches_admission(
+        if not _database_fenced_provider_any_retained_consumption_matches_admission(
             admission=admission,
             consumption=consumption,
         ):
@@ -89360,7 +90019,7 @@ class DatabaseImplementationDaemon:
     ) -> bool:
         """Bind an admission to the recomputed fence for its sole pin."""
 
-        if not database_fenced_provider_retained_admission_valid(admission):
+        if not _database_fenced_provider_any_retained_admission_valid(admission):
             return False
         occurrence = _database_fenced_provider_retained_occurrence_for_admission(
             admission
@@ -89382,7 +90041,7 @@ class DatabaseImplementationDaemon:
     ) -> bool:
         """Prevent a valid one-shot admission from being spliced to a peer."""
 
-        if not database_fenced_provider_retained_admission_valid(admission):
+        if not _database_fenced_provider_any_retained_admission_valid(admission):
             return False
         receipt = dict(
             getattr(task, "body", {}).get("completion_receipt") or {}
@@ -89451,13 +90110,13 @@ class DatabaseImplementationDaemon:
     ) -> bool:
         """Require only the closed population belonging to this admission."""
 
-        authority = _database_fenced_provider_recovery_authority(admission)
+        authority = _database_fenced_provider_any_recovery_authority(admission)
         if authority is None:
             return False
-        if (
-            authority["admission_schema"]
-            == DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
-        ):
+        if authority["admission_schema"] in {
+            DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
+            DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA,
+        }:
             # Preserve the independently tested @2 aggregate barrier.
             return self._retained_recovery_aggregate_admitted_current()
         try:
@@ -89605,25 +90264,42 @@ class DatabaseImplementationDaemon:
                 DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
             )
 
-            _authority = _database_fenced_provider_recovery_authority(
+            authority_builder = (
+                _database_fenced_provider_historical_recovery_authority
+                if isinstance(value, Mapping)
+                and value.get("schema")
+                == DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_RECONCILIATION_SCHEMA
+                else _database_fenced_provider_recovery_authority
+            )
+            _authority = authority_builder(
                 {
                     "manifest_id": (
                         DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
-                    ),
-                    "schema": (
-                        DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
                     ),
                 }
             )
         if _authority is None:
             return False
         pins = tuple(_authority["pins"])
-        validator = (
-            database_fenced_provider_retained_reconciliation_valid
-            if _authority["admission_schema"]
-            == DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
-            else database_pctdd005_successor_reconciliation_valid
+        reconciliation_validators = {
+            DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA: (
+                database_fenced_provider_retained_reconciliation_valid
+            ),
+            DATABASE_PCTDD005_SUCCESSOR_RECONCILIATION_SCHEMA: (
+                database_pctdd005_successor_reconciliation_valid
+            ),
+            DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_RECONCILIATION_SCHEMA: (
+                database_fenced_provider_historical_retained_reconciliation_valid
+            ),
+            DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_RECONCILIATION_SCHEMA: (
+                database_pctdd005_historical_successor_reconciliation_valid
+            ),
+        }
+        validator = reconciliation_validators.get(
+            _authority["reconciliation_schema"]
         )
+        if validator is None:
+            return False
         if not validator(value):
             return False
         try:
@@ -89640,6 +90316,20 @@ class DatabaseImplementationDaemon:
                 )
                 admission = receipt.get("retained_recovery_admission")
                 consumption = receipt.get("retained_recovery_consumption")
+                if (
+                    not isinstance(admission, Mapping)
+                    or admission.get("schema")
+                    != _authority["admission_schema"]
+                    or (
+                        consumption is not None
+                        and (
+                            not isinstance(consumption, Mapping)
+                            or consumption.get("schema")
+                            != _authority["consumption_schema"]
+                        )
+                    )
+                ):
+                    return False
                 if outcome["reason"] == "retained_occurrence_already_consumed":
                     if not (
                         self._retained_recovery_consumption_is_current(
@@ -89675,10 +90365,10 @@ class DatabaseImplementationDaemon:
                     return False
         except Exception:
             return False
-        if (
-            _authority["admission_schema"]
-            == DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
-        ):
+        if _authority["admission_schema"] in {
+            DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
+            DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA,
+        }:
             return self._retained_recovery_aggregate_admitted_current()
         first_task = self.task_source.get(str(pins[0]["task_cid"]))
         receipt = dict(
@@ -89702,10 +90392,16 @@ class DatabaseImplementationDaemon:
             DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
         )
 
-        authority = _database_fenced_provider_recovery_authority(
+        authority_builder = (
+            _database_fenced_provider_historical_recovery_authority
+            if isinstance(value, Mapping)
+            and value.get("schema")
+            == DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_RECONCILIATION_SCHEMA
+            else _database_fenced_provider_recovery_authority
+        )
+        authority = authority_builder(
             {
                 "manifest_id": DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
-                "schema": DATABASE_PCTDD005_SUCCESSOR_ADMISSION_SCHEMA,
             }
         )
         return bool(
@@ -90158,7 +90854,7 @@ class DatabaseImplementationDaemon:
             else prior_receipt.get("retained_recovery_consumption")
         )
         if retained_admission is not None:
-            if not database_fenced_provider_retained_admission_valid(
+            if not _database_fenced_provider_any_retained_admission_valid(
                 retained_admission
             ):
                 raise DatabaseImplementationConflictError(
@@ -90170,7 +90866,7 @@ class DatabaseImplementationDaemon:
         if retained_consumption is not None:
             if (
                 retained_admission is None
-                or not database_fenced_provider_retained_consumption_matches_admission(
+                or not _database_fenced_provider_any_retained_consumption_matches_admission(
                     admission=retained_admission,
                     consumption=retained_consumption,
                 )
@@ -90492,7 +91188,7 @@ class DatabaseImplementationDaemon:
         return bool(
             task_admission == attempt_admission
             and task_consumption == attempt_consumption
-            and database_fenced_provider_retained_consumption_matches_admission(
+            and _database_fenced_provider_any_retained_consumption_matches_admission(
                 admission=task_admission,
                 consumption=task_consumption,
             )
@@ -90532,7 +91228,7 @@ class DatabaseImplementationDaemon:
         current = self.get_attempt(attempt.attempt_id) or attempt
         budget = dict(current.body.get("retry_budget") or {})
         retained_one_shot_consumed = (
-            database_fenced_provider_retained_consumption_matches_admission(
+            _database_fenced_provider_any_retained_consumption_matches_admission(
                 admission=budget.get("retained_recovery_admission"),
                 consumption=budget.get("retained_recovery_consumption"),
             )
@@ -95038,6 +95734,7 @@ class DatabaseImplementationDaemon:
         self,
         *,
         _authority: Mapping[str, Any] | None = None,
+        controller_quiescence_receipt: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Admit the three exact @2 occurrences without starting a worker.
 
@@ -95067,6 +95764,26 @@ class DatabaseImplementationDaemon:
         if _authority is None:
             raise DatabaseImplementationConflictError(
                 "retained recovery authority is unavailable"
+            )
+        if controller_quiescence_receipt is not None:
+            historical_authority = (
+                _database_fenced_provider_historical_recovery_authority(
+                    {"manifest_id": str(_authority["manifest_id"])}
+                )
+            )
+            if historical_authority is None:
+                raise DatabaseImplementationConflictError(
+                    "historical retained recovery authority is unavailable"
+                )
+            _authority = historical_authority
+        elif _database_fenced_provider_historical_recovery_authority(
+            {
+                "manifest_id": str(_authority["manifest_id"]),
+                "schema": str(_authority["admission_schema"]),
+            }
+        ) is not None:
+            raise DatabaseImplementationConflictError(
+                "historical retained recovery requires controller quiescence"
             )
         pins = tuple(_authority["pins"])
         manifest_builder = _authority["manifest_builder"]
@@ -95127,6 +95844,11 @@ class DatabaseImplementationDaemon:
                 consumption = receipt.get("retained_recovery_consumption")
                 if admission is not None and consumption is not None:
                     if not (
+                        admission.get("schema")
+                        == _authority["admission_schema"]
+                        and consumption.get("schema")
+                        == _authority["consumption_schema"]
+                        and
                         self._retained_recovery_consumption_is_current(
                             task,
                             admission=admission,
@@ -95161,9 +95883,11 @@ class DatabaseImplementationDaemon:
                         and str(task.status or "").strip().lower() == "retrying"
                         and int(task.revision)
                         == int(pin["blocked_task_revision"]) + 1
-                        and database_fenced_provider_retained_admission_valid(
+                        and _database_fenced_provider_any_retained_admission_valid(
                             admission
                         )
+                        and admission.get("schema")
+                        == _authority["admission_schema"]
                         and admission.get("occurrence_id")
                         == _database_fenced_provider_retained_digest(pin)
                         and self._retained_recovery_admission_fence_is_current(
@@ -95304,6 +96028,11 @@ class DatabaseImplementationDaemon:
 
                 if current_admission is not None and current_consumption is not None:
                     if not (
+                        current_admission.get("schema")
+                        == _authority["admission_schema"]
+                        and current_consumption.get("schema")
+                        == _authority["consumption_schema"]
+                        and
                         self._retained_recovery_consumption_is_current(
                             task,
                             admission=current_admission,
@@ -95354,9 +96083,11 @@ class DatabaseImplementationDaemon:
                         and current_status == "retrying"
                         and int(task.revision)
                         == int(pin["blocked_task_revision"]) + 1
-                        and database_fenced_provider_retained_admission_valid(
+                        and _database_fenced_provider_any_retained_admission_valid(
                             current_admission
                         )
+                        and current_admission.get("schema")
+                        == _authority["admission_schema"]
                         and current_admission.get("task_cid") == task_cid
                         and self._retained_recovery_admission_fence_is_current(
                             current_admission,
@@ -95430,6 +96161,32 @@ class DatabaseImplementationDaemon:
                     receipt_nonce=str(pin["receipt_nonce"]),
                     receipt_epoch=int(pin["receipt_epoch"]),
                 )
+                historical_authority: Mapping[str, Any] | None = None
+                if controller_quiescence_receipt is not None:
+                    from ..task_sources.retained_recovery_contracts import (
+                        database_fenced_provider_historical_occurrence_authority,
+                        database_portal_controller_quiescence_receipt_valid,
+                    )
+
+                    if not database_portal_controller_quiescence_receipt_valid(
+                        controller_quiescence_receipt
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "retained recovery controller quiescence is invalid"
+                        )
+                    historical_authority = (
+                        database_fenced_provider_historical_occurrence_authority(
+                            inner_receipt=inner_receipt,
+                            controller_quiescence_receipt=(
+                                controller_quiescence_receipt
+                            ),
+                            board_namespace=str(pin["board_namespace"]),
+                            owner_store_id=str(pin["owner_store_id"]),
+                            control_store_generation=str(
+                                pin["control_store_generation"]
+                            ),
+                        )
+                    )
                 admission_box: dict[str, Mapping[str, Any]] = {}
 
                 def admit(
@@ -95442,15 +96199,41 @@ class DatabaseImplementationDaemon:
                     _task: PortalTask = task,
                     _admission_box: dict[str, Mapping[str, Any]] = admission_box,
                     _task_cid: str = task_cid,
+                    _historical_authority: Mapping[str, Any] | None = (
+                        historical_authority
+                    ),
+                    _controller_quiescence: Mapping[str, Any] | None = (
+                        controller_quiescence_receipt
+                    ),
                 ) -> Any:
-                    admission = database_fenced_provider_retained_admission(
-                        occurrence=_pin,
-                        credit=_credit,
-                        inner_receipt=_inner_receipt,
-                        outer_receipt=outer_receipt,
-                        expected_task_revision=int(_task.revision),
-                        expected_task_status=str(_task.status),
-                    )
+                    admission_kwargs = {
+                        "occurrence": _pin,
+                        "credit": _credit,
+                        "inner_receipt": _inner_receipt,
+                        "outer_receipt": outer_receipt,
+                        "expected_task_revision": int(_task.revision),
+                        "expected_task_status": str(_task.status),
+                    }
+                    if _historical_authority is not None:
+                        if _controller_quiescence is None:
+                            raise DatabaseImplementationConflictError(
+                                "historical admission lost controller receipt"
+                            )
+                        admission = (
+                            database_fenced_provider_historical_retained_admission(
+                                **admission_kwargs,
+                                historical_occurrence_authority=(
+                                    _historical_authority
+                                ),
+                                controller_quiescence_receipt=(
+                                    _controller_quiescence
+                                ),
+                            )
+                        )
+                    else:
+                        admission = database_fenced_provider_retained_admission(
+                            **admission_kwargs
+                        )
                     budget = self._retry_budget_state(_task)
                     retry_cap = int(budget["max_task_attempts"])
                     receipt = self._retry_budget_receipt(
@@ -95500,6 +96283,13 @@ class DatabaseImplementationDaemon:
                     "receipt_nonce": str(pin["receipt_nonce"]),
                     "receipt_epoch": int(pin["receipt_epoch"]),
                 }
+                if historical_authority is not None:
+                    subject["historical_occurrence_authority"] = dict(
+                        historical_authority
+                    )
+                    subject["controller_quiescence_receipt"] = dict(
+                        controller_quiescence_receipt
+                    )
                 try:
                     outer_authority(subject=subject, callback=admit)
                 except Exception:
@@ -95523,7 +96313,7 @@ class DatabaseImplementationDaemon:
                     and str(current.status).strip().lower() == "retrying"
                     and int(current.revision) == int(task.revision) + 1
                     and observed_admission == dict(admission)
-                    and database_fenced_provider_retained_admission_valid(
+                    and _database_fenced_provider_any_retained_admission_valid(
                         observed_admission
                     )
                 ):
@@ -95644,10 +96434,10 @@ class DatabaseImplementationDaemon:
 
         population_current = False
         if not provisional_blocked:
-            if (
-                _authority["admission_schema"]
-                == DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
-            ):
+            if _authority["admission_schema"] in {
+                DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
+                DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA,
+            }:
                 population_current = (
                     self._retained_recovery_aggregate_admitted_current()
                 )
@@ -95685,7 +96475,11 @@ class DatabaseImplementationDaemon:
             "outcomes": outcomes,
         }
 
-    def reconcile_pctdd005_successor_occurrence(self) -> dict[str, Any]:
+    def reconcile_pctdd005_successor_occurrence(
+        self,
+        *,
+        controller_quiescence_receipt: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Independently admit the exact singleton PCTDD-005 r26 successor."""
 
         from .database_portal_bridge import (
@@ -95703,7 +96497,8 @@ class DatabaseImplementationDaemon:
                 "PCTDD-005 successor authority is unavailable"
             )
         return self.reconcile_retained_fenced_provider_occurrences(
-            _authority=authority
+            _authority=authority,
+            controller_quiescence_receipt=controller_quiescence_receipt,
         )
 
     def reconcile_blocked_unknown_outcome_tasks(self) -> list[dict[str, Any]]:
@@ -97166,8 +97961,15 @@ class DatabaseImplementationDaemon:
                     now_ms=self._now_ms(),
                 )
                 return None
+            consumption_builder = (
+                database_fenced_provider_historical_retained_consumption
+                if database_fenced_provider_historical_retained_admission_valid(
+                    retained_admission
+                )
+                else database_fenced_provider_retained_consumption
+            )
             retained_consumption = (
-                database_fenced_provider_retained_consumption(
+                consumption_builder(
                     admission=retained_admission,
                     attempt_id=str(claim.attempt_id),
                     claim_id=str(claim.claim_id),
@@ -100845,7 +101647,7 @@ class DatabaseImplementationDaemon:
             ) and bool(
                 isinstance(admission, Mapping)
                 and isinstance(consumption, Mapping)
-                and database_fenced_provider_retained_consumption_matches_admission(
+                and _database_fenced_provider_any_retained_consumption_matches_admission(
                     admission=admission,
                     consumption=consumption,
                 )
@@ -101089,7 +101891,7 @@ class DatabaseImplementationDaemon:
                 (set(receipt) == required_fields or set(receipt) == allowed_fields)
                 and isinstance(admission, Mapping)
                 and isinstance(consumption, Mapping)
-                and database_fenced_provider_retained_consumption_matches_admission(
+                and _database_fenced_provider_any_retained_consumption_matches_admission(
                     admission=admission,
                     consumption=consumption,
                 )
@@ -101285,7 +102087,7 @@ class DatabaseImplementationDaemon:
             if not (is_consumed_orphan or is_already_blocked):
                 plans.append({"action": "skip", "pin": pin})
                 continue
-            if not database_fenced_provider_retained_consumption_matches_admission(
+            if not _database_fenced_provider_any_retained_consumption_matches_admission(
                 admission=admission,
                 consumption=consumption,
             ):
@@ -101729,7 +102531,7 @@ class DatabaseImplementationDaemon:
                 "retained_recovery_consumption"
             )
             consumed_retained_recovery = bool(
-                database_fenced_provider_retained_consumption_matches_admission(
+                _database_fenced_provider_any_retained_consumption_matches_admission(
                     admission=receipt.get("retained_recovery_admission"),
                     consumption=retained_consumption,
                 )

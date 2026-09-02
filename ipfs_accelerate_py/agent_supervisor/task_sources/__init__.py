@@ -64,6 +64,7 @@ TASK_SOURCES_OWNED_MODULES: Final[tuple[str, ...]] = (
     "duckdb_task_source",
     "markdown_task_source",
     "persistent_task_queue",
+    "retained_recovery_contracts",
     "task_identity",
     "task_source",
     "taskboard_store",
