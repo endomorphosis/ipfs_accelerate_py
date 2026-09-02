@@ -146,8 +146,10 @@ _M57_SUCCESSOR_KEY = (
 _M57_TARGET_PROJECTION_CID = (
     "baguqeerabphddilf44cxwqvyhfauvfxskeuczbgnwmzbb33dmtj6vpmgyexq"
 )
-_M58_AUTHORITY_CID = "sha256:PENDING_M58_FINAL_CONTROL_AUTHORITY_CID"
-_M58_AUTHORITY_SIZE = 0
+_M58_AUTHORITY_CID = (
+    "sha256:15ebae9f9d70de663235e87e89c27648db573e12c2292fff5bc8cd0dfcf65964"
+)
+_M58_AUTHORITY_SIZE = 42_828
 _M58_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M58_FINAL_CONTROL_AUTHORITY_CID"
 _M58_SUCCESSOR_KEY = (
     "post_m57_stall_unblock_and_shutdown_fence_restart_successor_materialization"

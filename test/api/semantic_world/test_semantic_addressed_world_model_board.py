@@ -778,10 +778,10 @@ def _reidentify_extension_projection(pin: dict[str, object]) -> None:
     ).hexdigest()
 
 
-def test_m58_stall_unblock_shutdown_fence_authority_is_exact_for_c1() -> None:
+def test_m58_stall_unblock_shutdown_fence_authority_is_exact_for_c2() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
-        "sawm_materializer_m58_c1_authority_test",
+        "sawm_materializer_m58_c2_authority_test",
     )
     authority = (
         materializer
@@ -790,15 +790,17 @@ def test_m58_stall_unblock_shutdown_fence_authority_is_exact_for_c1() -> None:
     contract = materializer._validated_m58_live_preflight_contract(authority)
 
     assert materializer._M58_AUTHORITY_CID == (
-        "sha256:PENDING_M58_FINAL_CONTROL_AUTHORITY_CID"
+        "sha256:15ebae9f9d70de663235e87e89c27648db573e12c2292fff5bc8cd0dfcf65964"
     )
-    assert materializer._M58_AUTHORITY_SIZE == 0
-    assert materializer._identity(authority) != materializer._M58_AUTHORITY_CID
-    assert len(materializer._canonical(authority)) > materializer._M58_AUTHORITY_SIZE
+    assert materializer._M58_AUTHORITY_SIZE == 42_828
+    assert materializer._identity(authority) == materializer._M58_AUTHORITY_CID
+    assert len(materializer._canonical(authority)) == materializer._M58_AUTHORITY_SIZE
     assert materializer._m58_authority_reference() == {
         "schema": "sawm/operator-control-authority-reference@1",
         "migration_revision": "SAWM-R2-M58",
-        "authority_cid": "sha256:PENDING_M58_FINAL_CONTROL_AUTHORITY_CID",
+        "authority_cid": (
+            "sha256:15ebae9f9d70de663235e87e89c27648db573e12c2292fff5bc8cd0dfcf65964"
+        ),
     }
     assert authority["migration_revision"] == "SAWM-R2-M58"
     assert authority["target_generation"] == 43
@@ -944,17 +946,21 @@ def test_m58_stall_unblock_shutdown_fence_source_chain_is_exact_for_c1() -> None
         },
     }
     assert chain["initial_control"] == {
-        "commit": "PENDING_M58_INITIAL_CONTROL_COMMIT",
+        "commit": "be578131d06c7f2c255f21f0d166bdc3c7f8bb04",
         "parent": "af9a3ec70bef264eea4d6a344f2c38eb928bdd15",
-        "tree": "PENDING_M58_INITIAL_CONTROL_TREE",
-        "binary_diff_sha256": "PENDING_M58_INITIAL_CONTROL_DIFF_SHA256",
+        "tree": "8ecbee701281f4316bbdac27fb26d50bb2ae79eb",
+        "binary_diff_sha256": (
+            "0fdb74c83e196b48e6916958f0d0f8b41d39acf74574245451eea4a317723335"
+        ),
         "changed_paths": list(materializer._M58_FINAL_CONTROL_PATHS),
         "pre_authoritative": True,
         "database_mutations": 0,
         "task_status_changes": 0,
         "accepted_completion_changes": 0,
     }
-    assert chain["final_control_parent"] == "PENDING_M58_INITIAL_CONTROL_COMMIT"
+    assert chain["final_control_parent"] == (
+        "be578131d06c7f2c255f21f0d166bdc3c7f8bb04"
+    )
     assert chain["repair_commit_count"] == 5
     assert chain["initial_control_commit_count"] == 1
     assert chain["final_control_commit_count"] == 1
