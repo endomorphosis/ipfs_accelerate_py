@@ -1757,12 +1757,35 @@ def test_fenced_provider_destroyed_candidate_ref_state_is_fail_closed(
     )
     branch_ref = git_dir / "refs" / "heads" / "implementation" / "pctdd-006-a1"
     branch_ref.write_text(baseline + "\n", encoding="ascii")
-    assert ref_state(repo, branch=branch, baseline_ref=baseline) == (
-        "baseline",
-        baseline,
-    )
+    assert ref_state(repo, branch=branch, baseline_ref=baseline) is None
     branch_ref.write_text("b" * 40 + "\n", encoding="ascii")
     assert ref_state(repo, branch=branch, baseline_ref=baseline) is None
+
+
+def test_fenced_provider_migration_is_typed_unavailable_without_sealed_pins(
+) -> None:
+    assert (
+        database_portal_bridge_module.
+        DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_STATUS
+        == "unavailable_missing_authenticated_occurrence_pins"
+    )
+    assert (
+        database_portal_bridge_module.
+        DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS
+        == ()
+    )
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    attempt = _attempt()
+    outer_receipt = {"reason": "callback_authority_incomplete_blocked"}
+
+    assert bridge.fenced_provider_unpublished_migration_available(
+        attempt,
+        outer_block_receipt=outer_receipt,
+    ) is False
+    assert bridge._fenced_provider_unpublished_rearm_evidence(
+        attempt,
+        outer_receipt,
+    ) is None
 
 
 def test_fenced_provider_revalidation_blocks_workspace_and_ref_races(

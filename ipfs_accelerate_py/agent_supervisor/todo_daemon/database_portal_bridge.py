@@ -178,6 +178,17 @@ DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_AUTHORIZATION_SCHEMA: Final[
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-fenced-provider-unpublished-rearm-authorization@1"
 )
+# A started provider is not a reusable evidence profile.  Recovery is enabled
+# only for immutable occurrences copied here from an independently
+# authenticated source.  No such complete occurrence pins are currently
+# available, so the migration remains explicitly unavailable rather than
+# widening to task aliases, attempt counters, or classifier matches.
+DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_STATUS: Final[str] = (
+    "unavailable_missing_authenticated_occurrence_pins"
+)
+DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS: Final[
+    tuple[Mapping[str, Any], ...]
+] = ()
 _STALE_DISPATCH_MIGRATION_REPLAY_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "reconciled",
@@ -991,9 +1002,11 @@ def _fenced_provider_branch_state(
     """Prove that a destroyed candidate has no unpublished branch delta.
 
     This deliberately reads Git's ref store directly instead of invoking Git
-    or a hook-bearing repository command.  A loose ref may be absent or point
-    exactly at the recorded baseline.  Packed refs are checked when no loose
-    ref exists; malformed or duplicate entries fail closed.
+    or a hook-bearing repository command.  The branch must be absent.  Even a
+    ref that points at the recorded baseline is retained candidate state and
+    is therefore not evidence that the destroyed occurrence is unpublished.
+    Packed refs are checked when no loose ref exists; malformed or duplicate
+    entries fail closed.
     """
 
     branch_path = PurePosixPath(branch)
@@ -1049,16 +1062,7 @@ def _fenced_provider_branch_state(
             ).resolve(strict=True)
         loose = common_dir / "refs" / "heads" / Path(*branch_path.parts)
         if loose.exists() or loose.is_symlink():
-            if (
-                loose.is_symlink()
-                or not loose.is_file()
-                or loose.stat().st_size > 256
-            ):
-                return None
-            target = loose.read_text(encoding="ascii").strip()
-            if target != baseline_ref:
-                return None
-            return "baseline", target
+            return None
         packed = common_dir / "packed-refs"
         if not packed.exists():
             return "absent", ""
@@ -1076,11 +1080,57 @@ def _fenced_provider_branch_state(
                 targets.append(pieces[0])
         if not targets:
             return "absent", ""
-        if len(targets) != 1 or targets[0] != baseline_ref:
-            return None
-        return "baseline", targets[0]
+        return None
     except (OSError, UnicodeError, ValueError):
         return None
+
+
+def _fenced_provider_unpublished_migration_pin(
+    attempt: Any,
+    receipt: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Select one exact, complete, independently authenticated occurrence.
+
+    The outer tuple and block digest are checked before any nested verifier is
+    entered.  A usable pin must then equal the complete evidence record, so
+    adding a future migration occurrence cannot silently omit nested binding,
+    event, reconciliation, workspace, or branch authority.
+    """
+
+    outer = {
+        "schema": DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA,
+        "attempt_id": str(attempt.attempt_id),
+        "claim_id": str(attempt.claim_id),
+        "task_cid": str(attempt.task_cid),
+        "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+        "attempt_number": int(attempt.attempt_number),
+        "owner_session_id": str(attempt.owner_session_id),
+        "lease_id": str(attempt.lease_id),
+        "fencing_token": int(attempt.fencing_token),
+        "fence_epoch": int(attempt.fence_epoch),
+        "outer_block_receipt_digest": _sha256_bytes(
+            _canonical_json(dict(receipt))
+        ),
+    }
+    matches: list[Mapping[str, Any]] = []
+    for candidate in DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS:
+        if (
+            isinstance(candidate, Mapping)
+            and set(candidate)
+            == DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_FIELDS
+            and all(
+                type(candidate.get(name)) is type(value)
+                and candidate.get(name) == value
+                for name, value in outer.items()
+            )
+            and candidate.get("branch_disposition") == "absent"
+            and candidate.get("branch_target") == ""
+            and candidate.get("workspace_absent") is True
+        ):
+            matches.append(candidate)
+    if len(matches) != 1:
+        return None
+    return matches[0]
 _QUIESCED_STALE_DISPATCH_RELEASE_ALLOWED_EVENT_TYPES: Final[frozenset[str]] = (
     frozenset(
         {
@@ -11497,6 +11547,16 @@ class DatabasePortalExecutionBridge:
         validation/commit/merge/completion events.
         """
 
+        try:
+            migration_pin = _fenced_provider_unpublished_migration_pin(
+                attempt,
+                receipt,
+            )
+        except (TypeError, ValueError):
+            return None
+        if migration_pin is None:
+            return None
+
         link = receipt.get("terminal_reconciliation")
         if type(link) is not dict:
             return None
@@ -12203,7 +12263,28 @@ class DatabasePortalExecutionBridge:
                 "fenced provider evidence field construction drifted"
             )
         evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
+        if _canonical_json(dict(migration_pin)) != _canonical_json(evidence):
+            return None
         return evidence
+
+    def fenced_provider_unpublished_migration_available(
+        self,
+        attempt: Any,
+        *,
+        outer_block_receipt: Mapping[str, Any],
+    ) -> bool:
+        """Report whether the exact outer occurrence has a sealed pin."""
+
+        try:
+            return (
+                _fenced_provider_unpublished_migration_pin(
+                    attempt,
+                    dict(outer_block_receipt),
+                )
+                is not None
+            )
+        except (TypeError, ValueError):
+            return False
 
     def revalidate_fenced_provider_unpublished_rearm_evidence(
         self,
@@ -12247,7 +12328,7 @@ class DatabasePortalExecutionBridge:
 
         The provider/container is never restarted here.  The exact immutable
         fence and release populations, current quiescent snapshot, destroyed
-        workspace, and absent-or-baseline candidate ref are checked directly
+        workspace, and absent candidate ref are checked directly
         before and after the callback.  Any advance fails into the caller's
         existing fenced compensation saga.
         """

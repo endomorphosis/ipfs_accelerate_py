@@ -3076,7 +3076,7 @@ def test_quiesced_release_started_journal_admits_only_exact_current_tuple(
     ]
 
 
-def test_fenced_provider_started_journal_selects_consuming_successor() -> None:
+def test_fenced_provider_started_journal_requires_sealed_migration_pin() -> None:
     case = _quiesced_release_started_selector_case(
         task_alias="PCTDD-006",
         attempt_number=1,
@@ -3095,14 +3095,8 @@ def test_fenced_provider_started_journal_selects_consuming_successor() -> None:
         case.receipt,
     )
 
-    assert admitted is not None
-    assert admitted["schema"] == (
-        DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA
-    )
-    assert admitted["attempt_consumed"] is True
-    assert admitted["retry_authorized_once"] is True
-    assert admitted["effect_admitted"] is False
-    assert case.calls["verifier"] == [case.attempt]
+    assert admitted is None
+    assert case.calls["verifier"] == []
     assert case.calls["effect"] == [
         (
             (case.attempt.attempt_id,),
@@ -7186,6 +7180,7 @@ def test_fenced_provider_unpublished_evidence_validator_is_closed() -> None:
         ("effect_admitted", True),
         ("candidate_ref_delta", True),
         ("workspace_absent", False),
+        ("branch_disposition", "baseline"),
         ("attempt_consumed", False),
         ("provider_runner_started", False),
         ("terminal_provider_evidence_present", True),

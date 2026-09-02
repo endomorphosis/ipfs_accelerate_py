@@ -83048,14 +83048,8 @@ class DatabaseImplementationDaemon:
                 and re.fullmatch(
                     r"[0-9a-f]{40,64}", str(record.get("baseline_ref") or "")
                 )
-                and branch_disposition in {"absent", "baseline"}
-                and (
-                    (branch_disposition == "absent" and branch_target == "")
-                    or (
-                        branch_disposition == "baseline"
-                        and branch_target == record.get("baseline_ref")
-                    )
-                )
+                and branch_disposition == "absent"
+                and branch_target == ""
                 and record.get("workspace_absent") is True
                 and record.get("provider_runner_started") is True
                 and record.get("implementation_runner_started") is True
@@ -86249,7 +86243,7 @@ class DatabaseImplementationDaemon:
                 rearm_count=raw_rearm_count,
             )
         )
-        fenced_provider_started_candidate = bool(
+        fenced_provider_outer_candidate = bool(
             receipt.get("operation") == "database_unknown_outcome_blocked"
             and receipt.get("reason")
             == "callback_authority_incomplete_blocked"
@@ -86263,6 +86257,26 @@ class DatabaseImplementationDaemon:
                 attempts_used=raw_attempts_used,
                 rearm_count=raw_rearm_count,
             )
+        )
+        fenced_provider_migration_available = False
+        migration_gate = getattr(
+            bridge,
+            "fenced_provider_unpublished_migration_available",
+            None,
+        )
+        if fenced_provider_outer_candidate and callable(migration_gate):
+            try:
+                fenced_provider_migration_available = bool(
+                    migration_gate(
+                        attempt,
+                        outer_block_receipt=receipt,
+                    )
+                )
+            except Exception:
+                fenced_provider_migration_available = False
+        fenced_provider_started_candidate = bool(
+            fenced_provider_outer_candidate
+            and fenced_provider_migration_available
         )
         terminal_quiescent_deferred_dispatch_candidate = bool(
             interrupted_phase_link is not None
@@ -88437,6 +88451,21 @@ class DatabaseImplementationDaemon:
                 continue
             blocking_session = str(receipt.get("owner_session_id") or "")
             blocking_process = str(receipt.get("process_instance_id") or "")
+            fenced_provider_evidence = bool(
+                isinstance(no_provider_evidence, Mapping)
+                and no_provider_evidence.get("schema")
+                == DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA
+            )
+            if fenced_provider_evidence and (
+                not blocking_process
+                or blocking_process == self.process_instance_id
+                or not blocking_session
+                or blocking_session == self.owner_session_id
+            ):
+                # A started-provider compensation needs a genuinely distinct
+                # successor controller.  Evidence from the blocked controller
+                # cannot authorize that controller to compensate itself.
+                continue
             if (
                 blocking_process
                 and blocking_process == self.process_instance_id
