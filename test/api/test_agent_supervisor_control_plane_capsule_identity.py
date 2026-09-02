@@ -463,6 +463,66 @@ def test_reviewed_capsule_manifest_closes_identity_dependencies() -> None:
     }.issubset(dependencies)
 
 
+def test_daemon_capsule_size_successor_is_exact_path_and_still_bounded(
+    tmp_path: Path,
+) -> None:
+    general_bound = llm_router._AGENT_CONTROL_PLANE_MAX_FILE_BYTES
+    daemon_bound = (
+        llm_router._AGENT_CONTROL_PLANE_MAX_IMPLEMENTATION_DAEMON_BYTES
+    )
+    daemon_relative = (
+        llm_router._AGENT_CONTROL_PLANE_IMPLEMENTATION_DAEMON_RELATIVE
+    )
+
+    assert general_bound == 4 * 1024 * 1024
+    assert daemon_bound == 5 * 1024 * 1024
+    assert daemon_bound > general_bound
+    assert llm_router._agent_control_plane_file_maximum_bytes(
+        daemon_relative
+    ) == daemon_bound
+    for near_miss in (
+        "implementation_daemon.py",
+        f"foreign/{daemon_relative}",
+        daemon_relative + ".bak",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+    ):
+        assert llm_router._agent_control_plane_file_maximum_bytes(
+            near_miss
+        ) == general_bound
+
+    payload = b"x" * (general_bound + 1)
+    source = tmp_path / "bounded-daemon.py"
+    source.write_bytes(payload)
+    source.chmod(0o400)
+    assert llm_router._agent_read_stable_file(
+        source,
+        maximum_bytes=llm_router._agent_control_plane_file_maximum_bytes(
+            daemon_relative
+        ),
+        exact_mode=0o400,
+    ) == payload
+    with pytest.raises(ValueError, match="not immutable enough"):
+        llm_router._agent_read_stable_file(
+            source,
+            maximum_bytes=llm_router._agent_control_plane_file_maximum_bytes(
+                "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+            ),
+            exact_mode=0o400,
+        )
+
+    source.chmod(0o600)
+    source.write_bytes(b"x" * (daemon_bound + 1))
+    source.chmod(0o400)
+    with pytest.raises(ValueError, match="not immutable enough"):
+        llm_router._agent_read_stable_file(
+            source,
+            maximum_bytes=llm_router._agent_control_plane_file_maximum_bytes(
+                daemon_relative
+            ),
+            exact_mode=0o400,
+        )
+
+
 @pytest.mark.parametrize(
     "missing",
     [

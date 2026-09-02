@@ -105,6 +105,15 @@ _AGENT_CONTROL_PLANE_MANIFEST_FILENAME = (
     ".agent-control-plane-manifest.json"
 )
 _AGENT_CONTROL_PLANE_MAX_FILE_BYTES = 4 * 1024 * 1024
+# Keep the general per-file denial-of-service bound unchanged.  The reviewed
+# implementation daemon crossed that historical bound before the PCTDD
+# recovery generation, so admit one exact path under a still-small, closed
+# successor bound.  The clean source HEAD/tree, immutable file mode, exact
+# SHA-256 digest, and aggregate archive limit remain independently enforced.
+_AGENT_CONTROL_PLANE_IMPLEMENTATION_DAEMON_RELATIVE = (
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py"
+)
+_AGENT_CONTROL_PLANE_MAX_IMPLEMENTATION_DAEMON_BYTES = 5 * 1024 * 1024
 _AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 _AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 # Non-supervisor roots plus the security-critical supervisor modules called out
@@ -144,6 +153,17 @@ _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "scripts/ops/agent_supervisor/configured_board_scheduler.py",
     "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
 )
+
+
+def _agent_control_plane_file_maximum_bytes(relative: str | Path) -> int:
+    """Return the closed per-file capsule bound for one relative path."""
+
+    relative_text = Path(relative).as_posix()
+    if relative_text == _AGENT_CONTROL_PLANE_IMPLEMENTATION_DAEMON_RELATIVE:
+        return _AGENT_CONTROL_PLANE_MAX_IMPLEMENTATION_DAEMON_BYTES
+    return _AGENT_CONTROL_PLANE_MAX_FILE_BYTES
+
+
 _LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID = (
     "agent-supervisor-grok45-terra56-medium-hard-quota-v1"
 )
@@ -5729,10 +5749,19 @@ def _agent_read_stable_file(
     return raw
 
 
-def _agent_file_digest(path: Path, *, exact_mode: int | None = None) -> str:
+def _agent_file_digest(
+    path: Path,
+    *,
+    exact_mode: int | None = None,
+    maximum_bytes: int = _AGENT_CONTROL_PLANE_MAX_FILE_BYTES,
+) -> str:
     """Hash one bounded, stable, no-follow control-plane file."""
 
-    raw = _agent_read_stable_file(path, exact_mode=exact_mode)
+    raw = _agent_read_stable_file(
+        path,
+        maximum_bytes=maximum_bytes,
+        exact_mode=exact_mode,
+    )
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
@@ -6091,6 +6120,7 @@ def _agent_control_plane_head_payloads(
         raise ValueError("accepted control-plane HEAD is missing a dependency")
     payloads: dict[str, bytes] = {}
     for relative, object_id in sorted(blobs.items()):
+        maximum_bytes = _agent_control_plane_file_maximum_bytes(relative)
         size_raw = _agent_git_output(
             root,
             ("cat-file", "-s", object_id),
@@ -6100,12 +6130,12 @@ def _agent_control_plane_head_payloads(
             size = int(size_raw.strip())
         except ValueError as exc:
             raise ValueError("accepted control-plane Git blob size is invalid") from exc
-        if not 0 <= size <= _AGENT_CONTROL_PLANE_MAX_FILE_BYTES:
+        if not 0 <= size <= maximum_bytes:
             raise ValueError("accepted control-plane Git blob is oversized")
         payload = _agent_git_output(
             root,
             ("cat-file", "blob", object_id),
-            maximum_bytes=_AGENT_CONTROL_PLANE_MAX_FILE_BYTES,
+            maximum_bytes=maximum_bytes,
         )
         if len(payload) != size:
             raise ValueError("accepted control-plane Git blob changed")
@@ -6145,7 +6175,10 @@ def materialize_agent_implementation_control_plane_capsule(
         raise ValueError("accepted control-plane package differs from HEAD")
     for path in files:
         relative = str(path.relative_to(root))
-        if _agent_read_stable_file(path) != payloads[relative]:
+        if _agent_read_stable_file(
+            path,
+            maximum_bytes=_agent_control_plane_file_maximum_bytes(relative),
+        ) != payloads[relative]:
             raise ValueError("loaded control-plane module differs from HEAD")
     _agent_control_plane_git_state(
         root,
@@ -6329,7 +6362,7 @@ def _agent_control_plane_archive_bytes(
     ):
         raw = _agent_read_stable_file(
             root / relative,
-            maximum_bytes=_AGENT_CONTROL_PLANE_MAX_FILE_BYTES,
+            maximum_bytes=_agent_control_plane_file_maximum_bytes(relative),
             exact_mode=0o400,
         )
         if "sha256:" + hashlib.sha256(raw).hexdigest() != digest:
@@ -6436,7 +6469,11 @@ def build_agent_implementation_control_plane_pin(
     if actual_files != expected_entries:
         raise ValueError("accepted control-plane capsule contents are dirty")
     for relative, digest in expected_digests.items():
-        if _agent_file_digest(root / relative, exact_mode=0o400) != digest:
+        if _agent_file_digest(
+            root / relative,
+            maximum_bytes=_agent_control_plane_file_maximum_bytes(relative),
+            exact_mode=0o400,
+        ) != digest:
             raise ValueError("accepted control-plane capsule content drifted")
     expected_runner = (
         root
