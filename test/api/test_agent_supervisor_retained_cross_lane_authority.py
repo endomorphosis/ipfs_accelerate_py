@@ -26,10 +26,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA,
     DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_CONSUMPTION_SCHEMA,
+    DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
     database_fenced_provider_historical_retained_admission_valid,
     database_fenced_provider_historical_retained_consumption_valid,
+    database_pctdd005_historical_successor_admission_valid,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
@@ -37,6 +39,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
 from test.api.test_agent_supervisor_retained_occurrence_recovery_v2 import (
     _admission,
     _arm_retrying_task,
+)
+from test.api.test_agent_supervisor_pctdd005_successor_retry_v3 import (
+    _admission as _pctdd005_admission,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -482,6 +487,45 @@ def test_historical_claim_uses_canonical_population_and_only_own_lane_fence(
         assert not (tmp_path / "lane-3").exists()
     finally:
         lane0.close()
+
+
+def test_historical_pctdd005_population_uses_its_exact_canonical_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin, legacy = _pctdd005_admission(monkeypatch)
+    admission = dict(legacy)
+    admission["schema"] = (
+        DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA
+    )
+    admission["historical_occurrence_authority_id"] = "sha256:" + "8" * 64
+    admission["controller_quiescence_receipt_id"] = "sha256:" + "9" * 64
+    admission.pop("admission_id")
+    admission["admission_id"] = (
+        daemon_module._database_fenced_provider_retained_digest(admission)
+    )
+    assert database_pctdd005_historical_successor_admission_valid(admission)
+    task = SimpleNamespace(
+        task_cid=pin["task_cid"],
+        task_alias=pin["task_alias"],
+        status="retrying",
+        revision=int(pin["blocked_task_revision"]) + 1,
+        body={
+            "completion_receipt": {
+                "retained_recovery_admission": admission,
+            }
+        },
+    )
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    daemon._task_source = SimpleNamespace(get=lambda _task_cid: task)
+    daemon.open = lambda: daemon
+    daemon._retained_recovery_admission_fence_is_current = (
+        lambda *_args, **_kwargs: pytest.fail(
+            "historical population reopened an execution fence"
+        )
+    )
+    assert daemon._retained_recovery_admission_population_admitted_current(
+        admission
+    )
 
 
 def test_supervisor_cross_lane_open_requires_locks_and_existing_peer(
