@@ -2098,13 +2098,18 @@ def test_signal_at_terminal_outcome_freeze_matches_exact_receipt(
     assert signal_sent is True
     assert receipt["completed"] is result["completed"]
     assert receipt["terminal_kind"] == result["terminal_kind"]
-    if caller_deliveries:
+    if result["completed"]:
         assert caller_deliveries == [signal.SIGTERM]
-        assert result["completed"] is True
         assert result["interrupted"] == ""
         assert receipt["interrupted"] is False
         assert receipt["interrupted_digest"] == ""
     else:
+        # A process-directed signal observed pending at the exact freeze may
+        # also have crossed through another thread into Python's post-boundary
+        # handler.  Its receipt remains interrupted and the original delivery
+        # is still replayed to caller policy; a distinct same-number signal
+        # must not be swallowed as a presumed duplicate.
+        assert caller_deliveries in ([], [signal.SIGTERM])
         assert result["completed"] is False
         assert result["interrupted"] == f"received signal {signal.SIGTERM}"
         assert result["terminal_kind"] == "interrupted"
@@ -2370,7 +2375,7 @@ def test_detached_parent_rejects_stale_binding_and_preserves_dead_child_marker(
 
     with pytest.raises(
         ValueError,
-        match="exited before active-generation binding",
+        match="could not prove all managed trees fenced",
     ):
         runner.launch_detached(args, [])
 
@@ -2429,6 +2434,268 @@ def test_detached_launch_returns_only_after_active_binding_ack(
     assert Path(str(result["master_pid_file"])).read_text(
         encoding="ascii"
     ) == "424243\n"
+
+
+def test_detached_binding_failure_waits_for_fenced_terminal_without_sigkill(
+    tmp_path,
+    monkeypatch,
+):
+    class LiveChild:
+        pid = 424244
+
+        @staticmethod
+        def poll():
+            return None
+
+    delivered: list[tuple[int, int]] = []
+    fence_waits: list[tuple[Path, int, int, float]] = []
+
+    def fail_ack(*_args, **_kwargs):
+        raise ValueError("active binding failed")
+
+    def prove_fenced(
+        master_pid,
+        process,
+        *,
+        not_before_epoch_nanoseconds,
+        timeout_seconds,
+    ):
+        fence_waits.append(
+            (
+                Path(master_pid),
+                int(process.pid),
+                int(not_before_epoch_nanoseconds),
+                float(timeout_seconds),
+            )
+        )
+        return {"all_trees_fenced": True}
+
+    monkeypatch.setattr(
+        runner.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: LiveChild(),
+    )
+    monkeypatch.setattr(runner, "_wait_for_detached_active_binding", fail_ack)
+    monkeypatch.setattr(runner, "_wait_for_detached_terminal_fence", prove_fenced)
+    monkeypatch.setattr(
+        runner.os,
+        "killpg",
+        lambda pid, signum: delivered.append((int(pid), int(signum))),
+    )
+    args = runner.build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--stamp",
+            "detached-fence",
+            "--stop-grace-seconds",
+            "2",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="active binding failed"):
+        runner.launch_detached(args, [])
+
+    _log, marker = runner._master_paths(args)
+    assert delivered == [(424244, signal.SIGTERM)]
+    assert len(fence_waits) == 1
+    assert fence_waits[0][0] == marker
+    assert fence_waits[0][1] == 424244
+    assert fence_waits[0][2] > 0
+    assert fence_waits[0][3] >= 9.0
+    assert marker.read_bytes() == b"424244\n"
+    assert runner._remove_owned_pid_projection(marker, 424244) is True
+
+
+def test_detached_terminal_fence_requires_current_self_identifying_receipt(
+    tmp_path,
+):
+    class ExitedChild:
+        pid = 424245
+
+        @staticmethod
+        def poll():
+            return 0
+
+    marker = tmp_path / "master.pid"
+    receipt_path = runner._terminal_receipt_path(marker)
+    body = {
+        "schema": runner.MULTI_SUPERVISOR_TERMINAL_RECEIPT_SCHEMA,
+        "label": "detached-fence",
+        "terminal_kind": "interrupted",
+        "completed": False,
+        "interrupted": True,
+        "blocked": False,
+        "all_trees_fenced": True,
+        "master_pid": 424245,
+        "run_started_at_epoch_nanoseconds": 123,
+        "task_completion_authority": False,
+    }
+    receipt = {
+        **body,
+        "terminal_receipt_cid": runner.content_identity(body),
+    }
+    runner.write_json_atomic(receipt_path, receipt, sync_directory=True)
+
+    observed = runner._wait_for_detached_terminal_fence(
+        marker,
+        ExitedChild(),
+        not_before_epoch_nanoseconds=123,
+        timeout_seconds=0.1,
+    )
+
+    assert observed == receipt
+    invalid_body = {**body, "all_trees_fenced": False}
+    runner.write_json_atomic(
+        receipt_path,
+        {
+            **invalid_body,
+            "terminal_receipt_cid": runner.content_identity(invalid_body),
+        },
+        sync_directory=True,
+    )
+    with pytest.raises(ValueError, match="lacks current all-trees-fenced"):
+        runner._wait_for_detached_terminal_fence(
+            marker,
+            ExitedChild(),
+            not_before_epoch_nanoseconds=123,
+            timeout_seconds=0.1,
+        )
+
+
+def test_detached_terminal_fence_rereads_receipt_after_exit_race(tmp_path):
+    marker = tmp_path / "master.pid"
+    receipt_path = runner._terminal_receipt_path(marker)
+    body = {
+        "schema": runner.MULTI_SUPERVISOR_TERMINAL_RECEIPT_SCHEMA,
+        "label": "detached-exit-race",
+        "terminal_kind": "interrupted",
+        "completed": False,
+        "interrupted": True,
+        "blocked": False,
+        "all_trees_fenced": True,
+        "master_pid": 424246,
+        "run_started_at_epoch_nanoseconds": 124,
+        "task_completion_authority": False,
+    }
+    receipt = {
+        **body,
+        "terminal_receipt_cid": runner.content_identity(body),
+    }
+
+    class ExitDuringFirstRead:
+        pid = 424246
+        polls = 0
+
+        def poll(self):
+            self.polls += 1
+            if self.polls == 1:
+                return None
+            if self.polls == 2:
+                runner.write_json_atomic(
+                    receipt_path,
+                    receipt,
+                    sync_directory=True,
+                )
+            return 0
+
+    observed = runner._wait_for_detached_terminal_fence(
+        marker,
+        ExitDuringFirstRead(),
+        not_before_epoch_nanoseconds=124,
+        timeout_seconds=0.1,
+    )
+
+    assert observed == receipt
+
+
+def test_unborn_launch_log_rollback_removes_only_fresh_untouched_file(tmp_path):
+    log_path = tmp_path / "lane" / "supervisor.log"
+    log_path.parent.mkdir(parents=True)
+
+    handle, fresh_identity = runner._open_supervisor_launch_log(log_path)
+    assert fresh_identity is not None
+    handle.close()
+    runner._discard_new_unborn_launch_log(log_path, fresh_identity)
+    assert not log_path.exists()
+
+    log_path.write_bytes(b"preserved prior log\n")
+    log_path.chmod(0o600)
+    handle, fresh_identity = runner._open_supervisor_launch_log(log_path)
+    assert fresh_identity is None
+    handle.close()
+    assert log_path.read_bytes() == b"preserved prior log\n"
+
+    target = tmp_path / "outside.log"
+    target.write_bytes(b"outside\n")
+    log_path.unlink()
+    log_path.symlink_to(target)
+    with pytest.raises(OSError):
+        runner._open_supervisor_launch_log(log_path)
+    assert target.read_bytes() == b"outside\n"
+
+
+def test_detached_unpublished_generation_fences_and_discards_empty_pid_gate(
+    tmp_path,
+    monkeypatch,
+):
+    class UnpublishedChild:
+        pid = 424247
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, *, timeout):
+            assert timeout > 0
+            self.returncode = 0
+            return 0
+
+    child = UnpublishedChild()
+    delivered: list[tuple[int, int]] = []
+
+    monkeypatch.setattr(
+        runner.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: child,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_publish_reserved_pid_projection",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError("deterministic pre-publication failure")
+        ),
+    )
+    monkeypatch.setattr(
+        runner.os,
+        "killpg",
+        lambda pid, signum: delivered.append((int(pid), int(signum))),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_wait_for_detached_terminal_fence",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unpublished exact-empty generation requested terminal proof"
+        ),
+    )
+    args = runner.build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--stamp",
+            "detached-unpublished",
+            "--stop-grace-seconds",
+            "0.1",
+        ]
+    )
+
+    with pytest.raises(OSError, match="pre-publication failure"):
+        runner.launch_detached(args, [])
+
+    _log, marker = runner._master_paths(args)
+    assert delivered == [(424247, signal.SIGTERM)]
+    assert child.poll() == 0
+    assert not marker.exists()
 
 
 def test_generic_detach_rejects_plan_bound_wave_before_pid_reservation(
