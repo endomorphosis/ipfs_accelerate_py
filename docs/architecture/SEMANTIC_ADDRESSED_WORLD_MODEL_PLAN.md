@@ -1,6 +1,6 @@
 # Semantic-Addressed Neuro-Symbolic Program World Model
 
-Status: operator-owned R2 program control. M56 admits one restart of the live generation-40 owner after launch retired the M55 client token vault, preserving event 321 and the M55 receipt, minting a new vault at generation 41 / event 326. M54 remains deny-only and unselected.
+Status: operator-owned R2 program control. M57 admits one restart of the live generation-41 owner after launch retired the M56 client token vault, preserving event 326 and the M53/M55/M56 receipts, minting a new vault at generation 42 / event 327. Runner isolation 2dbb5f93c stays in CONTROL_PATHS. M54 remains deny-only and unselected.
 
 Plan revision: `SAWM-PLAN-R2`
 

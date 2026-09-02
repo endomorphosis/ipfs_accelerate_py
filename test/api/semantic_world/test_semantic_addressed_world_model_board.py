@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "post_m56_live_ready_owner_missing_client_token_vault_restart_successor_materialization",
     "post_m55_live_ready_owner_missing_client_token_vault_restart_successor_materialization",
     "live_ready_owner_missing_client_token_vault_restart_successor_materialization",
     "post_reboot_stale_ready_generation_37_restart_successor_materialization",
@@ -431,6 +432,53 @@ def test_historical_successor_controls_include_m49_before_m48() -> None:
     assert historical_migration is not None and m49_key not in historical_migration
     assert historical_seal is not None
     assert f"{m49_key}_cid" not in historical_seal
+
+
+
+def test_historical_successor_controls_include_m57_before_m56() -> None:
+    m57_key = "post_m56_live_ready_owner_missing_client_token_vault_restart_successor_materialization"
+    m56_key = "post_m55_live_ready_owner_missing_client_token_vault_restart_successor_materialization"
+    scheduler = {m57_key: {"revision": "M57"}, m56_key: {"revision": "M56"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m57_key}_cid": "sha256:" + "a" * 64,
+        f"{m56_key}_cid": "sha256:" + "f" * 64,
+    }
+    current, _, _ = _historical_successor_controls_at(
+        m57_key, scheduler, migration, seal
+    )
+    assert m57_key in current
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m56_key, scheduler, migration, seal)
+    )
+    assert m57_key not in historical
+    assert historical_migration is not None and m57_key not in historical_migration
+    assert historical_seal is not None and f"{m57_key}_cid" not in historical_seal
+
+
+def test_materialize_and_launch_select_m57_before_m56_and_auto_append() -> None:
+    materialize_source = (
+        REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py"
+    ).read_text(encoding="utf-8")
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    m57_dispatch = "if _m57_successor_configured_on_any_surface(root, config):"
+    m56_dispatch = "if _m56_successor_configured_on_any_surface(root, config):"
+    assert materialize_source.find(m57_dispatch) < materialize_source.find(m56_dispatch)
+    assert materialize_source.find("def _materialize_m57(") < materialize_source.find(
+        "def materialize("
+    )
+    assert "def _check_m57_materialized(" in materialize_source
+    assert "M57 automatic successor materialize failed" in operator_source
+    assert operator_source.find("def _verify_m57_live_head_task_projection(") < (
+        operator_source.find("def _verify_m56_live_head_task_projection(")
+    )
+    assert operator_source.find(
+        "if _M57_SUCCESSOR_KEY in config:\n        return _require_m57_source_successor_marker"
+    ) < operator_source.find(
+        "if _M56_SUCCESSOR_KEY in config:\n        return _require_m56_source_successor_marker"
+    )
 
 
 def test_historical_successor_controls_include_m56_before_m55() -> None:
