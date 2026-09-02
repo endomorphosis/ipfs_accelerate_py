@@ -73,6 +73,21 @@ named-git-extras = ["libp2p", "mcp-p2p", "ipfs-transformers", "ipfs-model-manage
 sibling-trees = ["ipfs_datasets_py", "ipfs_kit_py", "ipfs_model_manager_py", "ipfs_transformers_py", ".tools"]
 recursive-submodule-trees = ["docs/fastmcp", "docs/mcp-python-sdk", "ipfs_accelerate_py/mcplusplus", "test/doc-builder", "test/huggingface_doc_builder", "test/huggingface_transformers"]
 
+[tool.ipfs_accelerate_py.dependency-locks]
+schema = "ipfs_accelerate_py/assurance/dependency-locks@1"
+interface = "AccelerateDependencyLocks@1"
+task-id = "PCPR-053"
+goal-id = "PCPR-G600"
+lock-kind = "declared_release_profile"
+profile = "release"
+python-requires = ">=3.12"
+requirements-authority = "requirements.txt"
+named-git-extras-role = "source-checkout-development-and-integration"
+named-git-extras = ["libp2p", "mcp-p2p", "ipfs-transformers", "ipfs-model-manager"]
+hashes-invented = false
+live-resolver-qualified = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
