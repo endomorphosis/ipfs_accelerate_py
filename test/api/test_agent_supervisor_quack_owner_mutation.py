@@ -1103,6 +1103,35 @@ def test_owner_command_skips_replica_refresh_when_replica_already_live(
         server.stop()
 
 
+def test_owner_command_fatal_reconnects_exclusive_writer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server, _identity, token, _database = _server(tmp_path)
+    request = _owner_command_request(server, token, request_id="2" * 32)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+    reconnects: list[bool] = []
+    FatalException = type("FatalException", (Exception,), {})
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise FatalException("catalog")
+
+    def reconnect() -> None:
+        reconnects.append(True)
+
+    connection = server._connection
+    connection.reconnect_exclusive_owner = reconnect
+    connection._poisoned = True
+    monkeypatch.setattr(quack_server_module, "execute_quack_owner_command", boom)
+    try:
+        _publish(server, request)
+        assert server.service_mutation_inbox() == 1
+        assert reconnects == [True]
+        assert server.lifecycle.value == "ready"
+    finally:
+        server.stop()
+
+
 def test_owner_command_replica_refresh_failure_keeps_serve_ready(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

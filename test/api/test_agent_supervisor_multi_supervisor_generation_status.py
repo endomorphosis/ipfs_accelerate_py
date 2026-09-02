@@ -469,6 +469,93 @@ def _strict_projection_restart_harness(
     return result, processes, output, pid_path
 
 
+def test_stale_restart_recovers_from_process_identity_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _OwnedProcess:
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+            self.alive = True
+
+        def poll(self) -> int | None:
+            return None if self.alive else 0
+
+        def wait(self, timeout: float | None = None) -> int:
+            del timeout
+            self.alive = False
+            return 0
+
+        def terminate(self) -> None:
+            self.alive = False
+
+        def kill(self) -> None:
+            self.alive = False
+
+    processes: list[_OwnedProcess] = []
+
+    def start_track(*_args: object, **_kwargs: object) -> _OwnedProcess:
+        process = _OwnedProcess(710_000 + len(processes))
+        processes.append(process)
+        return process
+
+    def terminate(_process: object, *, grace_seconds: float) -> tuple[bool, tuple[int, ...]]:
+        del grace_seconds
+        raise runner_module.ProcessIdentityMismatch(
+            "managed Popen PID was reused after its captured process birth"
+        )
+
+    def status_fields(*_args: object, **_kwargs: object) -> dict[str, object]:
+        restart = len(processes) == 1
+        return {
+            "supervisor_status": "stale" if restart else "live",
+            "supervisor_status_generation": "current",
+            "supervisor_status_generation_reason": "supervisor_pid_mismatch",
+            "supervisor_status_age_seconds": 999.0 if restart else 0.0,
+            "restart_supervisor": restart,
+        }
+
+    _write_worker(tmp_path)
+    monkeypatch.setattr(runner_module, "start_track", start_track)
+    monkeypatch.setattr(runner_module, "_terminate_managed_process", terminate)
+    monkeypatch.setattr(runner_module, "supervisor_status_health_fields", status_fields)
+    monkeypatch.setattr(
+        runner_module,
+        "daemon_pid_health_fields",
+        lambda *_a, **_k: {"daemon_pid": None, "daemon_status": "missing"},
+    )
+    monkeypatch.setattr(runner_module, "pid_alive", lambda pid: any(
+        item.pid == pid and item.alive for item in processes
+    ))
+    monkeypatch.setattr(
+        runner_module,
+        "stop_tracks",
+        lambda *_a, **_k: {
+            "stopped_count": 0,
+            "all_trees_fenced": True,
+            "removed_runtime_markers": [],
+        },
+    )
+    output: list[str] = []
+    result = run_supervisor_tracks(
+        [_track()],
+        repo_root=tmp_path,
+        common_args=(),
+        duration_seconds=0.12,
+        heartbeat_interval_seconds=0.02,
+        supervisor_status_stale_seconds=0.01,
+        stop_grace_seconds=0.01,
+        python_executable=sys.executable,
+        label="identity mismatch recovery runner",
+        output=output.append,
+    )
+    assert result["completed"] is True
+    assert len(processes) == 2
+    assert any("restarting stale T supervisor" in line for line in output)
+    assert any("process identity mismatched during fence; recovering" in line for line in output)
+    assert not any("operation failed closed" in line for line in output)
+
+
 def test_strict_projection_is_retired_before_same_track_restart(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

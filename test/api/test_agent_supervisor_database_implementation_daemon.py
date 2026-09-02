@@ -2677,6 +2677,24 @@ def test_landed_quarantined_task_with_outputs_is_completed(
         daemon.close()
 
 
+def test_landed_merge_defers_after_owner_fatal(tmp_path: Path) -> None:
+    daemon = _open_daemon(tmp_path / "lane")
+    try:
+        daemon._landed_merge_owner_fatals["task:cid:001"] = time.monotonic()
+        outcome = daemon._complete_landed_quarantined_task(
+            SimpleNamespace(
+                status="quarantined",
+                task_cid="task:cid:001",
+                task_alias="SPAR-017",
+            )
+        )
+        assert outcome is not None
+        assert outcome["completed"] is False
+        assert outcome["reason"] == "landed_merge_repair_deferred_after_owner_fatal"
+    finally:
+        daemon.close()
+
+
 def test_orphaned_in_progress_without_attempt_is_requeued(
     tmp_path: Path,
 ) -> None:
@@ -11155,6 +11173,31 @@ def test_stale_quack_authority_binding_defers_instead_of_killing_the_daemon(
         assert result["reason"] == "quack_attach_contended"
         assert result["attempt_consumed"] is False
         assert result["provider_dispatched"] is False
+        assert result["deferred"] is True
+    finally:
+        daemon.close()
+
+
+def test_owner_command_fatal_defers_instead_of_killing_the_daemon(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FatalException(Exception):
+        pass
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:owner-command-fatal-defer",
+    )
+
+    def boom(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise FatalException("duckdb catalog is corrupted")
+
+    try:
+        monkeypatch.setattr(daemon, "_run_once_impl", boom)
+        result = daemon.run_once()
+        assert result["reason"] == "quack_attach_contended"
+        assert result["attempt_consumed"] is False
         assert result["deferred"] is True
     finally:
         daemon.close()

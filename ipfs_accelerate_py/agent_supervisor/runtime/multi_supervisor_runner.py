@@ -13823,10 +13823,39 @@ def run_supervisor_tracks(
                                 f"{supervisor_fields.get('supervisor_status_age_seconds')}"
                             ),
                         )
-                        fenced, _member_pids = _terminate_managed_process(
-                            process,
-                            grace_seconds=stop_grace_seconds,
-                        )
+                        try:
+                            fenced, _member_pids = _terminate_managed_process(
+                                process,
+                                grace_seconds=stop_grace_seconds,
+                            )
+                        except ProcessIdentityMismatch:
+                            # A stale wrapper birth that no longer matches the
+                            # marker tree must not fail-close SPAR. The original
+                            # process is gone or is not ours; reap the Popen we
+                            # still own and start a new generation.
+                            _emit(
+                                output,
+                                (
+                                    f"stale {track.name} process identity "
+                                    "mismatched during fence; recovering"
+                                ),
+                            )
+                            fenced = process.poll() is not None
+                            if not fenced:
+                                try:
+                                    process.terminate()
+                                except Exception:
+                                    pass
+                                try:
+                                    process.wait(
+                                        timeout=max(0.1, stop_grace_seconds)
+                                    )
+                                except Exception:
+                                    try:
+                                        process.kill()
+                                    except Exception:
+                                        pass
+                                fenced = process.poll() is not None
                         if not fenced:
                             raise SupervisorRunInterrupted(
                                 f"could not fence stale {track.name} process tree"

@@ -90606,6 +90606,7 @@ class DatabaseImplementationDaemon:
         self.merge_target_ref = str(merge_target_ref or "HEAD").strip() or "HEAD"
         self.merge_queue = merge_queue
         self._quack_attach_blocked_until = 0.0
+        self._landed_merge_owner_fatals: dict[str, float] = {}
         self._idle_recovery_prefix: dict[str, Any] | None = None
         self._consecutive_embedded_sidecar_reopens = 0
         # Renew long-running provider/effect/validation calls well before the
@@ -99713,7 +99714,11 @@ class DatabaseImplementationDaemon:
                     "TypedStateOwnerAuthorizationError",
                     "TaskSourceIntegrityError",
                     "QuackStateServerNotRunningError",
+                    "FatalException",
+                    "QuackOwnerCommandRemoteError",
                 }
+                or "typed owner command rejected: FatalException" in detail
+                or "fatalexception" in lowered
                 or (
                     name in {"TimeoutError", "InvalidInputException"}
                     and (
@@ -120911,6 +120916,19 @@ class DatabaseImplementationDaemon:
         status = str(getattr(task, "status", "") or "").strip().lower()
         if status not in _LANDED_MERGE_REPAIR_STATUSES:
             return None
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        last_fatal = self._landed_merge_owner_fatals.get(task_cid)
+        if last_fatal is not None and (time.monotonic() - last_fatal) < 600.0:
+            # SPAR-017's git-landed quarantine retried record_validation_result
+            # every idle tick, FatalException-poisoned the exclusive writer,
+            # and starved SPAR-018 claim_next. Skip the doomed repair so the
+            # ready frontier can move.
+            return {
+                "task_cid": task_cid,
+                "task_alias": str(getattr(task, "task_alias", "") or ""),
+                "completed": False,
+                "reason": "landed_merge_repair_deferred_after_owner_fatal",
+            }
         if not self._task_outputs_landed_on_target(task):
             return None
         proof, digest = self._landed_merge_repair_proof(task)
@@ -120978,9 +120996,17 @@ class DatabaseImplementationDaemon:
             try:
                 outcome = self._complete_landed_quarantined_task(task)
             except Exception as exc:
+                cid = str(getattr(task, "task_cid", "") or "")
+                reason = f"{type(exc).__name__}: {exc}"
+                if (
+                    type(exc).__name__ == "FatalException"
+                    or "FatalException" in reason
+                    or _is_duckdb_uncertain_transaction_unusable(exc)
+                ):
+                    self._landed_merge_owner_fatals[cid] = time.monotonic()
                 outcomes.append(
                     {
-                        "task_cid": str(getattr(task, "task_cid", "") or ""),
+                        "task_cid": cid,
                         "completed": False,
                         "reason": str(exc),
                     }

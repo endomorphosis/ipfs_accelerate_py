@@ -5960,6 +5960,26 @@ class QuackStateServer:
             # Publication failure is not a repository rejection.  Keep the
             # processing claim so a later pass can replay the durable result
             # and publish the same authenticated response.
+            reconnect = getattr(self._connection, "reconnect_exclusive_owner", None)
+            if (
+                callable(reconnect)
+                and (
+                    type(exc).__name__ == "FatalException"
+                    or getattr(self._connection, "_poisoned", False) is True
+                    or getattr(self._connection, "_connection", True) is None
+                )
+            ):
+                # SPAR-017 record_validation_result FatalException poisoned the
+                # exclusive writer, so SPAR-018 claim_next died on the next
+                # typed statement. Reconnect in place; replica owns TCP.
+                try:
+                    reconnect()
+                    self._log(
+                        "exclusive owner reconnected after typed owner "
+                        f"command {type(exc).__name__}"
+                    )
+                except Exception:
+                    pass
             if response is not None:
                 raise
             if request is None:
