@@ -1257,7 +1257,7 @@ def _shared_fenced_provider_recovery_daemon(
     receipt["fenced_provider_outer_attempt_snapshot"] = outer_snapshot
     current = SimpleNamespace(
         task_cid="task:exact-pinned-provider",
-        task_alias="PCTDD-006",
+        task_alias="TEST-SYNTHETIC-FENCED-PROVIDER",
         status="retrying" if initial_state == "pending" else "blocked",
         revision=revision,
         body={"completion_receipt": receipt},
