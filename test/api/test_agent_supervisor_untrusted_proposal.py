@@ -241,6 +241,140 @@ def test_exact_candidate_and_repository_snapshot_are_admitted_read_only(
 
 
 @pytest.mark.parametrize(
+    "private_name",
+    (
+        "_PYTEST_PHASE_REPORTS",
+        "_PYTEST_PHASE_COLLECTOR",
+        "PYTEST_PHASE_FD_ENV",
+        "PCTDD_PYTEST_PHASE_FD",
+        "PYTEST_PHASE_NONCE_ENV",
+        "PCTDD_PYTEST_PHASE_NONCE",
+        "PYTEST_PLUGIN_NAME",
+        "run_parallel_content_sealing_proof_carrying_tdd_validation",
+        "_AppendOnlyPytestPhasePlugin",
+        "pctdd-append-only-phase-observer-v1",
+    ),
+)
+def test_private_controller_validation_channel_is_rejected_before_dispatch(
+    tmp_path: Path,
+    private_name: str,
+) -> None:
+    path = "test/test_candidate_validation.py"
+    before = "REPORTS = []\n"
+    after = f'REPORTS = getattr(object(), "{private_name}", [])\n'
+    _seed(tmp_path, path, before)
+
+    result = _admit(
+        _proposal(path=path, before=before, after=after).to_dict(),
+        tmp_path,
+    )
+
+    assert not result.accepted
+    assert not result.dispatch_allowed
+    assert result.expensive_checks_started == 0
+    assert ProposalFindingCode.VALIDATION_CHANNEL_TAMPERING_FORBIDDEN in {
+        finding.code for finding in result.findings
+    }
+
+
+def test_private_controller_validation_channel_comment_does_not_false_positive(
+    tmp_path: Path,
+) -> None:
+    path = "test/test_candidate_validation.py"
+    before = "REPORTS = []\n"
+    after = (
+        "# _PYTEST_PHASE_REPORTS and _PYTEST_PHASE_COLLECTOR are private.\n"
+        "REPORTS = []\n"
+    )
+    _seed(tmp_path, path, before)
+
+    result = _admit(
+        _proposal(path=path, before=before, after=after).to_dict(),
+        tmp_path,
+    )
+
+    assert ProposalFindingCode.VALIDATION_CHANNEL_TAMPERING_FORBIDDEN not in {
+        finding.code for finding in result.findings
+    }
+
+
+@pytest.mark.parametrize(
+    "after",
+    (
+        (
+            "from run_parallel_content_sealing_proof_carrying_tdd_validation "
+            "import _PYTEST_PHASE_REPORTS as reports\n"
+            "reports.clear()\n"
+        ),
+        (
+            "import run_parallel_content_sealing_proof_carrying_tdd_validation "
+            "as observer\n"
+            "observer._PYTEST_PHASE_REPORTS.clear()\n"
+        ),
+        (
+            "PRIVATE = '_PYTEST_' + 'PHASE_REPORTS'\n"
+            "REPORTS = getattr(object(), PRIVATE, [])\n"
+        ),
+        (
+            "PRIVATE = ''.join(['PCTDD_PYTEST_', 'PHASE_NONCE'])\n"
+            "REPORTS = getattr(object(), PRIVATE, [])\n"
+        ),
+    ),
+)
+def test_private_validation_channel_alias_and_literal_indirection_are_rejected(
+    tmp_path: Path,
+    after: str,
+) -> None:
+    path = "test/test_candidate_validation.py"
+    before = "REPORTS = []\n"
+    _seed(tmp_path, path, before)
+
+    result = _admit(
+        _proposal(path=path, before=before, after=after).to_dict(),
+        tmp_path,
+    )
+
+    assert not result.accepted
+    assert not result.dispatch_allowed
+    assert result.expensive_checks_started == 0
+    assert ProposalFindingCode.VALIDATION_CHANNEL_TAMPERING_FORBIDDEN in {
+        finding.code for finding in result.findings
+    }
+
+
+@pytest.mark.parametrize(
+    "public_name",
+    (
+        "PYTEST_PHASE_EVENT_SCHEMA",
+        "pctdd/pytest-phase-event@1",
+        "PYTEST_PHASE_OUTCOME_SCHEMA",
+        "pctdd/pytest-phase-outcome@2",
+        "PYTEST_PHASE_REPORT_SCHEMA",
+        "ipfs_accelerate_py/agent-supervisor/pytest-phase-report@1",
+        "PYTEST_PHASE_ACCOUNTING_SCHEMA",
+        "ipfs_accelerate_py/agent-supervisor/pytest-phase-accounting@1",
+    ),
+)
+def test_public_validation_evidence_schema_is_not_a_private_channel(
+    tmp_path: Path,
+    public_name: str,
+) -> None:
+    path = "test/test_candidate_validation.py"
+    before = "SCHEMA = 'before'\n"
+    after = f"SCHEMA = {public_name!r}\n"
+    _seed(tmp_path, path, before)
+
+    result = _admit(
+        _proposal(path=path, before=before, after=after).to_dict(),
+        tmp_path,
+    )
+
+    assert ProposalFindingCode.VALIDATION_CHANNEL_TAMPERING_FORBIDDEN not in {
+        finding.code for finding in result.findings
+    }
+
+
+@pytest.mark.parametrize(
     ("mutate", "expected"),
     [
         (

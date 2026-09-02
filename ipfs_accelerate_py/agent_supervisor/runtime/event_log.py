@@ -615,6 +615,22 @@ def event_log_manifest(path: Path | str) -> dict[str, Any]:
     return value
 
 
+def read_event_log_manifest(path: Path | str) -> dict[str, Any] | None:
+    """Read one healthy manifest without repairing or publishing anything.
+
+    Recovery verifiers use this fail-closed view when the evidence source is
+    owned by another process.  Missing, malformed, or metadata-drifted state
+    returns ``None``; callers that own the event stream may continue to use
+    :func:`event_log_manifest` for its explicit repair-on-drift behavior.
+    """
+
+    event_path = Path(path)
+    value = _load_event_manifest(event_path)
+    if value is None or not _manifest_matches_metadata(event_path, value):
+        return None
+    return dict(value)
+
+
 def _write_event_manifest(
     path: Path,
     *,

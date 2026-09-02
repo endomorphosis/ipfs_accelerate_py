@@ -5168,6 +5168,33 @@ def test_implementation_proposal_materializes_dirty_submodule_change(tmp_path: P
     assert result.proposal.candidate_diff[0].after_source == "dirty candidate\n"
 
 
+def test_implementation_proposal_recursively_materializes_nested_submodule_change(
+    tmp_path: Path,
+):
+    repo, _child, leaf = _seed_parent_with_nested_submodules(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (leaf / "leaf.txt").write_text("nested candidate\n", encoding="utf-8")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/vendor/leaf/leaf.txt"),
+        baseline_ref=baseline,
+        restore_out_of_scope_workspace_paths=False,
+    )
+
+    assert result.accepted is True
+    assert result.proposal.changed_paths == (
+        "libs/child/vendor/leaf/leaf.txt",
+    )
+    assert result.proposal.candidate_diff[0].after_source == (
+        "nested candidate\n"
+    )
+    assert "Subproject commit" not in result.proposal.patch_text
+
+
 def test_implementation_proposal_materializes_untracked_submodule_file(tmp_path: Path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     baseline = _git(repo, "rev-parse", "HEAD")

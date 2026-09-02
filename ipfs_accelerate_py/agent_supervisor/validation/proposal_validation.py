@@ -156,6 +156,9 @@ class ProposalFindingCode(str, Enum):
     REPOSITORY_CONTENT_MISMATCH = "repository_content_mismatch"
     ARCHIVE_CHANGE_FORBIDDEN = "archive_change_forbidden"
     VALIDATION_WEAKENING_FORBIDDEN = "validation_weakening_forbidden"
+    VALIDATION_CHANNEL_TAMPERING_FORBIDDEN = (
+        "validation_channel_tampering_forbidden"
+    )
     # LPR-017 overlay gate findings (only emitted when enable_live_logic_repair).
     OMITTED_CALLERS = "omitted_callers"
     SIGNATURE_ARITY_INCREASE = "signature_arity_increase"
@@ -376,6 +379,27 @@ _VALIDATION_CONFIG_PATHS = (
     "setup.cfg",
     "tox.ini",
 )
+_CONTROLLER_PRIVATE_VALIDATION_CHANNEL_NAMES: frozenset[str] = frozenset(
+    {
+        # This collector is controller-owned validation state, not a public
+        # fixture API.  Candidate tests that discover it through ``sys.modules``
+        # can otherwise rewrite node ids or replace phase results before the
+        # controller emits its authoritative receipt.
+        "_PYTEST_PHASE_REPORTS",
+        "_PYTEST_PHASE_COLLECTOR",
+        # The successor validator transports phase observations through a
+        # controller-created, nonce-bound append-only pipe.  These names and
+        # literals are implementation capabilities, not candidate APIs.
+        "PYTEST_PHASE_FD_ENV",
+        "PCTDD_PYTEST_PHASE_FD",
+        "PYTEST_PHASE_NONCE_ENV",
+        "PCTDD_PYTEST_PHASE_NONCE",
+        "PYTEST_PLUGIN_NAME",
+        "run_parallel_content_sealing_proof_carrying_tdd_validation",
+        "_AppendOnlyPytestPhasePlugin",
+        "pctdd-append-only-phase-observer-v1",
+    }
+)
 _VALIDATION_WEAKENING_ADDITION_RE = re.compile(
     r"(?im)(?:"
     r"^\s*(?:addopts|filterwarnings)\s*=|"
@@ -412,6 +436,100 @@ def _validation_config_change_is_additive(entry: CandidateDiffEntry) -> bool:
         after_index += 1
     added_lines.extend(after_lines[after_index:])
     return not _VALIDATION_WEAKENING_ADDITION_RE.search("".join(added_lines))
+
+
+def _entry_reaches_controller_private_validation_channel(
+    entry: CandidateDiffEntry,
+) -> bool:
+    """Detect exact private validation-channel references in Python source.
+
+    The check is intentionally AST based and name-exact.  Comments do not
+    trigger it, ordinary pytest APIs remain available, and syntax failures are
+    left to the existing typed syntax gate.  Literal string indirection and
+    import aliases are covered as defense in depth.
+
+    This screen does *not* establish noninterference for hostile Python code:
+    code executing inside pytest can introspect its process and plugins.  Phase
+    observations from that topology remain a trusted-runner assertion and may
+    not be promoted as independent execution proof without an out-of-process
+    attestation boundary.
+    """
+
+    if (
+        not entry.is_python
+        or entry.change_kind is DiffChangeKind.DELETE
+        or entry.after_source is None
+    ):
+        return False
+    try:
+        tree = ast.parse(entry.after_source)
+    except (SyntaxError, ValueError, TypeError):
+        return False
+    def static_string(node: ast.AST) -> str | None:
+        """Resolve only side-effect-free, wholly literal string assembly."""
+
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = static_string(node.left)
+            right = static_string(node.right)
+            return left + right if left is not None and right is not None else None
+        if isinstance(node, ast.JoinedStr):
+            parts: list[str] = []
+            for value in node.values:
+                if not isinstance(value, ast.Constant) or not isinstance(
+                    value.value, str
+                ):
+                    return None
+                parts.append(value.value)
+            return "".join(parts)
+        if (
+            isinstance(node, ast.Call)
+            and not node.keywords
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "join"
+            and len(node.args) == 1
+            and isinstance(node.args[0], (ast.List, ast.Tuple))
+        ):
+            separator = static_string(node.func.value)
+            parts = [static_string(item) for item in node.args[0].elts]
+            if separator is not None and all(part is not None for part in parts):
+                return separator.join(part for part in parts if part is not None)
+        return None
+
+    def is_private_name(value: str) -> bool:
+        return value in _CONTROLLER_PRIVATE_VALIDATION_CHANNEL_NAMES or any(
+            value.endswith(f".{private_name}")
+            for private_name in _CONTROLLER_PRIVATE_VALIDATION_CHANNEL_NAMES
+        )
+
+    for node in ast.walk(tree):
+        value = ""
+        if isinstance(node, ast.Name):
+            value = node.id
+        elif isinstance(node, ast.Attribute):
+            value = node.attr
+        elif isinstance(node, ast.alias):
+            # Import aliases are structural references even when a candidate
+            # immediately renames the capability to an innocuous local name.
+            if is_private_name(node.name) or (
+                node.asname is not None and is_private_name(node.asname)
+            ):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            # ``ImportFrom.module`` is not an ``ast.Name`` and therefore must
+            # be inspected explicitly.  A package-qualified private observer
+            # remains private under every import spelling.
+            if node.module is not None and is_private_name(node.module):
+                return True
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            value = node.value
+        if is_private_name(value):
+            return True
+        assembled = static_string(node)
+        if assembled is not None and is_private_name(assembled):
+            return True
+    return False
 
 
 def _strict_repo_path(value: Any, *, field_name: str) -> str:
@@ -3925,6 +4043,16 @@ class ProposalValidator:
                     ProposalFindingCode.ARCHIVE_CHANGE_FORBIDDEN,
                     ProposalGate.CONTENT,
                     "archive changes require explicit policy authority",
+                    entry.path,
+                )
+            if _entry_reaches_controller_private_validation_channel(entry):
+                add(
+                    ProposalFindingCode.VALIDATION_CHANNEL_TAMPERING_FORBIDDEN,
+                    ProposalGate.CONTENT,
+                    (
+                        "candidate source reaches controller-owned private "
+                        "validation state"
+                    ),
                     entry.path,
                 )
             if (

@@ -33,6 +33,13 @@ from types import MappingProxyType
 from typing import Any, Final
 
 from ...llm_router import resolve_agent_implementation_route_binding
+from ..merge.checkout_lock import (
+    acquire_checkout_mutation_lease,
+    board_scoped_checkout_mutation_lock_path,
+    checkout_lock_metadata,
+    checkout_lock_owner_is_active,
+    release_checkout_mutation_lease,
+)
 from ..proof.formal_verification_contracts import content_identity
 from ..runtime.event_log import EVENT_LOG_MANIFEST_SCHEMA
 from ..runtime.provider_failure_policy import (
@@ -48,6 +55,8 @@ from ..task_sources.intent_repository import (
     VALIDATION_REPRESENTATION_POLICY_KEY,
     VALIDATION_SHELL_TEXT_REPRESENTATION,
 )
+from .core import pid_alive as _shared_pid_alive
+from .core import process_args as _shared_process_args
 
 DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE: Final[str] = "DatabasePortalExecutionBridge@1"
 DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA: Final[str] = (
@@ -178,17 +187,202 @@ DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_AUTHORIZATION_SCHEMA: Final[
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-fenced-provider-unpublished-rearm-authorization@1"
 )
-# A started provider is not a reusable evidence profile.  Recovery is enabled
-# only for immutable occurrences copied here from an independently
-# authenticated source.  No such complete occurrence pins are currently
-# available, so the migration remains explicitly unavailable rather than
-# widening to task aliases, attempt counters, or classifier matches.
+# A started provider is not a reusable evidence profile.  These three records
+# are an operator-owned migration manifest for exact historical occurrences;
+# they are not patterns and do not authorize future attempts.  The ordinary
+# verifier must still reconstruct every nested artifact and prove that the
+# workspace and branch are absent before a record can issue its single credit.
 DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_STATUS: Final[str] = (
-    "unavailable_missing_authenticated_occurrence_pins"
+    "available_exact_operator_occurrence_manifest"
+)
+DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_SCHEMA: Final[
+    str
+] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-provider-unpublished-migration-manifest@1"
+)
+DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_ID: Final[str] = (
+    "sha256:3b4e8c471c67839e4ce5e45596065d02a0da180bb8a617c0f7cc1b5ae48bbbe0"
+)
+DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_CREDIT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-provider-unpublished-migration-credit@1"
+)
+_FENCED_PROVIDER_UNPUBLISHED_OCCURRENCE_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "attempt_directory_names_digest", "attempt_id", "attempt_number",
+        "attempt_root_key", "baseline_ref",
+        "binding_admission_digest", "binding_admission_id", "binding_id",
+        "board_namespace", "branch", "branch_disposition", "branch_target",
+        "claim_id", "commit_barrier_receipt_id",
+        "container_removed_receipt_id",
+        "credit_ordinal", "fence_epoch", "fencing_token",
+        "event_count", "event_head_id", "event_head_sequence",
+        "event_manifest_digest", "event_snapshot_id", "event_stream_id",
+        "fenced_provider_receipt_count", "fenced_provider_receipt_ids_digest",
+        "implementation_started_event_id", "lease_id", "nested_attempt",
+        "nested_task_cid", "outer_block_receipt_digest", "owner_session_id",
+        "prepared_reconciliation_receipt_id", "prepared_state_digest",
+        "projection_immutable_digest", "provider_container_fence_receipt_id",
+        "provider_fence_chronology_digest", "provider_runner_pid",
+        "provider_runner_receipt_id", "reconciliation_receipt_count",
+        "reconciliation_receipt_ids_digest", "state_digest", "task_alias",
+        "task_cid", "task_claim_release_event_id",
+        "task_claim_release_receipt_id", "task_claim_release_receipt_name",
+        "task_revision", "terminal_lifecycle_receipt_id",
+        "terminal_lifecycle_event_id", "terminal_reconciliation_evidence_id",
+        "terminal_reconciliation_receipt_id", "workspace_absent",
+        "workspace_path",
+    }
 )
 DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS: Final[
     tuple[Mapping[str, Any], ...]
-] = ()
+] = (
+    MappingProxyType({
+        "attempt_directory_names_digest": "sha256:412bd191d5df3a5feefb892c906a7794f6855e5ed9520b443379c5cf94b7cc60",
+        "attempt_id": "attempt:266a0841fde1462291b45816376f2b3a", "attempt_number": 5,
+        "attempt_root_key": "f499ef3ba85f9f1ef8cee14d", "baseline_ref": "553625d55dda7338e267f7799d076ea234629adb",
+        "binding_admission_digest": "sha256:64c5dff06c2bd2c562bceb27ff31c88e8df36f08a8ab54e15c2ccebb88b28254",
+        "binding_admission_id": "baguqeerawg5os5imdn4dqx5rvwyrvrggrd2xga475wk2sf4bnnzpqmel7vha",
+        "binding_id": "sha256:1e9066befa4c020d3d5bf2008f515369063c111fa86779c941cc0d2c07a8bfc8",
+        "board_namespace": "parallel-content-sealing-proof-carrying-tdd-v1",
+        "branch": "implementation/pctdd-006-0c4324168ce4-attempt-1-1788294076",
+        "branch_disposition": "absent", "branch_target": "",
+        "claim_id": "claim:a0d078a93fad4cab92397a197fbd8ca0",
+        "commit_barrier_receipt_id": "sha256:4a47951f13cf2ee950435ecad5189321b3b38eb417cb2f3711649a4814d6b35e",
+        "container_removed_receipt_id": "sha256:56fe652acd7dc12aa6eb73fca9f72a8b8639345682fa69d1fa9f1749510596cd",
+        "credit_ordinal": 1, "fence_epoch": 5, "fencing_token": 5,
+        "event_count": 221,
+        "event_head_id": "sha256:9ce3face2d72bea8437ba008dd7f27fbb0d72c11be8411cbeef137ab12237c47",
+        "event_head_sequence": 221,
+        "event_manifest_digest": "sha256:6f4d2b7fb9008dd84702a99f42d0cc3d746f947cf1638d9ccc669fecca96cf45",
+        "event_snapshot_id": "event-log-snapshot:sha256:56680be05866b443bf0292d7cbc216e552f3dc98a159e73631c436e03065a9c2",
+        "event_stream_id": "event-log:sha256:56680be05866b443bf0292d7cbc216e552f3dc98a159e73631c436e03065a9c2",
+        "fenced_provider_receipt_count": 3,
+        "fenced_provider_receipt_ids_digest": "sha256:490c4c0398da3a89e2b9d19cce15cfe13b5cb3c2447e37e387704af772ed1f4f",
+        "implementation_started_event_id": "sha256:9674a12a2257a98309e372f03c3f3d4b347bd5a911c06a9a91b5f5114b3c258e",
+        "lease_id": "lease:bd8575a5680c4b72bc62b845c69186aa", "nested_attempt": 1,
+        "nested_task_cid": "baguqeerabrbsifum4t3vjidzkhinqtkyt7rbikqkmbqgbqvjv27pojqukioq",
+        "outer_block_receipt_digest": "sha256:dde98659272b255d12b4c6ad7b4f3b58f607564c87a20722eab13564da5f1690",
+        "owner_session_id": "embedded-store:5a477a1db9402e639fecebb83f5f0873",
+        "prepared_reconciliation_receipt_id": "sha256:461b6d76d26d893409e3a7f14764a258a31b644eb17366a4ae413ce4f774c96a",
+        "prepared_state_digest": "sha256:4480790fcb4e641209eec6ee8fc6ce32186cf77221441699411e38c37c06dca7",
+        "projection_immutable_digest": "sha256:6a723b19ee3ddf8be42e3d744474d25b9ad12b8bf50b537da88122f5b9d4737c",
+        "provider_container_fence_receipt_id": "baguqeerarpisw5n52wmyj2ux2nl43yxrlizitzhek3ebftgo6cwgdslc6x7a",
+        "provider_fence_chronology_digest": "sha256:aca7d0edc8fcc15682e7bd2dbfa4d96fdc1f5c530fe38b59a9e2bed012fa70bb",
+        "provider_runner_pid": 3265314,
+        "provider_runner_receipt_id": "baguqeera73kb6x4l7y34shihgihbeixq2ocqkusul5nsktwzzwpksstpayrq",
+        "reconciliation_receipt_count": 6,
+        "reconciliation_receipt_ids_digest": "sha256:803af1e23f174afee5da88e48495491e8cab40de310bd53562dfa0d1591a2938",
+        "state_digest": "sha256:4480790fcb4e641209eec6ee8fc6ce32186cf77221441699411e38c37c06dca7",
+        "task_alias": "PCTDD-006", "task_cid": "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a",
+        "task_claim_release_event_id": "sha256:92e66598444d92bf51f490e87740a5b1eebec913d7a92379b34f3a5a5a714bb4",
+        "task_claim_release_receipt_id": "baguqeerahhjkthapkkg7f5dybruy5cjc4zl75plg66futidehu6ndowzwmfa",
+        "task_claim_release_receipt_name": "canonical-task-d00b5e54b10b136dad3e71d7-a1.json",
+        "task_revision": 23, "terminal_lifecycle_event_id": "sha256:af00229db3fd2d583118de37a55d1dc4891681b266109f474563377fe577438f",
+        "terminal_lifecycle_receipt_id": "sha256:064a3464788fa71ffc709a5e5c124b6b7ece12fee1a492e07c3bdc404920b466",
+        "terminal_reconciliation_evidence_id": "baguqeeradxr5vjqaps4orwh34ivrunnco7cjuw7wblxsiaebwywf7zz7yyyq",
+        "terminal_reconciliation_receipt_id": "sha256:741aa326e4995c928526695cb2a942c68e0d210c74e9fe8d901e037e5ea7b2b3",
+        "workspace_absent": True,
+        "workspace_path": "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery/data/agent_supervisor/parallel_content_sealing_proof_carrying_tdd_v1_g9/worktrees/workspace_5128543bd18c_130375c6a2f6",
+    }),
+    MappingProxyType({
+        "attempt_directory_names_digest": "sha256:412bd191d5df3a5feefb892c906a7794f6855e5ed9520b443379c5cf94b7cc60",
+        "attempt_id": "attempt:2b37a94ab4e54b14b27afd1577f70a47", "attempt_number": 5,
+        "attempt_root_key": "0265f74190e9b1a202f9e498", "baseline_ref": "553625d55dda7338e267f7799d076ea234629adb",
+        "binding_admission_digest": "sha256:4e65a6f272a8642927f3193ee0b2419e99c90fba673c38f0116414fb3b0e8c69",
+        "binding_admission_id": "baguqeerat62ih3y463r22etd7mg4wgxhbrvrlvt5qjqe3dfggvpewnes3gda",
+        "binding_id": "sha256:490454a6e505b4beae11b8748fe523d12f4dd350aacba5a2880dc2d808871c86",
+        "board_namespace": "parallel-content-sealing-proof-carrying-tdd-v1",
+        "branch": "implementation/pctdd-007-e272ca1f906f-attempt-1-1788294862",
+        "branch_disposition": "absent", "branch_target": "",
+        "claim_id": "claim:1b2051cfad484ee3a3f86a003ae0d21b",
+        "commit_barrier_receipt_id": "sha256:a76ac037eefc20dd4bf3f86fc4420a268e58db139e42ec9c5dbdbb41cda48849",
+        "container_removed_receipt_id": "sha256:2250cdaa551863f9f8bbe504f315f0e6d418c423364feeb562efc6d80fb88a96",
+        "credit_ordinal": 1, "fence_epoch": 5, "fencing_token": 5,
+        "event_count": 196,
+        "event_head_id": "sha256:5b3c14980f70a744107bb130a6fca767b650fc85fbe51a30f35a5388b5e133ae",
+        "event_head_sequence": 196,
+        "event_manifest_digest": "sha256:415fee3d896452b3b9336cc62711cf929beeae6e360caba0a07d7b111ceb18a1",
+        "event_snapshot_id": "event-log-snapshot:sha256:8ec5aa9f56214afb76636cca56ab42242c1deaf195a33bfc13e9bf6428bb6d25",
+        "event_stream_id": "event-log:sha256:8ec5aa9f56214afb76636cca56ab42242c1deaf195a33bfc13e9bf6428bb6d25",
+        "fenced_provider_receipt_count": 3,
+        "fenced_provider_receipt_ids_digest": "sha256:e6a081519da4011426a74529848af64448da7dd548cf80c1bb703439866908e5",
+        "implementation_started_event_id": "sha256:6c530a75176f3eef16caea778b6c59e92c72f94ddd56e3ee11b50f52dc1610da",
+        "lease_id": "lease:636fd6f2c6ea41db9f29a4c0657cf5bb", "nested_attempt": 1,
+        "nested_task_cid": "baguqeera4jzmuh4qn7z5t3eorypjfbe3zpc26k6pxkt2juh2hnnyjole5qsa",
+        "outer_block_receipt_digest": "sha256:c396397377eff8295b7b1f39ff126ddcf218c363203ed374f81082d088f746d6",
+        "owner_session_id": "embedded-store:5a477a1db9402e639fecebb83f5f0873",
+        "prepared_reconciliation_receipt_id": "sha256:67995c712dba0e8796cf6615912f5fd9a6ff6267d2024bf7b59ba016348623a9",
+        "prepared_state_digest": "sha256:38a3097652cae31cae92198cfb56af6a8c83fab6a6dfa2ed18387d60fec8e89c",
+        "projection_immutable_digest": "sha256:53f5ec6d431ac15ce9c5776c928d4461af3719a4ba8177b670413b64b51f494c",
+        "provider_container_fence_receipt_id": "baguqeera2s3ajmzlqzfulxaorqmccfrwdleflc3ulllritcxa2ni3eeja5sa",
+        "provider_fence_chronology_digest": "sha256:7945de44a13f31d56159a0eda055d89f68cb1c701609be541f965d90040e379e",
+        "provider_runner_pid": 502456,
+        "provider_runner_receipt_id": "baguqeerapanpryjfvk4rcirdgcoupbmao2eomskrmlbk5vtr3szdo2dw5aya",
+        "reconciliation_receipt_count": 6,
+        "reconciliation_receipt_ids_digest": "sha256:4ed9afe9667db3124c653b970f222223be1c7bdbd56d8a26d672cabcdc00f41c",
+        "state_digest": "sha256:38a3097652cae31cae92198cfb56af6a8c83fab6a6dfa2ed18387d60fec8e89c",
+        "task_alias": "PCTDD-007", "task_cid": "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq",
+        "task_claim_release_event_id": "sha256:ed4e7f5e65c8e87b5b9f05fbce9b16f7e8784d8b5654f322b9bcab5779411584",
+        "task_claim_release_receipt_id": "baguqeera5wbj22pmkmgeniump4a3dtfkum5tn42udutc4c6uk5rp5ayzckcq",
+        "task_claim_release_receipt_name": "canonical-task-49aa8c7559f05778a35fb121-a1.json",
+        "task_revision": 23, "terminal_lifecycle_event_id": "sha256:27e18c4282b11e5bf03c099a5631999f0b58fd1d833e516197143331e3a27ddb",
+        "terminal_lifecycle_receipt_id": "sha256:ca48441ba0c1905b3799d129da35be0198a69ab717ccc4636b717823f5b3e824",
+        "terminal_reconciliation_evidence_id": "baguqeera6khm5pkiyfs4lkfuns3525o4ioeko4rpv5qs24m3orvctvtzyt5a",
+        "terminal_reconciliation_receipt_id": "sha256:cc7b538e9e16344dd69e4c891b1929b57dc8084c91b747a234421dc7547d9dcb",
+        "workspace_absent": True,
+        "workspace_path": "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery/data/agent_supervisor/parallel_content_sealing_proof_carrying_tdd_v1_g9/worktrees/workspace_5128543bd18c_2e69a0a68962",
+    }),
+    MappingProxyType({
+        "attempt_directory_names_digest": "sha256:412bd191d5df3a5feefb892c906a7794f6855e5ed9520b443379c5cf94b7cc60",
+        "attempt_id": "attempt:228fff0dbc7644bf953672d3945abdd8", "attempt_number": 9,
+        "attempt_root_key": "18f4980d2c69c44805436f98", "baseline_ref": "553625d55dda7338e267f7799d076ea234629adb",
+        "binding_admission_digest": "sha256:60ae256a636c3b69ebd806fb8ef27d21d6c65f827abca0da7f8a51e840ee2bdb",
+        "binding_admission_id": "baguqeeracs657tdvk3ipt2hhcih74vadbidkcuax3cxnibxtwixwmkzcdyeq",
+        "binding_id": "sha256:930cdfeeaf388a8f6bf1eabc6f63c18078eb0c628a36ea31e70f2360b6aff620",
+        "board_namespace": "parallel-content-sealing-proof-carrying-tdd-v1",
+        "branch": "implementation/pctdd-034-6cc49f41f873-attempt-1-1788294014",
+        "branch_disposition": "absent", "branch_target": "",
+        "claim_id": "claim:07454df20d1349f8b42da8f5409cd736",
+        "commit_barrier_receipt_id": "sha256:27e2ee5d9185eed9b7bc3b4925b8dcad2ccc3657b69763b4a476681be66ec007",
+        "container_removed_receipt_id": "sha256:b1684b38e56d1feeed7453725998c18c1d94d1537bc15785c29d7dd71366eed4",
+        "credit_ordinal": 1, "fence_epoch": 9, "fencing_token": 9,
+        "event_count": 306,
+        "event_head_id": "sha256:e438c4427fabcd10a973300e7e003e03f8c5930f7e36bcfd03576ac9dccd9082",
+        "event_head_sequence": 306,
+        "event_manifest_digest": "sha256:4d505f227a5a8b9bb9ca197449ce7b18926d76ad9cfa0d4c90336d31f505266f",
+        "event_snapshot_id": "event-log-snapshot:sha256:fa1ae6b06a2a9f5c6dab3a5f0f7fc63c3ae5a44e9b1b4b4a98ed80bbfc7a53b5",
+        "event_stream_id": "event-log:sha256:fa1ae6b06a2a9f5c6dab3a5f0f7fc63c3ae5a44e9b1b4b4a98ed80bbfc7a53b5",
+        "fenced_provider_receipt_count": 3,
+        "fenced_provider_receipt_ids_digest": "sha256:3637ea4884822fdc9cfa458bce6e146f928bf5a51640a21b30802941e0542632",
+        "implementation_started_event_id": "sha256:7ba605848662c6cc9535f36b286e9444992a7dae21123ec903bb5c340f3393c4",
+        "lease_id": "lease:18c85a15e5ca4ef78f38e88f9d8f4899", "nested_attempt": 1,
+        "nested_task_cid": "baguqeerantcj6qpyoojzr36tn6uhiy2bq6k2knq6qmg3kuetiv254y6zy3lq",
+        "outer_block_receipt_digest": "sha256:919b7cee30f532357094e5d8feb3a428958c4065d5d0fd9853e97afa99447823",
+        "owner_session_id": "embedded-store:0008211c1bb7dd1d47df908faafb9185",
+        "prepared_reconciliation_receipt_id": "sha256:703681b1dc7c14c12d4eefb54b9c2252405ba0d5e28a06c0e76831692bc112ee",
+        "prepared_state_digest": "sha256:0d269dea08bfe459452136cc8391c5babe41e39b9d6e80ea72bbd40e7a77fc4f",
+        "projection_immutable_digest": "sha256:c24e1cdd5241cdbf2c03d6191f900577376b4467a9e2294fc549f67cc7cb3eb0",
+        "provider_container_fence_receipt_id": "baguqeeraiv2hys7zvrcdpwsxlt43vnzzc2lrjkjja2a7zeboflgve2zlwxmq",
+        "provider_fence_chronology_digest": "sha256:4e2c38deee08752a5970c95b2b81b3f34b6ced32f25c81ef78dae497e56395e4",
+        "provider_runner_pid": 3164396,
+        "provider_runner_receipt_id": "baguqeeralqmhzlchac4wdjevciprz7b4husn5nh5hkbfswyhqy2vd2cdnmga",
+        "reconciliation_receipt_count": 6,
+        "reconciliation_receipt_ids_digest": "sha256:b33253c90a79f0f29a5e7360a96fd61f63dcd9aa72e182ba749c267f2eb9c543",
+        "state_digest": "sha256:0d269dea08bfe459452136cc8391c5babe41e39b9d6e80ea72bbd40e7a77fc4f",
+        "task_alias": "PCTDD-034", "task_cid": "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
+        "task_claim_release_event_id": "sha256:c6a5ad2afe9a37bc892dd385348730741a226a0bf8dc46d0a3be00b01fa188dc",
+        "task_claim_release_receipt_id": "baguqeeraebexz3kl6skzz6x2xwdghp72vxgli2exlkkedpher26qvgsjk4uq",
+        "task_claim_release_receipt_name": "canonical-task-ef8a0843609346190fa1616b-a1.json",
+        "task_revision": 40, "terminal_lifecycle_event_id": "sha256:e37c7bc636433118504907b78a48c6ed782336c567e78b70b2900b420f9098d4",
+        "terminal_lifecycle_receipt_id": "sha256:ec6293bdcaa05f00f764051077346add2396a787776513d6c55627743c7fb319",
+        "terminal_reconciliation_evidence_id": "baguqeeraea3atvfdpg6zbemiak3vfdtyxix66z5cwperdo6di6ezqdks5zpa",
+        "terminal_reconciliation_receipt_id": "sha256:19ce707e5c8dc897069f8af2d17c5f78d53efd172012ba938129e7e68d38d528",
+        "workspace_absent": True,
+        "workspace_path": "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery/data/agent_supervisor/parallel_content_sealing_proof_carrying_tdd_v1_g9/worktrees/workspace_5128543bd18c_61f132aa9cb0",
+    }),
+)
 _STALE_DISPATCH_MIGRATION_REPLAY_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "reconciled",
@@ -665,6 +859,9 @@ DATABASE_PORTAL_QUIESCED_STALE_DISPATCH_RELEASE_REARM_EVIDENCE_FIELDS: Final[
         "prepared_state_digest",
         "state_digest",
         "outer_block_receipt_digest",
+        "migration_manifest_id",
+        "migration_credit_id",
+        "migration_credit_ordinal",
         "rearm_authorization_id",
         "provider_dispatched",
         "implementation_dispatched",
@@ -739,6 +936,9 @@ DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_FIELDS: Final[
         "prepared_state_digest",
         "state_digest",
         "outer_block_receipt_digest",
+        "migration_manifest_id",
+        "migration_credit_id",
+        "migration_credit_ordinal",
         "rearm_authorization_id",
         "provider_runner_started",
         "implementation_runner_started",
@@ -926,13 +1126,10 @@ def _fenced_provider_unpublished_event_roles(
         }
     ):
         return None
-    if pool_diagnostics and int(pool_diagnostics[0]["sequence"]) >= int(
-        selected["sequence"]
-    ):
-        # This is a closed, denied pre-selection diagnostic about an older
-        # lifecycle.  It contributes to the immutable history but no identity
-        # or provider authority for the selected task.
-        return None
+    # A pool-fence diagnostic is setup-only and may follow selection in the
+    # historical PCTDD-006 stream.  The preceding closed-population check
+    # already requires it to precede the protected snapshot, and the exact
+    # occurrence manifest binds the selected task and immutable event IDs.
     selected_identity = (
         selected.get("canonical_task_key"),
         selected.get("canonical_task_cid"),
@@ -993,6 +1190,18 @@ def _fenced_provider_unpublished_event_roles(
     }
 
 
+def _fenced_provider_repository_root(attempt_root: Path) -> Path | None:
+    """Resolve the enclosing repository without invoking Git or hooks."""
+
+    repository_root: Path | None = None
+    for candidate in (attempt_root, *attempt_root.parents):
+        marker = candidate / ".git"
+        if marker.exists() or marker.is_symlink():
+            repository_root = candidate
+            break
+    return repository_root
+
+
 def _fenced_provider_branch_state(
     attempt_root: Path,
     *,
@@ -1019,12 +1228,7 @@ def _fenced_provider_branch_state(
         or re.fullmatch(r"[0-9a-f]{40,64}", baseline_ref) is None
     ):
         return None
-    repository_root: Path | None = None
-    for candidate in (attempt_root, *attempt_root.parents):
-        marker = candidate / ".git"
-        if marker.exists() or marker.is_symlink():
-            repository_root = candidate
-            break
+    repository_root = _fenced_provider_repository_root(attempt_root)
     if repository_root is None:
         return None
     marker = repository_root / ".git"
@@ -1089,16 +1293,39 @@ def _fenced_provider_unpublished_migration_pin(
     attempt: Any,
     receipt: Mapping[str, Any],
 ) -> Mapping[str, Any] | None:
-    """Select one exact, complete, independently authenticated occurrence.
+    """Select one exact independently authenticated migration occurrence."""
 
-    The outer tuple and block digest are checked before any nested verifier is
-    entered.  A usable pin must then equal the complete evidence record, so
-    adding a future migration occurrence cannot silently omit nested binding,
-    event, reconciliation, workspace, or branch authority.
-    """
+    manifest = {
+        "schema": (
+            DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_SCHEMA
+        ),
+        "revision": "pctdd-provider-recovery-2026-09-02",
+        "operator_owned": True,
+        "one_shot": True,
+        "occurrences": [
+            dict(item)
+            for item in DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS
+        ],
+    }
+    if (
+        _sha256_bytes(_canonical_json(manifest))
+        != DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_ID
+        or len(DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS) != 3
+        or {
+            str(item.get("task_alias") or "")
+            for item in DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS
+        }
+        != {"PCTDD-006", "PCTDD-007", "PCTDD-034"}
+        or any(
+            not isinstance(item, Mapping)
+            or set(item) != _FENCED_PROVIDER_UNPUBLISHED_OCCURRENCE_FIELDS
+            or item.get("credit_ordinal") != 1
+            for item in DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS
+        )
+    ):
+        return None
 
     outer = {
-        "schema": DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA,
         "attempt_id": str(attempt.attempt_id),
         "claim_id": str(attempt.claim_id),
         "task_cid": str(attempt.task_cid),
@@ -1116,21 +1343,39 @@ def _fenced_provider_unpublished_migration_pin(
     for candidate in DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS:
         if (
             isinstance(candidate, Mapping)
-            and set(candidate)
-            == DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_FIELDS
             and all(
                 type(candidate.get(name)) is type(value)
                 and candidate.get(name) == value
                 for name, value in outer.items()
             )
-            and candidate.get("branch_disposition") == "absent"
-            and candidate.get("branch_target") == ""
-            and candidate.get("workspace_absent") is True
         ):
             matches.append(candidate)
     if len(matches) != 1:
         return None
     return matches[0]
+
+
+def _fenced_provider_unpublished_occurrence_matches(
+    evidence: Mapping[str, Any],
+    migration_pin: Mapping[str, Any],
+) -> bool:
+    """Match every independently reconstructed field of one sealed occurrence."""
+
+    occurrence_fields = (
+        _FENCED_PROVIDER_UNPUBLISHED_OCCURRENCE_FIELDS - {"credit_ordinal"}
+    )
+    return bool(
+        set(migration_pin) == _FENCED_PROVIDER_UNPUBLISHED_OCCURRENCE_FIELDS
+        and all(
+            type(evidence.get(name)) is type(migration_pin.get(name))
+            and evidence.get(name) == migration_pin.get(name)
+            for name in occurrence_fields
+        )
+        and type(evidence.get("migration_credit_ordinal"))
+        is type(migration_pin.get("credit_ordinal"))
+        and evidence.get("migration_credit_ordinal")
+        == migration_pin.get("credit_ordinal")
+    )
 _QUIESCED_STALE_DISPATCH_RELEASE_ALLOWED_EVENT_TYPES: Final[frozenset[str]] = (
     frozenset(
         {
@@ -6111,7 +6356,8 @@ class DatabasePortalExecutionBridge:
             if descriptor >= 0:
                 with suppress(OSError):
                     fcntl.flock(descriptor, fcntl.LOCK_UN)
-                os.close(descriptor)
+                with suppress(OSError):
+                    os.close(descriptor)
 
     def _pinned_no_provider_snapshot(
         self,
@@ -12126,6 +12372,21 @@ class DatabasePortalExecutionBridge:
             "prepared_state_digest",
             "state_digest",
             "outer_block_receipt_digest",
+            "migration_manifest_id",
+            "migration_credit_id",
+            "migration_credit_ordinal",
+        )
+        migration_credit = {
+            "schema": (
+                DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_CREDIT_SCHEMA
+            ),
+            "manifest_id": (
+                DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_ID
+            ),
+            "occurrence": dict(migration_pin),
+        }
+        migration_credit_id = _sha256_bytes(
+            _canonical_json(migration_credit)
         )
         authority_values = {
             "binding_id": str(binding.get("binding_id") or ""),
@@ -12215,6 +12476,13 @@ class DatabasePortalExecutionBridge:
             "outer_block_receipt_digest": _sha256_bytes(
                 _canonical_json(dict(receipt))
             ),
+            "migration_manifest_id": (
+                DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_ID
+            ),
+            "migration_credit_id": migration_credit_id,
+            "migration_credit_ordinal": int(
+                migration_pin.get("credit_ordinal") or 0
+            ),
         }
         authorization = {
             "schema": (
@@ -12263,7 +12531,15 @@ class DatabasePortalExecutionBridge:
                 "fenced provider evidence field construction drifted"
             )
         evidence["evidence_id"] = _sha256_bytes(_canonical_json(evidence))
-        if _canonical_json(dict(migration_pin)) != _canonical_json(evidence):
+        if (
+            not _fenced_provider_unpublished_occurrence_matches(
+                evidence,
+                migration_pin,
+            )
+            or evidence.get("migration_manifest_id")
+            != DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_ID
+            or evidence.get("migration_credit_id") != migration_credit_id
+        ):
             return None
         return evidence
 
@@ -12324,35 +12600,83 @@ class DatabasePortalExecutionBridge:
         expected_evidence: Mapping[str, Any],
         callback: Callable[[], Any],
     ) -> Any:
-        """Hold nested receipt/event fences across one consuming outer CAS.
+        """Make one consuming outer CAS the final admission operation.
 
-        The provider/container is never restarted here.  The exact immutable
-        fence and release populations, current quiescent snapshot, destroyed
-        workspace, and absent candidate ref are checked directly
-        before and after the callback.  Any advance fails into the caller's
-        existing fenced compensation saga.
+        The existing board-scoped checkout mutation lease is acquired before
+        any nested receipt/event lock, preserving the supervisor's global
+        checkout -> nested-artifact lock order.  Every revocable filesystem,
+        ref, event, receipt, and pinned-directory condition is revalidated
+        immediately before ``callback``.  The callback is then the final
+        fallible operation while all cooperative writer locks remain held.
+
+        A successful callback is an irrevocable one-shot admission.  It is
+        intentionally not followed by a fallible filesystem postcheck: that
+        old shape could commit the outer CAS and then report failure, leaving
+        an admitted credit whose success was indistinguishable from response
+        loss.  Context teardown only performs suppressed unlock/close calls;
+        failure to release the exact checkout lease retains a safe global
+        mutation fence rather than changing the CAS result.
         """
 
         if not callable(callback):
             raise TypeError(
                 "revalidated fenced-provider callback must be callable"
             )
-        if not self.revalidate_fenced_provider_unpublished_rearm_evidence(
-            attempt,
-            outer_block_receipt=outer_block_receipt,
-            expected_evidence=expected_evidence,
-        ):
-            raise DatabasePortalBridgeError(
-                "fenced-provider unpublished occurrence advanced"
-            )
-
         workspace = Path(str(expected_evidence.get("workspace_path") or ""))
         branch = str(expected_evidence.get("branch") or "")
         baseline_ref = str(expected_evidence.get("baseline_ref") or "")
+        board_namespace = str(
+            expected_evidence.get("board_namespace") or ""
+        )
         expected_branch_state = (
             str(expected_evidence.get("branch_disposition") or ""),
             str(expected_evidence.get("branch_target") or ""),
         )
+        repository_root = _fenced_provider_repository_root(self.attempt_root)
+        if repository_root is None or not board_namespace:
+            raise DatabasePortalBridgeError(
+                "fenced-provider checkout mutation authority is unavailable"
+            )
+        checkout_metadata = checkout_lock_metadata(
+            kind="merge",
+            repo_root=repository_root,
+            task_id=str(getattr(attempt, "task_alias", "") or ""),
+            attempt=int(expected_evidence.get("nested_attempt") or 0),
+            branch=branch,
+            extra={
+                "operation": "fenced_provider_recovery_admission",
+                "database_attempt_id": str(
+                    getattr(attempt, "attempt_id", "") or ""
+                ),
+                "migration_manifest_id": str(
+                    expected_evidence.get("migration_manifest_id") or ""
+                ),
+                "migration_credit_id": str(
+                    expected_evidence.get("migration_credit_id") or ""
+                ),
+            },
+        )
+        checkout_lease, _lease_reason, _existing, _waited = (
+            acquire_checkout_mutation_lease(
+                board_scoped_checkout_mutation_lock_path(
+                    repository_root,
+                    board_namespace,
+                ),
+                checkout_metadata,
+                owner_active=lambda metadata: checkout_lock_owner_is_active(
+                    metadata,
+                    expected_kind="merge",
+                    expected_repo_root=repository_root,
+                    process_command_line=_shared_process_args,
+                    process_is_running=_shared_pid_alive,
+                ),
+                timeout_seconds=0.0,
+            )
+        )
+        if checkout_lease is None:
+            raise DatabasePortalBridgeError(
+                "fenced-provider checkout mutation lease is unavailable"
+            )
 
         def verify_destroyed_candidate() -> None:
             if (
@@ -12374,6 +12698,14 @@ class DatabasePortalExecutionBridge:
         parent_fd = authority_fd = attempt_fd = -1
         pinned: tuple[Any, ...] = ()
         try:
+            if not self.revalidate_fenced_provider_unpublished_rearm_evidence(
+                attempt,
+                outer_block_receipt=outer_block_receipt,
+                expected_evidence=expected_evidence,
+            ):
+                raise DatabasePortalBridgeError(
+                    "fenced-provider unpublished occurrence advanced"
+                )
             parent_fd, authority_fd, attempt_fd, pinned = (
                 self._open_pinned_private_attempt_directory(
                     authority_root=self.attempt_root,
@@ -12407,13 +12739,6 @@ class DatabasePortalExecutionBridge:
                         raise DatabasePortalBridgeError(
                             "fenced-provider attempt root changed before CAS"
                         )
-                    result = callback()
-                    verify_artifacts()
-                    self._revalidate_pinned_quiesced_release_snapshot(
-                        attempt_fd,
-                        expected_evidence=expected_evidence,
-                    )
-                    verify_destroyed_candidate()
                     self._verify_pinned_private_attempt_directory(
                         parent_fd=parent_fd,
                         authority_fd=authority_fd,
@@ -12421,21 +12746,17 @@ class DatabasePortalExecutionBridge:
                         snapshot=pinned,
                     )
                     pinned = ()
-                    return result
+                    return callback()
         finally:
-            try:
-                if pinned:
-                    self._verify_pinned_private_attempt_directory(
-                        parent_fd=parent_fd,
-                        authority_fd=authority_fd,
-                        attempt_fd=attempt_fd,
-                        snapshot=pinned,
-                    )
-            finally:
-                for descriptor in (attempt_fd, authority_fd, parent_fd):
-                    if descriptor >= 0:
-                        with suppress(OSError):
-                            os.close(descriptor)
+            for descriptor in (attempt_fd, authority_fd, parent_fd):
+                if descriptor >= 0:
+                    with suppress(OSError):
+                        os.close(descriptor)
+            # A false return preserves the lock as a durable global fence.
+            # It must never turn an already-returned CAS into an ambiguous
+            # exception or authorize another callback.
+            with suppress(Exception):
+                release_checkout_mutation_lease(checkout_lease)
 
     def revalidate_quiesced_stale_dispatch_release_rearm_evidence(
         self,
@@ -12540,16 +12861,6 @@ class DatabasePortalExecutionBridge:
                         raise DatabasePortalBridgeError(
                             "quiesced stale-dispatch release root changed before CAS"
                         )
-                    result = callback()
-                    # Verify all three pinned authorities before releasing any
-                    # lock.  A successful outer CAS can therefore never be
-                    # followed by a false stale-proof error caused by a later
-                    # benign shutdown append.
-                    verify_artifacts()
-                    self._revalidate_pinned_quiesced_release_snapshot(
-                        attempt_fd,
-                        expected_evidence=expected_evidence,
-                    )
                     self._verify_pinned_private_attempt_directory(
                         parent_fd=parent_fd,
                         authority_fd=authority_fd,
@@ -12557,21 +12868,16 @@ class DatabasePortalExecutionBridge:
                         snapshot=pinned,
                     )
                     pinned = ()
-                    return result
+                    # All revocable authorities are now pinned and verified.
+                    # The consuming CAS must be the final fallible operation;
+                    # post-CAS verification would make a committed response
+                    # indistinguishable from a stale-proof failure.
+                    return callback()
         finally:
-            try:
-                if pinned:
-                    self._verify_pinned_private_attempt_directory(
-                        parent_fd=parent_fd,
-                        authority_fd=authority_fd,
-                        attempt_fd=attempt_fd,
-                        snapshot=pinned,
-                    )
-            finally:
-                for descriptor in (attempt_fd, authority_fd, parent_fd):
-                    if descriptor >= 0:
-                        with suppress(OSError):
-                            os.close(descriptor)
+            for descriptor in (attempt_fd, authority_fd, parent_fd):
+                if descriptor >= 0:
+                    with suppress(OSError):
+                        os.close(descriptor)
 
     def no_provider_dispatch_rearm_evidence(
         self,
@@ -15066,6 +15372,11 @@ __all__ = (
     "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_AUTHORIZATION_SCHEMA",
     "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_FIELDS",
     "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA",
+    "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_CREDIT_SCHEMA",
+    "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_ID",
+    "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_SCHEMA",
+    "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS",
+    "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_STATUS",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_AUTHORIZATION_SCHEMA",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_FIELDS",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA",

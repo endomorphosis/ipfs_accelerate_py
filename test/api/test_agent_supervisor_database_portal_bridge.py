@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -1531,24 +1532,18 @@ def test_quiesced_release_fence_revalidates_before_callback_and_holds_lock(
         ) == "cas-committed"
         assert callback_calls == [True]
 
-        def replacement_after_cas() -> str:
-            with open(release_file, "rb") as source:
-                raw = source.read()
-            replacement = release_dir / ".producer-replacement"
-            replacement.write_bytes(raw)
-            os.chmod(replacement, 0o600)
-            os.replace(replacement, release_file)
-            callback_calls.append(False)
-            return "cas-committed-before-postcheck"
-
+        replacement = release_dir / ".producer-replacement"
+        replacement.write_bytes(b"{}")
+        os.chmod(replacement, 0o600)
+        os.replace(replacement, release_file)
         with pytest.raises(DatabasePortalBridgeError):
             bridge.execute_with_revalidated_quiesced_stale_dispatch_release(
                 attempt,
                 outer_block_receipt=outer_receipt,
                 expected_evidence=expected,
-                callback=replacement_after_cas,
+                callback=lambda: callback_calls.append(False),
             )
-        assert callback_calls == [True, False]
+        assert callback_calls == [True]
 
         advanced = {**expected, "event_head_id": "sha256:" + "2" * 64}
         monkeypatch.setattr(
@@ -1563,7 +1558,7 @@ def test_quiesced_release_fence_revalidates_before_callback_and_holds_lock(
                 expected_evidence=expected,
                 callback=lambda: callback_calls.append(True),
             )
-        assert callback_calls == [True, False]
+        assert callback_calls == [True]
     finally:
         daemon.close()
 
@@ -1762,18 +1757,49 @@ def test_fenced_provider_destroyed_candidate_ref_state_is_fail_closed(
     assert ref_state(repo, branch=branch, baseline_ref=baseline) is None
 
 
-def test_fenced_provider_migration_is_typed_unavailable_without_sealed_pins(
+def test_fenced_provider_migration_manifest_is_exact_and_content_addressed(
 ) -> None:
     assert (
         database_portal_bridge_module.
         DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_STATUS
-        == "unavailable_missing_authenticated_occurrence_pins"
+        == "available_exact_operator_occurrence_manifest"
     )
-    assert (
+    pins = (
         database_portal_bridge_module.
         DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS
-        == ()
     )
+    assert len(pins) == 3
+    assert {item["task_alias"] for item in pins} == {
+        "PCTDD-006",
+        "PCTDD-007",
+        "PCTDD-034",
+    }
+    assert len({item["task_cid"] for item in pins}) == 3
+    assert all(
+        set(item)
+        == database_portal_bridge_module.
+        _FENCED_PROVIDER_UNPUBLISHED_OCCURRENCE_FIELDS
+        and item["credit_ordinal"] == 1
+        for item in pins
+    )
+    manifest = {
+        "schema": (
+            database_portal_bridge_module.
+            DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_SCHEMA
+        ),
+        "revision": "pctdd-provider-recovery-2026-09-02",
+        "operator_owned": True,
+        "one_shot": True,
+        "occurrences": [dict(item) for item in pins],
+    }
+    assert database_portal_bridge_module._sha256_bytes(
+        database_portal_bridge_module._canonical_json(manifest)
+    ) == (
+        database_portal_bridge_module.
+        DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_ID
+    )
+
+    # Display aliases and approximate counters never select an occurrence.
     bridge = object.__new__(DatabasePortalExecutionBridge)
     attempt = _attempt()
     outer_receipt = {"reason": "callback_authority_incomplete_blocked"}
@@ -1786,6 +1812,86 @@ def test_fenced_provider_migration_is_typed_unavailable_without_sealed_pins(
         attempt,
         outer_receipt,
     ) is None
+
+
+def test_fenced_provider_occurrence_pin_rejects_allowed_shutdown_append() -> None:
+    pin = dict(
+        database_portal_bridge_module.
+        DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS[0]
+    )
+    evidence = {
+        name: value
+        for name, value in pin.items()
+        if name != "credit_ordinal"
+    }
+    evidence["migration_credit_ordinal"] = pin["credit_ordinal"]
+    matches = (
+        database_portal_bridge_module.
+        _fenced_provider_unpublished_occurrence_matches
+    )
+
+    assert matches(evidence, pin)
+
+    # `implementation_shutdown_reconciled` is structurally allowed by the
+    # closed classifier, but an append necessarily advances these sealed
+    # population anchors and therefore cannot reuse the historical credit.
+    appended = dict(evidence)
+    appended["event_count"] = int(evidence["event_count"]) + 1
+    appended["event_head_sequence"] = int(evidence["event_head_sequence"]) + 1
+    appended["event_head_id"] = "sha256:" + "0" * 64
+    assert not matches(appended, pin)
+
+    # The closed top-level attempt population is independently committed.
+    # Adding even an otherwise-unreferenced private artifact cannot preserve
+    # the exact occurrence selected by the operator manifest.
+    extra_artifact = dict(evidence)
+    extra_artifact["attempt_directory_names_digest"] = "sha256:" + "1" * 64
+    assert not matches(extra_artifact, pin)
+
+
+def test_fenced_provider_occurrence_manifest_source_has_no_duplicate_dict_keys(
+) -> None:
+    source = Path(database_portal_bridge_module.__file__).read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    assignment = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id
+        == "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS"
+    )
+    for mapping in (
+        node for node in ast.walk(assignment.value) if isinstance(node, ast.Dict)
+    ):
+        keys = [
+            key.value
+            for key in mapping.keys
+            if isinstance(key, ast.Constant) and isinstance(key.value, str)
+        ]
+        assert len(keys) == len(set(keys))
+
+
+def test_fenced_provider_migration_manifest_tamper_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pins = list(
+        database_portal_bridge_module.
+        DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS
+    )
+    pins[0] = {**dict(pins[0]), "lease_id": "lease:near-miss"}
+    monkeypatch.setattr(
+        database_portal_bridge_module,
+        "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS",
+        tuple(pins),
+    )
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    assert bridge.fenced_provider_unpublished_migration_available(
+        _attempt(),
+        outer_block_receipt={"reason": "callback_authority_incomplete_blocked"},
+    ) is False
 
 
 def test_fenced_provider_revalidation_blocks_workspace_and_ref_races(
@@ -1811,9 +1917,18 @@ def test_fenced_provider_revalidation_blocks_workspace_and_ref_races(
         "baseline_ref": "a" * 40,
         "branch_disposition": "absent",
         "branch_target": "",
+        "board_namespace": parse_task_file(
+            paths.task_projection,
+            task_header_prefix="## PCTDD-001",
+        )[0].board_namespace,
+        "nested_attempt": 1,
+        "migration_manifest_id": "sha256:" + "4" * 64,
+        "migration_credit_id": "sha256:" + "5" * 64,
         **_seed_quiesced_release_artifact_population(paths),
     }
     ref_state: list[tuple[str, str]] = [("absent", "")]
+    branch_state_reads: list[tuple[str, str]] = []
+    competing_checkout_attempts: list[str] = []
     monkeypatch.setattr(
         bridge,
         "_fenced_provider_unpublished_rearm_evidence",
@@ -1827,17 +1942,73 @@ def test_fenced_provider_revalidation_blocks_workspace_and_ref_races(
     monkeypatch.setattr(
         database_portal_bridge_module,
         "_fenced_provider_branch_state",
-        lambda *_args, **_kwargs: ref_state[-1],
+        lambda *_args, **_kwargs: (
+            branch_state_reads.append(ref_state[-1]) or ref_state[-1]
+        ),
     )
     calls: list[str] = []
+    repository_root = (
+        database_portal_bridge_module._fenced_provider_repository_root(
+            bridge.attempt_root
+        )
+    )
+    assert repository_root is not None
+    checkout_lock_path = (
+        database_portal_bridge_module.
+        board_scoped_checkout_mutation_lock_path(
+            repository_root,
+            str(expected["board_namespace"]),
+        )
+    )
+    competing_metadata = database_portal_bridge_module.checkout_lock_metadata(
+        kind="merge",
+        repo_root=repository_root,
+        task_id="PCTDD-COMPETING-WRITER",
+        attempt=2,
+        branch="implementation/competing-writer",
+        extra={"operation": "fenced_provider_recovery_admission"},
+    )
+
+    def callback_while_checkout_is_fenced() -> str:
+        competing_lease, reason, _owner, _waited = (
+            database_portal_bridge_module.acquire_checkout_mutation_lease(
+                checkout_lock_path,
+                competing_metadata,
+                owner_active=lambda _metadata: True,
+                timeout_seconds=0.0,
+            )
+        )
+        assert competing_lease is None
+        competing_checkout_attempts.append(reason)
+        calls.append("committed")
+        return "committed"
+
     try:
         assert bridge.execute_with_revalidated_fenced_provider_unpublished(
             attempt,
             outer_block_receipt=outer_receipt,
             expected_evidence=expected,
-            callback=lambda: calls.append("committed") or "committed",
+            callback=callback_while_checkout_is_fenced,
         ) == "committed"
         assert calls == ["committed"]
+        assert competing_checkout_attempts == ["lock_exists"]
+        assert branch_state_reads == [("absent", "")]
+
+        # The same compliant writer can acquire only after the callback has
+        # returned and the exact admission lease has been released.
+        competing_lease, reason, _owner, _waited = (
+            database_portal_bridge_module.acquire_checkout_mutation_lease(
+                checkout_lock_path,
+                competing_metadata,
+                owner_active=lambda _metadata: True,
+                timeout_seconds=0.0,
+            )
+        )
+        assert competing_lease is not None
+        assert reason == "acquired"
+        assert database_portal_bridge_module.release_checkout_mutation_lease(
+            competing_lease
+        ) is True
 
         workspace.mkdir()
         with pytest.raises(DatabasePortalBridgeError):
@@ -1850,19 +2021,15 @@ def test_fenced_provider_revalidation_blocks_workspace_and_ref_races(
         assert calls == ["committed"]
         workspace.rmdir()
 
-        def race_ref_after_cas() -> str:
-            calls.append("ref-race")
-            ref_state.append(("baseline", "a" * 40))
-            return "committed-before-race-detected"
-
+        ref_state.append(("baseline", "a" * 40))
         with pytest.raises(DatabasePortalBridgeError):
             bridge.execute_with_revalidated_fenced_provider_unpublished(
                 attempt,
                 outer_block_receipt=outer_receipt,
                 expected_evidence=expected,
-                callback=race_ref_after_cas,
+                callback=lambda: calls.append("ref-race"),
             )
-        assert calls == ["committed", "ref-race"]
+        assert calls == ["committed"]
     finally:
         daemon.close()
 
