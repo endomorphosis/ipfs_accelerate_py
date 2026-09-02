@@ -157,6 +157,17 @@ _M58_SUCCESSOR_KEY = (
 _M58_TARGET_PROJECTION_CID = (
     "baguqeeraoxa2csqtjut7zgmcxrmtb3hj624f5ewg2a4ibn6mz7tlq6nxdggq"
 )
+_M59_AUTHORITY_CID = (
+    "sha256:7966d5c7bbb909cffe2e6c34c0659d31da9c943b6b11b134c5703f87c5452ef5"
+)
+_M59_AUTHORITY_SIZE = 17_220
+_M59_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M59_FINAL_CONTROL_AUTHORITY_CID"
+_M59_SUCCESSOR_KEY = (
+    "post_m58_quack_snapshot_row_normalization_successor_materialization"
+)
+_M59_TARGET_PROJECTION_CID = (
+    "baguqeeraxj4lqphz3brzzn7tqyp3trqzuyaa2vtlzrrvttusirvvqkvptyca"
+)
 _M50_M49_RECEIPT_CID = (
     "sha256:d5bfeb6dd987b05c2407d93f66d73c6a70bcd2b4f17e8381a93a2bb265acae47"
 )
@@ -571,6 +582,8 @@ def _m58_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
     migration: Mapping[str, Any],
+    *,
+    require_current_source: bool = True,
 ) -> list[str]:
     """Validate M58's generation-43/event-328 restart authority."""
 
@@ -578,11 +591,33 @@ def _m58_migration_errors(
         module = _dependency_validator_module(REPO_ROOT)
         return list(
             module._m58_post_m57_stall_unblock_and_shutdown_fence_restart_errors(
-                scheduler, seal, migration, root=REPO_ROOT
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_current_source=require_current_source,
             )
         )
     except Exception as exc:
         return [f"M58 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m59_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Validate M59's same-owner generation-43/event-329 authority."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m59_post_m58_quack_snapshot_row_normalization_errors(
+                scheduler, seal, migration, root=REPO_ROOT
+            )
+        )
+    except Exception as exc:
+        return [f"M59 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _m57_migration_errors(
@@ -1492,15 +1527,52 @@ def _active_successor_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
     migration: Mapping[str, Any],
+    *,
+    require_current_source: bool = True,
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M58 before every historical successor. Consequently
+    Key presence selects M59 before every historical successor. Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m59_key = _M59_SUCCESSOR_KEY
+    m59_presence = (
+        m59_key in scheduler,
+        m59_key in migration,
+        f"{m59_key}_cid" in seal,
+    )
+    if any(m59_presence):
+        errors = _m59_migration_errors(scheduler, seal, migration)
+        if not all(m59_presence):
+            errors.append("M59 successor authority is only partially declared")
+        if errors:
+            return errors
+        m58_key = _M58_SUCCESSOR_KEY
+        m58_presence = (
+            m58_key in scheduler,
+            m58_key in migration,
+            f"{m58_key}_cid" in seal,
+        )
+        if not all(m58_presence):
+            return [
+                "M59 successor does not preserve the immutable M58 controls"
+            ]
+        historical_scheduler = dict(scheduler)
+        historical_migration = dict(migration)
+        historical_seal = dict(seal)
+        historical_scheduler.pop(m59_key, None)
+        historical_migration.pop(m59_key, None)
+        historical_seal.pop(f"{m59_key}_cid", None)
+        return _active_successor_migration_errors(
+            historical_scheduler,
+            historical_seal,
+            historical_migration,
+            require_current_source=False,
+        )
 
     m58_key = _M58_SUCCESSOR_KEY
     m58_presence = (
@@ -1509,7 +1581,12 @@ def _active_successor_migration_errors(
         f"{m58_key}_cid" in seal,
     )
     if any(m58_presence):
-        errors = _m58_migration_errors(scheduler, seal, migration)
+        errors = _m58_migration_errors(
+            scheduler,
+            seal,
+            migration,
+            require_current_source=require_current_source,
+        )
         if not all(m58_presence):
             errors.append("M58 successor authority is only partially declared")
         if errors:
@@ -4893,42 +4970,48 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m59_key = _M59_SUCCESSOR_KEY
+    m59_selected = any((
+        m59_key in config,
+        m59_key in migration,
+        f"{m59_key}_cid" in seal,
+    ))
     m58_key = _M58_SUCCESSOR_KEY
     m58_selected = any((
         m58_key in config,
         m58_key in migration,
         f"{m58_key}_cid" in seal,
-    ))
+    )) and not m59_selected
     m57_key = _M57_SUCCESSOR_KEY
     m57_selected = any((
         m57_key in config,
         m57_key in migration,
         f"{m57_key}_cid" in seal,
-    )) and not m58_selected
+    )) and not m58_selected and not m59_selected
     m56_key = _M56_SUCCESSOR_KEY
     m56_selected = any((
         m56_key in config,
         m56_key in migration,
         f"{m56_key}_cid" in seal,
-    )) and not m57_selected and not m58_selected
+    )) and not m57_selected and not m58_selected and not m59_selected
     m55_key = _M55_SUCCESSOR_KEY
     m55_selected = any((
         m55_key in config,
         m55_key in migration,
         f"{m55_key}_cid" in seal,
-    )) and not m56_selected and not m57_selected and not m58_selected
+    )) and not m56_selected and not m57_selected and not m58_selected and not m59_selected
     m53_key = _M53_SUCCESSOR_KEY
     m53_selected = any((
         m53_key in config,
         m53_key in migration,
         f"{m53_key}_cid" in seal,
-    )) and not m55_selected and not m56_selected and not m57_selected and not m58_selected
+    )) and not m55_selected and not m56_selected and not m57_selected and not m58_selected and not m59_selected
     m52_key = _M52_SUCCESSOR_KEY
     m52_selected = any((
         m52_key in config,
         m52_key in migration,
         f"{m52_key}_cid" in seal,
-    )) and not m53_selected and not m55_selected and not m56_selected and not m57_selected and not m58_selected
+    )) and not m53_selected and not m55_selected and not m56_selected and not m57_selected and not m58_selected and not m59_selected
     m51_key = _M51_SUCCESSOR_KEY
     m51_selected = any((
         m51_key in config,
@@ -5188,7 +5271,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     multi_lane_selected = (
-        m58_selected
+        m59_selected
+        or m58_selected
         or m53_selected
         or m52_selected
         or m51_selected
@@ -5225,7 +5309,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or config.get("max_lanes") != expected_lane_count
     ):
         config_errors.append(
-            "four lanes are required for M58/M48/M47/M46/M45/M44/M43/M42/M41/M40/M39/M38/M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
+            "four lanes are required for M59/M58/M48/M47/M46/M45/M44/M43/M42/M41/M40/M39/M38/M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
             if multi_lane_selected
             else "one lane is required until sidecars are lane-scoped"
         )
@@ -5407,6 +5491,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_run = (
         "run-r2-m27"
+        if m59_selected
+        else "run-r2-m27"
         if m58_selected
         else "run-r2-m27"
         if m57_selected
@@ -5507,6 +5593,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_generation = (
         "43"
+        if m59_selected
+        else "43"
         if m58_selected
         else "42"
         if m57_selected
@@ -5607,6 +5695,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m59_selected
+        else 24070
         if m58_selected
         else 24070
         if m57_selected
@@ -5720,6 +5810,45 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
+    if m59_selected:
+        successor = config.get(m59_key)
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m59_post_m58_quack_snapshot_row_normalization_authority()
+            )
+            reference = dict(materializer._m59_authority_reference())
+            contract = materializer._validated_m59_live_preflight_contract(expected)
+            materializer._assert_m59_source_delta(
+                root, materializer.build_population(root), expected
+            )
+            m59_errors = (
+                module._m59_post_m58_quack_snapshot_row_normalization_errors(
+                    config, seal, migration, root=root
+                )
+            )
+            if (
+                successor != reference
+                or migration.get(m59_key) != reference
+                or seal.get(f"{m59_key}_cid") != _M59_AUTHORITY_CID
+                or materializer._identity(expected) != _M59_AUTHORITY_CID
+                or len(materializer._canonical(expected)) != _M59_AUTHORITY_SIZE
+                or expected.get("migration_revision") != "SAWM-R2-M59"
+                or expected.get("migration_kind") != m59_key
+                or contract.get("target_generation") != 43
+                or contract.get("target_event_watermark") != 329
+                or contract.get("target_projection_cid")
+                != _M59_TARGET_PROJECTION_CID
+                or contract.get("same_live_owner_required") is not True
+                or contract.get("generation_restart_authorized") is not False
+            ):
+                m59_errors.append("M59 successor authority binding differs")
+            config_errors.extend(m59_errors)
+        except Exception as exc:
+            config_errors.append(
+                f"M59 successor authority unavailable: {type(exc).__name__}: {exc}"
+            )
     if m58_selected:
         successor = config.get(m58_key)
         try:
@@ -6001,6 +6130,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         and not m56_selected
         and not m57_selected
         and not m58_selected
+        and not m59_selected
     ):
         successor = config.get(m51_key)
         try:
