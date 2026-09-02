@@ -11254,6 +11254,65 @@ def test_stale_quack_authority_binding_defers_instead_of_killing_the_daemon(
         daemon.close()
 
 
+def test_expired_quack_grant_rebinds_instead_of_idling_forever(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceIntegrityError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:expired-quack-grant-rebind",
+        max_task_attempts=3,
+    )
+    expected = {
+        "interface": "TypedDatabaseTaskSourceQuackAuthorityBinding@1",
+        "stable_binding_id": "bind:stable",
+        "endpoint": "quack:127.0.0.1:46731",
+        "store_id": "store",
+        "server_id": "server:1",
+        "generation": 68,
+        "session_id": "session:old",
+        "process_birth_id": "birth:old",
+        "fence_epoch": 68,
+    }
+    reconnects: list[int] = []
+    calls = {"n": 0}
+
+    def require(**_kwargs: object) -> dict[str, object]:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TaskSourceIntegrityError(
+                "typed database task source Quack authority is not live"
+            )
+        return {**expected, "session_id": "session:renewed"}
+
+    try:
+        daemon._quack_uri = "quack:127.0.0.1:46731"
+        daemon._typed_quack_authority_binding = dict(expected)
+        daemon._task_source.require_quack_authority_binding = require  # type: ignore[method-assign]
+        daemon._task_source._client = SimpleNamespace(  # noqa: SLF001
+            attached=True,
+            reconnect=lambda: reconnects.append(1),
+            attach=lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_run_once_impl",
+            lambda: {"unchanged": True, "write_count": 0, "active_task_id": ""},
+        )
+        result = daemon.run_once()
+        assert result.get("reason") != "quack_attach_contended"
+        assert reconnects == [1]
+        assert calls["n"] == 2
+        assert daemon._typed_quack_authority_binding["session_id"] == "session:renewed"
+        assert daemon._typed_quack_authority_binding["stable_binding_id"] == "bind:stable"
+    finally:
+        daemon.close()
+
+
 def test_owner_command_fatal_defers_instead_of_killing_the_daemon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

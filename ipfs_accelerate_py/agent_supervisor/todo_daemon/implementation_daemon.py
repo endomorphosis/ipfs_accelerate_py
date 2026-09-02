@@ -91261,6 +91261,51 @@ class DatabaseImplementationDaemon:
             self._embedded_writer_lock_bindings[lock_path] = current_binding_id
             self._inspect_embedded_sidecars(require_exists=False)
 
+    @staticmethod
+    def _typed_quack_binding_same_stable_owner(
+        expected: Mapping[str, Any],
+        observed: Mapping[str, Any],
+    ) -> bool:
+        """True when reconnect rotated the grant/session on the same owner."""
+
+        keys = (
+            "stable_binding_id",
+            "endpoint",
+            "store_id",
+            "server_id",
+            "generation",
+        )
+        return all(expected.get(key) == observed.get(key) for key in keys)
+
+    def _rebind_typed_quack_authority(self) -> Mapping[str, Any] | None:
+        """Reconnect one expired birth-bound grant to the still-live owner.
+
+        Default grant TTL is one hour. SPAR lanes never renewed, so after
+        expiry every pass raised ``typed Quack authority binding is no
+        longer live`` and 30s-deferred while SPAR-022/024 stayed ready.
+        """
+
+        source = self._task_source
+        require = getattr(source, "require_quack_authority_binding", None)
+        client = getattr(source, "_client", None)
+        if not callable(require) or client is None:
+            return None
+        reconnect = getattr(client, "reconnect", None)
+        attach = getattr(client, "attach", None)
+        try:
+            if getattr(client, "attached", False) and callable(reconnect):
+                reconnect()
+            elif callable(attach) and self._quack_uri:
+                attach(self._quack_uri)
+            else:
+                return None
+            return require(
+                expected_endpoint=self._quack_uri,
+                expected_process_instance_id=self.process_instance_id,
+            )
+        except Exception:
+            return None
+
     def _require_typed_quack_authority_binding(self) -> None:
         """Revalidate the exact typed owner pinned during construction."""
 
@@ -91274,13 +91319,20 @@ class DatabaseImplementationDaemon:
                 expected_process_instance_id=self.process_instance_id,
             )
         except Exception as exc:
-            raise DatabaseImplementationAuthorityError(
-                "typed Quack authority binding is no longer live"
-            ) from exc
+            observed = self._rebind_typed_quack_authority()
+            if observed is None:
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack authority binding is no longer live"
+                ) from exc
         if dict(observed) != dict(expected):
-            raise DatabaseImplementationAuthorityError(
-                "typed Quack authority changed after daemon admission"
-            )
+            if not self._typed_quack_binding_same_stable_owner(
+                expected,
+                observed,
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "typed Quack authority changed after daemon admission"
+                )
+            self._typed_quack_authority_binding = dict(observed)
 
     def open(self) -> "DatabaseImplementationDaemon":
         """Open execution store and bind task-source / coordinator adapters."""
