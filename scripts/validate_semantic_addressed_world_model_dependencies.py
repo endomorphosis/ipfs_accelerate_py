@@ -3519,63 +3519,6 @@ def _m55_live_ready_owner_missing_client_token_vault_restart_errors(
     return errors
 
 
-def _m55_successor_declared(
-    scheduler: Mapping[str, Any],
-    seal: Mapping[str, Any],
-    migration: Mapping[str, Any],
-) -> bool:
-    key = _M55_SUCCESSOR_KEY
-    return key in scheduler or key in migration or f"{key}_cid" in seal
-
-
-def _m55_live_ready_owner_missing_client_token_vault_restart_errors(
-    scheduler: Mapping[str, Any],
-    seal: Mapping[str, Any],
-    migration: Mapping[str, Any],
-    *,
-    root: Path,
-) -> list[str]:
-    """Validate M55's exact generation-39 token-vault restart authority."""
-
-    errors: list[str] = []
-    key = _M55_SUCCESSOR_KEY
-    presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
-    try:
-        spec = importlib.util.spec_from_file_location(
-            "sawm_m55_dependency_materializer",
-            root / "scripts/materialize_semantic_addressed_world_model_program.py",
-        )
-        if spec is None or spec.loader is None:
-            raise RuntimeError("M55 materializer cannot be loaded")
-        materializer = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(materializer)
-        expected = (
-            materializer
-            ._expected_m55_live_ready_owner_missing_client_token_vault_restart_authority()
-        )
-        reference = dict(materializer._m55_authority_reference())
-        if (
-            not all(presence)
-            or scheduler.get(key) != reference
-            or migration.get(key) != reference
-            or seal.get(f"{key}_cid") != _M55_AUTHORITY_CID
-            or materializer._identity(expected) != _M55_AUTHORITY_CID
-            or len(materializer._canonical(expected)) != _M55_AUTHORITY_SIZE
-            or materializer._M55_AUTHORITY_CID == _M55_UNSEALED_AUTHORITY_CID
-            or materializer._M55_AUTHORITY_CID != _M55_AUTHORITY_CID
-            or expected.get("migration_revision") != _M55_MIGRATION_REVISION
-            or expected.get("migration_kind") != key
-            or expected.get("target_generation") != 40
-            or expected.get("target_event_watermark") != 321
-        ):
-            errors.append("M55 token-vault restart authority differs")
-    except Exception as exc:
-        errors.append(
-            f"M55 token-vault restart authority unavailable: {type(exc).__name__}: {exc}"
-        )
-    return errors
-
-
 def _m53_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
