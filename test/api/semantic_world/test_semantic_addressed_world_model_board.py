@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "post_m57_stall_unblock_and_shutdown_fence_restart_successor_materialization",
     "post_m56_live_ready_owner_missing_client_token_vault_restart_successor_materialization",
     "post_m55_live_ready_owner_missing_client_token_vault_restart_successor_materialization",
     "live_ready_owner_missing_client_token_vault_restart_successor_materialization",
@@ -435,6 +436,67 @@ def test_historical_successor_controls_include_m49_before_m48() -> None:
 
 
 
+def test_historical_successor_controls_include_m58_before_m57() -> None:
+    """M57 fixtures remove M58 while current M58 remains presence-first."""
+
+    m58_key = (
+        "post_m57_stall_unblock_and_shutdown_fence_restart_"
+        "successor_materialization"
+    )
+    m57_key = (
+        "post_m56_live_ready_owner_missing_client_token_vault_restart_"
+        "successor_materialization"
+    )
+    scheduler = {m58_key: {"revision": "M58"}, m57_key: {"revision": "M57"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m58_key}_cid": "sha256:" + "b" * 64,
+        f"{m57_key}_cid": "sha256:" + "a" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m58_key, scheduler, migration, seal
+    )
+    assert current[m58_key] == scheduler[m58_key]
+    assert current_migration is not None
+    assert current_migration[m58_key] == migration[m58_key]
+    assert current_seal is not None
+    assert current_seal[f"{m58_key}_cid"] == seal[f"{m58_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m57_key, scheduler, migration, seal)
+    )
+    assert m58_key not in historical
+    assert historical_migration is not None and m58_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m58_key}_cid" not in historical_seal
+
+
+def test_materialize_and_launch_select_m58_before_m57_and_auto_append() -> None:
+    materialize_source = (
+        REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py"
+    ).read_text(encoding="utf-8")
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    m58_dispatch = "if _m58_successor_configured_on_any_surface(root, config):"
+    m57_dispatch = "if _m57_successor_configured_on_any_surface(root, config):"
+    assert materialize_source.find(m58_dispatch) < materialize_source.find(m57_dispatch)
+    assert materialize_source.find("def _materialize_m58(") < materialize_source.find(
+        "def materialize("
+    )
+    assert "def _check_m58_materialized(" in materialize_source
+    assert "M58 automatic successor materialize failed" in operator_source
+    assert operator_source.find("def _verify_m58_live_head_task_projection(") < (
+        operator_source.find("def _verify_m57_live_head_task_projection(")
+    )
+    assert operator_source.find(
+        "if _M58_SUCCESSOR_KEY in config:\n        return _require_m58_source_successor_marker"
+    ) < operator_source.find(
+        "if _M57_SUCCESSOR_KEY in config:\n        return _require_m57_source_successor_marker"
+    )
+
+
 def test_historical_successor_controls_include_m57_before_m56() -> None:
     m57_key = "post_m56_live_ready_owner_missing_client_token_vault_restart_successor_materialization"
     m56_key = "post_m55_live_ready_owner_missing_client_token_vault_restart_successor_materialization"
@@ -716,7 +778,1405 @@ def _reidentify_extension_projection(pin: dict[str, object]) -> None:
     ).hexdigest()
 
 
-def test_m57_reconciled_stalled_wave_source_authority_is_exact() -> None:
+def test_m58_stall_unblock_shutdown_fence_authority_is_exact_for_c1() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m58_c1_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority()
+    )
+    contract = materializer._validated_m58_live_preflight_contract(authority)
+
+    assert materializer._M58_AUTHORITY_CID == (
+        "sha256:PENDING_M58_FINAL_CONTROL_AUTHORITY_CID"
+    )
+    assert materializer._M58_AUTHORITY_SIZE == 0
+    assert materializer._identity(authority) != materializer._M58_AUTHORITY_CID
+    assert len(materializer._canonical(authority)) > materializer._M58_AUTHORITY_SIZE
+    assert materializer._m58_authority_reference() == {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": "SAWM-R2-M58",
+        "authority_cid": "sha256:PENDING_M58_FINAL_CONTROL_AUTHORITY_CID",
+    }
+    assert authority["migration_revision"] == "SAWM-R2-M58"
+    assert authority["target_generation"] == 43
+    assert authority["target_event_watermark"] == 328
+    assert authority["runtime_binding"]["store_generation"] == 43
+    assert authority["stopped_owner"]["generation"] == 42
+    assert authority["stopped_owner"]["token_handoff_retired"] is True
+    assert authority["stopped_owner"]["client_token_vault_absent"] is True
+    assert authority["stopped_prestart_artifacts"] == {
+        "m57_receipt_sha256": (
+            "69469a518bd6aa34501c13448c1cac4b94f09b4e99c0f1f3f19e48ddb0b5da6b"
+        ),
+        "m57_receipt_size": 12_873,
+        "m57_receipt_present": True,
+        "m58_receipt_absent": True,
+        "client_token_vault_absent": True,
+        "coordination_store_sha256": (
+            "ca313f2621131065fc65d8ca325417722449675c4016b99765fd9cd916d2e4d4"
+        ),
+        "coordination_store_size": 19_410_944,
+        "coordination_store_mode": 0o664,
+        "coordination_store_link_count": 1,
+    }
+    assert authority["ordinary_source_changes"] == 0
+    assert authority["exact_changes"][
+        "bounded_control_plane_repair_commit_count"
+    ] == 5
+    assert authority["exact_changes"]["bounded_control_plane_repair_paths"] == 9
+    assert authority["exact_changes"]["production_source_changes"] == 6
+    assert authority["exact_changes"]["test_compatibility_source_changes"] == 7
+    assert authority["exact_changes"]["accepted_completion_changes"] == 0
+    assert authority["preservation"]["m57_authority_preserved_exactly"] is True
+    assert contract["target_generation"] == 43
+    assert contract["prior_event_watermark"] == 327
+    assert contract["target_event_watermark"] == 328
+
+
+def test_m58_stall_unblock_shutdown_fence_source_chain_is_exact_for_c1() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m58_c1_chain_test",
+    )
+    authority = (
+        materializer
+        ._expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority()
+    )
+    chain = authority["source_chain"]
+    repairs = chain["repairs"]
+
+    assert chain["m57_anchor"] == {
+        "commit": "5f414b3524d38d3fe9391b8d0f83578ed32afcc7",
+        "tree": "f180ec849604f897b493d04a69bcf42e71100456",
+        "authority_cid": (
+            "sha256:ca402f78a63e84a937f1f62ea97ebbccc67264bb2c47c4aaaac3473ec9fb9590"
+        ),
+        "receipt_cid": (
+            "sha256:d2fd5df77c69542de2bd37339a4336a8d95b74578bfc052d341730431a1e1641"
+        ),
+    }
+    assert [repair["sequence"] for repair in repairs] == [1, 2, 3, 4, 5]
+    assert [repair["kind"] for repair in repairs] == [
+        "absent_worktree_quarantine_under_unavailable_procfs",
+        "fixed_point_shutdown_fencing_with_one_absolute_deadline",
+        "term_before_procfs_snapshot_with_full_grace_preservation",
+        "quack_prepublication_expected_startup_identity_validation",
+        (
+            "recoverable_transactional_quack_credential_handoff_and_"
+            "authenticated_child_gate"
+        ),
+    ]
+    assert [repair["commit"] for repair in repairs] == [
+        "5cc0c9c784e8d4c3c970126e91498d6043949fa6",
+        "92580f3126f9314b1abfcc5e8c2c5397d0ad9c0d",
+        "4a77e8f39b4a7209276179fb126f5000b0a56b6a",
+        "36291a59b016510cc71803ff83ab8993f95d4810",
+        "af9a3ec70bef264eea4d6a344f2c38eb928bdd15",
+    ]
+    assert [repair["parent"] for repair in repairs] == [
+        "5f414b3524d38d3fe9391b8d0f83578ed32afcc7",
+        "5cc0c9c784e8d4c3c970126e91498d6043949fa6",
+        "92580f3126f9314b1abfcc5e8c2c5397d0ad9c0d",
+        "4a77e8f39b4a7209276179fb126f5000b0a56b6a",
+        "36291a59b016510cc71803ff83ab8993f95d4810",
+    ]
+    assert authority["accepted_control_plane_repair"]["repairs"] == repairs
+    assert repairs[3] == {
+        "sequence": 4,
+        "kind": "quack_prepublication_expected_startup_identity_validation",
+        "parent": "4a77e8f39b4a7209276179fb126f5000b0a56b6a",
+        "commit": "36291a59b016510cc71803ff83ab8993f95d4810",
+        "tree": "869b13eade7c646ca9850dc3b4c4f53b594bfd4f",
+        "binary_diff_sha256": (
+            "82fbc725a82eda92d787f33820fecf7d024efa1c327c8c0c78157353eabedee3"
+        ),
+        "changed_paths": [
+            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+            "test/api/test_agent_supervisor_quack_state_server.py",
+        ],
+        "blob_oids": {
+            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": (
+                "319f6fcf12cb44ccc1b2f9641db54676d8abe00a"
+            ),
+            "test/api/test_agent_supervisor_quack_state_server.py": (
+                "1f645c6587b5682aaf617c35c0d2b23e7567e391"
+            ),
+        },
+    }
+    assert repairs[4] == {
+        "sequence": 5,
+        "kind": (
+            "recoverable_transactional_quack_credential_handoff_and_"
+            "authenticated_child_gate"
+        ),
+        "parent": "36291a59b016510cc71803ff83ab8993f95d4810",
+        "commit": "af9a3ec70bef264eea4d6a344f2c38eb928bdd15",
+        "tree": "e6588abb77bce10b620487b176d1a7462016f379",
+        "binary_diff_sha256": (
+            "84abbca519c57097b7066a3ee652fbf0dcbf1bc718e1b802d9f3f07764778249"
+        ),
+        "changed_paths": [
+            (
+                "ipfs_accelerate_py/agent_supervisor/runtime/"
+                "configured_board_scheduler.py"
+            ),
+            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+            "test/api/test_agent_supervisor_configured_board_scheduler.py",
+            "test/api/test_agent_supervisor_quack_state_server.py",
+        ],
+        "blob_oids": {
+            (
+                "ipfs_accelerate_py/agent_supervisor/runtime/"
+                "configured_board_scheduler.py"
+            ): "cb32e1a29af207e55e39183882dc820f29acce80",
+            "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": (
+                "39f7781ebb61849754214741c02ec9a41751d5da"
+            ),
+            "test/api/test_agent_supervisor_configured_board_scheduler.py": (
+                "6521af894ff49ea3b064c82d6bef3e924645098a"
+            ),
+            "test/api/test_agent_supervisor_quack_state_server.py": (
+                "f6723e4752a56b9a0380f6d25e28df17c2618e71"
+            ),
+        },
+    }
+    assert chain["initial_control"] == {
+        "commit": "PENDING_M58_INITIAL_CONTROL_COMMIT",
+        "parent": "af9a3ec70bef264eea4d6a344f2c38eb928bdd15",
+        "tree": "PENDING_M58_INITIAL_CONTROL_TREE",
+        "binary_diff_sha256": "PENDING_M58_INITIAL_CONTROL_DIFF_SHA256",
+        "changed_paths": list(materializer._M58_FINAL_CONTROL_PATHS),
+        "pre_authoritative": True,
+        "database_mutations": 0,
+        "task_status_changes": 0,
+        "accepted_completion_changes": 0,
+    }
+    assert chain["final_control_parent"] == "PENDING_M58_INITIAL_CONTROL_COMMIT"
+    assert chain["repair_commit_count"] == 5
+    assert chain["initial_control_commit_count"] == 1
+    assert chain["final_control_commit_count"] == 1
+    assert chain["current_commit_identity_embedded_in_authority"] is False
+    materializer._validated_m58_live_preflight_contract(authority)
+
+
+def test_m58_materialization_is_serialized_and_validates_before_append() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m58_fail_closed_structure_test",
+    )
+    materialize_source = inspect.getsource(materializer._materialize_m58)
+    live_source = inspect.getsource(materializer._verify_m58_live_materialization)
+    check_source = inspect.getsource(materializer._check_m58_materialized)
+    prestart_source = inspect.getsource(materializer._check_m58_prestart_admission)
+    lock_source = inspect.getsource(materializer._m58_materialization_lock)
+    evidence_source = inspect.getsource(
+        materializer._verify_m58_exact_evidence_projection
+    )
+    main_source = inspect.getsource(materializer.main)
+
+    assert "with _m58_materialization_lock(root, control):" in materialize_source
+    assert materialize_source.index("with _m58_materialization_lock") < (
+        materialize_source.index("snapshot = source.snapshot()")
+    )
+    assert materialize_source.index("snapshot = source.snapshot()") < (
+        materialize_source.index("source.record_evidence(")
+    )
+    for required in (
+        "_M58_PRIOR_EVENT_PREFIX_SHA256",
+        "_M58_PRIOR_PROJECTION_CID",
+        "_M58_SEMANTIC_AUTHORITY_DIGEST",
+        "_verify_m58_exact_evidence_projection",
+        "target_evidence_exists",
+        "target_event_exists",
+        "clock_interference",
+        "_m52_write_receipt_last",
+        "_check_m58_materialized",
+    ):
+        assert required in materialize_source
+    assert live_source.count("_m39_exact_row_matches") == 2
+    assert "_verify_m58_exact_evidence_projection" in live_source
+    assert '"complete_evidence_projection_verified": True' in live_source
+    for required in (
+        "O_NOFOLLOW",
+        "st_nlink != 1",
+        "st_uid != os.geteuid()",
+        "fcntl.LOCK_EX",
+    ):
+        assert required in lock_source
+    assert "unlink" not in lock_source
+    assert "_m42_apply_exact_legacy_evidence_overlay" in evidence_source
+    assert "actual_by_id !=" in evidence_source
+    assert materialize_source.count("_verify_m58_preserved_coordination_store") == 2
+    assert "_verify_m58_preserved_coordination_store" not in check_source
+    assert 'status.get("lifecycle") != "stopped"' in prestart_source
+    assert 'identity.get("status") != "stopped"' in prestart_source
+    assert "os.path.lexists(marker_path)" in prestart_source
+    assert "os.path.lexists(stop_path)" in prestart_source
+    assert "reclaim_stale_owner_marker" not in prestart_source
+    assert (
+        "post_m57_stall_unblock_and_shutdown_fence_restart_"
+        "successor_materialization"
+    ) in main_source
+
+
+def test_m58_operator_serializes_exact_stop_through_generation_43_readiness() -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m58_transition_lock_structure_test",
+    )
+    acquire_source = inspect.getsource(operator._acquire_m58_transition_lock)
+    lease_source = inspect.getsource(operator._M58TransitionLease)
+    stop_source = inspect.getsource(operator._stop_m58_live_owner_exact)
+    run_source = inspect.getsource(operator._run_quack_start)
+    start_source = inspect.getsource(operator._start_quack)
+    write_source = inspect.getsource(operator._m58_write_stop_request)
+
+    for required in (
+        "O_NOFOLLOW",
+        "st_nlink != 1",
+        "st_uid != os.geteuid()",
+        "st_size != 0",
+        "fcntl.LOCK_EX",
+        "lease.assert_held()",
+    ):
+        assert required in acquire_source
+    assert "unlink" not in acquire_source
+    assert "unlink" not in lease_source
+    assert "with _m58_transition_lock" in stop_source
+    assert "transition_lease=held" in stop_source
+    assert run_source.index("_acquire_m58_transition_lock(") < run_source.index(
+        "_stop_m58_live_owner_exact("
+    )
+    assert run_source.index("_stop_m58_live_owner_exact(") < run_source.index(
+        "_validate_offline_quack_start("
+    )
+    assert run_source.index("_validate_offline_quack_start(") < run_source.index(
+        "_start_quack("
+    )
+    assert "m58_transition_lease=transition_lease" in run_source
+    assert start_source.index("identity = server.start()") < start_source.index(
+        "readiness = server.ready()"
+    )
+    assert start_source.index("readiness = server.ready()") < start_source.index(
+        "m58_transition_lease.release()"
+    )
+    assert start_source.index("m58_transition_lease.release()") < start_source.index(
+        "_serve_sawm_owner(server)"
+    )
+    assert "if not os.path.lexists(stop_path):\n            return" in write_source
+    assert "if observed != dict(payload):" in write_source
+
+
+def _m58_rearm_probe_receipt(
+    *,
+    secret_handle: str,
+    token: str,
+    reason: str,
+    rearmed: bool,
+    pid_quarantined: bool,
+) -> dict[str, object]:
+    return {
+        "schema": "ipfs_accelerate_py/quack-token-handoff-rearm-probe@1",
+        "closed": True,
+        "rearmed": rearmed,
+        "pid_quarantined": pid_quarantined,
+        "recovery_admitted": rearmed or pid_quarantined,
+        "completion_authority": False,
+        "task_authority": False,
+        "reason": reason,
+        "secret_handle": secret_handle,
+        "credential_sha256": "sha256:"
+        + hashlib.sha256(token.encode("ascii")).hexdigest(),
+    }
+
+
+def test_m58_live_owner_loop_throttles_repeated_normal_rearm_noop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m58_owner_rearm_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server
+
+    state_dir = tmp_path / "runtime" / "quack-owner"
+    state_dir.mkdir(parents=True)
+    handoff_path = state_dir / "env__SAWM_QUACK_TOKEN.quack-token"
+    secret_handle = "env://SAWM_QUACK_TOKEN"
+    token = "owner-memory-token-for-rearm"
+    handoff_path.write_text(token, encoding="ascii")
+    calls: list[dict[str, object]] = []
+    iterations = {"value": 0}
+    clock = {"now": 0.0}
+
+    class Vault:
+        _path = handoff_path
+
+        @staticmethod
+        def resolve(handle: str) -> str:
+            assert handle == secret_handle
+            return token
+
+    class Server:
+        def __init__(self) -> None:
+            self.lifecycle = SimpleNamespace(value="ready")
+            self.identity = SimpleNamespace(secret_handle=secret_handle)
+            self.secret_handle = secret_handle
+            self._vault = Vault()
+            self.config = SimpleNamespace(state_dir=state_dir)
+
+        @staticmethod
+        def stop_control_path() -> Path:
+            return state_dir / "quack-state-server.stop"
+
+        def stop(self) -> dict[str, object]:
+            self.lifecycle.value = "stopped"
+            return {"stopped": True}
+
+    def process_mutations(server: Server, *, max_requests: int) -> None:
+        assert max_requests == 32
+        iterations["value"] += 1
+        if iterations["value"] >= 45:
+            server.lifecycle.value = "stopped"
+
+    def rearm(**kwargs: object) -> dict[str, object]:
+        calls.append(dict(kwargs))
+        return _m58_rearm_probe_receipt(
+            secret_handle=secret_handle,
+            token=token,
+            reason="handoff_already_present",
+            rearmed=False,
+            pid_quarantined=False,
+        )
+
+    monkeypatch.setattr(operator, "_process_mutation_inbox", process_mutations)
+    monkeypatch.setattr(operator.signal, "signal", lambda *_args: object())
+    monkeypatch.setattr(
+        operator.time,
+        "sleep",
+        lambda seconds: clock.__setitem__("now", clock["now"] + seconds),
+    )
+    monkeypatch.setattr(operator.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(
+        quack_state_server,
+        "rearm_token_handoff_if_coordinator_absent",
+        rearm,
+    )
+
+    assert operator._serve_sawm_owner(Server()) == {"stopped": True}
+    assert iterations == {"value": 45}
+    assert len(calls) == 3
+    assert calls == [
+        {
+            "state_dir": state_dir,
+            "secret_handle": secret_handle,
+            "expected_token": token,
+            "coordinator_pid_path": (
+                state_dir.parent / "state/configured-board-master.pid"
+            ),
+        }
+    ] * 3
+    assert handoff_path.read_text(encoding="ascii") == token
+    source = inspect.getsource(operator._serve_sawm_owner)
+    assert "if now >= next_token_rearm_probe:" in source
+    assert "next_token_rearm_probe = now + 1.0" in source
+    assert "rearm_token_handoff_if_coordinator_absent(" in source
+    assert "Path(server.config.state_dir).parent" in source
+    assert '"state/configured-board-master.pid"' in source
+
+
+@pytest.mark.parametrize(
+    ("reason", "rearmed", "pid_quarantined"),
+    (
+        ("coordinator_pid_absent", True, False),
+        ("coordinator_pid_empty", True, True),
+        ("coordinator_pid_empty", False, True),
+        ("coordinator_pid_dead", True, True),
+        ("coordinator_pid_dead", False, True),
+        ("retirement_lock_held", False, False),
+        ("handoff_unsafe", False, False),
+        ("handoff_already_present", False, False),
+        ("coordinator_pid_alive", False, False),
+        ("coordinator_pid_unknown", False, False),
+        ("coordinator_pid_malformed", False, False),
+        ("coordinator_pid_unsafe", False, False),
+        ("coordinator_pid_changed", False, False),
+    ),
+)
+def test_m58_owner_rearm_receipt_accepts_closed_reason_vocabulary(
+    reason: str,
+    rearmed: bool,
+    pid_quarantined: bool,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        f"sawm_operator_m58_rearm_receipt_{reason}_{rearmed}_test",
+    )
+    secret_handle = "env://SAWM_QUACK_TOKEN"
+    token = "owner-memory-token-for-rearm"
+
+    operator._validate_sawm_token_rearm_probe_receipt(
+        _m58_rearm_probe_receipt(
+            secret_handle=secret_handle,
+            token=token,
+            reason=reason,
+            rearmed=rearmed,
+            pid_quarantined=pid_quarantined,
+        ),
+        secret_handle=secret_handle,
+        expected_token=token,
+    )
+
+
+@pytest.mark.parametrize(
+    "updates",
+    (
+        {"closed": False},
+        {"task_authority": True},
+        {"completion_authority": True},
+        {"recovery_admitted": True},
+        {"pid_quarantined": True},
+        {"reason": "coordinator_pid_absent"},
+        {"reason": "coordinator_pid_changed", "pid_quarantined": True},
+        {"reason": "future_reason"},
+        {"unexpected": "field"},
+    ),
+)
+def test_m58_owner_rearm_receipt_rejects_open_authoritative_or_inconsistent(
+    updates: Mapping[str, object],
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m58_rearm_receipt_rejection_test",
+    )
+    secret_handle = "env://SAWM_QUACK_TOKEN"
+    token = "owner-memory-token-for-rearm"
+    invalid = _m58_rearm_probe_receipt(
+        secret_handle=secret_handle,
+        token=token,
+        reason="handoff_already_present",
+        rearmed=False,
+        pid_quarantined=False,
+    )
+    invalid.update(updates)
+
+    with pytest.raises(operator.OperatorError, match="receipt differs"):
+        operator._validate_sawm_token_rearm_probe_receipt(
+            invalid,
+            secret_handle=secret_handle,
+            expected_token=token,
+        )
+
+
+@pytest.mark.parametrize("scheduler_outcome", ("accepted", "rejected", "raised"))
+def test_m58_operator_launch_transaction_commits_only_after_scheduler_accepts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    scheduler_outcome: str,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        f"sawm_operator_m58_handoff_{scheduler_outcome}_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        configured_board_scheduler as scheduler,
+    )
+
+    class Reservation:
+        state = "reserved"
+
+    class Transaction:
+        state = "begun"
+        secret_handle = "env://SAWM_QUACK_TOKEN"
+        credential_sha256 = "sha256:" + "1" * 64
+
+        def __init__(self) -> None:
+            self.commit_calls = 0
+            self.rollback_calls = 0
+
+        def commit(self) -> dict[str, object]:
+            self.commit_calls += 1
+            if self.state == "begun":
+                self.state = "committed"
+            assert self.state == "committed"
+            return {
+                "schema": "ipfs_accelerate_py/quack-token-handoff-retirement@1",
+                "retired": True,
+                "already_absent": False,
+                "secret_handle": self.secret_handle,
+            }
+
+        def rollback(self) -> dict[str, object]:
+            self.rollback_calls += 1
+            assert self.state == "begun"
+            self.state = "rolled_back"
+            return {"rolled_back": True}
+
+    reservation = Reservation()
+    transaction = Transaction()
+    observed: dict[str, object] = {}
+    config_path = tmp_path / "scheduler.json"
+
+    monkeypatch.setattr(operator, "_config", lambda _path: {"test": True})
+    monkeypatch.setattr(
+        scheduler,
+        "load_configured_board",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_reserve_detached_coordinator_pid",
+        lambda _board: reservation,
+    )
+
+    def discard(candidate: object) -> None:
+        assert candidate is reservation
+        reservation.state = "discarded"
+
+    monkeypatch.setattr(
+        scheduler,
+        "_discard_coordinator_pid_reservation",
+        discard,
+    )
+
+    def live_preflight(
+        _config: object,
+        *,
+        probe_provider: bool,
+        retire_provider_token_handoff: bool,
+        before_token_handoff_retirement: object,
+        token_handoff_transaction_sink: object,
+    ) -> dict[str, object]:
+        assert probe_provider is True
+        assert retire_provider_token_handoff is True
+        assert callable(before_token_handoff_retirement)
+        assert callable(token_handoff_transaction_sink)
+        before_token_handoff_retirement()
+        token_handoff_transaction_sink(transaction)
+        return {
+            "valid": True,
+            "quack": {"provider_token_handoff": {"commit_deferred": True}},
+        }
+
+    monkeypatch.setattr(operator, "_live_preflight", live_preflight)
+
+    def scheduler_main(
+        argv: object,
+        *,
+        coordinator_pid_reservation: object,
+        coordinator_credential_handoff: object,
+    ) -> int:
+        observed["argv"] = argv
+        assert coordinator_pid_reservation is reservation
+        assert coordinator_credential_handoff is transaction
+        if scheduler_outcome == "accepted":
+            reservation.state = "published"
+            transaction.commit()
+            return 0
+        reservation.state = "discarded"
+        if scheduler_outcome == "raised":
+            raise RuntimeError("synthetic coordinator launch failure")
+        return 2
+
+    monkeypatch.setattr(scheduler, "main", scheduler_main)
+    result = operator.main(["--config", str(config_path), "launch"])
+
+    assert "--implement" in observed["argv"]
+    if scheduler_outcome == "accepted":
+        assert result == 0
+        assert transaction.state == "committed"
+        assert transaction.commit_calls == 2  # scheduler + idempotent receipt read
+        assert transaction.rollback_calls == 0
+        emitted = json.loads(capsys.readouterr().out)
+        assert emitted["valid"] is True
+        assert emitted["live_preflight"]["quack"][
+            "provider_token_handoff"
+        ]["retired"] is True
+    else:
+        assert result == 2
+        assert transaction.state == "rolled_back"
+        assert transaction.commit_calls == 0
+        assert transaction.rollback_calls == 1
+        if scheduler_outcome == "raised":
+            emitted = json.loads(capsys.readouterr().out)
+            assert emitted["valid"] is False
+            assert "synthetic coordinator launch failure" in emitted["error"]
+
+
+def test_m58_operator_cleanup_preserves_primary_and_discards_after_rollback_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m58_cleanup_error_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        configured_board_scheduler as scheduler,
+    )
+
+    token = "m58-secret-token-for-cleanup"
+    effective_environment = {
+        "IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT": "quack:127.0.0.1:24070",
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_ID": "sealed-control.duckdb",
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN": token,
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION": "43",
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_BINDING": "{\"generation\":43}",
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR": str(tmp_path / "mutations"),
+        "SAWM_QUACK_TOKEN": token,
+    }
+    for name in operator._LIVE_QUACK_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT", "ambient-before-preflight"
+    )
+    ambient_before = {
+        name: (name in os.environ, os.environ.get(name, ""))
+        for name in operator._LIVE_QUACK_ENV_NAMES
+    }
+
+    class Reservation:
+        state = "reserved"
+
+    class Transaction:
+        state = "begun"
+
+        def __init__(self) -> None:
+            self.rollback_calls = 0
+
+        def rollback(self) -> dict[str, object]:
+            self.rollback_calls += 1
+            raise RuntimeError(f"rollback exposed {token}")
+
+    reservation = Reservation()
+    transaction = Transaction()
+    discard_calls: list[object] = []
+    config_path = tmp_path / "scheduler.json"
+    monkeypatch.setattr(operator, "_config", lambda _path: {"test": True})
+    monkeypatch.setattr(
+        scheduler,
+        "load_configured_board",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_reserve_detached_coordinator_pid",
+        lambda _board: reservation,
+    )
+
+    def discard(candidate: object) -> None:
+        discard_calls.append(candidate)
+        reservation.state = "discarded"
+
+    monkeypatch.setattr(
+        scheduler,
+        "_discard_coordinator_pid_reservation",
+        discard,
+    )
+
+    def live_preflight(
+        _config: object,
+        *,
+        probe_provider: bool,
+        retire_provider_token_handoff: bool,
+        before_token_handoff_retirement: object,
+        token_handoff_transaction_sink: object,
+    ) -> dict[str, object]:
+        assert probe_provider is True
+        assert retire_provider_token_handoff is True
+        assert callable(before_token_handoff_retirement)
+        assert callable(token_handoff_transaction_sink)
+        before_token_handoff_retirement()
+        os.environ.update(effective_environment)
+        token_handoff_transaction_sink(transaction)
+        return {"valid": True, "quack": {}}
+
+    monkeypatch.setattr(operator, "_live_preflight", live_preflight)
+
+    def scheduler_main(
+        _argv: object,
+        *,
+        coordinator_pid_reservation: object,
+        coordinator_credential_handoff: object,
+    ) -> int:
+        assert coordinator_pid_reservation is reservation
+        assert coordinator_credential_handoff is transaction
+        assert {
+            name: os.environ.get(name, "") for name in effective_environment
+        } == effective_environment
+        raise RuntimeError(f"primary exposed {token}")
+
+    monkeypatch.setattr(scheduler, "main", scheduler_main)
+
+    assert operator.main(["--config", str(config_path), "launch"]) == 2
+    assert transaction.rollback_calls == 1
+    assert discard_calls == [reservation]
+    assert reservation.state == "discarded"
+    assert {
+        name: (name in os.environ, os.environ.get(name, ""))
+        for name in operator._LIVE_QUACK_ENV_NAMES
+    } == ambient_before
+    emitted = json.loads(capsys.readouterr().out)
+    assert "primary exposed <redacted-quack-token>" in emitted["error"]
+    assert "rollback exposed <redacted-quack-token>" in emitted["error"]
+    assert token not in json.dumps(emitted)
+
+
+@pytest.mark.parametrize(
+    "scheduler_outcome", ("returned", "raised", "baseexception")
+)
+def test_m58_operator_published_pid_closes_handoff_without_rollback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scheduler_outcome: str,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        f"sawm_operator_m58_published_pid_{scheduler_outcome}_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        configured_board_scheduler as scheduler,
+    )
+
+    secret_handle = "env://SAWM_QUACK_TOKEN"
+    credential_sha256 = "sha256:" + "7" * 64
+
+    class SyntheticAbort(BaseException):
+        pass
+
+    class Reservation:
+        state = "reserved"
+
+    class Transaction:
+        state = "begun"
+
+        def __init__(self) -> None:
+            self.close_calls = 0
+            self.rollback_calls = 0
+            self.secret_handle = secret_handle
+            self.credential_sha256 = credential_sha256
+
+        def close_without_rollback(self, *, reason: str) -> dict[str, object]:
+            self.close_calls += 1
+            assert reason == "child_liveness_unproven"
+            assert self.state == "begun"
+            self.state = "closed"
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/"
+                    "quack-token-handoff-retirement-closed@1"
+                ),
+                "closed": True,
+                "terminal": True,
+                "reason": reason,
+                "completion_authority": False,
+                "task_authority": False,
+                "secret_handle": self.secret_handle,
+                "credential_sha256": self.credential_sha256,
+            }
+
+        def rollback(self) -> dict[str, object]:
+            self.rollback_calls += 1
+            raise AssertionError("published PID must prohibit credential rollback")
+
+    reservation = Reservation()
+    transaction = Transaction()
+    discard_calls: list[object] = []
+    config_path = tmp_path / "scheduler.json"
+    monkeypatch.setattr(operator, "_config", lambda _path: {"test": True})
+    monkeypatch.setattr(
+        scheduler,
+        "load_configured_board",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_reserve_detached_coordinator_pid",
+        lambda _board: reservation,
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_discard_coordinator_pid_reservation",
+        lambda candidate: discard_calls.append(candidate),
+    )
+
+    def live_preflight(_config: object, **callbacks: object) -> dict[str, object]:
+        reserve = callbacks["before_token_handoff_retirement"]
+        retain = callbacks["token_handoff_transaction_sink"]
+        assert callable(reserve)
+        assert callable(retain)
+        reserve()
+        retain(transaction)
+        return {"valid": True, "quack": {}}
+
+    monkeypatch.setattr(operator, "_live_preflight", live_preflight)
+
+    def scheduler_main(
+        _argv: object,
+        *,
+        coordinator_pid_reservation: object,
+        coordinator_credential_handoff: object,
+    ) -> int:
+        assert coordinator_pid_reservation is reservation
+        assert coordinator_credential_handoff is transaction
+        reservation.state = "published"
+        if scheduler_outcome == "raised":
+            raise RuntimeError("synthetic post-publication scheduler failure")
+        if scheduler_outcome == "baseexception":
+            raise SyntheticAbort("synthetic post-publication abort")
+        return 2
+
+    monkeypatch.setattr(scheduler, "main", scheduler_main)
+
+    argv = ["--config", str(config_path), "launch"]
+    if scheduler_outcome == "baseexception":
+        with pytest.raises(SyntheticAbort, match="post-publication abort"):
+            operator.main(argv)
+    else:
+        assert operator.main(argv) == 2
+    assert transaction.state == "closed"
+    assert transaction.close_calls == 1
+    assert transaction.rollback_calls == 0
+    assert reservation.state == "published"
+    assert discard_calls == []
+
+
+def test_m58_operator_baseexception_restores_environment_and_cleans_reservation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m58_baseexception_cleanup_test",
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        configured_board_scheduler as scheduler,
+    )
+
+    class SyntheticAbort(BaseException):
+        pass
+
+    class Reservation:
+        state = "reserved"
+
+    class Transaction:
+        state = "begun"
+
+        def __init__(self) -> None:
+            self.rollback_calls = 0
+
+        def rollback(self) -> dict[str, object]:
+            self.rollback_calls += 1
+            self.state = "rolled_back"
+            return {"rolled_back": True}
+
+    reservation = Reservation()
+    transaction = Transaction()
+    discarded: list[object] = []
+    config_path = tmp_path / "scheduler.json"
+    for name in operator._LIVE_QUACK_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    ambient_before = dict(os.environ)
+    monkeypatch.setattr(operator, "_config", lambda _path: {"test": True})
+    monkeypatch.setattr(
+        scheduler,
+        "load_configured_board",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_reserve_detached_coordinator_pid",
+        lambda _board: reservation,
+    )
+
+    def discard(candidate: object) -> None:
+        discarded.append(candidate)
+        reservation.state = "discarded"
+
+    monkeypatch.setattr(
+        scheduler,
+        "_discard_coordinator_pid_reservation",
+        discard,
+    )
+
+    def live_preflight(
+        _config: object,
+        **callbacks: object,
+    ) -> dict[str, object]:
+        before = callbacks["before_token_handoff_retirement"]
+        sink = callbacks["token_handoff_transaction_sink"]
+        assert callable(before)
+        assert callable(sink)
+        before()
+        os.environ["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = "baseexception-token"
+        os.environ["SAWM_QUACK_TOKEN"] = "baseexception-token"
+        sink(transaction)
+        return {"valid": True, "quack": {}}
+
+    monkeypatch.setattr(operator, "_live_preflight", live_preflight)
+
+    def scheduler_main(*_args: object, **_kwargs: object) -> int:
+        assert os.environ["SAWM_QUACK_TOKEN"] == "baseexception-token"
+        raise SyntheticAbort("stop now")
+
+    monkeypatch.setattr(scheduler, "main", scheduler_main)
+    with pytest.raises(SyntheticAbort, match="stop now"):
+        operator.main(["--config", str(config_path), "launch"])
+
+    assert transaction.rollback_calls == 1
+    assert discarded == [reservation]
+    assert reservation.state == "discarded"
+    assert dict(os.environ) == ambient_before
+
+
+def test_m58_stop_request_consumption_proceeds_but_changed_content_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m58_consumed_stop_request_test",
+    )
+    payload = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/quack-stop-request@1",
+        "server_id": "server:sealed-generation-42",
+        "fence_token": "1" * 32,
+        "requested_at": "2026-09-02T11:00:00Z",
+    }
+    consumed_path = tmp_path / "consumed.stop"
+
+    def consume_before_reread(
+        _materializer: object, path: Path, *, noun: str
+    ) -> tuple[dict[str, object], str]:
+        assert noun == "M58 exact stop request"
+        assert json.loads(path.read_text(encoding="utf-8")) == payload
+        path.unlink()
+        raise operator.OperatorError("request was consumed")
+
+    monkeypatch.setattr(
+        operator, "_m58_stable_runtime_json", consume_before_reread
+    )
+    operator._m58_write_stop_request(object(), consumed_path, payload)
+    assert not os.path.lexists(consumed_path)
+
+    changed_path = tmp_path / "changed.stop"
+
+    def changed_present(
+        _materializer: object, path: Path, *, noun: str
+    ) -> tuple[dict[str, object], str]:
+        assert noun == "M58 exact stop request"
+        assert path.exists()
+        return {**payload, "server_id": "server:replacement"}, "digest"
+
+    monkeypatch.setattr(operator, "_m58_stable_runtime_json", changed_present)
+    with pytest.raises(operator.OperatorError, match="published stop request differs"):
+        operator._m58_write_stop_request(object(), changed_path, payload)
+    assert os.path.lexists(changed_path)
+
+
+def test_m58_generation_42_43_rows_are_verified_exactly() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m58_exact_generation_rows_test",
+    )
+    prior_stopped_at = "2026-09-02T10:20:00Z"
+    live_started_at = "2026-09-02T10:21:00Z"
+    prior_startup_epoch = 1_788_340_000
+    live_startup_epoch = prior_startup_epoch + 60
+    live_server_id = "server:m58-target"
+    live_birth_id = "birth:m58-target"
+    capability_body = json.dumps(
+        {
+            "status": "compatible",
+            "profile_id": "agent-supervisor-duckdb-quack-1.5",
+            "extension_fingerprint": materializer._M58_EXTENSION_FINGERPRINT,
+        },
+        sort_keys=True,
+    )
+
+    class Result:
+        def __init__(self, rows: list[tuple[object, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return list(self.rows)
+
+        def fetchone(self) -> tuple[object, ...] | None:
+            return self.rows[0] if self.rows else None
+
+    class Connection:
+        def __init__(self) -> None:
+            self.state_rows = [
+                (
+                    materializer._M58_PRIOR_SERVER_ID,
+                    materializer._M58_STORE_ID,
+                    materializer._M58_DATABASE_UUID,
+                    materializer._M58_PRIOR_PROCESS_BIRTH_ID,
+                    f"quack:127.0.0.1:{materializer._M58_TARGET_QUACK_PORT}",
+                    materializer._M58_EXTENSION_FINGERPRINT,
+                    1,
+                    42,
+                    materializer._M58_PRIOR_STARTED_AT,
+                    prior_stopped_at,
+                    "stopped",
+                    2,
+                    "",
+                    "{}",
+                ),
+                (
+                    live_server_id,
+                    materializer._M58_STORE_ID,
+                    materializer._M58_DATABASE_UUID,
+                    live_birth_id,
+                    f"quack:127.0.0.1:{materializer._M58_TARGET_QUACK_PORT}",
+                    materializer._M58_EXTENSION_FINGERPRINT,
+                    1,
+                    43,
+                    live_started_at,
+                    None,
+                    "ready",
+                    1,
+                    "",
+                    "{}",
+                ),
+            ]
+            self.generation_rows = [
+                (
+                    42,
+                    1,
+                    42,
+                    0,
+                    materializer._M58_DATABASE_UUID,
+                    materializer._M58_PRIOR_PROCESS_BIRTH_ID,
+                    materializer._M58_PRIOR_STARTED_AT,
+                    "",
+                    "{}",
+                ),
+                (
+                    43,
+                    1,
+                    43,
+                    0,
+                    materializer._M58_DATABASE_UUID,
+                    live_birth_id,
+                    live_started_at,
+                    "",
+                    "{}",
+                ),
+            ]
+            self.credential_rows = [
+                (
+                    f"cred:{materializer._M58_PRIOR_SERVER_ID}:42",
+                    "env://SAWM_QUACK_TOKEN",
+                    42,
+                    "quack-auth",
+                    materializer._M58_PRIOR_STARTED_AT,
+                    None,
+                    None,
+                    0,
+                ),
+                (
+                    f"cred:{live_server_id}:43",
+                    "env://SAWM_QUACK_TOKEN",
+                    43,
+                    "quack-auth",
+                    live_started_at,
+                    None,
+                    None,
+                    0,
+                ),
+            ]
+            self.prior_epochs = [
+                (
+                    materializer._M58_PRIOR_SERVER_ID,
+                    prior_startup_epoch,
+                    42,
+                    materializer._M58_PRIOR_STARTED_AT,
+                    prior_stopped_at,
+                )
+            ]
+            self.live_epochs = [
+                (live_server_id, live_startup_epoch, 43, live_started_at, None)
+            ]
+            self.capability_rows = sorted(
+                [
+                    (
+                        f"cap:{materializer._M58_PRIOR_SERVER_ID}:42",
+                        materializer._M58_PRIOR_SERVER_ID,
+                        "agent-supervisor-duckdb-quack-1.5",
+                        "1.5.5",
+                        "quack",
+                        materializer._M58_EXTENSION_FINGERPRINT,
+                        "compatible",
+                        materializer._M58_PRIOR_STARTED_AT,
+                        capability_body,
+                    ),
+                    (
+                        f"cap:{live_server_id}:43",
+                        live_server_id,
+                        "agent-supervisor-duckdb-quack-1.5",
+                        "1.5.5",
+                        "quack",
+                        materializer._M58_EXTENSION_FINGERPRINT,
+                        "compatible",
+                        live_started_at,
+                        capability_body,
+                    ),
+                ],
+                key=lambda row: row[0],
+            )
+
+        def execute(
+            self, sql: str, parameters: list[object] | None = None
+        ) -> Result:
+            del parameters
+            normalized = " ".join(sql.split())
+            if normalized.startswith("SELECT COUNT(*) FROM"):
+                return Result([(43,)])
+            if "FROM state_servers" in normalized:
+                return Result(self.state_rows)
+            if "FROM store_generations" in normalized:
+                return Result(self.generation_rows)
+            if "FROM credentials" in normalized:
+                return Result(self.credential_rows)
+            if "FROM server_epochs" in normalized:
+                if "server_id=?" in normalized and self.prior_epochs:
+                    # The materializer asks for the sealed prior server first.
+                    result = self.prior_epochs
+                    self.prior_epochs = []
+                    return Result(result)
+                return Result(self.live_epochs)
+            if "FROM capability_snapshots" in normalized:
+                return Result(self.capability_rows)
+            raise AssertionError(normalized)
+
+    class Intent:
+        def __init__(self, connection: Connection) -> None:
+            self.connection = connection
+
+        @contextlib.contextmanager
+        def _connection(self, *, write: bool = False):
+            assert write is False
+            yield self.connection
+
+    connection = Connection()
+    source = SimpleNamespace(intent=Intent(connection))
+    identity = {
+        "server_id": live_server_id,
+        "process_birth_id": live_birth_id,
+        "started_at": live_started_at,
+        "status": "ready",
+        "store_id": materializer._M58_STORE_ID,
+        "database_uuid": materializer._M58_DATABASE_UUID,
+        "listen_uri": f"quack:127.0.0.1:{materializer._M58_TARGET_QUACK_PORT}",
+        "extension_fingerprint": materializer._M58_EXTENSION_FINGERPRINT,
+        "generation": 43,
+        "schema_revision": 1,
+        "fence_epoch": 43,
+        "revision": 0,
+        "credential_generation": 43,
+        "startup_epoch": live_startup_epoch,
+    }
+    verified = materializer._inspect_m58_generation_restart_rows(
+        source, identity, {}
+    )
+    assert verified["generation_42_43_restart_rows_verified"] is True
+    assert verified["prior_stopped_at"] == prior_stopped_at
+    assert verified["prior_startup_epoch"] == prior_startup_epoch
+    assert verified["live_startup_epoch"] == live_startup_epoch
+    assert verified["generation_42_43_projection_digest"].startswith("sha256:")
+
+    tampered = Connection()
+    tampered.state_rows[0] = tampered.state_rows[0][:10] + (
+        "ready",
+        *tampered.state_rows[0][11:],
+    )
+    with pytest.raises(materializer.MigrationRequired):
+        materializer._inspect_m58_generation_restart_rows(
+            SimpleNamespace(intent=Intent(tampered)), identity, {}
+        )
+
+
+def test_m58_reconciles_every_evidence_row_with_the_m42_overlay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m58_complete_evidence_projection_test",
+    )
+    legacy_raw = (
+        "evidence:legacy",
+        "",
+        "task:legacy",
+        "operator_evidence",
+        "sha256:" + "1" * 64,
+        "2026-08-30T00:00:00Z",
+        '{"revision":1}',
+    )
+    legacy_transformed = legacy_raw[:5] + (
+        "2026-09-01T00:00:00Z",
+        '{"revision":1}',
+    )
+    successor = (
+        "evidence:successor",
+        "",
+        "task:successor",
+        "operator_evidence",
+        "sha256:" + "2" * 64,
+        "2026-09-02T00:00:00Z",
+        '{"revision":2}',
+    )
+
+    def event_projection(_connection: object, *, watermark: int) -> dict[str, object]:
+        rows = [legacy_raw]
+        if watermark != materializer._M42_LEGACY_PROJECTION_WATERMARK:
+            rows.append(successor)
+        return {
+            "rows": rows,
+            "evidence_event_count": len(rows),
+            "validation_event_count": 0,
+            "passed_validation_event_count": 0,
+        }
+
+    def apply_overlay(
+        rows: list[tuple[object, ...]], *, watermark: int
+    ) -> list[tuple[object, ...]]:
+        assert rows == [legacy_raw]
+        assert watermark == materializer._M42_LEGACY_PROJECTION_WATERMARK
+        return [legacy_transformed]
+
+    monkeypatch.setattr(
+        materializer, "_m38_evidence_projection_from_events", event_projection
+    )
+    monkeypatch.setattr(
+        materializer, "_m42_apply_exact_legacy_evidence_overlay", apply_overlay
+    )
+
+    class Result:
+        def __init__(self, rows: list[tuple[object, ...]]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return list(self.rows)
+
+    class Connection:
+        def __init__(self) -> None:
+            self.rows = [legacy_transformed, successor]
+
+        def execute(self, sql: str) -> Result:
+            assert "FROM evidence_nodes ORDER BY evidence_id" in sql
+            return Result(self.rows)
+
+    connection = Connection()
+    verified = materializer._verify_m58_exact_evidence_projection(
+        connection, watermark=materializer._M58_PRIOR_EVENT_WATERMARK
+    )
+    assert verified["evidence_node_count"] == 2
+    assert verified["complete_evidence_projection_verified"] is True
+
+    connection.rows.append(
+        (
+            "evidence:unbacked",
+            "",
+            "task:unbacked",
+            "operator_evidence",
+            "sha256:" + "3" * 64,
+            "2026-09-02T00:00:01Z",
+            '{}',
+        )
+    )
+    with pytest.raises(materializer.MigrationRequired):
+        materializer._verify_m58_exact_evidence_projection(
+            connection, watermark=materializer._M58_PRIOR_EVENT_WATERMARK
+        )
+
+
+def test_m58_receipt_binds_dynamic_restart_and_stopped_coordination_baseline() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m58_exact_receipt_fields_test",
+    )
+    authority = (
+        materializer
+        ._expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority()
+    )
+    verified = {
+        "live_server_id": "server:target",
+        "live_process_birth_id": "birth:target",
+        "live_started_at": "2026-09-02T10:21:00Z",
+        "live_startup_epoch": 1_788_340_060,
+        "prior_stopped_at": "2026-09-02T10:20:00Z",
+        "prior_startup_epoch": 1_788_340_000,
+        "generation_42_43_projection_digest": "sha256:" + "1" * 64,
+        "migration_digest": "sha256:" + "2" * 64,
+        "migration_evidence_id": "evidence:m58",
+        "migration_evidence_event_id": "event:m58",
+        "target_event_prefix_sha256": "3" * 64,
+        "semantic_authority_digest": materializer._M58_SEMANTIC_AUTHORITY_DIGEST,
+        "evidence_projection_digest": "sha256:" + "4" * 64,
+        "complete_evidence_projection_verified": True,
+    }
+    receipt = materializer._expected_m58_source_successor_receipt(
+        {
+            "program_definition_cid": "sha256:" + "5" * 64,
+            "source_binding": {"source_binding_cid": "sha256:" + "6" * 64},
+        },
+        authority,
+        "sha256:" + "7" * 64,
+        verified,
+    )
+
+    assert receipt["target_generation_owner"]["startup_epoch"] == 1_788_340_060
+    assert receipt["prior_generation_stop"]["stopped_at"] == (
+        "2026-09-02T10:20:00Z"
+    )
+    assert receipt["generation_42_43_projection_digest"] == "sha256:" + "1" * 64
+    assert receipt["evidence_projection_digest"] == "sha256:" + "4" * 64
+    assert receipt["complete_evidence_projection_verified"] is True
+    assert receipt["coordination_store_sha256"] == (
+        "ca313f2621131065fc65d8ca325417722449675c4016b99765fd9cd916d2e4d4"
+    )
+    assert receipt["coordination_store_size"] == 19_410_944
+    assert receipt["coordination_store_mode"] == 0o664
+    assert receipt["coordination_store_preserved_exactly"] is True
+    unhashed = dict(receipt)
+    claimed = unhashed.pop("receipt_cid")
+    assert claimed == materializer._identity(unhashed)
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "replacement"),
+    (
+        ("live_preflight_contract", "target_generation", 42),
+        ("source_chain", "repair_commit_count", 2),
+        ("exact_changes", "production_source_changes", 3),
+        ("preservation", "no_shutdown_success_without_empty_fixed_point", False),
+    ),
+)
+def test_m58_stall_unblock_shutdown_fence_authority_rejects_tamper(
+    section: str, field: str, replacement: object
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        f"sawm_materializer_m58_tamper_{section}_{field}_test",
+    )
+    authority = (
+        materializer
+        ._expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority()
+    )
+    tampered = copy.deepcopy(authority)
+    tampered[section][field] = replacement
+    with pytest.raises(materializer.MaterializationError):
+        materializer._validated_m58_live_preflight_contract(tampered)
+
+
+def test_m57_reconciled_stalled_wave_source_authority_is_immutable_predecessor() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
         "sawm_materializer_m57_reconciled_source_test",
@@ -773,9 +2233,14 @@ def test_m57_reconciled_stalled_wave_source_authority_is_exact() -> None:
     assert repair["authority_weakened"] is False
     assert authority["exact_changes"]["accepted_completion_changes"] == 0
     materializer._validated_m57_live_preflight_contract(authority)
-    materializer._assert_m57_source_delta(
-        REPO_ROOT, materializer.build_population(REPO_ROOT), authority
+    m58 = (
+        materializer
+        ._expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority()
     )
+    assert m58["source_chain"]["m57_anchor"]["authority_cid"] == (
+        materializer._identity(authority)
+    )
+    assert m58["preservation"]["m57_authority_preserved_exactly"] is True
 
 
 @pytest.mark.parametrize(
@@ -15441,9 +16906,9 @@ def test_m31_authority_pins_dead_pid_event_281_and_generation_29() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    # M31 remains immutable history while M57 is the current generation-42
+    # M31 remains immutable history while M58 is the current generation-43
     # restart authority.
-    assert scheduler["database_program"]["store_generation"] == "42"
+    assert scheduler["database_program"]["store_generation"] == "43"
     assert authority["migration_revision"] == "SAWM-R2-M31"
     assert authority["prior_authority"]["event_watermark"] == 281
     assert authority["target_event_watermark"] == 282
@@ -15568,10 +17033,19 @@ def test_m31_pid_and_receipt_controls_are_stable_and_serializable() -> None:
     assert "return dict(observed)" in ensure_source
     assert "return dict(expected)" in ensure_source
     assert live_source.index("before_token_handoff_retirement()") < live_source.index(
-        "retire_token_handoff("
+        "begin_token_handoff_retirement("
     )
+    assert "token_handoff_transaction_sink(credential_transaction)" in live_source
+    assert "credential_transaction.rollback()" in live_source
     assert "_reserve_detached_coordinator_pid" in main_source
     assert "coordinator_pid_reservation=(" in main_source
+    assert "coordinator_credential_handoff=(" in main_source
+    assert "cleanup_operator_launch_state(" in main_source
+    assert 'cleanup_errors.append(("token handoff rollback", exc))' in main_source
+    assert 'cleanup_errors.append(("coordinator PID reservation discard", exc))' in (
+        main_source
+    )
+    assert 'token_handoff_transaction.state != "committed"' in main_source
     assert 'coordinator_pid_reservation.state == "reserved"' in main_source
 
 
@@ -15619,8 +17093,8 @@ def test_m30_authority_pins_stopped_event_280_and_generation_28() -> None:
     )
     assert scheduler[key] == authority == migration[key]
     assert seal[f"{key}_cid"] == materializer._identity(authority)
-    # M30 remains immutable history while the current M57 owner is generation 42.
-    assert scheduler["database_program"]["store_generation"] == "42"
+    # M30 remains immutable history while the current M58 owner is generation 43.
+    assert scheduler["database_program"]["store_generation"] == "43"
     assert authority["schema"].endswith("authorization@2")
     assert authority["authorization_revision"] == 2
     assert authority["control_recorded_at"] == "2026-08-31T15:59:48Z"
@@ -16223,10 +17697,18 @@ def test_m29_provider_environment_guard_rejects_quack_token_substrings(
         lambda _store: discovery,
     )
     monkeypatch.setattr(database_task_source, "DatabaseTaskSource", Live)
+    class TokenHandoffTransaction:
+        state = "begun"
+
+        def rollback(self) -> dict[str, object]:
+            self.state = "rolled_back"
+            return {"rolled_back": True}
+
+    transaction = TokenHandoffTransaction()
     monkeypatch.setattr(
         quack_state_server,
-        "retire_token_handoff",
-        lambda **_kwargs: {"retired": True},
+        "begin_token_handoff_retirement",
+        lambda **_kwargs: transaction,
     )
     monkeypatch.setattr(
         multi_supervisor_runner,
@@ -16270,8 +17752,10 @@ def test_m29_provider_environment_guard_rejects_quack_token_substrings(
             config,
             probe_provider=True,
             retire_provider_token_handoff=True,
+            token_handoff_transaction_sink=lambda _transaction: None,
         )
     assert provider_probe_called is False
+    assert transaction.state == "rolled_back"
 
 
 def test_m28_historical_source_chain_uses_m29_control_head(
@@ -16855,7 +18339,7 @@ def test_m27_dead_owner_resume_authority_runtime_and_source_chain_are_exact(
     assert config["database_program"]["store_id"].endswith(
         "run-r2-m27/control.duckdb"
     )
-    assert config["database_program"]["store_generation"] == "42"
+    assert config["database_program"]["store_generation"] == "43"
     assert m27_config["database_program"]["store_generation"] == "26"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
@@ -19105,9 +20589,9 @@ def test_m22_scheduler_authority_is_preserved_under_m27_runtime() -> None:
     assert config["database_program"]["store_id"] == (
         f"{current_runtime}/control.duckdb"
     )
-    # M57 advances the owner to generation 42 without changing the M27
+    # M58 advances the owner to generation 43 without changing the M27
     # runtime namespace.
-    assert config["database_program"]["store_generation"] == "42"
+    assert config["database_program"]["store_generation"] == "43"
     assert config["database_program"]["quack_endpoint"] == (
         "quack:127.0.0.1:24070"
     )
@@ -22167,9 +23651,9 @@ def test_m17_namespace_is_preserved_as_historical_under_m27() -> None:
     assert authority["target_generation"] == 18
     assert authority["target_quack_port"] == 24_060
     assert config["runtime_paths"]["root"].endswith("run-r2-m27")
-    # The M17 authority remains historical while M57 owns generation 42 in the
+    # The M17 authority remains historical while M58 owns generation 43 in the
     # M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "42"
+    assert config["database_program"]["store_generation"] == "43"
     assert config["quack_owner"]["port"] == 24_070
 
 
@@ -23289,9 +24773,9 @@ def test_m15_historical_authority_preserves_fresh_namespace_under_m27() -> None:
         "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27"
     )
     assert config["runtime_paths"] != historical_runtime
-    # The M15 authority remains historical while M57 owns generation 42 in the
+    # The M15 authority remains historical while M58 owns generation 43 in the
     # M27 runtime namespace.
-    assert config["database_program"]["store_generation"] == "42"
+    assert config["database_program"]["store_generation"] == "43"
     assert config["quack_owner"]["port"] == 24_070
     assert root != "data/agent_supervisor/semantic_addressed_world_model/run-r2-m13"
 

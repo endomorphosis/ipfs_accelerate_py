@@ -12,6 +12,7 @@ import argparse
 import ctypes
 import dataclasses
 import errno
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -339,6 +340,26 @@ _M57_TARGET_PROJECTION_CID = (
 _M57_TARGET_QUACK_PORT = _M56_TARGET_QUACK_PORT
 _M57_PRIOR_SERVER_ID = "server:eaac79ce-7996-4f07-8eda-02dc5d63c0d0"
 _M57_PRIOR_PROCESS_BIRTH_ID = "birth:3e7be806bc72efea8ab9e483fa77c5a6"
+
+_M58_SUCCESSOR_KEY = (
+    "post_m57_stall_unblock_and_shutdown_fence_restart_successor_materialization"
+)
+_M58_MIGRATION_REVISION = "SAWM-R2-M58"
+_M58_AUTHORITY_CID = "sha256:PENDING_M58_FINAL_CONTROL_AUTHORITY_CID"
+_M58_AUTHORITY_SIZE = 0
+_M58_STORE_ID = _M57_STORE_ID
+_M58_COORDINATION_STORE_ID = _M57_COORDINATION_STORE_ID
+_M58_PRIOR_GENERATION = 42
+_M58_GENERATION = 43
+_M58_PRIOR_EVENT_WATERMARK = 327
+_M58_TARGET_EVENT_WATERMARK = 328
+_M58_PRIOR_PROJECTION_CID = _M57_TARGET_PROJECTION_CID
+_M58_TARGET_PROJECTION_CID = (
+    "baguqeeraoxa2csqtjut7zgmcxrmtb3hj624f5ewg2a4ibn6mz7tlq6nxdggq"
+)
+_M58_TARGET_QUACK_PORT = _M57_TARGET_QUACK_PORT
+_M58_PRIOR_SERVER_ID = "server:7bcdafdc-b80c-458a-88db-1f8907daadc7"
+_M58_PRIOR_PROCESS_BIRTH_ID = "birth:9a3859bfae875028d33829850824f47f"
 
 _M50_SUCCESSOR_KEY = (
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
@@ -1567,15 +1588,76 @@ def _emit(value: Mapping[str, Any]) -> int:
     return 0 if normalized.get("valid", True) is True else 2
 
 
-def _credential_safe_error(exc: BaseException) -> str:
+_LIVE_QUACK_ENV_NAMES = (
+    "IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT",
+    "IPFS_ACCELERATE_AGENT_STATE_STORE_ID",
+    "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+    "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+    "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_BINDING",
+    "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+    "SAWM_QUACK_TOKEN",
+)
+
+
+def _snapshot_live_quack_environment() -> dict[str, tuple[bool, str]]:
+    """Capture the exact ambient bindings which live preflight may replace."""
+
+    return {
+        name: (name in os.environ, str(os.environ.get(name, "")))
+        for name in _LIVE_QUACK_ENV_NAMES
+    }
+
+
+def _restore_live_quack_environment(
+    snapshot: Mapping[str, tuple[bool, str]],
+) -> None:
+    """Restore an exact caller-owned environment after delegated scheduling."""
+
+    if set(snapshot) != set(_LIVE_QUACK_ENV_NAMES):
+        raise OperatorError("live Quack environment snapshot is incomplete")
+    for name in _LIVE_QUACK_ENV_NAMES:
+        present, value = snapshot[name]
+        if present:
+            os.environ[name] = value
+        else:
+            os.environ.pop(name, None)
+
+
+def _live_quack_environment_secrets() -> set[str]:
+    """Capture active credential values before restoring their ambient scope."""
+
+    return {
+        str(os.environ[name])
+        for name in _LIVE_QUACK_ENV_NAMES
+        if name.endswith("_QUACK_TOKEN")
+        and name in os.environ
+        and len(str(os.environ[name])) >= 8
+    }
+
+
+def _credential_safe_error(
+    exc: BaseException,
+    *,
+    extra_secrets: Sequence[str] = (),
+) -> str:
     """Render an operator error without exposing a live Quack credential."""
 
     message = f"{type(exc).__name__}: {exc}"
+    notes = tuple(
+        str(note)
+        for note in (getattr(exc, "__notes__", ()) or ())
+        if str(note)
+    )
+    if notes:
+        message += " [" + "; ".join(notes) + "]"
     secrets = {
         str(value)
         for name, value in os.environ.items()
         if name.endswith("_QUACK_TOKEN") and len(str(value)) >= 8
     }
+    secrets.update(
+        str(value) for value in extra_secrets if len(str(value)) >= 8
+    )
     for secret in sorted(secrets, key=len, reverse=True):
         message = message.replace(secret, "<redacted-quack-token>")
     return message
@@ -1600,6 +1682,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m58_key = _M58_SUCCESSOR_KEY
     m57_key = _M57_SUCCESSOR_KEY
     m56_key = _M56_SUCCESSOR_KEY
     m55_key = _M55_SUCCESSOR_KEY
@@ -1650,6 +1733,50 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m58_key in config:
+        try:
+            materializer = _materializer()
+            expected = (
+                materializer
+                ._expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority()
+            )
+            reference = materializer._m58_authority_reference()
+            contract = materializer._validated_m58_live_preflight_contract(
+                expected
+            )
+            materializer._assert_m58_source_delta(
+                REPO_ROOT, materializer.build_population(REPO_ROOT), expected
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "active M58 stall-unblock/shutdown-fence restart authority is unavailable"
+            ) from exc
+        runtime = expected.get("runtime_binding")
+        stopped = expected.get("stopped_owner")
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        if (
+            config.get(m58_key) != reference
+            or materializer._identity(expected) != _M58_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M58_AUTHORITY_SIZE
+            or not all(
+                isinstance(item, Mapping)
+                for item in (runtime, stopped, program, owner, contract)
+            )
+            or expected.get("migration_revision") != _M58_MIGRATION_REVISION
+            or expected.get("migration_kind") != _M58_SUCCESSOR_KEY
+            or runtime.get("store_generation") != _M58_GENERATION
+            or stopped.get("generation") != _M58_PRIOR_GENERATION
+            or stopped.get("token_handoff_retired") is not True
+            or stopped.get("client_token_vault_absent") is not True
+            or program.get("store_generation") != str(_M58_GENERATION)
+            or owner.get("store_id") != _M58_STORE_ID
+            or contract.get("target_generation") != _M58_GENERATION
+        ):
+            raise OperatorError(
+                "active M58 stall-unblock/shutdown-fence restart authority is invalid"
+            )
+        return expected
     if m57_key in config:
         try:
             materializer = _materializer()
@@ -5483,6 +5610,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            _M58_SUCCESSOR_KEY,
             _M57_SUCCESSOR_KEY,
             _M56_SUCCESSOR_KEY,
             _M55_SUCCESSOR_KEY,
@@ -7887,6 +8015,96 @@ def _require_m18_final_pair_marker(
     return MappingProxyType(dict(observed))
 
 
+def _require_m58_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M58's deny-only receipt plus a fresh live verification."""
+
+    key = _M58_SUCCESSOR_KEY
+    if key not in config:
+        return MappingProxyType({})
+    expected = materializer._expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority()
+    reference = materializer._m58_authority_reference()
+    if (
+        dict(authority) != expected
+        or config.get(key) != reference
+        or materializer._identity(expected) != _M58_AUTHORITY_CID
+        or len(materializer._canonical(expected)) != _M58_AUTHORITY_SIZE
+    ):
+        raise OperatorError("M58 stall-unblock/shutdown-fence restart authority differs")
+    runtime = (REPO_ROOT / _M58_STORE_ID).resolve().parent
+    final_path = runtime / materializer._M58_FINAL_RECEIPT_NAME
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            final_path, root=REPO_ROOT, noun="M58 source successor receipt"
+        )
+        checked_live = materializer._check_m58_materialized(REPO_ROOT, CONFIG_PATH)
+    except Exception as exc:
+        raise OperatorError(
+            "M58 receipt requires fresh live verification after receipt read"
+        ) from exc
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    reported = checked_live.get("m58_source_successor_receipt")
+    if not isinstance(reported, Mapping):
+        reported = checked_live.get("receipt")
+    validation_digest = str(checked_live.get("validation_digest") or "")
+    try:
+        population = materializer.build_population(REPO_ROOT)
+        expected_receipt = materializer._expected_m58_source_successor_receipt(
+            population,
+            dict(authority),
+            validation_digest,
+            checked_live,
+        )
+    except Exception as exc:
+        raise OperatorError(
+            "M58 exact source successor receipt cannot be reconstructed"
+        ) from exc
+    supplied_receipt: Mapping[str, Any] | None = None
+    if checked is not None:
+        candidate = checked.get("m58_source_successor_receipt")
+        if not isinstance(candidate, Mapping):
+            candidate = checked.get("receipt")
+        if isinstance(candidate, Mapping):
+            supplied_receipt = candidate
+    if (
+        claimed != materializer._identity(unhashed)
+        or observed != expected_receipt
+        or dict(reported or {}) != expected_receipt
+        or (checked is not None and checked.get("valid") is not True)
+        or (
+            checked is not None
+            and dict(supplied_receipt or {}) != expected_receipt
+        )
+        or checked_live.get("valid") is not True
+        or checked_live.get("event_watermark") != _M58_TARGET_EVENT_WATERMARK
+        or checked_live.get("projection_cid") != _M58_TARGET_PROJECTION_CID
+        or observed.get("migration_revision") != _M58_MIGRATION_REVISION
+        or observed.get(f"{key}_cid") != _M58_AUTHORITY_CID
+        or observed.get("generation_42_43_restart_rows_verified") is not True
+        or observed.get("m57_receipt_preserved_exactly") is not True
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+        or observed.get("deny_only_without_fresh_live_revalidation") is not True
+        or any(observed.get(field) != 0 for field in (
+            "task_revision_changes", "task_status_changes", "goal_revision_changes",
+            "goal_status_changes", "provider_call_changes",
+            "provider_invocation_changes", "provider_response_changes",
+            "effect_claim_changes", "merge_attempt_changes", "merge_base_changes",
+            "merge_queue_entry_changes", "accepted_completion_changes",
+        ))
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M58 exact source successor receipt differs")
+    return MappingProxyType(dict(observed))
+
+
 def _require_m57_source_successor_marker(
     config: Mapping[str, Any],
     authority: Mapping[str, Any],
@@ -8574,6 +8792,52 @@ def _require_m48_source_successor_marker(
     ):
         raise OperatorError("M48 exact source successor receipt differs")
     return MappingProxyType(dict(observed))
+
+
+def _verify_m58_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M58's live heads at event 328/generation 43."""
+
+    materializer._validated_m58_live_preflight_contract(authority)
+    head = materializer._inspect_m37_live_projection(
+        source, population, authority,
+        expected_event_watermark=_M58_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M58_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M58_TARGET_PROJECTION_CID
+    ):
+        raise materializer.MigrationRequired("M58 live head projection differs")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    heads = authority.get("expected_task_heads")
+    if not isinstance(heads, Mapping):
+        raise materializer.MigrationRequired("M58 expected task heads are missing")
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        expected_head = heads.get(alias)
+        if (
+            observed is None
+            or not isinstance(expected_head, Mapping)
+            or observed.status != expected_head.get("status")
+            or int(observed.revision) != int(expected_head.get("revision") or 0)
+        ):
+            raise materializer.MigrationRequired(f"M58 task head differs: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
 
 
 def _verify_m57_live_head_task_projection(
@@ -14509,6 +14773,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if _M58_SUCCESSOR_KEY in config:
+        return _require_m58_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if _M57_SUCCESSOR_KEY in config:
         return _require_m57_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -15741,8 +16009,90 @@ def _process_mutation_inbox(server: Any, *, max_requests: int = 32) -> None:
     )
 
 
+def _validate_sawm_token_rearm_probe_receipt(
+    receipt: object,
+    *,
+    secret_handle: str,
+    expected_token: str,
+) -> None:
+    """Validate one non-authoritative owner recovery observation."""
+
+    expected_keys = {
+        "schema",
+        "closed",
+        "rearmed",
+        "pid_quarantined",
+        "recovery_admitted",
+        "completion_authority",
+        "task_authority",
+        "reason",
+        "secret_handle",
+        "credential_sha256",
+    }
+    rearmed_reasons = {
+        "coordinator_pid_absent",
+        "coordinator_pid_empty",
+        "coordinator_pid_dead",
+    }
+    no_op_reasons = {
+        "retirement_lock_held",
+        "handoff_unsafe",
+        "handoff_already_present",
+        "coordinator_pid_alive",
+        "coordinator_pid_unknown",
+        "coordinator_pid_malformed",
+        "coordinator_pid_unsafe",
+        "coordinator_pid_changed",
+    }
+    expected_digest = "sha256:" + hashlib.sha256(
+        expected_token.encode("ascii")
+    ).hexdigest()
+    if not isinstance(receipt, Mapping):
+        raise OperatorError("Quack token rearm probe receipt is not an object")
+    rearmed = receipt.get("rearmed")
+    pid_quarantined = receipt.get("pid_quarantined")
+    reason = receipt.get("reason")
+    valid_outcome = (
+        reason == "coordinator_pid_absent"
+        and rearmed is True
+        and pid_quarantined is False
+    ) or (
+        reason in {"coordinator_pid_empty", "coordinator_pid_dead"}
+        and type(rearmed) is bool
+        and pid_quarantined is True
+    ) or (
+        reason in no_op_reasons
+        and rearmed is False
+        and pid_quarantined is False
+    )
+    if (
+        set(receipt) != expected_keys
+        or receipt.get("schema")
+        != "ipfs_accelerate_py/quack-token-handoff-rearm-probe@1"
+        or receipt.get("closed") is not True
+        or type(rearmed) is not bool
+        or type(pid_quarantined) is not bool
+        or type(receipt.get("recovery_admitted")) is not bool
+        or receipt.get("recovery_admitted")
+        is not bool(rearmed or pid_quarantined)
+        or receipt.get("completion_authority") is not False
+        or receipt.get("task_authority") is not False
+        or not isinstance(reason, str)
+        or reason not in rearmed_reasons | no_op_reasons
+        or not valid_outcome
+        or receipt.get("secret_handle") != secret_handle
+        or receipt.get("credential_sha256") != expected_digest
+    ):
+        raise OperatorError("Quack token rearm probe receipt differs")
+
+
 def _serve_sawm_owner(server: Any) -> dict[str, Any]:
     stop_requested = {"value": False}
+    next_token_rearm_probe = 0.0
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        rearm_token_handoff_if_coordinator_absent,
+    )
 
     def handle_signal(_signum: int, _frame: Any) -> None:
         stop_requested["value"] = True
@@ -15755,6 +16105,39 @@ def _serve_sawm_owner(server: Any) -> dict[str, Any]:
             if control.is_file():
                 break
             _process_mutation_inbox(server, max_requests=32)
+            identity = server.identity
+            vault = server._vault
+            handoff_path = None if vault is None else getattr(vault, "_path", None)
+            if identity is None or vault is None or handoff_path is None:
+                raise OperatorError("live Quack owner token vault is unavailable")
+            state_dir = Path(server.config.state_dir)
+            handoff_path = Path(handoff_path)
+            if handoff_path.parent != state_dir:
+                raise OperatorError("live Quack owner token handoff path differs")
+            # Keep reconciliation independent from the 20 Hz mutation inbox.
+            # The QSS primitive must still see a present handoff: that is how it
+            # reconciles an orphan/dead PID projection left by a prior crash.
+            now = time.monotonic()
+            if now >= next_token_rearm_probe:
+                next_token_rearm_probe = now + 1.0
+                secret_handle = str(identity.secret_handle)
+                if server.secret_handle != secret_handle:
+                    raise OperatorError("live Quack owner secret handle differs")
+                token = vault.resolve(secret_handle)
+                receipt = rearm_token_handoff_if_coordinator_absent(
+                    state_dir=state_dir,
+                    secret_handle=secret_handle,
+                    expected_token=token,
+                    coordinator_pid_path=(
+                        Path(server.config.state_dir).parent
+                        / "state/configured-board-master.pid"
+                    ),
+                )
+                _validate_sawm_token_rearm_probe_receipt(
+                    receipt,
+                    secret_handle=secret_handle,
+                    expected_token=token,
+                )
             time.sleep(0.05)
         return server.stop()
     except BaseException:
@@ -15784,6 +16167,38 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
+    if _M58_SUCCESSOR_KEY in config:
+        active_materialization = _active_source_repair_materialization(config)
+        try:
+            admitted = materializer._check_m58_prestart_admission(REPO_ROOT, config)
+        except Exception as exc:
+            raise OperatorError(
+                "M58 live-ready generation-42 restart is not admissible"
+            ) from exc
+        if (
+            admitted.get("valid") is not True
+            or admitted.get("action")
+            != "admitted_live_ready_generation_42_restart_to_generation_43"
+            or admitted.get("prior_generation") != _M58_PRIOR_GENERATION
+            or admitted.get("target_generation") != _M58_GENERATION
+            or admitted.get("prior_event_watermark")
+            != _M58_PRIOR_EVENT_WATERMARK
+            or admitted.get("prior_projection_cid")
+            != _M58_PRIOR_PROJECTION_CID
+            or admitted.get("m57_receipt_preserved_exactly") is not True
+            or admitted.get("prior_process_birth_verified_dead") is not True
+            or admitted.get("client_token_vault_absent") is not True
+            or admitted.get("owner_marker_absent") is not True
+            or admitted.get("stop_control_absent") is not True
+            or admitted.get("prestart_authorization_consumed") is not False
+        ):
+            raise OperatorError("M58 prestart admission report differs")
+        return MappingProxyType({
+            "dependency_valid": True,
+            "board_valid": True,
+            "prior_authority": active_materialization,
+            "store": admitted,
+        })
     if _M57_SUCCESSOR_KEY in config:
         active_materialization = _active_source_repair_materialization(config)
         try:
@@ -16594,11 +17009,621 @@ def _sealed_quack_native_runtime(config_path: Path) -> Iterator[Any]:
             os.close(descriptor)
 
 
+def _validate_m58_pre_stop_authority(
+    config: Mapping[str, Any],
+) -> tuple[Any, Mapping[str, Any]]:
+    """Validate every static M58 authority before publishing a stop request."""
+
+    dependency = _validator(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "validate_dependencies",
+    )
+    board = _validator(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "validate_program",
+    )
+    if dependency.get("valid") is not True or board.get("valid") is not True:
+        raise OperatorError(
+            "M58 generation-42 stop requires valid dependency and board seals"
+        )
+    materializer = _materializer()
+    population = materializer.build_population(REPO_ROOT)
+    try:
+        materializer._assert_committed_clean_source(REPO_ROOT, population)
+        authority = _active_source_repair_materialization(config)
+        expected = (
+            materializer
+            ._expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority()
+        )
+        contract = materializer._validated_m58_live_preflight_contract(authority)
+        materializer._assert_m58_source_delta(REPO_ROOT, population, authority)
+        materializer._m58_target_paths(REPO_ROOT, config, authority)
+    except Exception as exc:
+        raise OperatorError(
+            "M58 generation-42 stop static authority validation failed"
+        ) from exc
+    if (
+        dict(authority) != expected
+        or config.get(_M58_SUCCESSOR_KEY) != materializer._m58_authority_reference()
+        or materializer._identity(expected) != _M58_AUTHORITY_CID
+        or len(materializer._canonical(expected)) != _M58_AUTHORITY_SIZE
+        or contract.get("target_generation") != _M58_GENERATION
+        or contract.get("prior_event_watermark") != _M58_PRIOR_EVENT_WATERMARK
+        or contract.get("target_event_watermark") != _M58_TARGET_EVENT_WATERMARK
+    ):
+        raise OperatorError("M58 generation-42 stop authority differs")
+    return materializer, MappingProxyType(dict(authority))
+
+
+@dataclasses.dataclass
+class _M58TransitionLease:
+    """One persistent local fence for the generation-42 to 43 transition."""
+
+    path: Path
+    descriptor: int
+
+    def assert_held(self) -> None:
+        if self.descriptor < 0:
+            raise OperatorError("M58 transition lock is not held")
+        try:
+            opened = os.fstat(self.descriptor)
+            linked = os.lstat(self.path)
+        except OSError as exc:
+            raise OperatorError("M58 transition lock identity is unavailable") from exc
+        if (
+            opened.st_dev != linked.st_dev
+            or opened.st_ino != linked.st_ino
+            or not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or opened.st_size != 0
+            or stat.S_IMODE(opened.st_mode) != 0o600
+            or opened.st_uid != os.geteuid()
+        ):
+            raise OperatorError("M58 transition lock identity differs")
+
+    def release(self) -> None:
+        if self.descriptor < 0:
+            return
+        descriptor = self.descriptor
+        self.descriptor = -1
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+
+
+def _acquire_m58_transition_lock(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+) -> _M58TransitionLease:
+    """Acquire the persistent lock shared by M58 stop and startup."""
+
+    control, _coordination = materializer._m58_target_paths(
+        REPO_ROOT, config, authority
+    )
+    lock_path = control.parent / ".m58-quack-generation-transition.lock"
+    if not lock_path.parent.resolve().is_relative_to(REPO_ROOT.resolve()):
+        raise OperatorError("M58 transition lock escapes the repository")
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            lock_path,
+            os.O_RDWR
+            | os.O_CREAT
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or opened.st_size != 0
+            or stat.S_IMODE(opened.st_mode) != 0o600
+            or opened.st_uid != os.geteuid()
+        ):
+            raise OperatorError("M58 transition lock is unsafe")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        lease = _M58TransitionLease(path=lock_path, descriptor=descriptor)
+        lease.assert_held()
+        return lease
+    except BaseException:
+        if descriptor >= 0:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            except OSError:
+                pass
+            os.close(descriptor)
+        raise
+
+
+@contextmanager
+def _m58_transition_lock(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+) -> Iterator[_M58TransitionLease]:
+    lease = _acquire_m58_transition_lock(config, authority, materializer)
+    try:
+        yield lease
+    finally:
+        lease.release()
+
+
+def _m58_stable_runtime_json(
+    materializer: Any,
+    path: Path,
+    *,
+    noun: str,
+) -> tuple[dict[str, Any], str]:
+    """Read one private runtime projection through a stable no-follow fd."""
+
+    try:
+        payload, digest = materializer._load_nofollow_json(
+            path,
+            root=REPO_ROOT,
+            noun=noun,
+        )
+        observed = os.lstat(path)
+    except Exception as exc:
+        raise OperatorError(f"{noun} is unavailable") from exc
+    if (
+        not stat.S_ISREG(observed.st_mode)
+        or observed.st_nlink != 1
+        or observed.st_uid != os.geteuid()
+        or stat.S_IMODE(observed.st_mode) != 0o600
+    ):
+        raise OperatorError(f"{noun} is not a private single-link regular file")
+    return dict(payload), str(digest)
+
+
+def _m58_stop_paths(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+) -> tuple[Path, Path, Path, Path]:
+    control, _coordination = materializer._m58_target_paths(
+        REPO_ROOT, config, authority
+    )
+    state_dir = (
+        REPO_ROOT / str(config["quack_owner"]["state_dir"])
+    ).resolve()
+    expected_state_dir = (control.parent / "quack-owner").resolve()
+    if state_dir != expected_state_dir or not state_dir.is_relative_to(REPO_ROOT):
+        raise OperatorError("M58 Quack stop state directory differs")
+    return (
+        control,
+        state_dir / "quack-state-server.status.json",
+        control.with_name(f".{control.name}.state-owner.json"),
+        state_dir / "quack-state-server.stop",
+    )
+
+
+def _m58_status_birth(
+    status: Mapping[str, Any],
+    *,
+    lifecycle: str,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    control: Path,
+    status_path: Path,
+    marker_path: Path,
+) -> Any:
+    """Validate the exact sealed generation-42 status identity."""
+
+    stopped = authority.get("stopped_owner")
+    identity = status.get("identity")
+    owner = config.get("quack_owner")
+    if not all(isinstance(item, Mapping) for item in (stopped, identity, owner)):
+        raise OperatorError("M58 generation-42 status identity is unavailable")
+    process_birth = stopped.get("process_birth")
+    schema_fingerprint = str(identity.get("schema_fingerprint") or "")
+    exact_integers = (
+        status.get("port"),
+        owner.get("port"),
+        identity.get("contract_version"),
+        identity.get("schema_revision"),
+        identity.get("generation"),
+        identity.get("fence_epoch"),
+        identity.get("credential_generation"),
+        identity.get("revision"),
+        identity.get("startup_epoch"),
+    )
+    expected_status_keys = {
+        "schema",
+        "interface",
+        "lifecycle",
+        "database_path",
+        "state_dir",
+        "host",
+        "port",
+        "store_id",
+        "secret_handle",
+        "identity",
+        "capability_status",
+        "extension_fingerprint",
+        "owner_marker_path",
+        "status_path",
+    }
+    expected_identity_keys = {
+        "schema",
+        "interface",
+        "contract_version",
+        "server_id",
+        "store_id",
+        "database_uuid",
+        "schema_revision",
+        "schema_fingerprint",
+        "generation",
+        "fence_epoch",
+        "revision",
+        "process_birth",
+        "process_birth_id",
+        "listen_uri",
+        "extension_fingerprint",
+        "credential_generation",
+        "secret_handle",
+        "repository_id",
+        "startup_epoch",
+        "started_at",
+        "status",
+    }
+    if (
+        set(status) != expected_status_keys
+        or set(identity) != expected_identity_keys
+        or any(type(value) is not int for value in exact_integers)
+        or status.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/quack-state-server@1"
+        or status.get("interface") != "QuackStateServer@1"
+        or status.get("lifecycle") != lifecycle
+        or status.get("database_path") != str(control)
+        or status.get("state_dir") != str(status_path.parent)
+        or status.get("host") != owner.get("host")
+        or status.get("port") != owner.get("port")
+        or status.get("store_id") != stopped.get("store_id")
+        or status.get("secret_handle") != owner.get("secret_handle")
+        or status.get("capability_status") != "compatible"
+        or status.get("extension_fingerprint")
+        != materializer._M58_EXTENSION_FINGERPRINT
+        or status.get("owner_marker_path") != str(marker_path)
+        or status.get("status_path") != str(status_path)
+        or identity.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/state-server-identity@1"
+        or identity.get("interface") != "StateServerIdentity@1"
+        or identity.get("contract_version") != 1
+        or identity.get("server_id") != stopped.get("server_id")
+        or identity.get("process_birth_id") != stopped.get("process_birth_id")
+        or identity.get("process_birth") != process_birth
+        or identity.get("database_uuid") != stopped.get("database_uuid")
+        or identity.get("store_id") != stopped.get("store_id")
+        or identity.get("started_at") != stopped.get("started_at")
+        or identity.get("listen_uri") != stopped.get("listen_uri")
+        or identity.get("extension_fingerprint")
+        != materializer._M58_EXTENSION_FINGERPRINT
+        or identity.get("schema_revision") != 1
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", schema_fingerprint) is None
+        or identity.get("generation") != _M58_PRIOR_GENERATION
+        or identity.get("fence_epoch") != _M58_PRIOR_GENERATION
+        or identity.get("credential_generation") != _M58_PRIOR_GENERATION
+        or identity.get("revision") != 0
+        or identity.get("startup_epoch") < 1
+        or identity.get("secret_handle") != owner.get("secret_handle")
+        or identity.get("repository_id") != owner.get("repository_id")
+        or identity.get("status") != lifecycle
+    ):
+        raise OperatorError(f"M58 exact generation-42 {lifecycle} status differs")
+    try:
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            ProcessBirthIdentity,
+        )
+
+        return ProcessBirthIdentity.from_dict(process_birth)
+    except Exception as exc:
+        raise OperatorError("M58 generation-42 process birth is invalid") from exc
+
+
+def _m58_marker_fence(
+    marker: Mapping[str, Any],
+    *,
+    authority: Mapping[str, Any],
+    control: Path,
+) -> str:
+    stopped = authority["stopped_owner"]
+    expected_keys = {
+        "schema",
+        "server_id",
+        "process_birth",
+        "database_path",
+        "started_at",
+        "fence_token",
+        "generation",
+    }
+    fence = marker.get("fence_token")
+    if (
+        set(marker) != expected_keys
+        or type(marker.get("generation")) is not int
+        or not isinstance(fence, str)
+        or marker.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/state-owner-marker@1"
+        or marker.get("server_id") != stopped["server_id"]
+        or marker.get("process_birth") != stopped["process_birth"]
+        or marker.get("database_path") != str(control)
+        or marker.get("started_at") != stopped["started_at"]
+        or marker.get("generation") != 1
+        or re.fullmatch(r"[0-9a-f]{32}", fence) is None
+    ):
+        raise OperatorError("M58 exact generation-42 owner marker differs")
+    return fence
+
+
+def _m58_owner_liveness(birth: Any) -> Any:
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        owner_liveness,
+    )
+
+    return owner_liveness(birth)
+
+
+def _m58_write_stop_request(
+    materializer: Any,
+    stop_path: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    """Publish a complete stop request without replacing an existing leaf."""
+
+    temporary = stop_path.with_name(
+        f".{stop_path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+    )
+    encoded = (
+        json.dumps(dict(payload), indent=2, sort_keys=True).encode("utf-8") + b"\n"
+    )
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            temporary,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        offset = 0
+        while offset < len(encoded):
+            offset += os.write(descriptor, encoded[offset:])
+        os.fchmod(descriptor, 0o600)
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        os.link(temporary, stop_path, follow_symlinks=False)
+        os.unlink(temporary)
+        directory = os.open(
+            stop_path.parent,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    except FileExistsError as exc:
+        raise OperatorError("M58 stop control already exists") from exc
+    except OSError as exc:
+        raise OperatorError("M58 exact stop request publication failed") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+    try:
+        observed, _digest = _m58_stable_runtime_json(
+            materializer,
+            stop_path,
+            noun="M58 exact stop request",
+        )
+    except OperatorError:
+        # The sealed owner may consume and unlink the hard-linked request
+        # immediately.  Absence is not success: the caller must continue to
+        # the exact stopped-status/dead-birth/absent-leaf terminal proof.
+        if not os.path.lexists(stop_path):
+            return
+        raise
+    if observed != dict(payload):
+        raise OperatorError("M58 published stop request differs")
+
+
+def _stop_m58_live_owner_exact(
+    config: Mapping[str, Any],
+    materializer: Any,
+    authority: Mapping[str, Any],
+    *,
+    transition_lease: _M58TransitionLease | None = None,
+) -> Mapping[str, Any]:
+    """Stop only the sealed generation-42 birth and prove its exact terminal."""
+
+    if transition_lease is None:
+        with _m58_transition_lock(config, authority, materializer) as held:
+            return _stop_m58_live_owner_exact(
+                config,
+                materializer,
+                authority,
+                transition_lease=held,
+            )
+    control_for_lock, _coordination = materializer._m58_target_paths(
+        REPO_ROOT, config, authority
+    )
+    if transition_lease.path != (
+        control_for_lock.parent / ".m58-quack-generation-transition.lock"
+    ):
+        raise OperatorError("M58 transition lock path differs")
+    transition_lease.assert_held()
+
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        OwnerLiveness,
+    )
+
+    control, status_path, marker_path, stop_path = _m58_stop_paths(
+        config, authority, materializer
+    )
+    if list(status_path.parent.glob("*.quack-token")):
+        raise OperatorError("M58 stop requires the retired client token vault")
+    status, status_digest = _m58_stable_runtime_json(
+        materializer,
+        status_path,
+        noun="M58 generation-42 owner status",
+    )
+    lifecycle = str(status.get("lifecycle") or "")
+    birth = _m58_status_birth(
+        status,
+        lifecycle=lifecycle,
+        config=config,
+        authority=authority,
+        materializer=materializer,
+        control=control,
+        status_path=status_path,
+        marker_path=marker_path,
+    )
+    if lifecycle == "stopped":
+        if (
+            _m58_owner_liveness(birth) is not OwnerLiveness.DEAD
+            or os.path.lexists(marker_path)
+            or os.path.lexists(stop_path)
+        ):
+            raise OperatorError("M58 already-stopped generation-42 terminal differs")
+        return MappingProxyType(
+            {
+                "stopped": True,
+                "already": True,
+                "server_id": _M58_PRIOR_SERVER_ID,
+                "generation": _M58_PRIOR_GENERATION,
+                "status_verified": True,
+                "owner_marker_absent": True,
+                "stop_control_absent": True,
+            }
+        )
+    if lifecycle != "ready" or _m58_owner_liveness(birth) is not OwnerLiveness.ALIVE:
+        raise OperatorError("M58 generation-42 owner is not exactly live-ready")
+    if os.path.lexists(stop_path):
+        raise OperatorError("M58 unowned stop control already exists")
+    marker, marker_digest = _m58_stable_runtime_json(
+        materializer,
+        marker_path,
+        noun="M58 generation-42 owner marker",
+    )
+    fence = _m58_marker_fence(marker, authority=authority, control=control)
+
+    # Re-read both leaves before publication.  A replacement or mixed
+    # status/marker pair must never receive a request carrying the old fence.
+    status_again, status_digest_again = _m58_stable_runtime_json(
+        materializer,
+        status_path,
+        noun="M58 generation-42 owner status revalidation",
+    )
+    marker_again, marker_digest_again = _m58_stable_runtime_json(
+        materializer,
+        marker_path,
+        noun="M58 generation-42 owner marker revalidation",
+    )
+    if (
+        status_again != status
+        or status_digest_again != status_digest
+        or marker_again != marker
+        or marker_digest_again != marker_digest
+        or os.path.lexists(stop_path)
+        or _m58_owner_liveness(birth) is not OwnerLiveness.ALIVE
+    ):
+        raise OperatorError("M58 generation-42 status/marker changed before stop")
+
+    request = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/quack-stop-request@1",
+        "server_id": _M58_PRIOR_SERVER_ID,
+        "fence_token": fence,
+        "requested_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    _m58_write_stop_request(materializer, stop_path, request)
+    deadline = time.monotonic() + 60.0
+    while time.monotonic() < deadline:
+        current, current_digest = _m58_stable_runtime_json(
+            materializer,
+            status_path,
+            noun="M58 generation-42 stop terminal status",
+        )
+        current_lifecycle = str(current.get("lifecycle") or "")
+        current_birth = _m58_status_birth(
+            current,
+            lifecycle=current_lifecycle,
+            config=config,
+            authority=authority,
+            materializer=materializer,
+            control=control,
+            status_path=status_path,
+            marker_path=marker_path,
+        )
+        liveness = _m58_owner_liveness(current_birth)
+        if current_lifecycle == "stopped":
+            if (
+                liveness is OwnerLiveness.DEAD
+                and not os.path.lexists(marker_path)
+                and not os.path.lexists(stop_path)
+            ):
+                return MappingProxyType(
+                    {
+                        "stopped": True,
+                        "already": False,
+                        "server_id": _M58_PRIOR_SERVER_ID,
+                        "generation": _M58_PRIOR_GENERATION,
+                        "status_verified": True,
+                        "owner_marker_absent": True,
+                        "stop_control_absent": True,
+                    }
+                )
+        elif current_lifecycle == "ready":
+            if current != status or current_digest != status_digest:
+                raise OperatorError("M58 generation-42 status changed during stop")
+            if os.path.lexists(marker_path):
+                current_marker, current_marker_digest = _m58_stable_runtime_json(
+                    materializer,
+                    marker_path,
+                    noun="M58 generation-42 marker during stop",
+                )
+                if (
+                    current_marker != marker
+                    or current_marker_digest != marker_digest
+                    or _m58_marker_fence(
+                        current_marker,
+                        authority=authority,
+                        control=control,
+                    )
+                    != fence
+                ):
+                    raise OperatorError("M58 generation-42 marker changed during stop")
+            if os.path.lexists(stop_path):
+                current_request, _request_digest = _m58_stable_runtime_json(
+                    materializer,
+                    stop_path,
+                    noun="M58 exact stop request during stop",
+                )
+                if current_request != request:
+                    raise OperatorError("M58 stop request changed during stop")
+            if liveness is OwnerLiveness.UNKNOWN:
+                raise OperatorError("M58 generation-42 liveness became unknown")
+        else:
+            raise OperatorError("M58 generation-42 lifecycle changed unexpectedly")
+        time.sleep(0.05)
+    raise OperatorError("M58 generation-42 owner lacked an exact stopped terminal")
+
+
 def _stop_m55_live_owner_if_token_vault_missing(
     config: Mapping[str, Any],
-) -> None:
+) -> Mapping[str, Any] | None:
     """Stop the sealed live owner when launch retired its vault."""
 
+    if _M58_SUCCESSOR_KEY in config:
+        materializer, authority = _validate_m58_pre_stop_authority(config)
+        return _stop_m58_live_owner_exact(config, materializer, authority)
     if _M57_SUCCESSOR_KEY in config:
         expected_server = _M57_PRIOR_SERVER_ID
         expected_birth = _M57_PRIOR_PROCESS_BIRTH_ID
@@ -16658,7 +17683,7 @@ def _stop_m55_live_owner_if_token_vault_missing(
     deadline = time.time() + 60
     while time.time() < deadline:
         if owner_liveness(birth) is OwnerLiveness.DEAD:
-            return
+            return None
         time.sleep(0.2)
     raise OperatorError(f"{noun} owner did not stop")
 
@@ -16671,19 +17696,40 @@ def _run_quack_start(
 
     with _sealed_quack_native_runtime(config_path):
         transport = _SawmQuackTransport(config["quack_owner"])
+        transition_lease: _M58TransitionLease | None = None
         try:
             # Reserve the complete watch set before validation can open or
             # mutate the authoritative control store.  The same reservation is
             # retained and reused by every subsequent native extension LOAD.
             transport.prepare_extension_custody()
-            _stop_m55_live_owner_if_token_vault_missing(config)
+            if _M58_SUCCESSOR_KEY in config:
+                materializer, authority = _validate_m58_pre_stop_authority(config)
+                transition_lease = _acquire_m58_transition_lock(
+                    config, authority, materializer
+                )
+                _stop_m58_live_owner_exact(
+                    config,
+                    materializer,
+                    authority,
+                    transition_lease=transition_lease,
+                )
+            else:
+                _stop_m55_live_owner_if_token_vault_missing(config)
             _validate_offline_quack_start(config, config_path)
-            return _start_quack(config, transport=transport)
+            if transition_lease is None:
+                return _start_quack(config, transport=transport)
+            return _start_quack(
+                config,
+                transport=transport,
+                m58_transition_lease=transition_lease,
+            )
         except BaseException:
             try:
                 transport.stop()
             except BaseException:
                 pass
+            if transition_lease is not None:
+                transition_lease.release()
             raise
 
 
@@ -16691,12 +17737,34 @@ def _start_quack(
     config: Mapping[str, Any],
     *,
     transport: _SawmQuackTransport | None = None,
+    m58_transition_lease: _M58TransitionLease | None = None,
 ) -> int:
     owner = config["quack_owner"]
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import build_server
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
         install_datasets_authoritative_operational_schema,
     )
+    expected_startup: dict[str, Any] = {}
+    if _M58_SUCCESSOR_KEY in config:
+        if m58_transition_lease is None:
+            raise OperatorError("M58 startup requires the held transition lock")
+        m58_transition_lease.assert_held()
+        authority = _active_source_repair_materialization(config)
+        runtime = authority.get("runtime_binding")
+        if not isinstance(runtime, Mapping):
+            raise OperatorError("M58 expected startup binding is unavailable")
+        expected_startup = {
+            "expected_generation": _M58_GENERATION,
+            "expected_database_uuid": str(runtime.get("database_uuid") or ""),
+            "expected_store_id": _M58_STORE_ID,
+            "expected_listen_uri": str(runtime.get("quack_endpoint") or ""),
+        }
+        if (
+            not expected_startup["expected_database_uuid"]
+            or expected_startup["expected_listen_uri"]
+            != str(config["database_program"]["quack_endpoint"])
+        ):
+            raise OperatorError("M58 expected startup binding differs")
     server = build_server(
         database_path=REPO_ROOT / owner["database_path"],
         state_dir=REPO_ROOT / owner["state_dir"], host=str(owner["host"]),
@@ -16709,14 +17777,27 @@ def _start_quack(
         transport=(
             transport if transport is not None else _SawmQuackTransport(owner)
         ),
+        **expected_startup,
     )
     identity = server.start()
     try:
+        if expected_startup and (
+            identity.generation != expected_startup["expected_generation"]
+            or identity.database_uuid != expected_startup["expected_database_uuid"]
+            or identity.store_id != expected_startup["expected_store_id"]
+            or identity.listen_uri != expected_startup["expected_listen_uri"]
+        ):
+            raise OperatorError("M58 live generation-43 startup identity differs")
         # State-server identity rows are published after transport.start();
         # refresh once more so readiness resolves those canonical rows through
         # the same read-only Quack replica used by schedulers.
         server.transport.refresh(server._connection, probe=True)
         readiness = server.ready()
+        if m58_transition_lease is not None:
+            # A later M58 stop/start command may proceed only after generation
+            # 43 is fully published and independently ready.  It will then
+            # reject this generation as the sealed generation-42 stop target.
+            m58_transition_lease.release()
     except BaseException:
         server.stop()
         raise
@@ -19333,6 +20414,18 @@ def _normalized_live_preflight_contract(
     """Resolve one closed preflight view without shape-dependent aliases."""
 
     revision = str(active_source_repair.get("migration_revision") or "")
+    if revision == _M58_MIGRATION_REVISION:
+        try:
+            return materializer._validated_m58_live_preflight_contract(
+                active_source_repair
+            )
+        except (
+            materializer.MigrationRequired,
+            materializer.MaterializationError,
+        ) as exc:
+            raise OperatorError(
+                f"M58 normalized preflight contract differs: {exc}"
+            ) from exc
     if revision == _M57_MIGRATION_REVISION:
         try:
             return materializer._validated_m57_live_preflight_contract(
@@ -19684,6 +20777,7 @@ def _live_preflight(
     probe_provider: bool = False,
     retire_provider_token_handoff: bool = False,
     before_token_handoff_retirement: Callable[[], Any] | None = None,
+    token_handoff_transaction_sink: Callable[[Any], Any] | None = None,
 ) -> dict[str, Any]:
     if probe_provider and not retire_provider_token_handoff:
         raise OperatorError(
@@ -19695,6 +20789,17 @@ def _live_preflight(
     ):
         raise OperatorError(
             "pre-retirement coordinator reservation requires handoff retirement"
+        )
+    if (
+        token_handoff_transaction_sink is not None
+        and not retire_provider_token_handoff
+    ):
+        raise OperatorError(
+            "token handoff transaction sink requires handoff retirement"
+        )
+    if retire_provider_token_handoff and token_handoff_transaction_sink is None:
+        raise OperatorError(
+            "token handoff retirement requires a transaction sink"
         )
     dependency = _validator("scripts/validate_semantic_addressed_world_model_dependencies.py", "validate_dependencies")
     board = _validator("scripts/validate_semantic_addressed_world_model_board.py", "validate_program")
@@ -19714,6 +20819,7 @@ def _live_preflight(
         }
     )
     active_revision = str(active_source_repair.get("migration_revision") or "")
+    m58_active = active_revision == _M58_MIGRATION_REVISION
     m57_active = active_revision == _M57_MIGRATION_REVISION
     m56_active = active_revision == _M56_MIGRATION_REVISION
     m55_active = active_revision == _M55_MIGRATION_REVISION
@@ -19755,6 +20861,7 @@ def _live_preflight(
     m18_active = active_revision == "SAWM-R2-M18"
     evidence_only_post_m27 = any(
         (
+            m58_active,
             m57_active,
             m56_active,
             m55_active,
@@ -19788,6 +20895,7 @@ def _live_preflight(
     )
     deferred_live_evidence_marker = any(
         (
+            m58_active,
             m57_active,
             m56_active,
             m55_active,
@@ -19840,6 +20948,16 @@ def _live_preflight(
     discovery = discover_live_quack_endpoint(store)
     expected_uri = str(config["database_program"]["quack_endpoint"])
     if not discovery.uri or discovery.uri != expected_uri or not discovery.token:
+        if m58_active:
+            if discovery.uri == expected_uri and not discovery.token:
+                raise OperatorError(
+                    "M58 live generation-42 owner is missing the client token "
+                    "vault; run the sealed quack-stop then quack-start admission"
+                )
+            raise OperatorError(
+                "M58 exact live generation-43 owner is unavailable; run the "
+                "sealed offline quack-start admission first"
+            )
         if m57_active:
             if discovery.uri == expected_uri and not discovery.token:
                 raise OperatorError(
@@ -19975,6 +21093,8 @@ def _live_preflight(
         or live_identity.get("listen_uri") != expected_uri
         or remote_identity.get("listen_uri") != expected_uri
     ):
+        if m58_active:
+            raise OperatorError("M58 exact live generation-43 owner binding differs")
         if m57_active:
             raise OperatorError("M57 exact live generation-42 owner binding differs")
         if m56_active:
@@ -20065,6 +21185,28 @@ def _live_preflight(
     # step.  If the live cursor is still the sealed prior watermark, append
     # and publish before the snapshot gate.  An unhandled newer key fails
     # closed inside materialize() instead of silently selecting history.
+    if m58_active:
+        try:
+            cursor = int(live.snapshot().event_cursor)
+            if cursor in {_M58_PRIOR_EVENT_WATERMARK, _M58_TARGET_EVENT_WATERMARK}:
+                materializer.materialize(REPO_ROOT, CONFIG_PATH)
+                live.close()
+                live = None
+                live = DatabaseTaskSource(
+                    discovery.uri,
+                    install_schema=False,
+                    repository_tree_id=population["repository_tree_id"],
+                    plan_root_cid=population["plan_root_cid"],
+                    owner_id="sawm-r2-live-preflight",
+                )
+            else:
+                raise OperatorError("M58 live event head is neither 327 nor 328")
+        except OperatorError:
+            raise
+        except Exception as exc:
+            raise OperatorError(
+                f"M58 automatic successor materialize failed: {exc}"
+            ) from exc
     if m57_active:
         try:
             cursor = int(live.snapshot().event_cursor)
@@ -20150,7 +21292,44 @@ def _live_preflight(
     # explicit boundary rather than a MappingProxyType implementation detail.
     receipt_authority = dict(active_source_repair)
     try:
-        if m57_active:
+        if m58_active:
+            try:
+                m58_verified = materializer._verify_m58_live_materialization(
+                    live,
+                    live_identity,
+                    population,
+                    config,
+                    active_source_repair,
+                    validation_digest,
+                    repository_root=REPO_ROOT,
+                )
+                expected_m58_receipt = (
+                    materializer._expected_m58_source_successor_receipt(
+                        population,
+                        receipt_authority,
+                        validation_digest,
+                        m58_verified,
+                    )
+                )
+                final_pair_marker = _require_active_final_pair_marker(
+                    config,
+                    active_source_repair,
+                    materializer,
+                    checked={
+                        "valid": True,
+                        "receipt": expected_m58_receipt,
+                        "m58_source_successor_receipt": expected_m58_receipt,
+                        **m58_verified,
+                    },
+                )
+            except (
+                materializer.MigrationRequired,
+                materializer.MaterializationError,
+            ) as exc:
+                raise OperatorError(
+                    f"M58 exact stall-unblock/shutdown-fence restart verification failed: {exc}"
+                ) from exc
+        elif m57_active:
             try:
                 m57_verified = materializer._verify_m57_live_materialization(
                     live,
@@ -21216,7 +22395,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if _M57_SUCCESSOR_KEY in config:
+            if _M58_SUCCESSOR_KEY in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m58_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif _M57_SUCCESSOR_KEY in config:
                 statuses, _revisions, _receipts = (
                     _verify_m57_live_head_task_projection(
                         live,
@@ -21918,7 +23107,8 @@ def _live_preflight(
         raise
     finally:
         try:
-            live.close()
+            if live is not None:
+                live.close()
         except Exception:
             raise OperatorError("authenticated live Quack preflight close failed") from None
     store_report = {
@@ -21932,7 +23122,38 @@ def _live_preflight(
         "statuses": statuses,
         "coordination_projection_digest": live_snapshot["projection_cid"],
     }
-    if m57_active and final_pair_marker:
+    if m58_active and final_pair_marker:
+        store_report.update(
+            {
+                "coordination_path": str(
+                    (REPO_ROOT / _M58_COORDINATION_STORE_ID).resolve()
+                ),
+                "final_pair_commit_marker_verified": False,
+                "source_successor_receipt_cid": str(
+                    final_pair_marker["receipt_cid"]
+                ),
+                "source_successor_receipt_verified": True,
+                "source_successor_chain": dict(
+                    final_pair_marker.get("source_chain") or {}
+                ),
+                "m58_authority_cid": _M58_AUTHORITY_CID,
+                "m58_event_id": str(
+                    final_pair_marker.get("migration_evidence_event_id") or ""
+                ),
+                "m58_evidence_id": str(
+                    final_pair_marker.get("migration_evidence_id") or ""
+                ),
+                "m58_source_successor_receipt": dict(final_pair_marker),
+                "m57_receipt_preserved_exactly": True,
+                "m56_receipt_preserved_exactly": True,
+                "m55_receipt_preserved_exactly": True,
+                "m53_receipt_preserved_exactly": True,
+                "source_successor_receipt_completion_authority": False,
+                "source_successor_receipt_launch_authority": False,
+                "fresh_live_revalidation_performed_after_receipt_read": True,
+            }
+        )
+    elif m57_active and final_pair_marker:
         store_report.update(
             {
                 "coordination_path": str(
@@ -22414,9 +23635,10 @@ def _live_preflight(
         "retired": False,
         "reason": "provider_launch_not_requested",
     }
+    credential_transaction: Any | None = None
     if retire_provider_token_handoff:
         from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
-            retire_token_handoff,
+            begin_token_handoff_retirement,
         )
 
         status_path = Path(discovery.status_path).resolve()
@@ -22429,53 +23651,97 @@ def _live_preflight(
             )
         if before_token_handoff_retirement is not None:
             before_token_handoff_retirement()
-        credential_report = retire_token_handoff(
-            state_dir=expected_state_dir,
-            secret_handle=str(live_identity["secret_handle"]),
-            expected_token=discovery.token,
-        )
-        if credential_report.get("retired") is not True:
-            raise OperatorError("live token handoff retirement failed closed")
+        try:
+            credential_transaction = begin_token_handoff_retirement(
+                state_dir=expected_state_dir,
+                secret_handle=str(live_identity["secret_handle"]),
+                expected_token=discovery.token,
+            )
+            if credential_transaction.state != "begun":
+                raise OperatorError(
+                    "live token handoff retirement did not remain rollback-capable"
+                )
+            assert token_handoff_transaction_sink is not None
+            token_handoff_transaction_sink(credential_transaction)
+        except BaseException:
+            if (
+                credential_transaction is not None
+                and credential_transaction.state == "begun"
+            ):
+                credential_transaction.rollback()
+            raise
+        credential_report = {
+            "retired": True,
+            "transactional": True,
+            "transaction_state": "begun",
+            "commit_deferred": True,
+            "secret_handle": str(live_identity["secret_handle"]),
+        }
 
     provider_report: dict[str, Any] = {
         "probed": False,
         "reason": "deferred_until_real_launch",
     }
-    if probe_provider:
-        provider = config["provider"]
-        from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
-            DatabaseProgramConfig,
-            provider_subprocess_environment,
-        )
-        from ipfs_accelerate_py.llm_router import probe_grok_codex_agent_route_readiness
+    try:
+        if probe_provider:
+            provider = config["provider"]
+            from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+                DatabaseProgramConfig,
+                provider_subprocess_environment,
+            )
+            from ipfs_accelerate_py.llm_router import probe_grok_codex_agent_route_readiness
 
-        database_program = DatabaseProgramConfig.from_mapping(
-            config["database_program"]
-        )
-        provider_environment = provider_subprocess_environment(
-            os.environ,
-            program=database_program,
-        )
-        if any(
-            discovery.token in str(value)
-            for value in provider_environment.values()
+            database_program = DatabaseProgramConfig.from_mapping(
+                config["database_program"]
+            )
+            provider_environment = provider_subprocess_environment(
+                os.environ,
+                program=database_program,
+            )
+            if any(
+                discovery.token in str(value)
+                for value in provider_environment.values()
+            ):
+                raise OperatorError(
+                    "provider probe environment retained owner credential"
+                )
+            readiness = probe_grok_codex_agent_route_readiness(
+                grok_model=str(provider["primary_model_id"]),
+                codex_model=str(provider["fallback_model_id"]),
+                codex_reasoning_effort=str(provider["fallback_reasoning_effort"]),
+                environment=provider_environment,
+            )
+            failure = (
+                readiness.failure_kind.value
+                if readiness.failure_kind is not None
+                else ""
+            )
+            provider_report = {
+                **dataclasses.asdict(readiness),
+                "failure_kind": failure,
+                "probed": True,
+            }
+            if not readiness.effective_provider:
+                raise OperatorError(
+                    "ordered provider route unavailable: "
+                    f"{readiness.reason_code}"
+                )
+            if readiness.effective_provider == "codex" and (
+                provider["fallback_trigger"] != "primary_quota_exhausted"
+                or failure != "grok_quota_exhausted"
+            ):
+                raise OperatorError(
+                    "Codex fallback is not admitted by the reviewed "
+                    "quota-only trigger"
+                )
+    except BaseException:
+        if (
+            credential_transaction is not None
+            and credential_transaction.state == "begun"
         ):
-            raise OperatorError("provider probe environment retained owner credential")
-        readiness = probe_grok_codex_agent_route_readiness(
-            grok_model=str(provider["primary_model_id"]),
-            codex_model=str(provider["fallback_model_id"]),
-            codex_reasoning_effort=str(provider["fallback_reasoning_effort"]),
-            environment=provider_environment,
-        )
-        failure = readiness.failure_kind.value if readiness.failure_kind is not None else ""
-        provider_report = {**dataclasses.asdict(readiness), "failure_kind": failure, "probed": True}
-        if not readiness.effective_provider:
-            raise OperatorError(f"ordered provider route unavailable: {readiness.reason_code}")
-        if readiness.effective_provider == "codex" and (
-            provider["fallback_trigger"] != "primary_quota_exhausted"
-            or failure != "grok_quota_exhausted"
-        ):
-            raise OperatorError("Codex fallback is not admitted by the reviewed quota-only trigger")
+            credential_transaction.rollback()
+        raise
+
     return {
         "schema": "sawm/live-control-preflight@1", "valid": True,
         "dependency_valid": True, "board_valid": True,
@@ -22507,6 +23773,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    error_redaction_secrets: set[str] = set()
     try:
         config_path = args.config if args.config.is_absolute() else REPO_ROOT / args.config
         config = _config(config_path)
@@ -22526,7 +23793,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 discovery = discover_live_quack_endpoint(store)
                 if discovery.uri:
-                    return _emit({"action": "checked_live", **_live_preflight(config, probe_provider=False)})
+                    live_environment = _snapshot_live_quack_environment()
+                    try:
+                        return _emit(
+                            {
+                                "action": "checked_live",
+                                **_live_preflight(config, probe_provider=False),
+                            }
+                        )
+                    finally:
+                        error_redaction_secrets.update(
+                            _live_quack_environment_secrets()
+                        )
+                        _restore_live_quack_environment(live_environment)
                 if _successor_materialization_configured(config):
                     active_materialization = _active_source_repair_materialization(
                         config
@@ -22589,6 +23868,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_quack_start(config, config_path)
         if args.command == "quack-recover-stale":
             return _emit(_recover_stale_quack(config))
+        if args.command == "quack-stop" and _M58_SUCCESSOR_KEY in config:
+            materializer, authority = _validate_m58_pre_stop_authority(config)
+            return _emit(_stop_m58_live_owner_exact(config, materializer, authority))
         if args.command in {"quack-status", "quack-ready", "quack-stop"}:
             ops = _load_script("scripts/ops/agent_supervisor/quack_state_server.py", "_sawm_landed_quack_ops")
             return int(ops.main(_quack_args(config, args.command.removeprefix("quack-"))))
@@ -22604,6 +23886,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             repo_root=REPO_ROOT,
         )
         coordinator_pid_reservation: Any | None = None
+        token_handoff_transaction: Any | None = None
 
         def reserve_coordinator_pid_before_retirement() -> Any:
             nonlocal coordinator_pid_reservation
@@ -22618,7 +23901,109 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return coordinator_pid_reservation
 
+        def retain_token_handoff_transaction(transaction: Any) -> None:
+            nonlocal token_handoff_transaction
+            if token_handoff_transaction is not None:
+                raise OperatorError(
+                    "token handoff transaction callback repeated"
+                )
+            if getattr(transaction, "state", None) != "begun":
+                raise OperatorError(
+                    "token handoff transaction is not rollback-capable"
+                )
+            token_handoff_transaction = transaction
+
+        def cleanup_operator_launch_state(
+            *,
+            primary_error: BaseException | None = None,
+        ) -> None:
+            """Attempt every caller-owned cleanup without masking a primary error."""
+
+            cleanup_errors: list[tuple[str, BaseException]] = []
+            if (
+                token_handoff_transaction is not None
+                and token_handoff_transaction.state == "begun"
+                and coordinator_pid_reservation is not None
+                and coordinator_pid_reservation.state == "published"
+            ):
+                try:
+                    expected_close_receipt = {
+                        "schema": (
+                            "ipfs_accelerate_py/"
+                            "quack-token-handoff-retirement-closed@1"
+                        ),
+                        "closed": True,
+                        "terminal": True,
+                        "reason": "child_liveness_unproven",
+                        "completion_authority": False,
+                        "task_authority": False,
+                        "secret_handle": token_handoff_transaction.secret_handle,
+                        "credential_sha256": (
+                            token_handoff_transaction.credential_sha256
+                        ),
+                    }
+                    receipt = token_handoff_transaction.close_without_rollback(
+                        reason="child_liveness_unproven"
+                    )
+                    if (
+                        token_handoff_transaction.state != "closed"
+                        or type(receipt) is not dict
+                        or receipt != expected_close_receipt
+                    ):
+                        raise OperatorError(
+                            "published coordinator token handoff close differed"
+                        )
+                except BaseException as exc:
+                    cleanup_errors.append(("token handoff terminal close", exc))
+            else:
+                try:
+                    if (
+                        token_handoff_transaction is not None
+                        and token_handoff_transaction.state == "begun"
+                    ):
+                        receipt = token_handoff_transaction.rollback()
+                        if (
+                            not isinstance(receipt, Mapping)
+                            or receipt.get("rolled_back") is not True
+                        ):
+                            raise OperatorError(
+                                "token handoff rollback did not produce its receipt"
+                            )
+                except BaseException as exc:
+                    cleanup_errors.append(("token handoff rollback", exc))
+            try:
+                # Once claimed, scheduler ownership is authoritative.  The
+                # facade discards only a reservation which never crossed that
+                # boundary, but does so even when credential rollback failed.
+                if (
+                    coordinator_pid_reservation is not None
+                    and coordinator_pid_reservation.state == "reserved"
+                ):
+                    scheduler_runtime._discard_coordinator_pid_reservation(
+                        coordinator_pid_reservation
+                    )
+            except BaseException as exc:
+                cleanup_errors.append(("coordinator PID reservation discard", exc))
+            if not cleanup_errors:
+                return
+            if primary_error is not None:
+                for label, cleanup_error in cleanup_errors:
+                    primary_error.add_note(
+                        f"{label} also failed: "
+                        f"{_credential_safe_error(cleanup_error)}"
+                    )
+                return
+            label, cleanup_error = cleanup_errors[0]
+            for later_label, later_error in cleanup_errors[1:]:
+                cleanup_error.add_note(
+                    f"{later_label} also failed: "
+                    f"{_credential_safe_error(later_error)}"
+                )
+            cleanup_error.add_note(f"operator cleanup phase: {label}")
+            raise cleanup_error
+
         live: dict[str, Any]
+        live_environment = _snapshot_live_quack_environment()
         try:
             live = _live_preflight(
                 config,
@@ -22629,18 +24014,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if real_detached_launch
                     else None
                 ),
+                token_handoff_transaction_sink=(
+                    retain_token_handoff_transaction
+                    if real_launch
+                    else None
+                ),
             )
-        except BaseException:
-            if (
-                coordinator_pid_reservation is not None
-                and coordinator_pid_reservation.state == "reserved"
-            ):
-                scheduler_runtime._discard_coordinator_pid_reservation(
-                    coordinator_pid_reservation
-                )
-            raise
-        scheduler_args = ["--repo-root", str(REPO_ROOT), "--config", str(config_path)]
-        try:
+            scheduler_args = [
+                "--repo-root", str(REPO_ROOT), "--config", str(config_path)
+            ]
             if args.command == "preflight":
                 result = int(
                     scheduler_runtime.main([*scheduler_args, "preflight"])
@@ -22664,18 +24046,52 @@ def main(argv: Sequence[str] | None = None) -> int:
                             if real_detached_launch
                             else None
                         ),
+                        coordinator_credential_handoff=(
+                            token_handoff_transaction
+                            if real_detached_launch
+                            else None
+                        ),
                     )
                 )
-        finally:
-            # Once claimed, scheduler ownership is authoritative.  The facade
-            # only discards a reservation that never crossed that boundary.
-            if (
-                coordinator_pid_reservation is not None
-                and coordinator_pid_reservation.state == "reserved"
-            ):
-                scheduler_runtime._discard_coordinator_pid_reservation(
-                    coordinator_pid_reservation
+            if result == 0 and real_launch:
+                if token_handoff_transaction is None:
+                    raise OperatorError(
+                        "successful launch lacks its credential transaction"
+                    )
+                if real_detached_launch:
+                    if token_handoff_transaction.state != "committed":
+                        raise OperatorError(
+                            "detached coordinator did not commit its credential "
+                            "handoff"
+                        )
+                elif token_handoff_transaction.state == "begun":
+                    token_handoff_transaction.commit()
+                if token_handoff_transaction.state != "committed":
+                    raise OperatorError(
+                        "launch credential transaction is not committed"
+                    )
+                credential_receipt = token_handoff_transaction.commit()
+                if (
+                    not isinstance(credential_receipt, Mapping)
+                    or credential_receipt.get("retired") is not True
+                ):
+                    raise OperatorError(
+                        "credential retirement commit lacks its receipt"
+                    )
+                live["quack"]["provider_token_handoff"] = dict(
+                    credential_receipt
                 )
+        except BaseException as primary_error:
+            cleanup_operator_launch_state(primary_error=primary_error)
+            raise
+        else:
+            cleanup_operator_launch_state()
+        finally:
+            # Scheduler environment construction consumes these exact live
+            # bindings synchronously.  Restore the caller's ambient process
+            # only after scheduler acceptance or rejection, on every exit.
+            error_redaction_secrets.update(_live_quack_environment_secrets())
+            _restore_live_quack_environment(live_environment)
         if result:
             return result
         # Only secret-free preflight facts are emitted by this facade.  Use the
@@ -22692,7 +24108,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _emit(exc.as_dict())
     except Exception as exc:
         return _emit({"schema": "sawm/operator-error@1", "valid": False,
-                      "error": _credential_safe_error(exc)})
+                      "error": _credential_safe_error(
+                          exc,
+                          extra_secrets=tuple(error_redaction_secrets),
+                      )})
 
 
 if __name__ == "__main__":
