@@ -452,6 +452,31 @@ def test_historical_successor_controls_include_m53_before_m52() -> None:
     assert historical_seal is not None and f"{m53_key}_cid" not in historical_seal
 
 
+def test_materialize_and_launch_select_m53_before_m52_and_auto_append() -> None:
+    materialize_source = (
+        REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py"
+    ).read_text(encoding="utf-8")
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    m53_dispatch = "if _m53_successor_configured_on_any_surface(root, config):"
+    m52_dispatch = "if _m52_successor_configured_on_any_surface(root, config):"
+    assert materialize_source.find(m53_dispatch) < materialize_source.find(m52_dispatch)
+    assert materialize_source.find("def _materialize_m53(") < materialize_source.find(
+        "def materialize("
+    )
+    assert "def _check_m53_materialized(" in materialize_source
+    assert "M53 automatic successor materialize failed" in operator_source
+    assert operator_source.find("def _verify_m53_live_head_task_projection(") < (
+        operator_source.find("def _verify_m52_live_head_task_projection(")
+    )
+    assert operator_source.find(
+        "if _M53_SUCCESSOR_KEY in config:\n        return _require_m53_source_successor_marker"
+    ) < operator_source.find(
+        "if _M52_SUCCESSOR_KEY in config:\n        return _require_m52_source_successor_marker"
+    )
+
+
 def test_historical_successor_controls_include_m52_before_m51() -> None:
     m52_key = "test_compatibility_and_control_hash_successor_materialization"
     m51_key = "live_quack_catalog_compatibility_successor_materialization"

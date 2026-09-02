@@ -7686,6 +7686,71 @@ def _require_m18_final_pair_marker(
     return MappingProxyType(dict(observed))
 
 
+def _require_m53_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M53's deny-only receipt plus a fresh live verification."""
+
+    del checked
+    key = _M53_SUCCESSOR_KEY
+    if key not in config:
+        return MappingProxyType({})
+    expected = materializer._expected_m53_post_reboot_stale_ready_restart_authority()
+    reference = materializer._m53_authority_reference()
+    if (
+        dict(authority) != expected
+        or config.get(key) != reference
+        or materializer._identity(expected) != _M53_AUTHORITY_CID
+        or len(materializer._canonical(expected)) != _M53_AUTHORITY_SIZE
+    ):
+        raise OperatorError("M53 post-reboot restart authority differs")
+    runtime = (REPO_ROOT / _M53_STORE_ID).resolve().parent
+    final_path = runtime / materializer._M53_FINAL_RECEIPT_NAME
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            final_path, root=REPO_ROOT, noun="M53 source successor receipt"
+        )
+        checked_live = materializer._check_m53_materialized(REPO_ROOT, CONFIG_PATH)
+    except Exception as exc:
+        raise OperatorError(
+            "M53 receipt requires fresh live verification after receipt read"
+        ) from exc
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    reported = checked_live.get("m53_source_successor_receipt")
+    if not isinstance(reported, Mapping):
+        reported = checked_live.get("receipt")
+    if (
+        claimed != materializer._identity(unhashed)
+        or dict(reported or {}) != observed
+        or checked_live.get("valid") is not True
+        or checked_live.get("event_watermark") != _M53_TARGET_EVENT_WATERMARK
+        or checked_live.get("projection_cid") != _M53_TARGET_PROJECTION_CID
+        or observed.get("migration_revision") != _M53_MIGRATION_REVISION
+        or observed.get(f"{key}_cid") != _M53_AUTHORITY_CID
+        or observed.get("generation_37_38_restart_rows_verified") is not True
+        or observed.get("m52_receipt_preserved_exactly") is not True
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+        or observed.get("deny_only_without_fresh_live_revalidation") is not True
+        or any(observed.get(field) != 0 for field in (
+            "task_revision_changes", "task_status_changes", "goal_revision_changes",
+            "goal_status_changes", "provider_call_changes",
+            "provider_invocation_changes", "provider_response_changes",
+            "effect_claim_changes", "merge_attempt_changes", "merge_base_changes",
+            "merge_queue_entry_changes", "accepted_completion_changes",
+        ))
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M53 exact source successor receipt differs")
+    return MappingProxyType(dict(observed))
+
+
 def _require_m52_source_successor_marker(
     config: Mapping[str, Any],
     authority: Mapping[str, Any],
@@ -8113,6 +8178,52 @@ def _require_m48_source_successor_marker(
     ):
         raise OperatorError("M48 exact source successor receipt differs")
     return MappingProxyType(dict(observed))
+
+
+def _verify_m53_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M53's unchanged heads at event 316/generation 38."""
+
+    materializer._validated_m53_live_preflight_contract(authority)
+    head = materializer._inspect_m37_live_projection(
+        source, population, authority,
+        expected_event_watermark=_M53_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M53_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M53_TARGET_PROJECTION_CID
+    ):
+        raise materializer.MigrationRequired("M53 live head projection differs")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    heads = authority.get("expected_task_heads")
+    if not isinstance(heads, Mapping):
+        raise materializer.MigrationRequired("M53 expected task heads are missing")
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        expected_head = heads.get(alias)
+        if (
+            observed is None
+            or not isinstance(expected_head, Mapping)
+            or observed.status != expected_head.get("status")
+            or int(observed.revision) != int(expected_head.get("revision") or 0)
+        ):
+            raise materializer.MigrationRequired(f"M53 task head differs: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
 
 
 def _verify_m52_live_head_task_projection(
@@ -13865,6 +13976,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if _M53_SUCCESSOR_KEY in config:
+        return _require_m53_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if _M52_SUCCESSOR_KEY in config:
         return _require_m52_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -19155,12 +19270,73 @@ def _live_preflight(
         )
     except Exception:
         raise OperatorError("authenticated live Quack preflight open failed") from None
+    # Newest successor receipts are part of launch, not a separate operator
+    # step.  If the live cursor is still the sealed prior watermark, append
+    # and publish before the snapshot gate.  An unhandled newer key fails
+    # closed inside materialize() instead of silently selecting history.
+    if m53_active:
+        try:
+            cursor = int(live.snapshot().event_cursor)
+            if cursor == _M53_PRIOR_EVENT_WATERMARK:
+                materializer.materialize(REPO_ROOT, CONFIG_PATH)
+                live = DatabaseTaskSource(
+                    discovery.uri,
+                    install_schema=False,
+                    repository_tree_id=population["repository_tree_id"],
+                    plan_root_cid=population["plan_root_cid"],
+                    owner_id="sawm-r2-live-preflight",
+                )
+            elif cursor != _M53_TARGET_EVENT_WATERMARK:
+                raise OperatorError("M53 live event head is neither 315 nor 316")
+        except OperatorError:
+            raise
+        except Exception as exc:
+            raise OperatorError(
+                f"M53 automatic successor materialize failed: {exc}"
+            ) from exc
     # The active authority is intentionally immutable.  Receipt constructors
     # hash canonical JSON and therefore receive a closed plain mapping at this
     # explicit boundary rather than a MappingProxyType implementation detail.
     receipt_authority = dict(active_source_repair)
     try:
-        if m52_active:
+        if m53_active:
+            try:
+                m53_verified = materializer._verify_m53_live_materialization(
+                    live,
+                    live_identity,
+                    population,
+                    config,
+                    active_source_repair,
+                    validation_digest,
+                    repository_root=REPO_ROOT,
+                )
+                expected_m53_receipt = (
+                    materializer._expected_m53_source_successor_receipt(
+                        population,
+                        receipt_authority,
+                        validation_digest,
+                        m53_verified,
+                    )
+                )
+                final_pair_marker = _require_active_final_pair_marker(
+                    config,
+                    active_source_repair,
+                    materializer,
+                    checked={
+                        "valid": True,
+                        "receipt": expected_m53_receipt,
+                        "m53_source_successor_receipt": expected_m53_receipt,
+                        **m53_verified,
+                    },
+                )
+            except (
+                materializer.MigrationRequired,
+                materializer.MaterializationError,
+            ) as exc:
+                raise OperatorError(
+                    f"M53 exact post-reboot restart verification failed: {exc}"
+                ) from exc
+        elif m52_active:
             try:
                 control = (REPO_ROOT / _M52_STORE_ID).resolve()
                 prestart = materializer._load_m52_prestart_schema_receipt(
@@ -20078,7 +20254,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if _M52_SUCCESSOR_KEY in config:
+            if _M53_SUCCESSOR_KEY in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m53_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif _M52_SUCCESSOR_KEY in config:
                 statuses, _revisions, _receipts = (
                     _verify_m52_live_head_task_projection(
                         live,

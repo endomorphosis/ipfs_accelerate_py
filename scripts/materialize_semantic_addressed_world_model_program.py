@@ -34140,6 +34140,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m53_successor_configured_on_any_surface(root, config):
+        return _check_m53_materialized(root, config_file)
     if _m52_successor_configured_on_any_surface(root, config):
         return _check_m52_materialized(root, config_file)
     if _m51_successor_configured_on_any_surface(root, config):
@@ -93440,6 +93442,7 @@ def _validated_m53_live_preflight_contract(
             "target_plan_revision": _M53_TARGET_PLAN_REVISION,
             "target_projection_cid": _M53_TARGET_PROJECTION_CID,
             "semantic_authority_digest": _M53_SEMANTIC_AUTHORITY_DIGEST,
+            "prior_event_watermark": _M53_PRIOR_EVENT_WATERMARK,
             "preserved_plan_anchor": {},
             "expected_task_heads": dict(expected.get("expected_task_heads") or {}),
         }
@@ -93610,6 +93613,566 @@ def _check_m53_prestart_admission(
         "prior_process_birth_verified_dead": True,
         "stale_owner_marker_reclaimed": True,
         "prestart_authorization_consumed": False,
+    }
+
+
+def _m53_successor_configured(config: Mapping[str, Any]) -> bool:
+    if _M53_SUPERSESSION_REASON not in config:
+        return False
+    if config.get(_M53_SUPERSESSION_REASON) != _m53_authority_reference():
+        raise MaterializationError("M53 successor authority reference differs")
+    return True
+
+
+def _m53_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M53_SUPERSESSION_REASON
+    migration = _load_json(
+        root
+        / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if any(presence) and not all(presence):
+        raise MaterializationError("M53 successor authority is only partially declared")
+    if not any(presence):
+        return False
+    reference = _m53_authority_reference()
+    if (
+        config.get(key) != reference
+        or migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M53 successor authority differs across controls")
+    return _m53_successor_configured(config)
+
+
+def _m53_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    authority = _expected_m53_post_reboot_stale_ready_restart_authority()
+    return {
+        "schema": "sawm/post-reboot-stale-ready-generation-37-restart-source-seal@1",
+        "authority": "operator_control_plane",
+        "migration_revision": _M53_MIGRATION_REVISION,
+        "migration_kind": _M53_SUPERSESSION_REASON,
+        "supersession_mode": _M53_SUPERSESSION_MODE,
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "validation_digest": validation_digest,
+        "authorization_cid": _identity(authority),
+        "runtime_binding": authority["runtime_binding"],
+        "prior_authority": authority["prior_authority"],
+        "stopped_owner": authority["stopped_owner"],
+        "target_authority": authority["target_authority"],
+        "source_chain": authority["source_chain"],
+        "exact_changes": authority["exact_changes"],
+        "preservation": authority["preservation"],
+        "scheduler_runtime_root": config["runtime_paths"]["root"],
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _m53_expected_event_body(
+    body: Mapping[str, Any],
+    *,
+    evidence_id: str,
+    digest: str,
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    target = authority["target_authority"]
+    inner = {
+        "evidence_id": evidence_id,
+        "parent_evidence_id": "",
+        "task_cid": target["operator_task_cid"],
+        "evidence_kind": target["evidence_kind"],
+        "digest": digest,
+        "body": dict(body),
+        "created_at": _M53_CONTROL_RECORDED_AT,
+        "revision": 0,
+    }
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": evidence_id,
+        "body": inner,
+        "recorded_at": _M53_CONTROL_RECORDED_AT,
+        "owner_id": "sawm-r2-m53-live-source-sealer",
+    }
+
+
+def _inspect_m53_generation_restart_rows(
+    source: Any,
+    identity: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify dynamic generation 38 against the preserved generation-37 birth."""
+
+    del authority
+    server_id = str(identity.get("server_id") or "")
+    birth_id = str(identity.get("process_birth_id") or "")
+    started_at = str(identity.get("started_at") or "")
+    if (
+        not server_id
+        or not birth_id
+        or not started_at
+        or server_id == _M53_PRIOR_SERVER_ID
+        or birth_id == _M53_PRIOR_PROCESS_BIRTH_ID
+        or identity.get("status") != "ready"
+        or identity.get("store_id") != _M53_STORE_ID
+        or identity.get("database_uuid") != _M53_DATABASE_UUID
+        or identity.get("listen_uri") != f"quack:127.0.0.1:{_M53_TARGET_QUACK_PORT}"
+        or identity.get("extension_fingerprint") != _M53_EXTENSION_FINGERPRINT
+        or int(identity.get("generation") or 0) != _M53_TARGET_GENERATION
+        or int(identity.get("fence_epoch") or 0) != _M53_TARGET_GENERATION
+        or int(identity.get("credential_generation") or 0) != _M53_TARGET_GENERATION
+        or int(identity.get("revision") or 0) != 0
+        or int(identity.get("schema_revision") or 0) != 1
+        or int(identity.get("startup_epoch") or 0) < 1
+    ):
+        raise MigrationRequired("M53 live generation-38 identity differs")
+    with source.intent._connection(write=False) as connection:
+        counts = {
+            table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+            for table in (
+                "state_servers",
+                "store_generations",
+                "credentials",
+                "server_epochs",
+                "capability_snapshots",
+            )
+        }
+    if counts != {name: _M53_TARGET_GENERATION for name in counts}:
+        raise MigrationRequired("M53 generation-bearing row counts differ")
+    return {
+        "generation_37_38_restart_rows_verified": True,
+        "prior_owner_generation": _M53_PRIOR_GENERATION,
+        "live_owner_generation": _M53_TARGET_GENERATION,
+        "live_server_id": server_id,
+        "live_process_birth_id": birth_id,
+        "live_started_at": started_at,
+    }
+
+
+def _verify_m53_live_materialization(
+    source: Any,
+    identity: Mapping[str, Any],
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    *,
+    repository_root: Path | None = None,
+) -> dict[str, Any]:
+    """Verify dynamic generation 38 and the sole M53 event-316 append."""
+
+    root = REPO_ROOT if repository_root is None else Path(repository_root).resolve()
+    control, coordination = _m53_target_paths(root, config, authority)
+    m52_path = control.parent / _M52_FINAL_RECEIPT_NAME
+    m52_before = _stable_regular_sha256(
+        m52_path, root=root, noun="M53 preserved M52 receipt", required_link_count=1
+    )
+    coordination_before = _stable_regular_sha256(
+        coordination, root=root, noun="M53 preserved coordination store",
+        required_link_count=1,
+    )
+    if m52_before != (_M53_M52_RECEIPT_SHA256, _M53_M52_RECEIPT_SIZE):
+        raise MigrationRequired("M53 preserved M52 receipt differs")
+    if coordination_before != (
+        _M53_PRIOR_COORDINATION_SHA256, _M53_PRIOR_COORDINATION_SIZE
+    ):
+        raise MigrationRequired("M53 preserved coordination store differs")
+    body = _m53_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+    evidence_id = content_identity({
+        "task_cid": target["operator_task_cid"],
+        "evidence_kind": target["evidence_kind"],
+        "digest": digest,
+        "body": body,
+    })
+    event_body = _m53_expected_event_body(
+        body, evidence_id=evidence_id, digest=digest, authority=authority
+    )
+    event_id = content_identity({
+        "stream_id": "stream:intent",
+        "sequence": _M53_TARGET_EVENT_WATERMARK,
+        "global_sequence": _M53_TARGET_EVENT_WATERMARK,
+        "event_type": "intent.evidence_recorded",
+        "body": event_body,
+    })
+    expected_evidence = (
+        evidence_id, "", target["operator_task_cid"], target["evidence_kind"],
+        digest, _M53_CONTROL_RECORDED_AT, _canonical(body).decode("utf-8"),
+    )
+    expected_event = (
+        event_id, "stream:intent", _M53_TARGET_EVENT_WATERMARK,
+        _M53_TARGET_EVENT_WATERMARK, "intent.evidence_recorded",
+        target["operator_task_cid"], "", "session:intent",
+        _M53_CONTROL_RECORDED_AT, _canonical(event_body).decode("utf-8"),
+    )
+    head = _inspect_m37_live_projection(
+        source, population, authority,
+        expected_event_watermark=_M53_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=_M53_TARGET_PROJECTION_CID,
+    )
+    if (
+        _m38_projection_cid_at_watermark(source, _M53_PRIOR_EVENT_WATERMARK)
+        != _M53_PRIOR_PROJECTION_CID
+        or _m38_projection_cid_at_watermark(source, _M53_TARGET_EVENT_WATERMARK)
+        != _M53_TARGET_PROJECTION_CID
+    ):
+        raise MigrationRequired("M53 prior/target projection derivation differs")
+    restart = _inspect_m53_generation_restart_rows(source, identity, authority)
+    with source.intent._connection(write=False) as connection:
+        evidence = connection.execute(
+            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+            "created_at,body_json FROM evidence_nodes WHERE evidence_id=?", [evidence_id]
+        ).fetchone()
+        event = connection.execute(
+            "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+            "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+            "WHERE global_sequence=?", [_M53_TARGET_EVENT_WATERMARK]
+        ).fetchone()
+        prior_prefix = _event_prefix_digest(connection, _M53_PRIOR_EVENT_WATERMARK)
+        prefix = _event_prefix_digest(connection, _M53_TARGET_EVENT_WATERMARK)
+        semantic = _semantic_authority_digest_on(connection)
+        evidence_count = int(connection.execute("SELECT COUNT(*) FROM evidence_nodes").fetchone()[0])
+        raw_counts = _m43_event_type_counts_on(connection, _M53_TARGET_EVENT_WATERMARK)
+    if (
+        not _m39_exact_row_matches(evidence, (
+            "evidence_id", "parent_evidence_id", "task_cid", "evidence_kind",
+            "digest", "created_at", "body_json",
+        ), expected_evidence)
+        or not _m39_exact_row_matches(event, (
+            "event_id", "stream_id", "sequence", "global_sequence", "event_type",
+            "task_cid", "attempt_id", "session_id", "recorded_at", "body_json",
+        ), expected_event)
+        or evidence_count != _M53_TARGET_EVIDENCE_NODE_COUNT
+        or raw_counts != (_M53_TARGET_EVIDENCE_EVENT_COUNT, _M53_VALIDATION_EVENT_COUNT)
+        or prior_prefix != (_M53_PRIOR_EVENT_PREFIX_SHA256, _M53_PRIOR_EVENT_WATERMARK)
+        or prefix[1] != _M53_TARGET_EVENT_WATERMARK
+        or semantic != _M53_SEMANTIC_AUTHORITY_DIGEST
+        or _stable_regular_sha256(
+            m52_path, root=root, noun="M53 preserved M52 receipt",
+            required_link_count=1,
+        ) != m52_before
+        or _stable_regular_sha256(
+            coordination, root=root, noun="M53 preserved coordination store",
+            required_link_count=1,
+        ) != coordination_before
+    ):
+        raise MigrationRequired("M53 exact target event/evidence authority differs")
+    return {
+        **head,
+        **restart,
+        "migration_digest": digest,
+        "migration_evidence_id": evidence_id,
+        "migration_evidence_event_id": event_id,
+        "target_event_prefix_sha256": prefix[0],
+        "prior_event_prefix_verified": True,
+        "prior_projection_recomputed": True,
+        "target_projection_recomputed": True,
+        "m52_receipt_preserved_exactly": True,
+        "semantic_authority_digest": semantic,
+        "evidence_node_count": evidence_count,
+        "evidence_event_count": int(raw_counts[0]),
+        "validation_event_count": int(raw_counts[1]),
+        "passed_validation_event_count": _M53_PASSED_VALIDATION_EVENT_COUNT,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _expected_m53_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": "sawm/non-authoritative-post-reboot-stale-ready-restart-receipt@1",
+        "authoritative": False,
+        "completion_authority": False,
+        "launch_authority": False,
+        "deny_only_without_fresh_live_revalidation": True,
+        "fresh_live_revalidation_required_after_receipt_read": True,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M53_MIGRATION_REVISION,
+        "migration_kind": _M53_SUPERSESSION_REASON,
+        "supersession_mode": _M53_SUPERSESSION_MODE,
+        f"{_M53_SUPERSESSION_REASON}_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "source_chain": dict(authority["source_chain"]),
+        "validation_digest": validation_digest,
+        "database_path": _M53_STORE_ID,
+        "coordination_path": _M53_COORDINATION_STORE_ID,
+        "prior_generation": _M53_PRIOR_GENERATION,
+        "target_generation": _M53_TARGET_GENERATION,
+        "target_generation_owner": {
+            "server_id": verified["live_server_id"],
+            "process_birth_id": verified["live_process_birth_id"],
+            "started_at": verified["live_started_at"],
+        },
+        "prior_event_watermark": _M53_PRIOR_EVENT_WATERMARK,
+        "target_event_watermark": _M53_TARGET_EVENT_WATERMARK,
+        "prior_projection_cid": _M53_PRIOR_PROJECTION_CID,
+        "projection_cid": _M53_TARGET_PROJECTION_CID,
+        "migration_digest": verified["migration_digest"],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "migration_evidence_event_id": verified["migration_evidence_event_id"],
+        "prior_event_prefix_sha256": _M53_PRIOR_EVENT_PREFIX_SHA256,
+        "target_event_prefix_sha256": verified["target_event_prefix_sha256"],
+        "semantic_authority_digest": verified["semantic_authority_digest"],
+        "prior_evidence_node_count": _M53_PRIOR_EVIDENCE_NODE_COUNT,
+        "evidence_node_count": verified["evidence_node_count"],
+        "prior_evidence_event_count": _M53_PRIOR_EVIDENCE_EVENT_COUNT,
+        "evidence_event_count": verified["evidence_event_count"],
+        "validation_event_count": verified["validation_event_count"],
+        "passed_validation_event_count": verified["passed_validation_event_count"],
+        "generation_37_38_restart_rows_verified": True,
+        "m52_receipt_preserved_exactly": True,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _check_m53_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    """Read the deny-only receipt, then freshly verify every live authority."""
+
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m53_source_binding_authority(root, population, config)
+    control, coordination = _m53_target_paths(root, config, authority)
+    final_path = control.parent / _M53_FINAL_RECEIPT_NAME
+    if not os.path.lexists(final_path):
+        raise MigrationRequired("M53 source successor receipt is missing")
+    observed, _ = _load_nofollow_json(
+        final_path, root=root, noun="M53 source successor receipt"
+    )
+    final_stat = os.lstat(final_path)
+    if (
+        not stat.S_ISREG(final_stat.st_mode)
+        or final_stat.st_nlink != 1
+        or stat.S_IMODE(final_stat.st_mode) != 0o600
+        or final_stat.st_uid != os.geteuid()
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+    ):
+        raise MigrationRequired("M53 source successor receipt is unsafe")
+    m52_before = _stable_regular_sha256(
+        control.parent / _M52_FINAL_RECEIPT_NAME,
+        root=root,
+        noun="M53 preserved M52 receipt",
+        required_link_count=1,
+    )
+    coordination_before = _stable_regular_sha256(
+        coordination, root=root, noun="M53 preserved coordination store",
+        required_link_count=1,
+    )
+    validation_digest = _m7_validation_digest(root, population)
+    with _m28_live_source(
+        root, control, config, population, authority,
+        owner_id="sawm-r2-m53-live-source-sealer",
+    ) as (source, identity):
+        verified = _verify_m53_live_materialization(
+            source, identity, population, config, authority, validation_digest,
+            repository_root=root,
+        )
+    expected = _expected_m53_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    if (
+        observed != expected
+        or m52_before != (_M53_M52_RECEIPT_SHA256, _M53_M52_RECEIPT_SIZE)
+        or _stable_regular_sha256(
+            control.parent / _M52_FINAL_RECEIPT_NAME,
+            root=root,
+            noun="M53 preserved M52 receipt",
+            required_link_count=1,
+        ) != m52_before
+        or _stable_regular_sha256(
+            coordination, root=root, noun="M53 preserved coordination store",
+            required_link_count=1,
+        ) != coordination_before
+        or coordination_before != (
+            _M53_PRIOR_COORDINATION_SHA256, _M53_PRIOR_COORDINATION_SIZE,
+        )
+    ):
+        raise MigrationRequired("M53 source successor receipt chain differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_post_reboot_stale_ready_restart_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "receipt": observed,
+        "m53_source_successor_receipt": observed,
+        **verified,
+    }
+
+
+def _materialize_m53(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Append one M53 evidence event through live generation 38."""
+
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m53_source_binding_authority(root, population, config)
+    control, coordination = _m53_target_paths(root, config, authority)
+    final_path = control.parent / _M53_FINAL_RECEIPT_NAME
+    m52_path = control.parent / _M52_FINAL_RECEIPT_NAME
+    if not os.path.lexists(m52_path):
+        raise MigrationRequired("M53 requires the preserved M52 receipt")
+    m52_before = _stable_regular_sha256(
+        m52_path, root=root, noun="M53 preserved M52 receipt", required_link_count=1
+    )
+    coordination_before = _stable_regular_sha256(
+        coordination, root=root, noun="M53 preserved coordination store",
+        required_link_count=1,
+    )
+    if m52_before != (_M53_M52_RECEIPT_SHA256, _M53_M52_RECEIPT_SIZE):
+        raise MigrationRequired("M53 preserved M52 receipt differs")
+    if coordination_before != (
+        _M53_PRIOR_COORDINATION_SHA256, _M53_PRIOR_COORDINATION_SIZE
+    ):
+        raise MigrationRequired("M53 preserved coordination store differs")
+    validation_digest = _m7_validation_digest(root, population)
+    body = _m53_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+    evidence_id = content_identity({
+        "task_cid": target["operator_task_cid"],
+        "evidence_kind": target["evidence_kind"],
+        "digest": digest,
+        "body": body,
+    })
+    appended = False
+    with _m28_live_source(
+        root, control, config, population, authority,
+        owner_id="sawm-r2-m53-live-source-sealer",
+    ) as (source, identity):
+        snapshot = source.snapshot()
+        if snapshot.event_cursor == _M53_PRIOR_EVENT_WATERMARK:
+            if os.path.lexists(final_path):
+                raise MigrationRequired("M53 receipt exists before event 316")
+            if (
+                _m38_projection_cid_at_watermark(source, _M53_PRIOR_EVENT_WATERMARK)
+                != _M53_PRIOR_PROJECTION_CID
+            ):
+                raise MigrationRequired("M53 live prior projection differs")
+            _inspect_m53_generation_restart_rows(source, identity, authority)
+            from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+            original_clock = intent_repository._utc_iso
+
+            def fixed_m53_utc_iso(_moment: Any = None) -> str:
+                return _M53_CONTROL_RECORDED_AT
+
+            intent_repository._utc_iso = fixed_m53_utc_iso
+            try:
+                try:
+                    evidence_receipt = source.record_evidence(
+                        task_cid=target["operator_task_cid"],
+                        evidence_kind=target["evidence_kind"],
+                        digest=digest,
+                        body=body,
+                    )
+                except Exception:
+                    raise MaterializationError("authenticated M53 evidence append failed") from None
+            finally:
+                clock_interference = intent_repository._utc_iso is not fixed_m53_utc_iso
+                intent_repository._utc_iso = original_clock
+            if clock_interference or not evidence_receipt.changed:
+                raise MaterializationError("M53 evidence append clock/CAS differed")
+            appended = True
+        elif snapshot.event_cursor != _M53_TARGET_EVENT_WATERMARK:
+            raise MigrationRequired("M53 live event head is neither 315 nor 316")
+        verified = _verify_m53_live_materialization(
+            source, identity, population, config, authority, validation_digest,
+            repository_root=root,
+        )
+        if verified["migration_evidence_id"] != evidence_id:
+            raise MaterializationError("M53 evidence identity differs")
+    if (
+        _stable_regular_sha256(
+            m52_path, root=root, noun="M53 preserved M52 receipt",
+            required_link_count=1,
+        ) != m52_before
+        or _stable_regular_sha256(
+            coordination, root=root, noun="M53 preserved coordination store",
+            required_link_count=1,
+        ) != coordination_before
+    ):
+        raise MigrationRequired("M53 predecessor receipt/coordination changed")
+    expected = _expected_m53_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    receipt = _m52_write_receipt_last(
+        root, final_path, expected, noun="M53 source successor receipt"
+    )
+    checked = _check_m53_materialized(root, config_file)
+    if checked.get("receipt") != receipt:
+        raise MigrationRequired("M53 post-publication fresh verification differs")
+    return {
+        **checked,
+        "action": (
+            "materialized_post_reboot_stale_ready_restart_successor"
+            if appended else "checked_post_reboot_stale_ready_restart_successor"
+        ),
+        "migration_required": False,
+        "receipt": receipt,
+        "m53_source_successor_receipt": receipt,
     }
 
 
@@ -95054,6 +95617,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m53_successor_configured_on_any_surface(root, config):
+        return _materialize_m53(root, config_file, config)
     if _m52_successor_configured_on_any_surface(root, config):
         return _materialize_m52(root, config_file, config)
     if _m51_successor_configured_on_any_surface(root, config):
