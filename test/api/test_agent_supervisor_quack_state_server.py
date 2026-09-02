@@ -35,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     QuackStateServerBindError,
     QuackStateServerCapabilityError,
     QuackStateServerConfig,
+    QuackStateServerControlError,
     QuackStateServerOwnershipError,
     QuackStateServerReadyError,
     QuackStateServerTokenError,
@@ -431,6 +432,85 @@ def test_stale_marker_not_reclaimed_when_owner_alive(tmp_path: Path) -> None:
     assert marker_path.exists()
 
 
+@pytest.mark.parametrize(
+    "receipt_filename",
+    (
+        "",
+        ".",
+        "..",
+        "../receipt.json",
+        "nested/receipt.json",
+        "nested\\receipt.json",
+        "/tmp/receipt.json",
+        "quack-state-server.status.json",
+        "quack-state-server.stop",
+        "receipt\n.json",
+        "receipt\x7f.json",
+        "receipt\u202e.json",
+        "x" * 256,
+        None,
+        Path("receipt.json"),
+    ),
+)
+def test_stale_owner_recovery_rejects_unconfined_receipt_name_before_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt_filename: object,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    state = tmp_path / "state"
+    state.mkdir()
+    database_bytes = b"not-a-database-but-must-remain-byte-identical"
+    status_bytes = b'{"sentinel":"status-must-not-change"}\n'
+    db.write_bytes(database_bytes)
+    (state / "quack-state-server.status.json").write_bytes(status_bytes)
+    entries_before = sorted(path.name for path in tmp_path.rglob("*"))
+
+    def forbidden_database_open(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("invalid receipt name reached database mutation")
+
+    monkeypatch.setattr(
+        quack_state_server_module,
+        "open_duckdb_connection",
+        forbidden_database_open,
+    )
+    with pytest.raises(QuackStateServerControlError, match="confined basename"):
+        recover_stale_state_server(
+            database_path=db,
+            state_dir=state,
+            expected_store_id="control.duckdb",
+            expected_generation=1,
+            expected_database_uuid=_UUID,
+            liveness=lambda _birth: OwnerLiveness.DEAD,
+            receipt_filename=receipt_filename,  # type: ignore[arg-type]
+        )
+
+    assert db.read_bytes() == database_bytes
+    assert (state / "quack-state-server.status.json").read_bytes() == status_bytes
+    assert sorted(path.name for path in tmp_path.rglob("*")) == entries_before
+
+
+def test_stale_owner_recovery_receipt_must_not_alias_database(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    database_bytes = b"database-must-not-be-replaced-by-receipt"
+    db.write_bytes(database_bytes)
+
+    with pytest.raises(QuackStateServerControlError, match="confined basename"):
+        recover_stale_state_server(
+            database_path=db,
+            state_dir=tmp_path,
+            expected_store_id="control.duckdb",
+            expected_generation=1,
+            expected_database_uuid=_UUID,
+            liveness=lambda _birth: OwnerLiveness.DEAD,
+            receipt_filename=db.name,
+        )
+
+    assert db.read_bytes() == database_bytes
+
+
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_dead_ready_owner_recovery_settles_database_and_receipt(
     tmp_path: Path,
@@ -529,6 +609,102 @@ def test_dead_ready_owner_recovery_settles_database_and_receipt(
     assert [tuple(row[index] for index in range(1)) for row in epochs] == [
         ("2026-08-29T07:00:00Z",)
     ]
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_generation_specific_recovery_receipt_preserves_history_and_replays(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    state = tmp_path / "state"
+    state.mkdir()
+    install_control_plane_schema(
+        db,
+        application_version="0.0.45",
+        tool_version="1.5.2",
+        owner_id="generation-recovery-test",
+    )
+
+    predecessor = build_server(
+        database_path=db,
+        state_dir=state,
+        repository_id="repository:generation-recovery-test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=123_458, ticks=79),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    predecessor_identity = predecessor.start()
+    assert predecessor._connection is not None
+    predecessor._connection.close()
+    predecessor._connection = None
+    assert predecessor._owner is not None and predecessor._owner._handle is not None
+    predecessor._owner._handle.close()
+    predecessor._owner._handle = None
+
+    historical_receipt = recover_stale_state_server(
+        database_path=db,
+        state_dir=state,
+        expected_store_id=predecessor_identity.store_id,
+        expected_generation=predecessor_identity.generation,
+        expected_database_uuid=predecessor_identity.database_uuid,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+        stopped_at="2026-08-29T08:00:00Z",
+    )
+    historical_path = state / "quack-stale-owner-recovery-receipt.json"
+    historical_bytes = historical_path.read_bytes()
+    assert json.loads(historical_bytes) == historical_receipt
+
+    successor = build_server(
+        database_path=db,
+        state_dir=state,
+        repository_id="repository:generation-recovery-test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        process_birth_factory=lambda: _birth(pid=123_459, ticks=80),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    successor_identity = successor.start()
+    assert successor_identity.generation == predecessor_identity.generation + 1
+    assert successor._connection is not None
+    successor._connection.close()
+    successor._connection = None
+    assert successor._owner is not None and successor._owner._handle is not None
+    successor._owner._handle.close()
+    successor._owner._handle = None
+
+    receipt_filename = (
+        "quack-stale-owner-recovery-receipt."
+        f"generation-{successor_identity.generation}.json"
+    )
+    receipt_path = state / receipt_filename
+    receipt = recover_stale_state_server(
+        database_path=db,
+        state_dir=state,
+        expected_store_id=successor_identity.store_id,
+        expected_generation=successor_identity.generation,
+        expected_database_uuid=successor_identity.database_uuid,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+        stopped_at="2026-08-29T08:30:00Z",
+        receipt_filename=receipt_filename,
+    )
+    receipt_bytes = receipt_path.read_bytes()
+    assert json.loads(receipt_bytes) == receipt
+    assert historical_path.read_bytes() == historical_bytes
+
+    replayed = recover_stale_state_server(
+        database_path=db,
+        state_dir=state,
+        expected_store_id=successor_identity.store_id,
+        expected_generation=successor_identity.generation,
+        expected_database_uuid=successor_identity.database_uuid,
+        liveness=lambda _birth: OwnerLiveness.DEAD,
+        stopped_at="2026-08-29T08:30:00Z",
+        receipt_filename=receipt_filename,
+    )
+    assert replayed == receipt
+    assert receipt_path.read_bytes() == receipt_bytes
+    assert historical_path.read_bytes() == historical_bytes
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
