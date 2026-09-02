@@ -3299,6 +3299,13 @@ class _OwnerProjectionMonitor:
                     _publish_live_projection(self.server, self.paths)
                     next_projection = now + 1.0
                 exclusive = getattr(self.server, "_connection", None)
+                if _owner_connection_unusable(exclusive):
+                    # Replica TCP can stay up while the exclusive writer is
+                    # poisoned. Empty mutation drain does not notice, so
+                    # SPAR-018 typed attach kept dying on client_sessions
+                    # INSERT until this reconnect.
+                    _recover_poisoned_owner_connection(self.server, force=False)
+                    exclusive = getattr(self.server, "_connection", None)
                 serve_connection = _owner_serve_connection(self.server)
                 if (
                     serve_connection is not None

@@ -1986,6 +1986,55 @@ def test_recover_does_not_restart_serve_for_usable_handle_when_probe_says_down(
     assert server._connection is owner
 
 
+def test_owner_projection_monitor_recovers_unusable_exclusive_while_replica_serve_is_up(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    recovers: list[bool] = []
+
+    class _Owner:
+        def __init__(self) -> None:
+            self._poisoned = True
+            self.path = tmp_path / "control.duckdb"
+
+    owner = _Owner()
+    replica = object()
+
+    def recover(_server: object, *, force: bool = False) -> bool:
+        recovers.append(force)
+        owner._poisoned = False
+        return True
+
+    monkeypatch.setattr(materializer, "_publish_live_projection", lambda *_a, **_k: {"ok": True})
+    monkeypatch.setattr(materializer, "_process_mutations", lambda *_a, **_k: None)
+    monkeypatch.setattr(materializer, "_recover_poisoned_owner_connection", recover)
+    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: True)
+    monkeypatch.setattr(materializer, "_restart_owner_serve_if_down", lambda *_a, **_k: False)
+    server = SimpleNamespace(
+        process_mutation_inbox=lambda: None,
+        _connection=owner,
+        _transport_connection=replica,
+        config=SimpleNamespace(database_path=tmp_path / "control.duckdb"),
+    )
+    inbox = tmp_path / "registry" / "mutations"
+    inbox.mkdir(parents=True)
+    monitor = materializer._OwnerProjectionMonitor(
+        server,
+        {"owner": tmp_path / "owner"},
+        mutation_dir=inbox,
+        on_failure=lambda _exc: None,
+    )
+    monitor.start()
+    try:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not recovers:
+            time.sleep(0.02)
+        assert recovers == [False]
+    finally:
+        monitor.stop()
+
+
 def test_owner_projection_monitor_drains_signed_owner_commands(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
