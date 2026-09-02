@@ -3445,28 +3445,56 @@ class DatabasePortalExecutionBridge:
         )[:_POST_MERGE_COMPLETION_RECOVERY_TASK_PAGE_SIZE]
         return page, (page[-1] if page else "")
 
+    def _bind_owning_repository_to_configured_worktree(self, owner: str) -> str:
+        """Bind one owning-repository identity to a configured checkout path.
+
+        Exact allowlist membership stays authoritative. Campaigns that name
+        the repository identity (``ipfs_datasets_py``) while configuring the
+        nested checkout (``external/ipfs_datasets``) bind to the unique
+        matching path. Ambiguous aliases fail closed.
+        """
+
+        if owner in self.worktree_submodule_paths:
+            return owner
+        matches = [
+            path
+            for path in self.worktree_submodule_paths
+            if owner == PurePosixPath(path).name
+            or owner == f"{PurePosixPath(path).name}_py"
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        raise DatabasePortalBridgeError(
+            f"owning repository {owner!r} is not a configured worktree submodule"
+            if not matches
+            else (
+                f"owning repository {owner!r} matches multiple configured "
+                "worktree submodules"
+            )
+        )
+
     def _validation_repository_scope(self, body: Mapping[str, Any]) -> str:
         """Return the checked nested repository namespace for this task.
 
         Git mutation authority remains rooted at the accelerator checkout.
         Owner-relative outputs are projected into that root under this
         namespace, while validations enter the same configured repository.
+        When the owning-repository identity is only an alias for a
+        superproject-relative checkout path, the task contract is already
+        scoped at that path and must not be prefixed again.
         """
 
         owner = _owning_repository(body)
         if not owner or owner == _ROOT_REPOSITORY_AUTHORITY:
             return ""
-        if owner not in self.worktree_submodule_paths:
-            raise DatabasePortalBridgeError(
-                f"owning repository {owner!r} is not a configured worktree submodule"
-            )
+        nested = self._bind_owning_repository_to_configured_worktree(owner)
         if self.repository_root is None:
             raise DatabasePortalBridgeError(
                 "nested owning repository cannot be verified without repository_root"
             )
         try:
             root = self.repository_root.resolve(strict=True)
-            candidate = (root / owner).resolve(strict=True)
+            candidate = (root / nested).resolve(strict=True)
             candidate.relative_to(root)
         except (OSError, ValueError) as exc:
             raise DatabasePortalBridgeError(
@@ -3476,6 +3504,8 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 f"owning repository {owner!r} is not an initialized nested Git repository"
             )
+        if nested != owner:
+            return ""
         return owner
 
     @staticmethod

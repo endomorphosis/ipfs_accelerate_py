@@ -15601,6 +15601,99 @@ def test_bridge_rejects_unsafe_or_unconfigured_owning_repository(
     assert factory_calls == []
 
 
+def test_bridge_binds_owning_repository_identity_to_configured_nested_path(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "checkout"
+    nested_repository = repository_root / "external" / "ipfs_datasets"
+    nested_repository.mkdir(parents=True)
+    (nested_repository / ".git").write_text(
+        "gitdir: ../../.git/modules/external/ipfs_datasets\n",
+        encoding="utf-8",
+    )
+    record = _record()
+    record.outputs = (
+        {"path": "external/ipfs_datasets/pkg/module.py"},
+        {"path": "artifacts/receipts/PCPR-010.json"},
+    )
+    record.validations = (
+        {"argv": ["python -m json.tool artifacts/receipts/PCPR-010.json"]},
+    )
+    record.body = {
+        **record.body,
+        "owning_repository": "ipfs_datasets_py",
+        "markdown_metadata": {"owning_repository": "ipfs_datasets_py"},
+    }
+    factory_calls: list[str] = []
+
+    def factory(paths: object, alias: str) -> _CompletingPortal:
+        factory_calls.append(alias)
+        return _CompletingPortal(paths, alias)
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        repository_root=repository_root,
+        worktree_submodule_paths=("external/ipfs_datasets", "external/ipfs_kit"),
+    )
+
+    provider = bridge.run_provider(_attempt())
+
+    projection_path = next((tmp_path / "attempts").glob("*/task-projection.md"))
+    projection = projection_path.read_text(encoding="utf-8")
+    assert provider["accepted"] is True
+    assert factory_calls == ["LGSWF-004"]
+    assert (
+        "- Outputs: external/ipfs_datasets/pkg/module.py, "
+        "artifacts/receipts/PCPR-010.json"
+    ) in projection
+    assert "external/ipfs_datasets/external/ipfs_datasets" not in projection
+    assert (
+        "- Validation: python -m json.tool artifacts/receipts/PCPR-010.json"
+    ) in projection
+    assert "cd external/ipfs_datasets" not in projection
+
+
+def test_bridge_rejects_ambiguous_owning_repository_path_aliases(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "checkout"
+    for relative in ("external/ipfs_datasets", "vendor/ipfs_datasets"):
+        nested = repository_root / relative
+        nested.mkdir(parents=True)
+        (nested / ".git").mkdir()
+    record = _record()
+    record.body = {
+        **record.body,
+        "owning_repository": "ipfs_datasets_py",
+        "markdown_metadata": {"owning_repository": "ipfs_datasets_py"},
+    }
+    factory_calls: list[str] = []
+
+    def factory(paths: object, alias: str) -> _CompletingPortal:
+        factory_calls.append(alias)
+        return _CompletingPortal(paths, alias)
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+        repository_root=repository_root,
+        worktree_submodule_paths=(
+            "external/ipfs_datasets",
+            "vendor/ipfs_datasets",
+        ),
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="matches multiple configured worktree submodules",
+    ):
+        bridge.run_provider(_attempt())
+    assert factory_calls == []
+
+
 def test_bridge_rejects_validation_root_conflicting_with_owner(
     tmp_path: Path,
 ) -> None:
