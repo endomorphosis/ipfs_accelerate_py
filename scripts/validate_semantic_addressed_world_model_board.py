@@ -194,6 +194,18 @@ _M61_PRIOR_PROJECTION_CID = _M60_TARGET_PROJECTION_CID
 _M61_TARGET_PROJECTION_CID = (
     "baguqeerasshcjudjgsl563kvif67woq446wiqivjvqa24ep5b5evdvgemk4q"
 )
+_M62_AUTHORITY_CID = (
+    "sha256:caf22df089b0088e9530c533828178aff2f2ca23f4ec2ee2fa6cd38b1e910515"
+)
+_M62_AUTHORITY_SIZE = 16_599
+_M62_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M62_FINAL_CONTROL_AUTHORITY_CID"
+_M62_SUCCESSOR_KEY = (
+    "post_m61_sealed_credential_ack_startup_grace_successor_materialization"
+)
+_M62_PRIOR_PROJECTION_CID = _M61_TARGET_PROJECTION_CID
+_M62_TARGET_PROJECTION_CID = (
+    "baguqeera7wm6juq7pfmxu5b2maugeqcx5njyierw4r2tmmbxexgoivlrkhcq"
+)
 _M50_M49_RECEIPT_CID = (
     "sha256:d5bfeb6dd987b05c2407d93f66d73c6a70bcd2b4f17e8381a93a2bb265acae47"
 )
@@ -656,6 +668,8 @@ def _m61_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
     migration: Mapping[str, Any],
+    *,
+    require_current_source: bool = True,
 ) -> list[str]:
     """Validate M61's generation-43 event-330-to-331 source seal."""
 
@@ -663,11 +677,33 @@ def _m61_migration_errors(
         module = _dependency_validator_module(REPO_ROOT)
         return list(
             module._m61_post_m60_mappingproxy_identity_normalization_errors(
-                scheduler, seal, migration, root=REPO_ROOT
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_current_source=require_current_source,
             )
         )
     except Exception as exc:
         return [f"M61 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m62_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Validate M62's generation-43 event-331-to-332 source seal."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m62_post_m61_sealed_credential_ack_startup_grace_errors(
+                scheduler, seal, migration, root=REPO_ROOT
+            )
+        )
+    except Exception as exc:
+        return [f"M62 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _m60_migration_errors(
@@ -1606,12 +1642,47 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M61 before every historical successor. Consequently
+    Key presence selects M62 before every historical successor. Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m62_key = _M62_SUCCESSOR_KEY
+    m62_presence = (
+        m62_key in scheduler,
+        m62_key in migration,
+        f"{m62_key}_cid" in seal,
+    )
+    if any(m62_presence):
+        errors = _m62_migration_errors(scheduler, seal, migration)
+        if not all(m62_presence):
+            errors.append("M62 successor authority is only partially declared")
+        if errors:
+            return errors
+        m61_key = _M61_SUCCESSOR_KEY
+        m61_presence = (
+            m61_key in scheduler,
+            m61_key in migration,
+            f"{m61_key}_cid" in seal,
+        )
+        if not all(m61_presence):
+            return [
+                "M62 successor does not preserve the immutable M61 controls"
+            ]
+        historical_scheduler = dict(scheduler)
+        historical_migration = dict(migration)
+        historical_seal = dict(seal)
+        historical_scheduler.pop(m62_key, None)
+        historical_migration.pop(m62_key, None)
+        historical_seal.pop(f"{m62_key}_cid", None)
+        return _active_successor_migration_errors(
+            historical_scheduler,
+            historical_seal,
+            historical_migration,
+            require_current_source=False,
+        )
 
     m61_key = _M61_SUCCESSOR_KEY
     m61_presence = (
@@ -1620,7 +1691,12 @@ def _active_successor_migration_errors(
         f"{m61_key}_cid" in seal,
     )
     if any(m61_presence):
-        errors = _m61_migration_errors(scheduler, seal, migration)
+        errors = _m61_migration_errors(
+            scheduler,
+            seal,
+            migration,
+            require_current_source=require_current_source,
+        )
         if not all(m61_presence):
             errors.append("M61 successor authority is only partially declared")
         if errors:
@@ -5124,8 +5200,16 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m62_key = _M62_SUCCESSOR_KEY
+    m62_selected = any((
+        m62_key in config,
+        m62_key in migration,
+        f"{m62_key}_cid" in seal,
+    ))
     m61_key = _M61_SUCCESSOR_KEY
-    m61_selected = any((
+    # Treat M62 as an M61-or-newer sentinel for historical-selection guards;
+    # the exact M61 validation block below excludes M62 explicitly.
+    m61_selected = m62_selected or any((
         m61_key in config,
         m61_key in migration,
         f"{m61_key}_cid" in seal,
@@ -5439,7 +5523,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         )
     )
     multi_lane_selected = (
-        m61_selected
+        m62_selected
+        or m61_selected
         or m60_selected
         or m59_selected
         or m58_selected
@@ -5479,7 +5564,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or config.get("max_lanes") != expected_lane_count
     ):
         config_errors.append(
-            "four lanes are required for M61/M60/M59/M58/M48/M47/M46/M45/M44/M43/M42/M41/M40/M39/M38/M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
+            "four lanes are required for M62/M61/M60/M59/M58/M48/M47/M46/M45/M44/M43/M42/M41/M40/M39/M38/M37/M36/M35/M34/M33/M32/M31/M30/M29/M28/M27/M26/M25/M24/M23"
             if multi_lane_selected
             else "one lane is required until sidecars are lane-scoped"
         )
@@ -5986,7 +6071,65 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m61_selected:
+    if m62_selected:
+        successor = config.get(m62_key)
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m62_post_m61_sealed_credential_ack_startup_grace_authority()
+            )
+            reference = dict(materializer._m62_authority_reference())
+            contract = materializer._validated_m62_live_preflight_contract(expected)
+            configured = materializer._m62_successor_configured_on_any_surface(
+                root, config
+            )
+            materializer._assert_m62_source_delta(
+                root, materializer.build_population(root), expected
+            )
+            m62_errors = list(
+                module._m62_post_m61_sealed_credential_ack_startup_grace_errors(
+                    config, seal, migration, root=root
+                )
+            )
+            if (
+                successor != reference
+                or migration.get(m62_key) != reference
+                or seal.get(f"{m62_key}_cid") != _M62_AUTHORITY_CID
+                or materializer._identity(expected) != _M62_AUTHORITY_CID
+                or len(materializer._canonical(expected)) != _M62_AUTHORITY_SIZE
+                or _M62_AUTHORITY_CID == _M62_UNSEALED_AUTHORITY_CID
+                or materializer._M62_AUTHORITY_CID != _M62_AUTHORITY_CID
+                or materializer._M62_AUTHORITY_SIZE != _M62_AUTHORITY_SIZE
+                or configured is not True
+                or expected.get("authorized") is not True
+                or expected.get("authority") != "operator_control_plane"
+                or expected.get("migration_revision") != "SAWM-R2-M62"
+                or expected.get("migration_kind") != m62_key
+                or expected.get("target_generation") != 43
+                or expected.get("target_event_watermark") != 332
+                or expected.get("target_projection_cid")
+                != _M62_TARGET_PROJECTION_CID
+                or contract.get("target_generation") != 43
+                or contract.get("prior_event_watermark") != 331
+                or contract.get("target_event_watermark") != 332
+                or contract.get("prior_projection_cid")
+                != _M62_PRIOR_PROJECTION_CID
+                or contract.get("target_projection_cid")
+                != _M62_TARGET_PROJECTION_CID
+                or contract.get("same_live_owner_required") is not True
+                or contract.get("generation_restart_authorized") is not False
+                or contract.get("m61_receipt_must_be_preserved") is not True
+                or contract.get("event_331_must_be_preserved") is not True
+                or contract.get("event_332_must_be_absent_before_append") is not True
+            ):
+                m62_errors.append("M62 successor authority binding differs")
+            config_errors.extend(m62_errors)
+        except Exception as exc:
+            config_errors.append(
+                f"M62 successor authority unavailable: {type(exc).__name__}: {exc}"
+            )
+    if m61_selected and not m62_selected:
         successor = config.get(m61_key)
         try:
             module, materializer = _m26_validation_modules(root)

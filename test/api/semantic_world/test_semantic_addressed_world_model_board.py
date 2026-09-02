@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "post_m61_sealed_credential_ack_startup_grace_successor_materialization",
     "post_m60_mappingproxy_identity_normalization_successor_materialization",
     "partial_m59_receipt_failure_recovery_successor_materialization",
     "post_m58_quack_snapshot_row_normalization_successor_materialization",
@@ -568,6 +569,88 @@ def test_historical_successor_controls_include_m61_before_m60() -> None:
     assert f"{m61_key}_cid" not in historical_seal
 
 
+def test_historical_successor_controls_include_m62_before_m61() -> None:
+    """M61 fixtures remove M62 while current M62 remains presence-first."""
+
+    m62_key = "post_m61_sealed_credential_ack_startup_grace_successor_materialization"
+    m61_key = "post_m60_mappingproxy_identity_normalization_successor_materialization"
+    scheduler = {m62_key: {"revision": "M62"}, m61_key: {"revision": "M61"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m62_key}_cid": "sha256:" + "f" * 64,
+        f"{m61_key}_cid": "sha256:" + "e" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m62_key, scheduler, migration, seal
+    )
+    assert current[m62_key] == scheduler[m62_key]
+    assert current_migration is not None
+    assert current_migration[m62_key] == migration[m62_key]
+    assert current_seal is not None
+    assert current_seal[f"{m62_key}_cid"] == seal[f"{m62_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m61_key, scheduler, migration, seal)
+    )
+    assert m62_key not in historical
+    assert historical_migration is not None and m62_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m62_key}_cid" not in historical_seal
+
+
+def test_materialize_and_launch_select_m62_before_m61_and_auto_append() -> None:
+    materialize_source = (
+        REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py"
+    ).read_text(encoding="utf-8")
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    m62_dispatch = "if _m62_successor_configured_on_any_surface(root, config):"
+    m61_dispatch = "if _m61_successor_configured_on_any_surface(root, config):"
+    assert m62_dispatch in materialize_source
+    assert m61_dispatch in materialize_source
+    assert materialize_source.find(m62_dispatch) < materialize_source.find(m61_dispatch)
+    assert materialize_source.find("def _materialize_m62(") < (
+        materialize_source.find("def materialize(")
+    )
+    assert "def _check_m62_materialized(" in materialize_source
+    assert "M62 automatic successor materialize failed" in operator_source
+    assert "def _verify_m62_live_head_task_projection(" in operator_source
+    assert operator_source.find("def _verify_m62_live_head_task_projection(") < (
+        operator_source.find("def _verify_m61_live_head_task_projection(")
+    )
+    m62_marker_dispatch = (
+        "if _M62_SUCCESSOR_KEY in config:\n        return _require_m62_source_successor_marker"
+    )
+    m61_marker_dispatch = (
+        "if _M61_SUCCESSOR_KEY in config:\n        return _require_m61_source_successor_marker"
+    )
+    assert m62_marker_dispatch in operator_source
+    assert m61_marker_dispatch in operator_source
+    assert operator_source.find(m62_marker_dispatch) < operator_source.find(
+        m61_marker_dispatch
+    )
+
+
+def test_m62_validators_treat_m61_as_immutable_history() -> None:
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m62_historical_m61_test",
+    )
+    dependency = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m62_historical_m61_test",
+    )
+    board_source = inspect.getsource(board._active_successor_migration_errors)
+    dependency_source = inspect.getsource(dependency.validate_dependencies)
+    assert "m62_key = _M62_SUCCESSOR_KEY" in board_source
+    assert "require_current_source=False" in board_source
+    assert "if m62_declared" in dependency_source
+    assert "if m61_declared and not m62_declared" in dependency_source
+    assert "require_current_source=False" in dependency_source
+
+
 def test_materialize_and_launch_select_m61_before_m60_and_auto_append() -> None:
     materialize_source = (
         REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py"
@@ -1039,6 +1122,165 @@ def test_m59_operator_denies_unsealed_generation_43_restart() -> None:
         assert "generation-44 successor" in source
 
 
+def test_m62_sealed_credential_ack_startup_grace_authority_is_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m62_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m62_post_m61_sealed_credential_ack_startup_grace_authority()
+    )
+    contract = materializer._validated_m62_live_preflight_contract(authority)
+    repair = authority["accepted_control_plane_repair"]
+    prior = authority["prior_authority"]
+    chain = authority["source_chain"]
+    preservation = authority["preservation"]
+
+    assert not materializer._M62_AUTHORITY_CID.endswith(
+        "PENDING_M62_FINAL_CONTROL_AUTHORITY_CID"
+    )
+    assert materializer._identity(authority) == materializer._M62_AUTHORITY_CID
+    assert len(materializer._canonical(authority)) == materializer._M62_AUTHORITY_SIZE
+    assert authority["migration_revision"] == "SAWM-R2-M62"
+    assert authority["target_generation"] == 43
+    assert authority["target_event_watermark"] == 332
+    assert contract["prior_event_watermark"] == 331
+    assert contract["target_event_watermark"] == 332
+    assert contract["same_live_owner_required"] is True
+    assert contract["generation_restart_authorized"] is False
+    assert contract["m61_receipt_must_be_preserved"] is True
+    assert contract["event_331_must_be_preserved"] is True
+    assert contract["event_332_must_be_absent_before_append"] is True
+    assert prior["receipt_cid"] == (
+        "sha256:84c24f6aabff68a65b31c5c3e2d66565509767b277e2fe0e23d7e05911ff21ea"
+    )
+    assert repair["repair_parent"] == (
+        "120a231540c344ccc5467c8c7b704fb27204109b"
+    )
+    assert repair["repair_commit"] == (
+        "0faff4ce45866753d4053d14025b1dd96b2dbb24"
+    )
+    assert repair["repair_tree"] == (
+        "bb378f3f07aee6c68af24dec7ff060420950cdad"
+    )
+    assert repair["repair_diff_sha256"] == (
+        "27fafe00f6126b47ed7f0976c280b73f37e0a230fde1782ffff04f1c6bf932d6"
+    )
+    assert repair["changed_paths"] == sorted(
+        (
+            "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+            "test/api/test_agent_supervisor_configured_board_scheduler.py",
+        )
+    )
+    assert repair["blob_modes"] == {
+        path: "100644" for path in repair["changed_paths"]
+    }
+    assert repair["ordinary_program_implementation"] is False
+    assert repair["authority_weakened"] is False
+    assert chain["repair_commit_count"] == 1
+    assert chain["final_control_commit_count"] == 1
+    assert chain["current_commit_identity_embedded_in_authority"] is False
+    assert chain["final_control_parent"] == repair["repair_commit"]
+    assert preservation["m61_receipt_preserved_exactly"] is True
+    assert preservation["event_331_preserved_exactly"] is True
+    assert preservation["no_task_completion_admitted_by_source_repair"] is True
+    assert authority["exact_changes"]["task_status_changes"] == 0
+    assert authority["exact_changes"]["accepted_completion_changes"] == 0
+
+
+def test_m62_materialization_preserves_m61_and_publishes_receipt_last() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m62_structure_test",
+    )
+    materialize_source = inspect.getsource(materializer._materialize_m62)
+    verify_source = inspect.getsource(materializer._verify_m62_live_materialization)
+    preserved_source = inspect.getsource(
+        materializer._verify_m62_preserved_m61_materialization
+    )
+
+    assert materialize_source.index("snapshot = source.snapshot()") < (
+        materialize_source.index("source.record_evidence(")
+    )
+    assert materialize_source.index("source.record_evidence(") < (
+        materialize_source.index("_m52_write_receipt_last(")
+    )
+    for required in (
+        "_verify_m62_preserved_m61_receipt",
+        "_verify_m62_preserved_m61_materialization",
+        "_M62_PRIOR_PROJECTION_CID",
+        "target_evidence",
+        "target_event",
+        "clock_interference",
+    ):
+        assert required in materialize_source
+    assert verify_source.count("_m39_exact_row_matches") == 2
+    assert "_inspect_m58_generation_restart_rows" in verify_source
+    assert "observed_watermark=_M62_TARGET_EVENT_WATERMARK" in verify_source
+    assert "_M62_PRIOR_EVENT_PREFIX_SHA256" in preserved_source
+    assert "_verify_m58_exact_evidence_projection" in preserved_source
+
+
+def test_m62_operator_denies_unsealed_generation_43_restart() -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m62_restart_denial_test",
+    )
+    for function, start, end in (
+        (
+            operator._run_quack_start,
+            "if _M62_SUCCESSOR_KEY in config:",
+            "if _M61_SUCCESSOR_KEY in config:",
+        ),
+        (
+            operator._validate_offline_quack_start,
+            "if _M62_SUCCESSOR_KEY in config:",
+            "if _M61_SUCCESSOR_KEY in config:",
+        ),
+        (
+            operator._recover_stale_quack,
+            "if active.get(\"migration_revision\") == _M62_MIGRATION_REVISION:",
+            "if active.get(\"migration_revision\") == _M61_MIGRATION_REVISION:",
+        ),
+    ):
+        source = inspect.getsource(function)
+        assert start in source
+        assert end in source
+        branch = source[source.index(start):source.index(end, source.index(start))]
+        assert "M62 requires the exact live generation-43 owner" in branch
+        assert "generation-44 successor" in branch
+
+
+def test_m62_live_preflight_uses_plain_authority_identity_boundary() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m62_identity_boundary_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m62_identity_boundary_test",
+    )
+    scheduler = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    selected = operator._active_source_repair_materialization(scheduler)
+    assert isinstance(selected, type(MappingProxyType({})))
+    assert selected["migration_revision"] == "SAWM-R2-M62"
+    assert materializer._identity(dict(selected)) == materializer._M62_AUTHORITY_CID
+
+    source = inspect.getsource(operator._live_preflight)
+    report_start = source.index("if m62_active and final_pair_marker")
+    m62_branch = source[
+        report_start:
+        source.index("elif m61_active and final_pair_marker", report_start)
+    ]
+    assert "materializer._identity(\n                    receipt_authority" in m62_branch
+
+
 def test_m61_mappingproxy_identity_normalization_authority_is_exact() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -1149,6 +1391,10 @@ def test_m61_live_preflight_uses_plain_authority_identity_boundary() -> None:
             REPO_ROOT
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
+    )
+    scheduler, _, _ = _historical_successor_controls_at(
+        "post_m60_mappingproxy_identity_normalization_successor_materialization",
+        scheduler,
     )
     selected = operator._active_source_repair_materialization(scheduler)
     assert isinstance(selected, type(MappingProxyType({})))
