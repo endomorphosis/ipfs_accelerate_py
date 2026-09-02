@@ -792,6 +792,16 @@ def _lease_scoped_reconciliation_supervisor(
         lambda _value: True,
     )
     monkeypatch.setattr(
+        daemon_module,
+        "database_fenced_provider_historical_retained_reconciliation_valid",
+        lambda _value: True,
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "database_pctdd005_historical_successor_reconciliation_valid",
+        lambda _value: True,
+    )
+    monkeypatch.setattr(
         bridge_module,
         "DatabasePortalExecutionBridge",
         FakeBridge,
@@ -843,6 +853,57 @@ def _lease_scoped_reconciliation_supervisor(
     return supervisor, program, events, daemons
 
 
+def _retained_controller_cleanup() -> dict[str, Any]:
+    return {
+        "pid": None,
+        "managed_daemon_identity_record_id": "",
+        "managed_daemon_process_birth": None,
+        "quiesced": True,
+        "remaining_pid": None,
+        "markers_removed": True,
+        "daemon_fence": {
+            "fenced": False,
+            "safe_to_restart": True,
+            "reason": "managed_daemon_not_recorded",
+        },
+        "provider_runner_fence": {
+            "applicable": False,
+            "fenced": False,
+            "safe_to_restart": True,
+            "reason": "ordinary_provider_runner_receipt_absent",
+        },
+    }
+
+
+def test_retained_recovery_requires_both_controller_fences_before_daemon_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, program, events, daemons = _lease_scoped_reconciliation_supervisor(
+        tmp_path,
+        monkeypatch,
+    )
+
+    missing_launch = supervisor._reconcile_interrupted_database_portal_attempts_bound(
+        program,
+        owner_fence_held=True,
+    )
+    assert missing_launch["reason"] == (
+        "database_portal_retained_launch_fence_absent"
+    )
+    assert missing_launch["safe_to_restart"] is False
+
+    missing_cleanup = supervisor._reconcile_interrupted_database_portal_attempts_bound(
+        program,
+        owner_fence_held=True,
+        managed_daemon_launch_lock_held=True,
+    )
+    assert missing_cleanup["reason"] == "database_portal_retained_cleanup_absent"
+    assert missing_cleanup["safe_to_restart"] is False
+    assert events == []
+    assert daemons == []
+
+
 def test_retained_recovery_checkout_capability_is_true_only_inside_lease(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -855,6 +916,8 @@ def test_retained_recovery_checkout_capability_is_true_only_inside_lease(
     result = supervisor._reconcile_interrupted_database_portal_attempts_bound(
         program,
         owner_fence_held=True,
+        managed_daemon_launch_lock_held=True,
+        managed_daemon_cleanup=_retained_controller_cleanup(),
     )
 
     assert result["reconciled"] is True
@@ -892,25 +955,7 @@ def test_retained_recovery_forwards_one_controller_authenticated_quiescence(
         "read_process_birth",
         lambda _pid: controller_birth,
     )
-    cleanup = {
-        "pid": None,
-        "managed_daemon_identity_record_id": "",
-        "managed_daemon_process_birth": None,
-        "quiesced": True,
-        "remaining_pid": None,
-        "markers_removed": True,
-        "daemon_fence": {
-            "fenced": False,
-            "safe_to_restart": True,
-            "reason": "managed_daemon_not_recorded",
-        },
-        "provider_runner_fence": {
-            "applicable": False,
-            "fenced": False,
-            "safe_to_restart": True,
-            "reason": "ordinary_provider_runner_receipt_absent",
-        },
-    }
+    cleanup = _retained_controller_cleanup()
 
     result = supervisor._reconcile_interrupted_database_portal_attempts_bound(
         program,
@@ -931,6 +976,36 @@ def test_retained_recovery_forwards_one_controller_authenticated_quiescence(
     assert first["managed_daemon_launch_lock_held"] is True
 
 
+def test_retained_recovery_rejects_legacy_or_wrong_result_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, program, _events, daemons = (
+        _lease_scoped_reconciliation_supervisor(tmp_path, monkeypatch)
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "database_pctdd005_historical_successor_reconciliation_valid",
+        lambda _value: False,
+    )
+
+    result = supervisor._reconcile_interrupted_database_portal_attempts_bound(
+        program,
+        owner_fence_held=True,
+        managed_daemon_launch_lock_held=True,
+        managed_daemon_cleanup=_retained_controller_cleanup(),
+    )
+
+    assert result["blocked"] is True
+    assert result["safe_to_restart"] is False
+    assert result["reason"] == "database_portal_retained_reconciliation_blocked"
+    assert len(daemons) == 1
+    assert all(
+        receipt is not None
+        for receipt in daemons[0].controller_quiescence_receipts
+    )
+
+
 def test_retained_recovery_checkout_capability_resets_when_reconcile_raises(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -944,6 +1019,8 @@ def test_retained_recovery_checkout_capability_resets_when_reconcile_raises(
     result = supervisor._reconcile_interrupted_database_portal_attempts_bound(
         program,
         owner_fence_held=True,
+        managed_daemon_launch_lock_held=True,
+        managed_daemon_cleanup=_retained_controller_cleanup(),
     )
 
     assert result["blocked"] is True

@@ -184,6 +184,15 @@ _PROCESS_FILESYSTEM_ROOT = Path("/proc")
 
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor")
 
+
+class _DatabasePortalRetainedStartupBlocked(RuntimeError):
+    """Carry one current fail-closed retained-startup projection to callers."""
+
+    def __init__(self, result: Mapping[str, Any]) -> None:
+        super().__init__(str(result.get("reason") or "retained startup blocked"))
+        self.result = MappingProxyType(dict(result))
+
+
 RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {"child_exited", "launch_failed", "max_restarts_reached"}
 CONTROL_PLANE_RELOAD_STATUS = "control_plane_reload_required"
 CONTROL_PLANE_RELOAD_DEFERRED_UNSEALED_STATUS = (
@@ -7594,8 +7603,24 @@ class PortalImplementationSupervisor:
                                         if not self._retained_startup_allows_normal_launch(
                                             retained_startup
                                         ):
-                                            raise RuntimeError(
-                                                "retained recovery prelaunch gate blocked"
+                                            raise _DatabasePortalRetainedStartupBlocked(
+                                                {
+                                                    "stuck": False,
+                                                    "maintenance_blocked": True,
+                                                    "reason": str(
+                                                        retained_startup.get("reason")
+                                                        or (
+                                                            "database_portal_retained_"
+                                                            "startup_blocked"
+                                                        )
+                                                    ),
+                                                    "retained_startup_reconciliation": dict(
+                                                        retained_startup
+                                                    ),
+                                                    "managed_child_quiescence": dict(
+                                                        quiescence
+                                                    ),
+                                                }
                                             )
                                     projection = (
                                         self._database_portal_reload_projection_fenced(
@@ -7637,6 +7662,12 @@ class PortalImplementationSupervisor:
                                                 fenced_program
                                             ),
                                         )
+                except _DatabasePortalRetainedStartupBlocked as exc:
+                    result = dict(exc.result)
+                    self._record_event(
+                        "database_portal_retained_startup_blocked",
+                        result,
+                    )
                 except Exception as exc:
                     result = {
                         "stuck": False,
@@ -16841,7 +16872,8 @@ class PortalImplementationSupervisor:
         from .database_portal_bridge import DatabasePortalExecutionBridge
         from .implementation_daemon import (
             DatabaseImplementationDaemon,
-            database_fenced_provider_any_retained_reconciliation_valid,
+            database_fenced_provider_historical_retained_reconciliation_valid,
+            database_pctdd005_historical_successor_reconciliation_valid,
         )
 
         (
@@ -16866,22 +16898,59 @@ class PortalImplementationSupervisor:
             program
         )
         controller_quiescence_receipt: Mapping[str, Any] | None = None
-        if retained_program and managed_daemon_cleanup is not None:
+        if retained_program:
+            if not owner_fence_held:
+                return {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "database_portal_retained_owner_fence_absent",
+                    "reconciliation_complete": False,
+                    "quiesced": False,
+                    "safe_to_restart": False,
+                }
+            if not managed_daemon_launch_lock_held:
+                return {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "database_portal_retained_launch_fence_absent",
+                    "reconciliation_complete": False,
+                    "quiesced": False,
+                    "safe_to_restart": False,
+                }
             if not isinstance(managed_daemon_cleanup, Mapping):
-                raise RuntimeError(
-                    "retained historical recovery has malformed cleanup"
+                return {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "database_portal_retained_cleanup_absent",
+                    "reconciliation_complete": False,
+                    "quiesced": False,
+                    "safe_to_restart": False,
+                }
+            try:
+                controller_quiescence_receipt = (
+                    self._database_portal_controller_quiescence_receipt(
+                        cleanup=managed_daemon_cleanup,
+                        program=program,
+                        trigger=trigger,
+                        owner_fence_held=owner_fence_held,
+                        managed_daemon_launch_lock_held=(
+                            managed_daemon_launch_lock_held
+                        ),
+                    )
                 )
-            controller_quiescence_receipt = (
-                self._database_portal_controller_quiescence_receipt(
-                    cleanup=managed_daemon_cleanup,
-                    program=program,
-                    trigger=trigger,
-                    owner_fence_held=owner_fence_held,
-                    managed_daemon_launch_lock_held=(
-                        managed_daemon_launch_lock_held
+            except Exception as exc:
+                return {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": (
+                        "database_portal_retained_controller_quiescence_"
+                        "unavailable"
                     ),
-                )
-            )
+                    "error_type": type(exc).__name__,
+                    "reconciliation_complete": False,
+                    "quiesced": False,
+                    "safe_to_restart": False,
+                }
         if owner_fence_held:
             from ..task_sources.database_task_source import DatabaseTaskSource
             from ..task_sources.duckdb_state import _resolve_quack_token_handle
@@ -17243,28 +17312,21 @@ class PortalImplementationSupervisor:
                         orphaned_claim_reconciliations.extend(
                             daemon.reconcile_retained_recovery_orphaned_claims()
                         )
-                        if controller_quiescence_receipt is None:
-                            pctdd005_reconciliation = dict(
-                                reconcile_pctdd005()
-                            )
-                            retained_reconciliation = dict(
-                                reconcile_retained()
-                            )
-                        else:
-                            pctdd005_reconciliation = dict(
-                                reconcile_pctdd005(
-                                    controller_quiescence_receipt=(
-                                        controller_quiescence_receipt
-                                    )
+                        assert controller_quiescence_receipt is not None
+                        pctdd005_reconciliation = dict(
+                            reconcile_pctdd005(
+                                controller_quiescence_receipt=(
+                                    controller_quiescence_receipt
                                 )
                             )
-                            retained_reconciliation = dict(
-                                reconcile_retained(
-                                    controller_quiescence_receipt=(
-                                        controller_quiescence_receipt
-                                    )
+                        )
+                        retained_reconciliation = dict(
+                            reconcile_retained(
+                                controller_quiescence_receipt=(
+                                    controller_quiescence_receipt
                                 )
                             )
+                        )
                     except Exception as exc:
                         return {
                             **dict(reconciliation),
@@ -17314,7 +17376,7 @@ class PortalImplementationSupervisor:
                     )
                     if not (
                         pctdd005_reconciliation.get("blocked") is False
-                        and database_fenced_provider_any_retained_reconciliation_valid(
+                        and database_pctdd005_historical_successor_reconciliation_valid(
                             pctdd005_reconciliation
                         )
                         and callable(pctdd005_matches_current)
@@ -17322,7 +17384,7 @@ class PortalImplementationSupervisor:
                             pctdd005_reconciliation
                         )
                         and retained_reconciliation.get("blocked") is False
-                        and database_fenced_provider_any_retained_reconciliation_valid(
+                        and database_fenced_provider_historical_retained_reconciliation_valid(
                             retained_reconciliation
                         )
                         and callable(retained_matches_current)

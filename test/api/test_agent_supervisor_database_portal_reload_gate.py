@@ -1777,6 +1777,89 @@ def test_public_run_once_quiesces_and_records_deferred_not_completed(
     ]
 
 
+def test_public_run_once_preserves_current_retained_startup_blocker(
+    tmp_path,
+    monkeypatch,
+):
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    recorded: list[tuple[str, dict[str, object]]] = []
+    finished: list[tuple[str, str]] = []
+    blocked = {
+        "reconciled": False,
+        "blocked": True,
+        "reason": "database_portal_retained_reconciliation_failed",
+        "reconciliation_complete": False,
+        "quiesced": False,
+        "safe_to_restart": False,
+        "retained_occurrence_reconciliation": {
+            "blocked": True,
+            "error_type": "DatabaseImplementationConflictError",
+        },
+    }
+
+    @contextmanager
+    def portal_fence():
+        yield supervisor.config.database_program
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection_fenced",
+        lambda _program: _authenticated_watchdog_projection(active=False),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_retained_fenced_provider_program_applicable",
+        lambda _program: True,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_terminate_managed_daemon_tree",
+        lambda **_kwargs: {"quiesced": True},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_reconcile_interrupted_database_portal_attempts_bound",
+        lambda *_args, **_kwargs: dict(blocked),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda *_args, **_kwargs: pytest.fail(
+            "blocked retained recovery must not enter ordinary maintenance"
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_record_event",
+        lambda name, payload: recorded.append((name, dict(payload))),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda status="completed", error="": finished.append(
+                (status, error)
+            ),
+        ),
+    )
+
+    result = supervisor.run_once(include_refill=False)
+
+    assert result["reason"] == blocked["reason"]
+    assert result["reason"] != "database_portal_owner_mutation_fence_unavailable"
+    assert result["retained_startup_reconciliation"] == blocked
+    assert recorded == [
+        ("database_portal_retained_startup_blocked", result)
+    ]
+    assert finished == [("deferred", blocked["reason"])]
+
+
 def test_worktree_maintenance_stops_before_daemon_owned_reconcile(
     tmp_path,
     monkeypatch,
