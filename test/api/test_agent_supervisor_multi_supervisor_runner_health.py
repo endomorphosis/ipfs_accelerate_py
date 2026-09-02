@@ -2590,6 +2590,86 @@ def test_managed_fence_signals_exact_popen_root_when_snapshot_omits_it(
     assert adapter.terminate_calls == [(510002,)]
 
 
+def test_managed_fence_gives_omitted_popen_root_grace_after_term(
+    tmp_path,
+    monkeypatch,
+):
+    """Marker observation must not consume the exact child's TERM grace."""
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    profile = runner.LifecycleProfile(
+        target_id="supervisor-track:empty-snapshot-grace",
+        run_id="empty-snapshot-grace-run",
+        configuration_root="empty-snapshot-grace-config",
+        repository_root=str(tmp_path),
+        state_root=str(state_dir),
+        run_root=str(state_dir / "lifecycle-run"),
+        argv=(sys.executable, "worker.py"),
+        cwd=str(tmp_path),
+    )
+
+    class EmptyTree:
+        members = ()
+        roots = ()
+
+    events = []
+
+    class EmptySnapshotAdapter:
+        def snapshot(self, selected_profile):
+            assert selected_profile is profile
+            events.append("snapshot")
+            return EmptyTree()
+
+        def terminate(self, *_args, **_kwargs):
+            raise AssertionError("an empty snapshot has no profile member to signal")
+
+    class DelayedGracefulProcess:
+        pid = 515001
+
+        def __init__(self):
+            self.returncode = None
+            self.terminated_at = None
+            self.kill_calls = 0
+
+        def poll(self):
+            if (
+                self.returncode is None
+                and self.terminated_at is not None
+                and time.monotonic() - self.terminated_at >= 0.04
+            ):
+                self.returncode = 0
+            return self.returncode
+
+        def terminate(self):
+            events.append("terminate")
+            self.terminated_at = time.monotonic()
+
+        def kill(self):
+            self.kill_calls += 1
+            self.returncode = -signal.SIGKILL
+
+    process = DelayedGracefulProcess()
+    process._agent_supervisor_lifecycle_profile = profile
+    monkeypatch.setattr(
+        runner,
+        "LinuxProcessAdapter",
+        EmptySnapshotAdapter,
+    )
+
+    fenced, observed_pids = runner._terminate_managed_process(
+        process,
+        grace_seconds=0.1,
+    )
+
+    assert fenced is True
+    assert observed_pids == (515001,)
+    assert process.terminated_at is not None
+    assert process.kill_calls == 0
+    assert process.poll() == 0
+    assert events[:2] == ["terminate", "snapshot"]
+
+
 def test_managed_fence_rescans_and_forces_late_descendant_with_one_deadline(
     tmp_path,
     monkeypatch,

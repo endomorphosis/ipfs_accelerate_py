@@ -8560,12 +8560,24 @@ def _terminate_managed_process(
         # turn its PID into signal authority.
         return False, ()
     graceful_seconds = max(0.1, float(grace_seconds))
+    adapter = LinuxProcessAdapter()
+
+    # The unreaped Popen handle is exact authority for its own child PID.  Ask
+    # the supervisor root to latch shutdown before descendants receive TERM;
+    # otherwise a restart loop can replace a daemon while the first snapshot
+    # is being drained.  Profile discovery remains the authority for every
+    # detached or reparented descendant.
+    if process.poll() is None:
+        try:
+            process.terminate()
+        except OSError:
+            pass
     graceful_deadline = time.monotonic() + graceful_seconds
     # Reserve one short, bounded force-fence interval after the graceful
     # deadline.  This is one absolute transaction deadline, not a second copy
     # of ``grace_seconds``.
     final_deadline = graceful_deadline + 1.0
-    adapter = LinuxProcessAdapter()
+
     tree = adapter.snapshot(profile)
     if not tree.members:
         # Immediately after Popen the child may not yet expose its inherited
@@ -8602,17 +8614,6 @@ def _terminate_managed_process(
             )
 
     remember_and_validate(tree)
-
-    # The unreaped Popen handle is exact authority for its own child PID.  Ask
-    # the supervisor root to latch shutdown before descendants receive TERM;
-    # otherwise a restart loop can replace a daemon while the first snapshot
-    # is being drained.  Profile discovery remains the authority for every
-    # detached or reparented descendant.
-    if process.poll() is None:
-        try:
-            process.terminate()
-        except OSError:
-            pass
 
     current_tree = tree
     while True:
