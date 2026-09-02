@@ -88649,6 +88649,8 @@ DATABASE_PENDING_SAME_BOARD_MERGE_CONSUME_SCHEMA = (
 _LANDED_MERGE_REPAIR_STATUSES = frozenset(
     {"quarantined", "in_progress", "claimed", "running"}
 )
+_LANDED_MERGE_OWNER_FATAL_BACKOFF_SECONDS = 600.0
+_LANDED_MERGE_OWNER_FATAL_STATE_NAME = "landed-merge-owner-fatals.json"
 _OWNER_REPAIR_STATUS_OPERATIONS = frozenset(
     {
         "database_landed_merge_repair",
@@ -90607,6 +90609,7 @@ class DatabaseImplementationDaemon:
         self.merge_queue = merge_queue
         self._quack_attach_blocked_until = 0.0
         self._landed_merge_owner_fatals: dict[str, float] = {}
+        self._load_landed_merge_owner_fatals()
         self._idle_recovery_prefix: dict[str, Any] | None = None
         self._consecutive_embedded_sidecar_reopens = 0
         # Renew long-running provider/effect/validation calls well before the
@@ -96371,6 +96374,19 @@ class DatabaseImplementationDaemon:
                 )
                 excluded.add(str(claim.task_cid))
                 continue
+            except Exception as exc:
+                # SPAR-018 took a lane-local lease, then shared-board CAS
+                # died with authorization_denied.  Leaving that lease
+                # occupied made the only ready task unclaimable across
+                # daemon restarts.
+                try:
+                    self._release_unadmitted_claim(
+                        claim,
+                        reason="shared_board_claim_cas_failed",
+                    )
+                except Exception:
+                    pass
+                raise
 
             attempt = self._insert_attempt_from_claim(
                 claim,
@@ -99702,6 +99718,7 @@ class DatabaseImplementationDaemon:
             lowered = detail.lower()
             if (
                 "authorization failed" in lowered
+                or "authorization_denied" in lowered
                 or "attach.lock" in lowered
                 or "timed out acquiring duckdb process lock" in lowered
                 or "timed out acquiring duckdb thread lock" in lowered
@@ -99712,6 +99729,7 @@ class DatabaseImplementationDaemon:
                 in {
                     "TypedStateOwnerProtocolError",
                     "TypedStateOwnerAuthorizationError",
+                    "TypedStateOwnerRemoteError",
                     "TaskSourceIntegrityError",
                     "QuackStateServerNotRunningError",
                     "FatalException",
@@ -120909,6 +120927,61 @@ class DatabaseImplementationDaemon:
             },
         )
 
+    def _landed_merge_owner_fatal_path(self) -> Path | None:
+        path = getattr(self, "execution_path", None)
+        if path is None:
+            return None
+        return Path(path).with_name(_LANDED_MERGE_OWNER_FATAL_STATE_NAME)
+
+    def _load_landed_merge_owner_fatals(self) -> None:
+        path = self._landed_merge_owner_fatal_path()
+        if path is None or not path.is_file():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, Mapping):
+            return
+        loaded: dict[str, float] = {}
+        for raw_cid, raw_when in payload.items():
+            task_cid = str(raw_cid or "")
+            if not task_cid or isinstance(raw_when, bool):
+                continue
+            try:
+                recorded_at = float(raw_when)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(recorded_at) or recorded_at <= 0:
+                continue
+            loaded[task_cid] = recorded_at
+        self._landed_merge_owner_fatals.update(loaded)
+
+    def _record_landed_merge_owner_fatal(self, task_cid: str) -> None:
+        cid = str(task_cid or "")
+        if not cid:
+            return
+        recorded_at = time.time()
+        self._landed_merge_owner_fatals[cid] = recorded_at
+        path = self._landed_merge_owner_fatal_path()
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                name: when
+                for name, when in self._landed_merge_owner_fatals.items()
+                if isinstance(when, (int, float))
+                and not isinstance(when, bool)
+                and math.isfinite(float(when))
+            }
+            path.write_text(
+                json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                encoding="utf-8",
+            )
+        except OSError:
+            return
+
     def _complete_landed_quarantined_task(
         self,
         task: Any,
@@ -120918,11 +120991,16 @@ class DatabaseImplementationDaemon:
             return None
         task_cid = str(getattr(task, "task_cid", "") or "")
         last_fatal = self._landed_merge_owner_fatals.get(task_cid)
-        if last_fatal is not None and (time.monotonic() - last_fatal) < 600.0:
+        if (
+            last_fatal is not None
+            and (time.time() - last_fatal)
+            < _LANDED_MERGE_OWNER_FATAL_BACKOFF_SECONDS
+        ):
             # SPAR-017's git-landed quarantine retried record_validation_result
             # every idle tick, FatalException-poisoned the exclusive writer,
             # and starved SPAR-018 claim_next. Skip the doomed repair so the
-            # ready frontier can move.
+            # ready frontier can move. Persist the backoff so a lane-1 crash
+            # restart does not immediately re-poison the exclusive writer.
             return {
                 "task_cid": task_cid,
                 "task_alias": str(getattr(task, "task_alias", "") or ""),
@@ -121003,7 +121081,7 @@ class DatabaseImplementationDaemon:
                     or "FatalException" in reason
                     or _is_duckdb_uncertain_transaction_unusable(exc)
                 ):
-                    self._landed_merge_owner_fatals[cid] = time.monotonic()
+                    self._record_landed_merge_owner_fatal(cid)
                 outcomes.append(
                     {
                         "task_cid": cid,

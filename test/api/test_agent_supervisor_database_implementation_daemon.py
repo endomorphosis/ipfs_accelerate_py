@@ -2680,7 +2680,7 @@ def test_landed_quarantined_task_with_outputs_is_completed(
 def test_landed_merge_defers_after_owner_fatal(tmp_path: Path) -> None:
     daemon = _open_daemon(tmp_path / "lane")
     try:
-        daemon._landed_merge_owner_fatals["task:cid:001"] = time.monotonic()
+        daemon._record_landed_merge_owner_fatal("task:cid:001")
         outcome = daemon._complete_landed_quarantined_task(
             SimpleNamespace(
                 status="quarantined",
@@ -2690,6 +2690,25 @@ def test_landed_merge_defers_after_owner_fatal(tmp_path: Path) -> None:
         )
         assert outcome is not None
         assert outcome["completed"] is False
+        assert outcome["reason"] == "landed_merge_repair_deferred_after_owner_fatal"
+    finally:
+        daemon.close()
+
+
+def test_landed_merge_fatal_backoff_survives_in_memory_clear(tmp_path: Path) -> None:
+    daemon = _open_daemon(tmp_path / "lane")
+    try:
+        daemon._record_landed_merge_owner_fatal("task:cid:001")
+        daemon._landed_merge_owner_fatals.clear()
+        daemon._load_landed_merge_owner_fatals()
+        outcome = daemon._complete_landed_quarantined_task(
+            SimpleNamespace(
+                status="quarantined",
+                task_cid="task:cid:001",
+                task_alias="SPAR-017",
+            )
+        )
+        assert outcome is not None
         assert outcome["reason"] == "landed_merge_repair_deferred_after_owner_fatal"
     finally:
         daemon.close()
@@ -11199,6 +11218,80 @@ def test_owner_command_fatal_defers_instead_of_killing_the_daemon(
         assert result["reason"] == "quack_attach_contended"
         assert result["attempt_consumed"] is False
         assert result["deferred"] is True
+    finally:
+        daemon.close()
+
+
+def test_authorization_denied_claim_cas_is_attach_contention(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
+        TransactionError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TypedStateOwnerRemoteError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-cas-authorization-denied",
+    )
+    try:
+        remote = TypedStateOwnerRemoteError(
+            "authorization_denied",
+            "TypedStateOwnerAuthorizationError",
+        )
+        wrapped = TransactionError(
+            f"failed to commit transaction: {remote}"
+        )
+        wrapped.__cause__ = remote
+        assert daemon._is_quack_attach_contention(wrapped) is True
+        assert daemon._is_quack_attach_contention(remote) is True
+    finally:
+        daemon.close()
+
+
+def test_claim_cas_authorization_denied_releases_unadmitted_claim_and_defers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
+        TransactionError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TypedStateOwnerRemoteError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-cas-release",
+    )
+    released: list[str] = []
+    try:
+        daemon.materialize_population(_population(1))
+        original_release = daemon._release_unadmitted_claim
+
+        def tracking_release(claim: object, *, reason: str) -> object:
+            released.append(reason)
+            return original_release(claim, reason=reason)
+
+        def boom(*_args: object, **_kwargs: object) -> None:
+            try:
+                raise TypedStateOwnerRemoteError(
+                    "authorization_denied",
+                    "TypedStateOwnerAuthorizationError",
+                )
+            except TypedStateOwnerRemoteError as remote:
+                raise TransactionError(
+                    f"failed to commit transaction: {remote}"
+                ) from remote
+
+        monkeypatch.setattr(daemon, "_cas_task_status_database", boom)
+        monkeypatch.setattr(daemon, "_release_unadmitted_claim", tracking_release)
+        result = daemon.run_once()
+        assert result["deferred"] is True
+        assert result["reason"] == "quack_attach_contended"
+        assert "shared_board_claim_cas_failed" in released
     finally:
         daemon.close()
 
