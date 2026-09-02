@@ -30,6 +30,10 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     open_database_coordinator,
     open_process_serialized_database_coordinator,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    ProcessBirthIdentity,
+    WorktreeLifecycleStore,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
     TaskRecord,
@@ -63,6 +67,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
+    PortalImplementationDaemon,
+    PortalTaskState,
     database_daemon_pass_heartbeat_path,
     is_database_authority_mode,
     open_database_implementation_daemon,
@@ -3157,3 +3163,278 @@ def test_runner_portal_builder_selects_database_daemon(tmp_path: Path) -> None:
         assert first.task_cid != second.task_cid
     finally:
         daemon.close()
+
+
+def _database_bound_portal_daemon(
+    tmp_path: Path,
+    *,
+    database_attempt_number: object = 10,
+) -> tuple[PortalImplementationDaemon, object]:
+    task_path = tmp_path / "database-attempt.runtime.todo.md"
+    task_path.write_text(
+        "\n".join(
+            (
+                "# Database attempt projection (non-authoritative)",
+                "",
+                "## LGSWF-004 Preserve database lifecycle identity",
+                "",
+                "- Status: ready",
+                "- Completion: auto",
+                "- Priority: P0",
+                "- Track: implementation",
+                "- Depends on:",
+                "- Outputs: inventory/result.json",
+                "- Validation: python3 -m pytest focused.py",
+                "- Acceptance: Focused validation passes",
+                "- Database task CID: task:cid:004",
+                "- Database attempt ID: attempt:010",
+                "- Database claim ID: claim:010",
+                f"- Database attempt number: {database_attempt_number}",
+                "- Projection authority: false",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=task_path,
+        state_path=tmp_path / "task-state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## LGSWF-",
+        max_task_attempts=4,
+        worktree_pool_enabled=False,
+    )
+    [task] = daemon._load_tasks()
+    return daemon, task
+
+
+def _bind_database_attempt_authority(
+    daemon: PortalImplementationDaemon,
+    **overrides: object,
+) -> object:
+    arguments: dict[str, object] = {
+        "task_id": "LGSWF-004",
+        "database_task_cid": "task:cid:004",
+        "database_attempt_id": "attempt:010",
+        "database_claim_id": "claim:010",
+        "database_attempt_number": 10,
+        "database_binding_id": "sha256:" + "b" * 64,
+    }
+    arguments.update(overrides)
+    return daemon.bind_database_attempt_authority(**arguments)
+
+
+def test_portal_database_attempt_binder_accepts_only_exact_projection(
+    tmp_path: Path,
+) -> None:
+    daemon, task = _database_bound_portal_daemon(tmp_path)
+
+    receipt = _bind_database_attempt_authority(daemon)
+
+    assert receipt["task_id"] == task.task_id
+    assert receipt["database_task_cid"] == "task:cid:004"
+    assert receipt["database_attempt_id"] == "attempt:010"
+    assert receipt["database_claim_id"] == "claim:010"
+    assert receipt["database_attempt_number"] == 10
+    assert receipt["database_binding_id"] == "sha256:" + "b" * 64
+    assert receipt["canonical_task_cid"] == daemon._canonical_ref(task)
+    assert receipt["worktree_lifecycle_attempt_prefix"] == (
+        (1 << 52) | (10 << 16)
+    )
+    assert receipt["worktree_lifecycle_attempt_prefix_only"] is True
+    assert receipt["portal_attempt_authority"] is False
+    assert receipt["completion_authority"] is False
+    assert receipt["quarantine_authority"] is False
+
+
+def test_database_attempt_ordinal_namespaces_lifecycle_not_portal_retries(
+    tmp_path: Path,
+) -> None:
+    daemon, task = _database_bound_portal_daemon(tmp_path)
+    _bind_database_attempt_authority(daemon)
+    state = PortalTaskState()
+
+    first_portal_attempt = daemon._task_attempt(state, task)
+    daemon._record_task_attempt(state, task, first_portal_attempt)
+    second_portal_attempt = daemon._task_attempt(state, task)
+
+    assert daemon.max_task_attempts == 4
+    assert first_portal_attempt == 1
+    assert second_portal_attempt == 2
+    assert daemon._task_attempt_count(state, task) == 1
+    first_lifecycle_attempt = daemon._worktree_lifecycle_attempt(
+        task,
+        first_portal_attempt,
+    )
+    second_lifecycle_attempt = daemon._worktree_lifecycle_attempt(
+        task,
+        second_portal_attempt,
+    )
+    assert first_lifecycle_attempt == (1 << 52) | (10 << 16) | 1
+    assert second_lifecycle_attempt == (1 << 52) | (10 << 16) | 2
+    assert first_lifecycle_attempt != second_lifecycle_attempt
+    assert first_lifecycle_attempt not in {
+        first_portal_attempt,
+        second_portal_attempt,
+    }
+    with pytest.raises(
+        RuntimeError,
+        match="does not bind the lifecycle task",
+    ):
+        daemon._worktree_lifecycle_attempt_for_identity(
+            task_id=task.task_id,
+            canonical_task_cid="sha256:" + "f" * 64,
+            portal_attempt=first_portal_attempt,
+        )
+
+
+def test_database_lifecycle_pair_allows_retry_after_prior_quarantine(
+    tmp_path: Path,
+) -> None:
+    daemon, task = _database_bound_portal_daemon(tmp_path)
+    _bind_database_attempt_authority(daemon)
+    first_attempt = daemon._worktree_lifecycle_attempt(task, 1)
+    second_attempt = daemon._worktree_lifecycle_attempt(task, 2)
+    proc_root = tmp_path / "empty-proc"
+    proc_root.mkdir()
+    store = WorktreeLifecycleStore(
+        repo_root=tmp_path,
+        store_dir=tmp_path / "lifecycle",
+        startup_grace_seconds=0.0,
+        proc_root=proc_root,
+    )
+    first_workspace = tmp_path / "worktrees" / "first"
+    first = store.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=first_attempt,
+        lane_id="database-attempt-10",
+        workspace_path=first_workspace,
+        branch="implementation/database-attempt-10-local-1",
+        merge_target="main",
+        state_dir=str(tmp_path / "attempt-10"),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 17,
+            start_time_ticks=1,
+            boot_id="dead-database-attempt",
+            parent_pid=1,
+        ),
+    )
+    exact = {
+        "expected_record_id": first.record_id,
+        "expected_fence": first.fence,
+        "expected_lease_id": first.lease_id,
+        "expected_task_id": first.task_id,
+        "expected_canonical_task_cid": first.canonical_task_cid,
+        "expected_attempt": first.attempt,
+        "expected_branch": first.branch,
+        "expected_merge_target": first.merge_target,
+        "expected_repo_root": first.repo_root,
+        "expected_state_dir": first.state_dir,
+    }
+    store.quarantine_exact_dead_owner(
+        first_workspace,
+        fence_authority={
+            "schema": "test-database-attempt-fence@1",
+            "database_attempt_number": 10,
+            "portal_attempt": 1,
+            "provider_dispatched": False,
+        },
+        **exact,
+    )
+
+    second = store.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=second_attempt,
+        lane_id="database-attempt-10",
+        workspace_path=tmp_path / "worktrees" / "second",
+        branch="implementation/database-attempt-10-local-2",
+        merge_target="main",
+        state_dir=str(tmp_path / "attempt-10"),
+    )
+
+    assert store.load_quarantine(first_workspace) is not None
+    assert second.attempt == second_attempt
+    assert second.attempt != first.attempt
+
+
+def test_database_lifecycle_pair_preserves_unbound_attempts_and_safe_bounds(
+    tmp_path: Path,
+) -> None:
+    unbound_root = tmp_path / "unbound"
+    unbound_root.mkdir()
+    unbound, unbound_task = _database_bound_portal_daemon(unbound_root)
+    assert unbound._worktree_lifecycle_attempt_for_identity(
+        task_id=unbound_task.task_id,
+        canonical_task_cid=unbound._canonical_ref(unbound_task),
+        portal_attempt=1 << 16,
+    ) == (1 << 16)
+
+    bound_root = tmp_path / "bound"
+    bound_root.mkdir()
+    bound, bound_task = _database_bound_portal_daemon(bound_root)
+    _bind_database_attempt_authority(bound)
+    maximum = bound._worktree_lifecycle_attempt(bound_task, (1 << 16) - 1)
+    assert maximum < 1 << 53
+    with pytest.raises(RuntimeError, match="must fit unsigned 16-bit"):
+        bound._worktree_lifecycle_attempt(bound_task, 1 << 16)
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    (
+        ({"task_id": "LGSWF-999"}, "one exact projected task"),
+        (
+            {"database_task_cid": "task:cid:wrong"},
+            "disagrees with the projected task",
+        ),
+        (
+            {"database_attempt_id": "attempt:wrong"},
+            "disagrees with the projected task",
+        ),
+        (
+            {"database_claim_id": "claim:wrong"},
+            "disagrees with the projected task",
+        ),
+        (
+            {"database_attempt_number": 11},
+            "disagrees with the projected task",
+        ),
+    ),
+)
+def test_portal_database_attempt_binder_rejects_identity_or_metadata_mismatch(
+    tmp_path: Path,
+    override: dict[str, object],
+    message: str,
+) -> None:
+    daemon, _task = _database_bound_portal_daemon(tmp_path)
+
+    with pytest.raises(RuntimeError, match=message):
+        _bind_database_attempt_authority(daemon, **override)
+
+    assert daemon._database_attempt_authority is None
+
+
+@pytest.mark.parametrize(
+    "invalid_ordinal",
+    (0, -1, 1 << 32, True, 1.0, "10", None),
+)
+def test_portal_database_attempt_binder_rejects_invalid_ordinal(
+    tmp_path: Path,
+    invalid_ordinal: object,
+) -> None:
+    daemon, _task = _database_bound_portal_daemon(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match="ordinal must be a positive u32 integer",
+    ):
+        _bind_database_attempt_authority(
+            daemon,
+            database_attempt_number=invalid_ordinal,
+        )
+
+    assert daemon._database_attempt_authority is None

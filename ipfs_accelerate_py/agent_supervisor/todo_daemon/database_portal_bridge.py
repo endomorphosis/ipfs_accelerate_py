@@ -64,6 +64,14 @@ DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA_V1: Final[str] = (
 DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-attempt-binding@2"
 )
+PORTAL_DATABASE_ATTEMPT_AUTHORITY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/portal-database-attempt-authority@1"
+)
+_DATABASE_ATTEMPT_LIMIT: Final[int] = 1 << 32
+_DATABASE_LIFECYCLE_PORTAL_ATTEMPT_LIMIT: Final[int] = 1 << 16
+_DATABASE_LIFECYCLE_ATTEMPT_STRIDE: Final[int] = 1 << 16
+_DATABASE_LIFECYCLE_ATTEMPT_TAG: Final[int] = 1 << 52
+_DATABASE_LIFECYCLE_ATTEMPT_LIMIT: Final[int] = 1 << 53
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {"completed", "complete", "done"}
 )
@@ -1954,6 +1962,7 @@ class DatabasePortalExecutionBridge:
             f"- Database task CID: {_line_value(attempt.task_cid)}",
             f"- Database attempt ID: {_line_value(attempt.attempt_id)}",
             f"- Database claim ID: {_line_value(attempt.claim_id)}",
+            f"- Database attempt number: {int(attempt.attempt_number)}",
             f"- Database dependency CIDs: {_line_value(getattr(record, 'dependencies', ()))}",
             "- Projection authority: false",
         ]
@@ -2301,8 +2310,17 @@ class DatabasePortalExecutionBridge:
         paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any],
         record: Any,
+        *,
+        database_authority: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Join a lifecycle claim to the old Portal active-task tuple."""
+        """Join a lifecycle claim to the old Portal active-task tuple.
+
+        Portal retry ordinals are attempt-directory local.  New database
+        projections pair the DuckDB attempt with that local retry only for
+        lifecycle identity, so recovery must authenticate both namespaces
+        without treating either as authority for the other.  Legacy lifecycle
+        records retain the old local-attempt equality rule.
+        """
 
         identity = self._prior_projection_identity(paths, binding)
         try:
@@ -2329,12 +2347,56 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_lifecycle_active_tuple_unavailable"
             ) from exc
+        if type(database_authority) is not dict:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_attempt_authority_mismatch"
+            )
+        portal_attempt = state.get("active_attempt")
+        prior_attempt_number = database_authority.get("prior_attempt_number")
+        lifecycle_attempt = getattr(record, "attempt", None)
+        if (
+            type(portal_attempt) is not int
+            or portal_attempt < 1
+            or type(prior_attempt_number) is not int
+            or prior_attempt_number < 1
+            or prior_attempt_number >= _DATABASE_ATTEMPT_LIMIT
+            or database_authority.get("prior_attempt_id")
+            != binding.get("attempt_id")
+            or database_authority.get("prior_binding_id")
+            != binding.get("binding_id")
+            or type(lifecycle_attempt) is not int
+            or lifecycle_attempt < 1
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_attempt_authority_mismatch"
+            )
+        if lifecycle_attempt >= _DATABASE_LIFECYCLE_ATTEMPT_TAG:
+            if (
+                portal_attempt >= _DATABASE_LIFECYCLE_PORTAL_ATTEMPT_LIMIT
+                or lifecycle_attempt >= _DATABASE_LIFECYCLE_ATTEMPT_LIMIT
+                or lifecycle_attempt
+                != (
+                    _DATABASE_LIFECYCLE_ATTEMPT_TAG
+                    | (
+                        prior_attempt_number
+                        * _DATABASE_LIFECYCLE_ATTEMPT_STRIDE
+                    )
+                    | portal_attempt
+                )
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_attempt_authority_mismatch"
+                )
+        elif lifecycle_attempt != portal_attempt:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_attempt_authority_mismatch"
+            )
         expected = {
             "implementation_in_progress": True,
             "active_task_id": identity["task_id"],
             "active_task_cid": identity["canonical_task_cid"],
             "active_task_key": identity["canonical_task_key"],
-            "active_attempt": int(record.attempt),
+            "active_attempt": portal_attempt,
             "active_branch": str(record.branch),
         }
         if (
@@ -2378,7 +2440,7 @@ class DatabasePortalExecutionBridge:
                 or lock.get("canonical_task_cid")
                 != identity["canonical_task_cid"]
                 or type(lock.get("attempt")) is not int
-                or int(lock["attempt"]) != int(record.attempt)
+                or int(lock["attempt"]) != portal_attempt
                 or not callable(lock_active)
             ):
                 raise DatabasePortalBridgeDeferred(
@@ -2403,7 +2465,7 @@ class DatabasePortalExecutionBridge:
             "projection_identity_id": projection_identity_id,
             "portal_state_id": state_id,
             "implementation_lock_id": implementation_lock_id,
-            "active_attempt": int(record.attempt),
+            "active_attempt": portal_attempt,
             "active_worktree_path": workspace,
             "active_branch": str(record.branch),
         }
@@ -3664,6 +3726,7 @@ class DatabasePortalExecutionBridge:
         daemon: Any,
         record: Any,
         workspace: Path,
+        portal_attempt: int,
     ) -> tuple[dict[str, Any], bytes, os.stat_result]:
         raw, identity = _stable_regular_bytes(
             path,
@@ -3695,8 +3758,10 @@ class DatabasePortalExecutionBridge:
             or type(marker.get("recorded_at")) is not str
             or not marker["recorded_at"]
             or marker.get("task_id") != record.task_id
+            or type(portal_attempt) is not int
+            or portal_attempt < 1
             or type(marker.get("attempt")) is not int
-            or int(marker["attempt"]) != int(record.attempt)
+            or int(marker["attempt"]) != portal_attempt
             or marker.get("workspace_path") != str(workspace)
             or marker.get("ephemeral_worktree") is not True
             or not configured
@@ -4429,6 +4494,7 @@ class DatabasePortalExecutionBridge:
             daemon=daemon,
             record=record,
             workspace=workspace,
+            portal_attempt=int(portal_state_binding["active_attempt"]),
         )
         if retired_raw != marker_blob_raw or parsed_raw != retired_raw:
             raise DatabasePortalBridgeDeferred(
@@ -4526,6 +4592,7 @@ class DatabasePortalExecutionBridge:
             daemon=daemon,
             record=record,
             workspace=workspace,
+            portal_attempt=int(portal_state_binding["active_attempt"]),
         )
         try:
             exact_dead = daemon.worktree_lifecycle.require_exact_dead_owner(
@@ -4681,11 +4748,16 @@ class DatabasePortalExecutionBridge:
                 prior_binding=current_binding,
             )
             expected_second_authority = successor_authority
+        if second_authority != expected_second_authority:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_database_authority_changed"
+            )
         second_portal = self._prior_portal_state_binding(
             daemon,
             prior_paths,
             prior_binding,
             record,
+            database_authority=database_authority,
         )
         second_portal["attempt_directory_identity"] = dict(
             portal_state_binding["attempt_directory_identity"]
@@ -4701,6 +4773,7 @@ class DatabasePortalExecutionBridge:
                 daemon=daemon,
                 record=record,
                 workspace=workspace,
+                portal_attempt=int(second_portal["active_attempt"]),
             )
         )
         second_proof = self._protected_marker_snapshot_proof(
@@ -4745,8 +4818,7 @@ class DatabasePortalExecutionBridge:
                 "cross_attempt_declared_output_appeared_before_marker_retirement"
             )
         if (
-            second_authority != expected_second_authority
-            or second_portal != dict(portal_state_binding)
+            second_portal != dict(portal_state_binding)
             or second_marker != marker
             or second_raw != marker_raw
             or second_proof != first_proof
@@ -5931,7 +6003,7 @@ class DatabasePortalExecutionBridge:
                 for field in _ATTEMPT_DIRECTORY_IDENTITY_FIELDS
             )
             or type(portal.get("active_attempt")) is not int
-            or int(portal["active_attempt"]) < 0
+            or int(portal["active_attempt"]) < 1
             or any(
                 type(portal.get(field)) is not str or not portal[field]
                 for field in _PORTAL_STATE_BINDING_FIELDS.difference(
@@ -6309,6 +6381,12 @@ class DatabasePortalExecutionBridge:
         if (
             type(marker) is not dict
             or set(marker) != _ACTIVE_PROTECTED_STATE_FIELDS
+            or marker.get("task_id") != record.task_id
+            or type(marker.get("attempt")) is not int
+            or marker.get("attempt")
+            != recovery["portal_state_binding"]["active_attempt"]
+            or marker.get("workspace_path")
+            != recovery["portal_state_binding"]["active_worktree_path"]
             or bytes(retired_item["payload"]) != marker_raw
             or prepared.get("active_marker") != marker
             or prepared.get("active_marker_sha256") != f"sha256:{marker_digest}"
@@ -6708,6 +6786,7 @@ class DatabasePortalExecutionBridge:
                 prior_paths,
                 prior_binding,
                 exact_record,
+                database_authority=recovery["database_authority"],
             )
             portal_state["attempt_directory_identity"] = prior_directory_identity
             if portal_state != recovery["portal_state_binding"]:
@@ -6998,6 +7077,7 @@ class DatabasePortalExecutionBridge:
         prior_paths: DatabasePortalAttemptPaths,
         record: Any,
         workspace: Path,
+        portal_attempt: int,
     ) -> dict[str, Any]:
         """Authenticate protected-state markers without retiring any bytes."""
 
@@ -7019,6 +7099,7 @@ class DatabasePortalExecutionBridge:
             daemon=daemon,
             record=record,
             workspace=workspace,
+            portal_attempt=portal_attempt,
         )
         return {
             "incident_marker": "absent",
@@ -7136,6 +7217,7 @@ class DatabasePortalExecutionBridge:
                     prior_paths,
                     prior_binding,
                     record,
+                    database_authority=authority,
                 )
                 portal_state["attempt_directory_identity"] = (
                     prior_directory_identity
@@ -7184,6 +7266,7 @@ class DatabasePortalExecutionBridge:
                 prior_paths=prior_paths,
                 record=record,
                 workspace=workspace,
+                portal_attempt=int(portal_state["active_attempt"]),
             )
             try:
                 self._strict_workspace_process_scan(
@@ -7237,6 +7320,7 @@ class DatabasePortalExecutionBridge:
                 prior_paths,
                 prior_binding,
                 record,
+                database_authority=second_authority,
             )
             second_portal_state["attempt_directory_identity"] = (
                 prior_directory_identity
@@ -7246,6 +7330,7 @@ class DatabasePortalExecutionBridge:
                 prior_paths=prior_paths,
                 record=record,
                 workspace=workspace,
+                portal_attempt=int(second_portal_state["active_attempt"]),
             )
             try:
                 second_dead = lifecycle_store.require_exact_dead_owner(
@@ -7768,15 +7853,6 @@ class DatabasePortalExecutionBridge:
                     raise DatabasePortalBridgeDeferred(
                         "cross_attempt_lifecycle_current_binding_changed"
                     )
-                portal_state_binding = self._prior_portal_state_binding(
-                    daemon,
-                    prior_paths,
-                    prior_binding,
-                    record,
-                )
-                portal_state_binding["attempt_directory_identity"] = (
-                    prior_directory_identity
-                )
                 authority = self._validated_prior_authority(
                     self.prior_attempt_authority(
                         attempt,
@@ -7785,6 +7861,16 @@ class DatabasePortalExecutionBridge:
                     ),
                     current_binding=binding,
                     prior_binding=prior_binding,
+                )
+                portal_state_binding = self._prior_portal_state_binding(
+                    daemon,
+                    prior_paths,
+                    prior_binding,
+                    record,
+                    database_authority=authority,
+                )
+                portal_state_binding["attempt_directory_identity"] = (
+                    prior_directory_identity
                 )
             except DatabasePortalBridgeDeferred:
                 raise
@@ -8005,28 +8091,6 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeDeferred(
                     "cross_attempt_lifecycle_binding_changed_before_finalize"
                 )
-            second_portal_state = self._prior_portal_state_binding(
-                daemon,
-                prior_paths,
-                prior_binding,
-                record,
-            )
-            second_portal_state["attempt_directory_identity"] = (
-                prior_directory_identity
-            )
-            second_preservation = self._preserved_quiescent_worktree(
-                daemon,
-                verified,
-                prior_paths,
-                attempt=attempt,
-                current_binding=binding,
-                prior_binding=prior_binding,
-                database_authority=authority,
-                portal_state_binding=portal_state_binding,
-                lifecycle_recovery_receipt=existing_receipt,
-                perform_marker_retirement=False,
-                publish_marker_clearance=True,
-            )
             try:
                 second_authority = self._validated_prior_authority(
                     self.prior_attempt_authority(
@@ -8043,11 +8107,40 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeDeferred(
                     "cross_attempt_lifecycle_database_authority_rejected"
                 ) from exc
+            if second_authority != authority:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_evidence_changed_before_finalize"
+                )
+            second_portal_state = self._prior_portal_state_binding(
+                daemon,
+                prior_paths,
+                prior_binding,
+                record,
+                database_authority=second_authority,
+            )
+            second_portal_state["attempt_directory_identity"] = (
+                prior_directory_identity
+            )
+            if second_portal_state != portal_state_binding:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_evidence_changed_before_finalize"
+                )
+            second_preservation = self._preserved_quiescent_worktree(
+                daemon,
+                verified,
+                prior_paths,
+                attempt=attempt,
+                current_binding=binding,
+                prior_binding=prior_binding,
+                database_authority=second_authority,
+                portal_state_binding=second_portal_state,
+                lifecycle_recovery_receipt=existing_receipt,
+                perform_marker_retirement=False,
+                publish_marker_clearance=True,
+            )
             if (
-                second_portal_state != portal_state_binding
-                or self._stable_preservation_authority(second_preservation)
+                self._stable_preservation_authority(second_preservation)
                 != self._stable_preservation_authority(preservation)
-                or second_authority != authority
             ):
                 raise DatabasePortalBridgeDeferred(
                     "cross_attempt_lifecycle_evidence_changed_before_finalize"
@@ -9126,6 +9219,16 @@ class DatabasePortalExecutionBridge:
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
+        attempt_number = getattr(attempt, "attempt_number", None)
+        if (
+            isinstance(attempt_number, bool)
+            or not isinstance(attempt_number, int)
+            or attempt_number < 1
+            or attempt_number >= _DATABASE_ATTEMPT_LIMIT
+        ):
+            raise DatabasePortalBridgeError(
+                "database attempt ordinal must be a positive u32 integer"
+            )
         record = self._record_for_attempt(self.task_source, attempt)
         paths, binding = self._ensure_attempt_projection(attempt, record)
         summaries: list[Mapping[str, Any]] = []
@@ -9137,9 +9240,63 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "portal_factory did not return a Portal-compatible daemon"
             )
-        merge_queue = getattr(daemon, "merge_queue", None)
-        merge_request_loader = getattr(merge_queue, "get", None)
         try:
+            attempt_authority_binder = getattr(
+                daemon,
+                "bind_database_attempt_authority",
+                None,
+            )
+            if not callable(attempt_authority_binder):
+                raise DatabasePortalBridgeError(
+                    "Portal daemon does not expose database attempt authority binding"
+                )
+            try:
+                bound_attempt_authority = attempt_authority_binder(
+                    task_id=str(binding.get("task_alias") or attempt.task_cid),
+                    database_task_cid=str(attempt.task_cid),
+                    database_attempt_id=str(attempt.attempt_id),
+                    database_claim_id=str(attempt.claim_id),
+                    database_attempt_number=attempt_number,
+                    database_binding_id=str(binding.get("binding_id") or ""),
+                )
+            except Exception as exc:
+                raise DatabasePortalBridgeError(
+                    "Portal daemon rejected database attempt authority"
+                ) from exc
+            expected_attempt_authority = {
+                "schema": PORTAL_DATABASE_ATTEMPT_AUTHORITY_SCHEMA,
+                "task_id": str(binding.get("task_alias") or attempt.task_cid),
+                "database_task_cid": str(attempt.task_cid),
+                "database_attempt_id": str(attempt.attempt_id),
+                "database_claim_id": str(attempt.claim_id),
+                "database_binding_id": str(binding.get("binding_id") or ""),
+                "database_attempt_number": attempt_number,
+                "worktree_lifecycle_attempt_prefix": (
+                    _DATABASE_LIFECYCLE_ATTEMPT_TAG
+                    | (attempt_number * _DATABASE_LIFECYCLE_ATTEMPT_STRIDE)
+                ),
+                "worktree_lifecycle_attempt_prefix_only": True,
+                "portal_attempt_authority": False,
+                "completion_authority": False,
+                "quarantine_authority": False,
+            }
+            if (
+                not isinstance(bound_attempt_authority, Mapping)
+                or any(
+                    bound_attempt_authority.get(field) != value
+                    for field, value in expected_attempt_authority.items()
+                )
+                or type(bound_attempt_authority.get("canonical_task_cid"))
+                is not str
+                or not str(bound_attempt_authority["canonical_task_cid"])
+                or set(bound_attempt_authority)
+                != {*expected_attempt_authority, "canonical_task_cid"}
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal daemon returned invalid database attempt authority"
+                )
+            merge_queue = getattr(daemon, "merge_queue", None)
+            merge_request_loader = getattr(merge_queue, "get", None)
             self._recover_superseded_attempt_lifecycle(
                 attempt=attempt,
                 paths=paths,

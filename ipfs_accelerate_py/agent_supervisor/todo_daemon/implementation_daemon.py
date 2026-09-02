@@ -350,6 +350,14 @@ WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES
 DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
 WORKTREE_CONTEXT_SNAPSHOT_SCHEMA = "agent-supervisor-worktree-context-snapshot-v1"
 DEFAULT_WORKTREE_POOL_MAX_ENTRIES = 4
+_PORTAL_DATABASE_ATTEMPT_AUTHORITY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/portal-database-attempt-authority@1"
+)
+_DATABASE_ATTEMPT_LIMIT = 1 << 32
+_DATABASE_LIFECYCLE_PORTAL_ATTEMPT_LIMIT = 1 << 16
+_DATABASE_LIFECYCLE_ATTEMPT_STRIDE = 1 << 16
+_DATABASE_LIFECYCLE_ATTEMPT_TAG = 1 << 52
+_DATABASE_LIFECYCLE_ATTEMPT_LIMIT = 1 << 53
 MAX_NESTED_SUBMODULE_DEPTH = 8
 MAX_NESTED_SUBMODULE_PATH_BYTES = 1024
 MAX_NESTED_SUBMODULE_PATH_PARTS = 64
@@ -5266,6 +5274,12 @@ class PortalImplementationDaemon:
         )
         self._task_identity_by_display_id: dict[str, TaskIdentity] = {}
         self._active_canonical_task_cids: set[str] = set()
+        # A database-backed Portal projection has a fresh local state file for
+        # every authoritative DuckDB attempt.  Keep the external attempt
+        # ordinal separate from that disposable state so lifecycle records do
+        # not restart at attempt 1 and collide with retained quarantine
+        # evidence from a superseded database attempt.
+        self._database_attempt_authority: dict[str, Any] | None = None
         self.git_gc = GitGarbageCollector(
             repo_root=self.repo_root,
             worktree_root=self.worktree_root if hasattr(self, "worktree_root") else None,
@@ -9028,7 +9042,13 @@ class PortalImplementationDaemon:
         )
         compare_identity(
             "attempt",
-            int(state.active_attempt or 0),
+            self._worktree_lifecycle_attempt_for_identity(
+                task_id=str(state.active_task_id or ""),
+                canonical_task_cid=str(state.active_task_cid or ""),
+                portal_attempt=int(state.active_attempt or 0),
+            )
+            if int(state.active_attempt or 0) > 0
+            else 0,
             record.attempt,
             expected_present=int(state.active_attempt or 0) > 0,
         )
@@ -9151,11 +9171,16 @@ class PortalImplementationDaemon:
         expected_state_dir = normalize_workspace_path(
             self.state_path.parent.resolve()
         )
+        lifecycle_attempt = self._worktree_lifecycle_attempt_for_identity(
+            task_id=task_id,
+            canonical_task_cid=canonical_task_cid,
+            portal_attempt=attempt,
+        )
         if (
             not record.is_terminal
             or record.task_id != task_id
             or record.canonical_task_cid != canonical_task_cid
-            or record.attempt != attempt
+            or record.attempt != lifecycle_attempt
             or normalize_workspace_path(record.repo_root)
             != normalize_workspace_path(self.repo_root)
             or normalize_workspace_path(record.state_dir) != expected_state_dir
@@ -10112,6 +10137,89 @@ class PortalImplementationDaemon:
     def _canonical_ref(self, task: PortalTask) -> str:
         return self._identity_for_task(task).canonical_task_cid
 
+    def bind_database_attempt_authority(
+        self,
+        *,
+        task_id: str,
+        database_task_cid: str,
+        database_attempt_id: str,
+        database_claim_id: str,
+        database_attempt_number: int,
+        database_binding_id: str,
+    ) -> Mapping[str, Any]:
+        """Bind one private Portal projection to its DuckDB attempt ordinal.
+
+        The database bridge calls this after it has verified and sealed the
+        attempt-local projection.  The binding can only select the exact lone
+        task whose projected database identities agree with the bridge.  It
+        supplies a lifecycle-only attempt namespace, never Portal retry,
+        completion, cleanup, merge, or quarantine authority.
+        """
+
+        exact_strings = {
+            "task_id": task_id,
+            "database_task_cid": database_task_cid,
+            "database_attempt_id": database_attempt_id,
+            "database_claim_id": database_claim_id,
+            "database_binding_id": database_binding_id,
+        }
+        if any(type(value) is not str or not value.strip() for value in exact_strings.values()):
+            raise ValueError("database attempt authority identities must be non-empty strings")
+        if (
+            isinstance(database_attempt_number, bool)
+            or not isinstance(database_attempt_number, int)
+            or database_attempt_number < 1
+            or database_attempt_number >= _DATABASE_ATTEMPT_LIMIT
+        ):
+            raise ValueError(
+                "database attempt authority ordinal must be a positive u32 integer"
+            )
+
+        tasks = self._load_tasks()
+        matches = [task for task in tasks if task.task_id == task_id]
+        if len(tasks) != 1 or len(matches) != 1:
+            raise RuntimeError(
+                "database attempt authority requires one exact projected task"
+            )
+        task = matches[0]
+        expected_metadata = {
+            "database task cid": database_task_cid,
+            "database attempt id": database_attempt_id,
+            "database claim id": database_claim_id,
+            "database attempt number": str(database_attempt_number),
+            "projection authority": "false",
+        }
+        if any(
+            str(task.metadata.get(field) or "") != expected
+            for field, expected in expected_metadata.items()
+        ):
+            raise RuntimeError(
+                "database attempt authority disagrees with the projected task"
+            )
+
+        authority = {
+            "schema": _PORTAL_DATABASE_ATTEMPT_AUTHORITY_SCHEMA,
+            **exact_strings,
+            "database_attempt_number": database_attempt_number,
+            "canonical_task_cid": self._canonical_ref(task),
+            "worktree_lifecycle_attempt_prefix": (
+                _DATABASE_LIFECYCLE_ATTEMPT_TAG
+                | (
+                    database_attempt_number
+                    * _DATABASE_LIFECYCLE_ATTEMPT_STRIDE
+                )
+            ),
+            "worktree_lifecycle_attempt_prefix_only": True,
+            "portal_attempt_authority": False,
+            "completion_authority": False,
+            "quarantine_authority": False,
+        }
+        existing = self._database_attempt_authority
+        if existing is not None and existing != authority:
+            raise RuntimeError("database attempt authority cannot be rebound")
+        self._database_attempt_authority = dict(authority)
+        return MappingProxyType(dict(authority))
+
     def _retry_no_change_pre_dispatch_scope(
         self,
         task: PortalTask,
@@ -10199,6 +10307,86 @@ class PortalImplementationDaemon:
         if protected is not None and protected == current:
             return protected
         return current + 1
+
+    def _worktree_lifecycle_attempt_for_identity(
+        self,
+        *,
+        task_id: str,
+        canonical_task_cid: str,
+        portal_attempt: int,
+    ) -> int:
+        """Return the lifecycle-only attempt identity for an exact task.
+
+        Portal retry accounting remains local.  Database projections use a
+        DuckDB-attempt prefix paired with the local Portal retry only at the
+        worktree lifecycle boundary.  This prevents both fresh attempt
+        directories and retries within one attempt from colliding with
+        immutable quarantine evidence.
+        """
+
+        if (
+            isinstance(portal_attempt, bool)
+            or not isinstance(portal_attempt, int)
+            or portal_attempt < 1
+        ):
+            raise RuntimeError("Portal lifecycle attempt must be positive")
+        authority = self._database_attempt_authority
+        if authority is None:
+            return portal_attempt
+        if portal_attempt >= _DATABASE_LIFECYCLE_PORTAL_ATTEMPT_LIMIT:
+            raise RuntimeError(
+                "database-bound Portal lifecycle attempt must fit unsigned 16-bit"
+            )
+        database_attempt_number = authority.get("database_attempt_number")
+        if (
+            authority.get("schema")
+            != _PORTAL_DATABASE_ATTEMPT_AUTHORITY_SCHEMA
+            or authority.get("task_id") != task_id
+            or authority.get("canonical_task_cid") != canonical_task_cid
+            or authority.get("worktree_lifecycle_attempt_prefix_only") is not True
+            or authority.get("portal_attempt_authority") is not False
+            or isinstance(database_attempt_number, bool)
+            or not isinstance(database_attempt_number, int)
+            or database_attempt_number < 1
+            or database_attempt_number >= _DATABASE_ATTEMPT_LIMIT
+        ):
+            raise RuntimeError(
+                "database attempt authority does not bind the lifecycle task"
+            )
+        lifecycle_attempt_prefix = authority.get(
+            "worktree_lifecycle_attempt_prefix"
+        )
+        if (
+            isinstance(lifecycle_attempt_prefix, bool)
+            or not isinstance(lifecycle_attempt_prefix, int)
+            or lifecycle_attempt_prefix < _DATABASE_LIFECYCLE_ATTEMPT_TAG
+            or lifecycle_attempt_prefix >= _DATABASE_LIFECYCLE_ATTEMPT_LIMIT
+            or lifecycle_attempt_prefix % _DATABASE_LIFECYCLE_ATTEMPT_STRIDE
+            != 0
+            or lifecycle_attempt_prefix
+            != (
+                _DATABASE_LIFECYCLE_ATTEMPT_TAG
+                | (
+                    database_attempt_number
+                    * _DATABASE_LIFECYCLE_ATTEMPT_STRIDE
+                )
+            )
+        ):
+            raise RuntimeError(
+                "database worktree lifecycle attempt identity is invalid"
+            )
+        return lifecycle_attempt_prefix | portal_attempt
+
+    def _worktree_lifecycle_attempt(
+        self,
+        task: PortalTask,
+        portal_attempt: int,
+    ) -> int:
+        return self._worktree_lifecycle_attempt_for_identity(
+            task_id=task.task_id,
+            canonical_task_cid=self._canonical_ref(task),
+            portal_attempt=portal_attempt,
+        )
 
     def _durable_protected_recovery_attempt(
         self,
@@ -21431,7 +21619,7 @@ class PortalImplementationDaemon:
             lifecycle_record = self.worktree_lifecycle.begin_preparing(
                 task_id=task.task_id,
                 canonical_task_cid=self._canonical_ref(task),
-                attempt=attempt,
+                attempt=self._worktree_lifecycle_attempt(task, attempt),
                 lane_id=self._worktree_lifecycle_lane_id(),
                 workspace_path=worktree_path,
                 branch=branch_name,
@@ -29534,7 +29722,7 @@ class PortalImplementationDaemon:
                 lifecycle_record = self.worktree_lifecycle.begin_preparing(
                     task_id=task.task_id,
                     canonical_task_cid=self._canonical_ref(task),
-                    attempt=attempt,
+                    attempt=self._worktree_lifecycle_attempt(task, attempt),
                     lane_id=self._worktree_lifecycle_lane_id(),
                     workspace_path=worktree_path,
                     branch=branch_name,
@@ -31466,7 +31654,8 @@ class PortalImplementationDaemon:
                 and active_lifecycle.task_id == task.task_id
                 and active_lifecycle.canonical_task_cid
                 == self._canonical_ref(task)
-                and active_lifecycle.attempt == attempt
+                and active_lifecycle.attempt
+                == self._worktree_lifecycle_attempt(task, attempt)
             ):
                 # Finalize only this attempt's provisional claim.  Passing the
                 # pooled target path here could select and mutate the older

@@ -48,6 +48,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA_V2,
     DATABASE_PORTAL_RECONCILED_SOURCE_TRANSITION_SCHEMA,
     DATABASE_PORTAL_TARGET_ADVANCED_SOURCE_TRANSITION_SCHEMA,
+    PORTAL_DATABASE_ATTEMPT_AUTHORITY_SCHEMA,
     DatabasePortalAttemptPaths,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
@@ -1244,13 +1245,57 @@ class _TaskSource:
         return self.record if task_cid == "task:cid:004" else None
 
 
-class _CompletingPortal:
+class _DatabaseAttemptAuthorityPortal:
+    def bind_database_attempt_authority(
+        self,
+        *,
+        task_id: str,
+        database_task_cid: str,
+        database_attempt_id: str,
+        database_claim_id: str,
+        database_attempt_number: int,
+        database_binding_id: str,
+    ) -> dict[str, object]:
+        binding = {
+            "task_id": task_id,
+            "database_task_cid": database_task_cid,
+            "database_attempt_id": database_attempt_id,
+            "database_claim_id": database_claim_id,
+            "database_attempt_number": database_attempt_number,
+            "database_binding_id": database_binding_id,
+        }
+        calls = getattr(self, "database_attempt_authority_calls", None)
+        if calls is None:
+            calls = []
+            self.database_attempt_authority_calls = calls
+        calls.append(binding)
+        call_order = getattr(self, "call_order", None)
+        if isinstance(call_order, list):
+            call_order.append("bind_database_attempt_authority")
+        return {
+            "schema": PORTAL_DATABASE_ATTEMPT_AUTHORITY_SCHEMA,
+            **binding,
+            "canonical_task_cid": "sha256:" + "c" * 64,
+            "worktree_lifecycle_attempt_prefix": (
+                (1 << 52) | (database_attempt_number << 16)
+            ),
+            "worktree_lifecycle_attempt_prefix_only": True,
+            "portal_attempt_authority": False,
+            "completion_authority": False,
+            "quarantine_authority": False,
+        }
+
+
+class _CompletingPortal(_DatabaseAttemptAuthorityPortal):
     def __init__(self, paths: object, task_alias: str) -> None:
         self.paths = paths
         self.task_alias = task_alias
         self.closed = False
+        self.call_order: list[str] = []
+        self.database_attempt_authority_calls: list[dict[str, object]] = []
 
     def run_once(self) -> dict[str, object]:
+        self.call_order.append("run_once")
         text = self.paths.task_projection.read_text(encoding="utf-8")
         self.paths.task_projection.write_text(
             text.replace("- Status: ready", "- Status: completed"),
@@ -1306,7 +1351,11 @@ def _cross_attempt_recovery_fixture(
     *,
     authority_allowed: bool = True,
     prior_task_revision: int = 10,
+    prior_database_attempt_number: int = 1,
+    lifecycle_attempt: int = 1,
+    portal_attempt: int = 1,
     protected_marker: bool = False,
+    protected_marker_attempt: int | None = None,
     nested_output_path: str = "",
 ) -> tuple[
     DatabasePortalExecutionBridge,
@@ -1408,13 +1457,16 @@ def _cross_attempt_recovery_fixture(
     prior_record.revision = prior_task_revision
     task_source = _TaskSource(current_record)
     attempt_root = tmp_path / "attempts"
-    current_attempt = replace(_attempt(), attempt_number=2)
+    current_attempt = replace(
+        _attempt(),
+        attempt_number=prior_database_attempt_number + 1,
+    )
     prior_attempt = DatabaseTaskAttempt(
         attempt_id="attempt:prior",
         claim_id="claim:prior",
         task_cid=current_attempt.task_cid,
         task_alias=current_attempt.task_alias,
-        attempt_number=1,
+        attempt_number=prior_database_attempt_number,
         owner_session_id="session:prior",
         fencing_token=6,
         fence_epoch=2,
@@ -1456,7 +1508,7 @@ def _cross_attempt_recovery_fixture(
                 "active_task_id": prior_identity["task_id"],
                 "active_task_cid": prior_identity["canonical_task_cid"],
                 "active_task_key": prior_identity["canonical_task_key"],
-                "active_attempt": 1,
+                "active_attempt": portal_attempt,
                 "active_worktree_path": str(workspace.resolve()),
                 "active_branch": prior_branch,
             },
@@ -1476,8 +1528,10 @@ def _cross_attempt_recovery_fixture(
     lifecycle = store.begin_preparing(
         task_id=current_attempt.task_alias,
         canonical_task_cid=prior_identity["canonical_task_cid"],
-        attempt=1,
-        lane_id=f"{prior_paths.root.resolve()}:lane-1",
+        attempt=lifecycle_attempt,
+        lane_id=(
+            f"{prior_paths.root.resolve()}:lane-{lifecycle_attempt}"
+        ),
         workspace_path=workspace,
         branch=prior_branch,
         merge_target="main",
@@ -1641,7 +1695,11 @@ def _cross_attempt_recovery_fixture(
                     "schema": "implementation-protected-path-active-v1",
                     "recorded_at": "2026-09-01T00:00:00Z",
                     "task_id": current_attempt.task_alias,
-                    "attempt": 1,
+                    "attempt": (
+                        portal_attempt
+                        if protected_marker_attempt is None
+                        else protected_marker_attempt
+                    ),
                     "workspace_path": str(workspace.resolve()),
                     "ephemeral_worktree": True,
                     "protected_paths": list(
@@ -1656,6 +1714,309 @@ def _cross_attempt_recovery_fixture(
             encoding="utf-8",
         )
     return bridge, current_attempt, store, workspace, portals
+
+
+def _prior_recovery_evidence(
+    bridge: DatabasePortalExecutionBridge,
+    current_attempt: DatabaseTaskAttempt,
+    store: WorktreeLifecycleStore,
+    workspace: Path,
+) -> tuple[
+    object,
+    DatabasePortalAttemptPaths,
+    dict[str, object],
+    object,
+    dict[str, object],
+]:
+    record = store.load_workspace(workspace)
+    assert record is not None
+    prior_root = Path(record.state_dir)
+    prior_paths = DatabasePortalAttemptPaths(
+        root=prior_root,
+        task_projection=prior_root / "task-projection.runtime.todo.md",
+        binding=prior_root / "database-attempt-binding.json",
+        state=prior_root / "portal-task-state.json",
+        strategy=prior_root / "portal-strategy.json",
+        events=prior_root / "portal-events.jsonl",
+        implementation_logs=prior_root / "implementation-logs",
+    )
+    prior_binding = dict(bridge._strict_binding(prior_paths.binding))
+    current_record = bridge.task_source.get_task(current_attempt.task_cid)
+    assert current_record is not None
+    _current_paths, current_binding = bridge._ensure_attempt_projection(
+        current_attempt,
+        current_record,
+    )
+    authority_provider = bridge.prior_attempt_authority
+    assert authority_provider is not None
+    database_authority = bridge._validated_prior_authority(
+        authority_provider(
+            current_attempt,
+            current_binding,
+            prior_binding,
+        ),
+        current_binding=current_binding,
+        prior_binding=prior_binding,
+    )
+    daemon = bridge.portal_factory(
+        prior_paths,
+        str(prior_binding["task_alias"]),
+    )
+    return (
+        daemon,
+        prior_paths,
+        prior_binding,
+        record,
+        database_authority,
+    )
+
+
+def test_prior_portal_state_binding_joins_tagged_lifecycle_to_local_attempt(
+    tmp_path: Path,
+) -> None:
+    prior_database_attempt = 9
+    bridge, current_attempt, store, workspace, _portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            prior_database_attempt_number=prior_database_attempt,
+            lifecycle_attempt=(1 << 52)
+            | (prior_database_attempt << 16)
+            | 1,
+            portal_attempt=1,
+        )
+    )
+    daemon, paths, binding, record, authority = _prior_recovery_evidence(
+        bridge,
+        current_attempt,
+        store,
+        workspace,
+    )
+
+    portal = bridge._prior_portal_state_binding(
+        daemon,
+        paths,
+        binding,
+        record,
+        database_authority=authority,
+    )
+
+    assert record.attempt == (
+        (1 << 52) | (prior_database_attempt << 16) | 1
+    )
+    assert portal["active_attempt"] == 1
+    assert portal["active_worktree_path"] == str(workspace.resolve())
+
+
+@pytest.mark.parametrize(
+    "lifecycle_attempt",
+    (
+        (1 << 52) | (8 << 16) | 1,
+        (1 << 52) | (9 << 16) | 2,
+    ),
+)
+def test_prior_portal_state_binding_rejects_wrong_database_lifecycle_tag(
+    tmp_path: Path,
+    lifecycle_attempt: int,
+) -> None:
+    bridge, current_attempt, store, workspace, _portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            prior_database_attempt_number=9,
+            lifecycle_attempt=lifecycle_attempt,
+            portal_attempt=1,
+        )
+    )
+    daemon, paths, binding, record, authority = _prior_recovery_evidence(
+        bridge,
+        current_attempt,
+        store,
+        workspace,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="attempt_authority_mismatch",
+    ):
+        bridge._prior_portal_state_binding(
+            daemon,
+            paths,
+            binding,
+            record,
+            database_authority=authority,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("prior_attempt_id", "attempt:wrong"),
+        ("prior_binding_id", "sha256:wrong"),
+        ("prior_attempt_number", 0),
+        ("prior_attempt_number", True),
+        ("prior_attempt_number", 1 << 32),
+    ),
+)
+def test_prior_portal_state_binding_rejects_wrong_database_authority(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    bridge, current_attempt, store, workspace, _portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            prior_database_attempt_number=9,
+            lifecycle_attempt=(1 << 52) | (9 << 16) | 1,
+            portal_attempt=1,
+        )
+    )
+    daemon, paths, binding, record, authority = _prior_recovery_evidence(
+        bridge,
+        current_attempt,
+        store,
+        workspace,
+    )
+    authority[field] = value
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="attempt_authority_mismatch",
+    ):
+        bridge._prior_portal_state_binding(
+            daemon,
+            paths,
+            binding,
+            record,
+            database_authority=authority,
+        )
+
+
+def test_prior_portal_state_binding_rejects_local_lock_attempt_mismatch(
+    tmp_path: Path,
+) -> None:
+    bridge, current_attempt, store, workspace, _portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            prior_database_attempt_number=9,
+            lifecycle_attempt=(1 << 52) | (9 << 16) | 1,
+            portal_attempt=1,
+        )
+    )
+    daemon, paths, binding, record, authority = _prior_recovery_evidence(
+        bridge,
+        current_attempt,
+        store,
+        workspace,
+    )
+    paths.root.joinpath("implementation.lock").write_text(
+        json.dumps(
+            {
+                "kind": "implementation",
+                "state_dir": str(paths.root.resolve()),
+                "task_id": record.task_id,
+                "canonical_task_cid": record.canonical_task_cid,
+                "attempt": 2,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="implementation_lock_invalid",
+    ):
+        bridge._prior_portal_state_binding(
+            daemon,
+            paths,
+            binding,
+            record,
+            database_authority=authority,
+        )
+
+
+def test_prior_portal_state_binding_keeps_legacy_local_lifecycle_compatible(
+    tmp_path: Path,
+) -> None:
+    bridge, current_attempt, store, workspace, _portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            prior_database_attempt_number=9,
+            lifecycle_attempt=1,
+            portal_attempt=1,
+        )
+    )
+    daemon, paths, binding, record, authority = _prior_recovery_evidence(
+        bridge,
+        current_attempt,
+        store,
+        workspace,
+    )
+
+    portal = bridge._prior_portal_state_binding(
+        daemon,
+        paths,
+        binding,
+        record,
+        database_authority=authority,
+    )
+
+    assert record.attempt == 1
+    assert authority["prior_attempt_number"] == 9
+    assert portal["active_attempt"] == 1
+
+
+def test_bridge_recovers_tagged_lifecycle_with_local_protected_marker_attempt(
+    tmp_path: Path,
+) -> None:
+    prior_database_attempt = 9
+    bridge, current_attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            prior_database_attempt_number=prior_database_attempt,
+            lifecycle_attempt=(1 << 52)
+            | (prior_database_attempt << 16)
+            | 1,
+            portal_attempt=1,
+            protected_marker=True,
+            protected_marker_attempt=1,
+        )
+    )
+
+    receipt = bridge.run_provider(current_attempt)
+
+    assert receipt["accepted"] is True
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    assert terminal.attempt == (
+        (1 << 52) | (prior_database_attempt << 16) | 1
+    )
+    assert portals and portals[0].run_count == 1
+
+
+def test_bridge_rejects_protected_marker_local_attempt_mismatch(
+    tmp_path: Path,
+) -> None:
+    prior_database_attempt = 9
+    bridge, current_attempt, _store, _workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            prior_database_attempt_number=prior_database_attempt,
+            lifecycle_attempt=(1 << 52)
+            | (prior_database_attempt << 16)
+            | 1,
+            portal_attempt=1,
+            protected_marker=True,
+            protected_marker_attempt=2,
+        )
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="protected_snapshot_binding_mismatch",
+    ):
+        bridge.run_provider(current_attempt)
+
+    assert portals and portals[0].run_count == 0
 
 
 def _add_prior_recovery_candidate(
@@ -4951,6 +5312,170 @@ def test_bridge_uses_only_attempt_local_projection_and_seals_receipt(
         bridge.apply_effect(_attempt(), forged_v2)
 
 
+def test_bridge_binds_exact_database_attempt_before_provider_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    portals: list[_CompletingPortal] = []
+
+    def factory(paths: object, alias: str) -> _CompletingPortal:
+        portal = _CompletingPortal(paths, alias)
+        portals.append(portal)
+        return portal
+
+    attempt = replace(
+        _attempt(),
+        attempt_id="attempt:010",
+        claim_id="claim:010",
+        attempt_number=10,
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+    )
+    recover = bridge._recover_superseded_attempt_lifecycle
+
+    def recording_recovery(**kwargs: object) -> object:
+        kwargs["daemon"].call_order.append("recover_superseded_lifecycle")
+        return recover(**kwargs)
+
+    monkeypatch.setattr(
+        bridge,
+        "_recover_superseded_attempt_lifecycle",
+        recording_recovery,
+    )
+
+    receipt = bridge.run_provider(attempt)
+
+    assert receipt["accepted"] is True
+    assert len(portals) == 1
+    [portal] = portals
+    binding = json.loads(
+        bridge._paths(attempt).binding.read_text(encoding="utf-8")
+    )
+    assert portal.database_attempt_authority_calls == [
+        {
+            "task_id": "LGSWF-004",
+            "database_task_cid": "task:cid:004",
+            "database_attempt_id": "attempt:010",
+            "database_claim_id": "claim:010",
+            "database_attempt_number": 10,
+            "database_binding_id": binding["binding_id"],
+        }
+    ]
+    assert portal.call_order[:3] == [
+        "bind_database_attempt_authority",
+        "recover_superseded_lifecycle",
+        "run_once",
+    ]
+    projection = bridge._paths(attempt).task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert "- Database attempt number: 10" in projection
+
+
+def test_bridge_fails_closed_when_portal_lacks_database_attempt_binder(
+    tmp_path: Path,
+) -> None:
+    class UnboundPortal:
+        def __init__(self) -> None:
+            self.run_count = 0
+            self.closed = False
+
+        def run_once(self) -> dict[str, object]:
+            self.run_count += 1
+            return {}
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    portal = UnboundPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="does not expose database attempt authority binding",
+    ):
+        bridge.run_provider(_attempt())
+
+    assert portal.run_count == 0
+    assert portal.closed is True
+
+
+def test_bridge_fails_closed_on_invalid_database_attempt_receipt(
+    tmp_path: Path,
+) -> None:
+    class InvalidReceiptPortal(_CompletingPortal):
+        def bind_database_attempt_authority(
+            self,
+            **kwargs: object,
+        ) -> dict[str, object]:
+            receipt = super().bind_database_attempt_authority(**kwargs)
+            receipt["worktree_lifecycle_attempt_prefix"] = 10
+            return receipt
+
+    portal: InvalidReceiptPortal | None = None
+
+    def factory(paths: object, alias: str) -> InvalidReceiptPortal:
+        nonlocal portal
+        portal = InvalidReceiptPortal(paths, alias)
+        return portal
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="returned invalid database attempt authority",
+    ):
+        bridge.run_provider(replace(_attempt(), attempt_number=10))
+
+    assert portal is not None
+    assert portal.call_order == ["bind_database_attempt_authority"]
+    assert portal.closed is True
+
+
+@pytest.mark.parametrize(
+    "invalid_ordinal",
+    (0, -1, 1 << 32, True, 1.0, "10", None),
+)
+def test_bridge_rejects_invalid_database_attempt_ordinal_before_factory(
+    tmp_path: Path,
+    invalid_ordinal: object,
+) -> None:
+    factory_calls = 0
+
+    def factory(_paths: object, _alias: str) -> object:
+        nonlocal factory_calls
+        factory_calls += 1
+        return object()
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="ordinal must be a positive u32 integer",
+    ):
+        bridge.run_provider(
+            replace(_attempt(), attempt_number=invalid_ordinal)
+        )
+
+    assert factory_calls == 0
+    assert not (tmp_path / "attempts").exists()
+
+
 def test_bridge_projection_satisfies_real_ignored_runtime_durability(
     tmp_path: Path,
 ) -> None:
@@ -5052,7 +5577,7 @@ def test_bridge_rejects_projection_contract_tampering(tmp_path: Path) -> None:
 def test_bridge_honors_explicit_deferral_without_reason_keyword(
     tmp_path: Path,
 ) -> None:
-    class DeferredPortal:
+    class DeferredPortal(_DatabaseAttemptAuthorityPortal):
         def __init__(self) -> None:
             self.closed = False
 
@@ -5127,7 +5652,7 @@ def _external_owner_recovery_result(*, owner: str) -> dict[str, object]:
 def test_bridge_defers_exact_external_owner_recovery_without_settling(
     tmp_path: Path,
 ) -> None:
-    class RecoveryBlockedPortal:
+    class RecoveryBlockedPortal(_DatabaseAttemptAuthorityPortal):
         def run_once(self) -> dict[str, object]:
             return _external_owner_recovery_result(
                 owner="implementation_supervisor"
@@ -5152,7 +5677,7 @@ def test_bridge_defers_exact_external_owner_recovery_without_settling(
 def test_bridge_rejects_unbound_external_owner_recovery_as_terminal(
     tmp_path: Path,
 ) -> None:
-    class UnboundRecoveryPortal:
+    class UnboundRecoveryPortal(_DatabaseAttemptAuthorityPortal):
         def run_once(self) -> dict[str, object]:
             return _external_owner_recovery_result(owner="")
 
