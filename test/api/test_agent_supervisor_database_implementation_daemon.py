@@ -60,6 +60,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     ATTEMPT_PHASE_PROVIDER,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_FENCED_PROVIDER_OUTER_SNAPSHOT_SCHEMA,
+    DATABASE_FENCED_PROVIDER_INNER_POPULATION_RECEIPT_SCHEMA,
     DATABASE_FENCED_PROVIDER_PREDECESSOR_DEATH_MANIFEST_ID,
     DATABASE_FENCED_PROVIDER_PREDECESSOR_DEATH_MANIFEST_SCHEMA,
     DATABASE_FENCED_PROVIDER_PREDECESSOR_DEATH_PINS,
@@ -76,6 +77,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     _database_portal_historical_interrupted_state_transition_budget_matches,
     _database_portal_quiesced_stale_dispatch_release_budget_matches,
     _database_terminal_claim_ordinal_lower_bound,
+    database_fenced_provider_inner_population_receipt_valid,
     is_database_authority_mode,
     open_database_implementation_daemon,
     parse_args,
@@ -320,6 +322,86 @@ def test_interface_identities() -> None:
     assert not is_database_authority_mode(
         authority_mode="legacy_markdown", task_source_kind="legacy-markdown"
     )
+
+
+def test_inner_population_receipt_is_cross_store_stable_and_replay_exact(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path)
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        kwargs = {
+            "task_revision": task.revision,
+            "recovery_manifest_id": "sha256:" + "1" * 64,
+            "recovery_credit_id": "sha256:" + "2" * 64,
+            "receipt_nonce": "inner-receipt:one",
+            "receipt_epoch": 1,
+        }
+        first = dict(
+            daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+        )
+        second = dict(
+            daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+        )
+    finally:
+        daemon.close()
+
+    assert first == second
+    assert first["schema"] == DATABASE_FENCED_PROVIDER_INNER_POPULATION_RECEIPT_SCHEMA
+    assert first["transaction_boundary"] == "cross_store_stable_read"
+    assert database_fenced_provider_inner_population_receipt_valid(first)
+    assert first["groups"]["database_task_attempts"]["count"] == 1
+    assert first["groups"]["provider_invocations"]["count"] == 0
+    assert first["groups"]["effect_claims"]["count"] == 0
+    assert first["authority"]["process_instance_record"]["state"] == "active"
+
+
+def test_inner_population_receipt_fails_without_writer_flock_and_on_tamper(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path)
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        kwargs = {
+            "task_revision": task.revision,
+            "recovery_manifest_id": "sha256:" + "3" * 64,
+            "recovery_credit_id": "sha256:" + "4" * 64,
+            "receipt_nonce": "inner-receipt:tamper",
+            "receipt_epoch": 1,
+        }
+        receipt = dict(
+            daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+        )
+        writer_handle = daemon._embedded_writer_lock_handle
+        daemon._embedded_writer_lock_handle = None
+        try:
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="writer fence",
+            ):
+                daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+        finally:
+            daemon._embedded_writer_lock_handle = writer_handle
+    finally:
+        daemon.close()
+
+    unknown = {**receipt, "unreviewed": True}
+    assert not database_fenced_provider_inner_population_receipt_valid(unknown)
+    tampered = dict(receipt)
+    tampered["groups"] = dict(receipt["groups"])
+    tampered["groups"]["provider_invocations"] = dict(
+        receipt["groups"]["provider_invocations"]
+    )
+    tampered["groups"]["provider_invocations"]["count"] = 1
+    assert not database_fenced_provider_inner_population_receipt_valid(tampered)
 
 
 def test_process_birth_sidecar_allows_default_owner_clean_reopen(

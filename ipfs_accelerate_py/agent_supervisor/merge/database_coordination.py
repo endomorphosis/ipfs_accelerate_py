@@ -32,6 +32,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 import tempfile
 import threading
@@ -100,6 +101,21 @@ TASK_ATTEMPT_SCHEMA: Final[str] = (
 )
 LEASE_EVENT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/lease-event@1"
+)
+FENCED_TASK_AUTHORITY_POPULATION_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-task-authority-population-receipt@1"
+)
+FENCED_TASK_AUTHORITY_QUERY_PROFILE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-task-authority-population-query@1"
+)
+FENCED_TASK_AUTHORITY_POPULATION_GROUP_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-task-authority-population-group@1"
+)
+FENCED_TASK_AUTHORITY_CLAIM_BOUNDARY: Final[str] = (
+    "coordinator_owner_assertion_of_exact_observed_task_authority_population"
 )
 
 DEFAULT_LEASE_MS: Final[int] = 60_000
@@ -1293,6 +1309,310 @@ _COORDINATION_REQUIRED_INDEXES: Final[frozenset[str]] = frozenset(
         "maintenance_leases_scope_idx",
     }
 )
+
+
+# This profile is a closed, task-scoped view over the existing coordinator
+# authority.  JSON payload columns are represented by an exact canonical-byte
+# commitment and length rather than copied into public evidence; this keeps
+# credentials/private callback material out of the receipt without omitting a
+# physical authority column from the projection.
+_FENCED_TASK_AUTHORITY_GROUP_SPECS: Final[
+    tuple[tuple[str, str, str, str, tuple[str, ...]], ...]
+] = (
+    (
+        "coordination_tasks",
+        "coordination_tasks",
+        "task_cid = ?",
+        "task_cid",
+        ("body_json",),
+    ),
+    (
+        "task_dependencies",
+        "task_dependencies",
+        "task_cid = ?",
+        "task_cid, dependency_task_cid",
+        (),
+    ),
+    (
+        "task_completions",
+        "task_completions",
+        "task_cid = ?",
+        "task_cid",
+        ("body_json",),
+    ),
+    (
+        "fenced_leases",
+        "fenced_leases",
+        "task_cid = ?",
+        "lease_id",
+        ("body_json",),
+    ),
+    (
+        "task_claims",
+        "task_claims",
+        "task_cid = ?",
+        "claim_id",
+        ("body_json",),
+    ),
+    (
+        "task_attempts",
+        "task_attempts",
+        "task_cid = ?",
+        "attempt_id",
+        (),
+    ),
+    (
+        "resource_claims",
+        "resource_claims",
+        "task_cid = ?",
+        "claim_id",
+        ("body_json",),
+    ),
+    (
+        "token_history",
+        "token_history",
+        "scope_key = ?",
+        "scope_key, fencing_token, fence_epoch",
+        (),
+    ),
+    (
+        "lease_events",
+        "lease_events",
+        (
+            "scope_key = ? OR lease_id IN "
+            "(SELECT lease_id FROM fenced_leases WHERE task_cid = ?)"
+        ),
+        "observed_at_ms, event_id",
+        ("body_json",),
+    ),
+)
+
+
+def _fenced_task_authority_query_profile() -> dict[str, Any]:
+    """Return the immutable, provider-free task population query profile."""
+
+    groups: list[dict[str, Any]] = []
+    for group_name, table, where_sql, order_sql, json_columns in (
+        _FENCED_TASK_AUTHORITY_GROUP_SPECS
+    ):
+        columns = [name for name, _kind in _COORDINATION_REQUIRED_COLUMNS[table]]
+        groups.append(
+            {
+                "name": group_name,
+                "table": table,
+                "columns": columns,
+                "json_commitment_columns": list(json_columns),
+                "filter": where_sql,
+                "order": order_sql,
+            }
+        )
+    return {
+        "schema": FENCED_TASK_AUTHORITY_QUERY_PROFILE_SCHEMA,
+        "authority_schema": DATABASE_COORDINATION_SCHEMA,
+        "subject_key": "task_cid",
+        "groups": groups,
+        "json_projection": "canonical_sha256_and_byte_length",
+    }
+
+
+def _fenced_task_authority_query_profile_id() -> str:
+    return _sha256_hex(canonical_json_bytes(_fenced_task_authority_query_profile()))
+
+
+def _fenced_population_json_commitment(
+    value: Any,
+    *,
+    table: str,
+    column: str,
+) -> dict[str, Any]:
+    """Commit one reviewed JSON column without exposing its private values."""
+
+    try:
+        decoded = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise DatabaseCoordinationStaleFenceError(
+            f"{table}.{column} is not valid canonical JSON"
+        ) from exc
+    encoded = canonical_json_bytes(decoded)
+    if encoded.decode("utf-8") != str(value):
+        raise DatabaseCoordinationStaleFenceError(
+            f"{table}.{column} is not canonical JSON"
+        )
+    return {
+        "canonical_sha256": _sha256_hex(encoded),
+        "canonical_byte_length": len(encoded),
+    }
+
+
+def _fenced_population_group(
+    *,
+    group_name: str,
+    table: str,
+    columns_and_types: Sequence[tuple[str, str]],
+    json_columns: frozenset[str],
+    rows: Sequence[Any],
+) -> dict[str, Any]:
+    """Project one complete ordered SQL result into a closed public group."""
+
+    projected_rows: list[dict[str, Any]] = []
+    for row in rows:
+        projected: dict[str, Any] = {}
+        for index, (column, kind) in enumerate(columns_and_types):
+            value = _coordination_row_value(row, index, column)
+            if column in json_columns:
+                if type(value) is not str:
+                    raise DatabaseCoordinationStaleFenceError(
+                        f"{table}.{column} is not a JSON string"
+                    )
+                projected[column] = _fenced_population_json_commitment(
+                    value,
+                    table=table,
+                    column=column,
+                )
+            elif value is None:
+                projected[column] = None
+            elif kind == "VARCHAR" and type(value) is str:
+                projected[column] = value
+            elif kind == "BIGINT" and type(value) is int:
+                projected[column] = value
+            elif kind == "BOOLEAN" and type(value) is bool:
+                projected[column] = value
+            else:
+                raise DatabaseCoordinationStaleFenceError(
+                    f"{table}.{column} has an invalid {kind} value"
+                )
+        projected_rows.append(projected)
+    columns = [name for name, _kind in columns_and_types]
+    group = {
+        "schema": FENCED_TASK_AUTHORITY_POPULATION_GROUP_SCHEMA,
+        "name": group_name,
+        "columns": columns,
+        "count": len(projected_rows),
+        "rows": projected_rows,
+        "rows_digest": _sha256_hex(canonical_json_bytes(projected_rows)),
+    }
+    return group
+
+
+def fenced_task_authority_population_receipt_valid(value: Any) -> bool:
+    """Validate the closed coordinator receipt without opening a database."""
+
+    if not isinstance(value, Mapping):
+        return False
+    receipt = dict(value)
+    expected_fields = {
+        "schema",
+        "claim_boundary",
+        "transaction_boundary",
+        "query_profile_id",
+        "receipt_nonce",
+        "receipt_epoch",
+        "authority",
+        "subject",
+        "groups",
+        "task_population_root",
+        "receipt_cid",
+    }
+    if (
+        set(receipt) != expected_fields
+        or receipt.get("schema")
+        != FENCED_TASK_AUTHORITY_POPULATION_RECEIPT_SCHEMA
+        or receipt.get("claim_boundary")
+        != FENCED_TASK_AUTHORITY_CLAIM_BOUNDARY
+        or receipt.get("transaction_boundary")
+        != "single_coordination_store_read_transaction"
+        or receipt.get("query_profile_id")
+        != _fenced_task_authority_query_profile_id()
+        or type(receipt.get("receipt_nonce")) is not str
+        or not str(receipt.get("receipt_nonce") or "")
+        or type(receipt.get("receipt_epoch")) is not int
+        or int(receipt["receipt_epoch"]) < 1
+    ):
+        return False
+    authority = receipt.get("authority")
+    subject = receipt.get("subject")
+    groups = receipt.get("groups")
+    if (
+        not isinstance(authority, Mapping)
+        or set(authority)
+        != {
+            "interface",
+            "schema",
+            "authority_mode",
+            "coordination_target_locator",
+            "metadata_rows",
+            "catalog_root",
+            "complete_storage_projection_root",
+        }
+        or authority.get("interface") != DATABASE_COORDINATOR_INTERFACE
+        or authority.get("schema") != DATABASE_COORDINATION_SCHEMA
+        or authority.get("authority_mode") not in {"embedded", "quack"}
+        or type(authority.get("coordination_target_locator")) is not str
+        or not authority.get("coordination_target_locator")
+        or type(authority.get("metadata_rows")) is not list
+        or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}", str(authority.get("catalog_root") or "")
+        )
+        or not re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(authority.get("complete_storage_projection_root") or ""),
+        )
+        or not isinstance(subject, Mapping)
+        or set(subject)
+        != {
+            "task_cid",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+        }
+        or any(
+            type(subject.get(name)) is not str or not subject.get(name)
+            for name in (
+                "task_cid",
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+            )
+        )
+        or type(subject.get("fencing_token")) is not int
+        or int(subject["fencing_token"]) < 0
+        or type(subject.get("fence_epoch")) is not int
+        or int(subject["fence_epoch"]) < 0
+        or not isinstance(groups, Mapping)
+    ):
+        return False
+    profile = _fenced_task_authority_query_profile()
+    expected_groups = {str(item["name"]): item for item in profile["groups"]}
+    if set(groups) != set(expected_groups):
+        return False
+    for name, profile_group in expected_groups.items():
+        group = groups.get(name)
+        if (
+            not isinstance(group, Mapping)
+            or set(group)
+            != {"schema", "name", "columns", "count", "rows", "rows_digest"}
+            or group.get("schema")
+            != FENCED_TASK_AUTHORITY_POPULATION_GROUP_SCHEMA
+            or group.get("name") != name
+            or group.get("columns") != profile_group["columns"]
+            or type(group.get("count")) is not int
+            or int(group["count"]) < 0
+            or type(group.get("rows")) is not list
+            or len(group["rows"]) != int(group["count"])
+            or group.get("rows_digest")
+            != _sha256_hex(canonical_json_bytes(group["rows"]))
+        ):
+            return False
+    expected_population_root = _sha256_hex(canonical_json_bytes(dict(groups)))
+    if receipt.get("task_population_root") != expected_population_root:
+        return False
+    unsigned = dict(receipt)
+    receipt_cid = str(unsigned.pop("receipt_cid", "") or "")
+    return receipt_cid == _sha256_hex(canonical_json_bytes(unsigned))
 
 
 def _coordination_row_value(row: Any, index: int, name: str) -> Any:
@@ -6657,6 +6977,300 @@ class DatabaseCoordinator:
                 revision=int(_row_get(mapping, "revision", default=1)),
             )
 
+    def _fenced_task_authority_population_receipt_unlocked(
+        self,
+        connection: Any,
+        *,
+        task_cid: str,
+        attempt_id: str,
+        claim_id: str,
+        lease_id: str,
+        owner_session_id: str,
+        fencing_token: int,
+        fence_epoch: int,
+        receipt_nonce: str,
+        receipt_epoch: int,
+    ) -> Mapping[str, Any]:
+        """Build one receipt while the caller owns the read transaction."""
+
+        _validate_coordination_authority(connection)
+        catalog = _coordination_storage_catalog(connection)
+        storage = _coordination_storage_projection_from_connection(
+            connection,
+            validate_authority=False,
+        )
+        metadata_raw = connection.execute(
+            "SELECT key, value FROM coordination_metadata ORDER BY key"
+        ).fetchall()
+        metadata_rows: list[dict[str, Any]] = []
+        metadata_values: dict[str, str] = {}
+        for row in metadata_raw:
+            key = str(_coordination_row_value(row, 0, "key") or "")
+            value = str(_coordination_row_value(row, 1, "value") or "")
+            if not key or key in metadata_values:
+                raise DatabaseCoordinationConflictError(
+                    "coordination metadata population is not unique"
+                )
+            metadata_values[key] = value
+            encoded = value.encode("utf-8")
+            metadata_rows.append(
+                {
+                    "key": key,
+                    "value_sha256": _sha256_hex(encoded),
+                    "value_byte_length": len(encoded),
+                }
+            )
+        if (
+            metadata_values.get("interface") != DATABASE_COORDINATOR_INTERFACE
+            or metadata_values.get("schema") != DATABASE_COORDINATION_SCHEMA
+        ):
+            raise DatabaseCoordinationConflictError(
+                "coordination metadata does not bind the current authority"
+            )
+
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.TASK,
+            scope=task_cid,
+            task_cid=task_cid,
+        )
+        groups: dict[str, Any] = {}
+        for group_name, table, where_sql, order_sql, json_columns in (
+            _FENCED_TASK_AUTHORITY_GROUP_SPECS
+        ):
+            columns_and_types = _COORDINATION_REQUIRED_COLUMNS[table]
+            columns_sql = ", ".join(f'"{name}"' for name, _kind in columns_and_types)
+            parameters: list[Any]
+            if group_name == "token_history":
+                parameters = [scope_key]
+            elif group_name == "lease_events":
+                parameters = [scope_key, task_cid]
+            else:
+                parameters = [task_cid]
+            rows = connection.execute(
+                f'SELECT {columns_sql} FROM "{table}" '
+                f"WHERE {where_sql} ORDER BY {order_sql}",
+                parameters,
+            ).fetchall()
+            groups[group_name] = _fenced_population_group(
+                group_name=group_name,
+                table=table,
+                columns_and_types=columns_and_types,
+                json_columns=frozenset(json_columns),
+                rows=rows,
+            )
+
+        task_rows = groups["coordination_tasks"]["rows"]
+        exact_claims = [
+            row
+            for row in groups["task_claims"]["rows"]
+            if row.get("claim_id") == claim_id
+            and row.get("attempt_id") == attempt_id
+            and row.get("lease_id") == lease_id
+            and row.get("task_cid") == task_cid
+            and row.get("owner_session_id") == owner_session_id
+            and row.get("fencing_token") == fencing_token
+            and row.get("fence_epoch") == fence_epoch
+        ]
+        exact_attempts = [
+            row
+            for row in groups["task_attempts"]["rows"]
+            if row.get("attempt_id") == attempt_id
+            and row.get("task_cid") == task_cid
+            and row.get("owner_session_id") == owner_session_id
+            and row.get("fencing_token") == fencing_token
+            and row.get("fence_epoch") == fence_epoch
+        ]
+        exact_leases = [
+            row
+            for row in groups["fenced_leases"]["rows"]
+            if row.get("lease_id") == lease_id
+            and row.get("claim_id") == claim_id
+            and row.get("attempt_id") == attempt_id
+            and row.get("task_cid") == task_cid
+            and row.get("scope_key") == scope_key
+            and row.get("owner_session_id") == owner_session_id
+            and row.get("fencing_token") == fencing_token
+            and row.get("fence_epoch") == fence_epoch
+        ]
+        if (
+            len(task_rows) != 1
+            or task_rows[0].get("task_cid") != task_cid
+            or len(exact_claims) != 1
+            or len(exact_attempts) != 1
+            or len(exact_leases) != 1
+        ):
+            raise DatabaseCoordinationConflictError(
+                "coordinator population does not contain one exact task authority tuple"
+            )
+
+        unsigned: dict[str, Any] = {
+            "schema": FENCED_TASK_AUTHORITY_POPULATION_RECEIPT_SCHEMA,
+            "claim_boundary": FENCED_TASK_AUTHORITY_CLAIM_BOUNDARY,
+            "transaction_boundary": "single_coordination_store_read_transaction",
+            "query_profile_id": _fenced_task_authority_query_profile_id(),
+            "receipt_nonce": receipt_nonce,
+            "receipt_epoch": receipt_epoch,
+            "authority": {
+                "interface": DATABASE_COORDINATOR_INTERFACE,
+                "schema": DATABASE_COORDINATION_SCHEMA,
+                "authority_mode": (
+                    "quack" if self._quack_transport else "embedded"
+                ),
+                # This is explicitly a locator.  Store identity is the exact
+                # catalog plus complete logical projection below; the legacy
+                # coordinator has no persistent store UUID to fabricate.
+                "coordination_target_locator": str(self._open_target),
+                "metadata_rows": metadata_rows,
+                "catalog_root": _sha256_hex(canonical_json_bytes(catalog)),
+                "complete_storage_projection_root": str(
+                    storage.get("projection_root") or ""
+                ),
+            },
+            "subject": {
+                "task_cid": task_cid,
+                "attempt_id": attempt_id,
+                "claim_id": claim_id,
+                "lease_id": lease_id,
+                "owner_session_id": owner_session_id,
+                "fencing_token": fencing_token,
+                "fence_epoch": fence_epoch,
+            },
+            "groups": groups,
+            "task_population_root": _sha256_hex(canonical_json_bytes(groups)),
+        }
+        unsigned["receipt_cid"] = _sha256_hex(canonical_json_bytes(unsigned))
+        if not fenced_task_authority_population_receipt_valid(unsigned):
+            raise DatabaseCoordinationConflictError(
+                "coordinator population receipt failed closed validation"
+            )
+        return MappingProxyType(unsigned)
+
+    def fenced_task_authority_population_receipt(
+        self,
+        *,
+        task_cid: str,
+        attempt_id: str,
+        claim_id: str,
+        lease_id: str,
+        owner_session_id: str,
+        fencing_token: int,
+        fence_epoch: int,
+        receipt_nonce: str,
+        receipt_epoch: int,
+    ) -> Mapping[str, Any]:
+        """Issue an ephemeral self-hashed receipt from one owner transaction.
+
+        The receipt is evidence of the exact observed coordinator population.
+        It is not a task-status transition and is not durable authorization by
+        itself.  A later Quack task-revision CAS/recovery fence must consume it.
+        """
+
+        subject = {
+            "task_cid": _text(task_cid, "task_cid"),
+            "attempt_id": _text(attempt_id, "attempt_id"),
+            "claim_id": _text(claim_id, "claim_id"),
+            "lease_id": _text(lease_id, "lease_id"),
+            "owner_session_id": _text(owner_session_id, "owner_session_id"),
+            "fencing_token": _nonneg_int(fencing_token, "fencing_token"),
+            "fence_epoch": _nonneg_int(fence_epoch, "fence_epoch"),
+            "receipt_nonce": _text(receipt_nonce, "receipt_nonce"),
+            "receipt_epoch": _positive_int(receipt_epoch, "receipt_epoch"),
+        }
+        with self._lock:
+            connection = self._require()
+            if getattr(connection, "in_transaction", False):
+                raise DatabaseCoordinationConflictError(
+                    "coordinator population receipt requires a fresh transaction"
+                )
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                receipt = self._fenced_task_authority_population_receipt_unlocked(
+                    connection,
+                    **subject,
+                )
+                connection.execute("COMMIT")
+                return receipt
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+
+    def execute_with_fenced_task_authority_population(
+        self,
+        *,
+        task_cid: str,
+        attempt_id: str,
+        claim_id: str,
+        lease_id: str,
+        owner_session_id: str,
+        fencing_token: int,
+        fence_epoch: int,
+        receipt_nonce: str,
+        receipt_epoch: int,
+        callback: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        """Run one provider-free capture while the coordinator snapshot is held.
+
+        This is the approved bridge for the lane-local execution-store receipt.
+        It deliberately labels the result ``cross_store_stable_read``: the two
+        databases do not share a transaction.  The coordinator transaction and
+        lock remain held while the callback captures the execution store, and
+        the coordinator receipt is byte-exactly re-read before return.
+        """
+
+        if not callable(callback):
+            raise DatabaseCoordinationConflictError(
+                "fenced population callback is unavailable"
+            )
+        subject = {
+            "task_cid": _text(task_cid, "task_cid"),
+            "attempt_id": _text(attempt_id, "attempt_id"),
+            "claim_id": _text(claim_id, "claim_id"),
+            "lease_id": _text(lease_id, "lease_id"),
+            "owner_session_id": _text(owner_session_id, "owner_session_id"),
+            "fencing_token": _nonneg_int(fencing_token, "fencing_token"),
+            "fence_epoch": _nonneg_int(fence_epoch, "fence_epoch"),
+            "receipt_nonce": _text(receipt_nonce, "receipt_nonce"),
+            "receipt_epoch": _positive_int(receipt_epoch, "receipt_epoch"),
+        }
+        with self._lock:
+            connection = self._require()
+            if getattr(connection, "in_transaction", False):
+                raise DatabaseCoordinationConflictError(
+                    "cross-store stable read requires a fresh transaction"
+                )
+            connection.execute("BEGIN TRANSACTION")
+            self._fenced_callback_active = True
+            self._fenced_callback_reentry_detected = False
+            try:
+                before = self._fenced_task_authority_population_receipt_unlocked(
+                    connection,
+                    **subject,
+                )
+                result = callback(before)
+                if not isinstance(result, Mapping):
+                    raise DatabaseCoordinationConflictError(
+                        "fenced population callback returned a non-mapping"
+                    )
+                if self._fenced_callback_reentry_detected:
+                    raise DatabaseCoordinationConflictError(
+                        "fenced population callback re-entered its coordinator"
+                    )
+                after = self._fenced_task_authority_population_receipt_unlocked(
+                    connection,
+                    **subject,
+                )
+                if dict(after) != dict(before):
+                    raise DatabaseCoordinationConflictError(
+                        "coordinator population advanced during cross-store capture"
+                    )
+                connection.execute("COMMIT")
+                return MappingProxyType(dict(result))
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+            finally:
+                self._fenced_callback_active = False
+
     def claim_resource(
         self,
         *,
@@ -7028,6 +7642,10 @@ __all__ = [
     "TASK_CLAIM_SCHEMA",
     "RESOURCE_CLAIM_SCHEMA",
     "MAINTENANCE_LEASE_SCHEMA",
+    "FENCED_TASK_AUTHORITY_POPULATION_RECEIPT_SCHEMA",
+    "FENCED_TASK_AUTHORITY_QUERY_PROFILE_SCHEMA",
+    "FENCED_TASK_AUTHORITY_POPULATION_GROUP_SCHEMA",
+    "FENCED_TASK_AUTHORITY_CLAIM_BOUNDARY",
     "CROSS_STORE_FENCE_GUARD_SCHEMA",
     "CROSS_STORE_FENCE_GUARD_EVENT",
     "CROSS_STORE_FENCE_GUARD_REQUIRED_FIELD",
@@ -7057,6 +7675,7 @@ __all__ = [
     "DuckDBUnavailableError",
     "duckdb_available",
     "exclusive_scope_key",
+    "fenced_task_authority_population_receipt_valid",
     "open_database_coordinator",
     "read_coordination_registry_projection",
     "repair_coordination_art_index_storage",

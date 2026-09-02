@@ -22,6 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     COORDINATION_REGISTRY_PROJECTION_SCHEMA,
     COORDINATION_STORAGE_REPAIR_SCHEMA,
     DATABASE_COORDINATOR_INTERFACE,
+    FENCED_TASK_AUTHORITY_POPULATION_RECEIPT_SCHEMA,
     FENCED_LEASE_INTERFACE,
     MAINTENANCE_LEASE_INTERFACE,
     RESOURCE_CLAIM_INTERFACE,
@@ -40,6 +41,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     TaskClaim,
     duckdb_available,
     exclusive_scope_key,
+    fenced_task_authority_population_receipt_valid,
     open_database_coordinator,
     read_coordination_registry_projection,
     repair_coordination_art_index_storage,
@@ -140,6 +142,136 @@ def test_exclusive_scope_key_is_stable() -> None:
         repository_id="repository:demo",
         path="src/main.py",
     ).startswith("path:repository:demo:")
+
+
+def test_fenced_task_authority_population_receipt_is_closed_and_replay_stable(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:receipt",
+            task_id="RECEIPT",
+            body={"private_value": "not-emitted"},
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:receipt",
+            owner_session_id="session:receipt",
+            idempotency_key="receipt:claim",
+            body={"private_value": "not-emitted"},
+        )
+        kwargs = {
+            "task_cid": claim.task_cid,
+            "attempt_id": claim.attempt_id,
+            "claim_id": claim.claim_id,
+            "lease_id": claim.lease_id,
+            "owner_session_id": claim.owner_session_id,
+            "fencing_token": claim.fencing_token,
+            "fence_epoch": claim.fence_epoch,
+            "receipt_nonce": "receipt-nonce:one",
+            "receipt_epoch": 1,
+        }
+        first = dict(
+            coordinator.fenced_task_authority_population_receipt(**kwargs)
+        )
+        second = dict(
+            coordinator.fenced_task_authority_population_receipt(**kwargs)
+        )
+    finally:
+        coordinator.close()
+
+    assert first == second
+    assert first["schema"] == FENCED_TASK_AUTHORITY_POPULATION_RECEIPT_SCHEMA
+    assert fenced_task_authority_population_receipt_valid(first)
+    assert first["groups"]["coordination_tasks"]["count"] == 1
+    assert first["groups"]["task_claims"]["count"] == 1
+    assert first["groups"]["task_attempts"]["count"] == 1
+    assert first["groups"]["fenced_leases"]["count"] == 1
+    assert "not-emitted" not in str(first)
+
+
+def test_fenced_task_authority_population_receipt_rejects_tamper_and_unknowns(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:tamper", task_id="TAMPER")
+        claim = coordinator.claim_task(
+            task_cid="task:tamper",
+            owner_session_id="session:tamper",
+        )
+        receipt = dict(
+            coordinator.fenced_task_authority_population_receipt(
+                task_cid=claim.task_cid,
+                attempt_id=claim.attempt_id,
+                claim_id=claim.claim_id,
+                lease_id=claim.lease_id,
+                owner_session_id=claim.owner_session_id,
+                fencing_token=claim.fencing_token,
+                fence_epoch=claim.fence_epoch,
+                receipt_nonce="receipt-nonce:tamper",
+                receipt_epoch=1,
+            )
+        )
+    finally:
+        coordinator.close()
+
+    unknown = {**receipt, "unreviewed": True}
+    assert not fenced_task_authority_population_receipt_valid(unknown)
+    missing_groups = dict(receipt)
+    missing_groups["groups"] = dict(receipt["groups"])
+    missing_groups["groups"].pop("lease_events")
+    assert not fenced_task_authority_population_receipt_valid(missing_groups)
+    tampered = dict(receipt)
+    tampered["groups"] = dict(receipt["groups"])
+    tampered["groups"]["task_claims"] = dict(
+        receipt["groups"]["task_claims"]
+    )
+    tampered["groups"]["task_claims"]["count"] = 2
+    assert not fenced_task_authority_population_receipt_valid(tampered)
+
+
+def test_fenced_task_authority_cross_store_callback_blocks_reentry(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:callback", task_id="CALLBACK")
+        claim = coordinator.claim_task(
+            task_cid="task:callback",
+            owner_session_id="session:callback",
+        )
+        kwargs = {
+            "task_cid": claim.task_cid,
+            "attempt_id": claim.attempt_id,
+            "claim_id": claim.claim_id,
+            "lease_id": claim.lease_id,
+            "owner_session_id": claim.owner_session_id,
+            "fencing_token": claim.fencing_token,
+            "fence_epoch": claim.fence_epoch,
+            "receipt_nonce": "receipt-nonce:callback",
+            "receipt_epoch": 1,
+        }
+        result = coordinator.execute_with_fenced_task_authority_population(
+            **kwargs,
+            callback=lambda receipt: {
+                "transaction_boundary": "cross_store_stable_read",
+                "coordinator_receipt_cid": receipt["receipt_cid"],
+            },
+        )
+        assert result["transaction_boundary"] == "cross_store_stable_read"
+
+        def reenter(_receipt: object) -> dict[str, object]:
+            coordinator.get_task_attempt(claim.attempt_id)
+            return {}
+
+        with pytest.raises(DatabaseCoordinationConflictError, match="re-enter"):
+            coordinator.execute_with_fenced_task_authority_population(
+                **kwargs,
+                callback=reenter,
+            )
+    finally:
+        coordinator.close()
 
 
 # ---------------------------------------------------------------------------

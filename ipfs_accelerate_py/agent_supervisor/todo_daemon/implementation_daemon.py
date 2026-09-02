@@ -78092,6 +78092,21 @@ DATABASE_FENCED_PROVIDER_CALLBACK_POPULATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-fenced-provider-callback-population@1"
 )
+DATABASE_FENCED_PROVIDER_INNER_POPULATION_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-inner-population-receipt@1"
+)
+DATABASE_FENCED_PROVIDER_INNER_QUERY_PROFILE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-inner-population-query@1"
+)
+DATABASE_FENCED_PROVIDER_INNER_POPULATION_GROUP_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-inner-population-group@1"
+)
+DATABASE_FENCED_PROVIDER_INNER_CLAIM_BOUNDARY = (
+    "execution_and_coordinator_owner_assertion_of_exact_observed_populations"
+)
 DATABASE_EMPTY_CANONICAL_LIST_DIGEST = (
     "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 )
@@ -78849,6 +78864,338 @@ _DAEMON_EXECUTION_REQUIRED_COLUMNS: Mapping[
         ("result_json", "VARCHAR", False),
     ),
 }
+
+
+_FENCED_PROVIDER_INNER_GROUP_SPECS: tuple[
+    tuple[str, str, str, str, tuple[str, ...]], ...
+] = (
+    (
+        "database_task_attempts",
+        "database_task_attempts",
+        "attempt_id = ?",
+        "attempt_id",
+        ("body_json",),
+    ),
+    (
+        "attempt_phases",
+        "attempt_phases",
+        "attempt_id = ?",
+        "committed_at_ms, phase",
+        ("body_json",),
+    ),
+    (
+        "attempt_dispatch_journal",
+        "attempt_dispatch_journal",
+        "attempt_id = ?",
+        "dispatch_kind, idempotency_key, dispatch_id",
+        ("body_json",),
+    ),
+    (
+        "provider_invocations",
+        "provider_invocations",
+        "attempt_id = ?",
+        "idempotency_key, invocation_id",
+        ("result_json",),
+    ),
+    (
+        "effect_claims",
+        "effect_claims",
+        "attempt_id = ?",
+        "idempotency_key, effect_id",
+        ("result_json",),
+    ),
+    (
+        "attempt_recovery_dispatch_fences",
+        "attempt_recovery_dispatch_fences",
+        "attempt_id = ?",
+        "fence_id",
+        (),
+    ),
+    (
+        "database_portal_attempt_bindings",
+        "database_portal_attempt_bindings",
+        "attempt_id = ?",
+        "attempt_id",
+        ("record_json",),
+    ),
+    (
+        "database_portal_terminal_reconciliations",
+        "database_portal_terminal_reconciliations",
+        "attempt_id = ?",
+        "attempt_id",
+        ("record_json",),
+    ),
+    (
+        "daemon_execution_events",
+        "daemon_execution_events",
+        "attempt_id = ? OR (attempt_id = '' AND task_cid = ?)",
+        "recorded_at_ms, event_id",
+        ("body_json",),
+    ),
+)
+
+
+def _fenced_provider_inner_query_profile() -> dict[str, Any]:
+    groups: list[dict[str, Any]] = []
+    for group_name, table, where_sql, order_sql, json_columns in (
+        _FENCED_PROVIDER_INNER_GROUP_SPECS
+    ):
+        columns = [name for name, _kind, _nullable in _DAEMON_EXECUTION_REQUIRED_COLUMNS[table]]
+        groups.append(
+            {
+                "name": group_name,
+                "table": table,
+                "columns": columns,
+                "json_commitment_columns": list(json_columns),
+                "filter": where_sql,
+                "order": order_sql,
+            }
+        )
+    return {
+        "schema": DATABASE_FENCED_PROVIDER_INNER_QUERY_PROFILE_SCHEMA,
+        "authority_schema": DATABASE_IMPLEMENTATION_DAEMON_SCHEMA,
+        "subject_key": "attempt_id",
+        "groups": groups,
+        "json_projection": "canonical_sha256_and_byte_length",
+    }
+
+
+def _fenced_provider_inner_query_profile_id() -> str:
+    return "sha256:" + hashlib.sha256(
+        canonical_json(_fenced_provider_inner_query_profile()).encode("utf-8")
+    ).hexdigest()
+
+
+def _database_inner_json_commitment(
+    value: Any,
+    *,
+    table: str,
+    column: str,
+) -> dict[str, Any]:
+    decoded = _database_daemon_strict_mapping_json(
+        value,
+        authority=f"{table}.{column}",
+    )
+    encoded = canonical_json(decoded).encode("utf-8")
+    if encoded.decode("utf-8") != str(value):
+        raise DatabaseImplementationConflictError(
+            f"{table}.{column} is not canonical JSON"
+        )
+    return {
+        "canonical_sha256": "sha256:" + hashlib.sha256(encoded).hexdigest(),
+        "canonical_byte_length": len(encoded),
+    }
+
+
+def _database_inner_population_group(
+    *,
+    group_name: str,
+    table: str,
+    columns_and_types: Sequence[tuple[str, str, bool]],
+    json_columns: frozenset[str],
+    rows: Sequence[Any],
+) -> dict[str, Any]:
+    projected_rows: list[dict[str, Any]] = []
+    for row in rows:
+        projected: dict[str, Any] = {}
+        for index, (column, kind, nullable) in enumerate(columns_and_types):
+            value = row[index]
+            if column in json_columns:
+                if type(value) is not str:
+                    raise DatabaseImplementationConflictError(
+                        f"{table}.{column} is not a JSON string"
+                    )
+                projected[column] = _database_inner_json_commitment(
+                    value,
+                    table=table,
+                    column=column,
+                )
+            elif value is None and nullable:
+                projected[column] = None
+            elif kind == "VARCHAR" and type(value) is str:
+                projected[column] = value
+            elif kind == "BIGINT" and type(value) is int:
+                projected[column] = value
+            else:
+                raise DatabaseImplementationConflictError(
+                    f"{table}.{column} has an invalid {kind} value"
+                )
+        projected_rows.append(projected)
+    encoded = canonical_json(projected_rows).encode("utf-8")
+    return {
+        "schema": DATABASE_FENCED_PROVIDER_INNER_POPULATION_GROUP_SCHEMA,
+        "name": group_name,
+        "columns": [name for name, _kind, _nullable in columns_and_types],
+        "count": len(projected_rows),
+        "rows": projected_rows,
+        "rows_digest": "sha256:" + hashlib.sha256(encoded).hexdigest(),
+    }
+
+
+def database_fenced_provider_inner_population_receipt_valid(value: Any) -> bool:
+    """Validate a composite receipt without opening either database."""
+
+    if not isinstance(value, Mapping):
+        return False
+    receipt = dict(value)
+    expected_fields = {
+        "schema",
+        "claim_boundary",
+        "transaction_boundary",
+        "execution_transaction_boundary",
+        "query_profile_id",
+        "receipt_nonce",
+        "receipt_epoch",
+        "authority",
+        "subject",
+        "coordinator_receipt",
+        "coordinator_receipt_cid",
+        "groups",
+        "execution_population_root",
+        "receipt_cid",
+    }
+    if (
+        set(receipt) != expected_fields
+        or receipt.get("schema")
+        != DATABASE_FENCED_PROVIDER_INNER_POPULATION_RECEIPT_SCHEMA
+        or receipt.get("claim_boundary")
+        != DATABASE_FENCED_PROVIDER_INNER_CLAIM_BOUNDARY
+        or receipt.get("transaction_boundary") != "cross_store_stable_read"
+        or receipt.get("execution_transaction_boundary")
+        != "single_execution_store_read_transaction"
+        or receipt.get("query_profile_id")
+        != _fenced_provider_inner_query_profile_id()
+        or type(receipt.get("receipt_nonce")) is not str
+        or not receipt.get("receipt_nonce")
+        or type(receipt.get("receipt_epoch")) is not int
+        or int(receipt["receipt_epoch"]) < 1
+    ):
+        return False
+    authority = receipt.get("authority")
+    subject = receipt.get("subject")
+    groups = receipt.get("groups")
+    if (
+        not isinstance(authority, Mapping)
+        or set(authority)
+        != {
+            "interface",
+            "schema",
+            "authority_mode",
+            "execution_store_identity",
+            "execution_schema_fingerprint",
+            "control_store_id",
+            "control_store_generation",
+            "control_schema_evidence",
+            "owner_session_id",
+            "process_instance_id",
+            "process_birth",
+            "process_instance_record",
+            "metadata_rows",
+        }
+        or authority.get("interface") != DATABASE_IMPLEMENTATION_DAEMON_INTERFACE
+        or authority.get("schema") != DATABASE_IMPLEMENTATION_DAEMON_SCHEMA
+        or authority.get("authority_mode") not in _DATABASE_AUTHORITY_MODES
+        or any(
+            type(authority.get(name)) is not str or not authority.get(name)
+            for name in (
+                "execution_store_identity",
+                "execution_schema_fingerprint",
+                "control_store_id",
+                "control_store_generation",
+                "owner_session_id",
+                "process_instance_id",
+            )
+        )
+        or not isinstance(authority.get("control_schema_evidence"), Mapping)
+        or not isinstance(authority.get("process_birth"), Mapping)
+        or not isinstance(authority.get("process_instance_record"), Mapping)
+        or type(authority.get("metadata_rows")) is not list
+        or not isinstance(subject, Mapping)
+        or set(subject)
+        != {
+            "task_cid",
+            "task_alias",
+            "task_revision",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "recovery_manifest_id",
+            "recovery_credit_id",
+        }
+        or any(
+            type(subject.get(name)) is not str or not subject.get(name)
+            for name in (
+                "task_cid",
+                "task_alias",
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "recovery_manifest_id",
+                "recovery_credit_id",
+            )
+        )
+        or any(
+            type(subject.get(name)) is not int or int(subject[name]) < minimum
+            for name, minimum in (
+                ("task_revision", 0),
+                ("attempt_number", 1),
+                ("fencing_token", 0),
+                ("fence_epoch", 0),
+            )
+        )
+        or not isinstance(groups, Mapping)
+    ):
+        return False
+    profile = _fenced_provider_inner_query_profile()
+    expected_groups = {str(item["name"]): item for item in profile["groups"]}
+    if set(groups) != set(expected_groups):
+        return False
+    for name, profile_group in expected_groups.items():
+        group = groups.get(name)
+        if (
+            not isinstance(group, Mapping)
+            or set(group)
+            != {"schema", "name", "columns", "count", "rows", "rows_digest"}
+            or group.get("schema")
+            != DATABASE_FENCED_PROVIDER_INNER_POPULATION_GROUP_SCHEMA
+            or group.get("name") != name
+            or group.get("columns") != profile_group["columns"]
+            or type(group.get("count")) is not int
+            or int(group["count"]) < 0
+            or type(group.get("rows")) is not list
+            or len(group["rows"]) != int(group["count"])
+            or group.get("rows_digest")
+            != DatabaseImplementationDaemon._database_canonical_digest(
+                group["rows"]
+            )
+        ):
+            return False
+    coordinator_receipt = receipt.get("coordinator_receipt")
+    try:
+        from ..merge.database_coordination import (
+            fenced_task_authority_population_receipt_valid,
+        )
+    except Exception:
+        return False
+    if (
+        not fenced_task_authority_population_receipt_valid(coordinator_receipt)
+        or not isinstance(coordinator_receipt, Mapping)
+        or receipt.get("coordinator_receipt_cid")
+        != coordinator_receipt.get("receipt_cid")
+        or receipt.get("execution_population_root")
+        != DatabaseImplementationDaemon._database_canonical_digest(dict(groups))
+    ):
+        return False
+    unsigned = dict(receipt)
+    receipt_cid = str(unsigned.pop("receipt_cid", "") or "")
+    return receipt_cid == DatabaseImplementationDaemon._database_canonical_digest(
+        unsigned
+    )
 
 
 class DatabaseImplementationDaemonError(RuntimeError):
@@ -89778,6 +90125,279 @@ class DatabaseImplementationDaemon:
                 "fenced-provider callback population is not closed"
             )
         return MappingProxyType(population)
+
+    def _fenced_provider_execution_population_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        task_revision: int,
+        recovery_manifest_id: str,
+        recovery_credit_id: str,
+        receipt_nonce: str,
+        receipt_epoch: int,
+        coordinator_receipt: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Capture the lane-local execution population in one read transaction."""
+
+        if (
+            self._closed
+            or self._connection is None
+            or self._embedded_writer_lock_handle is None
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "inner population receipt lacks the retained execution writer fence"
+            )
+        connection = self._require_connection()
+        with self._lock:
+            if getattr(connection, "in_transaction", False):
+                raise DatabaseImplementationConflictError(
+                    "inner population receipt requires a fresh execution transaction"
+                )
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                catalog = _database_execution_storage_catalog(connection)
+                metadata_rows_raw = connection.execute(
+                    "SELECT key, value FROM daemon_execution_metadata ORDER BY key"
+                ).fetchall()
+                metadata_rows: list[dict[str, Any]] = []
+                metadata_values: dict[str, str] = {}
+                for metadata_row in metadata_rows_raw:
+                    key = str(metadata_row[0] or "")
+                    value = str(metadata_row[1] or "")
+                    if not key or key in metadata_values:
+                        raise DatabaseImplementationConflictError(
+                            "execution metadata population is not unique"
+                        )
+                    metadata_values[key] = value
+                    encoded = value.encode("utf-8")
+                    metadata_rows.append(
+                        {
+                            "key": key,
+                            "value_sha256": (
+                                "sha256:" + hashlib.sha256(encoded).hexdigest()
+                            ),
+                            "value_byte_length": len(encoded),
+                        }
+                    )
+                if (
+                    metadata_values.get("interface") != self.INTERFACE
+                    or metadata_values.get("schema") != self.SCHEMA
+                    or metadata_values.get("authority_mode") != self.authority_mode
+                    or metadata_values.get("logical_owner_session_id")
+                    != self.owner_session_id
+                    or metadata_values.get("process_instance_id")
+                    != self.process_instance_id
+                    or metadata_values.get(
+                        DATABASE_EXECUTION_STORE_IDENTITY_METADATA_KEY
+                    )
+                    != self.execution_store_identity
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "execution metadata does not bind the current daemon authority"
+                    )
+                process_record = self._database_process_instance_record(
+                    self.process_instance_id
+                )
+                process_birth = self.process_birth.to_dict()
+                if (
+                    not isinstance(process_record, Mapping)
+                    or process_record.get("state") != "active"
+                    or process_record.get("owner_session_id")
+                    != self.owner_session_id
+                    or process_record.get("process_birth") != process_birth
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "inner population receipt lacks an active exact process birth"
+                    )
+
+                groups: dict[str, Any] = {}
+                for (
+                    group_name,
+                    table,
+                    where_sql,
+                    order_sql,
+                    json_columns,
+                ) in _FENCED_PROVIDER_INNER_GROUP_SPECS:
+                    columns_and_types = _DAEMON_EXECUTION_REQUIRED_COLUMNS[table]
+                    columns_sql = ", ".join(
+                        f'"{name}"'
+                        for name, _kind, _nullable in columns_and_types
+                    )
+                    parameters = (
+                        [attempt.attempt_id, attempt.task_cid]
+                        if group_name == "daemon_execution_events"
+                        else [attempt.attempt_id]
+                    )
+                    rows = connection.execute(
+                        f'SELECT {columns_sql} FROM "{table}" '
+                        f"WHERE {where_sql} ORDER BY {order_sql}",
+                        parameters,
+                    ).fetchall()
+                    groups[group_name] = _database_inner_population_group(
+                        group_name=group_name,
+                        table=table,
+                        columns_and_types=columns_and_types,
+                        json_columns=frozenset(json_columns),
+                        rows=rows,
+                    )
+
+                attempt_rows = groups["database_task_attempts"]["rows"]
+                expected_attempt = {
+                    "attempt_id": attempt.attempt_id,
+                    "claim_id": attempt.claim_id,
+                    "task_cid": attempt.task_cid,
+                    "task_alias": attempt.task_alias,
+                    "attempt_number": int(attempt.attempt_number),
+                    "owner_session_id": attempt.owner_session_id,
+                    "fencing_token": int(attempt.fencing_token),
+                    "fence_epoch": int(attempt.fence_epoch),
+                    "lease_id": attempt.lease_id,
+                    "committed_phase": attempt.committed_phase,
+                    "status": attempt.status,
+                    "started_at_ms": int(attempt.started_at_ms),
+                    "finished_at_ms": attempt.finished_at_ms,
+                    "revision": int(attempt.revision),
+                }
+                if (
+                    len(attempt_rows) != 1
+                    or any(
+                        attempt_rows[0].get(name) != expected
+                        for name, expected in expected_attempt.items()
+                    )
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "execution population does not contain the exact attempt"
+                    )
+                connection.execute("COMMIT")
+            except Exception as exc:
+                _rollback_database_execution_transaction(connection, exc)
+                raise
+
+        catalog_root = _database_execution_storage_payload_root(catalog)
+        unsigned: dict[str, Any] = {
+            "schema": DATABASE_FENCED_PROVIDER_INNER_POPULATION_RECEIPT_SCHEMA,
+            "claim_boundary": DATABASE_FENCED_PROVIDER_INNER_CLAIM_BOUNDARY,
+            "transaction_boundary": "cross_store_stable_read",
+            "execution_transaction_boundary": (
+                "single_execution_store_read_transaction"
+            ),
+            "query_profile_id": _fenced_provider_inner_query_profile_id(),
+            "receipt_nonce": receipt_nonce,
+            "receipt_epoch": receipt_epoch,
+            "authority": {
+                "interface": self.INTERFACE,
+                "schema": self.SCHEMA,
+                "authority_mode": self.authority_mode,
+                "execution_store_identity": self.execution_store_identity,
+                "execution_schema_fingerprint": catalog_root,
+                "control_store_id": self.control_store_id,
+                "control_store_generation": self.control_store_generation,
+                "control_schema_evidence": dict(self.control_schema_evidence),
+                "owner_session_id": self.owner_session_id,
+                "process_instance_id": self.process_instance_id,
+                "process_birth": process_birth,
+                "process_instance_record": dict(process_record),
+                "metadata_rows": metadata_rows,
+            },
+            "subject": {
+                "task_cid": attempt.task_cid,
+                "task_alias": attempt.task_alias,
+                "task_revision": task_revision,
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "attempt_number": int(attempt.attempt_number),
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+                "recovery_manifest_id": recovery_manifest_id,
+                "recovery_credit_id": recovery_credit_id,
+            },
+            "coordinator_receipt": dict(coordinator_receipt),
+            "coordinator_receipt_cid": str(
+                coordinator_receipt.get("receipt_cid") or ""
+            ),
+            "groups": groups,
+            "execution_population_root": self._database_canonical_digest(groups),
+        }
+        unsigned["receipt_cid"] = self._database_canonical_digest(unsigned)
+        if not database_fenced_provider_inner_population_receipt_valid(unsigned):
+            raise DatabaseImplementationConflictError(
+                "inner population receipt failed closed validation"
+            )
+        return MappingProxyType(unsigned)
+
+    def fenced_provider_inner_population_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        task_revision: int,
+        recovery_manifest_id: str,
+        recovery_credit_id: str,
+        receipt_nonce: str,
+        receipt_epoch: int,
+    ) -> Mapping[str, Any]:
+        """Issue one coordinator-fenced, provider-free inner-store receipt.
+
+        The coordinator and execution databases remain separate authorities.
+        The coordinator holds one read transaction and its lock across the
+        execution-store transaction, then byte-exactly rereads its population.
+        Accordingly the composite claim is ``cross_store_stable_read`` rather
+        than an atomic cross-database transaction or proof of provider effects.
+        """
+
+        if not isinstance(attempt, DatabaseTaskAttempt):
+            raise TypeError("inner population receipt requires DatabaseTaskAttempt")
+        revision = int(task_revision)
+        epoch = int(receipt_epoch)
+        nonce = str(receipt_nonce or "").strip()
+        manifest_id = str(recovery_manifest_id or "").strip()
+        credit_id = str(recovery_credit_id or "").strip()
+        if (
+            revision < 0
+            or epoch < 1
+            or not nonce
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", manifest_id)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", credit_id)
+            or attempt.owner_session_id != self.owner_session_id
+        ):
+            raise DatabaseImplementationConflictError(
+                "inner population receipt binding is invalid"
+            )
+        coordinator = self._coordinator
+        execute = getattr(
+            coordinator,
+            "execute_with_fenced_task_authority_population",
+            None,
+        )
+        if not callable(execute):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator population receipt authority is unavailable"
+            )
+
+        def capture(coordinator_receipt: Mapping[str, Any]) -> Mapping[str, Any]:
+            return self._fenced_provider_execution_population_receipt(
+                attempt,
+                task_revision=revision,
+                recovery_manifest_id=manifest_id,
+                recovery_credit_id=credit_id,
+                receipt_nonce=nonce,
+                receipt_epoch=epoch,
+                coordinator_receipt=coordinator_receipt,
+            )
+
+        return execute(
+            task_cid=attempt.task_cid,
+            attempt_id=attempt.attempt_id,
+            claim_id=attempt.claim_id,
+            lease_id=attempt.lease_id,
+            owner_session_id=attempt.owner_session_id,
+            fencing_token=int(attempt.fencing_token),
+            fence_epoch=int(attempt.fence_epoch),
+            receipt_nonce=nonce,
+            receipt_epoch=epoch,
+            callback=capture,
+        )
 
     def _fenced_provider_outer_state_matches(
         self,
