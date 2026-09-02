@@ -2390,7 +2390,6 @@ def _fenced_provider_outer_groups_semantically_valid(
     attempt_bound_groups = (
         "provider_invocations",
         "effect_claims",
-        "validation_runs",
     )
     if (
         any(
@@ -2409,6 +2408,15 @@ def _fenced_provider_outer_groups_semantically_valid(
             row["attempt_id"] not in attempt_ids
             for name in attempt_bound_groups
             for row in groups[name]["rows"]
+        )
+        # ValidationRun@1 permits an empty attempt_id for task-level
+        # validation.  Preserve strict parent binding whenever the optional
+        # identity is present; historical recovery must not invent a
+        # normalized attempt merely to retain this task-scoped evidence.
+        or any(
+            bool(row["attempt_id"])
+            and row["attempt_id"] not in attempt_ids
+            for row in groups["validation_runs"]["rows"]
         )
         or any(
             bool(row["attempt_id"])

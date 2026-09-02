@@ -724,6 +724,106 @@ def test_historical_outer_authority_requires_exact_central_absence_and_lane_evid
     )
 
 
+def test_historical_outer_authority_accepts_task_level_validation_and_rejects_orphan_attempt(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        repo.record_evidence(
+            task_cid=str(subject["task_cid"]),
+            evidence_kind="operator_diagnostic",
+            digest="sha256:" + ("45" * 32),
+            body={"scope": "task-level"},
+        )
+        repo.record_validation_result(
+            task_cid=str(subject["task_cid"]),
+            outcome="failed",
+            evidence_digest="sha256:" + ("56" * 32),
+            argv=("python", "-m", "pytest", "-q"),
+            attempt_id="",
+            body={"scope": "task-level"},
+        )
+        with repo._connection(write=True) as connection:
+            connection.execute(
+                "DELETE FROM leases WHERE task_cid = ?", [subject["task_cid"]]
+            )
+            connection.execute(
+                "DELETE FROM task_claims WHERE task_cid = ?",
+                [subject["task_cid"]],
+            )
+            connection.execute(
+                "DELETE FROM task_attempts WHERE task_cid = ?",
+                [subject["task_cid"]],
+            )
+        historical = _historical_authority_for_subject(subject)
+        receipt = _read_outer_receipt(
+            repo,
+            binding,
+            {**subject, "historical_occurrence_authority": historical},
+        )
+
+    assert receipt["groups"]["task_attempts"]["count"] == 0
+    assert receipt["groups"]["validation_runs"]["count"] == 1
+    assert receipt["groups"]["validation_runs"]["rows"][0]["attempt_id"] == ""
+    assert receipt["groups"]["validation_runs"]["rows"][0]["status"] == "failed"
+    assert receipt["groups"]["validation_results"]["count"] == 1
+    assert receipt["groups"]["validation_results"]["rows"][0]["outcome"] == (
+        "failed"
+    )
+    assert receipt["groups"]["evidence_nodes"]["count"] == 1
+    validation_events = [
+        row
+        for row in receipt["groups"]["domain_events"]["rows"]
+        if row["event_type"] == "intent.validation_recorded"
+    ]
+    assert len(validation_events) == 1
+    assert validation_events[0]["attempt_id"] == ""
+    assert fenced_provider_outer_authority_population_receipt_valid(receipt)
+
+    orphaned = copy.deepcopy(receipt)
+    orphaned["groups"]["validation_runs"]["rows"][0]["attempt_id"] = (
+        "attempt:orphan"
+    )
+    _rehash_outer_receipt_group(orphaned, "validation_runs")
+    assert not _fenced_provider_outer_groups_semantically_valid(
+        orphaned["groups"],
+        orphaned["subject"],
+    )
+    assert not fenced_provider_outer_authority_population_receipt_valid(orphaned)
+
+
+def test_standard_outer_authority_preserves_attempt_bound_validation_run(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        repo.record_validation_result(
+            task_cid=str(subject["task_cid"]),
+            outcome="failed",
+            evidence_digest="sha256:" + ("67" * 32),
+            argv=("python", "-m", "pytest", "-q"),
+            attempt_id="",
+            body={"scope": "task-level"},
+        )
+        repo.record_validation_result(
+            task_cid=str(subject["task_cid"]),
+            outcome="failed",
+            evidence_digest="sha256:" + ("78" * 32),
+            argv=("python", "-m", "pytest", "-q"),
+            attempt_id=str(subject["attempt_id"]),
+            body={"scope": "attempt"},
+        )
+        receipt = _read_outer_receipt(repo, binding, subject)
+
+    assert receipt["groups"]["task_attempts"]["count"] == 1
+    assert receipt["groups"]["validation_runs"]["count"] == 2
+    assert {
+        row["attempt_id"]
+        for row in receipt["groups"]["validation_runs"]["rows"]
+    } == {"", subject["attempt_id"]}
+    assert fenced_provider_outer_authority_population_receipt_valid(receipt)
+
+
 def test_outer_authority_receipt_uses_real_quack_attached_schema_catalog(
     tmp_path: Path,
 ) -> None:
