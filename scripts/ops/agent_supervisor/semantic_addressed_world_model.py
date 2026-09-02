@@ -21334,7 +21334,7 @@ def _live_preflight(
                 "fresh_live_revalidation_performed_after_receipt_read": True,
             }
         )
-    if m53_active and final_pair_marker:
+    elif m53_active and final_pair_marker:
         store_report.update(
             {
                 "coordination_path": str(
