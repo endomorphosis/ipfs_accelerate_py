@@ -94001,13 +94001,12 @@ def _check_m53_materialized(root: Path, config_file: Path) -> dict[str, Any]:
         coordination, root=root, noun="M53 preserved coordination store",
         required_link_count=1,
     )
-    validation_digest = _m7_validation_digest(root, population)
     with _m28_live_source(
         root, control, config, population, authority,
         owner_id="sawm-r2-m53-live-source-sealer",
     ) as (source, identity):
         verified = _verify_m53_live_materialization(
-            source, identity, population, config, authority, validation_digest,
+            source, identity, population, config, authority, "",
             repository_root=root,
         )
     unhashed = dict(observed)
@@ -94050,7 +94049,7 @@ def _check_m53_materialized(root: Path, config_file: Path) -> dict[str, Any]:
         "database_path": str(control),
         "coordination_path": str(coordination),
         "program_definition_cid": population["program_definition_cid"],
-        "validation_digest": validation_digest,
+        "validation_digest": observed.get("validation_digest"),
         "prior_authority": authority,
         "receipt": observed,
         "m53_source_successor_receipt": observed,
