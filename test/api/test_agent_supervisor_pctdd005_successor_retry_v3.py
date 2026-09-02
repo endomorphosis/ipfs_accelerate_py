@@ -904,6 +904,35 @@ def test_retained_recovery_requires_both_controller_fences_before_daemon_open(
     assert daemons == []
 
 
+def test_retained_recovery_rejects_missing_controller_receipt_before_daemon_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, program, events, daemons = _lease_scoped_reconciliation_supervisor(
+        tmp_path,
+        monkeypatch,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_controller_quiescence_receipt",
+        lambda **_kwargs: None,
+    )
+
+    result = supervisor._reconcile_interrupted_database_portal_attempts_bound(
+        program,
+        owner_fence_held=True,
+        managed_daemon_launch_lock_held=True,
+        managed_daemon_cleanup=_retained_controller_cleanup(),
+    )
+
+    assert result["reason"] == (
+        "database_portal_retained_controller_quiescence_unavailable"
+    )
+    assert result["safe_to_restart"] is False
+    assert events == []
+    assert daemons == []
+
+
 def test_retained_recovery_checkout_capability_is_true_only_inside_lease(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

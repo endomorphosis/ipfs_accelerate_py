@@ -16957,6 +16957,18 @@ class PortalImplementationSupervisor:
                     "quiesced": False,
                     "safe_to_restart": False,
                 }
+            if not isinstance(controller_quiescence_receipt, Mapping):
+                return {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": (
+                        "database_portal_retained_controller_quiescence_"
+                        "unavailable"
+                    ),
+                    "reconciliation_complete": False,
+                    "quiesced": False,
+                    "safe_to_restart": False,
+                }
         if owner_fence_held:
             from ..task_sources.database_task_source import DatabaseTaskSource
             from ..task_sources.duckdb_state import _resolve_quack_token_handle
@@ -17318,7 +17330,6 @@ class PortalImplementationSupervisor:
                         orphaned_claim_reconciliations.extend(
                             daemon.reconcile_retained_recovery_orphaned_claims()
                         )
-                        assert controller_quiescence_receipt is not None
                         pctdd005_reconciliation = dict(
                             reconcile_pctdd005(
                                 controller_quiescence_receipt=(
