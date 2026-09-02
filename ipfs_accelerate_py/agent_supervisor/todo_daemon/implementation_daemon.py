@@ -331,6 +331,10 @@ IMPLEMENTATION_ATTEMPT_ENV = "IPFS_ACCELERATE_AGENT_TASK_ATTEMPT"
 DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION = (
     "datasets-authoritative-operational-v1"
 )
+DATASETS_AUTHORITATIVE_CONTROL_SCHEMA_PROFILE_ID = (
+    "datasets-authoritative-operational-control-plane@1"
+)
+DATABASE_QUACK_CONTROL_SCHEMA_REVISION = "1"
 SEMANTIC_TRUTH_AUTHORITY_ENV = (
     "IPFS_ACCELERATE_AGENT_SEMANTIC_TRUTH_AUTHORITY"
 )
@@ -79526,21 +79530,43 @@ def _database_inner_process_binding_valid(authority: Mapping[str, Any]) -> bool:
         )
         and type(control.get("verified")) is bool
     )
-    verified_profile = bool(
+    profile_identity_valid = bool(
         control_shape_valid
         and control.get("verified") is True
-        and control.get("state_schema_revision")
-        == DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
         and control.get("profile_id")
-        == "datasets-authoritative-operational-control-plane@1"
+        == DATASETS_AUTHORITATIVE_CONTROL_SCHEMA_PROFILE_ID
+    )
+    verified_profile = bool(
+        profile_identity_valid
         and (
-            control.get("schema_fingerprint") == ""
-            if authority_mode == "quack"
-            else re.fullmatch(
-                r"sha256:[0-9a-f]{64}",
-                str(control.get("schema_fingerprint") or ""),
+            (
+                (
+                    control.get("state_schema_revision")
+                    == DATABASE_QUACK_CONTROL_SCHEMA_REVISION
+                    and re.fullmatch(
+                        r"sha256:[0-9a-f]{64}",
+                        str(control.get("schema_fingerprint") or ""),
+                    )
+                    is not None
+                )
+                # Preserve validation of pre-fix Quack receipts without
+                # treating their profile sentinel as a transport revision.
+                or (
+                    control.get("state_schema_revision")
+                    == DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
+                    and control.get("schema_fingerprint") == ""
+                )
             )
-            is not None
+            if authority_mode == "quack"
+            else (
+                control.get("state_schema_revision")
+                == DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
+                and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(control.get("schema_fingerprint") or ""),
+                )
+                is not None
+            )
         )
     )
     legacy_embedded_profile = bool(
@@ -79599,6 +79625,123 @@ def _database_inner_process_binding_valid(authority: Mapping[str, Any]) -> bool:
     ):
         return False
     return _database_inner_metadata_rows_valid(authority.get("metadata_rows"))
+
+
+_DATABASE_QUACK_OWNER_SCHEMA_BINDING_FIELDS = frozenset(
+    {
+        "server_id",
+        "store_id",
+        "database_uuid",
+        "schema_revision",
+        "schema_fingerprint",
+        "generation",
+        "process_birth_id",
+        "listen_uri",
+        "extension_fingerprint",
+    }
+)
+_DATABASE_QUACK_CONTROL_SCHEMA_PROFILE_FIELDS = frozenset(
+    {
+        "profile_revision",
+        "profile_id",
+        "control_store_id",
+        "control_store_generation",
+        "transport_schema_revision",
+        "storage_schema_fingerprint",
+        "owner_database_uuid",
+        "owner_generation_floor",
+    }
+)
+
+
+def _database_quack_control_schema_verification(
+    *,
+    transport_schema_revision: str,
+    control_store_id: str,
+    control_store_generation: str,
+    authenticated_owner_binding: Mapping[str, Any] | None,
+    expected_profile: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Admit a profile only from an exact authenticated, sealed binding.
+
+    The numeric Quack/storage schema revision and the datasets operational
+    profile revision are different identity layers.  The caller supplies the
+    owner binding returned by the authenticated Quack handle resolver and an
+    operator-sealed expected profile.  Absence is non-authoritative; partial
+    or crossed evidence is a hard conflict rather than a guessed profile.
+    """
+
+    if authenticated_owner_binding is None and expected_profile is None:
+        return {}
+    if not (
+        isinstance(authenticated_owner_binding, Mapping)
+        and isinstance(expected_profile, Mapping)
+        and set(authenticated_owner_binding)
+        == _DATABASE_QUACK_OWNER_SCHEMA_BINDING_FIELDS
+        and set(expected_profile)
+        == _DATABASE_QUACK_CONTROL_SCHEMA_PROFILE_FIELDS
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "quack control-schema evidence is incomplete"
+        )
+    owner = dict(authenticated_owner_binding)
+    profile = dict(expected_profile)
+    owner_schema_revision = owner.get("schema_revision")
+    owner_generation = owner.get("generation")
+    owner_fingerprint = str(owner.get("schema_fingerprint") or "")
+    required_owner_text = (
+        "server_id",
+        "store_id",
+        "database_uuid",
+        "process_birth_id",
+        "listen_uri",
+        "extension_fingerprint",
+    )
+    if (
+        any(
+            not _database_inner_text_valid(owner.get(name), required=True)
+            for name in required_owner_text
+        )
+        or type(owner_schema_revision) is not int
+        or owner_schema_revision < 1
+        or type(owner_generation) is not int
+        or owner_generation < 1
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", owner_fingerprint)
+        is None
+        or profile.get("profile_revision")
+        != DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
+        or profile.get("profile_id")
+        != DATASETS_AUTHORITATIVE_CONTROL_SCHEMA_PROFILE_ID
+        or str(transport_schema_revision)
+        != DATABASE_QUACK_CONTROL_SCHEMA_REVISION
+        or profile.get("control_store_id") != control_store_id
+        or profile.get("control_store_generation")
+        != control_store_generation
+        or profile.get("transport_schema_revision")
+        != str(transport_schema_revision)
+        or profile.get("transport_schema_revision")
+        != str(owner_schema_revision)
+        or profile.get("storage_schema_fingerprint") != owner_fingerprint
+        or owner.get("store_id") != control_store_id
+        or profile.get("owner_database_uuid") != owner.get("database_uuid")
+        or type(profile.get("owner_generation_floor")) is not int
+        or int(profile["owner_generation_floor"]) < 1
+        or owner_generation < int(profile["owner_generation_floor"])
+    ):
+        raise DatabaseImplementationAuthorityError(
+            "quack control-schema evidence does not match the authenticated "
+            "owner/storage binding"
+        )
+    return {
+        "valid": True,
+        "profile_revision": profile["profile_revision"],
+        "profile_id": profile["profile_id"],
+        "schema_fingerprint": owner_fingerprint,
+        "authority_mode": "quack",
+        "transport_schema_revision": str(owner_schema_revision),
+        "owner_generation": owner_generation,
+        "owner_database_uuid": owner["database_uuid"],
+    }
 
 
 def _database_inner_group_rows_valid(
@@ -80662,6 +80805,11 @@ def _database_fenced_provider_retained_admission(
     assessment = outer.get("publication_assessment")
     inner_groups = inner.get("groups")
     inner_authority = inner.get("authority")
+    inner_control_schema = (
+        inner_authority.get("control_schema_evidence")
+        if isinstance(inner_authority, Mapping)
+        else None
+    )
     observed_generation = owner_binding.get("generation")
     owner_binding_cid = _database_fenced_provider_retained_digest(
         dict(owner_binding)
@@ -80701,6 +80849,12 @@ def _database_fenced_provider_retained_admission(
         or inner_authority.get("control_store_id") != pin["owner_store_id"]
         or inner_authority.get("control_store_generation")
         != pin["control_store_generation"]
+        or (
+            isinstance(inner_control_schema, Mapping)
+            and bool(inner_control_schema.get("schema_fingerprint"))
+            and inner_control_schema.get("schema_fingerprint")
+            != owner_binding.get("schema_fingerprint")
+        )
         or inner.get("receipt_nonce") != pin["receipt_nonce"]
         or outer.get("receipt_nonce") != pin["receipt_nonce"]
         or inner.get("receipt_epoch") != pin["receipt_epoch"]
@@ -86005,6 +86159,8 @@ class DatabaseImplementationDaemon:
         strict_task_sharding: bool = False,
         control_store_id: str = "",
         control_store_generation: str = "",
+        authenticated_control_store_binding: Mapping[str, Any] | None = None,
+        expected_control_schema_profile: Mapping[str, Any] | None = None,
     ) -> None:
         normalized_authority_mode = str(authority_mode or "quack").strip().lower().replace(
             "-", "_"
@@ -86131,6 +86287,16 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "database daemon requires exact control-store cursor bindings"
             )
+        self._authenticated_control_store_binding = (
+            dict(authenticated_control_store_binding)
+            if isinstance(authenticated_control_store_binding, Mapping)
+            else authenticated_control_store_binding
+        )
+        self._expected_control_schema_profile = (
+            dict(expected_control_schema_profile)
+            if isinstance(expected_control_schema_profile, Mapping)
+            else expected_control_schema_profile
+        )
         self.execution_store_identity = ""
         self.markdown_path = Path(markdown_path).absolute() if markdown_path else None
         # Optional projections — never required under database authority.
@@ -86193,21 +86359,25 @@ class DatabaseImplementationDaemon:
         must never fall through to IntentRepository's full-schema installer.
         """
 
+        if self.authority_mode == "quack":
+            explicit_verification = _database_quack_control_schema_verification(
+                transport_schema_revision=self.state_schema_revision,
+                control_store_id=self.control_store_id,
+                control_store_generation=self.control_store_generation,
+                authenticated_owner_binding=(
+                    self._authenticated_control_store_binding
+                ),
+                expected_profile=self._expected_control_schema_profile,
+            )
+            # Schema authority lives on the authenticated Quack state-owner,
+            # not a second direct-file open or an environment-only sentinel.
+            self._control_schema_verification = explicit_verification
+            return
         if (
             self.state_schema_revision
             != DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
         ):
             self._control_schema_verification = {}
-            return
-        if self.authority_mode == "quack":
-            # Schema authority lives on the Quack state-owner, not a second
-            # direct-file open from this process.
-            self._control_schema_verification = {
-                "valid": True,
-                "profile_id": "datasets-authoritative-operational-control-plane@1",
-                "schema_fingerprint": "",
-                "authority_mode": "quack",
-            }
             return
         if not self.database_path.is_file():
             raise DatabaseImplementationAuthorityError(
@@ -86816,7 +86986,16 @@ class DatabaseImplementationDaemon:
     def control_schema_evidence(self) -> Mapping[str, Any]:
         return MappingProxyType(
             {
-                "state_schema_revision": self.state_schema_revision,
+                "state_schema_revision": str(
+                    self.state_schema_revision
+                    if self.authority_mode == "quack"
+                    else (
+                        self._control_schema_verification.get(
+                            "profile_revision"
+                        )
+                        or self.state_schema_revision
+                    )
+                ),
                 "profile_id": str(
                     self._control_schema_verification.get("profile_id") or ""
                 ),

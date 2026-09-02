@@ -38,6 +38,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     append_jsonl_event,
     read_jsonl_events,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DatabaseProgramConfig,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationError,
     open_database_coordinator,
@@ -90,6 +93,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+    DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
     DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_BACKOFF_SECONDS,
     DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_REASON,
@@ -365,6 +369,232 @@ def test_inner_population_receipt_is_cross_store_stable_and_replay_exact(
     assert first["groups"]["provider_invocations"]["count"] == 0
     assert first["groups"]["effect_claims"]["count"] == 0
     assert first["authority"]["process_instance_record"]["state"] == "active"
+
+
+def _pctdd005_quack_control_schema_inputs() -> tuple[
+    DatabaseProgramConfig,
+    dict[str, object],
+    dict[str, object],
+]:
+    pin = DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN
+    program = DatabaseProgramConfig(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        endpoint_secret_handle="env://PCTDD005_QUACK_SCHEMA_TEST_TOKEN",
+        quack_endpoint="quack://127.0.0.1:41307",
+        store_id=str(pin["owner_store_id"]),
+        store_generation=str(pin["control_store_generation"]),
+        schema_revision="1",
+    )
+    owner_binding: dict[str, object] = {
+        "server_id": "server:pctdd005-quack-schema-test",
+        "store_id": program.store_id,
+        "database_uuid": str(pin["owner_database_uuid"]),
+        "schema_revision": int(pin["owner_schema_revision"]),
+        "schema_fingerprint": str(pin["owner_schema_fingerprint"]),
+        "generation": int(pin["owner_generation_floor"]),
+        "process_birth_id": "birth:pctdd005-quack-schema-test",
+        "listen_uri": program.quack_endpoint,
+        "extension_fingerprint": "sha256:" + "f" * 64,
+    }
+    profile: dict[str, object] = {
+        "profile_revision": (
+            daemon_module.DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
+        ),
+        "profile_id": (
+            daemon_module.DATASETS_AUTHORITATIVE_CONTROL_SCHEMA_PROFILE_ID
+        ),
+        "control_store_id": program.store_id,
+        "control_store_generation": program.store_generation,
+        "transport_schema_revision": program.schema_revision,
+        "storage_schema_fingerprint": str(pin["owner_schema_fingerprint"]),
+        "owner_database_uuid": str(pin["owner_database_uuid"]),
+        "owner_generation_floor": int(pin["owner_generation_floor"]),
+    }
+    return program, owner_binding, profile
+
+
+def _quack_schema_evidence_daemon(
+    tmp_path: Path,
+    *,
+    program: DatabaseProgramConfig,
+    owner_binding: Mapping[str, Any] | None,
+    profile: Mapping[str, Any] | None,
+) -> DatabaseImplementationDaemon:
+    return DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        quack_uri=program.quack_endpoint,
+        control_store_id=program.store_id,
+        control_store_generation=program.store_generation,
+        authenticated_control_store_binding=owner_binding,
+        expected_control_schema_profile=profile,
+        install_schema=False,
+    )
+
+
+def test_quack_numeric_schema_revision_uses_authenticated_operational_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    program, owner_binding, profile = _pctdd005_quack_control_schema_inputs()
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION",
+        program.schema_revision,
+    )
+    daemon = _quack_schema_evidence_daemon(
+        tmp_path,
+        program=program,
+        owner_binding=owner_binding,
+        profile=profile,
+    )
+
+    daemon._verify_control_schema_for_open()
+    evidence = dict(daemon.control_schema_evidence)
+
+    assert program.schema_revision == "1"
+    assert program.environment()[
+        "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION"
+    ] == "1"
+    assert daemon.state_schema_revision == "1"
+    assert evidence == {
+        "state_schema_revision": "1",
+        "profile_id": (
+            daemon_module.DATASETS_AUTHORITATIVE_CONTROL_SCHEMA_PROFILE_ID
+        ),
+        "schema_fingerprint": owner_binding["schema_fingerprint"],
+        "verified": True,
+    }
+
+
+def test_quack_numeric_schema_revision_rejects_missing_or_crossed_profile_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    program, owner_binding, profile = _pctdd005_quack_control_schema_inputs()
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION",
+        program.schema_revision,
+    )
+
+    missing = _quack_schema_evidence_daemon(
+        tmp_path / "missing",
+        program=program,
+        owner_binding=None,
+        profile=None,
+    )
+    missing._verify_control_schema_for_open()
+    assert dict(missing.control_schema_evidence) == {
+        "state_schema_revision": "1",
+        "profile_id": "",
+        "schema_fingerprint": "",
+        "verified": False,
+    }
+
+    crossed_owner = dict(owner_binding)
+    crossed_owner["schema_fingerprint"] = "sha256:" + "0" * 64
+    crossed = _quack_schema_evidence_daemon(
+        tmp_path / "crossed",
+        program=program,
+        owner_binding=crossed_owner,
+        profile=profile,
+    )
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="does not match the authenticated owner/storage binding",
+    ):
+        crossed._verify_control_schema_for_open()
+
+    incomplete = _quack_schema_evidence_daemon(
+        tmp_path / "incomplete",
+        program=program,
+        owner_binding=owner_binding,
+        profile=None,
+    )
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="control-schema evidence is incomplete",
+    ):
+        incomplete._verify_control_schema_for_open()
+
+
+def test_inner_population_receipt_accepts_only_bound_quack_profile_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(tmp_path / "embedded")
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        receipt = dict(
+            daemon.fenced_provider_inner_population_receipt(
+                attempt,
+                task_revision=task.revision,
+                recovery_manifest_id="sha256:" + "7" * 64,
+                recovery_credit_id="sha256:" + "8" * 64,
+                receipt_nonce="inner-receipt:quack-profile",
+                receipt_epoch=1,
+            )
+        )
+    finally:
+        daemon.close()
+
+    program, owner_binding, profile = _pctdd005_quack_control_schema_inputs()
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION",
+        program.schema_revision,
+    )
+    evidence_daemon = _quack_schema_evidence_daemon(
+        tmp_path / "quack-evidence",
+        program=program,
+        owner_binding=owner_binding,
+        profile=profile,
+    )
+    evidence_daemon._verify_control_schema_for_open()
+
+    def rehash(candidate: Mapping[str, Any]) -> dict[str, Any]:
+        unsigned = copy.deepcopy(dict(candidate))
+        unsigned.pop("receipt_cid", None)
+        unsigned["receipt_cid"] = "sha256:" + hashlib.sha256(
+            canonical_json(unsigned).encode("utf-8")
+        ).hexdigest()
+        return unsigned
+
+    admitted = copy.deepcopy(receipt)
+    admitted["authority"]["authority_mode"] = "quack"
+    admitted["authority"]["control_schema_evidence"] = dict(
+        evidence_daemon.control_schema_evidence
+    )
+    admitted = rehash(admitted)
+    assert database_fenced_provider_inner_population_receipt_valid(admitted)
+
+    missing = copy.deepcopy(admitted)
+    missing["authority"]["control_schema_evidence"]["profile_id"] = ""
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(missing)
+    )
+
+    conflated = copy.deepcopy(admitted)
+    conflated["authority"]["control_schema_evidence"][
+        "state_schema_revision"
+    ] = daemon_module.DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(conflated)
+    )
+
+    mismatched = copy.deepcopy(admitted)
+    mismatched["authority"]["control_schema_evidence"][
+        "schema_fingerprint"
+    ] = "schema-profile:not-authenticated"
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(mismatched)
+    )
 
 
 def test_inner_population_receipt_fails_without_writer_flock_and_on_tamper(

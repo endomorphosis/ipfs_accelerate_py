@@ -16877,6 +16877,8 @@ class PortalImplementationSupervisor:
 
         from .database_portal_bridge import DatabasePortalExecutionBridge
         from .implementation_daemon import (
+            DATASETS_AUTHORITATIVE_CONTROL_SCHEMA_PROFILE_ID,
+            DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION,
             DatabaseImplementationDaemon,
             database_fenced_provider_historical_retained_reconciliation_valid,
             database_pctdd005_historical_successor_reconciliation_valid,
@@ -16899,6 +16901,7 @@ class PortalImplementationSupervisor:
 
         owner_fenced_task_source: Any | None = None
         owner_binding: dict[str, Any] | None = None
+        expected_control_schema_profile: dict[str, Any] | None = None
         owner_barrier: dict[str, Any] | None = None
         retained_program = self._retained_fenced_provider_program_applicable(
             program
@@ -16994,6 +16997,69 @@ class PortalImplementationSupervisor:
                 raise RuntimeError(
                     "owner-fenced reconciliation changed Quack owner or inbox"
                 )
+            if retained_program:
+                from .database_portal_bridge import (
+                    DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+                    DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+                )
+
+                reviewed_pins = tuple(
+                    pin
+                    for pin in (
+                        *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+                        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+                    )
+                    if isinstance(pin, Mapping)
+                )
+                reviewed_bindings = {
+                    (
+                        str(pin.get("owner_store_id") or ""),
+                        str(pin.get("control_store_generation") or ""),
+                        str(pin.get("owner_schema_revision") or ""),
+                        str(pin.get("owner_schema_fingerprint") or ""),
+                        str(pin.get("owner_database_uuid") or ""),
+                    )
+                    for pin in reviewed_pins
+                }
+                reviewed_generation_floors = tuple(
+                    int(pin.get("owner_generation_floor") or 0)
+                    for pin in reviewed_pins
+                )
+                if (
+                    len(reviewed_pins) != 4
+                    or len(reviewed_bindings) != 1
+                    or any(floor < 1 for floor in reviewed_generation_floors)
+                ):
+                    raise RuntimeError(
+                        "retained recovery control-schema profile is not "
+                        "uniquely operator sealed"
+                    )
+                (
+                    reviewed_store_id,
+                    reviewed_store_generation,
+                    reviewed_transport_revision,
+                    reviewed_storage_fingerprint,
+                    reviewed_database_uuid,
+                ) = next(iter(reviewed_bindings))
+                reviewed_generation_floor = max(reviewed_generation_floors)
+                expected_control_schema_profile = {
+                    "profile_revision": (
+                        DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
+                    ),
+                    "profile_id": (
+                        DATASETS_AUTHORITATIVE_CONTROL_SCHEMA_PROFILE_ID
+                    ),
+                    "control_store_id": reviewed_store_id,
+                    "control_store_generation": reviewed_store_generation,
+                    "transport_schema_revision": (
+                        reviewed_transport_revision
+                    ),
+                    "storage_schema_fingerprint": (
+                        reviewed_storage_fingerprint
+                    ),
+                    "owner_database_uuid": reviewed_database_uuid,
+                    "owner_generation_floor": reviewed_generation_floor,
+                }
             owner_fenced_intent: Any | None = None
             try:
                 owner_fenced_intent = _OwnerFencedIntentRepository(
@@ -17043,6 +17109,12 @@ class PortalImplementationSupervisor:
                 strict_task_sharding=effective_strict_sharding,
                 control_store_id=program.store_id,
                 control_store_generation=program.store_generation,
+                authenticated_control_store_binding=(
+                    owner_binding if retained_program else None
+                ),
+                expected_control_schema_profile=(
+                    expected_control_schema_profile
+                ),
                 task_source=owner_fenced_task_source,
             )
         except BaseException:

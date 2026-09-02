@@ -200,6 +200,57 @@ def _admission(monkeypatch: pytest.MonkeyPatch) -> tuple[dict[str, Any], dict[st
     return pin, admission
 
 
+def test_pctdd005_admission_binds_inner_schema_to_authenticated_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pin = dict(DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN)
+    credit = dict(database_pctdd005_successor_credit(pin))
+    inner, outer = _receipts(pin, credit)
+    inner["authority"]["control_schema_evidence"] = {
+        "schema_fingerprint": pin["owner_schema_fingerprint"],
+    }
+    monkeypatch.setattr(
+        daemon_module,
+        "database_fenced_provider_inner_population_receipt_valid",
+        lambda value: isinstance(value, Mapping),
+    )
+    monkeypatch.setattr(
+        intent_repository_module,
+        "fenced_provider_outer_authority_population_receipt_valid",
+        lambda value: isinstance(value, Mapping),
+    )
+
+    admission = database_fenced_provider_retained_admission(
+        occurrence=pin,
+        credit=credit,
+        inner_receipt=inner,
+        outer_receipt=outer,
+        expected_task_revision=pin["blocked_task_revision"],
+        expected_task_status=pin["blocked_task_status"],
+    )
+    assert admission["owner_schema_fingerprint"] == (
+        pin["owner_schema_fingerprint"]
+    )
+
+    crossed_inner = dict(inner)
+    crossed_inner["authority"] = dict(inner["authority"])
+    crossed_inner["authority"]["control_schema_evidence"] = {
+        "schema_fingerprint": "sha256:" + "0" * 64,
+    }
+    with pytest.raises(
+        DatabaseImplementationConflictError,
+        match="receipt bindings drifted",
+    ):
+        database_fenced_provider_retained_admission(
+            occurrence=pin,
+            credit=credit,
+            inner_receipt=crossed_inner,
+            outer_receipt=outer,
+            expected_task_revision=pin["blocked_task_revision"],
+            expected_task_status=pin["blocked_task_status"],
+        )
+
+
 def test_pctdd005_admission_and_consumption_are_versioned_and_cross_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
