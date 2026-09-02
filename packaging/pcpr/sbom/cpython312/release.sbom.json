@@ -1,0 +1,1241 @@
+{
+  "artifacts": {
+    "container": {
+      "evidence_kind": "unavailable",
+      "live": false,
+      "reason": "No container digest is bound by this declared-spec lock.",
+      "status": "unavailable"
+    },
+    "sdist": {
+      "evidence_kind": "unavailable",
+      "live": false,
+      "reason": "No published sdist identity is bound by this declared-spec lock.",
+      "status": "unavailable"
+    },
+    "wheel": {
+      "evidence_kind": "unavailable",
+      "live": false,
+      "reason": "No published wheel identity is bound by this declared-spec lock.",
+      "status": "unavailable"
+    }
+  },
+  "closed_release_outcome": null,
+  "cyclonedx": {
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "cyclonedx-bom and cdxgen are absent from the sealed PATH. A CycloneDX document was not invented.",
+    "status": "unavailable"
+  },
+  "direct_package_count": 24,
+  "direct_packages": [
+    {
+      "declared_spec": "anyio>=4.0.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "anyio",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=4.0.0"
+    },
+    {
+      "declared_spec": "aiohttp>=3.8.1",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "aiohttp",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=3.8.1"
+    },
+    {
+      "declared_spec": "duckdb>=0.7.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "duckdb",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=0.7.0"
+    },
+    {
+      "declared_spec": "ipfshttpclient>=0.8.0a2",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "ipfshttpclient",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=0.8.0a2"
+    },
+    {
+      "declared_spec": "websockets>=10.1",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "websockets",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=10.1"
+    },
+    {
+      "declared_spec": "pyarrow>=14.0.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "pyarrow",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=14.0.0"
+    },
+    {
+      "declared_spec": "torch>=2.1",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "torch",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=2.1"
+    },
+    {
+      "declared_spec": "transformers>=4.46",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "transformers",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=4.46"
+    },
+    {
+      "declared_spec": "urllib3>=2.5.0,<3.0.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "urllib3",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=2.5.0,<3.0.0"
+    },
+    {
+      "declared_spec": "requests>=2.28.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "requests",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=2.28.0"
+    },
+    {
+      "declared_spec": "cryptography>=41.0.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "cryptography",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=41.0.0"
+    },
+    {
+      "declared_spec": "fastmcp>=0.1.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "fastmcp",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=0.1.0"
+    },
+    {
+      "declared_spec": "flask>=3.0.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "flask",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=3.0.0"
+    },
+    {
+      "declared_spec": "flask-cors>=4.0.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "flask-cors",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=4.0.0"
+    },
+    {
+      "declared_spec": "werkzeug>=3.0.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "werkzeug",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=3.0.0"
+    },
+    {
+      "declared_spec": "PyGithub>=2.3.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "PyGithub",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=2.3.0"
+    },
+    {
+      "declared_spec": "packaging>=23.2",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "packaging",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=23.2"
+    },
+    {
+      "declared_spec": "tqdm>=4.64.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "tqdm",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=4.64.0"
+    },
+    {
+      "declared_spec": "numpy>=1.23.0",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "numpy",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=1.23.0"
+    },
+    {
+      "declared_spec": "toml>=0.10.2",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "toml",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=0.10.2"
+    },
+    {
+      "declared_spec": "nltk>=3.8.1,<4",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "nltk",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=3.8.1,<4"
+    },
+    {
+      "declared_spec": "jsonschema>=4,<5",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "jsonschema",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=4,<5"
+    },
+    {
+      "declared_spec": "multiformats>=0.3,<1",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "multiformats",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=0.3,<1"
+    },
+    {
+      "declared_spec": "pymultihash>=0.8.2",
+      "extras": [],
+      "hash": {
+        "evidence_kind": "unavailable",
+        "invented": false,
+        "live": false,
+        "reason": "Package hashes were not invented.",
+        "status": "unavailable"
+      },
+      "license": {
+        "concluded": "NOASSERTION",
+        "declared": "NOASSERTION",
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "Dependency licenses were not scanned.",
+        "status": "unavailable"
+      },
+      "marker": null,
+      "name": "pymultihash",
+      "version": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "The release profile records a PEP 508 range, not a resolved version.",
+        "status": "unavailable"
+      },
+      "version_constraint": ">=0.8.2"
+    }
+  ],
+  "evidence_kind": "measured",
+  "files_analyzed": false,
+  "goal_id": "PCPR-G600",
+  "hashes_invented": false,
+  "interface": "AccelerateSbomAndProvenance@1",
+  "live": false,
+  "live_scanner_qualified": false,
+  "lock_cid": "baguqeerayvfxbdt6m6go57s6dw2afwsvpkzpt25rewc6kglm2fhwkeowvuxa",
+  "lock_kind": "declared_release_profile",
+  "named_git_extras": [
+    "libp2p",
+    "mcp-p2p",
+    "ipfs-transformers",
+    "ipfs-model-manager"
+  ],
+  "named_git_extras_role": "source-checkout-development-and-integration",
+  "native_dependencies": {
+    "cuda_toolkit": {
+      "evidence_kind": "unavailable",
+      "live": false,
+      "reason": "nvcc is absent from the sealed PATH; CUDA is not this lock.",
+      "status": "unavailable"
+    },
+    "duckdb_cli": {
+      "evidence_kind": "unavailable",
+      "live": false,
+      "reason": "duckdb CLI is absent from the sealed PATH.",
+      "status": "unavailable"
+    },
+    "ipfs_daemon": {
+      "evidence_kind": "unavailable",
+      "live": false,
+      "reason": "ipfs is absent from the sealed PATH; a daemon is not this lock.",
+      "status": "unavailable"
+    }
+  },
+  "package_name": "ipfs_accelerate_py",
+  "package_version": "0.0.45",
+  "program_id": "proof-carrying-platform-qualification-and-release-v1",
+  "python_requires": ">=3.12",
+  "release_claim": false,
+  "requirements_authority": "requirements.txt",
+  "root": {
+    "license_declared": "AGPL-3.0-or-later",
+    "mutable_main_reference": false,
+    "name": "ipfs_accelerate_py",
+    "source_repository": "endomorphosis/ipfs_accelerate_py",
+    "version": "0.0.45"
+  },
+  "sbom_cid": "baguqeeraotw7oyqehxscvlcyo4udmmdnaxq3yg6rfz4pspxcnpcnbwhd5fiq",
+  "sbom_kind": "declared_release_profile",
+  "scanners": {
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "Syft, CycloneDX, cdxgen, Trivy, and Grype are absent from the sealed PATH. A scanner SBOM was not invented.",
+    "status": "unavailable",
+    "tools": {
+      "cdxgen": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "cdxgen is absent from the sealed PATH.",
+        "status": "unavailable"
+      },
+      "cyclonedx": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "cyclonedx is absent from the sealed PATH.",
+        "status": "unavailable"
+      },
+      "cyclonedx_bom": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "cyclonedx_bom is absent from the sealed PATH.",
+        "status": "unavailable"
+      },
+      "cyclonedx_py": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "cyclonedx_py is absent from the sealed PATH.",
+        "status": "unavailable"
+      },
+      "grype": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "grype is absent from the sealed PATH.",
+        "status": "unavailable"
+      },
+      "syft": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "syft is absent from the sealed PATH.",
+        "status": "unavailable"
+      },
+      "trivy": {
+        "evidence_kind": "unavailable",
+        "live": false,
+        "reason": "trivy is absent from the sealed PATH.",
+        "status": "unavailable"
+      }
+    }
+  },
+  "schema": "ipfs_accelerate_py/assurance/declared-sbom@1",
+  "sibling_source_required": false,
+  "source_date_epoch": "0",
+  "spdx": {
+    "SPDXID": "SPDXRef-DOCUMENT",
+    "creationInfo": {
+      "comment": "created is SOURCE_DATE_EPOCH=0. It is not a live scan timestamp.",
+      "created": "1970-01-01T00:00:00Z",
+      "creators": [
+        "Tool: AccelerateSbomAndProvenance@1"
+      ]
+    },
+    "dataLicense": "CC0-1.0",
+    "documentNamespace": "urn:pcpr:declared-sbom:ipfs_accelerate_py:0.0.45",
+    "name": "ipfs_accelerate_py-0.0.45-declared-release-profile",
+    "packages": [
+      {
+        "SPDXID": "SPDXRef-Package-ipfs-accelerate-py",
+        "comment": "Root package of the declared release profile. Files were not analyzed. This is not a live scanner result.",
+        "downloadLocation": "git+https://github.com/endomorphosis/ipfs_accelerate_py",
+        "externalRefs": [
+          {
+            "referenceCategory": "PACKAGE-MANAGER",
+            "referenceLocator": "pkg:pypi/ipfs_accelerate_py@0.0.45",
+            "referenceType": "purl"
+          }
+        ],
+        "filesAnalyzed": false,
+        "licenseConcluded": "AGPL-3.0-or-later",
+        "licenseDeclared": "AGPL-3.0-or-later",
+        "name": "ipfs_accelerate_py",
+        "supplier": "Organization: endomorphosis",
+        "versionInfo": "0.0.45"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-anyio",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: anyio>=4.0.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "anyio",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-aiohttp",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: aiohttp>=3.8.1. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "aiohttp",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-duckdb",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: duckdb>=0.7.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "duckdb",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-ipfshttpclient",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: ipfshttpclient>=0.8.0a2. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "ipfshttpclient",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-websockets",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: websockets>=10.1. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "websockets",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-pyarrow",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: pyarrow>=14.0.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "pyarrow",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-torch",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: torch>=2.1. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "torch",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-transformers",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: transformers>=4.46. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "transformers",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-urllib3",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: urllib3>=2.5.0,<3.0.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "urllib3",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-requests",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: requests>=2.28.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "requests",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-cryptography",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: cryptography>=41.0.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "cryptography",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-fastmcp",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: fastmcp>=0.1.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "fastmcp",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-flask",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: flask>=3.0.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "flask",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-flask-cors",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: flask-cors>=4.0.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "flask-cors",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-werkzeug",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: werkzeug>=3.0.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "werkzeug",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-PyGithub",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: PyGithub>=2.3.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "PyGithub",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-packaging",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: packaging>=23.2. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "packaging",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-tqdm",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: tqdm>=4.64.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "tqdm",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-numpy",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: numpy>=1.23.0. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "numpy",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-toml",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: toml>=0.10.2. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "toml",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-nltk",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: nltk>=3.8.1,<4. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "nltk",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-jsonschema",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: jsonschema>=4,<5. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "jsonschema",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-multiformats",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: multiformats>=0.3,<1. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "multiformats",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      },
+      {
+        "SPDXID": "SPDXRef-Package-pymultihash",
+        "comment": "Declared PEP 508 spec from the PCPR-053 release lock: pymultihash>=0.8.2. Hash, resolved version, and license were not invented.",
+        "downloadLocation": "NOASSERTION",
+        "filesAnalyzed": false,
+        "licenseConcluded": "NOASSERTION",
+        "licenseDeclared": "NOASSERTION",
+        "name": "pymultihash",
+        "supplier": "NOASSERTION",
+        "versionInfo": "NOASSERTION"
+      }
+    ],
+    "relationships": [
+      {
+        "relatedSpdxElement": "SPDXRef-Package-ipfs-accelerate-py",
+        "relationshipType": "DESCRIBES",
+        "spdxElementId": "SPDXRef-DOCUMENT"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-anyio",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-aiohttp",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-duckdb",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-ipfshttpclient",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-websockets",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-pyarrow",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-torch",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-transformers",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-urllib3",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-requests",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-cryptography",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-fastmcp",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-flask",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-flask-cors",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-werkzeug",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-PyGithub",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-packaging",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-tqdm",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-numpy",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-toml",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-nltk",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-jsonschema",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-multiformats",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      },
+      {
+        "relatedSpdxElement": "SPDXRef-Package-pymultihash",
+        "relationshipType": "DEPENDS_ON",
+        "spdxElementId": "SPDXRef-Package-ipfs-accelerate-py"
+      }
+    ],
+    "spdxVersion": "SPDX-2.3"
+  },
+  "spdx_version": "SPDX-2.3",
+  "task_id": "PCPR-054",
+  "transitive_packages": {
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "Transitive resolution was not admitted. A transitive SBOM graph was not invented.",
+    "status": "unavailable"
+  }
+}
