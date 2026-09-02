@@ -78395,6 +78395,7 @@ _DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_FIELDS = frozenset(
         *_DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_FIELDS,
         "historical_occurrence_authority_id",
         "controller_quiescence_receipt_id",
+        "owner_storage_schema_fingerprint",
     }
 )
 _DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_CONSUMPTION_FIELDS = frozenset(
@@ -79652,6 +79653,47 @@ _DATABASE_QUACK_CONTROL_SCHEMA_PROFILE_FIELDS = frozenset(
         "owner_generation_floor",
     }
 )
+_DATABASE_QUACK_DUAL_CONTROL_SCHEMA_PROFILE_FIELDS = frozenset(
+    {
+        *_DATABASE_QUACK_CONTROL_SCHEMA_PROFILE_FIELDS,
+        "transport_schema_fingerprint",
+    }
+)
+
+
+def _database_quack_transport_storage_schema_identity_matches(
+    *,
+    transport_schema_fingerprint: Any,
+    storage_schema_fingerprint: Any,
+) -> bool:
+    """Prove that one transport digest is carried by one storage CID.
+
+    Historical @4/@5 pins retain the Quack identity-schema fingerprint as a
+    ``sha256:`` digest, while the authenticated mutation owner exposes the
+    current storage-profile identity as a CIDv1 DAG-JSON value.  Neither value
+    may stand in for the other.  This bridge validates both frozen profiles
+    and requires the CID multihash to carry the exact sealed digest.
+    """
+
+    if (
+        type(transport_schema_fingerprint) is not str
+        or type(storage_schema_fingerprint) is not str
+    ):
+        return False
+    try:
+        from ..core.multiformats_identity import link_payload_digest
+
+        link = link_payload_digest(
+            transport_schema_fingerprint,
+            codec="dag-json",
+        )
+    except Exception:
+        return False
+    return bool(
+        link.local_id == transport_schema_fingerprint
+        and link.cid == storage_schema_fingerprint
+        and link.codec == "dag-json"
+    )
 
 
 def _database_quack_control_schema_verification(
@@ -79679,7 +79721,10 @@ def _database_quack_control_schema_verification(
         and set(authenticated_owner_binding)
         == _DATABASE_QUACK_OWNER_SCHEMA_BINDING_FIELDS
         and set(expected_profile)
-        == _DATABASE_QUACK_CONTROL_SCHEMA_PROFILE_FIELDS
+        in {
+            _DATABASE_QUACK_CONTROL_SCHEMA_PROFILE_FIELDS,
+            _DATABASE_QUACK_DUAL_CONTROL_SCHEMA_PROFILE_FIELDS,
+        }
     ):
         raise DatabaseImplementationAuthorityError(
             "quack control-schema evidence is incomplete"
@@ -79688,7 +79733,17 @@ def _database_quack_control_schema_verification(
     profile = dict(expected_profile)
     owner_schema_revision = owner.get("schema_revision")
     owner_generation = owner.get("generation")
-    owner_fingerprint = str(owner.get("schema_fingerprint") or "")
+    raw_owner_fingerprint = owner.get("schema_fingerprint")
+    owner_fingerprint = str(raw_owner_fingerprint or "")
+    dual_profile = (
+        set(profile) == _DATABASE_QUACK_DUAL_CONTROL_SCHEMA_PROFILE_FIELDS
+    )
+    raw_transport_fingerprint = (
+        profile.get("transport_schema_fingerprint")
+        if dual_profile
+        else raw_owner_fingerprint
+    )
+    transport_fingerprint = str(raw_transport_fingerprint or "")
     required_owner_text = (
         "server_id",
         "store_id",
@@ -79706,7 +79761,23 @@ def _database_quack_control_schema_verification(
         or owner_schema_revision < 1
         or type(owner_generation) is not int
         or owner_generation < 1
-        or re.fullmatch(r"sha256:[0-9a-f]{64}", owner_fingerprint)
+        or (
+            dual_profile
+            and (
+                type(raw_owner_fingerprint) is not str
+                or type(raw_transport_fingerprint) is not str
+            )
+        )
+        or (
+            not dual_profile
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}", owner_fingerprint
+            )
+            is None
+        )
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", transport_fingerprint
+        )
         is None
         or profile.get("profile_revision")
         != DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
@@ -79722,6 +79793,13 @@ def _database_quack_control_schema_verification(
         or profile.get("transport_schema_revision")
         != str(owner_schema_revision)
         or profile.get("storage_schema_fingerprint") != owner_fingerprint
+        or (
+            dual_profile
+            and not _database_quack_transport_storage_schema_identity_matches(
+                transport_schema_fingerprint=transport_fingerprint,
+                storage_schema_fingerprint=owner_fingerprint,
+            )
+        )
         or owner.get("store_id") != control_store_id
         or profile.get("owner_database_uuid") != owner.get("database_uuid")
         or type(profile.get("owner_generation_floor")) is not int
@@ -79736,7 +79814,7 @@ def _database_quack_control_schema_verification(
         "valid": True,
         "profile_revision": profile["profile_revision"],
         "profile_id": profile["profile_id"],
-        "schema_fingerprint": owner_fingerprint,
+        "schema_fingerprint": transport_fingerprint,
         "authority_mode": "quack",
         "transport_schema_revision": str(owner_schema_revision),
         "owner_generation": owner_generation,
@@ -80563,6 +80641,14 @@ def database_fenced_provider_historical_retained_admission_valid(
                 "controller_quiescence_receipt_id",
             )
         )
+        or not _database_quack_transport_storage_schema_identity_matches(
+            transport_schema_fingerprint=record.get(
+                "owner_schema_fingerprint"
+            ),
+            storage_schema_fingerprint=record.get(
+                "owner_storage_schema_fingerprint"
+            ),
+        )
     ):
         return False
     unsigned = dict(record)
@@ -80575,6 +80661,7 @@ def database_fenced_provider_historical_retained_admission_valid(
     projected = dict(record)
     projected.pop("historical_occurrence_authority_id")
     projected.pop("controller_quiescence_receipt_id")
+    projected.pop("owner_storage_schema_fingerprint")
     projected["schema"] = authority["legacy_admission_schema"]
     projected.pop("admission_id")
     projected["admission_id"] = _database_fenced_provider_retained_digest(
@@ -80778,9 +80865,10 @@ def _database_fenced_provider_retained_admission(
     inner_subject = inner.get("subject")
     outer_subject = outer.get("subject")
     cross_store = outer.get("cross_store_context")
+    outer_authority = outer.get("authority")
     owner_binding = (
-        outer.get("authority", {}).get("owner_binding")
-        if isinstance(outer.get("authority"), Mapping)
+        outer_authority.get("owner_binding")
+        if isinstance(outer_authority, Mapping)
         else None
     )
     if not all(
@@ -80827,6 +80915,24 @@ def _database_fenced_provider_retained_admission(
         and inner_control_schema.get("schema_fingerprint")
         == pin["owner_schema_fingerprint"]
     )
+    outer_read_replica = (
+        outer_authority.get("read_replica_observation")
+        if isinstance(outer_authority, Mapping)
+        else None
+    )
+    historical_storage_schema_current = bool(
+        isinstance(outer_read_replica, Mapping)
+        and outer_read_replica.get("schema_fingerprint")
+        == pin["owner_schema_fingerprint"]
+        and outer_read_replica.get("storage_schema_fingerprint")
+        == owner_binding.get("schema_fingerprint")
+        and _database_quack_transport_storage_schema_identity_matches(
+            transport_schema_fingerprint=pin["owner_schema_fingerprint"],
+            storage_schema_fingerprint=owner_binding.get(
+                "schema_fingerprint"
+            ),
+        )
+    )
     observed_generation = owner_binding.get("generation")
     owner_binding_cid = _database_fenced_provider_retained_digest(
         dict(owner_binding)
@@ -80857,8 +80963,11 @@ def _database_fenced_provider_retained_admission(
         != pin["predecessor_lease_id"]
         or owner_binding.get("store_id") != pin["owner_store_id"]
         or owner_binding.get("database_uuid") != pin["owner_database_uuid"]
-        or owner_binding.get("schema_fingerprint")
-        != pin["owner_schema_fingerprint"]
+        or (
+            not historical_mode
+            and owner_binding.get("schema_fingerprint")
+            != pin["owner_schema_fingerprint"]
+        )
         or owner_binding.get("schema_revision")
         != pin["owner_schema_revision"]
         or not isinstance(inner_authority, Mapping)
@@ -80867,8 +80976,10 @@ def _database_fenced_provider_retained_admission(
         or inner_authority.get("control_store_generation")
         != pin["control_store_generation"]
         or (historical_mode and not historical_control_schema_current)
+        or (historical_mode and not historical_storage_schema_current)
         or (
-            isinstance(inner_control_schema, Mapping)
+            not historical_mode
+            and isinstance(inner_control_schema, Mapping)
             and bool(inner_control_schema.get("schema_fingerprint"))
             and inner_control_schema.get("schema_fingerprint")
             != owner_binding.get("schema_fingerprint")
@@ -80954,6 +81065,9 @@ def _database_fenced_provider_retained_admission(
                 ),
                 "controller_quiescence_receipt_id": str(
                     controller_quiescence_receipt.get("receipt_id") or ""
+                ),
+                "owner_storage_schema_fingerprint": str(
+                    owner_binding.get("schema_fingerprint") or ""
                 ),
             }
         )

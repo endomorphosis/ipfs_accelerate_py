@@ -9,6 +9,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
+    link_payload_digest,
+)
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     canonical_json,
 )
@@ -47,6 +50,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+    DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
     DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
     DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
     DatabasePortalBridgeError,
@@ -96,6 +100,13 @@ def _sha256(value: Any) -> str:
     return "sha256:" + hashlib.sha256(
         canonical_json(value).encode("utf-8")
     ).hexdigest()
+
+
+def _storage_schema_cid(transport_fingerprint: str) -> str:
+    return link_payload_digest(
+        transport_fingerprint,
+        codec="dag-json",
+    ).cid
 
 
 def _receipts(
@@ -347,6 +358,9 @@ def test_pctdd005_historical_chain_is_additive_and_cross_closed(
     )
     admission["historical_occurrence_authority_id"] = "sha256:" + "8" * 64
     admission["controller_quiescence_receipt_id"] = "sha256:" + "9" * 64
+    admission["owner_storage_schema_fingerprint"] = _storage_schema_cid(
+        str(admission["owner_schema_fingerprint"])
+    )
     admission.pop("admission_id")
     admission["admission_id"] = _sha256(admission)
     assert database_pctdd005_historical_successor_admission_valid(admission)
@@ -662,11 +676,14 @@ def _lease_scoped_reconciliation_supervisor(
     monkeypatch: pytest.MonkeyPatch,
     *,
     fail_at: str = "",
+    replica_transport_fingerprint: str = "",
+    replica_storage_fingerprint: str = "",
 ) -> tuple[
     PortalImplementationSupervisor,
     DatabaseProgramConfig,
     list[str],
     list[Any],
+    list[dict[str, Any]],
 ]:
     """Build a no-I/O supervisor seam around the retained recovery lease."""
 
@@ -675,12 +692,32 @@ def _lease_scoped_reconciliation_supervisor(
     state.mkdir(parents=True)
     todo = repo / "todo.md"
     todo.write_text("# Tasks\n", encoding="utf-8")
+    sealed_pins = (
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+        *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+    )
+    sealed_transport_fingerprints = {
+        str(pin["owner_schema_fingerprint"]) for pin in sealed_pins
+    }
+    sealed_store_ids = {str(pin["owner_store_id"]) for pin in sealed_pins}
+    sealed_database_uuids = {
+        str(pin["owner_database_uuid"]) for pin in sealed_pins
+    }
+    assert len(sealed_transport_fingerprints) == 1
+    assert len(sealed_store_ids) == 1
+    assert len(sealed_database_uuids) == 1
+    transport_fingerprint = replica_transport_fingerprint or next(
+        iter(sealed_transport_fingerprints)
+    )
+    storage_fingerprint = replica_storage_fingerprint or _storage_schema_cid(
+        next(iter(sealed_transport_fingerprints))
+    )
     program = DatabaseProgramConfig(
         authority_mode="quack",
         task_source_kind="duckdb",
         endpoint_secret_handle="env://PCTDD005_TEST_QUACK_TOKEN",
         quack_endpoint="quack://127.0.0.1:41307",
-        store_id="state/control.duckdb",
+        store_id=next(iter(sealed_store_ids)),
         store_generation="pctdd-v1-g9",
         schema_revision="1",
     )
@@ -699,10 +736,45 @@ def _lease_scoped_reconciliation_supervisor(
     )
     events: list[str] = []
     daemons: list[Any] = []
+    owner_intent_bindings: list[dict[str, Any]] = []
+    mutation_owner_binding = {
+        "server_id": "server:retained-schema-separation",
+        "store_id": program.store_id,
+        "database_uuid": next(iter(sealed_database_uuids)),
+        "schema_revision": 1,
+        "schema_fingerprint": storage_fingerprint,
+        "generation": 69,
+        "process_birth_id": "birth:retained-schema-separation",
+        "listen_uri": program.quack_endpoint,
+        "extension_fingerprint": "sha256:" + "e" * 64,
+    }
+    raw_owner_binding = {
+        **mutation_owner_binding,
+        "read_replica": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "read-replica-observation@1"
+            ),
+            "authority": "non_authoritative_read_replica",
+            "path": "/sealed/read-replica.duckdb",
+            "source_database_path": "/sealed/control.duckdb",
+            "server_id": mutation_owner_binding["server_id"],
+            "database_uuid": mutation_owner_binding["database_uuid"],
+            "generation": mutation_owner_binding["generation"],
+            "schema_revision": mutation_owner_binding["schema_revision"],
+            "schema_fingerprint": transport_fingerprint,
+            "storage_schema_fingerprint": storage_fingerprint,
+            "sha256": "sha256:" + "d" * 64,
+            "size_bytes": 4096,
+            "refresh_sequence": 69,
+            "refreshed_at_ms": 1_700_000_000_069,
+            "live": True,
+        },
+    }
 
     class FakeOwnerIntent:
-        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-            return None
+        def __init__(self, *_args: Any, **kwargs: Any) -> None:
+            owner_intent_bindings.append(dict(kwargs["owner_binding"]))
 
         def close(self) -> None:
             events.append("intent_close")
@@ -723,6 +795,7 @@ def _lease_scoped_reconciliation_supervisor(
     class FakeDaemon:
         def __init__(self, **kwargs: Any) -> None:
             self.task_source = kwargs["task_source"]
+            self.initialization = dict(kwargs)
             self._database_portal_outer_authority_cas = None
             self.controller_quiescence_receipts: list[Any] = []
             daemons.append(self)
@@ -820,7 +893,10 @@ def _lease_scoped_reconciliation_supervisor(
     monkeypatch.setattr(
         duckdb_state_module,
         "_resolve_quack_token_handle",
-        lambda **_kwargs: ("opaque-test-handle", {"store_id": program.store_id}),
+        lambda **_kwargs: (
+            "opaque-test-handle",
+            dict(raw_owner_binding),
+        ),
     )
     monkeypatch.setattr(
         daemon_module,
@@ -856,11 +932,6 @@ def _lease_scoped_reconciliation_supervisor(
         bridge_module,
         "DatabasePortalExecutionBridge",
         FakeBridge,
-    )
-    monkeypatch.setattr(
-        supervisor,
-        "_normalized_quack_owner_binding",
-        lambda _value: {"store_id": program.store_id},
     )
     monkeypatch.setattr(
         supervisor,
@@ -901,7 +972,7 @@ def _lease_scoped_reconciliation_supervisor(
 
     monkeypatch.setattr(supervisor, "_acquire_supervisor_checkout_lease", acquire)
     monkeypatch.setattr(supervisor, "_release_supervisor_checkout_lease", release)
-    return supervisor, program, events, daemons
+    return supervisor, program, events, daemons, owner_intent_bindings
 
 
 def _retained_controller_cleanup() -> dict[str, Any]:
@@ -930,9 +1001,8 @@ def test_retained_recovery_requires_both_controller_fences_before_daemon_open(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    supervisor, program, events, daemons = _lease_scoped_reconciliation_supervisor(
-        tmp_path,
-        monkeypatch,
+    supervisor, program, events, daemons, _owner_bindings = (
+        _lease_scoped_reconciliation_supervisor(tmp_path, monkeypatch)
     )
 
     missing_launch = supervisor._reconcile_interrupted_database_portal_attempts_bound(
@@ -959,9 +1029,8 @@ def test_retained_recovery_rejects_missing_controller_receipt_before_daemon_open
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    supervisor, program, events, daemons = _lease_scoped_reconciliation_supervisor(
-        tmp_path,
-        monkeypatch,
+    supervisor, program, events, daemons, _owner_bindings = (
+        _lease_scoped_reconciliation_supervisor(tmp_path, monkeypatch)
     )
     monkeypatch.setattr(
         supervisor,
@@ -988,9 +1057,8 @@ def test_retained_recovery_checkout_capability_is_true_only_inside_lease(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    supervisor, program, events, daemons = _lease_scoped_reconciliation_supervisor(
-        tmp_path,
-        monkeypatch,
+    supervisor, program, events, daemons, _owner_bindings = (
+        _lease_scoped_reconciliation_supervisor(tmp_path, monkeypatch)
     )
 
     result = supervisor._reconcile_interrupted_database_portal_attempts_bound(
@@ -1021,7 +1089,7 @@ def test_retained_recovery_forwards_one_controller_authenticated_quiescence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    supervisor, program, _events, daemons = (
+    supervisor, program, _events, daemons, _owner_bindings = (
         _lease_scoped_reconciliation_supervisor(tmp_path, monkeypatch)
     )
     controller_birth = ProcessBirthIdentity(
@@ -1056,6 +1124,321 @@ def test_retained_recovery_forwards_one_controller_authenticated_quiescence(
     assert first["managed_daemon_launch_lock_held"] is True
 
 
+def test_retained_recovery_separates_transport_schema_from_storage_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, program, _events, daemons, owner_bindings = (
+        _lease_scoped_reconciliation_supervisor(tmp_path, monkeypatch)
+    )
+
+    result = supervisor._reconcile_interrupted_database_portal_attempts_bound(
+        program,
+        owner_fence_held=True,
+        managed_daemon_launch_lock_held=True,
+        managed_daemon_cleanup=_retained_controller_cleanup(),
+    )
+
+    assert result["reconciled"] is True
+    assert len(daemons) == 1
+    assert len(owner_bindings) == 1
+    transport_fingerprint = str(
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+            "owner_schema_fingerprint"
+        ]
+    )
+    mutation_binding = owner_bindings[0]
+    control_binding = daemons[0].initialization[
+        "authenticated_control_store_binding"
+    ]
+    expected_profile = daemons[0].initialization[
+        "expected_control_schema_profile"
+    ]
+    assert mutation_binding["schema_fingerprint"].startswith("baguqeera")
+    assert mutation_binding["schema_fingerprint"] == (
+        "baguqeerah2s7odhlvt7hjaaxzfkax6dqcydviq7uztbtg5xmbilz5vlw4gia"
+    )
+    assert control_binding == mutation_binding
+    assert (
+        expected_profile["storage_schema_fingerprint"]
+        == mutation_binding["schema_fingerprint"]
+    )
+    assert expected_profile["transport_schema_fingerprint"] == (
+        transport_fingerprint
+    )
+    verification = daemon_module._database_quack_control_schema_verification(
+        transport_schema_revision=program.schema_revision,
+        control_store_id=program.store_id,
+        control_store_generation=program.store_generation,
+        authenticated_owner_binding=control_binding,
+        expected_profile=expected_profile,
+    )
+    assert verification["valid"] is True
+    assert verification["schema_fingerprint"] == transport_fingerprint
+
+
+@pytest.mark.parametrize("crossed_storage", [False, True])
+def test_historical_outer_cas_bridges_transport_digest_to_storage_cid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    crossed_storage: bool,
+) -> None:
+    transport_fingerprint = str(
+        DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+            "owner_schema_fingerprint"
+        ]
+    )
+    storage_fingerprint = (
+        _storage_schema_cid("sha256:" + "f" * 64)
+        if crossed_storage
+        else _storage_schema_cid(transport_fingerprint)
+    )
+    supervisor, program, _events, _daemons, _owner_bindings = (
+        _lease_scoped_reconciliation_supervisor(
+            tmp_path,
+            monkeypatch,
+            replica_storage_fingerprint=storage_fingerprint,
+        )
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        retained_recovery_contracts,
+    )
+
+    monkeypatch.setattr(
+        retained_recovery_contracts,
+        "database_portal_controller_quiescence_receipt_valid",
+        lambda _value: True,
+    )
+    monkeypatch.setattr(
+        retained_recovery_contracts,
+        "database_fenced_provider_historical_occurrence_authority_valid",
+        lambda _value: True,
+    )
+    controller_birth = {
+        "pid": 501,
+        "start_time_ticks": 31,
+        "boot_id": "boot:pctdd-schema-bridge",
+        "parent_pid": 500,
+    }
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_birth",
+        lambda _pid: SimpleNamespace(
+            to_dict=lambda: dict(controller_birth)
+        ),
+    )
+
+    _secret, raw_owner = duckdb_state_module._resolve_quack_token_handle(
+        uri=program.quack_endpoint
+    )
+    owner_binding = supervisor._normalized_quack_owner_binding(raw_owner)
+    events: list[str] = []
+
+    class Connection:
+        def __init__(self) -> None:
+            self._quack_mutation_binding = dict(owner_binding)
+            self.in_transaction = False
+
+        def execute(self, statement: str, _parameters: Any = None) -> Any:
+            events.append(statement)
+            if statement == "BEGIN TRANSACTION":
+                self.in_transaction = True
+            elif statement in {"COMMIT", "ROLLBACK"}:
+                self.in_transaction = False
+            return self
+
+        def close(self) -> None:
+            events.append("close")
+
+    connection = Connection()
+    monkeypatch.setattr(
+        duckdb_state_module,
+        "open_quack_transport_connection",
+        lambda *_args, **_kwargs: connection,
+    )
+
+    class OuterTaskSource:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            return None
+
+        def fenced_provider_outer_authority_population_receipt(
+            self,
+            **observed_subject: Any,
+        ) -> dict[str, Any]:
+            events.append("receipt")
+            return {
+                "authority": {
+                    "owner_binding": dict(owner_binding),
+                    "read_replica_observation": dict(
+                        observed_subject["controller_replica_observation"]
+                    ),
+                    "mutation_barrier": dict(
+                        observed_subject["controller_mutation_barrier"]
+                    ),
+                }
+            }
+
+    monkeypatch.setattr(
+        database_task_source_module,
+        "DatabaseTaskSource",
+        OuterTaskSource,
+    )
+    monkeypatch.setattr(
+        intent_repository_module,
+        "fenced_provider_outer_authority_population_receipt_valid",
+        lambda _value: True,
+    )
+
+    def apply_cas(
+        _repository: Any,
+        actual_connection: Any,
+        **_kwargs: Any,
+    ) -> SimpleNamespace:
+        assert actual_connection is connection
+        events.append("cas")
+        return SimpleNamespace(changed=True, revision=1)
+
+    monkeypatch.setattr(
+        intent_repository_module.IntentRepository,
+        "_cas_task_status_on_connection",
+        apply_cas,
+    )
+    controller_receipt_id = "sha256:" + "9" * 64
+    historical_authority = {
+        "controller_quiescence_receipt_id": controller_receipt_id,
+    }
+    controller_receipt = {
+        "receipt_id": controller_receipt_id,
+        "board_namespace": supervisor.board_namespace,
+        "state_prefix": supervisor.config.state_prefix,
+        "owner_store_id": program.store_id,
+        "control_store_generation": program.store_generation,
+        "controller_process_birth": controller_birth,
+    }
+    subject = {
+        "task_cid": str(
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN["task_cid"]
+        ),
+        "task_alias": "PCTDD-005",
+        "task_revision": int(
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+                "blocked_task_revision"
+            ]
+        ),
+        "expected_task_status": "blocked",
+        "attempt_id": str(
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+                "predecessor_attempt_id"
+            ]
+        ),
+        "claim_id": str(
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+                "predecessor_claim_id"
+            ]
+        ),
+        "owner_session_id": str(
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+                "predecessor_owner_session_id"
+            ]
+        ),
+        "fencing_token": int(
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+                "predecessor_fencing_token"
+            ]
+        ),
+        "fence_epoch": int(
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+                "predecessor_fence_epoch"
+            ]
+        ),
+        "expected_store_id": program.store_id,
+        "minimum_store_generation": int(
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+                "owner_generation_floor"
+            ]
+        ),
+        "expected_database_uuid": str(
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN[
+                "owner_database_uuid"
+            ]
+        ),
+        "expected_schema_fingerprint": transport_fingerprint,
+        "receipt_nonce": str(
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN["receipt_nonce"]
+        ),
+        "receipt_epoch": int(
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN["receipt_epoch"]
+        ),
+        "historical_occurrence_authority": historical_authority,
+        "controller_quiescence_receipt": controller_receipt,
+    }
+
+    if crossed_storage:
+        with pytest.raises(
+            RuntimeError,
+            match="outside the sealed store lineage",
+        ):
+            supervisor._database_portal_execute_with_fenced_provider_outer_authority_cas_fenced(
+                program,
+                subject=subject,
+                callback=lambda *_args: None,
+            )
+        assert events == []
+    else:
+        def consume(_receipt: Any, pinned: Any) -> str:
+            events.append("callback")
+            pinned.cas_task_status(
+                task_cid=str(subject["task_cid"]),
+                expected_revision=int(subject["task_revision"]),
+                new_status="retrying",
+            )
+            return "committed"
+
+        assert (
+            supervisor._database_portal_execute_with_fenced_provider_outer_authority_cas_fenced(
+                program,
+                subject=subject,
+                callback=consume,
+            )
+            == "committed"
+        )
+        assert events == [
+            "BEGIN TRANSACTION",
+            "receipt",
+            "callback",
+            "cas",
+            "COMMIT",
+            "close",
+        ]
+
+
+def test_retained_recovery_rejects_crossed_transport_schema_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, program, _events, daemons, owner_bindings = (
+        _lease_scoped_reconciliation_supervisor(
+            tmp_path,
+            monkeypatch,
+            replica_transport_fingerprint="sha256:" + "f" * 64,
+        )
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="transport/storage schema bindings",
+    ):
+        supervisor._reconcile_interrupted_database_portal_attempts_bound(
+            program,
+            owner_fence_held=True,
+            managed_daemon_launch_lock_held=True,
+            managed_daemon_cleanup=_retained_controller_cleanup(),
+        )
+
+    assert daemons == []
+    assert owner_bindings == []
+
+
 @pytest.mark.parametrize(
     "validator_name",
     [
@@ -1068,7 +1451,7 @@ def test_retained_recovery_rejects_legacy_or_wrong_result_schema(
     monkeypatch: pytest.MonkeyPatch,
     validator_name: str,
 ) -> None:
-    supervisor, program, _events, daemons = (
+    supervisor, program, _events, daemons, _owner_bindings = (
         _lease_scoped_reconciliation_supervisor(tmp_path, monkeypatch)
     )
     monkeypatch.setattr(
@@ -1098,10 +1481,12 @@ def test_retained_recovery_checkout_capability_resets_when_reconcile_raises(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    supervisor, program, events, daemons = _lease_scoped_reconciliation_supervisor(
-        tmp_path,
-        monkeypatch,
-        fail_at="pctdd005_occurrence",
+    supervisor, program, events, daemons, _owner_bindings = (
+        _lease_scoped_reconciliation_supervisor(
+            tmp_path,
+            monkeypatch,
+            fail_at="pctdd005_occurrence",
+        )
     )
 
     result = supervisor._reconcile_interrupted_database_portal_attempts_bound(

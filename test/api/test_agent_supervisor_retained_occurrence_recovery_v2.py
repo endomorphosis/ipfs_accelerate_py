@@ -16,6 +16,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
+    link_payload_digest,
+)
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     canonical_json,
 )
@@ -144,6 +147,13 @@ _OCCURRENCE_FIELDS = frozenset(
 
 def _sha256(value: Any) -> str:
     return "sha256:" + hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _storage_schema_cid(transport_fingerprint: str) -> str:
+    return link_payload_digest(
+        transport_fingerprint,
+        codec="dag-json",
+    ).cid
 
 
 def _legacy_manifest() -> dict[str, Any]:
@@ -699,6 +709,20 @@ def test_admission_accepts_only_cross_bound_historical_outer_authority(
     outer["schema"] = (
         FENCED_PROVIDER_OUTER_HISTORICAL_AUTHORITY_POPULATION_RECEIPT_SCHEMA
     )
+    storage_fingerprint = _storage_schema_cid(
+        str(occurrence["owner_schema_fingerprint"])
+    )
+    outer["authority"] = {
+        **outer["authority"],
+        "owner_binding": {
+            **outer["authority"]["owner_binding"],
+            "schema_fingerprint": storage_fingerprint,
+        },
+        "read_replica_observation": {
+            "schema_fingerprint": occurrence["owner_schema_fingerprint"],
+            "storage_schema_fingerprint": storage_fingerprint,
+        },
+    }
     outer["cross_store_context"] = {
         "schema": FENCED_PROVIDER_OUTER_HISTORICAL_CROSS_STORE_CONTEXT_SCHEMA,
         "coordination_lease_id": occurrence["predecessor_lease_id"],
@@ -742,7 +766,22 @@ def test_admission_accepts_only_cross_bound_historical_outer_authority(
     assert database_fenced_provider_historical_retained_admission_valid(
         admission
     )
+    assert admission["owner_storage_schema_fingerprint"] == (
+        storage_fingerprint
+    )
     assert not database_fenced_provider_retained_admission_valid(admission)
+
+    crossed_storage_admission = dict(admission)
+    crossed_storage_admission["owner_storage_schema_fingerprint"] = (
+        _storage_schema_cid("sha256:" + "f" * 64)
+    )
+    crossed_storage_admission.pop("admission_id")
+    crossed_storage_admission["admission_id"] = _sha256(
+        crossed_storage_admission
+    )
+    assert not database_fenced_provider_historical_retained_admission_valid(
+        crossed_storage_admission
+    )
 
     legacy_inner = {
         **inner,

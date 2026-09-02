@@ -128,6 +128,7 @@ from .implementation_daemon import (
     PortalTaskState,
     ReconciliationLifecycleBlockedError,
     _database_daemon_logical_owner_id,
+    _database_quack_transport_storage_schema_identity_matches,
     _prepare_provider_route_receipt,
     _provider_state_boundary_required,
     _provider_filesystem_boundary_receipt_path,
@@ -16510,11 +16511,33 @@ class PortalImplementationSupervisor:
         )
         owner_before = self._normalized_quack_owner_binding(raw_owner_before)
         if dynamic_generation:
+            historical_schema_lineage_current = bool(
+                historical_authority is not None
+                and replica_before.get("schema_fingerprint")
+                == expected_schema_fingerprint
+                and replica_before.get("storage_schema_fingerprint")
+                == owner_before["schema_fingerprint"]
+                and _database_quack_transport_storage_schema_identity_matches(
+                    transport_schema_fingerprint=(
+                        expected_schema_fingerprint
+                    ),
+                    storage_schema_fingerprint=owner_before[
+                        "schema_fingerprint"
+                    ],
+                )
+            )
             if (
                 owner_before["database_uuid"] != expected_database_uuid
-                or owner_before["schema_fingerprint"]
-                != expected_schema_fingerprint
                 or owner_before["generation"] < generation_floor
+                or (
+                    historical_authority is None
+                    and owner_before["schema_fingerprint"]
+                    != expected_schema_fingerprint
+                )
+                or (
+                    historical_authority is not None
+                    and not historical_schema_lineage_current
+                )
             ):
                 raise RuntimeError(
                     "Quack owner is outside the sealed store lineage or generation floor"
@@ -17280,10 +17303,45 @@ class PortalImplementationSupervisor:
                     reviewed_store_id,
                     reviewed_store_generation,
                     reviewed_transport_revision,
-                    reviewed_storage_fingerprint,
+                    reviewed_transport_fingerprint,
                     reviewed_database_uuid,
                 ) = next(iter(reviewed_bindings))
                 reviewed_generation_floor = max(reviewed_generation_floors)
+                read_replica = raw_owner_binding.get("read_replica")
+                if not (
+                    isinstance(read_replica, Mapping)
+                    and read_replica.get("server_id")
+                    == owner_binding.get("server_id")
+                    and read_replica.get("database_uuid")
+                    == owner_binding.get("database_uuid")
+                    and read_replica.get("generation")
+                    == owner_binding.get("generation")
+                    and read_replica.get("schema_revision")
+                    == owner_binding.get("schema_revision")
+                    and str(read_replica.get("schema_revision") or "")
+                    == reviewed_transport_revision
+                    and read_replica.get("schema_fingerprint")
+                    == reviewed_transport_fingerprint
+                    and read_replica.get("storage_schema_fingerprint")
+                    == owner_binding.get("schema_fingerprint")
+                    and _database_quack_transport_storage_schema_identity_matches(
+                        transport_schema_fingerprint=(
+                            reviewed_transport_fingerprint
+                        ),
+                        storage_schema_fingerprint=owner_binding.get(
+                            "schema_fingerprint"
+                        ),
+                    )
+                ):
+                    raise RuntimeError(
+                        "retained recovery transport/storage schema bindings "
+                        "do not match the authenticated Quack read replica"
+                    )
+                # Keep the authenticated mutation/connection owner binding
+                # byte-for-byte: its fingerprint is the live storage-profile
+                # CID.  The additive in-memory profile carries the distinct
+                # sealed transport digest after proving the exact CID bridge.
+                # Neither identity is relabelled or persisted as the other.
                 expected_control_schema_profile = {
                     "profile_revision": (
                         DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
@@ -17296,8 +17354,11 @@ class PortalImplementationSupervisor:
                     "transport_schema_revision": (
                         reviewed_transport_revision
                     ),
+                    "transport_schema_fingerprint": (
+                        reviewed_transport_fingerprint
+                    ),
                     "storage_schema_fingerprint": (
-                        reviewed_storage_fingerprint
+                        owner_binding.get("schema_fingerprint")
                     ),
                     "owner_database_uuid": reviewed_database_uuid,
                     "owner_generation_floor": reviewed_generation_floor,
@@ -17450,7 +17511,9 @@ class PortalImplementationSupervisor:
                         managed_daemon_launch_lock_held=(
                             managed_daemon_launch_lock_held
                         ),
-                        authenticated_control_store_binding=owner_binding,
+                        authenticated_control_store_binding=(
+                            owner_binding
+                        ),
                         expected_control_schema_profile=(
                             expected_control_schema_profile
                         ),

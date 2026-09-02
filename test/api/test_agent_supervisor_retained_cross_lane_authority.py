@@ -10,6 +10,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
+    link_payload_digest,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
@@ -206,6 +209,10 @@ def _historical_admission(
         + hashlib.sha256(task_alias.encode("utf-8")).hexdigest()
     )
     admission["controller_quiescence_receipt_id"] = "sha256:" + "9" * 64
+    admission["owner_storage_schema_fingerprint"] = link_payload_digest(
+        str(admission["owner_schema_fingerprint"]),
+        codec="dag-json",
+    ).cid
     admission.pop("admission_id")
     admission["admission_id"] = (
         daemon_module._database_fenced_provider_retained_digest(admission)
@@ -516,6 +523,10 @@ def test_historical_pctdd005_population_uses_its_exact_canonical_receipt(
     )
     admission["historical_occurrence_authority_id"] = "sha256:" + "8" * 64
     admission["controller_quiescence_receipt_id"] = "sha256:" + "9" * 64
+    admission["owner_storage_schema_fingerprint"] = link_payload_digest(
+        str(admission["owner_schema_fingerprint"]),
+        codec="dag-json",
+    ).cid
     admission.pop("admission_id")
     admission["admission_id"] = (
         daemon_module._database_fenced_provider_retained_digest(admission)
