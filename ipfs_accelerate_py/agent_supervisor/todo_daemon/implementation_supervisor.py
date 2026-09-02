@@ -122,6 +122,7 @@ from .implementation_daemon import (
     IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
     TASK_HEADER_PREFIX,
+    DatabaseImplementationDaemon,
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
@@ -8544,6 +8545,9 @@ class PortalImplementationSupervisor:
             with self._supervisor_checkout_transaction(lease):
                 worktree_cleanup = self._cleanup_backlogged_worktrees_locked(
                     checkout_lease=lease,
+                    database_portal_fenced_program=(
+                        database_portal_fenced_program
+                    ),
                 )
             guarded_result = {
                 "maintenance_blocked": False,
@@ -18160,6 +18164,7 @@ class PortalImplementationSupervisor:
         occurrences: Sequence[Mapping[str, Any]] | None = None,
         manifest_schema: str = "",
         manifest_id: str = "",
+        database_portal_fenced_program: DatabaseProgramConfig | None = None,
     ) -> dict[str, Any]:
         """CAS-delete exact baseline-only migration refs under the checkout lease.
 
@@ -18484,7 +18489,236 @@ class PortalImplementationSupervisor:
             )
             branch_results.append(detail)
 
+        retained_cleanup: dict[str, Any] = {
+            "attempted": False,
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "retained-predecessor-ref-cleanup@1"
+            ),
+            "operator_owned": True,
+            "authorizes_recovery_credit": False,
+            "evidence_authoritative": False,
+            "prerequisites_satisfied": False,
+            "deleted_count": 0,
+            "branches": [],
+        }
+        configured_program = getattr(self.config, "database_program", None)
+        owner_fence_current = bool(
+            database_portal_fenced_program is not None
+            and database_portal_fenced_program is configured_program
+            and database_portal_fenced_program.authority_mode == "quack"
+            and database_portal_fenced_program.task_source_kind == "duckdb"
+            and getattr(self, "board_namespace", "")
+            == "parallel-content-sealing-proof-carrying-tdd-v1"
+        )
+        if not owner_fence_current:
+            retained_cleanup["reason"] = "owner_mutation_fence_unproven"
+        else:
+            from .database_portal_bridge import (
+                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+                DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+                database_fenced_provider_retained_manifest,
+                database_fenced_provider_retained_manifest_valid,
+                database_pctdd005_successor_manifest,
+                database_pctdd005_successor_manifest_valid,
+            )
+
+            retained_cleanup["attempted"] = True
+            retained_manifests = (
+                (
+                    database_fenced_provider_retained_manifest(),
+                    DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+                    database_fenced_provider_retained_manifest_valid,
+                ),
+                (
+                    database_pctdd005_successor_manifest(),
+                    DATABASE_PCTDD005_SUCCESSOR_MANIFEST_ID,
+                    database_pctdd005_successor_manifest_valid,
+                ),
+            )
+            retained_cleanup["manifest_ids"] = [
+                manifest_id
+                for _manifest, manifest_id, _validator in retained_manifests
+            ]
+            manifests_valid = all(
+                validator(manifest)
+                for manifest, _manifest_id, validator in retained_manifests
+            )
+            retained_occurrences = [
+                dict(occurrence)
+                for manifest, _manifest_id, _validator in retained_manifests
+                for occurrence in manifest.get("occurrences", [])
+            ]
+            retained_refs = [
+                "refs/heads/"
+                + str(occurrence.get("predecessor_branch") or "")
+                for occurrence in retained_occurrences
+            ]
+            if (
+                not manifests_valid
+                or len(retained_occurrences) != 4
+                or len(set(retained_refs)) != len(retained_refs)
+            ):
+                retained_cleanup["reason"] = "sealed_manifest_invalid"
+            else:
+                try:
+                    current_root = repo_root.resolve(strict=True)
+                except (OSError, RuntimeError):
+                    current_root = None
+                retained_results: list[dict[str, Any]] = []
+                for occurrence, full_ref in zip(
+                    retained_occurrences,
+                    retained_refs,
+                    strict=True,
+                ):
+                    baseline = str(
+                        occurrence.get("disposition_baseline_ref") or ""
+                    )
+                    detail = {
+                        "task_alias": str(
+                            occurrence.get("task_alias") or ""
+                        ),
+                        "task_cid": str(occurrence.get("task_cid") or ""),
+                        "full_ref": full_ref,
+                        "expected_oid": baseline,
+                        "retained_ref": str(
+                            occurrence.get("retained_ref") or ""
+                        ),
+                        "retained_commit": str(
+                            occurrence.get("retained_commit") or ""
+                        ),
+                        "deleted": False,
+                        "reconciled": False,
+                        "recovery_credit_issued": False,
+                    }
+                    branch = str(
+                        occurrence.get("predecessor_branch") or ""
+                    )
+                    try:
+                        declared_root = Path(
+                            str(
+                                occurrence.get(
+                                    "disposition_repository_root"
+                                )
+                                or ""
+                            )
+                        ).resolve(strict=True)
+                    except (OSError, RuntimeError):
+                        declared_root = None
+                    ref_valid = subprocess.run(
+                        ["git", "check-ref-format", full_ref],
+                        cwd=repo_root,
+                        capture_output=True,
+                        check=False,
+                    ).returncode == 0
+                    if not (
+                        current_root is not None
+                        and declared_root == current_root
+                        and branch.startswith("implementation/")
+                        and re.fullmatch(r"[0-9a-f]{40}", baseline)
+                        and ref_valid
+                    ):
+                        detail["reason"] = "invalid_ref_authority"
+                        retained_results.append(detail)
+                        continue
+                    if full_ref in linked_refs:
+                        detail["reason"] = "linked_worktree_present"
+                        retained_results.append(detail)
+                        continue
+                    probe = subprocess.run(
+                        ["git", "rev-parse", "--verify", "--quiet", full_ref],
+                        cwd=repo_root,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    observed = probe.stdout.strip()
+                    detail["observed_oid"] = observed
+                    if probe.returncode not in {0, 1} or (
+                        probe.returncode == 0 and observed != baseline
+                    ) or (
+                        probe.returncode == 1 and bool(observed)
+                    ):
+                        detail["reason"] = "ref_target_mismatch"
+                        retained_results.append(detail)
+                        continue
+                    disposition_current = (
+                        DatabaseImplementationDaemon
+                        ._retained_recovery_disposition_is_current(
+                            occurrence,
+                            allow_predecessor_baseline_ref=True,
+                        )
+                    )
+                    detail["disposition_verified"] = disposition_current
+                    if not disposition_current:
+                        detail["reason"] = "retained_disposition_not_current"
+                        retained_results.append(detail)
+                        continue
+                    if probe.returncode == 1:
+                        detail.update(
+                            reconciled=True,
+                            reason="already_absent",
+                            unique_commit_count=0,
+                        )
+                        retained_results.append(detail)
+                        continue
+                    unique = subprocess.run(
+                        ["git", "rev-list", "--count", f"{baseline}..{full_ref}"],
+                        cwd=repo_root,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    unique_text = unique.stdout.strip()
+                    detail["unique_commit_count"] = (
+                        int(unique_text) if unique_text.isdigit() else -1
+                    )
+                    if unique.returncode != 0 or unique_text != "0":
+                        detail["reason"] = "unique_commit_check_failed"
+                        retained_results.append(detail)
+                        continue
+                    delete = subprocess.run(
+                        ["git", "update-ref", "-d", full_ref, baseline],
+                        cwd=repo_root,
+                        capture_output=True,
+                        check=False,
+                    )
+                    absent = subprocess.run(
+                        ["git", "show-ref", "--verify", "--quiet", full_ref],
+                        cwd=repo_root,
+                        capture_output=True,
+                        check=False,
+                    ).returncode == 1
+                    reconciled = delete.returncode == 0 and absent
+                    detail.update(
+                        deleted=reconciled,
+                        reconciled=reconciled,
+                        reason=(
+                            "deleted_exact_disposition_baseline_ref"
+                            if reconciled
+                            else "cas_delete_or_reprobe_failed"
+                        ),
+                    )
+                    retained_results.append(detail)
+                retained_cleanup["branches"] = retained_results
+                retained_cleanup["deleted_count"] = sum(
+                    item.get("deleted") is True for item in retained_results
+                )
+                retained_cleanup["prerequisites_satisfied"] = bool(
+                    len(retained_results) == 4
+                    and all(
+                        item.get("reconciled") is True
+                        for item in retained_results
+                    )
+                )
+                retained_cleanup["reason"] = (
+                    "exact_retained_predecessor_refs_reconciled"
+                    if retained_cleanup["prerequisites_satisfied"]
+                    else "retained_predecessor_ref_unavailable"
+                )
+
         result["branches"] = branch_results
+        result["retained_predecessor_ref_cleanup"] = retained_cleanup
         result["deleted_count"] = sum(
             item.get("deleted") is True for item in branch_results
         )
@@ -18601,6 +18835,7 @@ class PortalImplementationSupervisor:
         self,
         *,
         checkout_lease: CheckoutMutationLease | None = None,
+        database_portal_fenced_program: DatabaseProgramConfig | None = None,
     ) -> dict[str, Any]:
         """Clean merged worktrees while holding the checkout mutation lock."""
 
@@ -18619,6 +18854,9 @@ class PortalImplementationSupervisor:
             self._cleanup_fenced_provider_migration_branches_locked(
                 checkout_lease=checkout_lease,
                 worktree_prune_result=prune,
+                database_portal_fenced_program=(
+                    database_portal_fenced_program
+                ),
             )
         )
         records = self._git_worktree_records(repo_root)

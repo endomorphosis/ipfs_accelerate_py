@@ -94800,8 +94800,18 @@ class DatabaseImplementationDaemon:
     @staticmethod
     def _retained_recovery_disposition_is_current(
         occurrence: Mapping[str, Any],
+        *,
+        allow_predecessor_baseline_ref: bool = False,
     ) -> bool:
-        """Revalidate the immutable Git side of one retained disposition."""
+        """Revalidate the immutable Git side of one retained disposition.
+
+        Normal admission requires the predecessor implementation ref to be
+        absent.  The supervisor's owner-fenced checkout janitor may instead
+        ask whether that ref is either absent or still points *exactly* at the
+        sealed disposition baseline.  That narrowly broader read-only check
+        is used only before a compare-and-swap ref deletion; divergent refs
+        remain invalid.
+        """
 
         pin = dict(occurrence)
         def git(*args: str, cwd: Path) -> tuple[int, str]:
@@ -94926,7 +94936,19 @@ class DatabaseImplementationDaemon:
             f"refs/heads/{predecessor_branch}",
             cwd=repository_root,
         )
-        if branch_status != 1:
+        if branch_status == 0 and allow_predecessor_baseline_ref:
+            branch_target_status, branch_target = git(
+                "rev-parse",
+                "--verify",
+                f"refs/heads/{predecessor_branch}^{{commit}}",
+                cwd=repository_root,
+            )
+            if (
+                branch_target_status != 0
+                or branch_target != disposition_baseline
+            ):
+                return False
+        elif branch_status != 1:
             return False
         pctdd005_task_cid = (
             "baguqeeralebfcpvwg72mkrku5nngr6kuda22x6bqx257fi4w3ztelab56iza"

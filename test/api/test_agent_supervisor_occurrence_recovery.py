@@ -127,6 +127,7 @@ def _run_cleanup(
     occurrences: list[dict[str, object]],
     *,
     manifest_id: str | None = None,
+    database_portal_fenced_program: object | None = None,
 ) -> dict[str, object]:
     lock_path = supervisor._repo_merge_lock_path()
     metadata = supervisor._supervisor_checkout_lock_metadata(
@@ -150,12 +151,107 @@ def _run_cleanup(
                 occurrences=occurrences,
                 manifest_schema=_MANIFEST_SCHEMA,
                 manifest_id=(manifest_id or _manifest_id(occurrences)),
+                database_portal_fenced_program=(
+                    database_portal_fenced_program
+                ),
             )
     finally:
         supervisor._release_supervisor_checkout_lease(
             lease,
             operation="cleanup_backlogged_worktrees",
         )
+
+
+def _retained_occurrence(
+    repo: Path,
+    *,
+    alias: str,
+    branch: str,
+    baseline: str,
+    retained_ref: str = "",
+    retained_commit: str = "",
+) -> dict[str, object]:
+    rescue = bool(retained_ref)
+    return {
+        "task_alias": alias,
+        "task_cid": f"cid:{alias.lower()}",
+        "predecessor_branch": branch,
+        "disposition_repository_root": str(repo),
+        "disposition_baseline_ref": baseline,
+        "recovery_mode": (
+            "unpublished_rescue_quarantined"
+            if rescue
+            else "runner_fenced_clean_removed"
+        ),
+        "candidate_disposition": (
+            "rescue_quarantined" if rescue else "clean_removed"
+        ),
+        "retained_ref": retained_ref,
+        "retained_commit": retained_commit,
+        "retained_worktree_path": "",
+    }
+
+
+def _install_retained_manifests(
+    monkeypatch: pytest.MonkeyPatch,
+    repo: Path,
+    *,
+    baseline: str,
+    rescue_commit: str,
+) -> list[dict[str, object]]:
+    pins = [
+        _retained_occurrence(
+            repo,
+            alias="PCTDD-006",
+            branch="implementation/pctdd-006-retained",
+            baseline=baseline,
+        ),
+        _retained_occurrence(
+            repo,
+            alias="PCTDD-007",
+            branch="implementation/pctdd-007-retained",
+            baseline=baseline,
+            retained_ref="refs/heads/rescue/pctdd-007",
+            retained_commit=rescue_commit,
+        ),
+        _retained_occurrence(
+            repo,
+            alias="PCTDD-034",
+            branch="implementation/pctdd-034-retained",
+            baseline=baseline,
+            retained_ref="refs/heads/rescue/pctdd-034",
+            retained_commit=rescue_commit,
+        ),
+        _retained_occurrence(
+            repo,
+            alias="PCTDD-005",
+            branch="implementation/pctdd-005-retained",
+            baseline=baseline,
+        ),
+    ]
+    retained = {"schema": "test/retained@2", "occurrences": pins[:3]}
+    successor = {"schema": "test/retained@3", "occurrences": pins[3:]}
+    monkeypatch.setattr(
+        bridge_module,
+        "database_fenced_provider_retained_manifest",
+        lambda: retained,
+    )
+    monkeypatch.setattr(
+        bridge_module,
+        "database_fenced_provider_retained_manifest_valid",
+        lambda value: value == retained,
+    )
+    monkeypatch.setattr(
+        bridge_module,
+        "database_pctdd005_successor_manifest",
+        lambda: successor,
+    )
+    monkeypatch.setattr(
+        bridge_module,
+        "database_pctdd005_successor_manifest_valid",
+        lambda value: value == successor,
+    )
+    return pins
 
 
 def test_exact_baseline_refs_are_cas_deleted_and_true_absence_is_preserved(
@@ -189,6 +285,195 @@ def test_exact_baseline_refs_are_cas_deleted_and_true_absence_is_preserved(
         item["recovery_credit_issued"] is False
         for item in events[0][1]["branches"]
     )
+
+
+def test_owner_fenced_retained_refs_delete_only_obsolete_predecessors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, baseline, rescue_commit = _repo(tmp_path)
+    old_occurrences = _occurrences(tmp_path, baseline)
+    pins = _install_retained_manifests(
+        monkeypatch,
+        repo,
+        baseline=baseline,
+        rescue_commit=rescue_commit,
+    )
+    for pin in pins[1:3]:
+        _git(
+            repo,
+            "update-ref",
+            f"refs/heads/{pin['predecessor_branch']}",
+            baseline,
+        )
+        _git(repo, "update-ref", str(pin["retained_ref"]), rescue_commit)
+
+    guard_calls: list[str] = []
+
+    def disposition_current(
+        occurrence: dict[str, object],
+        *,
+        allow_predecessor_baseline_ref: bool = False,
+    ) -> bool:
+        assert allow_predecessor_baseline_ref is True
+        alias = str(occurrence["task_alias"])
+        guard_calls.append(alias)
+        predecessor = f"refs/heads/{occurrence['predecessor_branch']}"
+        predecessor_target = _git(
+            repo, "show-ref", "--verify", "--hash", predecessor, check=False
+        )
+        assert predecessor_target in {"", baseline}
+        retained_ref = str(occurrence.get("retained_ref") or "")
+        if not retained_ref:
+            return not occurrence.get("retained_commit")
+        return (
+            _git(repo, "show-ref", "--verify", "--hash", retained_ref)
+            == occurrence.get("retained_commit")
+        )
+
+    monkeypatch.setattr(
+        daemon_module.DatabaseImplementationDaemon,
+        "_retained_recovery_disposition_is_current",
+        staticmethod(disposition_current),
+    )
+    supervisor, events = _supervisor(repo, tmp_path)
+    program = SimpleNamespace(authority_mode="quack", task_source_kind="duckdb")
+    supervisor.config.database_program = program
+
+    result = _run_cleanup(
+        supervisor,
+        old_occurrences,
+        database_portal_fenced_program=program,
+    )
+
+    retained = result["retained_predecessor_ref_cleanup"]
+    assert retained["prerequisites_satisfied"] is True
+    assert retained["deleted_count"] == 2
+    assert set(guard_calls) == {
+        "PCTDD-005",
+        "PCTDD-006",
+        "PCTDD-007",
+        "PCTDD-034",
+    }
+    for pin in pins:
+        assert not _git(
+            repo,
+            "show-ref",
+            "--verify",
+            "--hash",
+            f"refs/heads/{pin['predecessor_branch']}",
+            check=False,
+        )
+    for pin in pins[1:3]:
+        assert (
+            _git(
+                repo,
+                "show-ref",
+                "--verify",
+                "--hash",
+                str(pin["retained_ref"]),
+            )
+            == rescue_commit
+        )
+    cleanup_event = events[-1][1]["retained_predecessor_ref_cleanup"]
+    assert cleanup_event["authorizes_recovery_credit"] is False
+    assert cleanup_event["evidence_authoritative"] is False
+
+
+def test_retained_predecessor_cleanup_requires_owner_fence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, baseline, rescue_commit = _repo(tmp_path)
+    pins = _install_retained_manifests(
+        monkeypatch,
+        repo,
+        baseline=baseline,
+        rescue_commit=rescue_commit,
+    )
+    ref = f"refs/heads/{pins[1]['predecessor_branch']}"
+    _git(repo, "update-ref", ref, baseline)
+    supervisor, _events = _supervisor(repo, tmp_path)
+
+    result = _run_cleanup(supervisor, _occurrences(tmp_path, baseline))
+
+    retained = result["retained_predecessor_ref_cleanup"]
+    assert retained["attempted"] is False
+    assert retained["reason"] == "owner_mutation_fence_unproven"
+    assert _git(repo, "show-ref", "--verify", "--hash", ref) == baseline
+
+
+@pytest.mark.parametrize(
+    ("unsafe_state", "expected_reason"),
+    [
+        ("divergent", "ref_target_mismatch"),
+        ("linked", "linked_worktree_present"),
+        ("rescue_mismatch", "retained_disposition_not_current"),
+    ],
+)
+def test_retained_predecessor_cleanup_preserves_unsafe_ref(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_state: str,
+    expected_reason: str,
+) -> None:
+    repo, baseline, divergent = _repo(tmp_path)
+    pins = _install_retained_manifests(
+        monkeypatch,
+        repo,
+        baseline=baseline,
+        rescue_commit=divergent,
+    )
+    pin = pins[1]
+    branch = str(pin["predecessor_branch"])
+    ref = f"refs/heads/{branch}"
+    target = divergent if unsafe_state == "divergent" else baseline
+    _git(repo, "update-ref", ref, target)
+    if unsafe_state == "linked":
+        _git(repo, "worktree", "add", "-q", str(tmp_path / "linked"), branch)
+    if unsafe_state != "rescue_mismatch":
+        _git(repo, "update-ref", str(pin["retained_ref"]), divergent)
+
+    def disposition_current(
+        occurrence: dict[str, object],
+        *,
+        allow_predecessor_baseline_ref: bool = False,
+    ) -> bool:
+        assert allow_predecessor_baseline_ref is True
+        retained_ref = str(occurrence.get("retained_ref") or "")
+        if not retained_ref:
+            return True
+        return _git(
+            repo,
+            "show-ref",
+            "--verify",
+            "--hash",
+            retained_ref,
+            check=False,
+        ) == occurrence.get("retained_commit")
+
+    monkeypatch.setattr(
+        daemon_module.DatabaseImplementationDaemon,
+        "_retained_recovery_disposition_is_current",
+        staticmethod(disposition_current),
+    )
+    supervisor, _events = _supervisor(repo, tmp_path)
+    program = SimpleNamespace(authority_mode="quack", task_source_kind="duckdb")
+    supervisor.config.database_program = program
+
+    result = _run_cleanup(
+        supervisor,
+        _occurrences(tmp_path, baseline),
+        database_portal_fenced_program=program,
+    )
+
+    retained = result["retained_predecessor_ref_cleanup"]
+    detail = next(
+        item for item in retained["branches"] if item["task_alias"] == "PCTDD-007"
+    )
+    assert detail["reason"] == expected_reason
+    assert detail["deleted"] is False
+    assert _git(repo, "show-ref", "--verify", "--hash", ref) == target
 
 
 def test_wrong_manifest_id_fails_without_ref_mutation(tmp_path: Path) -> None:

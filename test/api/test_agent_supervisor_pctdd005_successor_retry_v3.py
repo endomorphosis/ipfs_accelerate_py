@@ -345,6 +345,15 @@ def test_pctdd005_no_task_edits_disposition_is_exact_and_never_rescued(
                 returncode=git_state["branch_returncode"],
                 stdout="",
             )
+        if git_args == [
+            "rev-parse",
+            "--verify",
+            f"refs/heads/{pin['predecessor_branch']}^{{commit}}",
+        ]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"{pin['disposition_baseline_ref']}\n",
+            )
         raise AssertionError(f"unexpected git invocation: {git_args!r}")
 
     monkeypatch.setattr(daemon_module.subprocess, "run", fake_git)
@@ -355,6 +364,10 @@ def test_pctdd005_no_task_edits_disposition_is_exact_and_never_rescued(
     assert validate_disposition(pin)
     git_state["branch_returncode"] = 0
     assert not validate_disposition(pin)
+    assert validate_disposition(
+        pin,
+        allow_predecessor_baseline_ref=True,
+    )
     git_state["branch_returncode"] = 1
     git_state["gitlink_ref"] = "b" * 40
     assert not validate_disposition(pin)
