@@ -114,9 +114,9 @@ _M53_TARGET_PROJECTION_CID = (
     "baguqeerayh3goxbqiclzj3lzaxzgmqlqaopjmcsbuhastfmtti2xyfd5qxwa"
 )
 _M55_AUTHORITY_CID = (
-    "sha256:9feee86e6e53b6bf7948d78b078a3ee7ce3fc51332f1fcdf1782fdc2fc3804c0"
+    "sha256:5c8e3217f2ed2bdcf935761e5aa2e5b04aaa0945ae8dbe166fb57293a5ba1938"
 )
-_M55_AUTHORITY_SIZE = 30_272
+_M55_AUTHORITY_SIZE = 30_271
 _M55_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M55_FINAL_CONTROL_AUTHORITY_CID"
 _M55_SUCCESSOR_KEY = (
     "live_ready_owner_missing_client_token_vault_restart_successor_materialization"
@@ -5289,7 +5289,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "39"
+        "40"
         if m55_selected
         else "38"
         if m53_selected
@@ -5514,7 +5514,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 or len(materializer._canonical(expected)) != _M55_AUTHORITY_SIZE
                 or expected.get("migration_revision") != "SAWM-R2-M55"
                 or expected.get("migration_kind") != m55_key
-                or contract.get("target_generation") != 39
+                or contract.get("target_generation") != 40
                 or contract.get("target_event_watermark") != 321
                 or contract.get("target_projection_cid")
                 != _M55_TARGET_PROJECTION_CID

@@ -221,9 +221,9 @@ _M53_SUCCESSOR_KEY = (
 )
 _M53_MIGRATION_REVISION = "SAWM-R2-M53"
 _M55_AUTHORITY_CID = (
-    "sha256:9feee86e6e53b6bf7948d78b078a3ee7ce3fc51332f1fcdf1782fdc2fc3804c0"
+    "sha256:5c8e3217f2ed2bdcf935761e5aa2e5b04aaa0945ae8dbe166fb57293a5ba1938"
 )
-_M55_AUTHORITY_SIZE = 30_272
+_M55_AUTHORITY_SIZE = 30_271
 _M55_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M55_FINAL_CONTROL_AUTHORITY_CID"
 _M55_SUCCESSOR_KEY = (
     "live_ready_owner_missing_client_token_vault_restart_successor_materialization"
@@ -3508,7 +3508,7 @@ def _m55_live_ready_owner_missing_client_token_vault_restart_errors(
             or materializer._M55_AUTHORITY_CID != _M55_AUTHORITY_CID
             or expected.get("migration_revision") != _M55_MIGRATION_REVISION
             or expected.get("migration_kind") != key
-            or expected.get("target_generation") != 39
+            or expected.get("target_generation") != 40
             or expected.get("target_event_watermark") != 321
         ):
             errors.append("M55 token-vault restart authority differs")
@@ -3565,7 +3565,7 @@ def _m55_live_ready_owner_missing_client_token_vault_restart_errors(
             or materializer._M55_AUTHORITY_CID != _M55_AUTHORITY_CID
             or expected.get("migration_revision") != _M55_MIGRATION_REVISION
             or expected.get("migration_kind") != key
-            or expected.get("target_generation") != 39
+            or expected.get("target_generation") != 40
             or expected.get("target_event_watermark") != 321
         ):
             errors.append("M55 token-vault restart authority differs")

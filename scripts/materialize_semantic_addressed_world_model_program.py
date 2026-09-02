@@ -3495,11 +3495,11 @@ _M55_SUPERSESSION_REASON = (
 )
 _M55_CONTROL_RECORDED_AT = "2026-09-02T06:35:00Z"
 _M55_AUTHORITY_CID = (
-    "sha256:9feee86e6e53b6bf7948d78b078a3ee7ce3fc51332f1fcdf1782fdc2fc3804c0"
+    "sha256:5c8e3217f2ed2bdcf935761e5aa2e5b04aaa0945ae8dbe166fb57293a5ba1938"
 )
-_M55_AUTHORITY_SIZE = 30_272
-_M55_PRIOR_GENERATION = _M53_TARGET_GENERATION
-_M55_TARGET_GENERATION = 39
+_M55_AUTHORITY_SIZE = 30_271
+_M55_PRIOR_GENERATION = 39
+_M55_TARGET_GENERATION = 40
 _M55_PRIOR_EVENT_WATERMARK = 320
 _M55_TARGET_EVENT_WATERMARK = 321
 _M55_TARGET_PLAN_REVISION = _M53_TARGET_PLAN_REVISION
@@ -3529,15 +3529,15 @@ _M55_RUNTIME_ROOT = _M53_RUNTIME_ROOT
 _M55_WORKTREE_ROOT = _M53_WORKTREE_ROOT
 _M55_DATABASE_UUID = _M53_DATABASE_UUID
 _M55_EXTENSION_FINGERPRINT = _M53_EXTENSION_FINGERPRINT
-_M55_PRIOR_SERVER_ID = "server:8d4bf813-4a5e-4140-848e-e4f4a965b158"
-_M55_PRIOR_PROCESS_BIRTH_ID = "birth:218419a4a86c5a34514153a1b41516c6"
-_M55_PRIOR_STARTED_AT = "2026-09-02T03:35:17Z"
+_M55_PRIOR_SERVER_ID = "server:628715b5-9d94-4536-bb80-e6898b245109"
+_M55_PRIOR_PROCESS_BIRTH_ID = "birth:62e5bca61bef2b99c88262363a9dede2"
+_M55_PRIOR_STARTED_AT = "2026-09-02T06:52:42Z"
 _M55_PRIOR_PROCESS_BIRTH = MappingProxyType(
     {
         "boot_id": "34bca049-fa9b-4f7a-a1df-90e079073f8d",
-        "parent_pid": 2_383_498,
-        "pid": 2_383_502,
-        "start_time_ticks": 1_034_166,
+        "parent_pid": 683_061,
+        "pid": 683_126,
+        "start_time_ticks": 2_218_069,
     }
 )
 _M55_M53_AUTHORITY_CID = _M53_AUTHORITY_CID
@@ -94582,10 +94582,10 @@ def _expected_m55_live_ready_owner_missing_client_token_vault_restart_authority(
         _M55_TARGET_EVENT_WATERMARK
     )
     authority["stopped_owner"] = {
-        "schema": "sawm/live-ready-generation-38-owner-after-handoff-retirement@1",
+        "schema": "sawm/stopped-generation-39-owner-after-handoff-retirement@1",
         "generation": _M55_PRIOR_GENERATION,
-        "status": "ready",
-        "lifecycle": "ready",
+        "status": "stopped",
+        "lifecycle": "stopped",
         "server_id": _M55_PRIOR_SERVER_ID,
         "process_birth_id": _M55_PRIOR_PROCESS_BIRTH_ID,
         "process_birth": dict(_M55_PRIOR_PROCESS_BIRTH),
@@ -94842,7 +94842,7 @@ def _check_m55_prestart_admission(
         raise MigrationRequired("M55 stale owner marker could not be reclaimed")
     return {
         "valid": True,
-        "action": "admitted_live_ready_generation_38_restart_to_generation_39",
+        "action": "admitted_stopped_generation_39_restart_to_generation_40",
         "database_path": str(control),
         "coordination_path": str(coordination),
         "prior_generation": _M55_PRIOR_GENERATION,
@@ -94950,7 +94950,7 @@ def _inspect_m55_generation_restart_rows(
         or int(identity.get("schema_revision") or 0) != 1
         or int(identity.get("startup_epoch") or 0) < 1
     ):
-        raise MigrationRequired("M55 live generation-39 identity differs")
+        raise MigrationRequired("M55 live generation-40 identity differs")
     with source.intent._connection(write=False) as connection:
         counts = {
             table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
@@ -94965,7 +94965,7 @@ def _inspect_m55_generation_restart_rows(
     if counts != {name: _M55_TARGET_GENERATION for name in counts}:
         raise MigrationRequired("M55 generation-bearing row counts differ")
     return {
-        "generation_38_39_restart_rows_verified": True,
+        "generation_39_40_restart_rows_verified": True,
         "prior_owner_generation": _M55_PRIOR_GENERATION,
         "live_owner_generation": _M55_TARGET_GENERATION,
         "live_server_id": server_id,
@@ -95144,7 +95144,7 @@ def _expected_m55_source_successor_receipt(
         "evidence_event_count": verified["evidence_event_count"],
         "validation_event_count": verified["validation_event_count"],
         "passed_validation_event_count": verified["passed_validation_event_count"],
-        "generation_38_39_restart_rows_verified": True,
+        "generation_39_40_restart_rows_verified": True,
         "m53_receipt_preserved_exactly": True,
         "queried_and_mutated_through_live_quack_only": True,
         "direct_authoritative_file_opened": False,
@@ -95219,7 +95219,7 @@ def _check_m55_materialized(root: Path, config_file: Path) -> dict[str, Any]:
         or observed.get("migration_evidence_id") != verified["migration_evidence_id"]
         or observed.get("migration_evidence_event_id")
         != verified["migration_evidence_event_id"]
-        or observed.get("generation_38_39_restart_rows_verified") is not True
+        or observed.get("generation_39_40_restart_rows_verified") is not True
         or observed.get("m53_receipt_preserved_exactly") is not True
         or m53_before != (_M55_M53_RECEIPT_SHA256, _M55_M53_RECEIPT_SIZE)
         or _stable_regular_sha256(

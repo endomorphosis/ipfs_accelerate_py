@@ -272,14 +272,14 @@ _M55_SUCCESSOR_KEY = (
 )
 _M55_MIGRATION_REVISION = "SAWM-R2-M55"
 _M55_AUTHORITY_CID = (
-    "sha256:9feee86e6e53b6bf7948d78b078a3ee7ce3fc51332f1fcdf1782fdc2fc3804c0"
+    "sha256:5c8e3217f2ed2bdcf935761e5aa2e5b04aaa0945ae8dbe166fb57293a5ba1938"
 )
-_M55_AUTHORITY_SIZE = 30_272
+_M55_AUTHORITY_SIZE = 30_271
 _M55_STORE_ID = _M53_STORE_ID
 _M55_COORDINATION_STORE_ID = _M53_COORDINATION_STORE_ID
 _M55_WORKTREE_ROOT = _M53_WORKTREE_ROOT
-_M55_PRIOR_GENERATION = 38
-_M55_GENERATION = 39
+_M55_PRIOR_GENERATION = 39
+_M55_GENERATION = 40
 _M55_TARGET_PLAN_REVISION = _M53_TARGET_PLAN_REVISION
 _M55_PRIOR_EVENT_WATERMARK = 320
 _M55_TARGET_EVENT_WATERMARK = 321
@@ -7799,7 +7799,7 @@ def _require_m55_source_successor_marker(
         or checked_live.get("projection_cid") != _M55_TARGET_PROJECTION_CID
         or observed.get("migration_revision") != _M55_MIGRATION_REVISION
         or observed.get(f"{key}_cid") != _M55_AUTHORITY_CID
-        or observed.get("generation_38_39_restart_rows_verified") is not True
+        or observed.get("generation_39_40_restart_rows_verified") is not True
         or observed.get("m53_receipt_preserved_exactly") is not True
         or observed.get("authoritative") is not False
         or observed.get("completion_authority") is not False
@@ -15432,7 +15432,7 @@ def _validate_offline_quack_start(
         if (
             admitted.get("valid") is not True
             or admitted.get("action")
-            != "admitted_live_ready_generation_38_restart_to_generation_39"
+            != "admitted_stopped_generation_39_restart_to_generation_40"
             or admitted.get("prior_generation") != _M55_PRIOR_GENERATION
             or admitted.get("target_generation") != _M55_GENERATION
             or admitted.get("prior_event_watermark")
