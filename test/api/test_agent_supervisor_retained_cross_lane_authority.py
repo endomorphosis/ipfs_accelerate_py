@@ -428,41 +428,58 @@ def test_historical_claim_uses_canonical_population_and_only_own_lane_fence(
                 occurrences["PCTDD-034"]["task_cid"]
             )
             assert peer is not None
-            peer_receipt = dict(peer.body["completion_receipt"])
-            crossed = dict(peer_receipt["retained_recovery_admission"])
-            crossed["controller_quiescence_receipt_id"] = (
-                "sha256:" + "8" * 64
+            original_peer_admission = dict(
+                peer.body["completion_receipt"][
+                    "retained_recovery_admission"
+                ]
             )
-            crossed.pop("admission_id")
-            crossed["admission_id"] = (
-                daemon_module._database_fenced_provider_retained_digest(
-                    crossed
+            crossed_fields = (
+                (
+                    "controller_quiescence_receipt_id",
+                    "sha256:" + "8" * 64,
+                ),
+                ("owner_binding_cid", "sha256:" + "7" * 64),
+                (
+                    "owner_live_generation",
+                    int(original_peer_admission["owner_live_generation"]) + 1,
+                ),
+            )
+            for field, replacement in crossed_fields:
+                peer_receipt = dict(peer.body["completion_receipt"])
+                crossed = dict(original_peer_admission)
+                crossed[field] = replacement
+                crossed.pop("admission_id")
+                crossed["admission_id"] = (
+                    daemon_module._database_fenced_provider_retained_digest(
+                        crossed
+                    )
                 )
-            )
-            assert database_fenced_provider_historical_retained_admission_valid(
-                crossed
-            )
-            peer_receipt["retained_recovery_admission"] = crossed
-            crossed_peer = SimpleNamespace(
-                task_cid=peer.task_cid,
-                task_alias=peer.task_alias,
-                status=peer.status,
-                revision=peer.revision,
-                body={"completion_receipt": peer_receipt},
-            )
-
-            class CrossedControllerSource:
-                def get(self, task_cid: str):
-                    if task_cid == crossed_peer.task_cid:
-                        return crossed_peer
-                    return original_source.get(task_cid)
-
-            lane0._task_source = CrossedControllerSource()
-            assert not (
-                lane0._retained_recovery_admission_population_admitted_current(
-                    admission
+                assert (
+                    database_fenced_provider_historical_retained_admission_valid(
+                        crossed
+                    )
                 )
-            )
+                peer_receipt["retained_recovery_admission"] = crossed
+                crossed_peer = SimpleNamespace(
+                    task_cid=peer.task_cid,
+                    task_alias=peer.task_alias,
+                    status=peer.status,
+                    revision=peer.revision,
+                    body={"completion_receipt": peer_receipt},
+                )
+
+                class CrossedCohortSource:
+                    def get(self, task_cid: str):
+                        if task_cid == crossed_peer.task_cid:
+                            return crossed_peer
+                        return original_source.get(task_cid)
+
+                lane0._task_source = CrossedCohortSource()
+                assert not (
+                    lane0._retained_recovery_admission_population_admitted_current(
+                        admission
+                    )
+                ), field
         finally:
             lane0._task_source = original_source
 

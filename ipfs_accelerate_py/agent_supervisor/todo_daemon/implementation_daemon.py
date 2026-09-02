@@ -90527,6 +90527,10 @@ class DatabaseImplementationDaemon:
         from those exact records.  The callers in the claim path separately
         require the supplied admission's own admitted predecessor fence before
         this population check and again immediately before consumption.
+        Every canonical member must also share the supplied admission's
+        controller receipt, authenticated owner binding, and live generation;
+        individually valid records from different controller cohorts cannot be
+        combined into one claim authority.
 
         This deliberately applies only to the additive historical schemas.
         The normalized @2/@3 paths retain their existing execution-store
@@ -90545,8 +90549,13 @@ class DatabaseImplementationDaemon:
             )
         ):
             return False
-        controller_receipt_id = str(
-            admission.get("controller_quiescence_receipt_id") or ""
+        cohort_key = tuple(
+            admission.get(field)
+            for field in (
+                "controller_quiescence_receipt_id",
+                "owner_binding_cid",
+                "owner_live_generation",
+            )
         )
         try:
             manifest = authority["manifest_builder"]()
@@ -90573,10 +90582,15 @@ class DatabaseImplementationDaemon:
                     and database_fenced_provider_historical_retained_admission_valid(
                         member_admission
                     )
-                    and member_admission.get(
-                        "controller_quiescence_receipt_id"
+                    and tuple(
+                        member_admission.get(field)
+                        for field in (
+                            "controller_quiescence_receipt_id",
+                            "owner_binding_cid",
+                            "owner_live_generation",
+                        )
                     )
-                    == controller_receipt_id
+                    == cohort_key
                 ):
                     return False
                 if consumption is None:
