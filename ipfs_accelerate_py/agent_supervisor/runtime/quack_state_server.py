@@ -861,6 +861,10 @@ class QuackStateServerConfig:
     application_version: str | None = None
     tool_version: str | None = None
     secret_handle: str = ""
+    expected_generation: int | None = None
+    expected_database_uuid: str | None = None
+    expected_store_id: str | None = None
+    expected_listen_uri: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "database_path", Path(self.database_path))
@@ -877,6 +881,26 @@ class QuackStateServerConfig:
                 "config secret_handle must be opaque handle, not raw token"
             )
         object.__setattr__(self, "secret_handle", handle)
+        expected_generation = self.expected_generation
+        if expected_generation is not None:
+            if type(expected_generation) is not int or expected_generation < 1:
+                raise ValueError("expected_generation must be a positive integer or None")
+            object.__setattr__(self, "expected_generation", expected_generation)
+        for field_name in (
+            "expected_database_uuid",
+            "expected_store_id",
+            "expected_listen_uri",
+        ):
+            expected_value = getattr(self, field_name)
+            if expected_value is None:
+                continue
+            if (
+                not isinstance(expected_value, str)
+                or not expected_value
+                or expected_value.strip() != expected_value
+            ):
+                raise ValueError(f"{field_name} must be a non-empty canonical string or None")
+            object.__setattr__(self, field_name, expected_value)
         if self.port < 0 or self.port > 65535:
             raise ValueError("port must be in 0..65535")
         assert_bind_admitted(self.host, remote_policy=self.remote_bind_policy)
@@ -1676,6 +1700,42 @@ class QuackStateServer:
         current = int(row[0] if not isinstance(row, Mapping) else row.get(list(row.keys())[0], 0))
         return max(1, current + 1)
 
+    def _assert_expected_startup_binding(
+        self,
+        *,
+        generation: int,
+        database_uuid: str,
+        store_id: str,
+        uri: str,
+    ) -> None:
+        """Reject a start that differs from an operator-sealed successor identity."""
+
+        mismatches: list[str] = []
+        if (
+            self.config.expected_generation is not None
+            and generation != self.config.expected_generation
+        ):
+            mismatches.append("generation")
+        if (
+            self.config.expected_database_uuid is not None
+            and database_uuid != self.config.expected_database_uuid
+        ):
+            mismatches.append("database_uuid")
+        if (
+            self.config.expected_store_id is not None
+            and store_id != self.config.expected_store_id
+        ):
+            mismatches.append("store_id")
+        if (
+            self.config.expected_listen_uri is not None
+            and uri != self.config.expected_listen_uri
+        ):
+            mismatches.append("listen_uri")
+        if mismatches:
+            raise QuackStateServerControlError(
+                "state-owner startup binding differs: " + ", ".join(mismatches)
+            )
+
     @staticmethod
     def _next_credential_generation(connection: Any, secret_handle: str) -> int:
         try:
@@ -1923,8 +1983,14 @@ class QuackStateServer:
                     if _is_loopback_host(self.config.host)
                     else DEFAULT_LOOPBACK_HOST
                 )
-                self._bound_port = port
                 uri = listen_uri(self.config.host, port)
+                self._assert_expected_startup_binding(
+                    generation=generation,
+                    database_uuid=database_uuid,
+                    store_id=self.config.store_id,
+                    uri=uri,
+                )
+                self._bound_port = port
                 secret_handle = self.config.resolved_secret_handle(server_id, generation)
                 credential_generation = self._next_credential_generation(
                     connection, secret_handle
@@ -2799,6 +2865,10 @@ def build_server(
     allow_experimental: bool = False,
     remote_bind_policy: RemoteBindPolicy | None = None,
     secret_handle: str = "",
+    expected_generation: int | None = None,
+    expected_database_uuid: str | None = None,
+    expected_store_id: str | None = None,
+    expected_listen_uri: str | None = None,
     transport: QuackTransport | None = None,
     capability_probe: Callable[..., QuackCapabilityReport] | None = None,
     migrate: Callable[..., MigrationRunReport] | None = None,
@@ -2818,6 +2888,10 @@ def build_server(
         allow_experimental=allow_experimental,
         remote_bind_policy=remote_bind_policy,
         secret_handle=secret_handle,
+        expected_generation=expected_generation,
+        expected_database_uuid=expected_database_uuid,
+        expected_store_id=expected_store_id,
+        expected_listen_uri=expected_listen_uri,
     )
     return QuackStateServer(
         config=config,

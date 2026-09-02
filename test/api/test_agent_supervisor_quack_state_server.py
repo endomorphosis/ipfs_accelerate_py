@@ -857,6 +857,77 @@ def test_start_ready_checkpoint_stop_lifecycle(tmp_path: Path) -> None:
     assert not server.owner_marker_path().exists()
 
 
+@pytest.mark.parametrize(
+    ("max_generation", "expected_overrides", "mismatched_field"),
+    (
+        (43, {"expected_generation": 43}, "generation"),
+        (
+            0,
+            {"expected_database_uuid": "123e4567-e89b-12d3-a456-426614174001"},
+            "database_uuid",
+        ),
+        (0, {"expected_store_id": "other-control.duckdb"}, "store_id"),
+        (
+            0,
+            {"expected_listen_uri": "quack:127.0.0.1:4343"},
+            "listen_uri",
+        ),
+    ),
+    ids=("unexpected-generation-44", "database-uuid", "store-id", "listen-uri"),
+)
+def test_expected_startup_binding_fails_before_credentials_transport_or_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    max_generation: int,
+    expected_overrides: dict[str, Any],
+    mismatched_field: str,
+) -> None:
+    connection = FakeConnection(max_generation=max_generation)
+    transport = FakeQuackTransport()
+    expected = {
+        "expected_generation": max_generation + 1,
+        "expected_database_uuid": _UUID,
+        "expected_store_id": "control.duckdb",
+        "expected_listen_uri": "quack:127.0.0.1:4242",
+        **expected_overrides,
+    }
+    server = build_server(
+        database_path=tmp_path / "control.duckdb",
+        state_dir=tmp_path / "state",
+        port=4242,
+        transport=transport,
+        capability_probe=lambda **_kwargs: _compatible_report(),
+        migrate=lambda _path: _migration_report(),
+        connection_factory=lambda _path: connection,
+        process_birth_factory=lambda: _birth(),
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+        **expected,
+    )
+    assert server._vault is not None  # noqa: SLF001 -- pre-publication boundary
+    mint_calls: list[tuple[str, int]] = []
+
+    def record_mint(*, secret_handle: str, generation: int) -> None:
+        mint_calls.append((secret_handle, generation))
+
+    monkeypatch.setattr(server._vault, "mint", record_mint)  # noqa: SLF001
+
+    with pytest.raises(QuackStateServerControlError, match=mismatched_field):
+        server.start()
+
+    assert server.lifecycle is ServerLifecycle.FAILED
+    assert server.identity is None
+    assert mint_calls == []
+    assert transport.started is False
+    assert transport.start_calls == []
+    assert not any(
+        statement.upper().startswith(("INSERT ", "UPDATE "))
+        for statement in connection.statements
+    )
+    assert connection.closed is True
+    assert not server.owner_marker_path().exists()
+    assert list((tmp_path / "state").glob("*.quack-token")) == []
+
+
 def test_ready_requires_live_query(tmp_path: Path) -> None:
     transport = FakeQuackTransport(fail_live_query=True)
     server = _server(tmp_path, transport=transport)
