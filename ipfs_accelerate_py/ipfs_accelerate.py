@@ -149,15 +149,10 @@ class ipfs_accelerate_py:
         )
         self.resources["worker"] = self.worker
 
-        # Create a simple mock for ipfs_multiformats with minimal functionality
-        self.ipfs_multiformats = type(
-            "MockIPFSMultiformats",
-            (),
-            {
-                "get_cid": lambda self, data: hashlib.sha256(str(data).encode("utf-8")).hexdigest(),
-                "__init__": lambda self, *args, **kwargs: None,
-            },
-        )({}, metadata)
+        # PCPR-032: ordinary runtime mints canonical CIDv1, never hex or Qm.
+        from .compatibility.simulation.pseudo_cid import load_ordinary_multiformats
+
+        self.ipfs_multiformats = load_ordinary_multiformats()
         self.resources["ipfs_multiformats"] = self.ipfs_multiformats
 
         if "apis" not in globals():

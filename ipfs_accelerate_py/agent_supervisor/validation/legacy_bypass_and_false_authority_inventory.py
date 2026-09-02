@@ -422,11 +422,20 @@ PATH_CLASS_CATALOG: Final[tuple[PathClassRecipe, ...]] = (
             "generation; hex strings are not CIDs."
         ),
         relpaths=(
+            "ipfs_accelerate_py/compatibility/simulation/pseudo_cid.py",
+            "ipfs_accelerate_py/assurance/content_identity.py",
+            "ipfs_accelerate_py/ipfs_accelerate.py",
             "ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
             "ipfs_accelerate_py/mcp/tools/mock_ipfs.py",
             "ipfs_accelerate_py/ipfs_backend_router.py",
+            "ipfs_accelerate_py/ipfs_kit_integration.py",
         ),
-        needles=("mock_cid = f\"Qm", "random_cid", "_generate_cid"),
+        needles=(
+            "mint_canonical_cid",
+            "random_cid",
+            "_generate_cid",
+            "load_ordinary_multiformats",
+        ),
     ),
     _recipe(
         "accelerate_fabricated_endpoint_success",

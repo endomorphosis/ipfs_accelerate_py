@@ -805,18 +805,19 @@ class ipfs_accelerate_py:
         Returns:
             str: The content identifier (CID).
         """
-        # Mock implementation - in a real implementation, this would use IPFS libraries
-        logger.info(f"Storing data to IPFS (length: {len(data)} bytes)")
+        # PCPR-032: ordinary runtime cannot mint a Qm/hex pseudo-CID or claim
+        # live IPFS storage. Missing daemons stay typed unavailable.
+        from ipfs_accelerate_py.compatibility.simulation.pseudo_cid import (
+            PseudoCidIdentityError,
+            ordinary_store_to_ipfs,
+        )
 
-        # Simulate IPFS storage
-        await anyio.sleep(0.5)
-
-        # Generate mock CID
-        import hashlib
-
-        mock_cid = f"Qm{hashlib.sha256(data).hexdigest()[:40]}"
-
-        return mock_cid
+        logger.info("Ordinary store_to_ipfs is typed unavailable (length: %s bytes)", len(data))
+        result = ordinary_store_to_ipfs(data)
+        raise PseudoCidIdentityError(
+            result["reason"],
+            code=str(result["code"]),
+        )
 
     async def find_providers(self, model: str) -> List[str]:
         """

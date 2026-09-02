@@ -762,22 +762,16 @@ class IPFSKitStorage:
             return False
     
     def _generate_cid(self, data: bytes) -> str:
+        """Mint a canonical CIDv1 from retained bytes.
+
+        PCPR-032: hexadecimal SHA-256 slices and ``bafy``-prefixed truncations
+        are not CIDs. Local cache keys are real CIDv1 / raw / sha2-256 identities.
         """
-        Generate a content identifier for data.
-        
-        This is a simplified version. In production, ipfs_kit_py would use
-        proper IPLD multiformats for CID generation.
-        
-        Args:
-            data: Data to generate CID for
-        
-        Returns:
-            CID-like string identifier
-        """
-        # Use SHA-256 hash as a simple CID
-        # Real implementation would use multihash/multibase encoding
-        hash_value = hashlib.sha256(data).hexdigest()
-        return f"bafy{hash_value[:56]}"  # Mimic IPFS CIDv1 format
+        from ipfs_accelerate_py.compatibility.simulation.pseudo_cid import (
+            mint_canonical_cid,
+        )
+
+        return mint_canonical_cid(data)
     
     def configure_cache(
         self,

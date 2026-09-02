@@ -45,7 +45,7 @@
         "path": "ipfs_accelerate_py/ipfs_backend_router.py",
         "start_line": 502
       },
-      "uncertainty": "synthetic_bafy_cache_keys_are_not_multiformats_cids"
+      "uncertainty": "canonical_cidv1_replaces_synthetic_bafy_cache_keys"
     },
     {
       "dynamic_uncertainty": true,
@@ -62,24 +62,24 @@
         "path": "ipfs_accelerate_py/mcp_server/tools/ipfs/__init__.py",
         "start_line": 20
       },
-      "uncertainty": "dynamic_import_of_legacy_or_stub_mock_client"
+      "uncertainty": "dynamic_import_of_quarantined_simulation_mock_client"
     },
     {
       "dynamic_uncertainty": false,
       "kind": "fake or compatibility CIDs",
       "nominated_symbol": "random_cid",
       "origin_taint": "simulation",
-      "path": "ipfs_accelerate_py/mcp/tools/mock_ipfs.py",
+      "path": "ipfs_accelerate_py/compatibility/simulation/pseudo_cid.py",
       "path_id": "mock-ipfs-random-cid",
       "present": true,
       "production_authority": false,
       "reachability": "compatibility_only",
       "source_span": {
-        "end_line": 26,
-        "path": "ipfs_accelerate_py/mcp/tools/mock_ipfs.py",
-        "start_line": 26
+        "end_line": 168,
+        "path": "ipfs_accelerate_py/compatibility/simulation/pseudo_cid.py",
+        "start_line": 168
       },
-      "uncertainty": "deprecated_mock_ipfs_client_emits_random_qm_strings"
+      "uncertainty": "quarantined_random_qm_cid_requires_explicit_simulation_and_canonical_bytes"
     },
     {
       "dynamic_uncertainty": false,

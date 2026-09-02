@@ -18,60 +18,28 @@ from .native_ipfs_tools import (
 
 
 def _load_mock_ipfs_client():
-    """Resolve MockIPFSClient from the canonical or legacy location."""
-    try:
-        from ipfs_accelerate_py.mcp.tools.mock_ipfs import MockIPFSClient as _MockIPFSClient  # type: ignore
+    """Resolve MockIPFSClient from the quarantined simulation namespace.
 
-        return _MockIPFSClient
-    except Exception:
-        pass
+    PCPR-032: the former fallback stub minted Qm-prefixed random strings.
+    Ordinary runtime cannot instantiate that generator. The simulation
+    client mints canonical CIDv1 from retained bytes and is never live.
+    """
+    from ipfs_accelerate_py.compatibility.simulation.pseudo_cid import (
+        MockIPFSClient as _MockIPFSClient,
+    )
 
-    # Canonical fallback stub when legacy module is removed.
-    import random
-    import string
-
-    def _random_cid():
-        letters = string.ascii_lowercase + string.digits
-        return "Qm" + "".join(random.choice(letters) for _ in range(44))
-
-    class _CanonicalMockIPFSClient:
-        """Minimal in-memory MockIPFSClient for testing without ipfs_kit_py."""
-
-        def __init__(self):
-            self._files = {}
-            self._pins = set()
-
-        async def add(self, content, **_kwargs):
-            cid = _random_cid()
-            self._files[cid] = content if isinstance(content, bytes) else str(content).encode()
-            return {"Hash": cid}
-
-        async def cat(self, cid, **_kwargs):
-            return self._files.get(cid, b"")
-
-        async def pin_add(self, cid, **_kwargs):
-            self._pins.add(cid)
-            return {"Pins": [cid]}
-
-        async def pin_rm(self, cid, **_kwargs):
-            self._pins.discard(cid)
-            return {"Pins": [cid]}
-
-        async def id(self, **_kwargs):
-            return {"ID": "QmMockPeerID", "Addresses": []}
-
-    return _CanonicalMockIPFSClient
+    return _MockIPFSClient
 
 
-# Lazily resolved to avoid hard dependency on legacy mcp package.
+# Lazily resolved to avoid hard dependency on the simulation package at import.
 _MockIPFSClientClass = None
 
 
 class MockIPFSClient:
     """Canonical MockIPFSClient shim.
 
-    Delegates to ``ipfs_accelerate_py.mcp.tools.mock_ipfs.MockIPFSClient``
-    while that module exists; falls back to a built-in stub afterwards.
+    Delegates to ``ipfs_accelerate_py.compatibility.simulation.pseudo_cid.MockIPFSClient``.
+    Instantiation requires explicit simulation. Random Qm strings are not emitted.
 
     Migration note:
         Replace ``from ipfs_accelerate_py.mcp.tools.mock_ipfs import MockIPFSClient``
