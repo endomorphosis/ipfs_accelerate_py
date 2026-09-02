@@ -1827,6 +1827,128 @@ def test_owner_projection_monitor_never_force_recovers_from_tcp_probe(
         monitor.stop()
 
 
+def test_build_state_owner_does_not_inject_connection_factory() -> None:
+    import inspect
+
+    materializer = _materializer()
+    source = inspect.getsource(materializer._build_state_owner)
+    assert "connection_factory=" not in source
+
+
+def test_restart_owner_serve_refuses_exclusive_handle_when_replica_owns_transport(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+    starts: list[object] = []
+    exclusive = object()
+    replica = object()
+    server = SimpleNamespace(
+        _connection=exclusive,
+        _transport_connection=replica,
+        transport=SimpleNamespace(start=lambda connection, **_k: starts.append(connection)),
+        _identity=SimpleNamespace(server_id="server:x", generation=1),
+        _vault=SimpleNamespace(resolve=lambda *_a, **_k: "token"),
+        config=SimpleNamespace(
+            host="127.0.0.1",
+            port=46731,
+            resolved_secret_handle=lambda *_a, **_k: "env://token",
+        ),
+        _bound_port=46731,
+        _lifecycle="ready",
+    )
+    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: False)
+    assert materializer._restart_owner_serve_if_down(server, exclusive) is False
+    assert starts == []
+    assert server._transport_connection is replica
+
+
+def test_recover_does_not_rebind_serve_onto_exclusive_when_replica_owns_transport(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+    starts: list[object] = []
+
+    class _Owner:
+        def __init__(self) -> None:
+            self._poisoned = True
+            self.path = tmp_path / "control.duckdb"
+            self.reconnected = 0
+
+        def reconnect_exclusive_owner(self) -> None:
+            self.reconnected += 1
+            self._poisoned = False
+
+    owner = _Owner()
+    replica = object()
+    server = SimpleNamespace(
+        _connection=owner,
+        _owner_transaction_lock=threading.RLock(),
+        _command_gateway=SimpleNamespace(_connection=owner),
+        _transport_connection=replica,
+        transport=SimpleNamespace(start=lambda connection, **_k: starts.append(connection)),
+        _identity=SimpleNamespace(server_id="server:x", generation=1),
+        _vault=SimpleNamespace(resolve=lambda *_a, **_k: "token"),
+        config=SimpleNamespace(
+            database_path=tmp_path / "control.duckdb",
+            host="127.0.0.1",
+            port=46731,
+            resolved_secret_handle=lambda *_a, **_k: "env://token",
+        ),
+        _bound_port=46731,
+        _lifecycle="ready",
+    )
+    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: True)
+
+    assert materializer._recover_poisoned_owner_connection(server) is True
+    assert owner.reconnected == 1
+    assert starts == []
+    assert server._connection is owner
+    assert server._transport_connection is replica
+
+
+def test_recover_rebinds_replica_serve_when_listener_is_down(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    materializer = _materializer()
+    starts: list[object] = []
+
+    class _Owner:
+        def __init__(self) -> None:
+            self._poisoned = True
+            self.path = tmp_path / "control.duckdb"
+
+        def reconnect_exclusive_owner(self) -> None:
+            self._poisoned = False
+
+    owner = _Owner()
+    replica = object()
+    server = SimpleNamespace(
+        _connection=owner,
+        _owner_transaction_lock=threading.RLock(),
+        _command_gateway=SimpleNamespace(_connection=owner),
+        _transport_connection=replica,
+        transport=SimpleNamespace(start=lambda connection, **_k: starts.append(connection)),
+        _identity=SimpleNamespace(server_id="server:x", generation=1),
+        _vault=SimpleNamespace(resolve=lambda *_a, **_k: "token"),
+        config=SimpleNamespace(
+            database_path=tmp_path / "control.duckdb",
+            host="127.0.0.1",
+            port=46731,
+            resolved_secret_handle=lambda *_a, **_k: "env://token",
+        ),
+        _bound_port=46731,
+        _lifecycle="ready",
+    )
+    monkeypatch.setattr(materializer, "_owner_listener_ready", lambda _server: False)
+
+    assert materializer._recover_poisoned_owner_connection(server) is True
+    assert starts == [replica]
+    assert server._transport_connection is replica
+
+
 def test_recover_does_not_restart_serve_for_usable_handle_when_probe_says_down(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

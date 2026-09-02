@@ -1815,16 +1815,6 @@ def _bind_owner_command_inbox(server: Any, inbox: Path) -> None:
     server._mutation_inbox_override = inbox
 
 
-def _owner_connection(path: Path) -> Any:
-    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-        open_quack_state_owner_connection,
-    )
-
-    # wrap() leaves DuckDBConnection.path = None, which made poisoned-handle
-    # recovery return False forever and never restart quack_serve.
-    return open_quack_state_owner_connection(path)
-
-
 def _owner_database_path(server: Any, connection: Any | None) -> Path | None:
     path = getattr(connection, "path", None)
     if path is not None:
@@ -1954,6 +1944,9 @@ def _build_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any]:
     # this controller before constructing that vault so same-UID worker or
     # provider descendants cannot inspect it through procfs.
     establish_state_authority_process_boundary()
+    # Do not inject connection_factory. That flag disables the read replica,
+    # so quack_serve occupies the exclusive writer and typed attach poisons
+    # SPAR-018. Default open_quack_state_owner_connection already sets path.
     server = build_server(
         database_path=paths["database"],
         state_dir=paths["owner"],
@@ -1964,7 +1957,6 @@ def _build_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any]:
         secret_handle=program.endpoint_secret_handle,
         allow_experimental=False,
         migrate=_verify_control_plane,
-        connection_factory=_owner_connection,
     )
     _bind_owner_command_inbox(server, _owner_command_inbox(program))
     return server, paths, program
@@ -2032,6 +2024,20 @@ def _owner_connection_unusable(connection: Any) -> bool:
         or getattr(connection, "_closed", False) is True
         or getattr(connection, "_connection", True) is None
     )
+
+
+def _owner_serve_connection(server: Any) -> Any:
+    """Return the handle that currently owns ``quack_serve``.
+
+    A live read replica is that handle. Binding serve onto the exclusive
+    writer made every typed ``client_sessions`` INSERT share the native
+    ``quack_serve`` connection, poison it, and drop SPAR-018's TCP bind.
+    """
+
+    transport = getattr(server, "_transport_connection", None)
+    if transport is not None:
+        return transport
+    return getattr(server, "_connection", None)
 
 
 def _recoverable_owner_control_error(exc: BaseException) -> bool:
@@ -2148,13 +2154,20 @@ def _recover_poisoned_owner_connection(
                 server._transport_connection = replacement
             native_replaced = True
         restored_serve = False
-        if native_replaced:
-            # Only rebind quack_serve after this recover actually replaced
-            # the native handle. A false ECONNREFUSED probe used to restart
-            # a live serve and drop SPAR-018's typed bind.
+        exclusive = getattr(server, "_connection", None)
+        transport_connection = getattr(server, "_transport_connection", None)
+        serve_owns_exclusive = (
+            transport_connection is None or transport_connection is exclusive
+        )
+        if native_replaced and serve_owns_exclusive:
+            # Only rebind quack_serve onto the exclusive writer when that
+            # writer is the serve handle. Replica-backed SPAR must keep
+            # quack_serve off the writer so typed CAS cannot poison TCP.
+            restored_serve = _restart_owner_serve_if_down(server, exclusive)
+        elif not serve_owns_exclusive and not _owner_listener_ready(server):
             restored_serve = _restart_owner_serve_if_down(
                 server,
-                getattr(server, "_connection", None),
+                transport_connection,
             )
         return native_replaced or restored_serve
 
@@ -2167,6 +2180,17 @@ def _restart_owner_serve_if_down(server: Any, connection: Any) -> bool:
     )
 
     if connection is None or _owner_listener_ready(server):
+        return False
+    exclusive = getattr(server, "_connection", None)
+    transport_connection = getattr(server, "_transport_connection", None)
+    if (
+        exclusive is not None
+        and transport_connection is not None
+        and transport_connection is not exclusive
+        and connection is exclusive
+    ):
+        # Replica owns the listener. Starting a second quack_serve on the
+        # exclusive writer reintroduces the SPAR-018 poison loop.
         return False
     transport = getattr(server, "transport", None)
     start = getattr(transport, "start", None)
@@ -2200,7 +2224,22 @@ def _restart_owner_serve_if_down(server: Any, connection: Any) -> bool:
         if getattr(server, "_lifecycle", None) is ServerLifecycle.FAILED:
             server._lifecycle = ServerLifecycle.READY
         return True
-    except Exception:
+    except Exception as exc:
+        print(
+            json.dumps(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "spar-owner-serve-restart@1"
+                    ),
+                    "ok": False,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[-1000:],
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
         return False
 
 
@@ -3259,15 +3298,19 @@ class _OwnerProjectionMonitor:
                 if now >= next_projection:
                     _publish_live_projection(self.server, self.paths)
                     next_projection = now + 1.0
-                connection = getattr(self.server, "_connection", None)
+                exclusive = getattr(self.server, "_connection", None)
+                serve_connection = _owner_serve_connection(self.server)
                 if (
-                    connection is not None
-                    and not _owner_connection_unusable(connection)
+                    serve_connection is not None
+                    and not (
+                        serve_connection is exclusive
+                        and _owner_connection_unusable(exclusive)
+                    )
                     and not _owner_listener_ready(self.server)
                 ):
                     # quack_serve can exit without poisoning the Python
                     # wrapper. Restart it so SPAR-018 typed grants attach.
-                    _restart_owner_serve_if_down(self.server, connection)
+                    _restart_owner_serve_if_down(self.server, serve_connection)
             except BaseException as exc:
                 recovered = False
                 recover_error_type = ""
