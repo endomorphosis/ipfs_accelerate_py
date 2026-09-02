@@ -8530,9 +8530,23 @@ class DatabasePortalExecutionBridge:
                 )
             try:
                 repository = self.repo_root.resolve(strict=True)
-                workspace = Path(record.workspace_path).resolve(strict=True)
+                recorded_workspace = Path(str(record.workspace_path))
+                if os.path.lexists(recorded_workspace):
+                    workspace = recorded_workspace.resolve(strict=True)
+                else:
+                    # A denied procfs inventory is orthogonal to whether the
+                    # stale checkout still exists.  Retain the exact lifecycle
+                    # record under the same deny-only quarantine authority,
+                    # but admit an absent path only through the stricter
+                    # canonical direct-child proof used by absence recovery.
+                    workspace = self._lexically_confined_absent_workspace(
+                        daemon,
+                        str(record.workspace_path),
+                    )
                 worktree_root = Path(daemon.worktree_root).resolve(strict=True)
                 workspace.relative_to(worktree_root)
+            except DatabasePortalBridgeDeferred:
+                raise
             except (AttributeError, OSError, RuntimeError, ValueError) as exc:
                 raise DatabasePortalBridgeDeferred(
                     "cross_attempt_lifecycle_worktree_unbound"

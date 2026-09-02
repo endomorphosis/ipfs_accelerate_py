@@ -1944,6 +1944,75 @@ def test_bridge_quarantines_exact_absent_worktree_before_fresh_attempt(
     assert portals and portals[0].run_count == 1
 
 
+def test_bridge_quarantines_absent_worktree_when_procfs_is_unreadable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+        )
+    )
+    prior_paths, prior_record = _remove_prior_worktree_with_exact_absence_evidence(
+        bridge,
+        attempt,
+        store,
+        workspace,
+    )
+
+    def unavailable_process_inventory(
+        lifecycle_store: object,
+        candidate_workspace: Path,
+    ) -> dict[str, object]:
+        assert lifecycle_store is store
+        assert candidate_workspace == workspace
+        raise DatabasePortalBridgeDeferred(
+            "cross_attempt_lifecycle_process_inventory_unavailable"
+        )
+
+    monkeypatch.setattr(
+        bridge,
+        "_strict_workspace_process_scan",
+        unavailable_process_inventory,
+    )
+
+    first = bridge.run_provider(attempt)
+
+    assert first["accepted"] is True
+    assert not os.path.lexists(workspace)
+    assert store.load_workspace(workspace) == prior_record
+    assert prior_record.is_nonterminal
+    quarantine = store.load_quarantine(workspace)
+    assert quarantine is not None
+    assert quarantine["lifecycle_record"] == prior_record.to_dict()
+    assert all(
+        quarantine[field] is False
+        for field in (
+            "worktree_deleted",
+            "branch_deleted",
+            "cleanup_allowed",
+            "reuse_allowed",
+            "evidence_reuse_allowed",
+            "terminalized",
+        )
+    )
+    assert not os.path.lexists(
+        bridge._paths(attempt).root
+        / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+    )
+    assert (prior_paths.root / "implementation-protected-path-active.json").exists()
+    assert portals and portals[0].run_count == 1
+
+    second = bridge.run_provider(attempt)
+
+    assert second["accepted"] is True
+    assert len(portals) == 2
+    assert portals[1].run_count == 0
+    assert store.load_workspace(workspace) == prior_record
+    assert store.load_quarantine(workspace) == quarantine
+
+
 @pytest.mark.parametrize(
     "unsafe_fact",
     ["branch", "declared_output", "incident", "protected_mutation"],
