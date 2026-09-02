@@ -126,6 +126,10 @@ CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-cross-attempt-lifecycle-recovery@1"
 )
+CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA_V2: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-cross-attempt-lifecycle-recovery@2"
+)
 CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME: Final[str] = (
     "cross-attempt-lifecycle-recovery.json"
 )
@@ -190,6 +194,13 @@ _DECLARED_OUTPUT_BLOB_PREFIX: Final[str] = (
 _DECLARED_OUTPUT_PRESERVATION_PREFIX: Final[str] = (
     "cross-attempt-declared-output-preservation-"
 )
+ABSENT_WORKTREE_PRESERVATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-cross-attempt-absent-worktree-preservation@1"
+)
+_ABSENT_WORKTREE_PRESERVATION_PREFIX: Final[str] = (
+    "cross-attempt-absent-worktree-preservation-"
+)
 _PROTECTED_STATE_MARKER_BLOB_PREFIX: Final[str] = (
     "cross-attempt-protected-state-marker-"
 )
@@ -211,6 +222,9 @@ _MAX_PRESERVED_IGNORED_RUNTIME_ARTIFACT_TOTAL_BYTES: Final[int] = (
 )
 _SUPERSEDED_LIFECYCLE_TERMINAL_REASON: Final[str] = (
     "superseded_database_attempt_preserved"
+)
+_ABSENT_WORKTREE_LIFECYCLE_TERMINAL_REASON: Final[str] = (
+    "superseded_database_attempt_absent_quarantined"
 )
 _SENSITIVE_DECLARED_OUTPUT_PATH = re.compile(
     r"(?i)(?:^|/)(?:\.env(?:\.|$)|\.ssh(?:/|$)|secrets?(?:/|$)|"
@@ -448,6 +462,55 @@ _PRESERVATION_FIELDS: Final[frozenset[str]] = frozenset(
         "process_inventory",
         "container_inventory",
         "preservation_mode",
+    }
+)
+_ABSENT_WORKTREE_PRESERVATION_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "recovery_profile",
+        "task_id",
+        "attempt",
+        "prior_attempt_id",
+        "prior_binding_id",
+        "lifecycle_record_id",
+        "lifecycle_transition_basis_id",
+        "repository_path",
+        "workspace_path",
+        "branch",
+        "merge_target",
+        "merge_target_head",
+        "merge_target_tree",
+        "workspace_absent",
+        "workspace_unregistered",
+        "branch_absent",
+        "worktree_inventory_id",
+        "process_inventory",
+        "container_inventory",
+        "projection_sha256",
+        "declared_outputs",
+        "declared_output_observations",
+        "declared_outputs_absent",
+        "portal_state_binding_id",
+        "portal_event_log_id",
+        "portal_completion_admitted",
+        "database_effect_admitted",
+        "database_phase_history_id",
+        "provider_invocation_count",
+        "effect_claim_count",
+        "merge_admitted",
+        "protected_evidence",
+        "provider_execution_may_have_occurred",
+        "prior_execution_evidence_reused",
+        "effect_evidence_reused",
+        "output_preservation_authority",
+        "worktree_deleted_by_recovery",
+        "branch_deleted_by_recovery",
+        "mutation_authority",
+        "merge_authority",
+        "task_completion_authority",
+        "normal_validation_required",
+        "preservation_id",
+        "receipt_id",
     }
 )
 _CONTROL_CLAIM_BINDING_SCHEMA_V1: Final[str] = (
@@ -2339,10 +2402,38 @@ class DatabasePortalExecutionBridge:
                 "cross_attempt_lifecycle_portal_state_invalid"
             )
         try:
-            workspace = str(Path(record.workspace_path).resolve(strict=True))
-            state_workspace = str(
-                Path(str(state["active_worktree_path"])).resolve(strict=True)
-            )
+            recorded_workspace = Path(str(record.workspace_path))
+            state_workspace_value = str(state["active_worktree_path"])
+            if os.path.lexists(recorded_workspace):
+                recorded_identity = recorded_workspace.lstat()
+                state_workspace_path = Path(state_workspace_value)
+                state_identity = state_workspace_path.lstat()
+                workspace_path = recorded_workspace.resolve(strict=True)
+                state_workspace_path = state_workspace_path.resolve(strict=True)
+                if (
+                    not stat.S_ISDIR(recorded_identity.st_mode)
+                    or stat.S_ISLNK(recorded_identity.st_mode)
+                    or not stat.S_ISDIR(state_identity.st_mode)
+                    or stat.S_ISLNK(state_identity.st_mode)
+                    or str(recorded_workspace) != str(workspace_path)
+                    or state_workspace_value != str(state_workspace_path)
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_active_tuple_unavailable"
+                    )
+            else:
+                workspace_path = self._lexically_confined_absent_workspace(
+                    daemon,
+                    str(recorded_workspace),
+                )
+                state_workspace_path = self._lexically_confined_absent_workspace(
+                    daemon,
+                    state_workspace_value,
+                )
+            workspace = str(workspace_path)
+            state_workspace = str(state_workspace_path)
+        except DatabasePortalBridgeDeferred:
+            raise
         except (KeyError, OSError, RuntimeError, ValueError) as exc:
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_lifecycle_active_tuple_unavailable"
@@ -2468,6 +2559,155 @@ class DatabasePortalExecutionBridge:
             "active_attempt": portal_attempt,
             "active_worktree_path": workspace,
             "active_branch": str(record.branch),
+        }
+
+    @staticmethod
+    def _absent_portal_no_admitted_result(
+        paths: DatabasePortalAttemptPaths,
+        *,
+        task_id: str,
+        portal_state_binding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Prove the old Portal admitted no result or effect.
+
+        Provider execution may have happened before the crash.  This proof
+        deliberately does not reuse that execution; it admits only a fresh
+        attempt after the exact stale lifecycle has been terminalized.
+        """
+
+        if portal_state_binding.get("implementation_lock_id") == "absent":
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_implementation_lock_missing"
+            )
+        try:
+            state = json.loads(
+                _stable_regular_utf8(
+                    paths.state,
+                    noun="prior absent-worktree Portal state",
+                ),
+                object_pairs_hook=_reject_duplicate_control_keys,
+                parse_constant=lambda value: (_ for _ in ()).throw(
+                    ValueError(f"nonfinite JSON constant: {value}")
+                ),
+            )
+            events, event_log_id = _accepted_source_events(paths.events)
+        except (DatabasePortalBridgeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_result_evidence_unavailable"
+            ) from exc
+        task_artifacts = state.get("task_artifacts")
+        completed_ids = state.get("completed_task_ids")
+        completed_count = state.get("completed_count", 0)
+        if (
+            type(state) is not dict
+            or content_identity(state) != portal_state_binding.get("portal_state_id")
+            or state.get("last_implementation_commit") not in (None, "")
+            or state.get("last_merge_commit") not in (None, "")
+            or state.get("last_implementation_returncode") is not None
+            or state.get("last_merge_returncode") is not None
+            or type(completed_count) is not int
+            or completed_count != 0
+            or completed_ids not in (None, [])
+            or task_artifacts is not None
+            and (
+                type(task_artifacts) is not dict
+                or bool(task_artifacts.get(task_id))
+            )
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_result_already_admitted"
+            )
+        preeffect_events = {
+            "nested_submodule_initialization_guarded",
+            "worktree_cleanup_fenced",
+            "pre_implementation_kernel_evaluated",
+            "implementation_task_claim_lock_cleared",
+            "implementation_started",
+            "implementation_protected_path_snapshot_recorded",
+            "implementation_state_recovered",
+            "implementation_resource_claim_lock_cleared",
+            "implementation_protected_path_snapshot_reconciled",
+            "implementation_protected_path_snapshot_cleared",
+            "task_selected",
+            "implementation_protected_path_missing_ephemeral_checked",
+        }
+        if any(
+            type(event) is not dict
+            or type(event.get("type")) is not str
+            or event["type"] not in preeffect_events
+            for event in events
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_event_not_preeffect"
+            )
+        return {
+            "portal_event_log_id": event_log_id,
+            "portal_completion_admitted": False,
+            "merge_admitted": False,
+            "provider_execution_may_have_occurred": True,
+        }
+
+    def _absent_database_no_admitted_effect(
+        self,
+        *,
+        prior_attempt_id: str,
+    ) -> dict[str, Any]:
+        """Bind absence recovery to a DB history with no admitted effect."""
+
+        authority_provider = self.prior_attempt_authority
+        owner = getattr(authority_provider, "__self__", None)
+        history_reader = getattr(owner, "phase_history", None)
+        if not callable(history_reader):
+            history_reader = getattr(authority_provider, "phase_history", None)
+        evidence_counter = getattr(owner, "_attempt_execution_evidence_counts", None)
+        if not callable(evidence_counter):
+            evidence_counter = getattr(
+                authority_provider,
+                "execution_evidence_counts",
+                None,
+            )
+        if not callable(history_reader) or not callable(evidence_counter):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_database_history_unavailable"
+            )
+        try:
+            history = history_reader(prior_attempt_id)
+            evidence_counts = dict(evidence_counter(prior_attempt_id))
+        except Exception as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_database_history_unavailable"
+            ) from exc
+        if (
+            type(history) is not list
+            or not history
+            or any(type(item) is not dict for item in history)
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_database_history_invalid"
+            )
+        phases = [item.get("phase") for item in history]
+        if (
+            any(type(phase) is not str for phase in phases)
+            or not {"claimed", "failed"}.issubset(set(phases))
+            or any(
+                phase not in {"claimed", "context", "failed"}
+                for phase in phases
+            )
+            or set(evidence_counts)
+            != {"provider_invocation_count", "effect_claim_count"}
+            or any(
+                type(evidence_counts[field]) is not int
+                or evidence_counts[field] != 0
+                for field in evidence_counts
+            )
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_database_effect_admitted"
+            )
+        return {
+            "database_effect_admitted": False,
+            "database_phase_history_id": _sha256_bytes(_canonical_json(history)),
+            **evidence_counts,
         }
 
     @staticmethod
@@ -2790,7 +3030,21 @@ class DatabasePortalExecutionBridge:
             )
         try:
             source = Path(raw_source).resolve(strict=True)
-            resolved_workspace = workspace.resolve(strict=True)
+            if os.path.lexists(workspace):
+                workspace_identity = workspace.lstat()
+                if stat.S_ISLNK(workspace_identity.st_mode):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_container_inventory_invalid"
+                    )
+                resolved_workspace = workspace.resolve(strict=True)
+            else:
+                resolved_workspace = Path(os.path.abspath(os.fspath(workspace)))
+                if workspace != resolved_workspace or not workspace.is_absolute():
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_container_inventory_invalid"
+                    )
+        except DatabasePortalBridgeDeferred:
+            raise
         except (OSError, RuntimeError) as exc:
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_lifecycle_container_inventory_unavailable"
@@ -2976,6 +3230,399 @@ class DatabasePortalExecutionBridge:
                 "cross_attempt_declared_output_path_invalid"
             )
         return value
+
+    @staticmethod
+    def _lexically_confined_absent_workspace(
+        daemon: Any,
+        workspace_value: Any,
+    ) -> Path:
+        """Return one exact absent direct child of the managed worktree root.
+
+        ``resolve(strict=False)`` is deliberately insufficient here: a stale
+        path whose final component was replaced by a symlink is not evidence
+        that the recorded checkout vanished.  The root is pinned as a real
+        directory, the recorded spelling must already be canonical, and the
+        direct child must be absent according to ``lexists``.
+        """
+
+        if type(workspace_value) is not str or not workspace_value:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_worktree_path_invalid"
+            )
+        workspace = Path(workspace_value)
+        lexical = Path(os.path.abspath(os.fspath(workspace)))
+        try:
+            root = Path(str(daemon.worktree_root))
+            root_lexical = Path(os.path.abspath(os.fspath(root)))
+            root_identity = root_lexical.lstat()
+            root_resolved = root_lexical.resolve(strict=True)
+        except (AttributeError, OSError, RuntimeError, ValueError) as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_worktree_root_unavailable"
+            ) from exc
+        if (
+            workspace != lexical
+            or not workspace.is_absolute()
+            or lexical.parent != root_lexical
+            or root_resolved != root_lexical
+            or not stat.S_ISDIR(root_identity.st_mode)
+            or stat.S_ISLNK(root_identity.st_mode)
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_worktree_path_invalid"
+            )
+        if os.path.lexists(lexical):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_worktree_path_present"
+            )
+        return lexical
+
+    def _absent_worktree_inventory(
+        self,
+        repository: Path,
+        *,
+        workspace: Path,
+        branch: str,
+    ) -> dict[str, Any]:
+        """Prove Git has neither the exact path nor branch registered."""
+
+        branch_name = str(branch or "").removeprefix("refs/heads/")
+        if (
+            not branch_name
+            or branch_name != branch
+            or any(character in branch_name for character in "\x00\r\n")
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_worktree_branch_invalid"
+            )
+        branch_result = self._git_observation(
+            repository,
+            "show-ref",
+            "--verify",
+            "--quiet",
+            f"refs/heads/{branch_name}",
+        )
+        if branch_result.returncode == 0:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_worktree_branch_present"
+            )
+        if branch_result.returncode != 1:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_worktree_branch_unavailable"
+            )
+        listed = self._git_observation(
+            repository,
+            "worktree",
+            "list",
+            "--porcelain",
+            "-z",
+            text=False,
+        )
+        raw = bytes(listed.stdout or b"")
+        if listed.returncode != 0 or len(raw) > _MAX_ATTEMPT_CONTROL_BYTES:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_worktree_inventory_unavailable"
+            )
+        records: list[dict[str, Any]] = []
+        current: dict[str, Any] = {}
+        valued_fields = {"worktree", "HEAD", "branch", "locked", "prunable"}
+        flag_fields = {"bare", "detached"}
+        for field in raw.split(b"\0"):
+            if not field:
+                if current:
+                    records.append(current)
+                    current = {}
+                continue
+            try:
+                decoded = field.decode("utf-8", errors="strict")
+            except UnicodeDecodeError as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_worktree_inventory_invalid"
+                ) from exc
+            name, separator, value = decoded.partition(" ")
+            if (
+                not name
+                or name in current
+                or name not in valued_fields | flag_fields
+                or (name in flag_fields and (separator or value))
+                or (name in {"worktree", "HEAD", "branch"} and not separator)
+                or (name in {"worktree", "HEAD", "branch"} and not value)
+                or (name in {"locked", "prunable"} and separator and not value)
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_worktree_inventory_invalid"
+                )
+            current[name] = value if separator else True
+        if current:
+            records.append(current)
+        if len(records) > 4096 or any("worktree" not in item for item in records):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_worktree_inventory_invalid"
+            )
+        workspace_text = str(workspace)
+        expected_branch = f"refs/heads/{branch_name}"
+        for item in records:
+            recorded_path = Path(str(item["worktree"]))
+            registered_path = Path(os.path.abspath(os.fspath(recorded_path)))
+            if not recorded_path.is_absolute() or recorded_path != registered_path:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_worktree_inventory_invalid"
+                )
+            if (
+                str(registered_path) == workspace_text
+                or item.get("branch") == expected_branch
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_worktree_registered"
+                )
+        if os.path.lexists(workspace):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_worktree_path_present"
+            )
+        absence_basis = {
+            "repository_path": str(repository),
+            "workspace_path": workspace_text,
+            "branch": branch_name,
+            "workspace_absent": True,
+            "workspace_unregistered": True,
+            "branch_absent": True,
+        }
+        return {
+            **{
+                field: absence_basis[field]
+                for field in (
+                    "workspace_absent",
+                    "workspace_unregistered",
+                    "branch_absent",
+                )
+            },
+            "worktree_inventory_id": _sha256_bytes(
+                _canonical_json(absence_basis)
+            ),
+        }
+
+    @staticmethod
+    def _path_components_are_nonsymlink_absent(
+        repository: Path,
+        relative: str,
+    ) -> bool:
+        current = repository
+        for component in PurePosixPath(relative).parts:
+            current = current / component
+            try:
+                identity = current.lstat()
+            except FileNotFoundError:
+                return True
+            except OSError as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_output_unavailable"
+                ) from exc
+            if stat.S_ISLNK(identity.st_mode):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_output_symlink"
+                )
+        return False
+
+    def _absent_declared_output_observations(
+        self,
+        daemon: Any,
+        repository: Path,
+        *,
+        prior_paths: DatabasePortalAttemptPaths,
+        prior_binding: Mapping[str, Any],
+        merge_target: str,
+    ) -> tuple[str, str, tuple[str, ...], tuple[dict[str, Any], ...]]:
+        """Prove every declared output is absent from exact current source."""
+
+        outputs = tuple(
+            self._canonical_recovery_path(value)
+            for value in self._prior_declared_output_paths(
+                prior_paths,
+                prior_binding,
+            )
+        )
+        protected = tuple(
+            self._canonical_recovery_path(value)
+            for value in tuple(
+                getattr(daemon, "implementation_protected_paths", ()) or ()
+            )
+        )
+        if not protected or any(
+            output == guarded
+            or output.startswith(f"{guarded.rstrip('/')}/")
+            or guarded.startswith(f"{output.rstrip('/')}/")
+            for output in outputs
+            for guarded in protected
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_output_protected_overlap"
+            )
+        head_result = self._git_observation(
+            repository,
+            "rev-parse",
+            "--verify",
+            f"refs/heads/{merge_target}^{{commit}}",
+        )
+        tree_result = self._git_observation(
+            repository,
+            "rev-parse",
+            "--verify",
+            f"refs/heads/{merge_target}^{{tree}}",
+        )
+        head = str(head_result.stdout or "").strip()
+        tree = str(tree_result.stdout or "").strip()
+        if (
+            head_result.returncode != 0
+            or tree_result.returncode != 0
+            or re.fullmatch(r"[0-9a-f]{40}", head) is None
+            or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_output_source_unavailable"
+            )
+        root_entries = self._git_observation(
+            repository,
+            "ls-tree",
+            "-r",
+            "-z",
+            head,
+            text=False,
+        )
+        root_payload = bytes(root_entries.stdout or b"")
+        if (
+            root_entries.returncode != 0
+            or len(root_payload) > _MAX_ATTEMPT_CONTROL_BYTES
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_output_source_unavailable"
+            )
+        gitlinks: dict[str, str] = {}
+        for raw_entry in root_payload.split(b"\0"):
+            if not raw_entry:
+                continue
+            try:
+                metadata, raw_path = raw_entry.split(b"\t", 1)
+                mode, kind, object_id = metadata.decode("ascii").split(" ", 2)
+                path = self._canonical_recovery_path(
+                    raw_path.decode("utf-8", errors="strict")
+                )
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_output_source_invalid"
+                ) from exc
+            if mode == "160000":
+                if (
+                    kind != "commit"
+                    or re.fullmatch(r"[0-9a-f]{40}", object_id) is None
+                    or path in gitlinks
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_absent_output_source_invalid"
+                    )
+                gitlinks[path] = object_id
+        observations: list[dict[str, Any]] = []
+        for output in outputs:
+            matching_gitlinks = [
+                path
+                for path in gitlinks
+                if output.startswith(f"{path}/")
+            ]
+            if len(matching_gitlinks) > 1:
+                matching_gitlinks.sort(key=len, reverse=True)
+                if len(matching_gitlinks[0]) == len(matching_gitlinks[1]):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_absent_output_source_ambiguous"
+                    )
+            if matching_gitlinks:
+                gitlink = max(matching_gitlinks, key=len)
+                nested_relative = output[len(gitlink) + 1 :]
+                nested = repository / gitlink
+                try:
+                    nested_identity = nested.lstat()
+                except OSError as exc:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_absent_output_source_unavailable"
+                    ) from exc
+                if (
+                    not stat.S_ISDIR(nested_identity.st_mode)
+                    or stat.S_ISLNK(nested_identity.st_mode)
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_absent_output_source_invalid"
+                    )
+                nested_head = self._git_observation(
+                    nested,
+                    "rev-parse",
+                    "--verify",
+                    "HEAD^{commit}",
+                )
+                if (
+                    nested_head.returncode != 0
+                    or str(nested_head.stdout or "").strip() != gitlinks[gitlink]
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_absent_output_source_unavailable"
+                    )
+                tree_entry = self._git_observation(
+                    nested,
+                    "ls-tree",
+                    "-z",
+                    gitlinks[gitlink],
+                    "--",
+                    nested_relative,
+                    text=False,
+                )
+                if tree_entry.returncode != 0:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_absent_output_source_unavailable"
+                    )
+                if bytes(tree_entry.stdout or b""):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_declared_output_present"
+                    )
+                source_kind = "gitlink"
+                source_commit = gitlinks[gitlink]
+            else:
+                tree_entry = self._git_observation(
+                    repository,
+                    "ls-tree",
+                    "-z",
+                    head,
+                    "--",
+                    output,
+                    text=False,
+                )
+                if tree_entry.returncode != 0:
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_absent_output_source_unavailable"
+                    )
+                if bytes(tree_entry.stdout or b""):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_declared_output_present"
+                    )
+                gitlink = ""
+                nested_relative = ""
+                source_kind = "repository"
+                source_commit = head
+            if not self._path_components_are_nonsymlink_absent(
+                repository,
+                output,
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_declared_output_present"
+                )
+            observations.append(
+                {
+                    "path": output,
+                    "source_kind": source_kind,
+                    "source_commit": source_commit,
+                    "gitlink_path": gitlink,
+                    "nested_path": nested_relative,
+                    "tree_entry_absent": True,
+                    "checkout_path_absent": True,
+                }
+            )
+        return head, tree, tuple(sorted(outputs)), tuple(observations)
 
     @staticmethod
     def _nul_path_records(raw: bytes, *, reason: str) -> tuple[str, ...]:
@@ -4183,10 +4830,45 @@ class DatabasePortalExecutionBridge:
             )
         before = marker["snapshot"]
         try:
-            after = snapshot(workspace)
+            missing_snapshot = getattr(
+                daemon,
+                "_missing_ephemeral_workspace_shared_snapshot",
+                None,
+            )
+            missing_before = (
+                missing_snapshot(workspace, before)
+                if callable(missing_snapshot)
+                else None
+            )
+            if missing_before is not None:
+                current_shared = snapshot(self.repo_root)
+                shared_after = current_shared.get("shared_checkout")
+                workspace_before = before.get("workspace")
+                if (
+                    type(missing_before) is not dict
+                    or set(missing_before) != {"shared_checkout"}
+                    or type(workspace_before) is not dict
+                    or type(shared_after) is not dict
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "cross_attempt_lifecycle_protected_snapshot_verification_failed"
+                    )
+                comparison_before = {
+                    "workspace": workspace_before,
+                    "shared_checkout": missing_before["shared_checkout"],
+                }
+                after = {
+                    "workspace": workspace_before,
+                    "shared_checkout": shared_after,
+                }
+            else:
+                comparison_before = before
+                after = snapshot(workspace)
             snapshot_errors = errors(after)
-            mutations = mutations_for(before, after)
+            mutations = mutations_for(comparison_before, after)
         except Exception as exc:
+            if isinstance(exc, DatabasePortalBridgeDeferred):
+                raise
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_lifecycle_protected_snapshot_verification_unavailable"
             ) from exc
@@ -4212,7 +4894,7 @@ class DatabasePortalExecutionBridge:
                 trusted_update = self._configured_source_transition_authority(
                     workspace=workspace,
                     marker=marker,
-                    before=before,
+                    before=comparison_before,
                     after=after,
                     mutations=mutations,
                 )
@@ -4221,7 +4903,7 @@ class DatabasePortalExecutionBridge:
                     trusted_update = dict(
                         authorize(
                             workspace_path=workspace,
-                            before=before,
+                            before=comparison_before,
                             after=after,
                             mutations=mutations,
                         )
@@ -4237,7 +4919,11 @@ class DatabasePortalExecutionBridge:
                 )
             mode = "current_trusted_shared_source"
         return {
-            "mode": mode,
+            "mode": (
+                f"missing_ephemeral_workspace_{mode}"
+                if missing_before is not None
+                else mode
+            ),
             "baseline_snapshot_id": _sha256_bytes(_canonical_json(before)),
             "current_snapshot_id": _sha256_bytes(_canonical_json(after)),
             "current_snapshot": after,
@@ -4316,13 +5002,20 @@ class DatabasePortalExecutionBridge:
             prior_lifecycle_fence = int(
                 lifecycle_recovery_receipt["prior_lifecycle_fence"]
             )
+        terminal_reason = (
+            _ABSENT_WORKTREE_LIFECYCLE_TERMINAL_REASON
+            if str(preservation.get("preservation_mode") or "").startswith(
+                "absent_worktree:"
+            )
+            else _SUPERSEDED_LIFECYCLE_TERMINAL_REASON
+        )
         if (
             record.is_terminal
             and (
                 self._lifecycle_transition_basis_id(record)
                 != lifecycle_transition_basis_id
                 or int(record.fence) != prior_lifecycle_fence + 1
-                or record.terminal_reason != _SUPERSEDED_LIFECYCLE_TERMINAL_REASON
+                or record.terminal_reason != terminal_reason
             )
         ):
             raise DatabasePortalBridgeDeferred(
@@ -4341,7 +5034,7 @@ class DatabasePortalExecutionBridge:
             "prior_lifecycle_state": prior_lifecycle_state,
             "prior_lifecycle_fence": prior_lifecycle_fence,
             "expected_terminal_lifecycle_fence": prior_lifecycle_fence + 1,
-            "terminal_reason": _SUPERSEDED_LIFECYCLE_TERMINAL_REASON,
+            "terminal_reason": terminal_reason,
             "database_authority_id": content_identity(database_authority),
             "portal_state_binding_id": content_identity(portal_state_binding),
             "active_marker_sha256": f"sha256:{marker_digest}",
@@ -4636,13 +5329,20 @@ class DatabasePortalExecutionBridge:
             prior_lifecycle_fence = int(
                 lifecycle_recovery_receipt["prior_lifecycle_fence"]
             )
+        terminal_reason = (
+            _ABSENT_WORKTREE_LIFECYCLE_TERMINAL_REASON
+            if str(preservation.get("preservation_mode") or "").startswith(
+                "absent_worktree:"
+            )
+            else _SUPERSEDED_LIFECYCLE_TERMINAL_REASON
+        )
         if (
             record.is_terminal
             and (
                 self._lifecycle_transition_basis_id(record)
                 != lifecycle_transition_basis_id
                 or int(record.fence) != prior_lifecycle_fence + 1
-                or record.terminal_reason != _SUPERSEDED_LIFECYCLE_TERMINAL_REASON
+                or record.terminal_reason != terminal_reason
             )
         ):
             raise DatabasePortalBridgeDeferred(
@@ -4665,7 +5365,7 @@ class DatabasePortalExecutionBridge:
             "prior_lifecycle_state": prior_lifecycle_state,
             "prior_lifecycle_fence": prior_lifecycle_fence,
             "expected_terminal_lifecycle_fence": prior_lifecycle_fence + 1,
-            "terminal_reason": _SUPERSEDED_LIFECYCLE_TERMINAL_REASON,
+            "terminal_reason": terminal_reason,
             "database_authority_id": content_identity(database_authority),
             "portal_state_binding_id": content_identity(portal_state_binding),
             "active_marker_sha256": f"sha256:{marker_digest}",
@@ -4781,16 +5481,32 @@ class DatabasePortalExecutionBridge:
             workspace=workspace,
             marker=second_marker,
         )
-        second_status = self._git_observation(
-            workspace,
-            "status",
-            "--ignore-submodules=none",
-            "--porcelain=v1",
-            "-z",
-            "--untracked-files=all",
-            text=False,
-        )
         preservation_mode = str(preservation.get("preservation_mode") or "")
+        absent_worktree = preservation_mode.startswith("absent_worktree:")
+        if absent_worktree:
+            self._lexically_confined_absent_workspace(
+                daemon,
+                str(workspace),
+            )
+            self._absent_worktree_inventory(
+                self.repo_root.resolve(strict=True),
+                workspace=workspace,
+                branch=str(record.branch),
+            )
+            second_status_returncode = 0
+            second_status_id = status_id
+        else:
+            second_status = self._git_observation(
+                workspace,
+                "status",
+                "--ignore-submodules=none",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                text=False,
+            )
+            second_status_returncode = int(second_status.returncode)
+            second_status_id = _sha256_bytes(bytes(second_status.stdout or b""))
         if preservation_mode.startswith(
             "content_addressed_declared_nested_outputs:"
         ):
@@ -4813,7 +5529,7 @@ class DatabasePortalExecutionBridge:
                 raise DatabasePortalBridgeDeferred(
                     "cross_attempt_declared_output_changed_before_marker_retirement"
                 )
-        elif self._nested_gitlink_state_present(workspace):
+        elif not absent_worktree and self._nested_gitlink_state_present(workspace):
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_declared_output_appeared_before_marker_retirement"
             )
@@ -4822,9 +5538,8 @@ class DatabasePortalExecutionBridge:
             or second_marker != marker
             or second_raw != marker_raw
             or second_proof != first_proof
-            or second_status.returncode != 0
-            or _sha256_bytes(bytes(second_status.stdout or b""))
-            != status_id
+            or second_status_returncode != 0
+            or second_status_id != status_id
             or second_identity.st_dev != marker_identity.st_dev
             or second_identity.st_ino != marker_identity.st_ino
             or second_identity.st_mode != marker_identity.st_mode
@@ -5357,6 +6072,508 @@ class DatabasePortalExecutionBridge:
             "worker_self_approval": False,
         }
 
+    @staticmethod
+    def _stable_absent_worktree_observation(
+        value: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        stable = dict(value)
+        process = dict(stable["process_inventory"])
+        process.pop("same_uid_processes_inspected", None)
+        stable["process_inventory"] = process
+        container = dict(stable["container_inventory"])
+        container.pop("containers_inspected", None)
+        stable["container_inventory"] = container
+        return stable
+
+    @staticmethod
+    def _validated_absent_worktree_receipt(
+        value: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        if type(value) is not dict:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_receipt_invalid"
+            )
+        receipt = dict(value)
+        receipt_id = receipt.get("receipt_id")
+        receipt_body = dict(receipt)
+        receipt_body.pop("receipt_id", None)
+        preservation_id = receipt_body.get("preservation_id")
+        preservation_body = dict(receipt_body)
+        preservation_body.pop("preservation_id", None)
+        if (
+            set(receipt) != _ABSENT_WORKTREE_PRESERVATION_FIELDS
+            or receipt.get("schema") != ABSENT_WORKTREE_PRESERVATION_SCHEMA
+            or receipt.get("recovery_profile")
+            != "missing_declared_outputs_only@1"
+            or type(preservation_id) is not str
+            or preservation_id != _sha256_bytes(_canonical_json(preservation_body))
+            or type(receipt_id) is not str
+            or receipt_id != _sha256_bytes(_canonical_json(receipt_body))
+            or any(
+                receipt.get(field) is not expected
+                for field, expected in (
+                    ("workspace_absent", True),
+                    ("workspace_unregistered", True),
+                    ("branch_absent", True),
+                    ("declared_outputs_absent", True),
+                    ("portal_completion_admitted", False),
+                    ("database_effect_admitted", False),
+                    ("merge_admitted", False),
+                    ("provider_execution_may_have_occurred", True),
+                    ("prior_execution_evidence_reused", False),
+                    ("effect_evidence_reused", False),
+                    ("output_preservation_authority", False),
+                    ("worktree_deleted_by_recovery", False),
+                    ("branch_deleted_by_recovery", False),
+                    ("mutation_authority", False),
+                    ("merge_authority", False),
+                    ("task_completion_authority", False),
+                    ("normal_validation_required", True),
+                )
+            )
+            or any(
+                type(receipt.get(field)) is not int or receipt[field] != 0
+                for field in ("provider_invocation_count", "effect_claim_count")
+            )
+            or any(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(receipt.get(field) or ""))
+                is None
+                for field in (
+                    "lifecycle_transition_basis_id",
+                    "worktree_inventory_id",
+                    "projection_sha256",
+                    "portal_event_log_id",
+                    "database_phase_history_id",
+                    "preservation_id",
+                    "receipt_id",
+                )
+            )
+            or any(
+                type(receipt.get(field)) is not str or not receipt[field]
+                for field in (
+                    "lifecycle_record_id",
+                    "portal_state_binding_id",
+                )
+            )
+            or re.fullmatch(r"[0-9a-f]{40}", str(receipt.get("merge_target_head") or ""))
+            is None
+            or re.fullmatch(r"[0-9a-f]{40}", str(receipt.get("merge_target_tree") or ""))
+            is None
+            or type(receipt.get("attempt")) is not int
+            or int(receipt["attempt"]) < 1
+            or type(receipt.get("declared_outputs")) is not list
+            or not receipt["declared_outputs"]
+            or type(receipt.get("declared_output_observations")) is not list
+            or len(receipt["declared_output_observations"])
+            != len(receipt["declared_outputs"])
+            or type(receipt.get("process_inventory")) is not dict
+            or type(receipt.get("container_inventory")) is not dict
+            or type(receipt.get("protected_evidence")) is not dict
+            or not receipt["protected_evidence"]
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_receipt_invalid"
+            )
+        return receipt
+
+    def _strict_absent_worktree_receipt_for_preservation(
+        self,
+        prior_paths: DatabasePortalAttemptPaths,
+        preservation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        mode = str(preservation.get("preservation_mode") or "")
+        match = re.fullmatch(
+            r"absent_worktree:(sha256:[0-9a-f]{64})",
+            mode,
+        )
+        if match is None:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_receipt_invalid"
+            )
+        preservation_id = match.group(1)
+        path = prior_paths.root / (
+            f"{_ABSENT_WORKTREE_PRESERVATION_PREFIX}"
+            f"{preservation_id.removeprefix('sha256:')[:24]}.json"
+        )
+        try:
+            raw, _identity = _stable_regular_bytes(
+                path,
+                noun="absent-worktree preservation receipt",
+            )
+            receipt = self._validated_absent_worktree_receipt(
+                json.loads(
+                    raw.decode("utf-8", errors="strict"),
+                    object_pairs_hook=_reject_duplicate_control_keys,
+                    parse_constant=lambda value: (_ for _ in ()).throw(
+                        ValueError(f"nonfinite JSON constant: {value}")
+                    ),
+                )
+            )
+        except DatabasePortalBridgeDeferred:
+            raise
+        except (
+            DatabasePortalBridgeError,
+            UnicodeDecodeError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_receipt_invalid"
+            ) from exc
+        if (
+            receipt["preservation_id"] != preservation_id
+            or receipt["workspace_path"] != preservation.get("workspace_path")
+            or receipt["branch"] != preservation.get("branch")
+            or receipt["merge_target_head"] != preservation.get("head")
+            or receipt["merge_target_tree"] != preservation.get("tree")
+            or receipt["process_inventory"] != preservation.get("process_inventory")
+            or receipt["container_inventory"]
+            != preservation.get("container_inventory")
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_receipt_binding_mismatch"
+            )
+        return receipt
+
+    def _absent_worktree_observation(
+        self,
+        daemon: Any,
+        record: Any,
+        prior_paths: DatabasePortalAttemptPaths,
+        *,
+        prior_binding: Mapping[str, Any],
+        portal_state_binding: Mapping[str, Any],
+        expected_protected_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if self.repo_root is None:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_repository_unbound"
+            )
+        try:
+            repository = self.repo_root.resolve(strict=True)
+            repository_identity = repository.lstat()
+            daemon_repository = Path(str(daemon.repo_root)).resolve(strict=True)
+            workspace = self._lexically_confined_absent_workspace(
+                daemon,
+                str(record.workspace_path),
+            )
+            prior_root = prior_paths.root.resolve(strict=True)
+        except DatabasePortalBridgeDeferred:
+            raise
+        except (AttributeError, OSError, RuntimeError, ValueError) as exc:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_binding_unavailable"
+            ) from exc
+        if (
+            not stat.S_ISDIR(repository_identity.st_mode)
+            or stat.S_ISLNK(repository_identity.st_mode)
+            or daemon_repository != repository
+            or repository == workspace
+            or str(Path(str(record.repo_root)).resolve(strict=False))
+            != str(repository)
+            or str(Path(str(record.state_dir)).resolve(strict=False))
+            != str(prior_root)
+            or str(record.merge_target).removeprefix("refs/heads/")
+            != self.merge_target_branch.removeprefix("refs/heads/")
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_binding_mismatch"
+            )
+        incident_path = prior_paths.root / "implementation-protected-path-incident.json"
+        active_path = prior_paths.root / "implementation-protected-path-active.json"
+        if os.path.lexists(incident_path):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_protected_incident_active"
+            )
+        inventory = self._absent_worktree_inventory(
+            repository,
+            workspace=workspace,
+            branch=str(record.branch),
+        )
+        process_inventory = self._strict_workspace_process_scan(
+            daemon.worktree_lifecycle,
+            workspace,
+        )
+        container_inventory = self._strict_workspace_container_scan(workspace)
+        head, tree, outputs, output_observations = (
+            self._absent_declared_output_observations(
+                daemon,
+                repository,
+                prior_paths=prior_paths,
+                prior_binding=prior_binding,
+                merge_target=self.merge_target_branch.removeprefix("refs/heads/"),
+            )
+        )
+        portal = self._absent_portal_no_admitted_result(
+            prior_paths,
+            task_id=str(record.task_id),
+            portal_state_binding=portal_state_binding,
+        )
+        database = self._absent_database_no_admitted_effect(
+            prior_attempt_id=str(prior_binding["attempt_id"]),
+        )
+        if os.path.lexists(active_path):
+            marker, marker_raw, marker_identity = self._strict_active_protected_marker(
+                path=active_path,
+                daemon=daemon,
+                record=record,
+                workspace=workspace,
+                portal_attempt=int(portal_state_binding["active_attempt"]),
+            )
+            proof = self._protected_marker_snapshot_proof(
+                daemon=daemon,
+                workspace=workspace,
+                marker=marker,
+            )
+            protected_evidence = {
+                "active_marker_sha256": _sha256_bytes(marker_raw),
+                "active_marker_device": int(marker_identity.st_dev),
+                "active_marker_inode": int(marker_identity.st_ino),
+                "active_marker_mode": int(marker_identity.st_mode),
+                "active_marker_size": int(marker_identity.st_size),
+                "protected_path_proof": proof,
+            }
+            if (
+                expected_protected_evidence is not None
+                and protected_evidence != dict(expected_protected_evidence)
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_protected_evidence_changed"
+                )
+        else:
+            if expected_protected_evidence is None:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_protected_evidence_missing"
+                )
+            required_families = (
+                tuple(prior_paths.root.glob(f"{_PROTECTED_STATE_CLEARANCE_PREFIX}*.json")),
+                tuple(prior_paths.root.glob(f"{_PROTECTED_STATE_MARKER_BLOB_PREFIX}*.json")),
+                tuple(prior_paths.root.glob("implementation-protected-path-retired-*.json")),
+            )
+            if any(len(family) != 1 for family in required_families):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_protected_evidence_missing"
+                )
+            protected_evidence = dict(expected_protected_evidence)
+        return {
+            "schema": ABSENT_WORKTREE_PRESERVATION_SCHEMA,
+            "recovery_profile": "missing_declared_outputs_only@1",
+            "task_id": str(record.task_id),
+            "attempt": int(record.attempt),
+            "prior_attempt_id": str(prior_binding["attempt_id"]),
+            "prior_binding_id": str(prior_binding["binding_id"]),
+            "lifecycle_record_id": str(record.record_id),
+            "lifecycle_transition_basis_id": self._lifecycle_transition_basis_id(record),
+            "repository_path": str(repository),
+            "workspace_path": str(workspace),
+            "branch": str(record.branch),
+            "merge_target": self.merge_target_branch.removeprefix("refs/heads/"),
+            "merge_target_head": head,
+            "merge_target_tree": tree,
+            **inventory,
+            "process_inventory": process_inventory,
+            "container_inventory": container_inventory,
+            "projection_sha256": _sha256_file(prior_paths.task_projection),
+            "declared_outputs": list(outputs),
+            "declared_output_observations": [dict(item) for item in output_observations],
+            "declared_outputs_absent": True,
+            "portal_state_binding_id": content_identity(portal_state_binding),
+            **portal,
+            **database,
+            "protected_evidence": protected_evidence,
+            "prior_execution_evidence_reused": False,
+            "effect_evidence_reused": False,
+            "output_preservation_authority": False,
+            "worktree_deleted_by_recovery": False,
+            "branch_deleted_by_recovery": False,
+            "mutation_authority": False,
+            "merge_authority": False,
+            "task_completion_authority": False,
+            "normal_validation_required": True,
+        }
+
+    def _preserved_absent_worktree(
+        self,
+        daemon: Any,
+        record: Any,
+        prior_paths: DatabasePortalAttemptPaths,
+        *,
+        attempt: Any,
+        current_binding: Mapping[str, Any],
+        prior_binding: Mapping[str, Any],
+        database_authority: Mapping[str, Any],
+        portal_state_binding: Mapping[str, Any],
+        lifecycle_recovery_receipt: Mapping[str, Any] | None,
+        perform_marker_retirement: bool,
+        publish_marker_clearance: bool,
+        successor_adoption: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Quarantine an irrecoverably absent attempt and allow a fresh run."""
+
+        prior_directory_identity = self._seal_attempt_directory(
+            prior_paths,
+            attempt_id=prior_binding["attempt_id"],
+            create=False,
+        )
+        existing_paths = tuple(
+            prior_paths.root.glob(f"{_ABSENT_WORKTREE_PRESERVATION_PREFIX}*.json")
+        )
+        if len(existing_paths) > 1:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_receipt_ambiguous"
+            )
+        existing: dict[str, Any] | None = None
+        expected_protected: Mapping[str, Any] | None = None
+        if existing_paths:
+            try:
+                raw, _identity = _stable_regular_bytes(
+                    existing_paths[0],
+                    noun="absent-worktree preservation receipt",
+                )
+                existing = self._validated_absent_worktree_receipt(
+                    json.loads(
+                        raw.decode("utf-8", errors="strict"),
+                        object_pairs_hook=_reject_duplicate_control_keys,
+                        parse_constant=lambda value: (_ for _ in ()).throw(
+                            ValueError(f"nonfinite JSON constant: {value}")
+                        ),
+                    )
+                )
+            except DatabasePortalBridgeDeferred:
+                raise
+            except (DatabasePortalBridgeError, UnicodeDecodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_receipt_invalid"
+                ) from exc
+            expected_filename = (
+                f"{_ABSENT_WORKTREE_PRESERVATION_PREFIX}"
+                f"{existing['preservation_id'].removeprefix('sha256:')[:24]}.json"
+            )
+            if existing_paths[0].name != expected_filename:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_receipt_invalid"
+                )
+            expected_protected = existing["protected_evidence"]
+        first = self._absent_worktree_observation(
+            daemon,
+            record,
+            prior_paths,
+            prior_binding=prior_binding,
+            portal_state_binding=portal_state_binding,
+            expected_protected_evidence=expected_protected,
+        )
+        second = self._absent_worktree_observation(
+            daemon,
+            record,
+            prior_paths,
+            prior_binding=prior_binding,
+            portal_state_binding=portal_state_binding,
+            expected_protected_evidence=first["protected_evidence"],
+        )
+        if self._stable_absent_worktree_observation(first) != (
+            self._stable_absent_worktree_observation(second)
+        ):
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_evidence_changed"
+            )
+        preservation_id = _sha256_bytes(_canonical_json(first))
+        receipt = {**first, "preservation_id": preservation_id}
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        receipt = self._validated_absent_worktree_receipt(receipt)
+        if existing is not None:
+            existing_observation = dict(existing)
+            existing_observation.pop("receipt_id")
+            existing_observation.pop("preservation_id")
+            if self._stable_absent_worktree_observation(
+                existing_observation
+            ) != self._stable_absent_worktree_observation(first):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_receipt_evidence_changed"
+                )
+            # Counts of unrelated processes and isolated containers are audit
+            # observations, not authority.  Both new scans above still reject
+            # an overlap; retain the first immutable receipt when only those
+            # ambient totals changed during a safe parallel run.
+            receipt = existing
+            preservation_id = str(existing["preservation_id"])
+        receipt_path = prior_paths.root / (
+            f"{_ABSENT_WORKTREE_PRESERVATION_PREFIX}"
+            f"{preservation_id.removeprefix('sha256:')[:24]}.json"
+        )
+        payload = json.dumps(
+            receipt,
+            indent=2,
+            sort_keys=True,
+            allow_nan=False,
+        ).encode("utf-8") + b"\n"
+        _publish_immutable_file(
+            receipt_path,
+            payload,
+            sealed_directory_identity=prior_directory_identity,
+        )
+        observed, _identity = _stable_regular_bytes(
+            receipt_path,
+            noun="absent-worktree preservation receipt",
+        )
+        if observed != payload:
+            raise DatabasePortalBridgeDeferred(
+                "cross_attempt_lifecycle_absent_receipt_changed"
+            )
+        preservation = {
+            "workspace_path": receipt["workspace_path"],
+            "branch": receipt["branch"],
+            "head": receipt["merge_target_head"],
+            "tree": receipt["merge_target_tree"],
+            "workspace_device": 0,
+            "workspace_inode": 0,
+            "workspace_mode": 0,
+            "process_inventory": receipt["process_inventory"],
+            "container_inventory": receipt["container_inventory"],
+            "preservation_mode": f"absent_worktree:{preservation_id}",
+        }
+        workspace = Path(receipt["workspace_path"])
+        active_path = prior_paths.root / "implementation-protected-path-active.json"
+        if os.path.lexists(active_path):
+            self._retire_dead_protected_active_marker(
+                attempt=attempt,
+                current_binding=current_binding,
+                prior_binding=prior_binding,
+                database_authority=database_authority,
+                portal_state_binding=portal_state_binding,
+                daemon=daemon,
+                record=record,
+                prior_paths=prior_paths,
+                prior_directory_identity=prior_directory_identity,
+                workspace=workspace,
+                preservation=preservation,
+                status_id=receipt["receipt_id"],
+                lifecycle_recovery_receipt=lifecycle_recovery_receipt,
+                perform_retirement=perform_marker_retirement,
+                publish_prepared_clearance=publish_marker_clearance,
+                successor_adoption=successor_adoption,
+            )
+        else:
+            recovered = self._verify_or_finish_protected_marker_retirement(
+                current_binding=current_binding,
+                prior_binding=prior_binding,
+                database_authority=database_authority,
+                portal_state_binding=portal_state_binding,
+                daemon=daemon,
+                record=record,
+                prior_paths=prior_paths,
+                prior_directory_identity=prior_directory_identity,
+                workspace=workspace,
+                preservation=preservation,
+                status_id=receipt["receipt_id"],
+                lifecycle_recovery_receipt=lifecycle_recovery_receipt,
+            )
+            if not recovered:
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_protected_evidence_missing"
+                )
+        return preservation
+
     def _preserved_quiescent_worktree(
         self,
         daemon: Any,
@@ -5374,6 +6591,22 @@ class DatabasePortalExecutionBridge:
         successor_adoption: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Prove that a dead attempt's bytes are committed and quiescent."""
+
+        if not os.path.lexists(Path(str(record.workspace_path))):
+            return self._preserved_absent_worktree(
+                daemon,
+                record,
+                prior_paths,
+                attempt=attempt,
+                current_binding=current_binding,
+                prior_binding=prior_binding,
+                database_authority=database_authority,
+                portal_state_binding=portal_state_binding,
+                lifecycle_recovery_receipt=lifecycle_recovery_receipt,
+                perform_marker_retirement=perform_marker_retirement,
+                publish_marker_clearance=publish_marker_clearance,
+                successor_adoption=successor_adoption,
+            )
 
         if self.repo_root is None:
             raise DatabasePortalBridgeDeferred(
@@ -6042,7 +7275,14 @@ class DatabasePortalExecutionBridge:
         container_inventory = preservation["container_inventory"]
         preservation_mode = str(preservation["preservation_mode"])
         preservation_head = str(preservation["head"])
-        valid_preservation_mode = (
+        absent_preservation = (
+            re.fullmatch(
+                r"absent_worktree:sha256:[0-9a-f]{64}",
+                preservation_mode,
+            )
+            is not None
+        )
+        valid_preservation_mode = absent_preservation or (
             preservation_mode in {"clean_branch_commit", "supervisor_rescue_commit"}
             or re.fullmatch(
                 r"content_addressed_declared_nested_outputs:sha256:[0-9a-f]{64}",
@@ -6121,7 +7361,33 @@ class DatabasePortalExecutionBridge:
             "receipt_id",
         )
         if (
-            value.get("schema") != CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA
+            (
+                value.get("schema")
+                not in {
+                    CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA,
+                    CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA_V2,
+                }
+                or (
+                    value.get("schema")
+                    == CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA
+                    and absent_preservation
+                )
+                or (
+                    value.get("schema")
+                    == CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA_V2
+                    and (
+                        not absent_preservation
+                        or any(
+                            int(preservation[field]) != 0
+                            for field in (
+                                "workspace_device",
+                                "workspace_inode",
+                                "workspace_mode",
+                            )
+                        )
+                    )
+                )
+            )
             or value.get("phase") not in {"prepared", "committed"}
             or any(
                 type(value.get(field)) is not int or int(value[field]) < 1
@@ -6159,7 +7425,11 @@ class DatabasePortalExecutionBridge:
             or value["expected_terminal_lifecycle_fence"]
             != value["prior_lifecycle_fence"] + 1
             or value["terminal_reason"]
-            != "superseded_database_attempt_preserved"
+            != (
+                _ABSENT_WORKTREE_LIFECYCLE_TERMINAL_REASON
+                if value.get("schema") == CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA_V2
+                else _SUPERSEDED_LIFECYCLE_TERMINAL_REASON
+            )
         ):
             raise DatabasePortalBridgeError(
                 "cross-attempt lifecycle recovery receipt is inconsistent"
@@ -6283,6 +7553,24 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_lifecycle_completed_history_unproven"
             )
+        if recovery.get("schema") == CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA_V2:
+            absent = self._strict_absent_worktree_receipt_for_preservation(
+                prior_paths,
+                recovery["preservation"],
+            )
+            if (
+                absent["task_id"] != record.task_id
+                or absent["prior_attempt_id"] != prior_binding["attempt_id"]
+                or absent["prior_binding_id"] != prior_binding["binding_id"]
+                or absent["lifecycle_record_id"] != recovery["lifecycle_record_id"]
+                or absent["lifecycle_transition_basis_id"]
+                != recovery["lifecycle_transition_basis_id"]
+                or absent["task_completion_authority"] is not False
+                or absent["output_preservation_authority"] is not False
+            ):
+                raise DatabasePortalBridgeDeferred(
+                    "cross_attempt_lifecycle_absent_receipt_binding_mismatch"
+                )
         if not artifacts:
             return
         by_prefix = {
@@ -7730,9 +9018,12 @@ class DatabasePortalExecutionBridge:
                     quarantined.append(existing_quarantine)
                     continue
                 try:
-                    candidate_workspace = Path(
-                        lifecycle_record.workspace_path
-                    ).resolve(strict=True)
+                    recorded_workspace = Path(lifecycle_record.workspace_path)
+                    candidate_workspace = (
+                        recorded_workspace.resolve(strict=True)
+                        if os.path.lexists(recorded_workspace)
+                        else Path(os.path.abspath(os.fspath(recorded_workspace)))
+                    )
                 except (OSError, RuntimeError) as exc:
                     raise DatabasePortalBridgeDeferred(
                         "cross_attempt_lifecycle_worktree_unbound"
@@ -7799,7 +9090,11 @@ class DatabasePortalExecutionBridge:
                 "cross_attempt_lifecycle_authority_ambiguous"
             )
         prior_paths, prior_binding, record = matches[0]
-        terminal_reason = _SUPERSEDED_LIFECYCLE_TERMINAL_REASON
+        terminal_reason = (
+            _ABSENT_WORKTREE_LIFECYCLE_TERMINAL_REASON
+            if not os.path.lexists(Path(str(record.workspace_path)))
+            else _SUPERSEDED_LIFECYCLE_TERMINAL_REASON
+        )
         if record.is_terminal and existing_receipt is None:
             raise DatabasePortalBridgeDeferred(
                 "cross_attempt_lifecycle_terminal_evidence_unbound"
@@ -8013,7 +9308,13 @@ class DatabasePortalExecutionBridge:
             )
             prepared = self._seal_recovery_receipt(
                 {
-                    "schema": CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA,
+                    "schema": (
+                        CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA_V2
+                        if str(receipt_preservation["preservation_mode"]).startswith(
+                            "absent_worktree:"
+                        )
+                        else CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA
+                    ),
                     "phase": "prepared",
                     "task_cid": binding["task_cid"],
                     "task_alias": binding["task_alias"],

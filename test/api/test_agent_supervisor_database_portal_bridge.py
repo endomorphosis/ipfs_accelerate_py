@@ -1604,6 +1604,10 @@ def _cross_attempt_recovery_fixture(
         _implementation_protected_path_snapshot = (
             PortalImplementationDaemon._implementation_protected_path_snapshot
         )
+        _missing_ephemeral_workspace_shared_snapshot = (
+            PortalImplementationDaemon._missing_ephemeral_workspace_shared_snapshot
+        )
+        _path_is_under = staticmethod(PortalImplementationDaemon._path_is_under)
         _implementation_protected_path_identity = staticmethod(
             PortalImplementationDaemon._implementation_protected_path_identity
         )
@@ -1671,6 +1675,25 @@ def _cross_attempt_recovery_fixture(
             "mutation_authority": False,
             "completion_authority": False,
         }
+
+    authority.phase_history = lambda attempt_id: [  # type: ignore[attr-defined]
+        {
+            "attempt_id": attempt_id,
+            "revision": 1,
+            "phase": "claimed",
+            "body": {},
+        },
+        {
+            "attempt_id": attempt_id,
+            "revision": 2,
+            "phase": "failed",
+            "body": {"reason": "expired_owner"},
+        },
+    ]
+    authority.execution_evidence_counts = lambda _attempt_id: {  # type: ignore[attr-defined]
+        "provider_invocation_count": 0,
+        "effect_claim_count": 0,
+    }
 
     bridge = DatabasePortalExecutionBridge(
         task_source=task_source,
@@ -1769,6 +1792,548 @@ def _prior_recovery_evidence(
         record,
         database_authority,
     )
+
+
+def _remove_prior_worktree_with_exact_absence_evidence(
+    bridge: DatabasePortalExecutionBridge,
+    current_attempt: DatabaseTaskAttempt,
+    store: WorktreeLifecycleStore,
+    workspace: Path,
+    *,
+    delete_branch: bool = True,
+) -> tuple[DatabasePortalAttemptPaths, object]:
+    record = store.load_workspace(workspace)
+    assert record is not None
+    prior_root = Path(record.state_dir)
+    prior_paths = DatabasePortalAttemptPaths(
+        root=prior_root,
+        task_projection=prior_root / "task-projection.runtime.todo.md",
+        binding=prior_root / "database-attempt-binding.json",
+        state=prior_root / "portal-task-state.json",
+        strategy=prior_root / "portal-strategy.json",
+        events=prior_root / "portal-events.jsonl",
+        implementation_logs=prior_root / "implementation-logs",
+    )
+    state = json.loads(prior_paths.state.read_text(encoding="utf-8"))
+    prior_paths.events.write_text("", encoding="utf-8")
+    (prior_root / "implementation.lock").write_text(
+        json.dumps(
+            {
+                "kind": "implementation",
+                "state_dir": str(prior_root.resolve()),
+                "task_id": state["active_task_id"],
+                "canonical_task_cid": state["active_task_cid"],
+                "attempt": state["active_attempt"],
+                "pid": 999_999,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    repository = bridge.repo_root
+    assert repository is not None
+    subprocess.run(
+        ["git", "worktree", "remove", "--force", str(workspace)],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    if delete_branch:
+        subprocess.run(
+            ["git", "branch", "-D", str(record.branch)],
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    assert not os.path.lexists(workspace)
+    return prior_paths, record
+
+
+def test_bridge_quarantines_exact_absent_worktree_before_fresh_attempt(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=True,
+            nested_output_path="ipfs_datasets_py/runtime_trace.py",
+        )
+    )
+    prior_paths, prior_record = _remove_prior_worktree_with_exact_absence_evidence(
+        bridge,
+        attempt,
+        store,
+        workspace,
+    )
+
+    provider = bridge.run_provider(attempt)
+
+    assert provider["accepted"] is True
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    assert terminal.terminal_reason == (
+        "superseded_database_attempt_absent_quarantined"
+    )
+    assert terminal.record_id == prior_record.record_id
+    assert not os.path.lexists(workspace)
+    repository = bridge.repo_root
+    assert repository is not None
+    branch = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{prior_record.branch}"],
+        cwd=repository,
+        check=False,
+    )
+    assert branch.returncode == 1
+    receipts = tuple(
+        prior_paths.root.glob("cross-attempt-absent-worktree-preservation-*.json")
+    )
+    assert len(receipts) == 1
+    receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+    assert receipt["schema"] == bridge_module.ABSENT_WORKTREE_PRESERVATION_SCHEMA
+    assert receipt["recovery_profile"] == "missing_declared_outputs_only@1"
+    for field in (
+        "workspace_absent",
+        "workspace_unregistered",
+        "branch_absent",
+        "declared_outputs_absent",
+        "provider_execution_may_have_occurred",
+        "normal_validation_required",
+    ):
+        assert receipt[field] is True
+    for field in (
+        "portal_completion_admitted",
+        "database_effect_admitted",
+        "merge_admitted",
+        "prior_execution_evidence_reused",
+        "effect_evidence_reused",
+        "output_preservation_authority",
+        "worktree_deleted_by_recovery",
+        "branch_deleted_by_recovery",
+        "mutation_authority",
+        "merge_authority",
+        "task_completion_authority",
+    ):
+        assert receipt[field] is False
+    assert receipt["protected_evidence"]["protected_path_proof"]["mode"] == (
+        "missing_ephemeral_workspace_exact_snapshot"
+    )
+    assert receipt["provider_invocation_count"] == 0
+    assert receipt["effect_claim_count"] == 0
+    assert receipt["declared_output_observations"][0]["source_kind"] == "gitlink"
+    recovery = json.loads(
+        (
+            bridge._paths(attempt).root
+            / CROSS_ATTEMPT_LIFECYCLE_RECOVERY_FILENAME
+        ).read_text(encoding="utf-8")
+    )
+    assert recovery["schema"] == (
+        bridge_module.CROSS_ATTEMPT_LIFECYCLE_RECOVERY_SCHEMA_V2
+    )
+    assert recovery["phase"] == "committed"
+    assert recovery["worktree_deleted"] is False
+    assert recovery["provider_dispatched"] is False
+    assert recovery["task_completion_authority"] is False
+    assert recovery["preservation"]["preservation_mode"] == (
+        f"absent_worktree:{receipt['preservation_id']}"
+    )
+    assert not (prior_paths.root / "implementation-protected-path-active.json").exists()
+    assert len(tuple(prior_paths.root.glob("implementation-protected-path-retired-*.json"))) == 1
+    assert portals and portals[0].run_count == 1
+
+
+@pytest.mark.parametrize(
+    "unsafe_fact",
+    ["branch", "declared_output", "incident", "protected_mutation"],
+)
+def test_absent_worktree_recovery_defers_on_preserved_or_protected_evidence(
+    tmp_path: Path,
+    unsafe_fact: str,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path, protected_marker=True)
+    )
+    prior_paths, record = _remove_prior_worktree_with_exact_absence_evidence(
+        bridge,
+        attempt,
+        store,
+        workspace,
+        delete_branch=unsafe_fact != "branch",
+    )
+    repository = bridge.repo_root
+    assert repository is not None
+    if unsafe_fact == "declared_output":
+        output = repository / "inventory/result.json"
+        output.parent.mkdir(parents=True)
+        output.write_text("recoverable = True\n", encoding="utf-8")
+    elif unsafe_fact == "incident":
+        (prior_paths.root / "implementation-protected-path-incident.json").write_text(
+            "{}\n",
+            encoding="utf-8",
+        )
+    elif unsafe_fact == "protected_mutation":
+        (repository / "control.todo.md").write_text(
+            "# unadmitted protected mutation\n",
+            encoding="utf-8",
+        )
+
+    with pytest.raises(DatabasePortalBridgeDeferred):
+        bridge.run_provider(attempt)
+
+    predecessor = next(
+        item for item in store.iter_records() if item.record_id == record.record_id
+    )
+    assert predecessor.is_nonterminal
+    assert predecessor.record_id == record.record_id
+    assert not tuple(
+        prior_paths.root.glob("cross-attempt-absent-worktree-preservation-*.json")
+    )
+    assert not portals or all(portal.run_count == 0 for portal in portals)
+
+
+@pytest.mark.parametrize("replacement", ["directory", "symlink"])
+def test_absent_worktree_recovery_defers_when_path_is_replaced(
+    tmp_path: Path,
+    replacement: str,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path, protected_marker=True)
+    )
+    prior_paths, record = _remove_prior_worktree_with_exact_absence_evidence(
+        bridge,
+        attempt,
+        store,
+        workspace,
+    )
+    if replacement == "directory":
+        workspace.mkdir()
+    else:
+        repository = bridge.repo_root
+        assert repository is not None
+        workspace.symlink_to(repository, target_is_directory=True)
+
+    with pytest.raises(DatabasePortalBridgeDeferred):
+        bridge.run_provider(attempt)
+
+    predecessor = next(
+        item for item in store.iter_records() if item.record_id == record.record_id
+    )
+    assert predecessor.is_nonterminal
+    assert predecessor.record_id == record.record_id
+    assert not tuple(
+        prior_paths.root.glob("cross-attempt-absent-worktree-preservation-*.json")
+    )
+    assert not portals or all(portal.run_count == 0 for portal in portals)
+
+
+@pytest.mark.parametrize("missing", ["marker", "lock", "events"])
+def test_absent_worktree_recovery_requires_all_exact_control_evidence(
+    tmp_path: Path,
+    missing: str,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(
+            tmp_path,
+            protected_marker=missing != "marker",
+        )
+    )
+    prior_paths, record = _remove_prior_worktree_with_exact_absence_evidence(
+        bridge,
+        attempt,
+        store,
+        workspace,
+    )
+    if missing == "lock":
+        (prior_paths.root / "implementation.lock").unlink()
+    elif missing == "events":
+        prior_paths.events.unlink()
+
+    with pytest.raises(DatabasePortalBridgeDeferred):
+        bridge.run_provider(attempt)
+
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None and predecessor.is_nonterminal
+    assert predecessor.record_id == record.record_id
+    assert not portals or all(portal.run_count == 0 for portal in portals)
+
+
+@pytest.mark.parametrize("owner_state", ["live", "unknown"])
+def test_absent_worktree_recovery_requires_exact_dead_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner_state: str,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path, protected_marker=True)
+    )
+    prior_paths, record = _remove_prior_worktree_with_exact_absence_evidence(
+        bridge,
+        attempt,
+        store,
+        workspace,
+    )
+
+    if owner_state == "live":
+        proc_root = Path(store.proc_root)
+        boot_id = proc_root / "sys/kernel/random/boot_id"
+        boot_id.parent.mkdir(parents=True)
+        boot_id.write_text("test-boot\n", encoding="ascii")
+        process = proc_root / str(record.owner.pid)
+        process.mkdir()
+        stat_fields = ["S", str(record.owner.parent_pid), *(["0"] * 17), "1"]
+        (process / "stat").write_text(
+            f"{record.owner.pid} (worker) {' '.join(stat_fields)}\n",
+            encoding="utf-8",
+        )
+        repository = bridge.repo_root
+        assert repository is not None
+        (process / "cwd").symlink_to(repository, target_is_directory=True)
+        (process / "cmdline").write_bytes(b"python\0worker.py\0")
+    else:
+        def reject_owner(*_args: object, **_kwargs: object) -> object:
+            raise RuntimeError(f"owner state is {owner_state}")
+
+        monkeypatch.setattr(store, "require_exact_dead_owner", reject_owner)
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_exact_dead_owner_unproven",
+    ):
+        bridge.run_provider(attempt)
+
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None and predecessor.is_nonterminal
+    assert predecessor.record_id == record.record_id
+    assert not tuple(
+        prior_paths.root.glob("cross-attempt-absent-worktree-preservation-*.json")
+    )
+    assert not portals or all(portal.run_count == 0 for portal in portals)
+
+
+def test_absent_worktree_recovery_rejects_database_provider_or_effect_phase(
+    tmp_path: Path,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path, protected_marker=True)
+    )
+    prior_paths, record = _remove_prior_worktree_with_exact_absence_evidence(
+        bridge,
+        attempt,
+        store,
+        workspace,
+    )
+    authority = bridge.prior_attempt_authority
+    assert authority is not None
+    authority.phase_history = lambda attempt_id: [  # type: ignore[attr-defined]
+        {"attempt_id": attempt_id, "revision": 1, "phase": "claimed", "body": {}},
+        {"attempt_id": attempt_id, "revision": 2, "phase": "provider", "body": {}},
+        {"attempt_id": attempt_id, "revision": 3, "phase": "failed", "body": {}},
+    ]
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_absent_database_effect_admitted",
+    ):
+        bridge.run_provider(attempt)
+
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None and predecessor.is_nonterminal
+    assert predecessor.record_id == record.record_id
+    assert not tuple(
+        prior_paths.root.glob("cross-attempt-absent-worktree-preservation-*.json")
+    )
+    assert not portals or all(portal.run_count == 0 for portal in portals)
+
+
+@pytest.mark.parametrize(
+    "evidence_field",
+    ["provider_invocation_count", "effect_claim_count"],
+)
+def test_absent_worktree_recovery_rejects_database_execution_evidence(
+    tmp_path: Path,
+    evidence_field: str,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path, protected_marker=True)
+    )
+    prior_paths, record = _remove_prior_worktree_with_exact_absence_evidence(
+        bridge,
+        attempt,
+        store,
+        workspace,
+    )
+    authority = bridge.prior_attempt_authority
+    assert authority is not None
+    counts = {
+        "provider_invocation_count": 0,
+        "effect_claim_count": 0,
+    }
+    counts[evidence_field] = 1
+    authority.execution_evidence_counts = (  # type: ignore[attr-defined]
+        lambda _attempt_id: dict(counts)
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_absent_database_effect_admitted",
+    ):
+        bridge.run_provider(attempt)
+
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None and predecessor.is_nonterminal
+    assert predecessor.record_id == record.record_id
+    assert not tuple(
+        prior_paths.root.glob("cross-attempt-absent-worktree-preservation-*.json")
+    )
+    assert not portals or all(portal.run_count == 0 for portal in portals)
+
+
+def test_absent_worktree_recovery_two_pass_branch_race_defers_without_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path, protected_marker=True)
+    )
+    prior_paths, record = _remove_prior_worktree_with_exact_absence_evidence(
+        bridge,
+        attempt,
+        store,
+        workspace,
+    )
+    original = bridge._absent_worktree_inventory
+    calls = 0
+
+    def race(
+        repository: Path,
+        *,
+        workspace: Path,
+        branch: str,
+    ) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            subprocess.run(
+                ["git", "branch", branch],
+                cwd=repository,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        return original(repository, workspace=workspace, branch=branch)
+
+    monkeypatch.setattr(bridge, "_absent_worktree_inventory", race)
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_absent_worktree_branch_present",
+    ):
+        bridge.run_provider(attempt)
+
+    predecessor = store.load_workspace(workspace)
+    assert predecessor is not None and predecessor.is_nonterminal
+    assert predecessor.record_id == record.record_id
+    assert not tuple(
+        prior_paths.root.glob("cross-attempt-absent-worktree-preservation-*.json")
+    )
+    assert not portals or all(portal.run_count == 0 for portal in portals)
+
+
+def test_absent_worktree_recovery_ignores_unrelated_process_count_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge, attempt, store, workspace, portals = (
+        _cross_attempt_recovery_fixture(tmp_path, protected_marker=True)
+    )
+    _prior_paths, record = _remove_prior_worktree_with_exact_absence_evidence(
+        bridge,
+        attempt,
+        store,
+        workspace,
+    )
+    inspected = 2
+
+    def changing_process_inventory(
+        _store: object,
+        _workspace: Path,
+    ) -> dict[str, int]:
+        nonlocal inspected
+        inspected += 1
+        return {"same_uid_processes_inspected": inspected}
+
+    monkeypatch.setattr(
+        bridge,
+        "_strict_workspace_process_scan",
+        changing_process_inventory,
+    )
+
+    result = bridge.run_provider(attempt)
+
+    assert result["accepted"] is True
+    terminal = store.load_workspace(workspace)
+    assert terminal is not None and terminal.is_terminal
+    assert terminal.record_id == record.record_id
+    assert portals and portals[0].run_count == 1
+
+
+def test_absent_worktree_inventory_accepts_closed_valueless_porcelain_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    workspace = tmp_path / "worktrees/prior"
+    workspace.parent.mkdir()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: object(),
+    )
+    detached = tmp_path / "detached"
+    bare = tmp_path / "bare"
+    porcelain = (
+        f"worktree {detached}\0HEAD {'a' * 40}\0detached\0locked\0\0"
+        f"worktree {bare}\0bare\0prunable\0\0"
+    ).encode()
+
+    def observe(
+        _repository: Path,
+        *arguments: str,
+        **_kwargs: object,
+    ) -> SimpleNamespace:
+        if arguments[:2] == ("show-ref", "--verify"):
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        assert arguments == ("worktree", "list", "--porcelain", "-z")
+        return SimpleNamespace(returncode=0, stdout=porcelain, stderr=b"")
+
+    monkeypatch.setattr(bridge, "_git_observation", observe)
+    result = bridge._absent_worktree_inventory(
+        repository,
+        workspace=workspace,
+        branch="implementation/missing",
+    )
+
+    assert result["workspace_absent"] is True
+    assert result["workspace_unregistered"] is True
+    assert result["branch_absent"] is True
+
+
+def test_absent_worktree_path_must_be_exact_child_of_daemon_root(
+    tmp_path: Path,
+) -> None:
+    worktree_root = tmp_path / "worktrees"
+    worktree_root.mkdir()
+    daemon = SimpleNamespace(worktree_root=worktree_root)
+
+    with pytest.raises(
+        DatabasePortalBridgeDeferred,
+        match="cross_attempt_lifecycle_absent_worktree_path_invalid",
+    ):
+        DatabasePortalExecutionBridge._lexically_confined_absent_workspace(
+            daemon,
+            str(tmp_path / "outside"),
+        )
 
 
 def test_prior_portal_state_binding_joins_tagged_lifecycle_to_local_attempt(
@@ -4763,6 +5328,20 @@ def test_container_root_mount_overlaps_recovery_workspace(
 
     assert DatabasePortalExecutionBridge._mount_source_overlaps_workspace(
         "/",
+        workspace,
+    ) is True
+
+
+def test_container_parent_mount_overlaps_absent_recovery_workspace(
+    tmp_path: Path,
+) -> None:
+    worktree_root = tmp_path / "worktrees"
+    worktree_root.mkdir()
+    workspace = worktree_root / "absent-attempt"
+
+    assert not os.path.lexists(workspace)
+    assert DatabasePortalExecutionBridge._mount_source_overlaps_workspace(
+        str(worktree_root),
         workspace,
     ) is True
 
