@@ -1,0 +1,189 @@
+{
+  "arms": {
+    "candidate_optimized_supervisor": {
+      "arm_id": "candidate_optimized_supervisor",
+      "constraints": [
+        "campaign_changes_only",
+        "shadow_before_mutation"
+      ],
+      "policy_identity": {
+        "truth_state": "observed",
+        "value": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1"
+      },
+      "shadow_before_mutation": true
+    },
+    "direct_minimal_orchestration_baseline": {
+      "arm_id": "direct_minimal_orchestration_baseline",
+      "constraints": [
+        "same_safe_isolation_and_acceptance_tests",
+        "no_candidate_context_pack_optimization",
+        "no_candidate_proof_or_test_reuse_optimization",
+        "same_available_model_and_provider_set",
+        "no_unsafe_direct_mutation"
+      ],
+      "policy_identity": {
+        "truth_state": "observed",
+        "value": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1"
+      },
+      "shadow_before_mutation": false
+    },
+    "sealed_current_supervisor_baseline": {
+      "arm_id": "sealed_current_supervisor_baseline",
+      "constraints": [
+        "exact_pre_campaign_policy",
+        "exact_pre_campaign_routing_behavior"
+      ],
+      "policy_identity": {
+        "truth_state": "observed",
+        "value": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1"
+      },
+      "shadow_before_mutation": false
+    }
+  },
+  "equal_controls": {
+    "acceptance_tests": "baguqeeratgw6mplp3s4xpym3uuvrh2gtro2iasia7hbvepggwiqvrrz5prea",
+    "available_providers_and_models": "baguqeera5wehcqr5rbuwrcgskjdhpt7d4oz32ks7oalbqa5iimevjpjstrha",
+    "human_intervention_policy": "baguqeeralihlfgh3qrni5lma5ffe7tn6z46pyi2ottbnbmbcpat3nrasiroa",
+    "maximum_retries": 4,
+    "objective": "ASEH-G020",
+    "price_accounting": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+    "repository_revision": "729da9f8293ecfa046a0136381a3d3808f9ed140",
+    "resource_limits": "baguqeerasht6mbkkzyahuzn7mgsmljdiablyj6ww7w6pbzwqrhbuktffpuua",
+    "task_inputs": "baguqeerazjvkjxwawmht4vxcq4nahvprz3lpzjgomklajqv3gqunmkmuynra"
+  },
+  "explicit_unavailable_fields": [
+    "populations.historical_exact_tree_replay.count",
+    "populations.new_live_shadow_canary.count",
+    "populations.new_live_shadow_canary.enrollment_deadline"
+  ],
+  "hermetic_sufficient_for_production_promotion": false,
+  "identity": {
+    "environment_identity": {
+      "truth_state": "observed",
+      "value": "baguqeeraoiwpuyij56u66q36u6utp7fdggl3avccrsfsdrouhoife7jajmpq"
+    },
+    "objective_id": "ASEH-G020",
+    "objective_revision": "baguqeerad2ogooo3qdrzcdnr5p5fvbpi6ufowme3ln3r7wepzbfv7asvdqcq",
+    "policy_identity": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1",
+    "price_snapshot_identity": {
+      "truth_state": "observed",
+      "value": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a"
+    },
+    "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+    "repository_commit": "755f45475cc2d13dacd8b330036c1d597afeddde",
+    "repository_tree": "729da9f8293ecfa046a0136381a3d3808f9ed140"
+  },
+  "manifest_cid": "baguqeerano3drwkcdia4t25cmdfoddnp4lvdxsc52hkglhamsonnmhjdecuq",
+  "populations": {
+    "hermetic_development": {
+      "count": {
+        "sensor_id": "aseh-013-paired-harness:hermetic_count",
+        "truth_state": "measured",
+        "unit": "count",
+        "value": 64
+      },
+      "minimum": 60,
+      "status": "sealed"
+    },
+    "historical_exact_tree_replay": {
+      "count": {
+        "reason_code": "not_sealed",
+        "truth_state": "unavailable"
+      },
+      "minimum": 20,
+      "required_outcomes": [
+        "successful",
+        "failed",
+        "retried",
+        "rescued",
+        "conflicted",
+        "human_escalated"
+      ],
+      "status": "unavailable"
+    },
+    "new_live_shadow_canary": {
+      "count": {
+        "reason_code": "not_sealed",
+        "truth_state": "unavailable"
+      },
+      "enrollment_deadline": {
+        "reason_code": "not_sealed",
+        "truth_state": "unavailable"
+      },
+      "enrollment_deadline_maximum_days": 30,
+      "minimum": 10,
+      "status": "unavailable"
+    }
+  },
+  "promotion_without_paired_campaign": false,
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-paired-benchmark-manifest@1",
+  "schema_version": 1,
+  "statistics": {
+    "accepted_patch_rate": {
+      "sensor_id": "aseh-013-paired-harness:accepted_patch_rate",
+      "truth_state": "measured",
+      "unit": "ratio_millionths",
+      "value": 562500
+    },
+    "bootstrap_confidence_intervals": {
+      "estimator_id": "aseh-013-paired-harness:bootstrap_confidence_intervals",
+      "method": "local_compute_model",
+      "price_snapshot_identity": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+      "truth_state": "estimated",
+      "unit": "microusd",
+      "value": 31
+    },
+    "distribution_by_task_class": {
+      "sensor_id": "aseh-013-paired-harness:distribution_by_task_class",
+      "truth_state": "measured",
+      "unit": "count",
+      "value": 8
+    },
+    "mean_difference": {
+      "estimator_id": "aseh-013-paired-harness:mean_difference_magnitude",
+      "method": "local_compute_model",
+      "price_snapshot_identity": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+      "truth_state": "estimated",
+      "unit": "microusd",
+      "value": 264
+    },
+    "median_difference": {
+      "estimator_id": "aseh-013-paired-harness:median_difference_magnitude",
+      "method": "local_compute_model",
+      "price_snapshot_identity": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+      "truth_state": "estimated",
+      "unit": "microusd",
+      "value": 197
+    },
+    "outlier_analysis": {
+      "sensor_id": "aseh-013-paired-harness:outlier_analysis",
+      "truth_state": "measured",
+      "unit": "count",
+      "value": 6
+    },
+    "per_task_ratios": {
+      "estimator_id": "aseh-013-paired-harness:per_task_ratios",
+      "method": "local_compute_model",
+      "price_snapshot_identity": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+      "truth_state": "estimated",
+      "unit": "ratio_millionths",
+      "value": 781915
+    },
+    "quality_adjusted_cost": {
+      "estimator_id": "aseh-013-paired-harness:quality_adjusted_cost",
+      "method": "local_compute_model",
+      "price_snapshot_identity": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+      "truth_state": "estimated",
+      "unit": "microusd",
+      "value": 690
+    },
+    "time_to_terminal_outcome": {
+      "estimator_id": "aseh-013-paired-harness:time_to_terminal_outcome",
+      "method": "local_compute_model",
+      "price_snapshot_identity": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+      "truth_state": "estimated",
+      "unit": "seconds_millionths",
+      "value": 11610
+    }
+  }
+}
