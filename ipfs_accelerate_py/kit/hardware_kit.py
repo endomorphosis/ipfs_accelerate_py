@@ -378,56 +378,20 @@ class HardwareKit:
         return results
 
     def _test_cuda(self, test_level: str) -> Dict[str, Any]:
-        """Test CUDA functionality. A passing canary is not production_authorized."""
-        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
-            from_canary,
-            from_measured_absence,
-            stamp_consolidation,
-            unavailable_backend,
-        )
+        """Live CUDA canary. Passing execution is not production_authorized.
 
-        result = stamp_consolidation(unavailable_backend("cuda"))
-        result["tests_passed"] = False
-        result["canary_passed"] = None
+        PCPR-038: libcuda driver-API kernel, cancellation, timeout, cleanup,
+        and fail-closed resource admission. nvidia-smi, torch, and from_canary
+        visibility probes are not qualification. Missing CUDA stays typed
+        unavailable.
+        """
+        from ipfs_accelerate_py.assurance.cuda_execution import qualify_live_cuda_execution
 
-        try:
-            import torch
-
-            result["installed"] = True
-            if torch.cuda.is_available() is True:
-                canary_passed = False
-                if test_level == "basic":
-                    x = torch.ones(10, device="cuda")
-                    del x
-                    canary_passed = True
-                elif test_level == "comprehensive":
-                    x = torch.randn(1000, 1000, device="cuda")
-                    y = torch.matmul(x, x)
-                    del x, y
-                    canary_passed = True
-                result = from_canary(
-                    "cuda",
-                    passed=canary_passed,
-                    extra={
-                        "probe": "torch.cuda.canary",
-                        "test_level": test_level,
-                        "pytorch_version": torch.__version__,
-                    },
-                )
-                result["tests_passed"] = canary_passed
-                result["device_count"] = torch.cuda.device_count()
-            elif torch.cuda.is_available() is False:
-                result = from_measured_absence(
-                    "cuda",
-                    extra={"probe": "torch.cuda.is_available"},
-                )
-                result["tests_passed"] = False
-        except ImportError:
-            result["error"] = "torch_unavailable"
-        except Exception as e:
-            result["error"] = str(e)
-
-        return stamp_consolidation(result)
+        report = qualify_live_cuda_execution(test_level=test_level)
+        report["tests_passed"] = bool(report.get("cuda_execution_qualified") is True)
+        report["production_authorized"] = False
+        report["qualified"] = False
+        return report
 
     def _test_cpu(self, test_level: str) -> Dict[str, Any]:
         """Live CPU canary. Passing execution is not production_authorized.

@@ -8,8 +8,10 @@ fabricated False that could be read as a live probe.
 
 Production execution is admitted only when ``production_authorized`` is
 True. PCPR-037 may record live CPU execution as ``cpu_execution_qualified``
-without granting ``production_authorized``. Live CUDA and model/provider
-qualification remain later tasks. A closed PCPR release is never minted here.
+without granting ``production_authorized``. PCPR-038 may record live CUDA
+execution as ``cuda_execution_qualified`` without granting
+``production_authorized``. Model/provider qualification remains PCPR-039.
+A closed PCPR release is never minted here.
 """
 
 from __future__ import annotations
@@ -346,8 +348,8 @@ def assess_ladder(report: Mapping[str, Any]) -> dict[str, Any]:
                 "blocking_rung": rung,
             }
     # All evidence rungs True still cannot authorize production here.
-    # PCPR-037 records CPU execution beside this ladder; CUDA and model
-    # qualification remain later tasks. This helper never grants
+    # PCPR-037/PCPR-038 record CPU/CUDA execution beside this ladder; model
+    # qualification remains PCPR-039. This helper never grants
     # production_authorized.
     return {
         "production_authorized": False,
@@ -420,6 +422,46 @@ def from_live_cpu_execution(
     payload["cpu_execution_task_id"] = "PCPR-037"
     payload["cpu_execution_schema"] = "ipfs_accelerate_py/assurance/cpu-execution@1"
     payload["cpu_execution_interface"] = "CpuExecution@1"
+    return payload
+
+
+def from_live_cuda_execution(
+    *,
+    canary_passed: bool,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Record a live CUDA execution canary. Never production_authorized.
+
+    PCPR-038 may set ``cuda_execution_qualified`` after live kernel probes.
+    nvidia-smi / torch.cuda.is_available remain detection, not qualification.
+    The ladder ``qualified`` rung still requires model compatibility (PCPR-039).
+    Callers must not pass ``live=True`` into ``empty_ladder``; this helper
+    overlays live CUDA execution after the fail-closed baseline.
+    """
+
+    payload = empty_ladder(
+        backend="cuda",
+        declared=True,
+        origin="live_observed",
+        evidence_kind="measured",
+        outcome="Observed" if canary_passed else "Unavailable",
+        extra=extra,
+    )
+    payload["available"] = True
+    payload["installed"] = True
+    payload["detected"] = True
+    payload["canary_passed"] = bool(canary_passed)
+    payload["resource_sufficient"] = True if canary_passed else None
+    payload["model_compatible"] = None
+    payload["qualified"] = False
+    payload["production_authorized"] = False
+    payload["live"] = True
+    payload["simulated"] = False
+    payload["device_visibility_is_not_qualification"] = True
+    payload["cuda_execution_qualified"] = bool(canary_passed)
+    payload["cuda_execution_task_id"] = "PCPR-038"
+    payload["cuda_execution_schema"] = "ipfs_accelerate_py/assurance/cuda-execution@1"
+    payload["cuda_execution_interface"] = "CudaExecution@1"
     return payload
 
 
@@ -551,6 +593,7 @@ __all__ = (
     "from_canary",
     "from_device_visibility",
     "from_live_cpu_execution",
+    "from_live_cuda_execution",
     "from_measured_absence",
     "from_package_import",
     "from_platform_presence",
