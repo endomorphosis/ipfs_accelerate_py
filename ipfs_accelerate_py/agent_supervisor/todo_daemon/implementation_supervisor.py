@@ -16864,6 +16864,211 @@ class PortalImplementationSupervisor:
             )
         return MappingProxyType(dict(receipt))
 
+    def _bind_retained_recovery_lane_attempt_authorities(
+        self,
+        *,
+        daemon: DatabaseImplementationDaemon,
+        program: DatabaseProgramConfig,
+        task_source: Any,
+        shard_count: int,
+        shard_index: int,
+        strict_sharding: bool,
+        owner_fence_held: bool,
+        managed_daemon_launch_lock_held: bool,
+    ) -> list[DatabaseImplementationDaemon]:
+        """Open and bind only the sealed predecessors' exact home lanes.
+
+        Task state remains owned by the already owner-fenced central source.
+        These additional handles open the existing lane-local execution and
+        coordinator databases so the controller can reconcile a population
+        whose immutable predecessor rows span lanes.  No lane is inferred
+        from task state: exact reviewed pins select both shard and owner.
+        """
+
+        if not (strict_sharding and shard_count > 1):
+            return []
+        if not (owner_fence_held and managed_daemon_launch_lock_held):
+            raise RuntimeError(
+                "cross-lane retained recovery lacks its owner/launch fences"
+            )
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+            database_fenced_provider_retained_manifest,
+            database_fenced_provider_retained_manifest_valid,
+            database_pctdd005_successor_manifest,
+            database_pctdd005_successor_manifest_valid,
+        )
+
+        pins = tuple(
+            dict(item)
+            for item in (
+                DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+                *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            )
+        )
+        if not (
+            len(pins) == 4
+            and program.authority_mode == "quack"
+            and program.task_source_kind == "duckdb"
+            and task_source is daemon._task_source
+            and database_fenced_provider_retained_manifest_valid(
+                database_fenced_provider_retained_manifest()
+            )
+            and database_pctdd005_successor_manifest_valid(
+                database_pctdd005_successor_manifest()
+            )
+        ):
+            raise RuntimeError(
+                "retained recovery lane population is not exact"
+            )
+        configured_lane = _repository_anchored_path(
+            self.config.repo_root,
+            self.config.state_dir,
+        )
+        configured_parent = configured_lane.parent
+        if configured_lane.is_symlink() or configured_parent.is_symlink():
+            raise RuntimeError("retained recovery lane root is a symlink")
+        try:
+            state_parent = configured_parent.resolve(strict=True)
+            current_lane = configured_lane.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise RuntimeError(
+                "retained recovery lane root is unavailable"
+            ) from exc
+        expected_current_lane = state_parent / f"lane-{shard_index}"
+        if not (
+            current_lane == expected_current_lane
+            and current_lane.is_dir()
+            and configured_lane.name == f"lane-{shard_index}"
+        ):
+            raise RuntimeError(
+                "retained recovery controller is not bound to its exact lane"
+            )
+
+        pins_by_lane: dict[int, list[dict[str, Any]]] = {}
+        owners_by_lane: dict[int, str] = {}
+        for pin in pins:
+            lane = daemon._task_home_shard_index(str(pin["task_alias"]))
+            owner = str(pin["predecessor_owner_session_id"])
+            previous_owner = owners_by_lane.setdefault(lane, owner)
+            if previous_owner != owner:
+                raise RuntimeError(
+                    "retained recovery lane has ambiguous predecessor owners"
+                )
+            pins_by_lane.setdefault(lane, []).append(pin)
+
+        lane_daemons: dict[int, DatabaseImplementationDaemon] = {}
+        peers: list[DatabaseImplementationDaemon] = []
+        try:
+            for lane in sorted(pins_by_lane):
+                owner = owners_by_lane[lane]
+                if lane == shard_index:
+                    if daemon.owner_session_id != owner:
+                        raise RuntimeError(
+                            "retained recovery controller owner differs from "
+                            "its sealed lane"
+                        )
+                    lane_daemons[lane] = daemon
+                    continue
+                lane_path = state_parent / f"lane-{lane}"
+                if lane_path.is_symlink():
+                    raise RuntimeError(
+                        "retained recovery peer lane is a symlink"
+                    )
+                try:
+                    resolved_lane = lane_path.resolve(strict=True)
+                except (OSError, RuntimeError) as exc:
+                    raise RuntimeError(
+                        "retained recovery peer lane is unavailable"
+                    ) from exc
+                if resolved_lane != lane_path or not resolved_lane.is_dir():
+                    raise RuntimeError(
+                        "retained recovery peer lane escaped its state root"
+                    )
+                (
+                    lane_database_path,
+                    lane_coordination_path,
+                    lane_execution_path,
+                ) = _database_program_lane_paths(
+                    program=program,
+                    repo_root=self.config.repo_root,
+                    state_dir=resolved_lane,
+                )
+                if not (
+                    lane_database_path
+                    == resolved_lane / "quack-lane-control.duckdb"
+                    and lane_coordination_path
+                    == resolved_lane / "quack-lane-coordination.duckdb"
+                    and lane_execution_path
+                    == resolved_lane / "quack-lane-control.execution.duckdb"
+                ):
+                    raise RuntimeError(
+                        "retained recovery peer lane paths are not canonical"
+                    )
+                for local_path in (
+                    lane_coordination_path,
+                    lane_execution_path,
+                ):
+                    try:
+                        local_stat = local_path.lstat()
+                    except OSError as exc:
+                        raise RuntimeError(
+                            "retained recovery peer store is unavailable"
+                        ) from exc
+                    if not (
+                        stat.S_ISREG(local_stat.st_mode)
+                        and not local_path.is_symlink()
+                        and local_path.parent.resolve(strict=True)
+                        == resolved_lane
+                    ):
+                        raise RuntimeError(
+                            "retained recovery peer store identity is unsafe"
+                        )
+                peer = DatabaseImplementationDaemon(
+                    database_path=lane_database_path,
+                    coordination_path=lane_coordination_path,
+                    execution_path=lane_execution_path,
+                    owner_session_id=owner,
+                    authority_mode=program.authority_mode,
+                    task_source_kind=program.task_source_kind,
+                    quack_uri=program.quack_endpoint,
+                    markdown_path=None,
+                    state_path=None,
+                    strategy_path=None,
+                    events_path=None,
+                    pid_path=None,
+                    queue_path=None,
+                    max_task_attempts=self.config.max_task_attempts,
+                    require_real_execution=self.config.implement,
+                    task_prefix=self.config.task_prefix,
+                    task_shard_count=shard_count,
+                    task_shard_index=lane,
+                    strict_task_sharding=True,
+                    control_store_id=program.store_id,
+                    control_store_generation=program.store_generation,
+                    task_source=task_source,
+                    install_schema=False,
+                )
+                peer.open()
+                peers.append(peer)
+                lane_daemons[lane] = peer
+
+            attempt_authorities = {
+                str(pin["predecessor_attempt_id"]): lane_daemons[
+                    daemon._task_home_shard_index(str(pin["task_alias"]))
+                ]
+                for pin in pins
+            }
+            daemon.bind_retained_recovery_attempt_authorities(
+                attempt_authorities
+            )
+            return peers
+        except BaseException:
+            for peer in reversed(peers):
+                peer.close()
+            raise
+
     def _reconcile_interrupted_database_portal_attempts_bound(
         self,
         program: DatabaseProgramConfig,
@@ -16900,6 +17105,7 @@ class PortalImplementationSupervisor:
         ) = self._effective_managed_daemon_sharding()
 
         owner_fenced_task_source: Any | None = None
+        retained_lane_daemons: list[DatabaseImplementationDaemon] = []
         owner_binding: dict[str, Any] | None = None
         expected_control_schema_profile: dict[str, Any] | None = None
         owner_barrier: dict[str, Any] | None = None
@@ -17195,6 +17401,21 @@ class PortalImplementationSupervisor:
             )
 
         try:
+            if retained_program:
+                retained_lane_daemons = (
+                    self._bind_retained_recovery_lane_attempt_authorities(
+                        daemon=daemon,
+                        program=program,
+                        task_source=daemon.task_source,
+                        shard_count=effective_shard_count,
+                        shard_index=effective_shard_index,
+                        strict_sharding=effective_strict_sharding,
+                        owner_fence_held=owner_fence_held,
+                        managed_daemon_launch_lock_held=(
+                            managed_daemon_launch_lock_held
+                        ),
+                    )
+                )
             bridge = DatabasePortalExecutionBridge(
                 task_source=daemon.task_source,
                 attempt_root=attempt_root,
@@ -17559,36 +17780,48 @@ class PortalImplementationSupervisor:
             }
         finally:
             try:
-                daemon.close()
+                for retained_lane_daemon in reversed(retained_lane_daemons):
+                    retained_lane_daemon.close()
             finally:
                 try:
-                    if owner_fenced_task_source is not None:
-                        owner_fenced_task_source.close()
+                    daemon.close()
                 finally:
-                    if owner_binding is not None and owner_barrier is not None:
-                        from ..task_sources.duckdb_state import (
-                            _resolve_quack_token_handle,
-                        )
-
-                        final_barrier = dict(
-                            self._database_portal_mutation_inbox_barrier(
-                                program.store_id
-                            )
-                        )
-                        _secret, final_raw_owner = _resolve_quack_token_handle(
-                            uri=program.quack_endpoint
-                        )
-                        final_owner = self._normalized_quack_owner_binding(
-                            final_raw_owner
-                        )
-                        if not (
-                            final_barrier == owner_barrier
-                            and final_owner == owner_binding
+                    try:
+                        if owner_fenced_task_source is not None:
+                            owner_fenced_task_source.close()
+                    finally:
+                        if (
+                            owner_binding is not None
+                            and owner_barrier is not None
                         ):
-                            raise RuntimeError(
-                                "owner-fenced reconciliation did not finish "
-                                "under one exact Quack owner and empty inbox"
+                            from ..task_sources.duckdb_state import (
+                                _resolve_quack_token_handle,
                             )
+
+                            final_barrier = dict(
+                                self._database_portal_mutation_inbox_barrier(
+                                    program.store_id
+                                )
+                            )
+                            _secret, final_raw_owner = (
+                                _resolve_quack_token_handle(
+                                    uri=program.quack_endpoint
+                                )
+                            )
+                            final_owner = (
+                                self._normalized_quack_owner_binding(
+                                    final_raw_owner
+                                )
+                            )
+                            if not (
+                                final_barrier == owner_barrier
+                                and final_owner == owner_binding
+                            ):
+                                raise RuntimeError(
+                                    "owner-fenced reconciliation did not "
+                                    "finish under one exact Quack owner and "
+                                    "empty inbox"
+                                )
 
     def _reconciliation_guardrail_discovery_dir(self) -> Path:
         return (

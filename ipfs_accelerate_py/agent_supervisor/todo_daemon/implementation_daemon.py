@@ -86338,6 +86338,14 @@ class DatabaseImplementationDaemon:
         self._validation_fn = validation_fn
         self._database_portal_bridge: Any = None
         self._database_portal_outer_authority_cas: Callable[..., Any] | None = None
+        # The retained PCTDD predecessors were written by their strict home
+        # lanes.  A controller reconciliation daemon may therefore need to
+        # consult more than its own lane-local execution/coordinator pair.
+        # This remains an injected routing table over the existing stores; it
+        # does not own task state and it is never inferred from a task body.
+        self._retained_recovery_attempt_authorities: (
+            Mapping[str, DatabaseImplementationDaemon] | None
+        ) = None
         self._database_portal_reconciliation_checked = False
         self._database_portal_reconciliation_result: dict[str, Any] = {}
         self.require_real_execution = bool(require_real_execution)
@@ -87127,6 +87135,205 @@ class DatabaseImplementationDaemon:
                     "database Portal outer authority is already bound"
                 )
             self._database_portal_outer_authority_cas = callback
+
+    @staticmethod
+    def _retained_attempt_matches_occurrence(
+        attempt: Any,
+        occurrence: Mapping[str, Any],
+    ) -> bool:
+        """Return whether one lane row is the exact sealed predecessor."""
+
+        if not isinstance(attempt, DatabaseTaskAttempt):
+            return False
+        bindings = {
+            "task_cid": "task_cid",
+            "task_alias": "task_alias",
+            "attempt_id": "predecessor_attempt_id",
+            "claim_id": "predecessor_claim_id",
+            "lease_id": "predecessor_lease_id",
+            "owner_session_id": "predecessor_owner_session_id",
+            "attempt_number": "predecessor_attempt_number",
+            "fencing_token": "predecessor_fencing_token",
+            "fence_epoch": "predecessor_fence_epoch",
+        }
+        return all(
+            getattr(attempt, target) == occurrence.get(source)
+            for target, source in bindings.items()
+        )
+
+    def bind_retained_recovery_attempt_authorities(
+        self,
+        authorities: Mapping[str, DatabaseImplementationDaemon],
+    ) -> None:
+        """Bind the exact home-lane authority for every sealed predecessor.
+
+        The controller owns the central Quack mutation and checkout fences,
+        while each supplied daemon remains the existing execution/coordinator
+        authority for one strict lane.  The route is admitted only as one
+        closed four-attempt population.  Missing attempts, duplicate paths,
+        wrong home shards, owner drift, or a foreign task source fail before
+        any retained task CAS can run.
+        """
+
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+            database_fenced_provider_retained_manifest,
+            database_fenced_provider_retained_manifest_valid,
+            database_pctdd005_successor_manifest,
+            database_pctdd005_successor_manifest_valid,
+        )
+
+        if not isinstance(authorities, Mapping):
+            raise TypeError("retained attempt authorities must be a mapping")
+        if not (
+            self.strict_task_sharding
+            and self.task_shard_count > 1
+            and database_fenced_provider_retained_manifest_valid(
+                database_fenced_provider_retained_manifest()
+            )
+            and database_pctdd005_successor_manifest_valid(
+                database_pctdd005_successor_manifest()
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "cross-lane retained authority requires exact strict manifests"
+            )
+        pins = tuple(
+            dict(item)
+            for item in (
+                DATABASE_PCTDD005_SUCCESSOR_MANIFEST_PIN,
+                *DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            )
+        )
+        pins_by_attempt = {
+            str(pin["predecessor_attempt_id"]): pin for pin in pins
+        }
+        if (
+            len(pins_by_attempt) != len(pins)
+            or set(authorities) != set(pins_by_attempt)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "retained attempt authority population is not exact"
+            )
+
+        admitted: dict[str, DatabaseImplementationDaemon] = {}
+        lane_paths: dict[int, tuple[Path, Path]] = {}
+        store_lanes: dict[Path, int] = {}
+        for attempt_id in sorted(pins_by_attempt):
+            pin = pins_by_attempt[attempt_id]
+            authority = authorities.get(attempt_id)
+            if not isinstance(authority, DatabaseImplementationDaemon):
+                raise DatabaseImplementationAuthorityError(
+                    "retained attempt authority has an unknown type"
+                )
+            expected_lane = self._task_home_shard_index(
+                str(pin["task_alias"])
+            )
+            if not (
+                authority.authority_mode == self.authority_mode
+                and authority.task_source_kind == self.task_source_kind
+                and authority.control_store_id == self.control_store_id
+                and authority.control_store_generation
+                == self.control_store_generation
+                and authority.task_shard_count == self.task_shard_count
+                and authority.task_shard_index == expected_lane
+                and authority.strict_task_sharding is True
+                and authority.owner_session_id
+                == str(pin["predecessor_owner_session_id"])
+                and authority._task_source is self._task_source
+                and authority._task_source is not None
+                and authority._connection is not None
+                and authority._coordinator is not None
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "retained attempt authority binding drifted"
+                )
+            execution_path = Path(authority.execution_path)
+            coordination_path = Path(authority.coordination_path)
+            if not (
+                execution_path.is_absolute()
+                and coordination_path.is_absolute()
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "retained lane authority paths are not absolute"
+                )
+            try:
+                execution_stat = execution_path.lstat()
+                coordination_stat = coordination_path.lstat()
+                resolved_execution = execution_path.resolve(strict=True)
+                resolved_coordination = coordination_path.resolve(strict=True)
+            except (OSError, RuntimeError) as exc:
+                raise DatabaseImplementationAuthorityError(
+                    "retained lane authority store is unavailable"
+                ) from exc
+            if not (
+                stat_module.S_ISREG(execution_stat.st_mode)
+                and stat_module.S_ISREG(coordination_stat.st_mode)
+                and not execution_path.is_symlink()
+                and not coordination_path.is_symlink()
+                and resolved_execution == execution_path
+                and resolved_coordination == coordination_path
+                and resolved_execution != resolved_coordination
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "retained lane authority store identity is unsafe"
+                )
+            paths = (resolved_execution, resolved_coordination)
+            prior_paths = lane_paths.setdefault(expected_lane, paths)
+            if prior_paths != paths or any(
+                lane != expected_lane and other == paths
+                for lane, other in lane_paths.items()
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "retained lane authority paths are ambiguous"
+                )
+            for path in (resolved_execution, resolved_coordination):
+                prior_lane = store_lanes.setdefault(path, expected_lane)
+                if prior_lane != expected_lane:
+                    raise DatabaseImplementationAuthorityError(
+                        "retained lane authority store is shared across lanes"
+                    )
+            try:
+                attempt = authority.get_attempt(attempt_id)
+            except Exception as exc:
+                raise DatabaseImplementationAuthorityError(
+                    "retained lane attempt authority is unavailable"
+                ) from exc
+            if not self._retained_attempt_matches_occurrence(attempt, pin):
+                raise DatabaseImplementationAuthorityError(
+                    "retained lane attempt does not match its sealed occurrence"
+                )
+            admitted[attempt_id] = authority
+
+        with self._lock:
+            if self._retained_recovery_attempt_authorities is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "retained attempt authorities are already bound"
+                )
+            self._retained_recovery_attempt_authorities = MappingProxyType(
+                dict(admitted)
+            )
+
+    def _retained_recovery_attempt_authority(
+        self,
+        occurrence: Mapping[str, Any],
+    ) -> DatabaseImplementationDaemon:
+        """Resolve one sealed predecessor to its already-admitted lane."""
+
+        attempt_id = str(occurrence.get("predecessor_attempt_id") or "")
+        authorities = self._retained_recovery_attempt_authorities
+        authority = self if authorities is None else authorities.get(attempt_id)
+        if not isinstance(authority, DatabaseImplementationDaemon):
+            raise DatabaseImplementationAuthorityError(
+                "retained predecessor has no exact lane authority"
+            )
+        attempt = authority.get_attempt(attempt_id)
+        if not self._retained_attempt_matches_occurrence(attempt, occurrence):
+            raise DatabaseImplementationAuthorityError(
+                "retained predecessor lane authority changed"
+            )
+        return authority
 
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
@@ -90170,25 +90377,10 @@ class DatabaseImplementationDaemon:
             )
             if authority is None:
                 return False
-            attempt = self.get_attempt(str(pin["predecessor_attempt_id"]))
-            if attempt is None:
-                return False
-            attempt_bindings = {
-                "task_cid": "task_cid",
-                "task_alias": "task_alias",
-                "attempt_id": "predecessor_attempt_id",
-                "claim_id": "predecessor_claim_id",
-                "lease_id": "predecessor_lease_id",
-                "owner_session_id": "predecessor_owner_session_id",
-                "attempt_number": "predecessor_attempt_number",
-                "fencing_token": "predecessor_fencing_token",
-                "fence_epoch": "predecessor_fence_epoch",
-            }
-            if any(
-                getattr(attempt, target) != pin.get(source)
-                for target, source in attempt_bindings.items()
-            ):
-                return False
+            attempt_authority = self._retained_recovery_attempt_authority(pin)
+            attempt = attempt_authority.get_attempt(
+                str(pin["predecessor_attempt_id"])
+            )
             credit = dict(authority["credit_builder"](pin))
             expected = _database_fenced_provider_retained_fence_record(
                 occurrence=pin,
@@ -90199,7 +90391,11 @@ class DatabaseImplementationDaemon:
                 fencing_token=int(attempt.fencing_token),
                 fence_epoch=int(attempt.fence_epoch),
             )
-            observed = self._fenced_provider_recovery_dispatch_fence(attempt)
+            observed = (
+                attempt_authority._fenced_provider_recovery_dispatch_fence(
+                    attempt
+                )
+            )
         except Exception:
             return False
         return bool(
@@ -96027,6 +96223,9 @@ class DatabaseImplementationDaemon:
                 preflight_outcomes.append(preflight)
                 continue
             try:
+                attempt_authority = (
+                    self._retained_recovery_attempt_authority(pin)
+                )
                 task = self.task_source.get(task_cid)
                 if task is None or str(
                     getattr(task, "task_alias", "") or ""
@@ -96060,13 +96259,12 @@ class DatabaseImplementationDaemon:
                             "retained recovery consumed chain drifted"
                         )
                 elif admission is not None:
-                    predecessor = self.get_attempt(
+                    predecessor = attempt_authority.get_attempt(
                         str(pin["predecessor_attempt_id"])
                     )
                     occurrence_fence = (
-                        self._fenced_provider_recovery_dispatch_fence(
-                            predecessor
-                        )
+                        attempt_authority
+                        ._fenced_provider_recovery_dispatch_fence(predecessor)
                         if predecessor is not None
                         else None
                     )
@@ -96137,7 +96335,7 @@ class DatabaseImplementationDaemon:
                         )
                         is True
                         and self._retained_recovery_disposition_is_current(pin)
-                        and self.get_attempt(
+                        and attempt_authority.get_attempt(
                             str(pin["predecessor_attempt_id"])
                         )
                         is not None
@@ -96145,13 +96343,12 @@ class DatabaseImplementationDaemon:
                         raise DatabaseImplementationConflictError(
                             "retained recovery fresh occurrence is not exact"
                         )
-                    predecessor = self.get_attempt(
+                    predecessor = attempt_authority.get_attempt(
                         str(pin["predecessor_attempt_id"])
                     )
                     existing_fence = (
-                        self._fenced_provider_recovery_dispatch_fence(
-                            predecessor
-                        )
+                        attempt_authority
+                        ._fenced_provider_recovery_dispatch_fence(predecessor)
                         if predecessor is not None
                         else None
                     )
@@ -96205,6 +96402,9 @@ class DatabaseImplementationDaemon:
                 "consumption_id": "",
             }
             try:
+                attempt_authority = (
+                    self._retained_recovery_attempt_authority(pin)
+                )
                 task = self.task_source.get(task_cid)
                 if task is None or str(
                     getattr(task, "task_alias", "") or ""
@@ -96260,7 +96460,7 @@ class DatabaseImplementationDaemon:
                     outcomes.append(outcome)
                     continue
 
-                predecessor = self.get_attempt(
+                predecessor = attempt_authority.get_attempt(
                     str(pin["predecessor_attempt_id"])
                 )
                 if predecessor is None:
@@ -96270,8 +96470,9 @@ class DatabaseImplementationDaemon:
                 credit = dict(
                     credit_builder(pin)
                 )
-                fence = self._fenced_provider_recovery_dispatch_fence(
-                    predecessor
+                fence = (
+                    attempt_authority
+                    ._fenced_provider_recovery_dispatch_fence(predecessor)
                 )
 
                 if current_admission is not None:
@@ -96332,14 +96533,18 @@ class DatabaseImplementationDaemon:
                         "retained recovery blocked revision is not exact"
                     )
                 if fence is None:
-                    fence = self._install_retained_recovery_dispatch_fence(
-                        predecessor,
-                        occurrence=pin,
-                        credit=credit,
+                    fence = (
+                        attempt_authority
+                        ._install_retained_recovery_dispatch_fence(
+                            predecessor,
+                            occurrence=pin,
+                            credit=credit,
+                        )
                     )
                 if fence.get("state") == "sealed":
                     fence = (
-                        self._transition_fenced_provider_recovery_dispatch_fence(
+                        attempt_authority
+                        ._transition_fenced_provider_recovery_dispatch_fence(
                             predecessor,
                             expected_state="sealed",
                             new_state="admission_pending",
@@ -96350,13 +96555,17 @@ class DatabaseImplementationDaemon:
                         "retained recovery dispatch fence is not pending"
                     )
 
-                inner_receipt = self.fenced_provider_inner_population_receipt(
-                    predecessor,
-                    task_revision=int(task.revision),
-                    recovery_manifest_id=str(fence["migration_manifest_id"]),
-                    recovery_credit_id=str(fence["migration_credit_id"]),
-                    receipt_nonce=str(pin["receipt_nonce"]),
-                    receipt_epoch=int(pin["receipt_epoch"]),
+                inner_receipt = (
+                    attempt_authority.fenced_provider_inner_population_receipt(
+                        predecessor,
+                        task_revision=int(task.revision),
+                        recovery_manifest_id=str(
+                            fence["migration_manifest_id"]
+                        ),
+                        recovery_credit_id=str(fence["migration_credit_id"]),
+                        receipt_nonce=str(pin["receipt_nonce"]),
+                        receipt_epoch=int(pin["receipt_epoch"]),
+                    )
                 )
                 historical_authority: Mapping[str, Any] | None = None
                 if controller_quiescence_receipt is not None:
@@ -96572,6 +96781,9 @@ class DatabaseImplementationDaemon:
                     # mutable disposition replay.
                     continue
                 try:
+                    attempt_authority = (
+                        self._retained_recovery_attempt_authority(pin)
+                    )
                     if not (
                         admission is not None
                         and consumption is None
@@ -96585,13 +96797,12 @@ class DatabaseImplementationDaemon:
                         raise DatabaseImplementationConflictError(
                             "retained recovery aggregate admission drifted"
                         )
-                    predecessor = self.get_attempt(
+                    predecessor = attempt_authority.get_attempt(
                         str(pin["predecessor_attempt_id"])
                     )
                     fence = (
-                        self._fenced_provider_recovery_dispatch_fence(
-                            predecessor
-                        )
+                        attempt_authority
+                        ._fenced_provider_recovery_dispatch_fence(predecessor)
                         if predecessor is not None
                         else None
                     )
@@ -96602,10 +96813,13 @@ class DatabaseImplementationDaemon:
                             raise DatabaseImplementationConflictError(
                                 "retained recovery pending disposition drifted"
                             )
-                        self._transition_fenced_provider_recovery_dispatch_fence(
-                            predecessor,
-                            expected_state="admission_pending",
-                            new_state="admitted",
+                        (
+                            attempt_authority
+                            ._transition_fenced_provider_recovery_dispatch_fence(
+                                predecessor,
+                                expected_state="admission_pending",
+                                new_state="admitted",
+                            )
                         )
                     if not self._retained_recovery_admission_fence_is_current(
                         admission,
