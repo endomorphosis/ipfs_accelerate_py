@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "post_m58_quack_snapshot_row_normalization_successor_materialization",
     "post_m57_stall_unblock_and_shutdown_fence_restart_successor_materialization",
     "post_m56_live_ready_owner_missing_client_token_vault_restart_successor_materialization",
     "post_m55_live_ready_owner_missing_client_token_vault_restart_successor_materialization",
@@ -472,6 +473,64 @@ def test_historical_successor_controls_include_m58_before_m57() -> None:
     assert f"{m58_key}_cid" not in historical_seal
 
 
+def test_historical_successor_controls_include_m59_before_m58() -> None:
+    """M58 fixtures remove M59 while current M59 remains presence-first."""
+
+    m59_key = "post_m58_quack_snapshot_row_normalization_successor_materialization"
+    m58_key = (
+        "post_m57_stall_unblock_and_shutdown_fence_restart_"
+        "successor_materialization"
+    )
+    scheduler = {m59_key: {"revision": "M59"}, m58_key: {"revision": "M58"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m59_key}_cid": "sha256:" + "c" * 64,
+        f"{m58_key}_cid": "sha256:" + "b" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m59_key, scheduler, migration, seal
+    )
+    assert current[m59_key] == scheduler[m59_key]
+    assert current_migration is not None
+    assert current_migration[m59_key] == migration[m59_key]
+    assert current_seal is not None
+    assert current_seal[f"{m59_key}_cid"] == seal[f"{m59_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m58_key, scheduler, migration, seal)
+    )
+    assert m59_key not in historical
+    assert historical_migration is not None and m59_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m59_key}_cid" not in historical_seal
+
+
+def test_materialize_and_launch_select_m59_before_m58_and_auto_append() -> None:
+    materialize_source = (
+        REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py"
+    ).read_text(encoding="utf-8")
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    m59_dispatch = "if _m59_successor_configured_on_any_surface(root, config):"
+    m58_dispatch = "if _m58_successor_configured_on_any_surface(root, config):"
+    assert materialize_source.find(m59_dispatch) < materialize_source.find(m58_dispatch)
+    assert materialize_source.find("def _materialize_m59(") < materialize_source.find(
+        "def materialize("
+    )
+    assert "def _check_m59_materialized(" in materialize_source
+    assert "M59 automatic successor materialize failed" in operator_source
+    assert operator_source.find("def _verify_m59_live_head_task_projection(") < (
+        operator_source.find("def _verify_m58_live_head_task_projection(")
+    )
+    assert operator_source.find(
+        "if _M59_SUCCESSOR_KEY in config:\n        return _require_m59_source_successor_marker"
+    ) < operator_source.find(
+        "if _M58_SUCCESSOR_KEY in config:\n        return _require_m58_source_successor_marker"
+    )
+
+
 def test_materialize_and_launch_select_m58_before_m57_and_auto_append() -> None:
     materialize_source = (
         REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py"
@@ -776,6 +835,96 @@ def _reidentify_extension_projection(pin: dict[str, object]) -> None:
             allow_nan=False,
         ).encode("utf-8")
     ).hexdigest()
+
+
+def test_m59_same_owner_row_normalization_authority_is_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m59_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m59_post_m58_quack_snapshot_row_normalization_authority()
+    )
+    contract = materializer._validated_m59_live_preflight_contract(authority)
+    repair = authority["accepted_control_plane_repair"]
+    preservation = authority["preservation"]
+
+    assert materializer._identity(authority) == materializer._M59_AUTHORITY_CID
+    assert len(materializer._canonical(authority)) == materializer._M59_AUTHORITY_SIZE
+    assert authority["migration_revision"] == "SAWM-R2-M59"
+    assert authority["target_generation"] == 43
+    assert authority["target_event_watermark"] == 329
+    assert contract["prior_event_watermark"] == 328
+    assert contract["target_event_watermark"] == 329
+    assert contract["same_live_owner_required"] is True
+    assert contract["generation_restart_authorized"] is False
+    assert repair["repair_commit"] == (
+        "7538636de89fec4473d2712fc47d9cbac71da67d"
+    )
+    assert repair["changed_paths"] == [
+        "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+        "test/api/test_agent_supervisor_configured_board_scheduler.py",
+    ]
+    assert repair["ordinary_program_implementation"] is False
+    assert repair["authority_weakened"] is False
+    assert preservation["m58_receipt_preserved_exactly"] is True
+    assert preservation["event_328_preserved_exactly"] is True
+    assert preservation["failed_launch_and_typed_blocker_preserved"] is True
+    assert preservation["no_task_completion_admitted_by_source_repair"] is True
+    assert authority["exact_changes"]["task_status_changes"] == 0
+    assert authority["exact_changes"]["accepted_completion_changes"] == 0
+
+
+def test_m59_materialization_is_same_owner_fail_closed_and_receipt_last() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m59_structure_test",
+    )
+    materialize_source = inspect.getsource(materializer._materialize_m59)
+    verify_source = inspect.getsource(materializer._verify_m59_live_materialization)
+    preserved_source = inspect.getsource(
+        materializer._verify_m59_preserved_m58_materialization
+    )
+
+    assert materialize_source.index("snapshot = source.snapshot()") < (
+        materialize_source.index("source.record_evidence(")
+    )
+    assert materialize_source.index("source.record_evidence(") < (
+        materialize_source.index("_m52_write_receipt_last(")
+    )
+    for required in (
+        "_M59_PRIOR_EVENT_PREFIX_SHA256",
+        "_M59_PRIOR_PROJECTION_CID",
+        "_M59_SEMANTIC_AUTHORITY_DIGEST",
+        "_verify_m59_preserved_m58_materialization",
+        "target_evidence",
+        "target_event",
+        "clock_interference",
+    ):
+        assert required in materialize_source
+    assert verify_source.count("_m39_exact_row_matches") == 2
+    assert "_inspect_m58_generation_restart_rows" in verify_source
+    assert "_verify_m58_exact_evidence_projection" in verify_source
+    assert "_verify_m58_exact_evidence_projection" in preserved_source
+
+
+def test_m59_operator_denies_unsealed_generation_43_restart() -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m59_restart_denial_test",
+    )
+    for function in (
+        operator._run_quack_start,
+        operator._validate_offline_quack_start,
+        operator._recover_stale_quack,
+    ):
+        source = inspect.getsource(function)
+        assert (
+            "_M59_SUCCESSOR_KEY" in source
+            or "_M59_MIGRATION_REVISION" in source
+        )
+        assert "generation-44 successor" in source
 
 
 def test_m58_stall_unblock_shutdown_fence_authority_is_exact_for_c3() -> None:
