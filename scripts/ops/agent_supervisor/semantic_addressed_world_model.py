@@ -23864,7 +23864,7 @@ def _live_preflight(
                     final_pair_marker.get("source_chain") or {}
                 ),
                 "m60_authority_cid": materializer._identity(
-                    dict(active_source_repair)
+                    receipt_authority
                 ),
                 "m60_event_id": str(
                     final_pair_marker.get("migration_evidence_event_id") or ""
@@ -23909,7 +23909,7 @@ def _live_preflight(
                     final_pair_marker.get("source_chain") or {}
                 ),
                 "m59_authority_cid": materializer._identity(
-                    dict(active_source_repair)
+                    receipt_authority
                 ),
                 "m59_event_id": str(
                     final_pair_marker.get("migration_evidence_event_id") or ""

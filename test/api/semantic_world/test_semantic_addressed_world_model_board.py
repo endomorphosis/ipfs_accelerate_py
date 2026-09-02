@@ -1081,20 +1081,36 @@ def test_m60_operator_denies_unsealed_generation_43_restart() -> None:
 
 
 def test_m60_live_preflight_normalizes_immutable_authority_for_identity() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m60_identity_boundary_test",
+    )
     operator = _load(
         "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
         "sawm_operator_m60_identity_boundary_test",
     )
+    scheduler = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    selected = operator._active_source_repair_materialization(scheduler)
+    assert isinstance(selected, type(MappingProxyType({})))
+    assert materializer._identity(dict(selected)) == materializer._M60_AUTHORITY_CID
+
     source = inspect.getsource(operator._live_preflight)
     report_start = source.index("if m60_active and final_pair_marker")
-    m60_branch = source[report_start:source.index("elif m59_active and final_pair_marker", report_start)]
+    m59_start = source.index("elif m59_active and final_pair_marker", report_start)
+    m60_branch = source[report_start:m59_start]
     m59_branch = source[
-        source.index("elif m59_active and final_pair_marker", report_start):
+        m59_start:
         source.index("elif m58_active and final_pair_marker", report_start)
     ]
 
-    assert "materializer._identity(\n                    dict(active_source_repair)" in m60_branch
-    assert "materializer._identity(\n                    dict(active_source_repair)" in m59_branch
+    expected_call = "materializer._identity(\n                    receipt_authority"
+    assert expected_call in m60_branch
+    assert expected_call in m59_branch
 
 
 def test_m58_stall_unblock_shutdown_fence_authority_is_exact_for_c3() -> None:
