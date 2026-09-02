@@ -2,7 +2,7 @@
 
 Status: operator-owned R2 program control. M58 seals five bounded post-M57 control-plane repairs: exact quarantine of absent stale attempt worktrees when procfs inventory is unavailable; fixed-point fencing of respawned supervisor children within one absolute shutdown deadline; a grace-preservation correction that signals the exact child before the first procfs snapshot without shortening its graceful-exit budget; a pre-publication Quack guard that rejects any generation, database, store, or endpoint outside the sealed successor binding; and a recoverable transactional Quack credential handoff with an authenticated child gate, exact orphan recovery, durable compromise denial, and fail-closed indeterminate-child handling. M57, its receipt, event 327, every accepted task head, and all failed-attempt evidence remain immutable. Because the live generation-42 owner is exact but its launch handoff retired the client token vault, M58 admits one fenced stop and restart to generation 43, then appends only the source-seal evidence at event 328. No task, goal, provider, merge, effect, or completion authority is changed. M54 remains deny-only and unselected.
 
-M58 source authority: `sha256:15ebae9f9d70de663235e87e89c27648db573e12c2292fff5bc8cd0dfcf65964` (sealed C2 control authority).
+M58 source authority: `sha256:3c0d89599c4ba6d3825992127335f071b15bf49d389b5bfa09eeb7aa584d22c5` (corrected sealed C3 control authority; rejected C2 is preserved in the source chain).
 
 Plan revision: `SAWM-PLAN-R2`
 

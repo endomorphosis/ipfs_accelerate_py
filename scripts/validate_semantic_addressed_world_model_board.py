@@ -147,9 +147,9 @@ _M57_TARGET_PROJECTION_CID = (
     "baguqeerabphddilf44cxwqvyhfauvfxskeuczbgnwmzbb33dmtj6vpmgyexq"
 )
 _M58_AUTHORITY_CID = (
-    "sha256:15ebae9f9d70de663235e87e89c27648db573e12c2292fff5bc8cd0dfcf65964"
+    "sha256:3c0d89599c4ba6d3825992127335f071b15bf49d389b5bfa09eeb7aa584d22c5"
 )
-_M58_AUTHORITY_SIZE = 42_828
+_M58_AUTHORITY_SIZE = 44_591
 _M58_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M58_FINAL_CONTROL_AUTHORITY_CID"
 _M58_SUCCESSOR_KEY = (
     "post_m57_stall_unblock_and_shutdown_fence_restart_successor_materialization"
@@ -5993,7 +5993,15 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
             config_errors.append(
                 f"M52 authority validation unavailable: {type(exc).__name__}: {exc}"
             )
-    if m51_selected and not m52_selected and not m53_selected and not m55_selected and not m56_selected and not m57_selected and not m57_selected:
+    if (
+        m51_selected
+        and not m52_selected
+        and not m53_selected
+        and not m55_selected
+        and not m56_selected
+        and not m57_selected
+        and not m58_selected
+    ):
         successor = config.get(m51_key)
         try:
             module, materializer = _m26_validation_modules(root)

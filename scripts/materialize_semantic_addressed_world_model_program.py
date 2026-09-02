@@ -4005,9 +4005,9 @@ _M58_SUPERSESSION_REASON = (
 )
 _M58_CONTROL_RECORDED_AT = "2026-09-02T10:17:51Z"
 _M58_AUTHORITY_CID = (
-    "sha256:15ebae9f9d70de663235e87e89c27648db573e12c2292fff5bc8cd0dfcf65964"
+    "sha256:3c0d89599c4ba6d3825992127335f071b15bf49d389b5bfa09eeb7aa584d22c5"
 )
-_M58_AUTHORITY_SIZE = 42_828
+_M58_AUTHORITY_SIZE = 44_591
 _M58_PRIOR_GENERATION = 42
 _M58_TARGET_GENERATION = 43
 _M58_PRIOR_EVENT_WATERMARK = 327
@@ -4188,6 +4188,15 @@ _M58_INITIAL_CONTROL_COMMIT = "be578131d06c7f2c255f21f0d166bdc3c7f8bb04"
 _M58_INITIAL_CONTROL_TREE = "8ecbee701281f4316bbdac27fb26d50bb2ae79eb"
 _M58_INITIAL_CONTROL_DIFF_SHA256 = (
     "0fdb74c83e196b48e6916958f0d0f8b41d39acf74574245451eea4a317723335"
+)
+_M58_REJECTED_FINAL_CONTROL_COMMIT = (
+    "ea5ef4cb76a4df5750940687f0d383b5d6be2f9e"
+)
+_M58_REJECTED_FINAL_CONTROL_TREE = (
+    "4029f968cae5c1e950d485e11eb34f2210d08949"
+)
+_M58_REJECTED_FINAL_CONTROL_DIFF_SHA256 = (
+    "7c6e88c5f82fc58627b3ab213e8c803ebef76838eaec309d4731a75c8ee113c6"
 )
 _M58_FINAL_CONTROL_PATHS = _M57_FINAL_CONTROL_PATHS
 _M58_OPERATOR_CONTROL_PATHS = frozenset(
@@ -96106,6 +96115,21 @@ def _expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority() 
         "receipts_rewritten": False,
         "worker_self_approval": False,
     }
+    authority["final_control_correction"] = {
+        "schema": "sawm/final-control-validation-correction@1",
+        "defect": "m51_predecessor_gate_not_suppressed_by_m58",
+        "rejected_commit": _M58_REJECTED_FINAL_CONTROL_COMMIT,
+        "validation_error": "M51 live-catalog authority/source seal differs",
+        "resolution": "require_not_m58_selected_for_m51_live_source_validation",
+        "changed_path": (
+            "scripts/validate_semantic_addressed_world_model_board.py"
+        ),
+        "database_mutations": 0,
+        "task_status_changes": 0,
+        "accepted_completion_changes": 0,
+        "authority_weakened": False,
+        "worker_self_approval": False,
+    }
     authority["source_chain"] = {
         "schema": "sawm/linear-bounded-control-repair-source-chain@1",
         "m57_anchor": {
@@ -96126,10 +96150,24 @@ def _expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority() 
             "task_status_changes": 0,
             "accepted_completion_changes": 0,
         },
-        "final_control_parent": _M58_INITIAL_CONTROL_COMMIT,
+        "rejected_final_control": {
+            "commit": _M58_REJECTED_FINAL_CONTROL_COMMIT,
+            "parent": _M58_INITIAL_CONTROL_COMMIT,
+            "tree": _M58_REJECTED_FINAL_CONTROL_TREE,
+            "binary_diff_sha256": _M58_REJECTED_FINAL_CONTROL_DIFF_SHA256,
+            "changed_paths": list(_M58_FINAL_CONTROL_PATHS),
+            "pre_authoritative_validation_result": "rejected",
+            "validation_error": "M51 live-catalog authority/source seal differs",
+            "database_mutations": 0,
+            "task_status_changes": 0,
+            "accepted_completion_changes": 0,
+        },
+        "final_control_parent": _M58_REJECTED_FINAL_CONTROL_COMMIT,
         "repair_commit_count": 5,
         "initial_control_commit_count": 1,
-        "final_control_commit_count": 1,
+        "pre_authoritative_final_control_count": 1,
+        "final_control_commit_count": 2,
+        "final_control_correction_count": 1,
         "current_commit_identity_embedded_in_authority": False,
     }
     authority["exact_changes"].update(
@@ -96137,6 +96175,7 @@ def _expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority() 
             "bounded_control_plane_repair_commit_count": 5,
             "bounded_control_plane_repair_paths": 9,
             "initial_control_commit_count": 1,
+            "pre_authoritative_final_control_correction_count": 1,
             "ordinary_program_implementation_changes": 0,
             "production_source_changes": 6,
             "test_compatibility_source_changes": 7,
@@ -96171,6 +96210,7 @@ def _expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority() 
             "no_task_completion_admitted_by_source_repair": True,
             "no_live_process_signaled_without_exact_identity": True,
             "no_shutdown_success_without_empty_fixed_point": True,
+            "rejected_final_control_preserved": True,
         }
     )
     return authority
@@ -96200,6 +96240,7 @@ def _validated_m58_live_preflight_contract(
     changes = authority.get("exact_changes")
     preservation = authority.get("preservation")
     prestart_artifacts = authority.get("stopped_prestart_artifacts")
+    correction = authority.get("final_control_correction")
     if (
         dict(authority) != expected
         or not all(
@@ -96211,6 +96252,7 @@ def _validated_m58_live_preflight_contract(
                 changes,
                 preservation,
                 prestart_artifacts,
+                correction,
             )
         )
         or contract.get("migration_revision") != _M58_MIGRATION_REVISION
@@ -96228,14 +96270,20 @@ def _validated_m58_live_preflight_contract(
         or chain.get("m57_anchor") != expected["source_chain"]["m57_anchor"]
         or chain.get("repairs") != expected["source_chain"]["repairs"]
         or chain.get("initial_control") != expected["source_chain"]["initial_control"]
-        or chain.get("final_control_parent") != _M58_INITIAL_CONTROL_COMMIT
+        or chain.get("rejected_final_control")
+        != expected["source_chain"]["rejected_final_control"]
+        or chain.get("final_control_parent")
+        != _M58_REJECTED_FINAL_CONTROL_COMMIT
         or chain.get("repair_commit_count") != 5
         or chain.get("initial_control_commit_count") != 1
-        or chain.get("final_control_commit_count") != 1
+        or chain.get("pre_authoritative_final_control_count") != 1
+        or chain.get("final_control_commit_count") != 2
+        or chain.get("final_control_correction_count") != 1
         or chain.get("current_commit_identity_embedded_in_authority") is not False
         or authority.get("ordinary_source_changes") != 0
         or changes.get("bounded_control_plane_repair_commit_count") != 5
         or changes.get("bounded_control_plane_repair_paths") != 9
+        or changes.get("pre_authoritative_final_control_correction_count") != 1
         or changes.get("ordinary_program_implementation_changes") != 0
         or changes.get("production_source_changes") != 6
         or changes.get("test_compatibility_source_changes") != 7
@@ -96245,6 +96293,13 @@ def _validated_m58_live_preflight_contract(
         or preservation.get("coordination_store_preserved_exactly") is not True
         or preservation.get("no_task_completion_admitted_by_source_repair") is not True
         or preservation.get("no_shutdown_success_without_empty_fixed_point") is not True
+        or preservation.get("rejected_final_control_preserved") is not True
+        or correction.get("schema")
+        != "sawm/final-control-validation-correction@1"
+        or correction.get("rejected_commit")
+        != _M58_REJECTED_FINAL_CONTROL_COMMIT
+        or correction.get("authority_weakened") is not False
+        or correction.get("worker_self_approval") is not False
         or prestart_artifacts.get("coordination_store_sha256")
         != _M58_PRIOR_COORDINATION_SHA256
         or prestart_artifacts.get("coordination_store_size")
@@ -96278,7 +96333,7 @@ def _assert_m58_source_delta(
     population: Mapping[str, Any],
     authority: Mapping[str, Any],
 ) -> None:
-    """Require the exact five-repair chain, placeholder control, and final seal."""
+    """Require five repairs, the rejected first seal, and corrected final seal."""
 
     current = str(population["source_binding"]["head"])
     chain = authority.get("source_chain")
@@ -96297,6 +96352,8 @@ def _assert_m58_source_delta(
         _M58_RECOVERABLE_CREDENTIAL_HANDOFF_REPAIR_TREE,
         _M58_INITIAL_CONTROL_COMMIT,
         _M58_INITIAL_CONTROL_TREE,
+        _M58_REJECTED_FINAL_CONTROL_COMMIT,
+        _M58_REJECTED_FINAL_CONTROL_TREE,
         *tuple(_M58_ABSENT_PROCFS_REPAIR_BLOBS.values()),
         *tuple(_M58_SHUTDOWN_REPAIR_BLOBS.values()),
         *tuple(_M58_GRACE_PRESERVATION_REPAIR_BLOBS.values()),
@@ -96317,6 +96374,9 @@ def _assert_m58_source_delta(
         _M58_INITIAL_CONTROL_COMMIT: [
             _M58_RECOVERABLE_CREDENTIAL_HANDOFF_REPAIR_COMMIT
         ],
+        _M58_REJECTED_FINAL_CONTROL_COMMIT: [
+            _M58_INITIAL_CONTROL_COMMIT
+        ],
     }
     expected_trees = {
         _M58_M57_FINAL_CONTROL_COMMIT: _M58_M57_FINAL_CONTROL_TREE,
@@ -96332,6 +96392,9 @@ def _assert_m58_source_delta(
             _M58_RECOVERABLE_CREDENTIAL_HANDOFF_REPAIR_TREE
         ),
         _M58_INITIAL_CONTROL_COMMIT: _M58_INITIAL_CONTROL_TREE,
+        _M58_REJECTED_FINAL_CONTROL_COMMIT: (
+            _M58_REJECTED_FINAL_CONTROL_TREE
+        ),
     }
     expected_diffs = (
         (
@@ -96370,19 +96433,26 @@ def _assert_m58_source_delta(
             _M58_FINAL_CONTROL_PATHS,
             _M58_INITIAL_CONTROL_DIFF_SHA256,
         ),
+        (
+            _M58_INITIAL_CONTROL_COMMIT,
+            _M58_REJECTED_FINAL_CONTROL_COMMIT,
+            _M58_FINAL_CONTROL_PATHS,
+            _M58_REJECTED_FINAL_CONTROL_DIFF_SHA256,
+        ),
     )
     if (
         not isinstance(chain, Mapping)
         or any(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in identities)
         or _M58_AUTHORITY_CID.endswith("PENDING_M58_FINAL_CONTROL_AUTHORITY_CID")
-        or chain.get("final_control_parent") != _M58_INITIAL_CONTROL_COMMIT
+        or chain.get("final_control_parent")
+        != _M58_REJECTED_FINAL_CONTROL_COMMIT
         or chain.get("current_commit_identity_embedded_in_authority") is not False
-        or current == _M58_INITIAL_CONTROL_COMMIT
+        or current == _M58_REJECTED_FINAL_CONTROL_COMMIT
         or _git(root, "rev-list", "--parents", "-n", "1", current).split()
-        != [current, _M58_INITIAL_CONTROL_COMMIT]
+        != [current, _M58_REJECTED_FINAL_CONTROL_COMMIT]
         or population["source_binding"].get("tree")
         != _git(root, "rev-parse", f"{current}^{{tree}}")
-        or _m27_name_status(root, _M58_INITIAL_CONTROL_COMMIT, current)
+        or _m27_name_status(root, _M58_REJECTED_FINAL_CONTROL_COMMIT, current)
         != {path: "M" for path in _M58_FINAL_CONTROL_PATHS}
     ):
         raise MaterializationError("M58 exact final-control source chain differs")

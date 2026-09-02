@@ -778,10 +778,10 @@ def _reidentify_extension_projection(pin: dict[str, object]) -> None:
     ).hexdigest()
 
 
-def test_m58_stall_unblock_shutdown_fence_authority_is_exact_for_c2() -> None:
+def test_m58_stall_unblock_shutdown_fence_authority_is_exact_for_c3() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
-        "sawm_materializer_m58_c2_authority_test",
+        "sawm_materializer_m58_c3_authority_test",
     )
     authority = (
         materializer
@@ -790,16 +790,16 @@ def test_m58_stall_unblock_shutdown_fence_authority_is_exact_for_c2() -> None:
     contract = materializer._validated_m58_live_preflight_contract(authority)
 
     assert materializer._M58_AUTHORITY_CID == (
-        "sha256:15ebae9f9d70de663235e87e89c27648db573e12c2292fff5bc8cd0dfcf65964"
+        "sha256:3c0d89599c4ba6d3825992127335f071b15bf49d389b5bfa09eeb7aa584d22c5"
     )
-    assert materializer._M58_AUTHORITY_SIZE == 42_828
+    assert materializer._M58_AUTHORITY_SIZE == 44_591
     assert materializer._identity(authority) == materializer._M58_AUTHORITY_CID
     assert len(materializer._canonical(authority)) == materializer._M58_AUTHORITY_SIZE
     assert materializer._m58_authority_reference() == {
         "schema": "sawm/operator-control-authority-reference@1",
         "migration_revision": "SAWM-R2-M58",
         "authority_cid": (
-            "sha256:15ebae9f9d70de663235e87e89c27648db573e12c2292fff5bc8cd0dfcf65964"
+            "sha256:3c0d89599c4ba6d3825992127335f071b15bf49d389b5bfa09eeb7aa584d22c5"
         ),
     }
     assert authority["migration_revision"] == "SAWM-R2-M58"
@@ -831,6 +831,9 @@ def test_m58_stall_unblock_shutdown_fence_authority_is_exact_for_c2() -> None:
     assert authority["exact_changes"]["bounded_control_plane_repair_paths"] == 9
     assert authority["exact_changes"]["production_source_changes"] == 6
     assert authority["exact_changes"]["test_compatibility_source_changes"] == 7
+    assert authority["exact_changes"][
+        "pre_authoritative_final_control_correction_count"
+    ] == 1
     assert authority["exact_changes"]["accepted_completion_changes"] == 0
     assert authority["preservation"]["m57_authority_preserved_exactly"] is True
     assert contract["target_generation"] == 43
@@ -958,14 +961,44 @@ def test_m58_stall_unblock_shutdown_fence_source_chain_is_exact_for_c1() -> None
         "task_status_changes": 0,
         "accepted_completion_changes": 0,
     }
+    assert chain["rejected_final_control"] == {
+        "commit": "ea5ef4cb76a4df5750940687f0d383b5d6be2f9e",
+        "parent": "be578131d06c7f2c255f21f0d166bdc3c7f8bb04",
+        "tree": "4029f968cae5c1e950d485e11eb34f2210d08949",
+        "binary_diff_sha256": (
+            "7c6e88c5f82fc58627b3ab213e8c803ebef76838eaec309d4731a75c8ee113c6"
+        ),
+        "changed_paths": list(materializer._M58_FINAL_CONTROL_PATHS),
+        "pre_authoritative_validation_result": "rejected",
+        "validation_error": "M51 live-catalog authority/source seal differs",
+        "database_mutations": 0,
+        "task_status_changes": 0,
+        "accepted_completion_changes": 0,
+    }
     assert chain["final_control_parent"] == (
-        "be578131d06c7f2c255f21f0d166bdc3c7f8bb04"
+        "ea5ef4cb76a4df5750940687f0d383b5d6be2f9e"
     )
     assert chain["repair_commit_count"] == 5
     assert chain["initial_control_commit_count"] == 1
-    assert chain["final_control_commit_count"] == 1
+    assert chain["pre_authoritative_final_control_count"] == 1
+    assert chain["final_control_commit_count"] == 2
+    assert chain["final_control_correction_count"] == 1
     assert chain["current_commit_identity_embedded_in_authority"] is False
     materializer._validated_m58_live_preflight_contract(authority)
+
+
+def test_m58_selection_suppresses_m51_live_source_validation() -> None:
+    validator = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_validator_m58_suppresses_m51_test",
+    )
+    source = inspect.getsource(validator.validate_program)
+
+    m51_guard = source[source.index("if (\n        m51_selected") :]
+    m51_guard = m51_guard[: m51_guard.index("):\n") + 3]
+    assert "and not m57_selected" in m51_guard
+    assert "and not m58_selected" in m51_guard
+    assert m51_guard.count("and not m57_selected") == 1
 
 
 def test_m58_materialization_is_serialized_and_validates_before_append() -> None:
