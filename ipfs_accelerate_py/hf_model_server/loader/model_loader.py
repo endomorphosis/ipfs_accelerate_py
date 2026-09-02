@@ -88,10 +88,17 @@ class ModelLoader:
         if not skill_info:
             raise ValueError(f"Model not found in registry: {model_id}")
 
-        # Select hardware
+        # Select hardware. Production load requires production_authorized.
         hardware, reason = self.hardware_selector.select_hardware(
-            {"supported_hardware": skill_info.supported_hardware}
+            {"supported_hardware": skill_info.supported_hardware},
+            purpose="production",
         )
+        admission = self.hardware_selector.admit_production_execution(hardware)
+        if hardware is None or admission.get("admitted") is not True:
+            raise RuntimeError(
+                f"Model load refused for {model_id}: no production_authorized "
+                f"hardware. {reason}"
+            )
         logger.info(f"Selected hardware '{hardware}' for {model_id}: {reason}")
 
         # Load skill module and instantiate

@@ -186,89 +186,130 @@ def get_hardware_info(include_detailed: bool = False) -> Dict[str, Any]:
 
 def get_basic_hardware_info(include_detailed: bool = False) -> Dict[str, Any]:
     """
-    Get basic information about available hardware accelerators
-    
-    This function returns basic information about available hardware accelerators
-    when IPFS Accelerate is not available or does not provide this information.
-    
-    Args:
-        include_detailed: Include detailed hardware information
-        
-    Returns:
-        Dictionary with hardware information
+    Get basic information about available hardware accelerators.
+
+    Detection is a ladder rung, not production_authorized. Missing CUDA,
+    WebGPU, and WebNN stay typed unavailable (null), never fabricated False.
     """
-    # Basic system information
+    from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+        declared_cpu_baseline,
+        from_device_visibility,
+        from_measured_absence,
+        stamp_consolidation,
+        unavailable_backend,
+    )
+
+    try:
+        from ipfs_accelerate_py.kit.hardware_kit import HardwareKit
+
+        kit = HardwareKit()
+        info = kit.get_hardware_info(include_detailed=include_detailed)
+        cuda_report = info.accelerators.get("cuda") or unavailable_backend("cuda")
+        return {
+            "system": info.platform_info,
+            "cpu": info.cpu,
+            "gpu": info.gpu,
+            "memory": info.memory,
+            "accelerators": info.accelerators,
+            "recommendation": {
+                "inference": "cuda" if cuda_report.get("available") is True else "cpu",
+                "training": "cuda" if cuda_report.get("available") is True else "cpu",
+                "advisory": True,
+                "production_authorized": False,
+            },
+            "production_authorized": False,
+            "live": False,
+            "outcome": "Unavailable",
+            "status": "unavailable",
+        }
+    except Exception:
+        logger.debug("HardwareKit unavailable; using canonical ladder helpers")
+
     system_info = {
         "platform": platform.system(),
         "platform_release": platform.release(),
         "platform_version": platform.version(),
         "architecture": platform.machine(),
-        "processor": platform.processor()
+        "processor": platform.processor(),
     }
-    
-    # Check for CPU details
-    cpu_info = {
-        "available": True,
-        "name": platform.processor()
-    }
-    
-    # Add CPU core count if psutil is available
+
+    cpu_info = stamp_consolidation(
+        declared_cpu_baseline(cores=None, name=platform.processor())
+    )
     try:
         import psutil
+
         cpu_info["cores_physical"] = psutil.cpu_count(logical=False)
         cpu_info["cores_logical"] = psutil.cpu_count(logical=True)
-        cpu_info["memory_total"] = psutil.virtual_memory().total / (1024 ** 3)  # GB
-        cpu_info["memory_available"] = psutil.virtual_memory().available / (1024 ** 3)  # GB
+        cpu_info["memory_total"] = psutil.virtual_memory().total / (1024 ** 3)
+        cpu_info["memory_available"] = psutil.virtual_memory().available / (1024 ** 3)
     except ImportError:
         pass
-    
-    # Check for CUDA availability
-    cuda_info = {"available": False}
+
+    cuda_info = stamp_consolidation(unavailable_backend("cuda"))
     try:
         import torch
+
         with _suppress_torch_cuda_capability_warning():
-            cuda_info["available"] = torch.cuda.is_available()
-            if cuda_info["available"]:
+            if torch.cuda.is_available() is True:
+                devices = []
+                if include_detailed:
+                    for i in range(torch.cuda.device_count()):
+                        devices.append(
+                            {
+                                "index": i,
+                                "name": torch.cuda.get_device_name(i),
+                                "total_memory": torch.cuda.get_device_properties(i).total_memory
+                                / (1024 ** 3),
+                            }
+                        )
+                cuda_info = from_device_visibility(
+                    "cuda",
+                    devices=devices,
+                    extra={
+                        "probe": "torch.cuda.is_available",
+                        "pytorch_version": torch.__version__,
+                    },
+                )
                 cuda_info["device_count"] = torch.cuda.device_count()
                 cuda_info["current_device"] = torch.cuda.current_device()
                 cuda_info["device_name"] = torch.cuda.get_device_name(0)
                 cuda_info["cuda_version"] = torch.version.cuda
-
-                # Add detailed CUDA information if requested.
-                if include_detailed:
-                    cuda_info["devices"] = []
-                    for i in range(cuda_info["device_count"]):
-                        device_info = {
-                            "index": i,
-                            "name": torch.cuda.get_device_name(i),
-                            "total_memory": torch.cuda.get_device_properties(i).total_memory / (1024 ** 3),  # GB
-                        }
-                        cuda_info["devices"].append(device_info)
+            elif torch.cuda.is_available() is False:
+                cuda_info = from_measured_absence(
+                    "cuda",
+                    extra={"probe": "torch.cuda.is_available"},
+                )
     except ImportError:
         pass
-    
-    # Check for WebGPU availability (placeholder, actual detection would need browser environment)
-    webgpu_info = {"available": False}
-    
-    # Check for WebNN availability (placeholder, actual detection would need browser environment)
-    webnn_info = {"available": False}
-    
-    # Construct the response
-    hardware_info = {
+
+    webgpu_info = stamp_consolidation(
+        unavailable_backend("webgpu", note="WebGPU requires a browser environment")
+    )
+    webnn_info = stamp_consolidation(
+        unavailable_backend("webnn", note="WebNN requires a browser environment")
+    )
+
+    cuda_detected = cuda_info.get("available") is True
+    return {
         "system": system_info,
         "accelerators": {
             "cpu": cpu_info,
-            "cuda": cuda_info,
+            "cuda": stamp_consolidation(cuda_info),
             "webgpu": webgpu_info,
-            "webnn": webnn_info
+            "webnn": webnn_info,
         },
         "recommendation": {
-            "inference": "cpu" if not cuda_info["available"] else "cuda",
-            "training": "cpu" if not cuda_info["available"] else "cuda"
-        }
+            "inference": "cuda" if cuda_detected else "cpu",
+            "training": "cuda" if cuda_detected else "cpu",
+            "advisory": True,
+            "production_authorized": False,
+        },
+        "production_authorized": False,
+        "live": False,
+        "outcome": "Unavailable",
+        "status": "unavailable",
     }
-    
-    return hardware_info
 
 def test_hardware(
     accelerator: Literal["cuda", "cpu", "webgpu", "webnn", "all"] = "all",
@@ -336,7 +377,13 @@ def perform_basic_hardware_test(accelerator: str = "all", test_level: str = "bas
     results = {
         "test_time": "",
         "test_level": test_level,
-        "results": {}
+        "results": {},
+        "production_authorized": False,
+        "qualified": False,
+        "live": False,
+        "outcome": "Unavailable",
+        "status": "unavailable",
+        "advisory": True,
     }
     
     import time
@@ -344,7 +391,15 @@ def perform_basic_hardware_test(accelerator: str = "all", test_level: str = "bas
     
     # Test CPU
     if accelerator in ["cpu", "all"]:
-        cpu_result = {"status": "pass", "details": {}}
+        cpu_result = {
+            "status": "pass",
+            "details": {},
+            "production_authorized": False,
+            "qualified": False,
+            "live": False,
+            "outcome": "Unavailable",
+            "canary_passed": None,
+        }
         
         try:
             # Basic CPU test
@@ -368,7 +423,15 @@ def perform_basic_hardware_test(accelerator: str = "all", test_level: str = "bas
     
     # Test CUDA
     if accelerator in ["cuda", "all"]:
-        cuda_result = {"status": "unknown", "details": {}}
+        cuda_result = {
+            "status": "unavailable",
+            "details": {},
+            "production_authorized": False,
+            "qualified": False,
+            "live": False,
+            "outcome": "Unavailable",
+            "canary_passed": None,
+        }
         
         try:
             import torch
@@ -389,9 +452,21 @@ def perform_basic_hardware_test(accelerator: str = "all", test_level: str = "bas
                 cuda_result["details"]["matrix_multiply_time"] = cuda_end - cuda_start
                 cuda_result["details"]["matrix_size"] = size
                 cuda_result["details"]["device"] = torch.cuda.get_device_name(0)
+                cuda_result["canary_passed"] = True
+                cuda_result["detected"] = True
+                cuda_result["available"] = True
+                cuda_result["production_authorized"] = False
+                cuda_result["qualified"] = False
+                cuda_result["live"] = False
+                cuda_result["outcome"] = "Unavailable"
             else:
                 cuda_result["status"] = "unavailable"
                 cuda_result["details"]["reason"] = "CUDA not available"
+                cuda_result["available"] = False
+                cuda_result["detected"] = False
+                cuda_result["production_authorized"] = False
+                cuda_result["live"] = False
+                cuda_result["outcome"] = "Unavailable"
         
         except Exception as e:
             cuda_result["status"] = "fail"
@@ -405,7 +480,12 @@ def perform_basic_hardware_test(accelerator: str = "all", test_level: str = "bas
             "status": "unavailable",
             "details": {
                 "reason": "WebGPU can only be tested in a browser environment"
-            }
+            },
+            "available": None,
+            "production_authorized": False,
+            "live": False,
+            "outcome": "Unavailable",
+            "evidence_kind": "unavailable",
         }
     
     # Test WebNN (placeholder, actual testing would need browser environment)
@@ -414,7 +494,12 @@ def perform_basic_hardware_test(accelerator: str = "all", test_level: str = "bas
             "status": "unavailable",
             "details": {
                 "reason": "WebNN can only be tested in a browser environment"
-            }
+            },
+            "available": None,
+            "production_authorized": False,
+            "live": False,
+            "outcome": "Unavailable",
+            "evidence_kind": "unavailable",
         }
     
     end_time = time.time()
@@ -497,11 +582,10 @@ def get_basic_hardware_recommendations(
     Returns:
         Dictionary with hardware recommendations
     """
-    # Get available hardware
     hardware_info = get_hardware_info(include_detailed=False)
-    
-    # Check if CUDA is available
-    cuda_available = hardware_info["accelerators"]["cuda"]["available"]
+    accelerators = hardware_info.get("accelerators") or {}
+    cuda_report = accelerators.get("cuda") or {}
+    cuda_available = cuda_report.get("available") is True
     
     # Basic model size estimation
     model_sizes = {
@@ -531,7 +615,10 @@ def get_basic_hardware_recommendations(
             }
         else:
             primary_recommendation = "cpu"
-            reason = "CPU is the only available option for inference"
+            reason = (
+                "Declared CPU host is the advisory fallback; CUDA is not "
+                "production_authorized"
+            )
             settings = {
                 "batch_size": 1,
                 "dtype": "float32",
@@ -548,7 +635,10 @@ def get_basic_hardware_recommendations(
             }
         else:
             primary_recommendation = "cpu"
-            reason = "CPU is the only available option for training (not recommended for large models)"
+            reason = (
+                "Declared CPU host is the advisory training fallback; not "
+                "production_authorized and not recommended for large models"
+            )
             settings = {
                 "batch_size": 1,
                 "dtype": "float32",
@@ -567,9 +657,13 @@ def get_basic_hardware_recommendations(
         "considered_hardware": {
             "cpu": True,
             "cuda": cuda_available or not consider_available_only,
-            "webgpu": False,
-            "webnn": False
-        }
+            "webgpu": None,
+            "webnn": None,
+        },
+        "production_authorized": False,
+        "live": False,
+        "outcome": "Unavailable",
+        "advisory": True,
     }
     
     # Add alternative recommendations

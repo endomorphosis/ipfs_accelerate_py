@@ -134,6 +134,7 @@ class HardwareKit:
             attach_ladder,
             from_device_visibility,
             from_measured_absence,
+            stamp_consolidation,
             unavailable_backend,
         )
 
@@ -214,53 +215,46 @@ class HardwareKit:
         except Exception as e:
             logger.debug(f"PyTorch CUDA detection failed: {e}")
 
-        return attach_ladder(cuda_info)
+        return stamp_consolidation(attach_ladder(cuda_info))
 
     def detect_rocm(self) -> Dict[str, Any]:
         """
         Detect ROCm GPUs (AMD).
 
-        Returns:
-            Dictionary with ROCm info
+        rocm-smi visibility is detection, not production_authorized.
         """
-        rocm_info = {
-            "available": None,
-            "devices": [],
-            "declared": True,
-            "installed": None,
-            "detected": None,
-            "qualified": False,
-            "production_authorized": False,
-            "origin": "absent",
-            "live": False,
-            "evidence_kind": "unavailable",
-            "outcome": "Unavailable",
-        }
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            attach_ladder,
+            from_device_visibility,
+            stamp_consolidation,
+            unavailable_backend,
+        )
+
+        rocm_info = unavailable_backend("rocm", devices=[])
+        rocm_info["declared"] = True
 
         try:
-            # Try using rocm-smi
             result = subprocess.run(
                 ["rocm-smi", "--showproductname"], capture_output=True, text=True, timeout=5
             )
 
-            if result.returncode == 0:
-                rocm_info["detected"] = True
-                rocm_info["available"] = True
-                rocm_info["installed"] = True
-                rocm_info["origin"] = "hermetic_observed"
-                rocm_info["evidence_kind"] = "measured"
-                rocm_info["qualified"] = False
-                rocm_info["production_authorized"] = False
-                rocm_info["live"] = False
+            if result.returncode == 0 and result.stdout.strip():
+                devices = []
                 for line in result.stdout.strip().split("\n"):
                     if "GPU" in line:
-                        rocm_info["devices"].append({"info": line.strip()})
+                        devices.append({"info": line.strip()})
+                if devices:
+                    rocm_info = from_device_visibility(
+                        "rocm",
+                        devices=devices,
+                        extra={"probe": "rocm-smi"},
+                    )
         except FileNotFoundError:
             logger.debug("rocm-smi not on PATH; ROCm remains typed unavailable")
         except subprocess.TimeoutExpired as e:
             logger.debug(f"ROCm not detected: {e}")
 
-        return rocm_info
+        return stamp_consolidation(attach_ladder(rocm_info))
 
     def detect_metal(self) -> Dict[str, Any]:
         """
@@ -272,6 +266,7 @@ class HardwareKit:
         from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
             attach_ladder,
             from_platform_presence,
+            stamp_consolidation,
             unavailable_backend,
         )
 
@@ -285,67 +280,45 @@ class HardwareKit:
                     "platform_presence_is_not_qualification": True,
                 },
             )
-            return attach_ladder(metal_info)
+            return stamp_consolidation(attach_ladder(metal_info))
 
-        return attach_ladder(unavailable_backend("metal"))
+        return stamp_consolidation(attach_ladder(unavailable_backend("metal")))
 
     def detect_webgpu(self) -> Dict[str, Any]:
         """
         Detect WebGPU support.
 
-        Returns:
-            Dictionary with WebGPU info
+        Browser absence stays typed unavailable, never fabricated False.
         """
-        webgpu_info = {
-            "available": None,
-            "note": "WebGPU requires browser environment",
-            "production_authorized": False,
-            "qualified": False,
-            "live": False,
-            "origin": "absent",
-            "evidence_kind": "unavailable",
-            "outcome": "Unavailable",
-        }
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            stamp_consolidation,
+            unavailable_backend,
+        )
 
-        # WebGPU is primarily browser-based
-        # Check if we're in a web environment
-        try:
-            # This would need to be implemented with actual WebGPU detection
-            # For now, just return basic info
-            pass
-        except Exception as e:
-            logger.debug(f"WebGPU detection: {e}")
-
-        return webgpu_info
+        return stamp_consolidation(
+            unavailable_backend(
+                "webgpu",
+                note="WebGPU requires a browser environment",
+            )
+        )
 
     def detect_webnn(self) -> Dict[str, Any]:
         """
         Detect WebNN support.
 
-        Returns:
-            Dictionary with WebNN info
+        Browser absence stays typed unavailable, never fabricated False.
         """
-        webnn_info = {
-            "available": None,
-            "note": "WebNN requires browser environment",
-            "production_authorized": False,
-            "qualified": False,
-            "live": False,
-            "origin": "absent",
-            "evidence_kind": "unavailable",
-            "outcome": "Unavailable",
-        }
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            stamp_consolidation,
+            unavailable_backend,
+        )
 
-        # WebNN is primarily browser-based
-        # Check if we're in a web environment
-        try:
-            # This would need to be implemented with actual WebNN detection
-            # For now, just return basic info
-            pass
-        except Exception as e:
-            logger.debug(f"WebNN detection: {e}")
-
-        return webnn_info
+        return stamp_consolidation(
+            unavailable_backend(
+                "webnn",
+                note="WebNN requires a browser environment",
+            )
+        )
 
     def get_hardware_info(self, include_detailed: bool = False) -> HardwareInfo:
         """
@@ -368,25 +341,13 @@ class HardwareKit:
         # Get memory info
         hardware_info.memory = self.get_memory_info()
 
-        # Detect accelerators
-        accelerators = {}
-
-        # CUDA
-        cuda_info = self.detect_cuda()
-        if cuda_info.get("available") is True:
-            accelerators["cuda"] = cuda_info
-
-        # ROCm
-        rocm_info = self.detect_rocm()
-        if rocm_info.get("available") is True:
-            accelerators["rocm"] = rocm_info
-
-        # Metal
-        metal_info = self.detect_metal()
-        if metal_info.get("available") is True:
-            accelerators["metal"] = metal_info
-
-        # WebGPU (if applicable)
+        # Detect accelerators. Typed unavailable backends stay in the map;
+        # omission must not be read as measured absence or qualification.
+        accelerators = {
+            "cuda": self.detect_cuda(),
+            "rocm": self.detect_rocm(),
+            "metal": self.detect_metal(),
+        }
         if include_detailed:
             accelerators["webgpu"] = self.detect_webgpu()
             accelerators["webnn"] = self.detect_webnn()
@@ -417,89 +378,86 @@ class HardwareKit:
         return results
 
     def _test_cuda(self, test_level: str) -> Dict[str, Any]:
-        """Test CUDA functionality."""
-        result = {
-            "available": None,
-            "tests_passed": False,
-            "production_authorized": False,
-            "qualified": False,
-            "live": False,
-            "origin": "absent",
-            "evidence_kind": "unavailable",
-            "outcome": "Unavailable",
-            "canary_passed": None,
-        }
+        """Test CUDA functionality. A passing canary is not production_authorized."""
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            from_canary,
+            from_measured_absence,
+            stamp_consolidation,
+            unavailable_backend,
+        )
+
+        result = stamp_consolidation(unavailable_backend("cuda"))
+        result["tests_passed"] = False
+        result["canary_passed"] = None
 
         try:
             import torch
 
             result["installed"] = True
             if torch.cuda.is_available() is True:
-                result["available"] = True
-                result["detected"] = True
-                result["origin"] = "hermetic_observed"
-                result["evidence_kind"] = "measured"
-                result["live"] = False
-                result["production_authorized"] = False
-                result["qualified"] = False
-
+                canary_passed = False
                 if test_level == "basic":
                     x = torch.ones(10, device="cuda")
                     del x
-                    result["canary_passed"] = True
-                    result["tests_passed"] = True
-                    result["device_count"] = torch.cuda.device_count()
+                    canary_passed = True
                 elif test_level == "comprehensive":
                     x = torch.randn(1000, 1000, device="cuda")
                     y = torch.matmul(x, x)
                     del x, y
-                    result["canary_passed"] = True
-                    result["tests_passed"] = True
-                    result["device_count"] = torch.cuda.device_count()
+                    canary_passed = True
+                result = from_canary(
+                    "cuda",
+                    passed=canary_passed,
+                    extra={
+                        "probe": "torch.cuda.canary",
+                        "test_level": test_level,
+                        "pytorch_version": torch.__version__,
+                    },
+                )
+                result["tests_passed"] = canary_passed
+                result["device_count"] = torch.cuda.device_count()
             elif torch.cuda.is_available() is False:
-                result["available"] = False
-                result["detected"] = False
-                result["origin"] = "hermetic_observed"
-                result["evidence_kind"] = "measured"
+                result = from_measured_absence(
+                    "cuda",
+                    extra={"probe": "torch.cuda.is_available"},
+                )
+                result["tests_passed"] = False
         except ImportError:
             result["error"] = "torch_unavailable"
         except Exception as e:
             result["error"] = str(e)
 
-        return result
+        return stamp_consolidation(result)
 
     def _test_cpu(self, test_level: str) -> Dict[str, Any]:
-        """Test CPU functionality."""
-        result = {
-            "available": True,
-            "tests_passed": False,
-            "declared": True,
-            "production_authorized": False,
-            "qualified": False,
-            "live": False,
-            "origin": "declared",
-            "evidence_kind": "measured",
-            "outcome": "Unavailable",
-        }
+        """Test CPU functionality. A passing host test is not production_authorized."""
+        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
+            declared_cpu_baseline,
+            stamp_consolidation,
+        )
+
+        result = stamp_consolidation(declared_cpu_baseline(cores=None, test_level=test_level))
+        result["tests_passed"] = False
 
         try:
             if test_level == "basic":
-                # Basic test
                 import numpy as np
 
                 x = np.ones(10)
+                del x
                 result["tests_passed"] = True
             elif test_level == "comprehensive":
-                # More comprehensive test
                 import numpy as np
 
                 x = np.random.randn(1000, 1000)
                 y = np.dot(x, x)
+                del x, y
                 result["tests_passed"] = True
         except Exception as e:
             result["error"] = str(e)
 
-        return result
+        result["canary_passed"] = True if result["tests_passed"] else None
+        return stamp_consolidation(result)
 
     def recommend_hardware(
         self, model_name: str, task: str = "inference", consider_available_only: bool = True
@@ -517,36 +475,43 @@ class HardwareKit:
         """
         recommendations = {"model": model_name, "task": task, "recommendations": []}
 
-        # Get available hardware
         hardware = self.get_hardware_info()
+        cuda_report = hardware.accelerators.get("cuda") or {}
+        cuda_detected = cuda_report.get("available") is True
+        recommendations["production_authorized"] = False
+        recommendations["live"] = False
+        recommendations["outcome"] = "Unavailable"
+        recommendations["advisory"] = True
 
-        # Simple recommendations based on model size and task
         if "large" in model_name.lower() or "xl" in model_name.lower():
-            if hardware.accelerators.get("cuda", {}).get("available"):
+            if cuda_detected:
                 recommendations["recommendations"].append(
                     {
                         "accelerator": "cuda",
-                        "reason": "Large model benefits from GPU acceleration",
+                        "reason": "Large model benefits from GPU acceleration (advisory; not production_authorized)",
                         "priority": 1,
+                        "available": True,
+                        "production_authorized": False,
                     }
                 )
             elif not consider_available_only:
                 recommendations["recommendations"].append(
                     {
                         "accelerator": "cuda",
-                        "reason": "Large model requires GPU for reasonable performance",
+                        "reason": "Large model requires GPU for reasonable performance (advisory; CUDA evidence typed unavailable)",
                         "priority": 1,
-                        "available": False,
+                        "available": cuda_report.get("available"),
+                        "production_authorized": False,
                     }
                 )
 
-        # Always recommend CPU as fallback
         recommendations["recommendations"].append(
             {
                 "accelerator": "cpu",
-                "reason": "Fallback option, available on all systems",
+                "reason": "Declared CPU host fallback (not production_authorized)",
                 "priority": 10,
                 "available": True,
+                "production_authorized": False,
             }
         )
 
@@ -595,25 +560,28 @@ def recommend(task_type: str) -> Dict[str, Any]:
 
     task = (task_type or "").strip().lower() or "inference"
     hw = _get_default_hardware_kit().get_hardware_info(include_detailed=False)
-    has_cuda = bool(hw.accelerators.get("cuda", {}).get("available"))
+    cuda_report = hw.accelerators.get("cuda") or {}
+    has_cuda = cuda_report.get("available") is True
 
     recs: List[Dict[str, Any]] = []
     if has_cuda and task in {"training", "fine-tuning", "finetuning", "inference"}:
         recs.append(
             {
                 "accelerator": "cuda",
-                "reason": "CUDA GPU available",
+                "reason": "CUDA GPU detected (advisory; not production_authorized)",
                 "priority": 1,
                 "available": True,
+                "production_authorized": False,
             }
         )
 
     recs.append(
         {
             "accelerator": "cpu",
-            "reason": "Fallback option, available on all systems",
+            "reason": "Declared CPU host fallback (not production_authorized)",
             "priority": 10,
             "available": True,
+            "production_authorized": False,
         }
     )
 
@@ -621,6 +589,10 @@ def recommend(task_type: str) -> Dict[str, Any]:
         "task_type": task_type,
         "recommendations": recs,
         "hardware": {"accelerators": hw.accelerators},
+        "production_authorized": False,
+        "live": False,
+        "outcome": "Unavailable",
+        "advisory": True,
     }
 
 
