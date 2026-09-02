@@ -93516,7 +93516,16 @@ def _check_m53_prestart_admission(
     _assert_committed_clean_source(root, population)
     authority = _m53_source_binding_authority(root, population, config)
     control, coordination = _m53_target_paths(root, config, authority)
-    _assert_offline(control)
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        discover_live_quack_endpoint,
+    )
+    discovery = discover_live_quack_endpoint(control)
+    if discovery.uri:
+        raise MigrationRequired("M53 requires no live Quack owner")
+    if discovery.reason not in {"owner_status_rejected", "no_live_owner"}:
+        raise MigrationRequired(
+            "M53 offline discovery reason differs: " + str(discovery.reason)
+        )
     runtime = control.parent
     final_path = runtime / _M53_FINAL_RECEIPT_NAME
     m52_path = runtime / _M52_FINAL_RECEIPT_NAME
@@ -93535,6 +93544,7 @@ def _check_m53_prestart_admission(
         (merge_path, _M53_PRIOR_MERGE_QUEUE_SIZE, _M53_PRIOR_MERGE_QUEUE_SHA256, "M53 merge queue", 0o600),
         (status_path, _M53_STALE_READY_STATUS_SIZE, _M53_STALE_READY_STATUS_SHA256, "M53 stale-ready status", 0o600),
         (m52_path, _M53_M52_RECEIPT_SIZE, _M53_M52_RECEIPT_SHA256, "M53 preserved M52 receipt", 0o600),
+        (marker_path, _M53_OWNER_MARKER_SIZE, _M53_OWNER_MARKER_SHA256, "M53 stale owner marker", 0o600),
     ):
         observed_sha, observed_size = _stable_regular_sha256(
             path, root=root, noun=noun, required_link_count=1
