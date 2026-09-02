@@ -613,6 +613,11 @@ class SupervisorLoop:
                 exit_code = _poll_child_exit(child)
                 if exit_code is not None:
                     self.last_exit_code = exit_code
+                    # Unexpected process death must respawn the matching
+                    # implementation_daemon argv immediately. Waiting for
+                    # watchdog_stale_after_seconds leaves a live supervisor
+                    # with no live child (daemon_dead leftover).
+                    self.last_recycle_reason = "child_exited"
                     break
                 self._safe_write_status("running", child=child, run_id=run_id, log_path=log_path)
                 if self.monotonic() - child_started_at >= self.config.watchdog_startup_grace_seconds:

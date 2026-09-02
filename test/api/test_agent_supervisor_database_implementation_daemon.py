@@ -14931,6 +14931,49 @@ def test_quack_landed_in_progress_completes_with_admitted_claim() -> None:
     assert cas[0]["expected_control_receipt"]["attempt_id"] == "attempt:1"
 
 
+def test_resume_without_process_crash_requeues_missing_receipt_without_killing_daemon() -> None:
+    attempt = SimpleNamespace(
+        attempt_id="attempt:1",
+        task_cid="task:pcpr-051",
+        task_alias="PCPR-051",
+    )
+    task = SimpleNamespace(
+        task_cid="task:pcpr-051",
+        task_alias="PCPR-051",
+        status="in_progress",
+        revision=4,
+        body={},
+    )
+    retired: list[str] = []
+    daemon = SimpleNamespace(
+        task_source=SimpleNamespace(get=lambda _cid: task),
+        resume_attempt=lambda _attempt: (_ for _ in ()).throw(
+            DatabaseImplementationAuthorityError(
+                "shared control task has no exact attempt receipt"
+            )
+        ),
+        _complete_landed_quarantined_task=lambda _task: None,
+        _retire_stale_running_attempt=lambda _attempt, _task: retired.append(
+            _attempt.attempt_id
+        ),
+        _requeue_unimplemented_control_task=lambda _task: {
+            "task_cid": "task:pcpr-051",
+            "requeued": True,
+            "reason": "unaccepted_unknown_callback_requeued",
+        },
+    )
+
+    result = DatabaseImplementationDaemon._resume_attempt_without_process_crash(
+        daemon,
+        attempt,
+    )
+    assert result["resumed"] is True
+    assert result["retryable"] is True
+    assert result["status"] == "failed"
+    assert result["reason"] == "unaccepted_unknown_callback_requeued"
+    assert retired == ["attempt:1"]
+
+
 def test_resume_without_process_crash_completes_landed_missing_receipt() -> None:
     attempt = SimpleNamespace(
         attempt_id="attempt:1",

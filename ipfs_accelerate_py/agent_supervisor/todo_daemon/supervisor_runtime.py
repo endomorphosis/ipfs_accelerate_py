@@ -58,6 +58,7 @@ class RestartPolicy:
     healthy_run_seconds: float = 120.0  # reset backoff after this runtime
     fast_restart_statuses: frozenset[str] = frozenset(
         {
+            "child_exited",
             "dirty_recovery_skipped_clean",
             "repeated_rejection_recovery_skipped_clean",
             "no_change",

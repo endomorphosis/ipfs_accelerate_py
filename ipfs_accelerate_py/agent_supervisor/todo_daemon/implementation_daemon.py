@@ -118815,10 +118815,21 @@ class DatabaseImplementationDaemon:
                 # A successful merge can rotate the shared control receipt
                 # away from the exact claim tuple.  If the declared outputs
                 # are already on the merge target, complete instead of
-                # burning the supervisor restart budget.
+                # burning the supervisor restart budget.  Otherwise fail
+                # closed into a retryable requeue: re-raising kills the
+                # supervised daemon and leaves a live supervisor with no
+                # live implementation_daemon until the next recycle.
                 task = self.task_source.get(attempt.task_cid)
                 if task is not None:
-                    landed = self._complete_landed_quarantined_task(task)
+                    try:
+                        landed = self._complete_landed_quarantined_task(task)
+                    except (
+                        TypedStateOwnerAuthorizationError,
+                        TypedStateOwnerRemoteError,
+                        DatabaseImplementationAuthorityError,
+                        TransactionError,
+                    ):
+                        landed = None
                     if landed and landed.get("completed") is True:
                         return {
                             "resumed": True,
@@ -118829,6 +118840,47 @@ class DatabaseImplementationDaemon:
                             "status": "completed",
                             **landed,
                         }
+                    try:
+                        self._retire_stale_running_attempt(attempt, task)
+                    except (
+                        DatabaseImplementationDaemonError,
+                        DatabaseCoordinationExpiredError,
+                        TypedStateOwnerAuthorizationError,
+                        TypedStateOwnerRemoteError,
+                        TransactionError,
+                    ):
+                        pass
+                    requeued = None
+                    try:
+                        requeued = self._requeue_unimplemented_control_task(task)
+                    except (
+                        TypedStateOwnerAuthorizationError,
+                        TypedStateOwnerRemoteError,
+                        DatabaseImplementationAuthorityError,
+                        TransactionError,
+                    ):
+                        requeued = None
+                    return {
+                        "resumed": True,
+                        "retryable": True,
+                        "portal_retryable_failure": False,
+                        "reason": str(
+                            (requeued or {}).get("reason")
+                            or "control_attempt_receipt_unrecoverable"
+                        ),
+                        "attempt_id": attempt.attempt_id,
+                        "task_alias": attempt.task_alias,
+                        "status": "failed",
+                    }
+                return {
+                    "resumed": True,
+                    "retryable": True,
+                    "portal_retryable_failure": False,
+                    "reason": "control_attempt_receipt_unrecoverable",
+                    "attempt_id": attempt.attempt_id,
+                    "task_alias": attempt.task_alias,
+                    "status": "failed",
+                }
             if isinstance(
                 exc,
                 (

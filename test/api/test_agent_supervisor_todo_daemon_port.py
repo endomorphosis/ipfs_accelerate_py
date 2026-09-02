@@ -10730,6 +10730,8 @@ def test_restart_policy_applies_backoff_and_resets_after_a_healthy_run():
     assert policy.delay_for_status("stale_heartbeat", run_duration=0) == 20
     assert policy.delay_for_status("stale_heartbeat", run_duration=120) == 10
     assert policy._consecutive_failures == 0
+    assert policy.delay_for_status("child_exited", run_duration=0) == 2
+    assert policy.delay_for_status("child_exited", run_duration=120) == 2
 
     policy.reset()
 
@@ -10778,6 +10780,64 @@ def test_supervisor_loop_retries_child_launch_failures(tmp_path):
     assert status["status"] == "max_restarts_reached"
     assert status["last_recycle_reason"] == "launch_failed"
     assert status["last_exit_code"] == 127
+
+
+def test_supervisor_loop_respawns_matching_argv_on_child_exit_before_watchdog_stale(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    marker = state_dir / "launches.jsonl"
+    command = (
+        sys.executable,
+        "-c",
+        "import pathlib, sys; pathlib.Path(sys.argv[1]).open('a').write('x\\n')",
+        str(marker),
+    )
+    delays: list[float] = []
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=command,
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+        latest_log_path=state_dir / "latest.log",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=command,
+            log_prefix="child",
+            restart_policy=RestartPolicy(
+                restart_backoff_seconds=30.0,
+                fast_restart_backoff_seconds=0.0,
+            ),
+            heartbeat_seconds=0.01,
+            poll_seconds=0.01,
+            watchdog_stale_after_seconds=3600.0,
+            watchdog_startup_grace_seconds=60.0,
+            max_restarts=2,
+        ),
+        sleep=lambda seconds: delays.append(seconds),
+    )
+
+    result = loop.run()
+
+    assert result.status == "child_exited"
+    assert result.restart_count == 2
+    assert result.last_recycle_reason == "child_exited"
+    assert marker.read_text(encoding="utf-8").count("x") == 2
+    assert 0.0 in delays
+    assert 30.0 not in delays
+    assert all(delay < 3600.0 for delay in delays)
 
 
 def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
