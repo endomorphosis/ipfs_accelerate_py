@@ -4924,6 +4924,28 @@ def _accept_coordinator_credential_handoff(
     )
 
 
+def _strict_duckdb_row_values(
+    rows: object,
+    field_types: tuple[type[Any], ...],
+) -> tuple[Any, ...] | None:
+    """Copy one exact adapter row by position, rejecting shape/type drift."""
+
+    from ..task_sources.duckdb_state import DuckDBRow
+
+    if type(rows) is not list or len(rows) != 1:
+        return None
+    row = rows[0]
+    if type(row) is not DuckDBRow or len(row) != len(field_types):
+        return None
+    values = tuple(row[index] for index in range(len(field_types)))
+    if any(
+        type(value) is not field_type
+        for value, field_type in zip(values, field_types, strict=True)
+    ):
+        return None
+    return values
+
+
 def _detached_coordinator_quack_snapshot(
     board: ConfiguredBoard,
     *,
@@ -5010,25 +5032,29 @@ def _detached_coordinator_quack_snapshot(
                     "FROM store_generations WHERE generation=?",
                     [validated_binding["generation"]],
                 ).fetchall()
-            if owner_rows != [
-                (
-                    validated_binding["store_id"],
-                    validated_binding["database_uuid"],
-                    validated_binding["process_birth_id"],
-                    validated_binding["listen_uri"],
-                    validated_binding["extension_fingerprint"],
-                    validated_binding["schema_revision"],
-                    validated_binding["generation"],
-                    "ready",
-                )
-            ] or generation_rows != [
-                (
-                    validated_binding["database_uuid"],
-                    validated_binding["process_birth_id"],
-                    validated_binding["schema_revision"],
-                    validated_binding["generation"],
-                )
-            ]:
+            owner_row = _strict_duckdb_row_values(
+                owner_rows,
+                (str, str, str, str, str, int, int, str),
+            )
+            generation_row = _strict_duckdb_row_values(
+                generation_rows,
+                (str, str, int, int),
+            )
+            if owner_row != (
+                validated_binding["store_id"],
+                validated_binding["database_uuid"],
+                validated_binding["process_birth_id"],
+                validated_binding["listen_uri"],
+                validated_binding["extension_fingerprint"],
+                validated_binding["schema_revision"],
+                validated_binding["generation"],
+                "ready",
+            ) or generation_row != (
+                validated_binding["database_uuid"],
+                validated_binding["process_birth_id"],
+                validated_binding["schema_revision"],
+                validated_binding["generation"],
+            ):
                 raise ConfiguredBoardError(
                     "coordinator exact live Quack owner rows differ"
                 )

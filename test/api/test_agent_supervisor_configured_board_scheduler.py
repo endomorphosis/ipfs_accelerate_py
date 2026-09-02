@@ -62,6 +62,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler impo
     materialize_configured_board_execution_plan,
     preflight_configured_board,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    database_task_source as database_task_source_module,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    duckdb_state as duckdb_state_module,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.plan_revision_store import (
     PlanRevisionStore,
 )
@@ -2216,6 +2222,228 @@ def _detached_coordinator_gate_snapshot() -> dict[str, Any]:
         "objective_count": 1,
         "plan_count": 1,
     }
+
+
+def _install_quack_snapshot_query_harness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    owner_schema_revision: object = 1,
+    owner_status: object = "ready",
+) -> SimpleNamespace:
+    repo, _config_path, seeded = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    program = scheduler_module.DatabaseProgramConfig(
+        authority_mode=scheduler_module.AUTHORITY_MODE_QUACK,
+        task_source_kind="duckdb",
+        endpoint_secret_handle="env://TEST_ONLY_QUACK_TOKEN",
+        quack_endpoint="quack:127.0.0.1:45123",
+        store_id="test-store",
+        store_generation="7",
+        schema_revision="1",
+        failover_policy="fail_closed",
+    )
+    board = replace(
+        seeded,
+        payload={
+            **seeded.payload,
+            "quack_owner": {"state_dir": "state/quack-owner"},
+        },
+        database_program=program,
+    )
+    binding = {
+        "server_id": "test-server",
+        "store_id": program.store_id,
+        "database_uuid": "test-database",
+        "schema_revision": 1,
+        "schema_fingerprint": "sha256:" + "c" * 64,
+        "generation": 7,
+        "process_birth_id": "birth:test",
+        "listen_uri": program.quack_endpoint,
+        "extension_fingerprint": "sha256:" + "d" * 64,
+    }
+    token = "test-only-quack-token"
+    environment = {
+        **program.environment(),
+        "TEST_ONLY_QUACK_TOKEN": token,
+        duckdb_state_module.QUACK_TOKEN_ENV: token,
+        duckdb_state_module.QUACK_MUTATION_BINDING_ENV: json.dumps(
+            binding,
+            separators=(",", ":"),
+            sort_keys=True,
+        ),
+        scheduler_module.STATE_QUACK_MUTATION_DIR_ENV: str(
+            (repo / "state/quack-owner/mutations").resolve()
+        ),
+    }
+    snapshot = _detached_coordinator_gate_snapshot()
+    owner_row = duckdb_state_module.DuckDBRow(
+        (
+            "store_id",
+            "database_uuid",
+            "process_birth_id",
+            "listen_uri",
+            "extension_fingerprint",
+            "schema_revision",
+            "generation",
+            "status",
+        ),
+        (
+            binding["store_id"],
+            binding["database_uuid"],
+            binding["process_birth_id"],
+            binding["listen_uri"],
+            binding["extension_fingerprint"],
+            owner_schema_revision,
+            binding["generation"],
+            owner_status,
+        ),
+    )
+    generation_row = duckdb_state_module.DuckDBRow(
+        ("database_uuid", "birth_id", "schema_revision", "fence_epoch"),
+        (
+            binding["database_uuid"],
+            binding["process_birth_id"],
+            binding["schema_revision"],
+            binding["generation"],
+        ),
+    )
+    queries: list[tuple[str, list[object]]] = []
+    observed_environments: list[dict[str, str]] = []
+
+    class QueryResult:
+        def __init__(self, rows: list[duckdb_state_module.DuckDBRow]) -> None:
+            self.rows = rows
+
+        def fetchall(self) -> list[duckdb_state_module.DuckDBRow]:
+            return list(self.rows)
+
+    class Connection:
+        def __enter__(self) -> Connection:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def execute(
+            self,
+            query: str,
+            parameters: list[object],
+        ) -> QueryResult:
+            queries.append((query, list(parameters)))
+            if "FROM state_servers" in query:
+                return QueryResult([owner_row])
+            if "FROM store_generations" in query:
+                return QueryResult([generation_row])
+            raise AssertionError(f"unexpected query: {query}")
+
+    connection = Connection()
+
+    class Intent:
+        def _connection(self, *, write: bool) -> Connection:
+            assert write is False
+            return connection
+
+    class DatabaseTaskSource:
+        def __init__(self, endpoint: str, **kwargs: object) -> None:
+            assert endpoint == program.quack_endpoint
+            assert kwargs == {
+                "install_schema": False,
+                "owner_id": "configured-board-detached-credential-gate",
+                "repository_tree_id": snapshot["repository_tree_id"],
+                "plan_root_cid": snapshot["plan_root_cid"],
+            }
+            observed_environments.append(dict(os.environ))
+            self.intent = Intent()
+
+        def __enter__(self) -> DatabaseTaskSource:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def snapshot(self) -> SimpleNamespace:
+            return SimpleNamespace(to_dict=lambda: dict(snapshot))
+
+    monkeypatch.setattr(
+        database_task_source_module,
+        "DatabaseTaskSource",
+        DatabaseTaskSource,
+    )
+    return SimpleNamespace(
+        board=board,
+        binding=binding,
+        environment=environment,
+        snapshot=snapshot,
+        queries=queries,
+        observed_environments=observed_environments,
+    )
+
+
+def test_detached_coordinator_quack_snapshot_accepts_exact_duckdb_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _install_quack_snapshot_query_harness(tmp_path, monkeypatch)
+    monkeypatch.setenv("TEST_PARENT_ONLY_MARKER", "excluded-from-child")
+    parent_environment = dict(os.environ)
+
+    observed = scheduler_module._detached_coordinator_quack_snapshot(
+        harness.board,
+        repository_tree_id=harness.snapshot["repository_tree_id"],
+        plan_root_cid=harness.snapshot["plan_root_cid"],
+        environment=harness.environment,
+    )
+
+    assert observed == harness.snapshot
+    assert harness.observed_environments == [harness.environment]
+    assert [parameters for _query, parameters in harness.queries] == [
+        [harness.binding["server_id"]],
+        [harness.binding["generation"]],
+    ]
+    assert dict(os.environ) == parent_environment
+
+
+@pytest.mark.parametrize(
+    ("owner_schema_revision", "owner_status"),
+    (
+        (1, "stopped"),
+        (True, "ready"),
+    ),
+    ids=("value-mismatch", "bool-is-not-an-integer-row-field"),
+)
+def test_detached_coordinator_quack_snapshot_rejects_mismatched_duckdb_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner_schema_revision: object,
+    owner_status: object,
+) -> None:
+    harness = _install_quack_snapshot_query_harness(
+        tmp_path,
+        monkeypatch,
+        owner_schema_revision=owner_schema_revision,
+        owner_status=owner_status,
+    )
+    parent_environment = dict(os.environ)
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="coordinator authenticated Quack task snapshot failed",
+    ) as raised:
+        scheduler_module._detached_coordinator_quack_snapshot(
+            harness.board,
+            repository_tree_id=harness.snapshot["repository_tree_id"],
+            plan_root_cid=harness.snapshot["plan_root_cid"],
+            environment=harness.environment,
+        )
+
+    assert type(raised.value.__cause__) is ConfiguredBoardError
+    assert str(raised.value.__cause__) == (
+        "coordinator exact live Quack owner rows differ"
+    )
+    assert dict(os.environ) == parent_environment
 
 
 def _begin_test_token_handoff(
