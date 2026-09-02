@@ -13,12 +13,16 @@ readiness, queue retry, goal reopen, current evidence.
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    build_server,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DATABASE_TASK_SOURCE_INTERFACE,
@@ -29,15 +33,42 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     TaskSourceCompletionError,
     TaskSourceConflictError,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    open_quack_transport_connection,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS,
     INTENT_REPOSITORY_INTERFACE,
+    MAX_FENCED_PROVIDER_OUTER_DERIVED_IDS,
+    MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS,
     PLAN_REVISION_REPOSITORY_INTERFACE,
     IntentCompletionError,
     IntentEventType,
     IntentRepository,
+    IntentRepositoryBoundsError,
     IntentRepositoryConflictError,
+    IntentRepositoryIntegrityError,
     PlanRevisionRepository,
+    _fenced_provider_outer_bound_parent_projection_counts,
+    _fenced_provider_outer_group,
+    _fenced_provider_outer_groups_semantically_valid,
+    _fenced_provider_outer_parent_identity_projection,
+    _fenced_provider_outer_population_filter,
+    _fenced_provider_outer_query_profile,
+    _fenced_provider_outer_sha256,
+    fenced_provider_outer_authority_population_receipt_valid,
     open_intent_repository,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    _PinnedReadIntentRepository,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
+    probe_quack_capabilities,
+)
+from test.api.test_agent_supervisor_quack_owner_mutation import (
+    _admitted_observation,
+    _isolation_receipt,
+    _isolation_server_kwargs,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -131,6 +162,336 @@ def _seed_graph(repo: IntentRepository) -> dict[str, str]:
     }
 
 
+def _outer_receipt_binding(connection) -> dict[str, object]:
+    fingerprint = connection.execute(
+        "SELECT value FROM control_plane_metadata "
+        "WHERE key = 'schema_fingerprint'"
+    ).fetchone()
+    assert fingerprint is not None
+    return {
+        "server_id": "server:outer-receipt-test",
+        "store_id": "state/control.duckdb",
+        "database_uuid": "database:outer-receipt-test",
+        "schema_revision": 1,
+        "schema_fingerprint": str(fingerprint[0]),
+        "generation": 7,
+        "process_birth_id": "birth:outer-receipt-test",
+        "listen_uri": "quack:127.0.0.1:4242",
+        "extension_fingerprint": "sha256:" + ("12" * 32),
+    }
+
+
+def _seed_outer_receipt_subject(repo: IntentRepository) -> dict[str, object]:
+    ids = _seed_graph(repo)
+    task = repo.get_task(ids["task_a"])
+    assert task is not None
+    repo.cas_task_status(
+        task_cid=ids["task_a"],
+        expected_revision=int(task["revision"]),
+        new_status="blocked",
+        receipt={"reason": "outer-receipt-fixture"},
+    )
+    task = repo.get_task(ids["task_a"])
+    assert task is not None
+    subject: dict[str, object] = {
+        "task_cid": ids["task_a"],
+        "task_alias": "DQP-012-A",
+        "task_revision": int(task["revision"]),
+        "expected_task_status": "blocked",
+        "attempt_id": "attempt:outer-receipt-test",
+        "claim_id": "claim:outer-receipt-test",
+        "lease_id": "lease:outer-receipt-test",
+        "owner_session_id": "owner:outer-receipt-test",
+        "fencing_token": 11,
+        "fence_epoch": 3,
+        "expected_store_id": "state/control.duckdb",
+        "expected_store_generation": 7,
+        "receipt_nonce": "nonce:outer-receipt-test",
+        "receipt_epoch": 1,
+    }
+    with repo._connection(write=True) as connection:
+        connection.execute(
+            """
+            INSERT INTO task_attempts (
+                attempt_id, task_cid, attempt_number, owner_session_id,
+                fencing_token, fence_epoch, started_at, finished_at,
+                status, revision
+            ) VALUES (?, ?, 1, ?, ?, ?, ?, NULL, 'blocked', 1)
+            """,
+            [
+                subject["attempt_id"], subject["task_cid"],
+                subject["owner_session_id"], subject["fencing_token"],
+                subject["fence_epoch"], "2026-09-02T00:01:00Z",
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO task_claims (
+                claim_id, task_cid, owner_session_id, fencing_token,
+                fence_epoch, claimed_at, expires_at, released_at,
+                state, revision, idempotency_key
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 'released', 1, ?)
+            """,
+            [
+                subject["claim_id"], subject["task_cid"],
+                subject["owner_session_id"], subject["fencing_token"],
+                subject["fence_epoch"], "2026-09-02T00:01:00Z",
+                "2026-09-02T00:02:00Z", "idempotency:outer-receipt-test",
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO leases (
+                task_cid, claim_cid, resolution_cid, claimant_did,
+                logical_epoch, fencing_token, expires_at_ms, attempt, state,
+                started_at_ms, release_reason, retry_not_before_ms,
+                owner_session_id, fence_epoch, revision,
+                extension_schema, extension_json
+            ) VALUES (?, ?, '', ?, 1, ?, 0, 1, 'released', 1, 'blocked', 0,
+                      ?, ?, 1, '', '{}')
+            """,
+            [
+                subject["task_cid"], subject["claim_id"],
+                subject["owner_session_id"], subject["fencing_token"],
+                subject["owner_session_id"], subject["fence_epoch"],
+            ],
+        )
+    return subject
+
+
+def _seed_outer_receipt_authority(
+    repo: IntentRepository,
+) -> tuple[dict[str, object], dict[str, object]]:
+    subject = _seed_outer_receipt_subject(repo)
+    with repo._connection(write=True) as connection:
+        binding = _outer_receipt_binding(connection)
+        connection.execute(
+            """
+            INSERT INTO store_generations (
+                generation, schema_revision, fence_epoch, revision,
+                database_uuid, birth_id, created_at,
+                extension_schema, extension_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                7, 1, 3, 1, binding["database_uuid"],
+                binding["process_birth_id"], "2026-09-02T00:00:00Z", "", "{}",
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO state_servers (
+                server_id, store_id, database_uuid, process_birth_id,
+                listen_uri, extension_fingerprint, schema_revision,
+                generation, started_at, stopped_at, status, revision,
+                extension_schema, extension_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'ready', 1, '', '{}')
+            """,
+            [
+                binding["server_id"], binding["store_id"],
+                binding["database_uuid"], binding["process_birth_id"],
+                binding["listen_uri"], binding["extension_fingerprint"],
+                binding["schema_revision"], binding["generation"],
+                "2026-09-02T00:00:00Z",
+            ],
+        )
+    return binding, subject
+
+
+def _read_outer_receipt(
+    repo: IntentRepository,
+    binding: dict[str, object],
+    subject: dict[str, object],
+) -> dict[str, object]:
+    replica_observation = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/read-replica-observation@1"
+        ),
+        "authority": "non_authoritative_read_replica",
+        "path": "/sealed/test/read-replica.duckdb",
+        "source_database_path": "/sealed/test/control.duckdb",
+        "server_id": binding["server_id"],
+        "database_uuid": binding["database_uuid"],
+        "generation": binding["generation"],
+        "schema_revision": binding["schema_revision"],
+        "schema_fingerprint": "schema-profile:test",
+        "storage_schema_fingerprint": binding["schema_fingerprint"],
+        "sha256": "sha256:" + ("34" * 32),
+        "size_bytes": 4096,
+        "refresh_sequence": 9,
+        "refreshed_at_ms": 1_700_000_000_000,
+        "live": True,
+    }
+    mutation_barrier = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "fenced-provider-outer-mutation-barrier@1"
+        ),
+        "store_id": binding["store_id"],
+        "active_request_count": 0,
+        "active_processing_count": 0,
+        "active_population_digest": (
+            "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba8"
+            "73c2f11161202b945"
+        ),
+    }
+    with repo._connection(write=False) as connection:
+        connection._quack_mutation_binding = dict(binding)
+        connection.execute("BEGIN TRANSACTION")
+        try:
+            source = DatabaseTaskSource(
+                intent=_PinnedReadIntentRepository(connection),
+                owner_id="outer-receipt-test",
+            )
+            receipt = dict(
+                source.fenced_provider_outer_authority_population_receipt(
+                    controller_replica_observation=replica_observation,
+                    controller_mutation_barrier=mutation_barrier,
+                    **subject
+                )
+            )
+            connection.execute("COMMIT")
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
+    return receipt
+
+
+def _seed_outer_receipt_relations(
+    repo: IntentRepository,
+    subject: dict[str, object],
+) -> None:
+    with repo._connection(write=True) as connection:
+        connection.execute(
+            """
+            INSERT INTO context_manifests (
+                manifest_cid, task_cid, schema_revision,
+                repository_tree_id, policy_digest, created_at, body_json
+            ) VALUES ('manifest:outer', ?, 1, 'tree:outer',
+                      'sha256:policy', ?, '{}')
+            """,
+            [subject["task_cid"], "2026-09-02T00:03:00Z"],
+        )
+        connection.execute(
+            """
+            INSERT INTO prompt_instances (
+                instance_id, template_id, task_cid, manifest_cid,
+                created_at, input_digest, body_json
+            ) VALUES ('prompt:outer', 'template:outer', ?,
+                      'manifest:outer', ?, 'sha256:input', '{}')
+            """,
+            [subject["task_cid"], "2026-09-02T00:04:00Z"],
+        )
+        connection.execute(
+            """
+            INSERT INTO provider_calls (
+                call_id, task_cid, attempt_id, provider_id,
+                prompt_instance_id, started_at, finished_at, status,
+                input_digest, output_digest, tokens_in, tokens_out, body_json
+            ) VALUES ('call:outer', ?, ?, 'provider:outer', 'prompt:outer',
+                      ?, NULL, 'started', 'sha256:input', '', 0, 0, '{}')
+            """,
+            [
+                subject["task_cid"],
+                subject["attempt_id"],
+                "2026-09-02T00:05:00Z",
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO worktrees (
+                worktree_id, repository_id, path, head_commit_id,
+                branch_name, owner_session_id, status, created_at,
+                updated_at, revision, fence_epoch,
+                extension_schema, extension_json
+            ) VALUES ('worktree:outer', 'repository:outer', '/sealed/outer',
+                      'commit:outer', 'implementation/outer', ?, 'retained',
+                      ?, ?, 1, ?, '', '{}')
+            """,
+            [
+                subject["owner_session_id"],
+                "2026-09-02T00:06:00Z",
+                "2026-09-02T00:06:00Z",
+                subject["fence_epoch"],
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO merge_queue_entries (
+                entry_id, repository_id, worktree_id, task_cid,
+                source_branch, target_branch, status, ordinal,
+                enqueued_at, updated_at, revision, fence_epoch
+            ) VALUES ('entry:outer-relations', 'repository:outer',
+                      'worktree:outer', ?, 'implementation/outer', 'main',
+                      'pending', 1, ?, ?, 1, ?)
+            """,
+            [
+                subject["task_cid"],
+                "2026-09-02T00:07:00Z",
+                "2026-09-02T00:07:00Z",
+                subject["fence_epoch"],
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO merge_attempts (
+                merge_attempt_id, entry_id, task_cid, worktree_id,
+                started_at, finished_at, status, result_commit_id, body_json
+            ) VALUES ('merge-attempt:outer-relations',
+                      'entry:outer-relations', ?, 'worktree:outer', ?, NULL,
+                      'running', '', '{}')
+            """,
+            [subject["task_cid"], "2026-09-02T00:08:00Z"],
+        )
+        connection.execute(
+            """
+            INSERT INTO path_claims (
+                claim_id, repository_id, worktree_id, path,
+                owner_session_id, task_cid, fencing_token, fence_epoch,
+                acquired_at, expires_at, state, revision
+            ) VALUES ('path-claim:outer', 'repository:outer',
+                      'worktree:outer', 'src/outer.py', ?, ?, ?, ?, ?, ?,
+                      'released', 1)
+            """,
+            [
+                subject["owner_session_id"],
+                subject["task_cid"],
+                subject["fencing_token"],
+                subject["fence_epoch"],
+                "2026-09-02T00:09:00Z",
+                "2026-09-02T00:10:00Z",
+            ],
+        )
+        connection.execute(
+            """
+            INSERT INTO lease_events (
+                event_id, task_cid, claim_cid, event_type,
+                fencing_token, observed_at_ms, body_json
+            ) VALUES ('lease-event:outer', ?, ?, 'released', ?, 10, '{}')
+            """,
+            [
+                subject["task_cid"],
+                subject["claim_id"],
+                subject["fencing_token"],
+            ],
+        )
+
+
+def _rehash_outer_receipt_group(
+    receipt: dict[str, object],
+    group_name: str,
+) -> None:
+    group = receipt["groups"][group_name]
+    group["count"] = len(group["rows"])
+    group["rows_digest"] = _fenced_provider_outer_sha256(group["rows"])
+    receipt["task_population_root"] = _fenced_provider_outer_sha256(
+        receipt["groups"]
+    )
+    unsigned = dict(receipt)
+    unsigned.pop("receipt_cid")
+    receipt["receipt_cid"] = _fenced_provider_outer_sha256(unsigned)
+
+
 # ---------------------------------------------------------------------------
 # Interface identities
 # ---------------------------------------------------------------------------
@@ -143,6 +504,987 @@ def test_interface_identities() -> None:
     assert IntentRepository.INTERFACE == INTENT_REPOSITORY_INTERFACE
     assert PlanRevisionRepository.INTERFACE == PLAN_REVISION_REPOSITORY_INTERFACE
     assert DatabaseTaskSource.INTERFACE == DATABASE_TASK_SOURCE_INTERFACE
+
+
+def test_outer_authority_receipt_is_closed_exact_and_commits_json_payloads(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        first = _read_outer_receipt(repo, binding, subject)
+        second = _read_outer_receipt(repo, binding, subject)
+
+        assert first == second
+        assert fenced_provider_outer_authority_population_receipt_valid(first)
+        assert first["nonclaims"] == list(FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS)
+        assert first["persistence_policy"] == (
+            "ephemeral_access_controlled_full_receipt_compact_cid_only"
+        )
+        assert first["publication_assessment"] == {
+            "accepted_publication_count": 0,
+            "terminal_task_status_count": 0,
+            "completion_receipt_count": 0,
+            "successful_merge_queue_count": 0,
+            "successful_merge_attempt_count": 0,
+        }
+        assert first["authority"]["owner_binding"] == binding
+        assert first["subject"] == {
+            key: value
+            for key, value in subject.items()
+            if key not in {"lease_id", "receipt_nonce", "receipt_epoch"}
+        }
+        assert first["cross_store_context"] == {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "fenced-provider-outer-cross-store-context@1"
+            ),
+            "coordination_lease_id": subject["lease_id"],
+            "admission_requirement": (
+                "must_equal_corrected_current_inner_receipt_before_admission"
+            ),
+        }
+        task_row = first["groups"]["tasks"]["rows"][0]
+        assert set(task_row["body_json"]) == {
+            "canonical_sha256",
+            "canonical_byte_length",
+        }
+        assert "track" not in str(first)
+
+        with pytest.raises(Exception, match="retained controller"):
+            repo.fenced_provider_outer_authority_population_receipt(**subject)
+
+
+def test_outer_authority_receipt_uses_real_quack_attached_schema_catalog(
+    tmp_path: Path,
+) -> None:
+    """Issue through the real attached replica, not its client-local catalog."""
+
+    (tmp_path / "control").mkdir()
+    receipt_path, isolation_receipt = _isolation_receipt(tmp_path)
+    database = Path(str(isolation_receipt["database_path"]))
+    with open_intent_repository(database, owner_id="owner:quack-receipt-seed") as repo:
+        subject = _seed_outer_receipt_subject(repo)
+        with repo._connection(write=True) as connection:
+            connection.execute(
+                """
+                INSERT INTO attempt_phases (
+                    attempt_id, phase_name, entered_at, exited_at, status
+                ) VALUES (?, 'provider', ?, NULL, 'started')
+                """,
+                [subject["attempt_id"], "2026-09-02T00:02:00Z"],
+            )
+
+    store_id = "state/control.duckdb"
+    server = build_server(
+        database_path=database,
+        state_dir=receipt_path.parent,
+        **_isolation_server_kwargs(isolation_receipt),
+        store_id=store_id,
+        repository_id="repository:audit",
+        isolation_receipt_path=receipt_path,
+        isolation_observer=_admitted_observation,
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(
+            allow_network_install=False,
+            allow_local_load=True,
+            use_cache=False,
+        ),
+    )
+    connection = None
+    try:
+        identity = server.start()
+        token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
+        connection = open_quack_transport_connection(
+            identity.listen_uri,
+            token=token,
+        )
+        subject["expected_store_generation"] = identity.generation
+        replica_observation = dict(server.status()["read_replica"])
+        mutation_barrier = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "fenced-provider-outer-mutation-barrier@1"
+            ),
+            "store_id": store_id,
+            "active_request_count": 0,
+            "active_processing_count": 0,
+            "active_population_digest": (
+                "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba8"
+                "73c2f11161202b945"
+            ),
+        }
+        connection.execute("BEGIN TRANSACTION")
+        try:
+            source = DatabaseTaskSource(
+                intent=_PinnedReadIntentRepository(connection),
+                owner_id="owner:quack-receipt-reader",
+            )
+            receipt = dict(
+                source.fenced_provider_outer_authority_population_receipt(
+                    controller_replica_observation=replica_observation,
+                    controller_mutation_barrier=mutation_barrier,
+                    **subject,
+                )
+            )
+            connection.execute("COMMIT")
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
+        assert fenced_provider_outer_authority_population_receipt_valid(receipt)
+        assert receipt["authority"]["owner_binding"]["server_id"] == (
+            identity.server_id
+        )
+        assert receipt["authority"]["owner_binding"]["generation"] == (
+            identity.generation
+        )
+        assert receipt["authority"]["owner_binding"]["store_id"] == store_id
+        assert receipt["groups"]["attempt_phases"]["count"] == 1
+    finally:
+        if connection is not None:
+            connection.close()
+        server.stop()
+
+
+def test_outer_authority_receipt_rejects_rehashed_shape_and_subject_splices(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        receipt = _read_outer_receipt(repo, binding, subject)
+
+    extra_row_key = copy.deepcopy(receipt)
+    extra_row_key["groups"]["tasks"]["rows"][0]["unreviewed"] = True
+    extra_row_key["groups"]["tasks"]["rows_digest"] = (
+        _fenced_provider_outer_sha256(
+            extra_row_key["groups"]["tasks"]["rows"]
+        )
+    )
+    extra_row_key["task_population_root"] = _fenced_provider_outer_sha256(
+        extra_row_key["groups"]
+    )
+    unsigned = dict(extra_row_key)
+    unsigned.pop("receipt_cid")
+    extra_row_key["receipt_cid"] = _fenced_provider_outer_sha256(unsigned)
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        extra_row_key
+    )
+
+    subject_splice = copy.deepcopy(receipt)
+    subject_splice["subject"]["task_cid"] = "task:cid:foreign"
+    unsigned = dict(subject_splice)
+    unsigned.pop("receipt_cid")
+    subject_splice["receipt_cid"] = _fenced_provider_outer_sha256(unsigned)
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        subject_splice
+    )
+
+    nested_unknown = copy.deepcopy(receipt)
+    nested_unknown["authority"]["owner_binding"]["unreviewed"] = True
+    unsigned = dict(nested_unknown)
+    unsigned.pop("receipt_cid")
+    nested_unknown["receipt_cid"] = _fenced_provider_outer_sha256(unsigned)
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        nested_unknown
+    )
+
+    malformed_commitment = copy.deepcopy(receipt)
+    malformed_commitment["groups"]["tasks"]["rows"][0]["body_json"] = {
+        "canonical_sha256": "sha256:" + ("1" * 64),
+        "canonical_byte_length": 2,
+        "private": "leak",
+    }
+    malformed_commitment["groups"]["tasks"]["rows_digest"] = (
+        _fenced_provider_outer_sha256(
+            malformed_commitment["groups"]["tasks"]["rows"]
+        )
+    )
+    malformed_commitment["task_population_root"] = (
+        _fenced_provider_outer_sha256(malformed_commitment["groups"])
+    )
+    unsigned = dict(malformed_commitment)
+    unsigned.pop("receipt_cid")
+    malformed_commitment["receipt_cid"] = _fenced_provider_outer_sha256(
+        unsigned
+    )
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        malformed_commitment
+    )
+
+    required_null = copy.deepcopy(receipt)
+    required_null["groups"]["tasks"]["rows"][0]["task_alias"] = None
+    required_null["groups"]["tasks"]["rows_digest"] = (
+        _fenced_provider_outer_sha256(
+            required_null["groups"]["tasks"]["rows"]
+        )
+    )
+    required_null["task_population_root"] = _fenced_provider_outer_sha256(
+        required_null["groups"]
+    )
+    unsigned = dict(required_null)
+    unsigned.pop("receipt_cid")
+    required_null["receipt_cid"] = _fenced_provider_outer_sha256(unsigned)
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        required_null
+    )
+
+    excessive_nonce = copy.deepcopy(receipt)
+    excessive_nonce["receipt_nonce"] = "n" * 513
+    unsigned = dict(excessive_nonce)
+    unsigned.pop("receipt_cid")
+    excessive_nonce["receipt_cid"] = _fenced_provider_outer_sha256(unsigned)
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        excessive_nonce
+    )
+
+    revision_body_drift = copy.deepcopy(receipt)
+    current_revision = revision_body_drift["subject"]["task_revision"]
+    current_revision_row = next(
+        row
+        for row in revision_body_drift["groups"]["task_revisions"]["rows"]
+        if row["revision"] == current_revision
+    )
+    current_revision_row["body_json"] = {
+        "canonical_sha256": "sha256:" + ("6" * 64),
+        "canonical_byte_length": 2,
+    }
+    revision_body_drift["groups"]["task_revisions"]["rows_digest"] = (
+        _fenced_provider_outer_sha256(
+            revision_body_drift["groups"]["task_revisions"]["rows"]
+        )
+    )
+    revision_body_drift["task_population_root"] = (
+        _fenced_provider_outer_sha256(revision_body_drift["groups"])
+    )
+    unsigned = dict(revision_body_drift)
+    unsigned.pop("receipt_cid")
+    revision_body_drift["receipt_cid"] = _fenced_provider_outer_sha256(
+        unsigned
+    )
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        revision_body_drift
+    )
+
+
+def test_outer_authority_receipt_rejects_rehashed_population_splices(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        receipt = _read_outer_receipt(repo, binding, subject)
+
+    duplicate = copy.deepcopy(receipt)
+    duplicate["groups"]["tasks"]["rows"].append(
+        copy.deepcopy(duplicate["groups"]["tasks"]["rows"][0])
+    )
+    _rehash_outer_receipt_group(duplicate, "tasks")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        duplicate
+    )
+
+    cross_task = copy.deepcopy(receipt)
+    assert cross_task["groups"]["task_outputs"]["rows"]
+    cross_task["groups"]["task_outputs"]["rows"][0]["task_cid"] = (
+        "task:cid:foreign"
+    )
+    _rehash_outer_receipt_group(cross_task, "task_outputs")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        cross_task
+    )
+
+    nested_join = copy.deepcopy(receipt)
+    nested_join["groups"]["attempt_phases"]["rows"].append(
+        {
+            "attempt_id": "attempt:foreign",
+            "phase_name": "provider",
+            "entered_at": "2026-09-02T00:01:30Z",
+            "exited_at": None,
+            "status": "started",
+        }
+    )
+    _rehash_outer_receipt_group(nested_join, "attempt_phases")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        nested_join
+    )
+
+    reordered = copy.deepcopy(receipt)
+    revision_rows = reordered["groups"]["task_revisions"]["rows"]
+    assert len(revision_rows) > 1
+    revision_rows.reverse()
+    _rehash_outer_receipt_group(reordered, "task_revisions")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        reordered
+    )
+
+
+def test_outer_authority_query_profile_binds_every_secondary_unique_key() -> None:
+    profile = _fenced_provider_outer_query_profile()
+    assert profile["transport_plan"] == {
+        "attached_catalog_scan": "one_remote_table_per_sql_statement",
+        "population_bounds": {
+            "combined_task_row_bound": 50_000,
+            "combined_variable_width_source_byte_bound": 16 * 1024 * 1024,
+            "combined_parent_projection_byte_bound": 2 * 1024 * 1024,
+            "combined_parent_projection_byte_policy": (
+                "sum_of_all_parent_identity_projection_source_bytes_lte_bound"
+            ),
+        },
+    }
+    groups = {group["name"]: group for group in profile["groups"]}
+    owner_groups = {
+        group["name"]: group for group in profile["owner_groups"]
+    }
+    assert groups["tasks"]["unique_keys"] == [
+        ["task_cid"],
+        ["task_alias"],
+    ]
+    assert groups["task_outputs"]["unique_keys"] == [
+        ["task_cid", "ordinal"],
+        ["task_cid", "path"],
+    ]
+    assert groups["task_attempts"]["unique_keys"] == [
+        ["attempt_id"],
+        ["task_cid", "attempt_number"],
+    ]
+    assert groups["validation_results"]["unique_keys"] == [
+        ["result_id"],
+        ["run_id", "ordinal"],
+    ]
+    assert groups["domain_events"]["unique_keys"] == [
+        ["event_id"],
+        ["stream_id", "sequence"],
+        ["global_sequence"],
+    ]
+    assert groups["worktrees"]["unique_keys"] == [
+        ["worktree_id"],
+        ["path"],
+    ]
+    assert owner_groups["state_server_record"]["unique_keys"] == [
+        ["server_id"],
+        ["process_birth_id"],
+    ]
+    assert all(group["unique_keys"] for group in groups.values())
+    assert all(group["unique_keys"] for group in owner_groups.values())
+    assert groups["attempt_phases"]["filter"] == {
+        "kind": "closed_parent_id_single_table_scan",
+        "target_column": "attempt_id",
+        "parent_fields": [
+            {"group": "task_attempts", "column": "attempt_id"}
+        ],
+        "deduplication": "set",
+        "ordering": "utf8_lexicographic",
+        "preprojection_count_policy": (
+            "conservative_sum_of_parent_population_counts_lte_id_count_bound"
+        ),
+        "empty_predicate": "1=0",
+        "nonempty_predicate": "target_column_in_positional_parameters",
+        "id_count_bound": MAX_FENCED_PROVIDER_OUTER_DERIVED_IDS,
+        "id_byte_bound": 2 * 1024 * 1024,
+        "dynamic_sql_byte_bound": 65_536,
+    }
+    assert groups["provider_responses"]["filter"]["parent_fields"] == [
+        {"group": "provider_calls", "column": "call_id"}
+    ]
+    assert groups["worktrees"]["filter"]["parent_fields"] == [
+        {"group": "merge_queue_entries", "column": "worktree_id"},
+        {"group": "path_claims", "column": "worktree_id"},
+    ]
+    assert groups["provider_calls"]["filter"] == {
+        "kind": "direct_task_cid",
+        "predicate": "task_cid = ?",
+        "parameter_source": "subject.task_cid",
+    }
+
+
+def test_outer_authority_single_scan_filter_is_empty_deduplicated_and_bounded() -> None:
+    assert _fenced_provider_outer_population_filter(
+        group_name="attempt_phases",
+        direct_predicate="unused nested predicate",
+        task_cid="task:closed",
+        groups={"task_attempts": {"rows": []}},
+    ) == ("1=0", [])
+    assert _fenced_provider_outer_population_filter(
+        group_name="worktrees",
+        direct_predicate="unused nested predicate",
+        task_cid="task:closed",
+        groups={
+            "merge_queue_entries": {
+                "rows": [
+                    {"worktree_id": "worktree:b"},
+                    {"worktree_id": "worktree:a"},
+                ]
+            },
+            "path_claims": {
+                "rows": [
+                    {"worktree_id": "worktree:a"},
+                    {"worktree_id": "worktree:c"},
+                ]
+            },
+        },
+    ) == (
+        "worktree_id IN (?, ?, ?)",
+        ["worktree:a", "worktree:b", "worktree:c"],
+    )
+    with pytest.raises(IntentRepositoryBoundsError, match="transport bound"):
+        _fenced_provider_outer_population_filter(
+            group_name="provider_responses",
+            direct_predicate="unused nested predicate",
+            task_cid="task:closed",
+            groups={
+                "provider_calls": {
+                    "rows": [
+                        {"call_id": f"call:{index:04d}"}
+                        for index in range(
+                            MAX_FENCED_PROVIDER_OUTER_DERIVED_IDS + 1
+                        )
+                    ]
+                }
+            },
+        )
+
+
+def test_outer_authority_rejects_two_route_parent_overflow_before_projection() -> None:
+    bounded = {
+        "task_attempts": ("task_cid = ?", ["task:closed"], 0),
+        "provider_calls": ("task_cid = ?", ["task:closed"], 0),
+        "merge_queue_entries": (
+            "task_cid = ?",
+            ["task:closed"],
+            MAX_FENCED_PROVIDER_OUTER_DERIVED_IDS,
+        ),
+        "path_claims": ("task_cid = ?", ["task:closed"], 1),
+    }
+    with pytest.raises(
+        IntentRepositoryBoundsError,
+        match="pre-projection transport bound",
+    ):
+        _fenced_provider_outer_bound_parent_projection_counts(bounded)
+
+
+def test_outer_authority_two_route_overflow_never_fetches_parent_ids(
+) -> None:
+    class NoProjectionConnection:
+        calls = 0
+
+        def execute(self, *_args, **_kwargs):
+            self.calls += 1
+            raise AssertionError("parent identity SQL ran before combined bound")
+
+    connection = NoProjectionConnection()
+    bounded = {
+        "task_attempts": ("task_cid = ?", ["task:closed"], 0),
+        "provider_calls": ("task_cid = ?", ["task:closed"], 0),
+        "merge_queue_entries": (
+            "task_cid = ?",
+            ["task:closed"],
+            MAX_FENCED_PROVIDER_OUTER_DERIVED_IDS,
+        ),
+        "path_claims": ("task_cid = ?", ["task:closed"], 1),
+    }
+    with pytest.raises(
+        IntentRepositoryBoundsError,
+        match="pre-projection transport bound",
+    ):
+        _fenced_provider_outer_parent_identity_projection(
+            connection,
+            bounded,
+        )
+    assert connection.calls == 0
+
+
+def test_outer_authority_receipt_rejects_secondary_unique_collisions(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        receipt = _read_outer_receipt(repo, binding, subject)
+
+    attempt_collision = copy.deepcopy(receipt)
+    prior_attempt = attempt_collision["groups"]["task_attempts"]["rows"][0]
+    second_attempt = copy.deepcopy(prior_attempt)
+    second_attempt["attempt_id"] = prior_attempt["attempt_id"] + ":collision"
+    attempt_collision["groups"]["task_attempts"]["rows"].append(
+        second_attempt
+    )
+    _rehash_outer_receipt_group(attempt_collision, "task_attempts")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        attempt_collision
+    )
+
+    output_collision = copy.deepcopy(receipt)
+    prior_output = output_collision["groups"]["task_outputs"]["rows"][0]
+    second_output = copy.deepcopy(prior_output)
+    second_output["ordinal"] = prior_output["ordinal"] + 1
+    output_collision["groups"]["task_outputs"]["rows"].append(second_output)
+    _rehash_outer_receipt_group(output_collision, "task_outputs")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        output_collision
+    )
+
+    stream_sequence_collision = copy.deepcopy(receipt)
+    event_rows = stream_sequence_collision["groups"]["domain_events"]["rows"]
+    assert event_rows
+    prior_event = event_rows[-1]
+    second_event = copy.deepcopy(prior_event)
+    second_event["event_id"] = prior_event["event_id"] + ":collision"
+    second_event["global_sequence"] = max(
+        row["global_sequence"] for row in event_rows
+    ) + 1
+    event_rows.append(second_event)
+    _rehash_outer_receipt_group(stream_sequence_collision, "domain_events")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        stream_sequence_collision
+    )
+
+
+def test_outer_authority_receipt_rejects_rehashed_relational_splices(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        _seed_outer_receipt_relations(repo, subject)
+        receipt = _read_outer_receipt(repo, binding, subject)
+    assert fenced_provider_outer_authority_population_receipt_valid(receipt)
+
+    missing_prompt = copy.deepcopy(receipt)
+    missing_prompt["groups"]["provider_calls"]["rows"][0][
+        "prompt_instance_id"
+    ] = "prompt:foreign"
+    _rehash_outer_receipt_group(missing_prompt, "provider_calls")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        missing_prompt
+    )
+
+    missing_manifest = copy.deepcopy(receipt)
+    missing_manifest["groups"]["prompt_instances"]["rows"][0][
+        "manifest_cid"
+    ] = "manifest:foreign"
+    _rehash_outer_receipt_group(missing_manifest, "prompt_instances")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        missing_manifest
+    )
+
+    worktree_repository_drift = copy.deepcopy(receipt)
+    worktree_repository_drift["groups"]["worktrees"]["rows"][0][
+        "repository_id"
+    ] = "repository:foreign"
+    _rehash_outer_receipt_group(worktree_repository_drift, "worktrees")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        worktree_repository_drift
+    )
+
+    worktree_branch_drift = copy.deepcopy(receipt)
+    worktree_branch_drift["groups"]["worktrees"]["rows"][0][
+        "branch_name"
+    ] = "implementation/foreign"
+    _rehash_outer_receipt_group(worktree_branch_drift, "worktrees")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        worktree_branch_drift
+    )
+
+    path_repository_drift = copy.deepcopy(receipt)
+    path_repository_drift["groups"]["path_claims"]["rows"][0][
+        "repository_id"
+    ] = "repository:foreign"
+    _rehash_outer_receipt_group(path_repository_drift, "path_claims")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        path_repository_drift
+    )
+
+    missing_claim = copy.deepcopy(receipt)
+    missing_claim["groups"]["lease_events"]["rows"][0]["claim_cid"] = (
+        "claim:foreign"
+    )
+    _rehash_outer_receipt_group(missing_claim, "lease_events")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        missing_claim
+    )
+
+    merge_worktree_drift = copy.deepcopy(receipt)
+    merge_worktree_drift["groups"]["merge_attempts"]["rows"][0][
+        "worktree_id"
+    ] = "worktree:foreign"
+    _rehash_outer_receipt_group(merge_worktree_drift, "merge_attempts")
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        merge_worktree_drift
+    )
+
+    completion_goal_drift = copy.deepcopy(receipt)
+    completion_goal_drift["groups"]["completion_receipts"]["rows"].append(
+        {
+            "receipt_cid": "receipt:foreign-goal",
+            "task_cid": receipt["subject"]["task_cid"],
+            "goal_cid": "goal:foreign",
+            "attempt_id": receipt["subject"]["attempt_id"],
+            "claim_cid": receipt["subject"]["claim_id"],
+            "fencing_token": receipt["subject"]["fencing_token"],
+            "completed_at": "2026-09-02T00:11:00Z",
+            "validation_run_id": "",
+            "evidence_digest": "sha256:foreign",
+            "body_json": {
+                "canonical_sha256": _fenced_provider_outer_sha256({}),
+                "canonical_byte_length": 2,
+            },
+        }
+    )
+    _rehash_outer_receipt_group(
+        completion_goal_drift,
+        "completion_receipts",
+    )
+    assert not _fenced_provider_outer_groups_semantically_valid(
+        completion_goal_drift["groups"],
+        completion_goal_drift["subject"],
+    )
+    assert not fenced_provider_outer_authority_population_receipt_valid(
+        completion_goal_drift
+    )
+
+
+def test_outer_authority_receipt_closes_provider_and_publication_populations(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        before = _read_outer_receipt(repo, binding, subject)
+        with repo._connection(write=True) as connection:
+            connection.execute(
+                """
+                INSERT INTO provider_calls (
+                    call_id, task_cid, attempt_id, provider_id,
+                    prompt_instance_id, started_at, finished_at, status,
+                    input_digest, output_digest, tokens_in, tokens_out, body_json
+                ) VALUES (?, ?, ?, 'provider:test', '', ?, NULL, 'started',
+                          'sha256:input', '', 0, 0, '{}')
+                """,
+                [
+                    "call:alternate-key", subject["task_cid"],
+                    subject["attempt_id"], "2026-09-02T00:03:00Z",
+                ],
+            )
+            connection.execute(
+                """
+                INSERT INTO provider_responses (
+                    response_id, call_id, received_at, status,
+                    output_digest, body_json
+                ) VALUES ('response:alternate-key', 'call:alternate-key', ?,
+                          'unknown', '', '{}')
+                """,
+                ["2026-09-02T00:04:00Z"],
+            )
+        after = _read_outer_receipt(repo, binding, subject)
+        assert after["receipt_cid"] != before["receipt_cid"]
+        assert after["groups"]["provider_calls"]["count"] == 1
+        assert after["groups"]["provider_responses"]["count"] == 1
+        assert fenced_provider_outer_authority_population_receipt_valid(after)
+
+        with repo._connection(write=True) as connection:
+            connection.execute(
+                """
+                INSERT INTO completion_receipts (
+                    receipt_cid, task_cid, goal_cid, attempt_id, claim_cid,
+                    fencing_token, completed_at, validation_run_id,
+                    evidence_digest, body_json
+                ) VALUES ('receipt:accepted', ?, 'goal:cid:root', ?, ?, ?, ?, '',
+                          'sha256:evidence', '{}')
+                """,
+                [
+                    subject["task_cid"], subject["attempt_id"],
+                    subject["claim_id"], subject["fencing_token"],
+                    "2026-09-02T00:05:00Z",
+                ],
+            )
+        with pytest.raises(Exception, match="already has admitted"):
+            _read_outer_receipt(repo, binding, subject)
+
+
+def test_outer_authority_single_scan_includes_all_closed_child_routes(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        _seed_outer_receipt_relations(repo, subject)
+        with repo._connection(write=True) as connection:
+            connection.execute(
+                """
+                INSERT INTO attempt_phases (
+                    attempt_id, phase_name, entered_at, exited_at, status
+                ) VALUES (?, 'provider', ?, NULL, 'started')
+                """,
+                [subject["attempt_id"], "2026-09-02T00:02:00Z"],
+            )
+            connection.execute(
+                """
+                INSERT INTO provider_responses (
+                    response_id, call_id, received_at, status,
+                    output_digest, body_json
+                ) VALUES ('response:outer', 'call:outer', ?, 'unknown', '', '{}')
+                """,
+                ["2026-09-02T00:05:30Z"],
+            )
+            for worktree_id, path, branch_name in (
+                (
+                    "worktree:path-only",
+                    "/sealed/path-only",
+                    "implementation/path-only",
+                ),
+                (
+                    "worktree:merge-only",
+                    "/sealed/merge-only",
+                    "implementation/merge-only",
+                ),
+            ):
+                connection.execute(
+                    """
+                    INSERT INTO worktrees (
+                        worktree_id, repository_id, path, head_commit_id,
+                        branch_name, owner_session_id, status, created_at,
+                        updated_at, revision, fence_epoch,
+                        extension_schema, extension_json
+                    ) VALUES (?, 'repository:outer', ?, 'commit:outer', ?, ?,
+                              'retained', ?, ?, 1, ?, '', '{}')
+                    """,
+                    [
+                        worktree_id,
+                        path,
+                        branch_name,
+                        subject["owner_session_id"],
+                        "2026-09-02T00:11:00Z",
+                        "2026-09-02T00:11:00Z",
+                        subject["fence_epoch"],
+                    ],
+                )
+            connection.execute(
+                """
+                INSERT INTO path_claims (
+                    claim_id, repository_id, worktree_id, path,
+                    owner_session_id, task_cid, fencing_token, fence_epoch,
+                    acquired_at, expires_at, state, revision
+                ) VALUES ('path-claim:path-only', 'repository:outer',
+                          'worktree:path-only', 'src/path-only.py', ?, ?, ?, ?,
+                          ?, ?, 'released', 1)
+                """,
+                [
+                    subject["owner_session_id"],
+                    subject["task_cid"],
+                    subject["fencing_token"],
+                    subject["fence_epoch"],
+                    "2026-09-02T00:12:00Z",
+                    "2026-09-02T00:13:00Z",
+                ],
+            )
+            connection.execute(
+                """
+                INSERT INTO merge_queue_entries (
+                    entry_id, repository_id, worktree_id, task_cid,
+                    source_branch, target_branch, status, ordinal,
+                    enqueued_at, updated_at, revision, fence_epoch
+                ) VALUES ('entry:merge-only', 'repository:outer',
+                          'worktree:merge-only', ?, 'implementation/merge-only',
+                          'main', 'pending', 2, ?, ?, 1, ?)
+                """,
+                [
+                    subject["task_cid"],
+                    "2026-09-02T00:14:00Z",
+                    "2026-09-02T00:14:00Z",
+                    subject["fence_epoch"],
+                ],
+            )
+        receipt = _read_outer_receipt(repo, binding, subject)
+
+    assert fenced_provider_outer_authority_population_receipt_valid(receipt)
+    assert receipt["groups"]["attempt_phases"]["count"] == 1
+    assert receipt["groups"]["provider_responses"]["count"] == 1
+    assert {
+        row["worktree_id"]
+        for row in receipt["groups"]["worktrees"]["rows"]
+    } == {
+        "worktree:outer",
+        "worktree:path-only",
+        "worktree:merge-only",
+    }
+
+
+def test_outer_authority_receipt_rejects_binding_and_schema_drift(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        wrong_generation = dict(binding)
+        wrong_generation["generation"] = 8
+        with pytest.raises(Exception, match="generation"):
+            _read_outer_receipt(repo, wrong_generation, subject)
+
+        with repo._connection(write=True) as connection:
+            connection.execute("ALTER TABLE provider_calls ADD COLUMN surprise VARCHAR")
+        with pytest.raises(Exception, match="closed profile"):
+            _read_outer_receipt(repo, binding, subject)
+
+
+@pytest.mark.parametrize(
+    "statements",
+    (
+        ("DROP INDEX task_attempts_task_number_uidx",),
+        (
+            "CREATE UNIQUE INDEX task_attempts_owner_uidx "
+            "ON task_attempts(owner_session_id)",
+        ),
+        (
+            "DROP INDEX task_attempts_task_number_uidx",
+            "CREATE UNIQUE INDEX task_attempts_changed_uidx "
+            "ON task_attempts(task_cid, owner_session_id)",
+        ),
+        (
+            "DROP INDEX task_attempts_task_number_uidx",
+            "CREATE SCHEMA alternate",
+            "CREATE TABLE alternate.task_attempts ("
+            "task_cid VARCHAR, attempt_number BIGINT)",
+            "CREATE UNIQUE INDEX task_attempts_compensation_uidx "
+            "ON alternate.task_attempts(task_cid, attempt_number)",
+        ),
+    ),
+)
+def test_outer_authority_receipt_rejects_unique_constraint_profile_drift(
+    tmp_path: Path,
+    statements: tuple[str, ...],
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        with repo._connection(write=True) as connection:
+            for statement in statements:
+                connection.execute(statement)
+        with pytest.raises(IntentRepositoryIntegrityError, match="uniqueness"):
+            _read_outer_receipt(repo, binding, subject)
+
+
+def test_outer_authority_receipt_rejects_expression_unique_index(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        with repo._connection(write=True) as connection:
+            connection.execute(
+                "CREATE UNIQUE INDEX task_attempts_expression_uidx "
+                "ON task_attempts(lower(owner_session_id))"
+            )
+        with pytest.raises(IntentRepositoryIntegrityError, match="expression"):
+            _read_outer_receipt(repo, binding, subject)
+
+
+def test_outer_authority_receipt_bounds_rows_before_projection() -> None:
+    with pytest.raises(IntentRepositoryBoundsError, match="exceeds"):
+        _fenced_provider_outer_group(
+            group_name="bounded-test",
+            table="tasks",
+            columns=("task_cid",),
+            json_columns=frozenset(),
+            bigint_columns=frozenset(),
+            rows=[("task:bounded",)]
+            * (MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS + 1),
+        )
+
+
+def test_outer_authority_receipt_rejects_oversized_json_before_decode(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        oversized_json = '"' + ("x" * 262_144) + '"'
+        with repo._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET body_json = ? WHERE task_cid = ?",
+                [oversized_json, subject["task_cid"]],
+            )
+        with pytest.raises(IntentRepositoryBoundsError, match="byte bound"):
+            _read_outer_receipt(repo, binding, subject)
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "task_revision",
+        "fencing_token",
+        "fence_epoch",
+        "expected_store_generation",
+        "receipt_epoch",
+    ),
+)
+def test_outer_authority_receipt_rejects_bigint_overflow_before_scan(
+    field: str,
+) -> None:
+    class NoScanConnection:
+        calls = 0
+
+        def execute(self, *_args, **_kwargs):
+            self.calls += 1
+            raise AssertionError("database scan occurred before input bounds")
+
+    connection = NoScanConnection()
+    repository = _PinnedReadIntentRepository(connection)
+    subject = {
+        "task_cid": "task:outer-bounds",
+        "task_alias": "PCTDD-OUTER-BOUNDS",
+        "task_revision": 1,
+        "expected_task_status": "blocked",
+        "attempt_id": "attempt:outer-bounds",
+        "claim_id": "claim:outer-bounds",
+        "lease_id": "lease:outer-bounds",
+        "owner_session_id": "owner:outer-bounds",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "expected_store_id": "store:outer-bounds",
+        "expected_store_generation": 1,
+        "receipt_nonce": "nonce:outer-bounds",
+        "receipt_epoch": 1,
+        "controller_replica_observation": {},
+        "controller_mutation_barrier": {},
+    }
+    subject[field] = 2**63
+    with pytest.raises(IntentRepositoryBoundsError, match="signed BIGINT"):
+        repository.fenced_provider_outer_authority_population_receipt(
+            **subject
+        )
+    assert connection.calls == 0
+
+
+@pytest.mark.parametrize(
+    ("entry_status", "attempt_status"),
+    (("accepted", "running"), ("settled", "running"), ("pending", "accepted")),
+)
+def test_outer_authority_receipt_rejects_authoritative_merge_publication_states(
+    tmp_path: Path,
+    entry_status: str,
+    attempt_status: str,
+) -> None:
+    with _repo(tmp_path) as repo:
+        binding, subject = _seed_outer_receipt_authority(repo)
+        with repo._connection(write=True) as connection:
+            connection.execute(
+                """
+                INSERT INTO merge_queue_entries (
+                    entry_id, repository_id, worktree_id, task_cid,
+                    source_branch, target_branch, status, ordinal,
+                    enqueued_at, updated_at, revision, fence_epoch
+                ) VALUES ('entry:outer', 'repo:outer', 'worktree:outer', ?,
+                          'implementation/outer', 'main', ?, 1, ?, ?, 1, 1)
+                """,
+                [
+                    subject["task_cid"], entry_status,
+                    "2026-09-02T00:03:00Z", "2026-09-02T00:03:00Z",
+                ],
+            )
+            connection.execute(
+                """
+                INSERT INTO merge_attempts (
+                    merge_attempt_id, entry_id, task_cid, worktree_id,
+                    started_at, finished_at, status, result_commit_id, body_json
+                ) VALUES ('merge-attempt:outer', 'entry:outer', ?,
+                          'worktree:outer', ?, NULL, ?, '', '{}')
+                """,
+                [
+                    subject["task_cid"], "2026-09-02T00:03:00Z",
+                    attempt_status,
+                ],
+            )
+        with pytest.raises(Exception, match="already has admitted"):
+            _read_outer_receipt(repo, binding, subject)
 
 
 # ---------------------------------------------------------------------------

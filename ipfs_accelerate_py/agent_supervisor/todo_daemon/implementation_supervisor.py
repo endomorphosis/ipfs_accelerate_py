@@ -21,6 +21,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
 from ...llm_router import (
@@ -248,6 +249,19 @@ class _PinnedReadIntentRepository(IntentRepository):
         if write:
             raise RuntimeError("pinned intent repository is read-only")
         yield self._connection_value
+
+    def fenced_provider_outer_authority_population_receipt(
+        self,
+        **subject: Any,
+    ) -> Mapping[str, Any]:
+        """Capture through the caller-owned authenticated read transaction."""
+
+        return MappingProxyType(
+            self._fenced_provider_outer_authority_population_receipt_on_connection(
+                self._connection_value,
+                **subject,
+            )
+        )
 
 def _read_control_plane_source_snapshot() -> dict[str, Any]:
     """Return the current accelerator control-plane tree and file identity."""
@@ -15341,6 +15355,212 @@ class PortalImplementationSupervisor:
                     connection.close()
                 except Exception:
                     pass
+
+    def _database_portal_fenced_provider_outer_authority_receipt_fenced(
+        self,
+        program: DatabaseProgramConfig,
+        **subject: Any,
+    ) -> Mapping[str, Any]:
+        """Read one ephemeral replica observation under the controller fence."""
+
+        from ..task_sources.database_task_source import DatabaseTaskSource
+        from ..task_sources.duckdb_state import (
+            _resolve_quack_token_handle,
+            open_quack_transport_connection,
+        )
+        from ..task_sources.intent_repository import (
+            _fenced_provider_outer_replica_observation_valid,
+            fenced_provider_outer_authority_population_receipt_valid,
+        )
+
+        if str(subject.get("expected_store_id") or "") != program.store_id:
+            raise RuntimeError(
+                "outer authority receipt store differs from the sealed program"
+            )
+        connection: Any | None = None
+        transaction_started = False
+        secret, raw_owner_before = _resolve_quack_token_handle(
+            uri=program.quack_endpoint
+        )
+        replica_before = (
+            raw_owner_before.get("read_replica")
+            if isinstance(raw_owner_before, Mapping)
+            else None
+        )
+        if not _fenced_provider_outer_replica_observation_valid(replica_before):
+            raise RuntimeError(
+                "Quack outer observation lacks its exact live read replica"
+            )
+        mutation_barrier_before = self._database_portal_mutation_inbox_barrier(
+            program.store_id
+        )
+        owner_before = self._normalized_quack_owner_binding(raw_owner_before)
+        try:
+            connection = open_quack_transport_connection(
+                program.quack_endpoint,
+                token=secret,
+            )
+            connection_before = self._normalized_quack_owner_binding(
+                getattr(connection, "_quack_mutation_binding", None)
+            )
+            if owner_before != connection_before:
+                raise RuntimeError(
+                    "Quack receipt connection differs from published owner"
+                )
+            connection.execute("BEGIN TRANSACTION")
+            transaction_started = True
+            task_source = DatabaseTaskSource(
+                intent=_PinnedReadIntentRepository(connection),
+                owner_id="database-portal-outer-authority-receipt",
+            )
+            receipt = dict(
+                task_source.fenced_provider_outer_authority_population_receipt(
+                    controller_replica_observation=dict(replica_before),
+                    controller_mutation_barrier=mutation_barrier_before,
+                    **subject
+                )
+            )
+            connection.execute("COMMIT")
+            transaction_started = False
+            connection_after = self._normalized_quack_owner_binding(
+                getattr(connection, "_quack_mutation_binding", None)
+            )
+            _ignored_secret, raw_owner_after = _resolve_quack_token_handle(
+                uri=program.quack_endpoint
+            )
+            owner_after = self._normalized_quack_owner_binding(raw_owner_after)
+            mutation_barrier_after = self._database_portal_mutation_inbox_barrier(
+                program.store_id
+            )
+            if not (
+                dict(raw_owner_before) == dict(raw_owner_after)
+                and mutation_barrier_before == mutation_barrier_after
+                and owner_before
+                == connection_before
+                == connection_after
+                == owner_after
+                == receipt.get("authority", {}).get("owner_binding")
+                and dict(replica_before)
+                == receipt.get("authority", {}).get(
+                    "read_replica_observation"
+                )
+                and dict(mutation_barrier_before)
+                == receipt.get("authority", {}).get("mutation_barrier")
+            ):
+                raise RuntimeError(
+                    "Quack owner generation changed during outer receipt read"
+                )
+            if not fenced_provider_outer_authority_population_receipt_valid(
+                receipt
+            ):
+                raise RuntimeError(
+                    "Quack outer authority receipt failed closed validation"
+                )
+            return MappingProxyType(receipt)
+        finally:
+            if connection is not None:
+                if transaction_started:
+                    try:
+                        connection.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _database_portal_mutation_inbox_barrier(
+        store_id: str,
+    ) -> Mapping[str, Any]:
+        """Prove no compliant Quack mutation can trail the replica read.
+
+        Clients retain the store's write-transaction lock while publishing and
+        settling a request.  A client can release it after an unknown outcome,
+        however, while the owner still holds a ``processing`` request.  The
+        controller therefore requires the closed inbox population to contain
+        neither request nor processing entries before and after its read.
+        """
+
+        from ..runtime.quack_state_server import MUTATION_MAX_DIRECTORY_ENTRIES
+        from ..task_sources.duckdb_state import quack_owner_mutation_dir
+
+        inbox = quack_owner_mutation_dir(store_id)
+        if inbox is None or inbox.is_symlink() or not inbox.is_dir():
+            raise RuntimeError("Quack mutation inbox is unavailable or unsafe")
+        metadata = inbox.stat()
+        if (
+            metadata.st_uid != os.getuid()
+            or not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_mode & 0o077
+        ):
+            raise RuntimeError("Quack mutation inbox ownership is not exact")
+        allowed_name = re.compile(
+            r"^b[a-z2-7]{40,127}\.(request|processing|done|cancelled)\.json$"
+        )
+        active: list[str] = []
+        entries: list[os.DirEntry[str]] = []
+        try:
+            with os.scandir(inbox) as iterator:
+                for entry in iterator:
+                    entries.append(entry)
+                    if len(entries) > MUTATION_MAX_DIRECTORY_ENTRIES:
+                        raise RuntimeError(
+                            "Quack mutation inbox population exceeds its bound"
+                        )
+        except OSError as exc:
+            raise RuntimeError("Quack mutation inbox cannot be observed") from exc
+        for entry in entries:
+            match = allowed_name.fullmatch(entry.name)
+            try:
+                entry_metadata = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise RuntimeError(
+                    "Quack mutation inbox changed during its barrier"
+                ) from exc
+            if (
+                match is None
+                or stat.S_ISLNK(entry_metadata.st_mode)
+                or not stat.S_ISREG(entry_metadata.st_mode)
+                or entry_metadata.st_uid != os.getuid()
+            ):
+                raise RuntimeError("Quack mutation inbox entry is not admitted")
+            if match.group(1) in {"request", "processing"}:
+                active.append(entry.name)
+        active.sort()
+        if active:
+            raise RuntimeError(
+                "Quack mutation inbox has an unsettled owner mutation"
+            )
+        return MappingProxyType(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "fenced-provider-outer-mutation-barrier@1"
+                ),
+                "store_id": str(store_id),
+                "active_request_count": 0,
+                "active_processing_count": 0,
+                "active_population_digest": (
+                    "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba8"
+                    "73c2f11161202b945"
+                ),
+            }
+        )
+
+    def _database_portal_fenced_provider_outer_authority_receipt(
+        self,
+        **subject: Any,
+    ) -> Mapping[str, Any]:
+        """Expose a synchronous typed observation without requiring a board run."""
+
+        if not self._database_portal_is_configured():
+            raise RuntimeError("Quack database portal is not configured")
+        with self._database_portal_reload_mutation_fence() as program:
+            return self._database_portal_fenced_provider_outer_authority_receipt_fenced(
+                program,
+                **subject,
+            )
 
     def _database_portal_reload_projection(self) -> dict[str, Any]:
         """Project reload safety from one authenticated Quack generation."""

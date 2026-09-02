@@ -24,6 +24,7 @@ provider, or process action.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -89,6 +90,42 @@ COMPLETION_EVIDENCE_SCHEMA: Final[str] = (
 PLAN_HEAD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/intent-plan-head@1"
 )
+FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-provider-outer-authority-population-receipt@1"
+)
+FENCED_PROVIDER_OUTER_AUTHORITY_QUERY_PROFILE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-provider-outer-authority-population-query@1"
+)
+FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_GROUP_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-provider-outer-authority-population-group@1"
+)
+FENCED_PROVIDER_OUTER_CROSS_STORE_CONTEXT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-provider-outer-cross-store-context@1"
+)
+FENCED_PROVIDER_OUTER_MUTATION_BARRIER_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "fenced-provider-outer-mutation-barrier@1"
+)
+FENCED_PROVIDER_OUTER_AUTHORITY_CLAIM_BOUNDARY: Final[str] = (
+    "controller_observation_of_exact_named_query_profile_populations_from_an_"
+    "authenticated_quack_replica_and_no_quack_admitted_publication_record"
+)
+FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS: Final[tuple[str, ...]] = (
+    "provider_may_have_run",
+    "external_effects_may_have_occurred",
+    "rescue_content_correctness_or_suitability_is_not_established",
+    "git_refs_worktree_bytes_and_artifact_payloads_require_separate_authority",
+    "transport_idempotency_records_are_not_task_addressable_and_are_not_covered",
+    "non_task_addressable_prompt_template_context_member_and_input_populations_are_not_covered",
+    "external_dependency_daemon_resource_and_blocker_targets_are_not_covered",
+    "coordination_lease_context_requires_current_inner_receipt_equality",
+    "self_hash_is_integrity_not_quack_owner_authentication",
+    "standalone_or_replayed_receipt_is_not_admission_authority",
+)
 
 INTENT_STREAM_ID: Final[str] = "stream:intent"
 DEFAULT_OWNER_ID: Final[str] = "intent-repository:local"
@@ -105,6 +142,15 @@ MAX_OUTPUTS: Final[int] = 256
 MAX_DEPENDENCIES: Final[int] = 1_024
 MAX_EVIDENCE: Final[int] = 4_096
 DEFAULT_EVIDENCE_FRESHNESS_SECONDS: Final[int] = 3_600
+MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS: Final[int] = 50_000
+MAX_FENCED_PROVIDER_OUTER_RECEIPT_BYTES: Final[int] = 16 * 1024 * 1024
+MAX_FENCED_PROVIDER_OUTER_SCHEMA_ROWS: Final[int] = 64
+MAX_FENCED_PROVIDER_OUTER_SCHEMA_SQL_BYTES: Final[int] = 262_144
+MAX_FENCED_PROVIDER_OUTER_DERIVED_IDS: Final[int] = 4_096
+MAX_FENCED_PROVIDER_OUTER_DERIVED_ID_BYTES: Final[int] = 2 * 1024 * 1024
+MAX_FENCED_PROVIDER_OUTER_DYNAMIC_SQL_BYTES: Final[int] = 65_536
+_FENCED_PROVIDER_OUTER_BIGINT_MIN: Final[int] = -(2**63)
+_FENCED_PROVIDER_OUTER_BIGINT_MAX: Final[int] = 2**63 - 1
 
 # ``argv_json`` predates shell-text validation declarations.  Keep the
 # physical column for schema compatibility, but type its logical meaning in
@@ -410,6 +456,2292 @@ def _positive_int(value: Any, *, noun: str) -> int:
     return value
 
 
+def _fenced_provider_outer_nonneg_int(value: Any, *, noun: str) -> int:
+    result = _nonneg_int(value, noun=noun)
+    if result > _FENCED_PROVIDER_OUTER_BIGINT_MAX:
+        raise IntentRepositoryBoundsError(f"{noun} exceeds signed BIGINT")
+    return result
+
+
+def _fenced_provider_outer_positive_int(value: Any, *, noun: str) -> int:
+    result = _positive_int(value, noun=noun)
+    if result > _FENCED_PROVIDER_OUTER_BIGINT_MAX:
+        raise IntentRepositoryBoundsError(f"{noun} exceeds signed BIGINT")
+    return result
+
+
+# The recovery population profile is intentionally closed.  It selects every
+# row owned by the control-plane store that can describe one task's claims,
+# provider/effect activity, validation, completion, or merge publication.  A
+# schema revision that adds or removes a physical column is unavailable until
+# this profile is reviewed and versioned; it is never silently projected away.
+_FENCED_PROVIDER_OUTER_GROUP_SPECS: Final[
+    tuple[
+        tuple[
+            str,
+            str,
+            tuple[str, ...],
+            str,
+            str,
+            tuple[str, ...],
+            tuple[str, ...],
+        ],
+        ...,
+    ]
+] = (
+    (
+        "tasks",
+        "tasks",
+        (
+            "task_cid", "task_alias", "goal_cid", "plan_cid",
+            "objective_id", "ordinal", "status", "revision", "priority",
+            "created_at", "updated_at", "identity_json", "body_json",
+            "extension_schema", "extension_json",
+        ),
+        "task_cid = ?",
+        "task_cid",
+        ("identity_json", "body_json", "extension_json"),
+        ("ordinal", "revision"),
+    ),
+    (
+        "task_revisions", "task_revisions",
+        ("task_cid", "revision", "status", "body_json", "recorded_at"),
+        "task_cid = ?", "revision", ("body_json",), ("revision",),
+    ),
+    (
+        "task_dependencies", "task_dependencies",
+        ("task_cid", "dependency_task_cid", "kind"),
+        "task_cid = ?", "dependency_task_cid, kind", (), (),
+    ),
+    (
+        "task_outputs", "task_outputs",
+        ("task_cid", "ordinal", "path", "effect_json"),
+        "task_cid = ?", "ordinal", ("effect_json",), ("ordinal",),
+    ),
+    (
+        "task_acceptance", "task_acceptance",
+        ("task_cid", "ordinal", "criterion", "evidence_policy_json"),
+        "task_cid = ?", "ordinal", ("evidence_policy_json",), ("ordinal",),
+    ),
+    (
+        "task_validations", "task_validations",
+        ("task_cid", "ordinal", "argv_json", "policy_json"),
+        "task_cid = ?", "ordinal", ("argv_json", "policy_json"),
+        ("ordinal",),
+    ),
+    (
+        "task_assignments", "task_assignments",
+        (
+            "assignment_id", "task_cid", "owner_session_id", "daemon_id",
+            "assigned_at", "released_at", "state", "revision",
+            "fencing_token",
+        ),
+        "task_cid = ?", "assignment_id", (), ("revision", "fencing_token"),
+    ),
+    (
+        "task_blocks", "task_blocks",
+        (
+            "block_id", "task_cid", "blocker_kind", "blocker_id", "reason",
+            "created_at", "cleared_at", "state",
+        ),
+        "task_cid = ?", "block_id", (), (),
+    ),
+    (
+        "leases", "leases",
+        (
+            "task_cid", "claim_cid", "resolution_cid", "claimant_did",
+            "logical_epoch", "fencing_token", "expires_at_ms", "attempt",
+            "state", "started_at_ms", "release_reason",
+            "retry_not_before_ms", "owner_session_id", "fence_epoch",
+            "revision", "extension_schema", "extension_json",
+        ),
+        "task_cid = ?", "task_cid", ("extension_json",),
+        (
+            "logical_epoch", "fencing_token", "expires_at_ms", "attempt",
+            "started_at_ms", "retry_not_before_ms", "fence_epoch", "revision",
+        ),
+    ),
+    (
+        "lease_events", "lease_events",
+        (
+            "event_id", "task_cid", "claim_cid", "event_type",
+            "fencing_token", "observed_at_ms", "body_json",
+        ),
+        "task_cid = ?", "observed_at_ms, event_id", ("body_json",),
+        ("fencing_token", "observed_at_ms"),
+    ),
+    (
+        "token_history", "token_history",
+        ("task_cid", "fencing_token", "recorded_at_ms"),
+        "task_cid = ?", "fencing_token", (),
+        ("fencing_token", "recorded_at_ms"),
+    ),
+    (
+        "task_attempts", "task_attempts",
+        (
+            "attempt_id", "task_cid", "attempt_number", "owner_session_id",
+            "fencing_token", "fence_epoch", "started_at", "finished_at",
+            "status", "revision",
+        ),
+        "task_cid = ?", "attempt_number, attempt_id", (),
+        ("attempt_number", "fencing_token", "fence_epoch", "revision"),
+    ),
+    (
+        "attempt_phases", "attempt_phases",
+        ("attempt_id", "phase_name", "entered_at", "exited_at", "status"),
+        "attempt_id IN (SELECT attempt_id FROM task_attempts WHERE task_cid = ?)",
+        "attempt_id, entered_at, phase_name", (), (),
+    ),
+    (
+        "task_claims", "task_claims",
+        (
+            "claim_id", "task_cid", "owner_session_id", "fencing_token",
+            "fence_epoch", "claimed_at", "expires_at", "released_at", "state",
+            "revision", "idempotency_key",
+        ),
+        "task_cid = ?", "claimed_at, claim_id", (),
+        ("fencing_token", "fence_epoch", "revision"),
+    ),
+    (
+        "provider_invocations", "provider_invocations",
+        (
+            "invocation_id", "task_cid", "attempt_id", "provider_id",
+            "started_at", "finished_at", "status", "input_digest",
+            "output_digest", "body_json",
+        ),
+        "task_cid = ?", "started_at, invocation_id", ("body_json",), (),
+    ),
+    (
+        "provider_calls", "provider_calls",
+        (
+            "call_id", "task_cid", "attempt_id", "provider_id",
+            "prompt_instance_id", "started_at", "finished_at", "status",
+            "input_digest", "output_digest", "tokens_in", "tokens_out",
+            "body_json",
+        ),
+        "task_cid = ?", "started_at, call_id", ("body_json",),
+        ("tokens_in", "tokens_out"),
+    ),
+    (
+        "provider_responses", "provider_responses",
+        (
+            "response_id", "call_id", "received_at", "status",
+            "output_digest", "body_json",
+        ),
+        "call_id IN (SELECT call_id FROM provider_calls WHERE task_cid = ?)",
+        "received_at, response_id", ("body_json",), (),
+    ),
+    (
+        "effect_claims", "effect_claims",
+        (
+            "effect_id", "task_cid", "attempt_id", "effect_kind",
+            "target_path", "claimed_at", "state", "body_json",
+        ),
+        "task_cid = ?", "claimed_at, effect_id", ("body_json",), (),
+    ),
+    (
+        "validation_runs", "validation_runs",
+        (
+            "run_id", "task_cid", "attempt_id", "started_at", "finished_at",
+            "status", "command_digest", "body_json",
+        ),
+        "task_cid = ?", "started_at, run_id", ("body_json",), (),
+    ),
+    (
+        "validation_results", "validation_results",
+        (
+            "result_id", "run_id", "task_cid", "ordinal", "outcome",
+            "evidence_digest", "body_json",
+        ),
+        "task_cid = ?", "run_id, ordinal, result_id", ("body_json",),
+        ("ordinal",),
+    ),
+    (
+        "completion_receipts", "completion_receipts",
+        (
+            "receipt_cid", "task_cid", "goal_cid", "attempt_id", "claim_cid",
+            "fencing_token", "completed_at", "validation_run_id",
+            "evidence_digest", "body_json",
+        ),
+        "task_cid = ?", "completed_at, receipt_cid", ("body_json",),
+        ("fencing_token",),
+    ),
+    (
+        "merge_queue_entries", "merge_queue_entries",
+        (
+            "entry_id", "repository_id", "worktree_id", "task_cid",
+            "source_branch", "target_branch", "status", "ordinal",
+            "enqueued_at", "updated_at", "revision", "fence_epoch",
+        ),
+        "task_cid = ?", "ordinal, entry_id", (),
+        ("ordinal", "revision", "fence_epoch"),
+    ),
+    (
+        "merge_attempts", "merge_attempts",
+        (
+            "merge_attempt_id", "entry_id", "task_cid", "worktree_id",
+            "started_at", "finished_at", "status", "result_commit_id",
+            "body_json",
+        ),
+        "task_cid = ?", "started_at, merge_attempt_id", ("body_json",), (),
+    ),
+    (
+        "resource_claims", "resource_claims",
+        (
+            "claim_id", "resource_kind", "resource_id", "owner_session_id",
+            "task_cid", "fencing_token", "fence_epoch", "acquired_at",
+            "expires_at", "state", "revision",
+        ),
+        "task_cid = ?", "claim_id", (),
+        ("fencing_token", "fence_epoch", "revision"),
+    ),
+    (
+        "path_claims", "path_claims",
+        (
+            "claim_id", "repository_id", "worktree_id", "path",
+            "owner_session_id", "task_cid", "fencing_token", "fence_epoch",
+            "acquired_at", "expires_at", "state", "revision",
+        ),
+        "task_cid = ?", "claim_id", (),
+        ("fencing_token", "fence_epoch", "revision"),
+    ),
+    (
+        "recovery_actions", "recovery_actions",
+        (
+            "action_id", "subject_kind", "subject_id", "task_cid",
+            "action_kind", "decided_at", "status", "body_json",
+        ),
+        "task_cid = ?", "decided_at, action_id", ("body_json",), (),
+    ),
+    (
+        "domain_events", "domain_events",
+        (
+            "event_id", "stream_id", "sequence", "global_sequence",
+            "event_type", "task_cid", "attempt_id", "session_id",
+            "recorded_at", "body_json",
+        ),
+        "task_cid = ?", "global_sequence, event_id", ("body_json",),
+        ("sequence", "global_sequence"),
+    ),
+    (
+        "evidence_nodes", "evidence_nodes",
+        (
+            "evidence_id", "parent_evidence_id", "task_cid", "evidence_kind",
+            "digest", "created_at", "body_json",
+        ),
+        "task_cid = ?", "created_at, evidence_id", ("body_json",), (),
+    ),
+    (
+        "context_manifests", "context_manifests",
+        (
+            "manifest_cid", "task_cid", "schema_revision",
+            "repository_tree_id", "policy_digest", "created_at", "body_json",
+        ),
+        "task_cid = ?", "created_at, manifest_cid", ("body_json",),
+        ("schema_revision",),
+    ),
+    (
+        "prompt_instances", "prompt_instances",
+        (
+            "instance_id", "template_id", "task_cid", "manifest_cid",
+            "created_at", "input_digest", "body_json",
+        ),
+        "task_cid = ?", "created_at, instance_id", ("body_json",), (),
+    ),
+    (
+        "worktrees", "worktrees",
+        (
+            "worktree_id", "repository_id", "path", "head_commit_id",
+            "branch_name", "owner_session_id", "status", "created_at",
+            "updated_at", "revision", "fence_epoch", "extension_schema",
+            "extension_json",
+        ),
+        (
+            "worktree_id IN (SELECT worktree_id FROM merge_queue_entries "
+            "WHERE task_cid = ? UNION SELECT worktree_id FROM path_claims "
+            "WHERE task_cid = ?)"
+        ),
+        "worktree_id", ("extension_json",), ("revision", "fence_epoch"),
+    ),
+)
+
+_FENCED_PROVIDER_OUTER_OWNER_BINDING_FIELDS: Final[tuple[str, ...]] = (
+    "server_id",
+    "store_id",
+    "database_uuid",
+    "schema_revision",
+    "schema_fingerprint",
+    "generation",
+    "process_birth_id",
+    "listen_uri",
+    "extension_fingerprint",
+)
+
+# Quack exposes the accepted read replica as one attached streaming catalog.
+# A subquery that scans that catalog twice is not a supported transport plan.
+# Materialize the complete direct parent groups first, then use their closed,
+# bounded identifiers in a single-table child scan within the same snapshot.
+_FENCED_PROVIDER_OUTER_DERIVED_FILTERS: Final[
+    Mapping[str, tuple[str, tuple[tuple[str, str], ...]]]
+] = MappingProxyType(
+    {
+        "attempt_phases": (
+            "attempt_id",
+            (("task_attempts", "attempt_id"),),
+        ),
+        "provider_responses": (
+            "call_id",
+            (("provider_calls", "call_id"),),
+        ),
+        "worktrees": (
+            "worktree_id",
+            (
+                ("merge_queue_entries", "worktree_id"),
+                ("path_claims", "worktree_id"),
+            ),
+        ),
+    }
+)
+_FENCED_PROVIDER_OUTER_PUBLICATION_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "accepted",
+        "settled",
+        "completed",
+        "merged",
+        "already_merged",
+        "deduplicated",
+    }
+)
+_FENCED_PROVIDER_OUTER_OWNER_RECORD_SPECS: Final[
+    tuple[
+        tuple[
+            str,
+            str,
+            tuple[str, ...],
+            tuple[str, ...],
+            tuple[str, ...],
+        ],
+        ...,
+    ]
+] = (
+    (
+        "state_server_record",
+        "state_servers",
+        (
+            "server_id", "store_id", "database_uuid", "process_birth_id",
+            "listen_uri", "extension_fingerprint", "schema_revision",
+            "generation", "started_at", "stopped_at", "status", "revision",
+            "extension_schema", "extension_json",
+        ),
+        ("extension_json",),
+        ("schema_revision", "generation", "revision"),
+    ),
+    (
+        "store_generation_record",
+        "store_generations",
+        (
+            "generation", "schema_revision", "fence_epoch", "revision",
+            "database_uuid", "birth_id", "created_at", "extension_schema",
+            "extension_json",
+        ),
+        ("extension_json",),
+        ("generation", "schema_revision", "fence_epoch", "revision"),
+    ),
+    (
+        "schema_metadata_record",
+        "control_plane_metadata",
+        ("key", "value", "updated_at"),
+        (),
+        (),
+    ),
+)
+
+# Nullability is part of the closed receipt profile, not an incidental DuckDB
+# decoding detail.  Every projected column not named here is required to be
+# non-null.  Keeping this vocabulary separate from the query tuples makes the
+# exceptional fields easy to audit and prevents a recomputed, self-consistent
+# receipt from replacing a required authority value with ``null``.
+_FENCED_PROVIDER_OUTER_NULLABLE_COLUMNS: Final[
+    Mapping[str, frozenset[str]]
+] = MappingProxyType(
+    {
+        "state_servers": frozenset({"stopped_at"}),
+        "task_assignments": frozenset({"released_at"}),
+        "task_blocks": frozenset({"cleared_at"}),
+        "leases": frozenset({"release_reason"}),
+        "task_attempts": frozenset({"finished_at"}),
+        "attempt_phases": frozenset({"exited_at"}),
+        "task_claims": frozenset({"released_at"}),
+        "provider_invocations": frozenset({"finished_at"}),
+        "provider_calls": frozenset({"finished_at"}),
+        "validation_runs": frozenset({"finished_at"}),
+        "merge_attempts": frozenset({"finished_at"}),
+    }
+)
+
+# A self-hash cannot turn an unordered bag or a duplicate row into the result
+# of the closed SQL profile.  Pin both the natural identity and the exact
+# ORDER BY projection for every group, including the three owner records.
+_FENCED_PROVIDER_OUTER_NATURAL_KEYS: Final[
+    Mapping[str, tuple[str, ...]]
+] = MappingProxyType(
+    {
+        "tasks": ("task_cid",),
+        "task_revisions": ("task_cid", "revision"),
+        "task_dependencies": ("task_cid", "dependency_task_cid", "kind"),
+        "task_outputs": ("task_cid", "ordinal"),
+        "task_acceptance": ("task_cid", "ordinal"),
+        "task_validations": ("task_cid", "ordinal"),
+        "task_assignments": ("assignment_id",),
+        "task_blocks": ("block_id",),
+        "leases": ("task_cid",),
+        "lease_events": ("event_id",),
+        "token_history": ("task_cid", "fencing_token"),
+        "task_attempts": ("attempt_id",),
+        "attempt_phases": ("attempt_id", "phase_name", "entered_at"),
+        "task_claims": ("claim_id",),
+        "provider_invocations": ("invocation_id",),
+        "provider_calls": ("call_id",),
+        "provider_responses": ("response_id",),
+        "effect_claims": ("effect_id",),
+        "validation_runs": ("run_id",),
+        "validation_results": ("result_id",),
+        "completion_receipts": ("receipt_cid",),
+        "merge_queue_entries": ("entry_id",),
+        "merge_attempts": ("merge_attempt_id",),
+        "resource_claims": ("claim_id",),
+        "path_claims": ("claim_id",),
+        "recovery_actions": ("action_id",),
+        "domain_events": ("event_id",),
+        "evidence_nodes": ("evidence_id",),
+        "context_manifests": ("manifest_cid",),
+        "prompt_instances": ("instance_id",),
+        "worktrees": ("worktree_id",),
+        "state_server_record": ("server_id",),
+        "store_generation_record": ("generation",),
+        "schema_metadata_record": ("key",),
+    }
+)
+# Include every PRIMARY KEY, table UNIQUE constraint, and unique index from the
+# closed physical schema.  The first tuple is the primary/natural key above;
+# later tuples prevent a rehashed receipt from inventing a second primary ID
+# that collides with another database-enforced identity.
+_FENCED_PROVIDER_OUTER_UNIQUE_KEYS: Final[
+    Mapping[str, tuple[tuple[str, ...], ...]]
+] = MappingProxyType(
+    {
+        **{
+            name: (key,)
+            for name, key in _FENCED_PROVIDER_OUTER_NATURAL_KEYS.items()
+        },
+        "tasks": (("task_cid",), ("task_alias",)),
+        "task_outputs": (("task_cid", "ordinal"), ("task_cid", "path")),
+        "task_attempts": (
+            ("attempt_id",),
+            ("task_cid", "attempt_number"),
+        ),
+        "validation_results": (
+            ("result_id",),
+            ("run_id", "ordinal"),
+        ),
+        "domain_events": (
+            ("event_id",),
+            ("stream_id", "sequence"),
+            ("global_sequence",),
+        ),
+        "worktrees": (("worktree_id",), ("path",)),
+        "state_server_record": (("server_id",), ("process_birth_id",)),
+    }
+)
+_FENCED_PROVIDER_OUTER_ORDER_COLUMNS: Final[
+    Mapping[str, tuple[str, ...]]
+] = MappingProxyType(
+    {
+        "tasks": ("task_cid",),
+        "task_revisions": ("revision",),
+        "task_dependencies": ("dependency_task_cid", "kind"),
+        "task_outputs": ("ordinal",),
+        "task_acceptance": ("ordinal",),
+        "task_validations": ("ordinal",),
+        "task_assignments": ("assignment_id",),
+        "task_blocks": ("block_id",),
+        "leases": ("task_cid",),
+        "lease_events": ("observed_at_ms", "event_id"),
+        "token_history": ("fencing_token",),
+        "task_attempts": ("attempt_number", "attempt_id"),
+        "attempt_phases": ("attempt_id", "entered_at", "phase_name"),
+        "task_claims": ("claimed_at", "claim_id"),
+        "provider_invocations": ("started_at", "invocation_id"),
+        "provider_calls": ("started_at", "call_id"),
+        "provider_responses": ("received_at", "response_id"),
+        "effect_claims": ("claimed_at", "effect_id"),
+        "validation_runs": ("started_at", "run_id"),
+        "validation_results": ("run_id", "ordinal", "result_id"),
+        "completion_receipts": ("completed_at", "receipt_cid"),
+        "merge_queue_entries": ("ordinal", "entry_id"),
+        "merge_attempts": ("started_at", "merge_attempt_id"),
+        "resource_claims": ("claim_id",),
+        "path_claims": ("claim_id",),
+        "recovery_actions": ("decided_at", "action_id"),
+        "domain_events": ("global_sequence", "event_id"),
+        "evidence_nodes": ("created_at", "evidence_id"),
+        "context_manifests": ("created_at", "manifest_cid"),
+        "prompt_instances": ("created_at", "instance_id"),
+        "worktrees": ("worktree_id",),
+        "state_server_record": ("server_id",),
+        "store_generation_record": ("generation",),
+        "schema_metadata_record": ("key",),
+    }
+)
+
+
+def _fenced_provider_outer_nullable_columns(table: str) -> frozenset[str]:
+    return _FENCED_PROVIDER_OUTER_NULLABLE_COLUMNS.get(table, frozenset())
+
+
+def _fenced_provider_outer_query_profile() -> dict[str, Any]:
+    def filter_profile(name: str, predicate: str) -> dict[str, Any]:
+        derived = _FENCED_PROVIDER_OUTER_DERIVED_FILTERS.get(name)
+        if derived is None:
+            return {
+                "kind": "direct_task_cid",
+                "predicate": predicate,
+                "parameter_source": "subject.task_cid",
+            }
+        target_column, parent_fields = derived
+        return {
+            "kind": "closed_parent_id_single_table_scan",
+            "target_column": target_column,
+            "parent_fields": [
+                {"group": group_name, "column": column}
+                for group_name, column in parent_fields
+            ],
+            "deduplication": "set",
+            "ordering": "utf8_lexicographic",
+            "preprojection_count_policy": (
+                "conservative_sum_of_parent_population_counts_lte_"
+                "id_count_bound"
+            ),
+            "empty_predicate": "1=0",
+            "nonempty_predicate": "target_column_in_positional_parameters",
+            "id_count_bound": MAX_FENCED_PROVIDER_OUTER_DERIVED_IDS,
+            "id_byte_bound": MAX_FENCED_PROVIDER_OUTER_DERIVED_ID_BYTES,
+            "dynamic_sql_byte_bound": (
+                MAX_FENCED_PROVIDER_OUTER_DYNAMIC_SQL_BYTES
+            ),
+        }
+
+    return {
+        "schema": FENCED_PROVIDER_OUTER_AUTHORITY_QUERY_PROFILE_SCHEMA,
+        "authority_schema": INTENT_REPOSITORY_SCHEMA,
+        "subject_key": "task_cid",
+        "transport_plan": {
+            "attached_catalog_scan": "one_remote_table_per_sql_statement",
+            "population_bounds": {
+                "combined_task_row_bound": (
+                    MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS
+                ),
+                "combined_variable_width_source_byte_bound": (
+                    MAX_FENCED_PROVIDER_OUTER_RECEIPT_BYTES
+                ),
+                "combined_parent_projection_byte_bound": (
+                    MAX_FENCED_PROVIDER_OUTER_DERIVED_ID_BYTES
+                ),
+                "combined_parent_projection_byte_policy": (
+                    "sum_of_all_parent_identity_projection_source_bytes_"
+                    "lte_bound"
+                ),
+            },
+        },
+        "groups": [
+            {
+                "name": name,
+                "table": table,
+                "columns": list(columns),
+                "json_commitment_columns": list(json_columns),
+                "bigint_columns": list(bigint_columns),
+                "nullable_columns": sorted(
+                    _fenced_provider_outer_nullable_columns(table)
+                ),
+                "unique_keys": [
+                    list(key)
+                    for key in _FENCED_PROVIDER_OUTER_UNIQUE_KEYS[name]
+                ],
+                "order_columns": list(
+                    _FENCED_PROVIDER_OUTER_ORDER_COLUMNS[name]
+                ),
+                "row_bound": MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS,
+                "filter": filter_profile(name, where_sql),
+                "order": order_sql,
+            }
+            for (
+                name,
+                table,
+                columns,
+                where_sql,
+                order_sql,
+                json_columns,
+                bigint_columns,
+            ) in _FENCED_PROVIDER_OUTER_GROUP_SPECS
+        ],
+        "owner_groups": [
+            {
+                "name": name,
+                "table": table,
+                "columns": list(columns),
+                "json_commitment_columns": list(json_columns),
+                "bigint_columns": list(bigint_columns),
+                "nullable_columns": sorted(
+                    _fenced_provider_outer_nullable_columns(table)
+                ),
+                "unique_keys": [
+                    list(key)
+                    for key in _FENCED_PROVIDER_OUTER_UNIQUE_KEYS[name]
+                ],
+                "order_columns": list(
+                    _FENCED_PROVIDER_OUTER_ORDER_COLUMNS[name]
+                ),
+                "row_bound": 1,
+            }
+            for (
+                name,
+                table,
+                columns,
+                json_columns,
+                bigint_columns,
+            ) in _FENCED_PROVIDER_OUTER_OWNER_RECORD_SPECS
+        ],
+        "schema_introspection": {
+            "column_profile": "main.pragma_table_info@bounded",
+            "primary_key_profile": "main.pragma_table_info.pk@bounded",
+            "unique_profile": "main.sqlite_master.create_ddl@closed_parser",
+            "schema_row_bound": MAX_FENCED_PROVIDER_OUTER_SCHEMA_ROWS,
+            "schema_sql_byte_bound": (
+                MAX_FENCED_PROVIDER_OUTER_SCHEMA_SQL_BYTES
+            ),
+            "comments": "rejected",
+            "unique_expressions": "rejected",
+        },
+        "json_projection": "canonical_sha256_and_byte_length",
+        "population_policy": "complete_task_cid_and_closed_join_populations",
+        "separate_authorities": {
+            "git_and_workspace": (
+                "checkout_mutation_lease_plus_exact_git_and_filesystem_checks"
+            ),
+            "artifact_payloads": "content_addressed_artifact_store",
+            "transport_idempotency": (
+                "final_quack_revision_cas_and_its_exact_idempotency_record"
+            ),
+            "coordination_lease": (
+                "corrected_current_inner_cross_store_receipt_equality"
+            ),
+        },
+    }
+
+
+def _fenced_provider_outer_sha256(value: Any) -> str:
+    return "sha256:" + hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def _fenced_provider_outer_query_profile_id() -> str:
+    return _fenced_provider_outer_sha256(
+        _fenced_provider_outer_query_profile()
+    )
+
+
+def _strict_receipt_json(value: Any, *, noun: str) -> Any:
+    """Decode one canonical JSON cell, rejecting duplicate/nonfinite values."""
+
+    if type(value) is not str:
+        raise IntentRepositoryIntegrityError(f"{noun} is not a JSON string")
+    if len(value.encode("utf-8")) > MAX_BODY_BYTES:
+        raise IntentRepositoryBoundsError(f"{noun} exceeds its byte bound")
+
+    def reject_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, member in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = member
+        return result
+
+    def reject_constant(constant: str) -> Any:
+        raise ValueError(f"nonfinite JSON value {constant}")
+
+    try:
+        decoded = json.loads(
+            value,
+            object_pairs_hook=reject_pairs,
+            parse_constant=reject_constant,
+        )
+        encoded = canonical_json_bytes(decoded)
+    except (TypeError, ValueError, ControlPlaneContractError) as exc:
+        raise IntentRepositoryIntegrityError(
+            f"{noun} is not strict canonical JSON"
+        ) from exc
+    if encoded.decode("utf-8") != value:
+        raise IntentRepositoryIntegrityError(
+            f"{noun} is not stored in canonical form"
+        )
+    return decoded
+
+
+def _fenced_provider_outer_json_commitment(
+    value: Any,
+    *,
+    table: str,
+    column: str,
+) -> dict[str, Any]:
+    decoded = _strict_receipt_json(value, noun=f"{table}.{column}")
+    encoded = canonical_json_bytes(decoded)
+    return {
+        "canonical_sha256": "sha256:" + hashlib.sha256(encoded).hexdigest(),
+        "canonical_byte_length": len(encoded),
+    }
+
+
+def _fenced_provider_outer_group(
+    *,
+    group_name: str,
+    table: str,
+    columns: tuple[str, ...],
+    json_columns: frozenset[str],
+    bigint_columns: frozenset[str],
+    rows: Sequence[Any],
+) -> dict[str, Any]:
+    if len(rows) > MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS:
+        raise IntentRepositoryBoundsError(
+            f"{table} task population exceeds its receipt bound"
+        )
+    projected_rows: list[dict[str, Any]] = []
+    nullable_columns = _fenced_provider_outer_nullable_columns(table)
+    for row in rows:
+        projected: dict[str, Any] = {}
+        for index, column in enumerate(columns):
+            value = row[index]
+            if column in json_columns:
+                projected[column] = _fenced_provider_outer_json_commitment(
+                    value,
+                    table=table,
+                    column=column,
+                )
+            elif value is None and column in nullable_columns:
+                projected[column] = None
+            elif column in bigint_columns and type(value) is int:
+                projected[column] = value
+            elif column not in bigint_columns and type(value) is str:
+                projected[column] = value
+            else:
+                expected = "BIGINT" if column in bigint_columns else "VARCHAR"
+                raise IntentRepositoryIntegrityError(
+                    f"{table}.{column} has an invalid {expected} value"
+                )
+        projected_rows.append(projected)
+    return {
+        "schema": FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_GROUP_SCHEMA,
+        "name": group_name,
+        "columns": list(columns),
+        "count": len(projected_rows),
+        "rows": projected_rows,
+        "rows_digest": _fenced_provider_outer_sha256(projected_rows),
+    }
+
+
+def _fenced_provider_outer_group_valid(
+    group: Any,
+    *,
+    group_name: str,
+    table: str,
+    columns: tuple[str, ...],
+    json_columns: frozenset[str],
+    bigint_columns: frozenset[str],
+) -> bool:
+    if (
+        not isinstance(group, Mapping)
+        or set(group)
+        != {"schema", "name", "columns", "count", "rows", "rows_digest"}
+        or group.get("schema")
+        != FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_GROUP_SCHEMA
+        or group.get("name") != group_name
+        or group.get("columns") != list(columns)
+        or type(group.get("count")) is not int
+        or not 0 <= int(group["count"]) <= MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS
+        or type(group.get("rows")) is not list
+        or len(group["rows"]) != int(group["count"])
+    ):
+        return False
+    nullable_columns = _fenced_provider_outer_nullable_columns(table)
+    unique_keys = _FENCED_PROVIDER_OUTER_UNIQUE_KEYS.get(group_name)
+    order_columns = _FENCED_PROVIDER_OUTER_ORDER_COLUMNS.get(group_name)
+    if (
+        unique_keys is None
+        or order_columns is None
+        or not unique_keys
+        or any(
+            column not in columns
+            for unique_key in unique_keys
+            for column in unique_key
+        )
+        or any(column not in columns for column in order_columns)
+    ):
+        return False
+    observed_keys: list[set[tuple[Any, ...]]] = [
+        set() for _unique_key in unique_keys
+    ]
+    previous_order: tuple[Any, ...] | None = None
+    for row in group["rows"]:
+        if not isinstance(row, Mapping) or set(row) != set(columns):
+            return False
+        for column in columns:
+            value = row.get(column)
+            if column in json_columns:
+                if (
+                    not isinstance(value, Mapping)
+                    or set(value)
+                    != {"canonical_sha256", "canonical_byte_length"}
+                    or type(value.get("canonical_sha256")) is not str
+                    or not re.fullmatch(
+                        r"sha256:[0-9a-f]{64}", value["canonical_sha256"]
+                    )
+                    or type(value.get("canonical_byte_length")) is not int
+                    or not 1 <= int(value["canonical_byte_length"]) <= MAX_BODY_BYTES
+                ):
+                    return False
+            elif value is None and column in nullable_columns:
+                continue
+            elif column in bigint_columns:
+                if (
+                    type(value) is not int
+                    or not _FENCED_PROVIDER_OUTER_BIGINT_MIN
+                    <= value
+                    <= _FENCED_PROVIDER_OUTER_BIGINT_MAX
+                ):
+                    return False
+            elif (
+                type(value) is not str
+                or len(value.encode("utf-8")) > MAX_BODY_BYTES
+                or "\x00" in value
+            ):
+                return False
+        for unique_key, key_population in zip(
+            unique_keys,
+            observed_keys,
+            strict=True,
+        ):
+            row_key = tuple(row[column] for column in unique_key)
+            if row_key in key_population:
+                return False
+            key_population.add(row_key)
+        row_order = tuple(row[column] for column in order_columns)
+        if previous_order is not None and row_order <= previous_order:
+            return False
+        previous_order = row_order
+    return group.get("rows_digest") == _fenced_provider_outer_sha256(
+        group["rows"]
+    )
+
+
+def _fenced_provider_outer_owner_binding_valid(value: Any) -> bool:
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != set(_FENCED_PROVIDER_OUTER_OWNER_BINDING_FIELDS)
+    ):
+        return False
+    for name in (
+        "server_id", "store_id", "database_uuid", "schema_fingerprint",
+        "process_birth_id", "listen_uri", "extension_fingerprint",
+    ):
+        member = value.get(name)
+        if (
+            type(member) is not str
+            or not member
+            or len(member.encode("utf-8")) > 4096
+            or any(character in member for character in "\0\n\r")
+        ):
+            return False
+    for name in ("schema_revision", "generation"):
+        if (
+            type(value.get(name)) is not int
+            or not 1 <= int(value[name]) <= _FENCED_PROVIDER_OUTER_BIGINT_MAX
+        ):
+            return False
+    return True
+
+
+_FENCED_PROVIDER_OUTER_REPLICA_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "authority",
+        "path",
+        "source_database_path",
+        "server_id",
+        "database_uuid",
+        "generation",
+        "schema_revision",
+        "schema_fingerprint",
+        "storage_schema_fingerprint",
+        "sha256",
+        "size_bytes",
+        "refresh_sequence",
+        "refreshed_at_ms",
+        "live",
+    }
+)
+
+
+def _fenced_provider_outer_replica_observation_valid(value: Any) -> bool:
+    if not isinstance(value, Mapping) or set(value) != set(
+        _FENCED_PROVIDER_OUTER_REPLICA_FIELDS
+    ):
+        return False
+    for name in (
+        "path",
+        "source_database_path",
+        "server_id",
+        "database_uuid",
+        "schema_fingerprint",
+        "storage_schema_fingerprint",
+    ):
+        member = value.get(name)
+        if (
+            type(member) is not str
+            or not member
+            or len(member.encode("utf-8")) > 4096
+            or any(character in member for character in "\0\n\r")
+        ):
+            return False
+    return bool(
+        value.get("schema")
+        == "ipfs_accelerate_py/agent-supervisor/read-replica-observation@1"
+        and value.get("authority") == "non_authoritative_read_replica"
+        and type(value.get("sha256")) is str
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", value["sha256"])
+        and all(
+            type(value.get(name)) is int
+            and 1 <= int(value[name]) <= _FENCED_PROVIDER_OUTER_BIGINT_MAX
+            for name in (
+                "generation",
+                "schema_revision",
+                "size_bytes",
+                "refresh_sequence",
+                "refreshed_at_ms",
+            )
+        )
+        and value.get("live") is True
+    )
+
+
+def _fenced_provider_outer_mutation_barrier_valid(value: Any) -> bool:
+    return bool(
+        isinstance(value, Mapping)
+        and set(value)
+        == {
+            "schema",
+            "store_id",
+            "active_request_count",
+            "active_processing_count",
+            "active_population_digest",
+        }
+        and value.get("schema")
+        == FENCED_PROVIDER_OUTER_MUTATION_BARRIER_SCHEMA
+        and type(value.get("store_id")) is str
+        and bool(value.get("store_id"))
+        and len(value["store_id"].encode("utf-8")) <= MAX_ID_BYTES
+        and _SAFE_ID.fullmatch(value["store_id"])
+        and value.get("active_request_count") == 0
+        and type(value.get("active_request_count")) is int
+        and value.get("active_processing_count") == 0
+        and type(value.get("active_processing_count")) is int
+        and value.get("active_population_digest")
+        == _fenced_provider_outer_sha256([])
+    )
+
+
+def _fenced_provider_outer_ddl_identifier(
+    value: str,
+    offset: int,
+) -> tuple[str, int]:
+    """Read one ordinary or double-quoted SQL identifier, without executing SQL."""
+
+    while offset < len(value) and value[offset].isspace():
+        offset += 1
+    if offset >= len(value):
+        raise IntentRepositoryIntegrityError(
+            "outer authority schema DDL has a missing identifier"
+        )
+    if value[offset] == '"':
+        offset += 1
+        parts: list[str] = []
+        while offset < len(value):
+            character = value[offset]
+            if character == '"':
+                if offset + 1 < len(value) and value[offset + 1] == '"':
+                    parts.append('"')
+                    offset += 2
+                    continue
+                offset += 1
+                identifier = "".join(parts)
+                break
+            parts.append(character)
+            offset += 1
+        else:
+            raise IntentRepositoryIntegrityError(
+                "outer authority schema DDL has an unterminated identifier"
+            )
+    else:
+        match = re.match(r"[A-Za-z_][A-Za-z0-9_]*", value[offset:])
+        if match is None:
+            raise IntentRepositoryIntegrityError(
+                "outer authority schema DDL has an invalid identifier"
+            )
+        identifier = match.group(0)
+        offset += len(identifier)
+    if not identifier or len(identifier.encode("utf-8")) > MAX_ID_BYTES:
+        raise IntentRepositoryIntegrityError(
+            "outer authority schema DDL identifier exceeds its bound"
+        )
+    return identifier, offset
+
+
+def _fenced_provider_outer_ddl_parenthesized(
+    value: str,
+    offset: int,
+) -> tuple[str, int]:
+    while offset < len(value) and value[offset].isspace():
+        offset += 1
+    if offset >= len(value) or value[offset] != "(":
+        raise IntentRepositoryIntegrityError(
+            "outer authority schema DDL lacks a closed column list"
+        )
+    start = offset + 1
+    depth = 1
+    quote = ""
+    offset += 1
+    while offset < len(value):
+        character = value[offset]
+        if quote:
+            if character == quote:
+                if offset + 1 < len(value) and value[offset + 1] == quote:
+                    offset += 2
+                    continue
+                quote = ""
+            offset += 1
+            continue
+        if character in {"'", '"'}:
+            quote = character
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth == 0:
+                return value[start:offset], offset + 1
+        offset += 1
+    raise IntentRepositoryIntegrityError(
+        "outer authority schema DDL has unbalanced parentheses"
+    )
+
+
+def _fenced_provider_outer_ddl_members(value: str) -> tuple[str, ...]:
+    members: list[str] = []
+    start = 0
+    depth = 0
+    quote = ""
+    offset = 0
+    while offset < len(value):
+        character = value[offset]
+        if quote:
+            if character == quote:
+                if offset + 1 < len(value) and value[offset + 1] == quote:
+                    offset += 2
+                    continue
+                quote = ""
+            offset += 1
+            continue
+        if character in {"'", '"'}:
+            quote = character
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth < 0:
+                raise IntentRepositoryIntegrityError(
+                    "outer authority schema DDL has unbalanced parentheses"
+                )
+        elif character == "," and depth == 0:
+            member = value[start:offset].strip()
+            if not member:
+                raise IntentRepositoryIntegrityError(
+                    "outer authority schema DDL has an empty member"
+                )
+            members.append(member)
+            start = offset + 1
+        offset += 1
+    member = value[start:].strip()
+    if quote or depth != 0 or not member:
+        raise IntentRepositoryIntegrityError(
+            "outer authority schema DDL has an incomplete member"
+        )
+    members.append(member)
+    return tuple(members)
+
+
+def _fenced_provider_outer_ddl_column_list(value: str) -> tuple[str, ...]:
+    columns: list[str] = []
+    offset = 0
+    while True:
+        probe = offset
+        while probe < len(value) and value[probe].isspace():
+            probe += 1
+        if probe >= len(value) or value[probe] == "(":
+            raise IntentRepositoryIntegrityError(
+                "outer authority unique index contains an expression"
+            )
+        column, offset = _fenced_provider_outer_ddl_identifier(value, offset)
+        columns.append(column)
+        while offset < len(value) and value[offset].isspace():
+            offset += 1
+        if offset == len(value):
+            break
+        if value[offset] != ",":
+            raise IntentRepositoryIntegrityError(
+                "outer authority unique index contains an expression"
+            )
+        offset += 1
+    if not columns or len(columns) != len(set(columns)):
+        raise IntentRepositoryIntegrityError(
+            "outer authority schema DDL has duplicate constraint columns"
+        )
+    return tuple(columns)
+
+
+def _fenced_provider_outer_top_level_words(value: str) -> tuple[str, ...]:
+    """Return unquoted words outside nested type/default expressions."""
+
+    words: list[str] = []
+    depth = 0
+    quote = ""
+    offset = 0
+    while offset < len(value):
+        character = value[offset]
+        if quote:
+            if character == quote:
+                if offset + 1 < len(value) and value[offset + 1] == quote:
+                    offset += 2
+                    continue
+                quote = ""
+            offset += 1
+            continue
+        if character in {"'", '"'}:
+            quote = character
+            offset += 1
+            continue
+        if character == "(":
+            depth += 1
+            offset += 1
+            continue
+        if character == ")":
+            depth -= 1
+            if depth < 0:
+                raise IntentRepositoryIntegrityError(
+                    "outer authority schema DDL has unbalanced parentheses"
+                )
+            offset += 1
+            continue
+        match = re.match(r"[A-Za-z_][A-Za-z0-9_]*", value[offset:])
+        if match is not None:
+            if depth == 0:
+                words.append(match.group(0).upper())
+            offset += len(match.group(0))
+            continue
+        offset += 1
+    if quote or depth != 0:
+        raise IntentRepositoryIntegrityError(
+            "outer authority schema DDL has an incomplete expression"
+        )
+    return tuple(words)
+
+
+def _fenced_provider_outer_table_constraint_keys(
+    value: Any,
+    *,
+    table: str,
+    columns: tuple[str, ...],
+) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]]:
+    if type(value) is not str or len(value.encode("utf-8")) > (
+        MAX_FENCED_PROVIDER_OUTER_SCHEMA_SQL_BYTES
+    ):
+        raise IntentRepositoryIntegrityError(
+            "outer authority CREATE TABLE DDL is unavailable or oversized"
+        )
+    if "--" in value or "/*" in value or "*/" in value:
+        raise IntentRepositoryIntegrityError(
+            "outer authority schema DDL comments are not admitted"
+        )
+    match = re.match(
+        r"\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?",
+        value,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        raise IntentRepositoryIntegrityError(
+            "outer authority table lacks closed CREATE TABLE DDL"
+        )
+    observed_table, offset = _fenced_provider_outer_ddl_identifier(
+        value,
+        match.end(),
+    )
+    if observed_table != table:
+        raise IntentRepositoryIntegrityError(
+            "outer authority CREATE TABLE targets another table"
+        )
+    body, offset = _fenced_provider_outer_ddl_parenthesized(value, offset)
+    tail = value[offset:].strip()
+    if tail not in {"", ";"}:
+        raise IntentRepositoryIntegrityError(
+            "outer authority CREATE TABLE has unsupported trailing syntax"
+        )
+    primary_keys: list[tuple[str, ...]] = []
+    unique_keys: list[tuple[str, ...]] = []
+    expected_columns = set(columns)
+    observed_columns: list[str] = []
+    for member in _fenced_provider_outer_ddl_members(body):
+        remainder = member
+        constraint_prefix = re.match(r"CONSTRAINT\s+", remainder, re.IGNORECASE)
+        if constraint_prefix is not None:
+            _constraint_name, name_end = _fenced_provider_outer_ddl_identifier(
+                remainder,
+                constraint_prefix.end(),
+            )
+            remainder = remainder[name_end:].lstrip()
+        primary = re.match(r"PRIMARY\s+KEY\s*", remainder, re.IGNORECASE)
+        unique = re.match(r"UNIQUE\s*", remainder, re.IGNORECASE)
+        if primary is not None or unique is not None:
+            prefix = primary if primary is not None else unique
+            assert prefix is not None
+            key_body, key_end = _fenced_provider_outer_ddl_parenthesized(
+                remainder,
+                prefix.end(),
+            )
+            if remainder[key_end:].strip():
+                raise IntentRepositoryIntegrityError(
+                    "outer authority table constraint has trailing syntax"
+                )
+            key = _fenced_provider_outer_ddl_column_list(key_body)
+            if any(column not in expected_columns for column in key):
+                raise IntentRepositoryIntegrityError(
+                    "outer authority table constraint names an unknown column"
+                )
+            (primary_keys if primary is not None else unique_keys).append(key)
+            continue
+        column, column_end = _fenced_provider_outer_ddl_identifier(remainder, 0)
+        if column not in expected_columns or column in observed_columns:
+            raise IntentRepositoryIntegrityError(
+                "outer authority CREATE TABLE column set is not closed"
+            )
+        observed_columns.append(column)
+        words = _fenced_provider_outer_top_level_words(
+            remainder[column_end:]
+        )
+        if any(
+            words[index:index + 2] == ("PRIMARY", "KEY")
+            for index in range(max(0, len(words) - 1))
+        ):
+            primary_keys.append((column,))
+        if "UNIQUE" in words:
+            unique_keys.append((column,))
+    if tuple(observed_columns) != columns or len(primary_keys) != 1:
+        raise IntentRepositoryIntegrityError(
+            "outer authority CREATE TABLE columns or primary key are not closed"
+        )
+    return primary_keys[0], tuple(unique_keys)
+
+
+def _fenced_provider_outer_index_constraint_key(
+    value: Any,
+    *,
+    index_name: str,
+    table: str,
+) -> tuple[str, ...] | None:
+    if type(value) is not str or len(value.encode("utf-8")) > (
+        MAX_FENCED_PROVIDER_OUTER_SCHEMA_SQL_BYTES
+    ):
+        raise IntentRepositoryIntegrityError(
+            "outer authority index DDL is unavailable or oversized"
+        )
+    if "--" in value or "/*" in value or "*/" in value:
+        raise IntentRepositoryIntegrityError(
+            "outer authority index DDL comments are not admitted"
+        )
+    match = re.match(
+        r"\s*CREATE\s+(?P<unique>UNIQUE\s+)?INDEX\s+"
+        r"(?:IF\s+NOT\s+EXISTS\s+)?",
+        value,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        raise IntentRepositoryIntegrityError(
+            "outer authority index has unsupported CREATE INDEX DDL"
+        )
+    observed_index_name, offset = _fenced_provider_outer_ddl_identifier(
+        value,
+        match.end(),
+    )
+    if observed_index_name != index_name:
+        raise IntentRepositoryIntegrityError(
+            "outer authority CREATE INDEX name differs from sqlite_master"
+        )
+    on_match = re.match(r"\s+ON\s+", value[offset:], re.IGNORECASE)
+    if on_match is None:
+        raise IntentRepositoryIntegrityError(
+            "outer authority CREATE INDEX lacks an exact table"
+        )
+    offset += on_match.end()
+    target, offset = _fenced_provider_outer_ddl_identifier(value, offset)
+    while offset < len(value) and value[offset].isspace():
+        offset += 1
+    if offset < len(value) and value[offset] == ".":
+        if target != "main":
+            raise IntentRepositoryIntegrityError(
+                "outer authority CREATE INDEX targets another schema"
+            )
+        target, offset = _fenced_provider_outer_ddl_identifier(value, offset + 1)
+    if target != table:
+        raise IntentRepositoryIntegrityError(
+            "outer authority CREATE INDEX targets another table"
+        )
+    body, offset = _fenced_provider_outer_ddl_parenthesized(value, offset)
+    if value[offset:].strip() not in {"", ";"}:
+        raise IntentRepositoryIntegrityError(
+            "outer authority CREATE INDEX has unsupported trailing syntax"
+        )
+    if match.group("unique") is None:
+        return None
+    return _fenced_provider_outer_ddl_column_list(body)
+
+
+def _fenced_provider_outer_expected_schema(
+    connection: Any,
+    *,
+    group_name: str,
+    table: str,
+    columns: tuple[str, ...],
+    bigint_columns: frozenset[str],
+) -> None:
+    expected_unique_keys = _FENCED_PROVIDER_OUTER_UNIQUE_KEYS.get(group_name)
+    natural_key = _FENCED_PROVIDER_OUTER_NATURAL_KEYS.get(group_name)
+    if expected_unique_keys is None or natural_key is None:
+        raise IntentRepositoryIntegrityError(
+            f"outer authority group {group_name} lacks a constraint profile"
+        )
+    try:
+        schema = connection.execute("SELECT current_schema()").fetchone()
+        if schema is None or schema[0] != "main":
+            raise IntentRepositoryIntegrityError(
+                "outer authority receipt requires the current main schema"
+            )
+        table_info_source = f"pragma_table_info('main.{table}')"
+        described_stats = connection.execute(
+            "SELECT COUNT(*), "
+            "COALESCE(MAX(OCTET_LENGTH(ENCODE(name))), 0), "
+            "COALESCE(MAX(OCTET_LENGTH(ENCODE(type))), 0) "
+            f"FROM {table_info_source}"
+        ).fetchone()
+        if (
+            described_stats is None
+            or any(type(described_stats[index]) is not int for index in range(3))
+            or not 0 <= described_stats[1] <= MAX_ID_BYTES
+            or not 0 <= described_stats[2] <= MAX_ID_BYTES
+        ):
+            raise IntentRepositoryIntegrityError(
+                f"outer authority table {table} column catalog is unbounded"
+            )
+        if described_stats[0] != len(columns):
+            raise IntentRepositoryIntegrityError(
+                f"outer authority table {table} schema is not the closed profile"
+            )
+        described = connection.execute(
+            "SELECT name, type, \"notnull\", pk "
+            f"FROM {table_info_source} ORDER BY cid LIMIT {len(columns) + 1}"
+        ).fetchall()
+    except Exception as exc:
+        if isinstance(exc, IntentRepositoryIntegrityError):
+            raise
+        raise IntentRepositoryIntegrityError(
+            f"outer authority table {table} is unavailable"
+        ) from exc
+    observed = tuple((str(row[0]), str(row[1]).upper()) for row in described)
+    expected = tuple(
+        (column, "BIGINT" if column in bigint_columns else "VARCHAR")
+        for column in columns
+    )
+    if observed != expected:
+        raise IntentRepositoryIntegrityError(
+            f"outer authority table {table} schema is not the closed profile"
+        )
+    nullable_columns = _fenced_provider_outer_nullable_columns(table)
+    observed_nullable = frozenset(
+        str(row[0]) for row in described if not bool(row[2])
+    )
+    # DuckDB marks primary-key columns non-null in ``PRAGMA table_info``.
+    # Any difference is a profile change and requires a versioned receipt.
+    if observed_nullable != nullable_columns:
+        raise IntentRepositoryIntegrityError(
+            f"outer authority table {table} nullability is not the closed profile"
+        )
+    pragma_primary_key = tuple(
+        str(row[0])
+        for row in sorted(
+            (row for row in described if int(row[3]) > 0),
+            key=lambda row: int(row[3]),
+        )
+    )
+    if pragma_primary_key != natural_key:
+        raise IntentRepositoryIntegrityError(
+            f"outer authority table {table} primary key is not the closed profile"
+        )
+    try:
+        schema_stats = connection.execute(
+            "SELECT COUNT(*), "
+            "COALESCE(MAX(OCTET_LENGTH(ENCODE(type))), 0), "
+            "COALESCE(MAX(OCTET_LENGTH(ENCODE(name))), 0), "
+            "COALESCE(MAX(OCTET_LENGTH(ENCODE(tbl_name))), 0), "
+            "COALESCE(MAX(OCTET_LENGTH(ENCODE(COALESCE(sql, '')))), 0), "
+            "COALESCE(SUM(OCTET_LENGTH(ENCODE(COALESCE(sql, '')))), 0) "
+            "FROM main.sqlite_master "
+            "WHERE tbl_name = ? AND type IN ('table', 'index')",
+            [table],
+        ).fetchone()
+        if (
+            schema_stats is None
+            or any(type(schema_stats[index]) is not int for index in range(6))
+            or not 1 <= schema_stats[0] <= MAX_FENCED_PROVIDER_OUTER_SCHEMA_ROWS
+            or not 0 <= schema_stats[1] <= len("table")
+            or not 0 <= schema_stats[2] <= MAX_ID_BYTES
+            or not 0 <= schema_stats[3] <= MAX_ID_BYTES
+            or not 0 <= schema_stats[4] <= MAX_FENCED_PROVIDER_OUTER_SCHEMA_SQL_BYTES
+            or not 0 <= schema_stats[5] <= MAX_FENCED_PROVIDER_OUTER_SCHEMA_SQL_BYTES
+        ):
+            raise IntentRepositoryIntegrityError(
+                f"outer authority table {table} constraint catalog is unbounded"
+            )
+        schema_rows = connection.execute(
+            "SELECT type, name, tbl_name, sql FROM main.sqlite_master "
+            "WHERE tbl_name = ? AND type IN ('table', 'index') "
+            "ORDER BY type, name "
+            f"LIMIT {MAX_FENCED_PROVIDER_OUTER_SCHEMA_ROWS + 1}",
+            [table],
+        ).fetchall()
+    except Exception as exc:
+        if isinstance(exc, IntentRepositoryIntegrityError):
+            raise
+        raise IntentRepositoryIntegrityError(
+            f"outer authority table {table} constraints are unavailable"
+        ) from exc
+    if len(schema_rows) != int(schema_stats[0]):
+        raise IntentRepositoryIntegrityError(
+            f"outer authority table {table} constraint catalog changed"
+        )
+    table_rows = [row for row in schema_rows if row[0] == "table"]
+    index_rows = [row for row in schema_rows if row[0] == "index"]
+    if (
+        len(table_rows) != 1
+        or table_rows[0][1] != table
+        or table_rows[0][2] != table
+    ):
+        raise IntentRepositoryIntegrityError(
+            f"outer authority table {table} uniqueness CREATE TABLE population "
+            "is not exact"
+        )
+    table_primary_key, table_unique_keys = (
+        _fenced_provider_outer_table_constraint_keys(
+            table_rows[0][3],
+            table=table,
+            columns=columns,
+        )
+    )
+    observed_unique_keys = [table_primary_key, *table_unique_keys]
+    for row in index_rows:
+        if (
+            type(row[1]) is not str
+            or type(row[2]) is not str
+            or row[2] != table
+        ):
+            raise IntentRepositoryIntegrityError(
+                f"outer authority table {table} index population is not exact"
+            )
+        key = _fenced_provider_outer_index_constraint_key(
+            row[3],
+            index_name=row[1],
+            table=table,
+        )
+        if key is not None:
+            observed_unique_keys.append(key)
+    if table_primary_key != natural_key or sorted(observed_unique_keys) != sorted(
+        expected_unique_keys
+    ):
+        raise IntentRepositoryIntegrityError(
+            f"outer authority table {table} uniqueness is not the closed profile"
+        )
+
+
+def _fenced_provider_outer_population_preflight(
+    connection: Any,
+    *,
+    table: str,
+    columns: tuple[str, ...],
+    bigint_columns: frozenset[str],
+    where_sql: str,
+    parameters: Sequence[Any],
+    row_bound: int,
+) -> tuple[int, int]:
+    """Bound a closed population before fetching any variable-width cell.
+
+    The receipt builder later validates every decoded value, but that is too
+    late to protect the controller from an oversized VARCHAR already present
+    in the store.  This aggregate runs in the same caller-owned snapshot as
+    the subsequent SELECT and returns only fixed-width counters.
+    """
+
+    string_columns = tuple(
+        column for column in columns if column not in bigint_columns
+    )
+    length_expressions = [
+        f"COALESCE(MAX(OCTET_LENGTH(ENCODE({column}))), 0)"
+        for column in string_columns
+    ]
+    row_byte_expression = " + ".join(
+        f"COALESCE(OCTET_LENGTH(ENCODE({column})), 0)"
+        for column in string_columns
+    ) or "0"
+    projection = ", ".join(
+        [
+            "COUNT(*)",
+            *length_expressions,
+            f"COALESCE(SUM({row_byte_expression}), 0)",
+        ]
+    )
+    try:
+        observed = connection.execute(
+            f"SELECT {projection} FROM {table} WHERE {where_sql}",
+            list(parameters),
+        ).fetchone()
+    except Exception as exc:
+        raise IntentRepositoryIntegrityError(
+            f"outer authority table {table} cannot be bounded"
+        ) from exc
+    if (
+        observed is None
+        or len(observed) != 2 + len(string_columns)
+        or type(observed[0]) is not int
+        or not 0 <= int(observed[0]) <= row_bound
+    ):
+        raise IntentRepositoryBoundsError(
+            f"{table} task population exceeds its receipt bound"
+        )
+    observed_lengths = tuple(
+        observed[index] for index in range(1, 1 + len(string_columns))
+    )
+    for column, byte_length in zip(
+        string_columns,
+        observed_lengths,
+        strict=True,
+    ):
+        if (
+            type(byte_length) is not int
+            or not 0 <= int(byte_length) <= MAX_BODY_BYTES
+        ):
+            raise IntentRepositoryBoundsError(
+                f"{table}.{column} exceeds its byte bound"
+            )
+    source_bytes = observed[1 + len(string_columns)]
+    if (
+        type(source_bytes) is not int
+        or not 0 <= source_bytes <= MAX_FENCED_PROVIDER_OUTER_RECEIPT_BYTES
+    ):
+        raise IntentRepositoryBoundsError(
+            f"{table} variable-width population exceeds its byte bound"
+        )
+    return int(observed[0]), int(source_bytes)
+
+
+def _fenced_provider_outer_population_filter(
+    *,
+    group_name: str,
+    direct_predicate: str,
+    task_cid: str,
+    groups: Mapping[str, Any],
+) -> tuple[str, list[str]]:
+    """Return the bounded single-table predicate for one receipt group."""
+
+    derived = _FENCED_PROVIDER_OUTER_DERIVED_FILTERS.get(group_name)
+    if derived is None:
+        return direct_predicate, [task_cid] * direct_predicate.count("?")
+    target_column, parent_fields = derived
+    identifiers: set[str] = set()
+    for parent_group, parent_column in parent_fields:
+        parent = groups.get(parent_group)
+        if not isinstance(parent, Mapping):
+            raise IntentRepositoryIntegrityError(
+                f"outer authority group {group_name} lacks its closed parent"
+            )
+        rows = parent.get("rows")
+        if not isinstance(rows, list):
+            raise IntentRepositoryIntegrityError(
+                f"outer authority group {parent_group} has no closed rows"
+            )
+        for row in rows:
+            if not isinstance(row, Mapping):
+                raise IntentRepositoryIntegrityError(
+                    f"outer authority group {parent_group} has a malformed row"
+                )
+            value = row.get(parent_column)
+            if (
+                type(value) is not str
+                or not value
+                or len(value.encode("utf-8")) > MAX_ID_BYTES
+            ):
+                raise IntentRepositoryIntegrityError(
+                    f"outer authority group {parent_group} has an invalid "
+                    f"{parent_column}"
+                )
+            identifiers.add(value)
+    ordered = sorted(identifiers)
+    encoded_bytes = sum(len(value.encode("utf-8")) for value in ordered)
+    if (
+        len(ordered) > MAX_FENCED_PROVIDER_OUTER_DERIVED_IDS
+        or encoded_bytes > MAX_FENCED_PROVIDER_OUTER_DERIVED_ID_BYTES
+    ):
+        raise IntentRepositoryBoundsError(
+            f"outer authority group {group_name} parent identifiers exceed "
+            "their transport bound"
+        )
+    if not ordered:
+        return "1=0", []
+    predicate = f"{target_column} IN ({', '.join('?' for _ in ordered)})"
+    if (
+        len(predicate.encode("utf-8"))
+        > MAX_FENCED_PROVIDER_OUTER_DYNAMIC_SQL_BYTES
+    ):
+        raise IntentRepositoryBoundsError(
+            f"outer authority group {group_name} predicate exceeds its byte "
+            "bound"
+        )
+    return predicate, ordered
+
+
+def _fenced_provider_outer_bound_parent_projection_counts(
+    bounded_queries: Mapping[str, tuple[str, list[str], int]],
+) -> None:
+    """Reject a multi-parent child before allocating any parent-ID rows."""
+
+    for child_group, (_target_column, parent_fields) in (
+        _FENCED_PROVIDER_OUTER_DERIVED_FILTERS.items()
+    ):
+        combined_count = 0
+        for parent_group, _parent_column in parent_fields:
+            query = bounded_queries.get(parent_group)
+            if query is None or type(query[2]) is not int or query[2] < 0:
+                raise IntentRepositoryIntegrityError(
+                    f"outer authority group {child_group} lacks a bounded "
+                    "parent population"
+                )
+            combined_count += query[2]
+        # This intentionally counts duplicate references conservatively.  A
+        # deduplicated union is computed only after the bounded projections
+        # have been read; allowing a larger pre-union allocation would make
+        # the declared derived-ID bound false.
+        if combined_count > MAX_FENCED_PROVIDER_OUTER_DERIVED_IDS:
+            raise IntentRepositoryBoundsError(
+                f"outer authority group {child_group} parent populations "
+                "exceed their pre-projection transport bound"
+            )
+
+
+def _fenced_provider_outer_parent_identity_projection(
+    connection: Any,
+    bounded_queries: Mapping[str, tuple[str, list[str], int]],
+) -> dict[str, Any]:
+    """Read only bounded parent IDs after the combined gate admits them."""
+
+    # This must remain the first operation: the two-route worktree population
+    # cannot allocate one full bound from each parent and deduplicate later.
+    _fenced_provider_outer_bound_parent_projection_counts(bounded_queries)
+    parent_fields = {
+        parent
+        for _target, parents in _FENCED_PROVIDER_OUTER_DERIVED_FILTERS.values()
+        for parent in parents
+    }
+    parent_groups: dict[str, Any] = {}
+    specs_by_name = {
+        spec[0]: spec for spec in _FENCED_PROVIDER_OUTER_GROUP_SPECS
+    }
+    parent_identity_bytes = 0
+    for parent_group, parent_column in sorted(parent_fields):
+        parent_spec = specs_by_name[parent_group]
+        table = parent_spec[1]
+        order_sql = parent_spec[4]
+        predicate, parameters, expected_count = bounded_queries[parent_group]
+        identity_stats = connection.execute(
+            "SELECT COUNT(*), "
+            f"COALESCE(MAX(OCTET_LENGTH(ENCODE({parent_column}))), 0), "
+            f"COALESCE(SUM(OCTET_LENGTH(ENCODE({parent_column}))), 0) "
+            f"FROM {table} WHERE {predicate}",
+            parameters,
+        ).fetchone()
+        identity_values = (
+            tuple(identity_stats[index] for index in range(3))
+            if identity_stats is not None
+            else ()
+        )
+        if (
+            identity_stats is None
+            or len(identity_values) != 3
+            or any(type(value) is not int for value in identity_values)
+            or identity_values[0] != expected_count
+            or not 0 <= identity_values[1] <= MAX_ID_BYTES
+            or not 0 <= identity_values[2]
+            <= MAX_FENCED_PROVIDER_OUTER_DERIVED_ID_BYTES
+        ):
+            raise IntentRepositoryBoundsError(
+                f"outer authority group {parent_group} parent identity "
+                "projection exceeds its transport bound"
+            )
+        parent_identity_bytes += identity_values[2]
+        if parent_identity_bytes > MAX_FENCED_PROVIDER_OUTER_DERIVED_ID_BYTES:
+            raise IntentRepositoryBoundsError(
+                "combined outer authority parent identity projections "
+                "exceed their transport bound"
+            )
+        identity_rows = connection.execute(
+            f"SELECT {parent_column} FROM {table} WHERE {predicate} "
+            f"ORDER BY {order_sql} "
+            f"LIMIT {MAX_FENCED_PROVIDER_OUTER_DERIVED_IDS + 1}",
+            parameters,
+        ).fetchall()
+        if len(identity_rows) != expected_count:
+            raise IntentRepositoryIntegrityError(
+                f"{table} changed inside its retained read snapshot"
+            )
+        parent_groups[parent_group] = {
+            "rows": [
+                {parent_column: row[0]}
+                for row in identity_rows
+            ]
+        }
+    return parent_groups
+
+
+def _fenced_provider_outer_normalize_binding(connection: Any) -> dict[str, Any]:
+    binding = getattr(connection, "_quack_mutation_binding", None)
+    if not _fenced_provider_outer_owner_binding_valid(binding):
+        raise IntentRepositoryIntegrityError(
+            "outer authority receipt lacks an authenticated Quack owner binding"
+        )
+    return {
+        name: binding[name] for name in _FENCED_PROVIDER_OUTER_OWNER_BINDING_FIELDS
+    }
+
+
+def _fenced_provider_outer_publication_assessment(
+    groups: Mapping[str, Any],
+) -> dict[str, int]:
+    terminal_task_count = sum(
+        1
+        for row in groups["tasks"]["rows"]
+        if row.get("status") in _COMPLETED_STATUSES
+    )
+    completion_count = int(groups["completion_receipts"]["count"])
+    queue_count = sum(
+        1
+        for row in groups["merge_queue_entries"]["rows"]
+        if row.get("status") in _FENCED_PROVIDER_OUTER_PUBLICATION_STATUSES
+    )
+    attempt_count = sum(
+        1
+        for row in groups["merge_attempts"]["rows"]
+        if row.get("status") in _FENCED_PROVIDER_OUTER_PUBLICATION_STATUSES
+    )
+    return {
+        "accepted_publication_count": (
+            terminal_task_count + completion_count + queue_count + attempt_count
+        ),
+        "terminal_task_status_count": terminal_task_count,
+        "completion_receipt_count": completion_count,
+        "successful_merge_queue_count": queue_count,
+        "successful_merge_attempt_count": attempt_count,
+    }
+
+
+_FENCED_PROVIDER_OUTER_DIRECT_TASK_GROUPS: Final[frozenset[str]] = frozenset(
+    {
+        "tasks",
+        "task_revisions",
+        "task_dependencies",
+        "task_outputs",
+        "task_acceptance",
+        "task_validations",
+        "task_assignments",
+        "task_blocks",
+        "leases",
+        "lease_events",
+        "token_history",
+        "task_attempts",
+        "task_claims",
+        "provider_invocations",
+        "provider_calls",
+        "effect_claims",
+        "validation_runs",
+        "validation_results",
+        "completion_receipts",
+        "merge_queue_entries",
+        "merge_attempts",
+        "resource_claims",
+        "path_claims",
+        "recovery_actions",
+        "domain_events",
+        "evidence_nodes",
+        "context_manifests",
+        "prompt_instances",
+    }
+)
+_FENCED_PROVIDER_OUTER_NESTED_TASK_GROUPS: Final[frozenset[str]] = frozenset(
+    {"attempt_phases", "provider_responses", "worktrees"}
+)
+
+
+def _fenced_provider_outer_groups_semantically_valid(
+    groups: Mapping[str, Any],
+    subject: Mapping[str, Any],
+) -> bool:
+    """Rebind every projected row to the closed task/join population.
+
+    The receipt self-hash is integrity only.  This semantic closure prevents a
+    caller from rehashing rows from another task, inventing nested rows, or
+    dropping their parent relation and presenting the result as this query
+    profile.  Completeness is established only by the synchronous controller
+    query under its retained barrier, never by this offline validator alone.
+    """
+
+    profile_names = {item[0] for item in _FENCED_PROVIDER_OUTER_GROUP_SPECS}
+    if (
+        _FENCED_PROVIDER_OUTER_DIRECT_TASK_GROUPS
+        | _FENCED_PROVIDER_OUTER_NESTED_TASK_GROUPS
+    ) != profile_names:
+        return False
+    task_cid = subject["task_cid"]
+    if len(groups["tasks"]["rows"]) != 1:
+        return False
+    task_row = groups["tasks"]["rows"][0]
+    for name in _FENCED_PROVIDER_OUTER_DIRECT_TASK_GROUPS:
+        if any(
+            row.get("task_cid") != task_cid
+            for row in groups[name]["rows"]
+        ):
+            return False
+
+    attempt_ids = {
+        row["attempt_id"] for row in groups["task_attempts"]["rows"]
+    }
+    claim_ids = {row["claim_id"] for row in groups["task_claims"]["rows"]}
+    call_ids = {row["call_id"] for row in groups["provider_calls"]["rows"]}
+    run_ids = {row["run_id"] for row in groups["validation_runs"]["rows"]}
+    manifest_ids = {
+        row["manifest_cid"] for row in groups["context_manifests"]["rows"]
+    }
+    prompt_instance_ids = {
+        row["instance_id"] for row in groups["prompt_instances"]["rows"]
+    }
+    queue_entries = {
+        row["entry_id"]: row for row in groups["merge_queue_entries"]["rows"]
+    }
+    referenced_worktree_ids = {
+        row["worktree_id"] for row in groups["merge_queue_entries"]["rows"]
+    } | {
+        row["worktree_id"] for row in groups["path_claims"]["rows"]
+    }
+    observed_worktree_ids = {
+        row["worktree_id"] for row in groups["worktrees"]["rows"]
+    }
+    worktrees = {
+        row["worktree_id"]: row for row in groups["worktrees"]["rows"]
+    }
+    attempt_bound_groups = (
+        "provider_invocations",
+        "effect_claims",
+        "validation_runs",
+    )
+    if (
+        any(
+            row["attempt_id"] not in attempt_ids
+            for row in groups["attempt_phases"]["rows"]
+        )
+        or any(
+            row["call_id"] not in call_ids
+            for row in groups["provider_responses"]["rows"]
+        )
+        or any(
+            row["run_id"] not in run_ids
+            for row in groups["validation_results"]["rows"]
+        )
+        or any(
+            row["attempt_id"] not in attempt_ids
+            for name in attempt_bound_groups
+            for row in groups[name]["rows"]
+        )
+        or any(
+            bool(row["attempt_id"])
+            and row["attempt_id"] not in attempt_ids
+            for row in groups["provider_calls"]["rows"]
+        )
+        or any(
+            bool(row["prompt_instance_id"])
+            and row["prompt_instance_id"] not in prompt_instance_ids
+            for row in groups["provider_calls"]["rows"]
+        )
+        or any(
+            row["manifest_cid"] not in manifest_ids
+            for row in groups["prompt_instances"]["rows"]
+        )
+        or any(
+            (
+                bool(row["attempt_id"])
+                and row["attempt_id"] not in attempt_ids
+            )
+            or (
+                bool(row["claim_cid"])
+                and row["claim_cid"] not in claim_ids
+            )
+            or (
+                bool(row["validation_run_id"])
+                and row["validation_run_id"] not in run_ids
+            )
+            or row["goal_cid"] != task_row["goal_cid"]
+            for row in groups["completion_receipts"]["rows"]
+        )
+        or any(
+            bool(row["claim_cid"])
+            and row["claim_cid"] not in claim_ids
+            for row in groups["lease_events"]["rows"]
+        )
+        or any(
+            bool(row["attempt_id"])
+            and row["attempt_id"] not in attempt_ids
+            for row in groups["domain_events"]["rows"]
+        )
+        or any(
+            row["entry_id"] not in queue_entries
+            or row["task_cid"]
+            != queue_entries[row["entry_id"]]["task_cid"]
+            or row["worktree_id"]
+            != queue_entries[row["entry_id"]]["worktree_id"]
+            for row in groups["merge_attempts"]["rows"]
+        )
+        or observed_worktree_ids != referenced_worktree_ids
+        or any(
+            row["worktree_id"] not in worktrees
+            or row["repository_id"]
+            != worktrees[row["worktree_id"]]["repository_id"]
+            or row["source_branch"]
+            != worktrees[row["worktree_id"]]["branch_name"]
+            for row in groups["merge_queue_entries"]["rows"]
+        )
+        or any(
+            row["worktree_id"] not in worktrees
+            or row["repository_id"]
+            != worktrees[row["worktree_id"]]["repository_id"]
+            for row in groups["path_claims"]["rows"]
+        )
+    ):
+        return False
+    return True
+
+
+def fenced_provider_outer_authority_population_receipt_valid(value: Any) -> bool:
+    """Validate a closed outer owner receipt without opening a database."""
+
+    if not isinstance(value, Mapping):
+        return False
+    receipt = dict(value)
+    if set(receipt) != {
+        "schema",
+        "claim_boundary",
+        "nonclaims",
+        "transaction_boundary",
+        "persistence_policy",
+        "query_profile_id",
+        "receipt_nonce",
+        "receipt_epoch",
+        "authority",
+        "subject",
+        "cross_store_context",
+        "groups",
+        "task_population_root",
+        "publication_assessment",
+        "receipt_cid",
+    }:
+        return False
+    if (
+        receipt.get("schema")
+        != FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_RECEIPT_SCHEMA
+        or receipt.get("claim_boundary")
+        != FENCED_PROVIDER_OUTER_AUTHORITY_CLAIM_BOUNDARY
+        or receipt.get("nonclaims")
+        != list(FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS)
+        or receipt.get("transaction_boundary")
+        != (
+            "single_authenticated_quack_replica_read_transaction_under_"
+            "controller_barrier"
+        )
+        or receipt.get("persistence_policy")
+        != "ephemeral_access_controlled_full_receipt_compact_cid_only"
+        or receipt.get("query_profile_id")
+        != _fenced_provider_outer_query_profile_id()
+        or type(receipt.get("receipt_nonce")) is not str
+        or not receipt.get("receipt_nonce")
+        or len(receipt["receipt_nonce"].encode("utf-8")) > MAX_ID_BYTES
+        or not _SAFE_ID.fullmatch(receipt["receipt_nonce"])
+        or type(receipt.get("receipt_epoch")) is not int
+        or not 1
+        <= int(receipt["receipt_epoch"])
+        <= _FENCED_PROVIDER_OUTER_BIGINT_MAX
+    ):
+        return False
+    authority = receipt.get("authority")
+    subject = receipt.get("subject")
+    cross_store_context = receipt.get("cross_store_context")
+    groups = receipt.get("groups")
+    assessment = receipt.get("publication_assessment")
+    if (
+        not isinstance(authority, Mapping)
+        or set(authority)
+        != {
+            "interface",
+            "schema",
+            "authority_mode",
+            "owner_binding",
+            "read_replica_observation",
+            "mutation_barrier",
+            "state_server_record",
+            "store_generation_record",
+            "schema_metadata_record",
+        }
+        or authority.get("interface") != INTENT_REPOSITORY_INTERFACE
+        or authority.get("schema") != INTENT_REPOSITORY_SCHEMA
+        or authority.get("authority_mode") != "quack"
+        or not _fenced_provider_outer_owner_binding_valid(
+            authority.get("owner_binding")
+        )
+        or not _fenced_provider_outer_replica_observation_valid(
+            authority.get("read_replica_observation")
+        )
+        or not _fenced_provider_outer_mutation_barrier_valid(
+            authority.get("mutation_barrier")
+        )
+        or not isinstance(subject, Mapping)
+        or set(subject)
+        != {
+            "task_cid",
+            "task_alias",
+            "task_revision",
+            "expected_task_status",
+            "attempt_id",
+            "claim_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "expected_store_id",
+            "expected_store_generation",
+        }
+        or any(
+            type(subject.get(name)) is not str or not subject.get(name)
+            for name in (
+                "task_cid", "task_alias", "expected_task_status",
+                "attempt_id", "claim_id",
+                "owner_session_id", "expected_store_id",
+            )
+        )
+        or any(
+            type(subject.get(name)) is not int or int(subject[name]) < minimum
+            or int(subject[name]) > _FENCED_PROVIDER_OUTER_BIGINT_MAX
+            for name, minimum in (
+                ("task_revision", 0),
+                ("fencing_token", 0),
+                ("fence_epoch", 0),
+                ("expected_store_generation", 1),
+            )
+        )
+        or any(
+            len(str(subject[name]).encode("utf-8")) > MAX_ID_BYTES
+            or not _SAFE_ID.fullmatch(str(subject[name]))
+            for name in (
+                "task_cid", "task_alias", "expected_task_status",
+                "attempt_id", "claim_id",
+                "owner_session_id", "expected_store_id",
+            )
+        )
+        or not isinstance(cross_store_context, Mapping)
+        or set(cross_store_context)
+        != {
+            "schema",
+            "coordination_lease_id",
+            "admission_requirement",
+        }
+        or cross_store_context.get("schema")
+        != FENCED_PROVIDER_OUTER_CROSS_STORE_CONTEXT_SCHEMA
+        or cross_store_context.get("admission_requirement")
+        != "must_equal_corrected_current_inner_receipt_before_admission"
+        or type(cross_store_context.get("coordination_lease_id")) is not str
+        or not cross_store_context.get("coordination_lease_id")
+        or len(
+            cross_store_context["coordination_lease_id"].encode("utf-8")
+        )
+        > MAX_ID_BYTES
+        or not _SAFE_ID.fullmatch(
+            cross_store_context["coordination_lease_id"]
+        )
+        or not isinstance(groups, Mapping)
+        or not isinstance(assessment, Mapping)
+        or set(assessment)
+        != {
+            "accepted_publication_count",
+            "terminal_task_status_count",
+            "completion_receipt_count",
+            "successful_merge_queue_count",
+            "successful_merge_attempt_count",
+        }
+        or any(type(member) is not int or member != 0 for member in assessment.values())
+    ):
+        return False
+    binding = authority["owner_binding"]
+    replica = authority["read_replica_observation"]
+    barrier = authority["mutation_barrier"]
+    owner_specs = {item[0]: item for item in _FENCED_PROVIDER_OUTER_OWNER_RECORD_SPECS}
+    for field, spec in owner_specs.items():
+        if not _fenced_provider_outer_group_valid(
+            authority.get(field),
+            group_name=field,
+            table=spec[1],
+            columns=spec[2],
+            json_columns=frozenset(spec[3]),
+            bigint_columns=frozenset(spec[4]),
+        ) or int(authority[field]["count"]) != 1:
+            return False
+    server_row = authority["state_server_record"]["rows"][0]
+    generation_row = authority["store_generation_record"]["rows"][0]
+    metadata_row = authority["schema_metadata_record"]["rows"][0]
+    if (
+        any(server_row.get(name) != binding[name] for name in (
+            "server_id", "store_id", "database_uuid", "process_birth_id",
+            "listen_uri", "extension_fingerprint", "schema_revision", "generation",
+        ))
+        or server_row.get("status") != "ready"
+        or server_row.get("stopped_at") is not None
+        or generation_row.get("generation") != binding["generation"]
+        or generation_row.get("schema_revision") != binding["schema_revision"]
+        or generation_row.get("database_uuid") != binding["database_uuid"]
+        or generation_row.get("birth_id") != binding["process_birth_id"]
+        or metadata_row.get("key") != "schema_fingerprint"
+        or metadata_row.get("value") != binding["schema_fingerprint"]
+        or replica.get("server_id") != binding["server_id"]
+        or replica.get("database_uuid") != binding["database_uuid"]
+        or replica.get("generation") != binding["generation"]
+        or replica.get("schema_revision") != binding["schema_revision"]
+        or replica.get("storage_schema_fingerprint")
+        != binding["schema_fingerprint"]
+        or barrier.get("store_id") != binding["store_id"]
+    ):
+        return False
+    profile_groups = {
+        item[0]: item for item in _FENCED_PROVIDER_OUTER_GROUP_SPECS
+    }
+    if set(groups) != set(profile_groups):
+        return False
+    total_rows = 0
+    for name, spec in profile_groups.items():
+        if not _fenced_provider_outer_group_valid(
+            groups.get(name),
+            group_name=name,
+            table=spec[1],
+            columns=spec[2],
+            json_columns=frozenset(spec[5]),
+            bigint_columns=frozenset(spec[6]),
+        ):
+            return False
+        total_rows += int(groups[name]["count"])
+        if total_rows > MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS:
+            return False
+    if not _fenced_provider_outer_groups_semantically_valid(groups, subject):
+        return False
+    task_rows = groups["tasks"]["rows"]
+    task_revision_rows = groups["task_revisions"]["rows"]
+    attempt_rows = groups["task_attempts"]["rows"]
+    claim_rows = groups["task_claims"]["rows"]
+    lease_rows = groups["leases"]["rows"]
+    current_revision_rows = [
+        row
+        for row in task_revision_rows
+        if row.get("task_cid") == subject["task_cid"]
+        and row.get("revision") == subject["task_revision"]
+    ]
+    if (
+        len(task_rows) != 1
+        or task_rows[0].get("task_cid") != subject["task_cid"]
+        or task_rows[0].get("task_alias") != subject["task_alias"]
+        or task_rows[0].get("revision") != subject["task_revision"]
+        or task_rows[0].get("status") != subject["expected_task_status"]
+        or subject["expected_task_status"] != "blocked"
+        or len(current_revision_rows) != 1
+        or any(
+            row.get("revision", -1) > subject["task_revision"]
+            for row in task_revision_rows
+        )
+        or current_revision_rows[0].get("status")
+        != subject["expected_task_status"]
+        or current_revision_rows[0].get("body_json")
+        != task_rows[0].get("body_json")
+        or not any(
+            row.get("attempt_id") == subject["attempt_id"]
+            and row.get("task_cid") == subject["task_cid"]
+            and row.get("owner_session_id") == subject["owner_session_id"]
+            and row.get("fencing_token") == subject["fencing_token"]
+            and row.get("fence_epoch") == subject["fence_epoch"]
+            for row in attempt_rows
+        )
+        or not any(
+            row.get("claim_id") == subject["claim_id"]
+            and row.get("task_cid") == subject["task_cid"]
+            and row.get("owner_session_id") == subject["owner_session_id"]
+            and row.get("fencing_token") == subject["fencing_token"]
+            and row.get("fence_epoch") == subject["fence_epoch"]
+            for row in claim_rows
+        )
+        or len(lease_rows) != 1
+        or lease_rows[0].get("task_cid") != subject["task_cid"]
+        or lease_rows[0].get("claim_cid") != subject["claim_id"]
+        or lease_rows[0].get("owner_session_id") != subject["owner_session_id"]
+        or lease_rows[0].get("fencing_token") != subject["fencing_token"]
+        or lease_rows[0].get("fence_epoch") != subject["fence_epoch"]
+        or subject["expected_store_id"] != binding["store_id"]
+        or subject["expected_store_generation"] != binding["generation"]
+        or dict(assessment) != _fenced_provider_outer_publication_assessment(groups)
+    ):
+        return False
+    if receipt.get("task_population_root") != _fenced_provider_outer_sha256(
+        dict(groups)
+    ):
+        return False
+    unsigned = dict(receipt)
+    observed_cid = unsigned.pop("receipt_cid", None)
+    try:
+        encoded = canonical_json_bytes(receipt)
+    except (ControlPlaneContractError, ControlPlaneBoundsError):
+        return False
+    return bool(
+        len(encoded) <= MAX_FENCED_PROVIDER_OUTER_RECEIPT_BYTES
+        and observed_cid == _fenced_provider_outer_sha256(unsigned)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Records
 # ---------------------------------------------------------------------------
@@ -649,6 +2981,424 @@ class IntentRepository:
     def _require_open(self) -> None:
         if self._closed or not self._open:
             raise IntentRepositoryNotOpenError("intent repository is not open")
+
+    @staticmethod
+    def _fenced_provider_outer_owner_records(
+        connection: Any,
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        queries = {
+            "state_server_record": (
+                "server_id = ?",
+                "server_id",
+                [binding["server_id"]],
+            ),
+            "store_generation_record": (
+                "generation = ?",
+                "generation",
+                [binding["generation"]],
+            ),
+            "schema_metadata_record": (
+                "key = 'schema_fingerprint'",
+                "key",
+                [],
+            ),
+        }
+        records: dict[str, Any] = {}
+        for name, table, columns, json_columns, bigint_columns in (
+            _FENCED_PROVIDER_OUTER_OWNER_RECORD_SPECS
+        ):
+            _fenced_provider_outer_expected_schema(
+                connection,
+                group_name=name,
+                table=table,
+                columns=columns,
+                bigint_columns=frozenset(bigint_columns),
+            )
+            where_sql, order_sql, parameters = queries[name]
+            _fenced_provider_outer_population_preflight(
+                connection,
+                table=table,
+                columns=columns,
+                bigint_columns=frozenset(bigint_columns),
+                where_sql=where_sql,
+                parameters=parameters,
+                row_bound=1,
+            )
+            rows = connection.execute(
+                f"SELECT {', '.join(columns)} FROM {table} "
+                f"WHERE {where_sql} ORDER BY {order_sql} LIMIT 2",
+                parameters,
+            ).fetchall()
+            record = _fenced_provider_outer_group(
+                group_name=name,
+                table=table,
+                columns=columns,
+                json_columns=frozenset(json_columns),
+                bigint_columns=frozenset(bigint_columns),
+                rows=rows,
+            )
+            if int(record["count"]) != 1:
+                raise IntentRepositoryIntegrityError(
+                    f"Quack owner authority has {record['count']} {table} rows"
+                )
+            records[name] = record
+        server = records["state_server_record"]["rows"][0]
+        generation = records["store_generation_record"]["rows"][0]
+        metadata = records["schema_metadata_record"]["rows"][0]
+        if (
+            any(server.get(name) != binding[name] for name in (
+                "server_id", "store_id", "database_uuid", "process_birth_id",
+                "listen_uri", "extension_fingerprint", "schema_revision",
+                "generation",
+            ))
+            or server.get("status") != "ready"
+            or server.get("stopped_at") is not None
+            or generation.get("generation") != binding["generation"]
+            or generation.get("schema_revision") != binding["schema_revision"]
+            or generation.get("database_uuid") != binding["database_uuid"]
+            or generation.get("birth_id") != binding["process_birth_id"]
+            or metadata.get("key") != "schema_fingerprint"
+            or metadata.get("value") != binding["schema_fingerprint"]
+        ):
+            raise IntentRepositoryIntegrityError(
+                "Quack owner binding differs from its current store records"
+            )
+        return records
+
+    def _fenced_provider_outer_authority_population_receipt_on_connection(
+        self,
+        connection: Any,
+        *,
+        task_cid: str,
+        task_alias: str,
+        task_revision: int,
+        expected_task_status: str,
+        attempt_id: str,
+        claim_id: str,
+        lease_id: str,
+        owner_session_id: str,
+        fencing_token: int,
+        fence_epoch: int,
+        expected_store_id: str,
+        expected_store_generation: int,
+        receipt_nonce: str,
+        receipt_epoch: int,
+        controller_replica_observation: Mapping[str, Any],
+        controller_mutation_barrier: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Capture one exact owner assertion inside a caller-owned snapshot."""
+
+        subject = {
+            "task_cid": _identifier(task_cid, noun="task_cid"),
+            "task_alias": _identifier(task_alias, noun="task_alias"),
+            "task_revision": _fenced_provider_outer_nonneg_int(
+                task_revision,
+                noun="task_revision",
+            ),
+            "expected_task_status": _identifier(
+                expected_task_status,
+                noun="expected_task_status",
+            ),
+            "attempt_id": _identifier(attempt_id, noun="attempt_id"),
+            "claim_id": _identifier(claim_id, noun="claim_id"),
+            "owner_session_id": _identifier(
+                owner_session_id, noun="owner_session_id"
+            ),
+            "fencing_token": _fenced_provider_outer_nonneg_int(
+                fencing_token, noun="fencing_token"
+            ),
+            "fence_epoch": _fenced_provider_outer_nonneg_int(
+                fence_epoch,
+                noun="fence_epoch",
+            ),
+            "expected_store_id": _identifier(
+                expected_store_id, noun="expected_store_id"
+            ),
+            "expected_store_generation": _fenced_provider_outer_positive_int(
+                expected_store_generation,
+                noun="expected_store_generation",
+            ),
+        }
+        cross_store_context = {
+            "schema": FENCED_PROVIDER_OUTER_CROSS_STORE_CONTEXT_SCHEMA,
+            "coordination_lease_id": _identifier(
+                lease_id,
+                noun="coordination_lease_id",
+            ),
+            "admission_requirement": (
+                "must_equal_corrected_current_inner_receipt_before_admission"
+            ),
+        }
+        nonce = _identifier(receipt_nonce, noun="receipt_nonce")
+        epoch = _fenced_provider_outer_positive_int(
+            receipt_epoch,
+            noun="receipt_epoch",
+        )
+        if subject["expected_task_status"] != "blocked":
+            raise IntentRepositoryIntegrityError(
+                "outer recovery authority receipt requires blocked task state"
+            )
+        replica_observation = dict(controller_replica_observation)
+        mutation_barrier = dict(controller_mutation_barrier)
+        if (
+            not _fenced_provider_outer_replica_observation_valid(
+                replica_observation
+            )
+            or not _fenced_provider_outer_mutation_barrier_valid(
+                mutation_barrier
+            )
+        ):
+            raise IntentRepositoryIntegrityError(
+                "outer receipt lacks a closed controller replica barrier"
+            )
+        binding_before = _fenced_provider_outer_normalize_binding(connection)
+        if (
+            binding_before["store_id"] != subject["expected_store_id"]
+            or binding_before["generation"]
+            != subject["expected_store_generation"]
+        ):
+            raise IntentRepositoryIntegrityError(
+                "Quack owner store identity or generation is not the expected one"
+            )
+        owner_records_before = self._fenced_provider_outer_owner_records(
+            connection,
+            binding_before,
+        )
+        groups: dict[str, Any] = {}
+        bounded_queries: dict[str, tuple[str, list[str], int]] = {}
+        total_rows = 0
+        total_source_bytes = 0
+        # Validate every physical schema before projecting any task row.
+        for spec in _FENCED_PROVIDER_OUTER_GROUP_SPECS:
+            (
+                group_name,
+                table,
+                columns,
+                _where_sql,
+                _order_sql,
+                _json_columns,
+                bigint_columns,
+            ) = spec
+            _fenced_provider_outer_expected_schema(
+                connection,
+                group_name=group_name,
+                table=table,
+                columns=columns,
+                bigint_columns=frozenset(bigint_columns),
+            )
+
+        # Bound every direct task population before fetching even the small
+        # identity projections needed by the attached-replica read plan.
+        for spec in _FENCED_PROVIDER_OUTER_GROUP_SPECS:
+            (
+                group_name,
+                table,
+                columns,
+                where_sql,
+                _order_sql,
+                _json_columns,
+                bigint_columns,
+            ) = spec
+            if group_name in _FENCED_PROVIDER_OUTER_DERIVED_FILTERS:
+                continue
+            predicate, parameters = _fenced_provider_outer_population_filter(
+                group_name=group_name,
+                direct_predicate=where_sql,
+                task_cid=subject["task_cid"],
+                groups={},
+            )
+            row_count, source_bytes = (
+                _fenced_provider_outer_population_preflight(
+                    connection,
+                    table=table,
+                    columns=columns,
+                    bigint_columns=frozenset(bigint_columns),
+                    where_sql=predicate,
+                    parameters=parameters,
+                    row_bound=MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS,
+                )
+            )
+            total_rows += row_count
+            total_source_bytes += source_bytes
+            bounded_queries[group_name] = (
+                predicate,
+                parameters,
+                row_count,
+            )
+        if total_rows > MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS:
+            raise IntentRepositoryBoundsError(
+                "combined direct task authority population exceeds its "
+                "receipt bound"
+            )
+        if total_source_bytes > MAX_FENCED_PROVIDER_OUTER_RECEIPT_BYTES:
+            raise IntentRepositoryBoundsError(
+                "combined direct task authority source bytes exceed their "
+                "bound"
+            )
+        # Fetch only the bounded parent identity columns.  These projections
+        # are the closed source of the child predicates; they do not open a
+        # second remote scan inside any one SQL statement.
+        parent_groups = _fenced_provider_outer_parent_identity_projection(
+            connection,
+            bounded_queries,
+        )
+
+        # Bound each dependent group using a single remote table scan and the
+        # already closed parent-ID set.  Only after all preflights and the
+        # combined limits pass do we fetch the full receipt rows.
+        for spec in _FENCED_PROVIDER_OUTER_GROUP_SPECS:
+            (
+                group_name,
+                table,
+                columns,
+                where_sql,
+                _order_sql,
+                _json_columns,
+                bigint_columns,
+            ) = spec
+            if group_name not in _FENCED_PROVIDER_OUTER_DERIVED_FILTERS:
+                continue
+            predicate, parameters = _fenced_provider_outer_population_filter(
+                group_name=group_name,
+                direct_predicate=where_sql,
+                task_cid=subject["task_cid"],
+                groups=parent_groups,
+            )
+            row_count, source_bytes = (
+                _fenced_provider_outer_population_preflight(
+                    connection,
+                    table=table,
+                    columns=columns,
+                    bigint_columns=frozenset(bigint_columns),
+                    where_sql=predicate,
+                    parameters=parameters,
+                    row_bound=MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS,
+                )
+            )
+            total_rows += row_count
+            total_source_bytes += source_bytes
+            bounded_queries[group_name] = (
+                predicate,
+                parameters,
+                row_count,
+            )
+        if total_rows > MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS:
+            raise IntentRepositoryBoundsError(
+                "combined task authority population exceeds its receipt bound"
+            )
+        if total_source_bytes > MAX_FENCED_PROVIDER_OUTER_RECEIPT_BYTES:
+            raise IntentRepositoryBoundsError(
+                "combined task authority source bytes exceed their bound"
+            )
+
+        for spec in _FENCED_PROVIDER_OUTER_GROUP_SPECS:
+            (
+                group_name,
+                table,
+                columns,
+                _where_sql,
+                order_sql,
+                json_columns,
+                bigint_columns,
+            ) = spec
+            predicate, parameters, expected_count = bounded_queries[group_name]
+            rows = connection.execute(
+                f"SELECT {', '.join(columns)} FROM {table} "
+                f"WHERE {predicate} ORDER BY {order_sql} "
+                f"LIMIT {MAX_FENCED_PROVIDER_OUTER_POPULATION_ROWS + 1}",
+                parameters,
+            ).fetchall()
+            group = _fenced_provider_outer_group(
+                group_name=group_name,
+                table=table,
+                columns=columns,
+                json_columns=frozenset(json_columns),
+                bigint_columns=frozenset(bigint_columns),
+                rows=rows,
+            )
+            if int(group["count"]) != expected_count:
+                raise IntentRepositoryIntegrityError(
+                    f"{table} changed inside its retained read snapshot"
+                )
+            groups[group_name] = group
+        binding_after = _fenced_provider_outer_normalize_binding(connection)
+        owner_records_after = self._fenced_provider_outer_owner_records(
+            connection,
+            binding_after,
+        )
+        if (
+            binding_before != binding_after
+            or owner_records_before != owner_records_after
+        ):
+            raise IntentRepositoryIntegrityError(
+                "Quack owner generation changed within the receipt snapshot"
+            )
+        assessment = _fenced_provider_outer_publication_assessment(groups)
+        if assessment["accepted_publication_count"] != 0:
+            raise IntentRepositoryIntegrityError(
+                "task already has admitted completion or merge publication"
+            )
+        receipt: dict[str, Any] = {
+            "schema": FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_RECEIPT_SCHEMA,
+            "claim_boundary": FENCED_PROVIDER_OUTER_AUTHORITY_CLAIM_BOUNDARY,
+            "nonclaims": list(FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS),
+            "transaction_boundary": (
+                "single_authenticated_quack_replica_read_transaction_under_"
+                "controller_barrier"
+            ),
+            "persistence_policy": (
+                "ephemeral_access_controlled_full_receipt_compact_cid_only"
+            ),
+            "query_profile_id": _fenced_provider_outer_query_profile_id(),
+            "receipt_nonce": nonce,
+            "receipt_epoch": epoch,
+            "authority": {
+                "interface": INTENT_REPOSITORY_INTERFACE,
+                "schema": INTENT_REPOSITORY_SCHEMA,
+                "authority_mode": "quack",
+                "owner_binding": binding_after,
+                "read_replica_observation": replica_observation,
+                "mutation_barrier": mutation_barrier,
+                **owner_records_after,
+            },
+            "subject": subject,
+            "cross_store_context": cross_store_context,
+            "groups": groups,
+            "task_population_root": _fenced_provider_outer_sha256(groups),
+            "publication_assessment": assessment,
+        }
+        receipt["receipt_cid"] = _fenced_provider_outer_sha256(receipt)
+        encoded = canonical_json_bytes(receipt)
+        if len(encoded) > MAX_FENCED_PROVIDER_OUTER_RECEIPT_BYTES:
+            raise IntentRepositoryBoundsError(
+                "outer authority receipt exceeds its canonical byte bound"
+            )
+        if not fenced_provider_outer_authority_population_receipt_valid(receipt):
+            raise IntentRepositoryIntegrityError(
+                "outer authority receipt failed closed validation"
+            )
+        return receipt
+
+    def fenced_provider_outer_authority_population_receipt(
+        self,
+        **subject: Any,
+    ) -> Mapping[str, Any]:
+        """Require the retained controller barrier for this observation.
+
+        The Quack SQL surface is an explicitly non-authoritative read replica.
+        Consequently a standalone repository object may not mint or replay an
+        authority receipt merely because it can open the transport.  The
+        supervisor's pinned facade overrides this method only while retaining
+        the owner mutation fence, proving an empty request/processing inbox,
+        and binding the exact current replica observation.
+        """
+
+        self._require_open()
+        raise IntentRepositoryIntegrityError(
+            "outer population observation requires the retained controller "
+            "mutation fence and replica barrier"
+        )
 
     @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[Any]:
@@ -4514,6 +7264,13 @@ __all__ = (
     "PLAN_REVISION_REPOSITORY_INTERFACE",
     "INTENT_REPOSITORY_SCHEMA",
     "PLAN_REVISION_REPOSITORY_SCHEMA",
+    "FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_RECEIPT_SCHEMA",
+    "FENCED_PROVIDER_OUTER_AUTHORITY_QUERY_PROFILE_SCHEMA",
+    "FENCED_PROVIDER_OUTER_AUTHORITY_POPULATION_GROUP_SCHEMA",
+    "FENCED_PROVIDER_OUTER_CROSS_STORE_CONTEXT_SCHEMA",
+    "FENCED_PROVIDER_OUTER_MUTATION_BARRIER_SCHEMA",
+    "FENCED_PROVIDER_OUTER_AUTHORITY_CLAIM_BOUNDARY",
+    "FENCED_PROVIDER_OUTER_AUTHORITY_NONCLAIMS",
     "VALIDATION_REPRESENTATION_POLICY_KEY",
     "VALIDATION_SHELL_TEXT_REPRESENTATION",
     "VALIDATION_ARGV_REPRESENTATION",
@@ -4535,5 +7292,6 @@ __all__ = (
     "PlanHead",
     "PlanRevisionRepository",
     "open_intent_repository",
+    "fenced_provider_outer_authority_population_receipt_valid",
     "duckdb_available",
 )

@@ -526,6 +526,22 @@ class DatabaseTaskSource:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
+    def fenced_provider_outer_authority_population_receipt(
+        self,
+        **subject: Any,
+    ) -> Mapping[str, Any]:
+        """Delegate one fenced Quack-replica population observation.
+
+        This is a typed diagnostic/evidence operation, not a task transition.
+        It exposes no SQL and cannot promote or consume recovery authority.
+        The full result is ephemeral/access-controlled; only its compact CID
+        may later be bound by a separate callback-last authority transition.
+        """
+
+        return self._intent.fenced_provider_outer_authority_population_receipt(
+            **subject
+        )
+
     # -- materialize / ingest ------------------------------------------------
 
     def materialize(

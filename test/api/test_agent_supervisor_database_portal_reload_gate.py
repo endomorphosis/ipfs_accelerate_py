@@ -124,6 +124,49 @@ def _owner_binding(generation: int) -> dict[str, object]:
     }
 
 
+def _owner_status_with_replica(generation: int) -> dict[str, object]:
+    binding = _owner_binding(generation)
+    return {
+        **binding,
+        "read_replica": {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "read-replica-observation@1"
+            ),
+            "authority": "non_authoritative_read_replica",
+            "path": "/sealed/read-replica.duckdb",
+            "source_database_path": "/sealed/control.duckdb",
+            "server_id": binding["server_id"],
+            "database_uuid": binding["database_uuid"],
+            "generation": binding["generation"],
+            "schema_revision": binding["schema_revision"],
+            "schema_fingerprint": "schema-profile:test",
+            "storage_schema_fingerprint": binding["schema_fingerprint"],
+            "sha256": "sha256:" + ("4" * 64),
+            "size_bytes": 4096,
+            "refresh_sequence": generation,
+            "refreshed_at_ms": 1_700_000_000_000 + generation,
+            "live": True,
+        },
+    }
+
+
+def _empty_quack_mutation_barrier() -> dict[str, object]:
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "fenced-provider-outer-mutation-barrier@1"
+        ),
+        "store_id": "state/control.duckdb",
+        "active_request_count": 0,
+        "active_processing_count": 0,
+        "active_population_digest": (
+            "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba8"
+            "73c2f11161202b945"
+        ),
+    }
+
+
 def _idle_projection() -> dict[str, object]:
     return {
         "task_source_revision": 19,
@@ -608,10 +651,6 @@ def test_source_reload_owner_mutation_lock_contention_defers_without_quiescence(
             "database_portal_projection_inconclusive",
         ),
         (
-            _authenticated_watchdog_projection(active=False),
-            "database_portal_population_idle",
-        ),
-        (
             {
                 "applicable": True,
                 "activity_detected": "unknown",
@@ -623,7 +662,6 @@ def test_source_reload_owner_mutation_lock_contention_defers_without_quiescence(
     ids=(
         "authenticated-active",
         "inconclusive-fail-closed",
-        "authenticated-idle-race-closed",
         "malformed-applicable-fail-closed",
     ),
 )
@@ -645,10 +683,19 @@ def test_watchdog_defers_before_quiescence_for_database_portal(
         "_control_plane_status_projection",
         lambda: {"control_plane_update_pending": False},
     )
+    @contextmanager
+    def portal_fence():
+        yield config.database_program
+
     monkeypatch.setattr(
         supervisor,
-        "_database_portal_reload_projection",
-        lambda: (
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection_fenced",
+        lambda _program: (
             events.append(("projection", None))
             or projection
         ),
@@ -702,7 +749,7 @@ def test_watchdog_defers_before_quiescence_for_database_portal(
     ] is True
     assert loop.config.status_extra_fields[
         "supervisor_maintenance_deferred_reason"
-    ] == "database_portal_routine_maintenance_deferred"
+    ] == projection_reason
     assert loop.config.status_extra_fields[
         "database_portal_projection_reason"
     ] == projection_reason
@@ -710,6 +757,109 @@ def test_watchdog_defers_before_quiescence_for_database_portal(
         "database_portal_reload_projection"
     ] == projection
     assert supervisor._last_supervisor_maintenance_at > 0.0
+
+
+def test_watchdog_holds_quack_owner_fence_across_idle_maintenance(
+    tmp_path,
+    monkeypatch,
+):
+    config = _config(tmp_path)
+    PortalTaskState().save(config.state_path)
+    supervisor = PortalImplementationSupervisor(config)
+    supervisor._last_supervisor_maintenance_at = 0.0
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    order: list[str] = []
+    finished: list[tuple[str, str]] = []
+    idle = _authenticated_watchdog_projection(active=False)
+
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        lambda: {"control_plane_update_pending": False},
+    )
+
+    @contextmanager
+    def portal_fence():
+        order.append("portal_fence_enter")
+        try:
+            yield config.database_program
+        finally:
+            order.append("portal_fence_exit")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection_fenced",
+        lambda _program: order.append("projection") or idle,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_quiesce_supervised_child_for_control_gate",
+        lambda *_args, **_kwargs: (
+            order.append("quiesce")
+            or {"quiesced": True, "supervised_child_alive": False}
+        ),
+    )
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    monkeypatch.setattr(supervisor, "_record_event", lambda *_args: None)
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda _phase: None,
+            lambda status="completed", error="": finished.append(
+                (status, error)
+            ),
+        ),
+    )
+
+    def maintenance(_update, **kwargs):
+        assert order == [
+            "portal_fence_enter",
+            "projection",
+            "quiesce",
+            "projection",
+        ]
+        assert kwargs == {
+            "managed_daemon_launch_lock_held": True,
+            "database_portal_fenced_program": config.database_program,
+        }
+        order.append("maintenance")
+        return {
+            "stuck": False,
+            "maintenance_blocked": False,
+            "reason": "",
+            "main_checkout_repair": {"repaired": False},
+        }
+
+    monkeypatch.setattr(supervisor, "_run_once_with_maintenance", maintenance)
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=987654),
+        {},
+    )
+
+    assert order == [
+        "portal_fence_enter",
+        "projection",
+        "quiesce",
+        "projection",
+        "maintenance",
+        "portal_fence_exit",
+    ]
+    assert decision.action == "recycle"
+    assert decision.reason == "supervisor_maintenance_completed_after_quiescence"
+    assert finished == [("completed", "")]
 
 
 def test_non_quack_watchdog_maintenance_quiesces_child_before_mutating(
@@ -739,11 +889,9 @@ def test_non_quack_watchdog_maintenance_quiesces_child_before_mutating(
     monkeypatch.setattr(
         supervisor,
         "_database_portal_reload_projection",
-        lambda: events.append("projection") or {
-            "schema": DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA,
-            "applicable": False,
-            "reason": "database_portal_authority_not_configured",
-        },
+        lambda: pytest.fail(
+            "non-Quack maintenance no longer performs a portal projection"
+        ),
     )
     monkeypatch.setattr(
         supervisor,
@@ -755,8 +903,11 @@ def test_non_quack_watchdog_maintenance_quiesces_child_before_mutating(
     )
 
     def maintenance(_update, **kwargs):
-        assert events == ["projection", "quiesce"]
-        assert kwargs == {"managed_daemon_launch_lock_held": True}
+        assert events == ["quiesce"]
+        assert kwargs == {
+            "managed_daemon_launch_lock_held": True,
+            "database_portal_fenced_program": None,
+        }
         events.append("maintenance")
         return {
             "stuck": False,
@@ -783,7 +934,7 @@ def test_non_quack_watchdog_maintenance_quiesces_child_before_mutating(
         {},
     )
 
-    assert events == ["projection", "quiesce", "maintenance"]
+    assert events == ["quiesce", "maintenance"]
     assert decision.action == "recycle"
     assert decision.reason == "supervisor_maintenance_completed_after_quiescence"
     assert finished == [("completed", "")]
@@ -891,6 +1042,175 @@ def test_quack_projection_uses_one_connection_and_detects_generation_churn(
         assert result["quack_owner"]["generation"] != "pctdd-logical-g8"
     else:
         assert result["reason"] == "database_portal_projection_inconclusive"
+
+
+@pytest.mark.parametrize(
+    ("after_generation", "receipt_replica_tamper"),
+    ((41, False), (42, False), (41, True)),
+)
+def test_outer_owner_receipt_uses_existing_fence_and_one_quack_transaction(
+    tmp_path,
+    monkeypatch,
+    after_generation,
+    receipt_replica_tamper,
+):
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        database_task_source,
+        duckdb_state,
+        intent_repository,
+    )
+
+    events: list[str] = []
+    owner_values = iter(
+        (
+            _owner_status_with_replica(41),
+            _owner_status_with_replica(after_generation),
+        )
+    )
+    mutation_barrier = _empty_quack_mutation_barrier()
+
+    class Connection:
+        def __init__(self):
+            self._quack_mutation_binding = _owner_binding(41)
+
+        def execute(self, statement):
+            events.append(statement)
+            return self
+
+        def close(self):
+            events.append("close")
+
+    connection = Connection()
+
+    @contextmanager
+    def owner_lock(_path, *, timeout_seconds):
+        assert timeout_seconds == 2.0
+        events.append("lock")
+        try:
+            yield
+        finally:
+            events.append("unlock")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_reconciliation_program_environment",
+        lambda *_args, **_kwargs: nullcontext(),
+    )
+    monkeypatch.setattr(
+        duckdb_state,
+        "quack_owner_mutation_write_lock_path",
+        lambda _store: tmp_path / "owner.lock",
+    )
+    monkeypatch.setattr(duckdb_state, "exclusive_file_lock", owner_lock)
+    monkeypatch.setattr(
+        duckdb_state,
+        "_resolve_quack_token_handle",
+        lambda **_kwargs: ("not-published", next(owner_values)),
+    )
+    monkeypatch.setattr(
+        duckdb_state,
+        "open_quack_transport_connection",
+        lambda _uri, *, token: connection,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_mutation_inbox_barrier",
+        lambda _store_id: dict(mutation_barrier),
+    )
+
+    def read_receipt(_source, **subject):
+        events.append("receipt")
+        assert subject["expected_store_id"] == "state/control.duckdb"
+        replica = dict(subject["controller_replica_observation"])
+        if receipt_replica_tamper:
+            replica["sha256"] = "sha256:" + ("5" * 64)
+        return {
+            "authority": {
+                "owner_binding": _owner_binding(41),
+                "read_replica_observation": replica,
+                "mutation_barrier": subject["controller_mutation_barrier"],
+            }
+        }
+
+    monkeypatch.setattr(
+        database_task_source.DatabaseTaskSource,
+        "fenced_provider_outer_authority_population_receipt",
+        read_receipt,
+    )
+    monkeypatch.setattr(
+        intent_repository,
+        "fenced_provider_outer_authority_population_receipt_valid",
+        lambda _receipt: True,
+    )
+    subject = {
+        "task_cid": "cid:PCTDD-006",
+        "task_alias": "PCTDD-006",
+        "task_revision": 28,
+        "expected_task_status": "blocked",
+        "attempt_id": "attempt:outer",
+        "claim_id": "claim:outer",
+        "lease_id": "lease:outer",
+        "owner_session_id": "owner:lane-0",
+        "fencing_token": 6,
+        "fence_epoch": 0,
+        "expected_store_id": "state/control.duckdb",
+        "expected_store_generation": 41,
+        "receipt_nonce": "nonce:outer",
+        "receipt_epoch": 1,
+    }
+    if after_generation == 41 and not receipt_replica_tamper:
+        result = supervisor._database_portal_fenced_provider_outer_authority_receipt(
+            **subject
+        )
+        assert result["authority"]["owner_binding"]["generation"] == 41
+    else:
+        with pytest.raises(RuntimeError, match="generation changed"):
+            supervisor._database_portal_fenced_provider_outer_authority_receipt(
+                **subject
+            )
+    assert events == [
+        "lock",
+        "BEGIN TRANSACTION",
+        "receipt",
+        "COMMIT",
+        "close",
+        "unlock",
+    ]
+
+
+@pytest.mark.parametrize("active_suffix", ["request", "processing"])
+def test_outer_owner_receipt_barrier_rejects_unsettled_quack_mutation(
+    tmp_path,
+    monkeypatch,
+    active_suffix,
+):
+    repo = tmp_path / "repo"
+    inbox = repo / "state" / "quack-owner" / "mutations"
+    inbox.mkdir(parents=True, mode=0o700)
+    inbox.chmod(0o700)
+    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(repo))
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_ID",
+        "state/control.duckdb",
+    )
+    active = inbox / ("b" + ("a" * 40) + f".{active_suffix}.json")
+    active.write_text("{}", encoding="utf-8")
+    active.chmod(0o600)
+
+    with pytest.raises(RuntimeError, match="unsettled owner mutation"):
+        PortalImplementationSupervisor._database_portal_mutation_inbox_barrier(
+            "state/control.duckdb"
+        )
+
+    active.unlink()
+    barrier = (
+        PortalImplementationSupervisor._database_portal_mutation_inbox_barrier(
+            "state/control.duckdb"
+        )
+    )
+    assert barrier["active_request_count"] == 0
+    assert barrier["active_processing_count"] == 0
 
 
 @pytest.mark.parametrize(
@@ -1125,8 +1445,8 @@ def test_worktree_maintenance_holds_repo_lease_and_defers_on_quack_failure(
     monkeypatch.setattr(supervisor, "_release_supervisor_checkout_lease", release)
     monkeypatch.setattr(
         supervisor,
-        "_database_portal_reload_projection",
-        lambda: {
+        "_database_portal_reload_projection_fenced",
+        lambda _program: {
             "defer_maintenance": True,
             "activity_detected": False,
             "reason": "database_portal_projection_inconclusive",
@@ -1151,6 +1471,7 @@ def test_worktree_maintenance_holds_repo_lease_and_defers_on_quack_failure(
         lambda phase: events.append(phase),
         implementation_maintenance_lease=None,
         managed_daemon_launch_lock_held=True,
+        database_portal_fenced_program=supervisor.config.database_program,
     )
 
     assert result["maintenance_blocked"] is True
@@ -1185,8 +1506,8 @@ def test_retained_checkout_is_not_recovered_before_quack_projection(
     monkeypatch.setattr(module, "checkout_mutation_lease_state", lambda _lease: "current")
     monkeypatch.setattr(
         supervisor,
-        "_database_portal_reload_projection",
-        lambda: {
+        "_database_portal_reload_projection_fenced",
+        lambda _program: {
             "defer_maintenance": True,
             "activity_detected": False,
             "reason": "database_portal_projection_inconclusive",
@@ -1202,6 +1523,7 @@ def test_retained_checkout_is_not_recovered_before_quack_projection(
         lambda _phase: None,
         implementation_maintenance_lease=None,
         managed_daemon_launch_lock_held=True,
+        database_portal_fenced_program=supervisor.config.database_program,
     )
 
     assert result["maintenance_blocked"] is True
@@ -1216,6 +1538,24 @@ def test_public_run_once_quiesces_and_records_deferred_not_completed(
     supervisor = PortalImplementationSupervisor(_config(tmp_path))
     events: list[str] = []
     finished: list[tuple[str, str]] = []
+
+    @contextmanager
+    def portal_fence():
+        yield supervisor.config.database_program
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        portal_fence,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_projection_fenced",
+        lambda _program: (
+            events.append("projection")
+            or _authenticated_watchdog_projection(active=False)
+        ),
+    )
 
     monkeypatch.setattr(
         supervisor,
@@ -1239,10 +1579,13 @@ def test_public_run_once_quiesces_and_records_deferred_not_completed(
     )
 
     def maintenance(_update, **kwargs):
-        assert events == ["quiesce"]
+        assert events == ["projection", "quiesce", "projection"]
         assert kwargs == {
             "include_refill": False,
             "managed_daemon_launch_lock_held": True,
+            "database_portal_fenced_program": (
+                supervisor.config.database_program
+            ),
         }
         events.append("maintenance")
         return {
@@ -1255,7 +1598,7 @@ def test_public_run_once_quiesces_and_records_deferred_not_completed(
 
     result = supervisor.run_once(include_refill=False)
 
-    assert events == ["quiesce", "maintenance"]
+    assert events == ["projection", "quiesce", "projection", "maintenance"]
     assert result["maintenance_blocked"] is True
     assert finished == [
         ("deferred", "database_portal_projection_inconclusive")
@@ -1296,8 +1639,8 @@ def test_worktree_maintenance_stops_before_daemon_owned_reconcile(
     monkeypatch.setattr(supervisor, "_release_supervisor_checkout_lease", release)
     monkeypatch.setattr(
         supervisor,
-        "_database_portal_reload_projection",
-        _idle_projection,
+        "_database_portal_reload_projection_fenced",
+        lambda _program: _idle_projection(),
     )
     monkeypatch.setattr(
         supervisor,
@@ -1321,7 +1664,7 @@ def test_worktree_maintenance_stops_before_daemon_owned_reconcile(
     monkeypatch.setattr(
         supervisor,
         "_cleanup_backlogged_worktrees_locked",
-        lambda: events.append("cleanup") or {},
+        lambda **_kwargs: events.append("cleanup") or {},
     )
     monkeypatch.setattr(
         supervisor,
@@ -1344,6 +1687,7 @@ def test_worktree_maintenance_stops_before_daemon_owned_reconcile(
         lambda phase: events.append(f"phase:{phase}"),
         implementation_maintenance_lease={"lease_id": "implementation"},
         managed_daemon_launch_lock_held=True,
+        database_portal_fenced_program=supervisor.config.database_program,
     )
 
     assert result["maintenance_blocked"] is False
@@ -1372,10 +1716,12 @@ def test_daemon_reconciliation_runs_after_implementation_lease_release(
         include_refill,
         implementation_maintenance_lease,
         managed_daemon_launch_lock_held,
+        database_portal_fenced_program,
     ):
         assert include_refill is False
         assert managed_daemon_launch_lock_held is True
         assert implementation_maintenance_lease is not None
+        assert database_portal_fenced_program is config.database_program
         assert implementation_lock.exists()
         events.append("supervisor_phase")
         return {
@@ -1413,8 +1759,8 @@ def test_daemon_reconciliation_runs_after_implementation_lease_release(
     )
     monkeypatch.setattr(
         supervisor,
-        "_database_portal_reload_projection",
-        lambda: events.append("fresh_projection") or _idle_projection(),
+        "_database_portal_reload_projection_fenced",
+        lambda _program: events.append("fresh_projection") or _idle_projection(),
     )
     monkeypatch.setattr(supervisor, "reconcile_backlogged_worktrees", reconcile)
     monkeypatch.setattr(
@@ -1427,6 +1773,7 @@ def test_daemon_reconciliation_runs_after_implementation_lease_release(
         lambda _phase: None,
         include_refill=False,
         managed_daemon_launch_lock_held=True,
+        database_portal_fenced_program=config.database_program,
     )
 
     assert events == [
@@ -1456,12 +1803,14 @@ def test_projection_checkout_lease_spans_later_supervisor_mutations(
         assert supervisor._supervisor_checkout_transaction_depth() > 0, label
         events.append(label)
 
-    def projection():
+    def projection(_program):
         assert_outer_lease("projection")
         return _idle_projection()
 
     def guarded(*_args, **_kwargs):
-        projection_value = supervisor._database_portal_reload_projection()
+        projection_value = supervisor._database_portal_reload_projection_fenced(
+            config.database_program
+        )
         for label in (
             "stale_active_repair",
             "dirty_rescue",
@@ -1490,7 +1839,7 @@ def test_projection_checkout_lease_spans_later_supervisor_mutations(
 
     monkeypatch.setattr(
         supervisor,
-        "_database_portal_reload_projection",
+        "_database_portal_reload_projection_fenced",
         projection,
     )
     monkeypatch.setattr(
@@ -1538,6 +1887,7 @@ def test_projection_checkout_lease_spans_later_supervisor_mutations(
         lambda _phase: None,
         include_refill=False,
         managed_daemon_launch_lock_held=True,
+        database_portal_fenced_program=config.database_program,
     )
 
     assert events[:4] == [
