@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -597,16 +598,91 @@ def _legacy_namespace_omitted_identity(
     return command, scope
 
 
+def _versioned_python_alias_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    root_owned: bool = True,
+) -> tuple[Path, Path, Path]:
+    bin_dir = tmp_path / "reviewed-python-bin"
+    bin_dir.mkdir(mode=0o700)
+    versioned = bin_dir / "python3.12"
+    versioned.write_bytes(b"deterministic fake Python image\n")
+    versioned.chmod(0o700)
+    generic = bin_dir / "python3"
+    generic.symlink_to(versioned.name)
+    alternate = bin_dir / "python3.11"
+    alternate.write_bytes(b"different deterministic image\n")
+    alternate.chmod(0o700)
+
+    original_lstat = os.lstat
+    fixture_paths = {generic, versioned, alternate}
+    fixture_directories: set[Path] = set()
+    current = bin_dir
+    while True:
+        fixture_directories.add(current)
+        if current.parent == current:
+            break
+        current = current.parent
+
+    def controlled_lstat(path: object, *args: object, **kwargs: object) -> os.stat_result:
+        result = original_lstat(path, *args, **kwargs)
+        selected = Path(path)
+        if selected not in fixture_paths and selected not in fixture_directories:
+            return result
+        fields = list(result)
+        fields[4] = 0 if root_owned else 12345
+        if selected in fixture_directories and root_owned:
+            fields[0] = int(fields[0]) & ~0o022
+        return os.stat_result(fields)
+
+    monkeypatch.setattr(supervisor_module.os, "lstat", controlled_lstat)
+    monkeypatch.setattr(
+        supervisor_module,
+        "_CURRENT_PROCESS_EXECUTABLE_PATH",
+        versioned,
+    )
+    monkeypatch.setattr(supervisor_module.sys, "executable", str(versioned))
+    return generic, versioned, alternate
+
+
+@pytest.mark.parametrize("use_executable_alias", [False, True])
 def test_dead_legacy_namespace_omitted_identity_is_quarantined(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    use_executable_alias: bool,
 ) -> None:
+    executable_alias: Path | None = None
+    if use_executable_alias:
+        try:
+            versioned_executable = Path("/proc/self/exe").resolve(strict=True)
+        except OSError:
+            pytest.skip("the platform does not expose /proc/self/exe")
+        executable_alias = versioned_executable.with_name("python3")
+        if (
+            PortalImplementationSupervisor._stable_executable_alias_identity(
+                (str(executable_alias), "--portable-probe"),
+                (str(versioned_executable), "--portable-probe"),
+            )
+            is None
+        ):
+            pytest.skip(
+                "the current interpreter has no reviewed root-owned python3 alias"
+            )
+        monkeypatch.setattr(
+            supervisor_module.sys,
+            "executable",
+            str(versioned_executable),
+        )
     supervisor = _supervisor(tmp_path, database_managed=True)
     pid = 353
     command, scope = _legacy_namespace_omitted_identity(
         supervisor,
         pid=pid,
     )
+    if use_executable_alias:
+        assert executable_alias is not None
+        command[0] = str(executable_alias)
     identity_path = _write_identity(
         supervisor,
         pid=pid,
@@ -645,6 +721,163 @@ def test_dead_legacy_namespace_omitted_identity_is_quarantined(
     assert Path(result["quarantined"]["identity"]).read_bytes() == original
     assert not identity_path.exists()
     assert not supervisor._managed_daemon_pid_path().exists()
+
+
+@pytest.mark.parametrize(
+    "alias_kind",
+    ["different", "missing", "relative", "arbitrary_same_inode"],
+)
+def test_legacy_namespace_match_rejects_unverified_executable_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    alias_kind: str,
+) -> None:
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 358
+    command, scope = _legacy_namespace_omitted_identity(
+        supervisor,
+        pid=pid,
+    )
+    if alias_kind == "different":
+        different_executable = tmp_path / "different-python"
+        different_executable.write_bytes(b"not the configured interpreter\n")
+        command[0] = str(different_executable)
+    elif alias_kind == "missing":
+        command[0] = str(tmp_path / "missing-python")
+    elif alias_kind == "relative":
+        command[0] = "relative-python-alias"
+    else:
+        arbitrary_alias = tmp_path / "python-equivalent-alias"
+        arbitrary_alias.symlink_to(Path(command[0]))
+        command[0] = str(arbitrary_alias)
+    identity_path = _write_identity(
+        supervisor,
+        pid=pid,
+        command=tuple(command),
+        owner_scope=scope,
+    )
+    identity = supervisor_module.load_supervised_child_identity(identity_path)
+
+    assert identity is not None
+    assert not (
+        supervisor._managed_daemon_identity_matches_legacy_namespace_lane_scope(
+            identity,
+            pid=pid,
+        )
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        lambda _identity: pytest.fail("unverified alias liveness was trusted"),
+    )
+    result = supervisor.ensure_managed_daemon_pid_file()
+    assert result["repaired"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "orphaned_managed_database_identity_scope_mismatch"
+    )
+    assert identity_path.exists()
+
+
+def test_executable_alias_rejects_owner_writable_untrusted_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generic, versioned, _alternate = _versioned_python_alias_fixture(
+        tmp_path,
+        monkeypatch,
+        root_owned=False,
+    )
+
+    assert not PortalImplementationSupervisor._commands_match_with_verified_executable_alias(
+        (str(generic), "--same"),
+        (str(versioned), "--same"),
+    )
+
+
+def test_executable_alias_retarget_during_descriptor_check_rejects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generic, versioned, alternate = _versioned_python_alias_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    original_open = os.open
+    switched = False
+
+    def racing_open(path: object, flags: int, *args: object) -> int:
+        nonlocal switched
+        if Path(path) == versioned and not switched:
+            switched = True
+            generic.unlink()
+            generic.symlink_to(alternate.name)
+        return original_open(path, flags, *args)
+
+    monkeypatch.setattr(supervisor_module.os, "open", racing_open)
+
+    assert not PortalImplementationSupervisor._commands_match_with_verified_executable_alias(
+        (str(generic), "--same"),
+        (str(versioned), "--same"),
+    )
+    assert generic.resolve() == alternate
+
+
+def test_legacy_alias_is_revalidated_under_launch_lock_before_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generic, _versioned, alternate = _versioned_python_alias_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    pid = 359
+    command, scope = _legacy_namespace_omitted_identity(
+        supervisor,
+        pid=pid,
+    )
+    command[0] = str(generic)
+    identity_path = _write_identity(
+        supervisor,
+        pid=pid,
+        command=tuple(command),
+        owner_scope=scope,
+    )
+    original = identity_path.read_bytes()
+    liveness_calls = 0
+
+    def retarget_after_initial_match(_identity: object) -> OwnerLiveness:
+        nonlocal liveness_calls
+        liveness_calls += 1
+        if liveness_calls == 1:
+            generic.unlink()
+            generic.symlink_to(alternate.name)
+        return OwnerLiveness.DEAD
+
+    monkeypatch.setattr(
+        supervisor_module,
+        "supervised_child_identity_liveness",
+        retarget_after_initial_match,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_pid",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_find_matching_managed_daemon_lane_process",
+        lambda **_kwargs: None,
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "orphaned_managed_database_identity_changed"
+    assert identity_path.read_bytes() == original
+    assert not tuple(identity_path.parent.glob("*.stale-child-identity-*"))
 
 
 @pytest.mark.parametrize("liveness", [OwnerLiveness.ALIVE, OwnerLiveness.UNKNOWN])
@@ -761,6 +994,9 @@ def test_dead_legacy_identity_does_not_hide_live_legacy_lane_process(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    executable_alias, versioned_executable, _alternate = (
+        _versioned_python_alias_fixture(tmp_path, monkeypatch)
+    )
     supervisor = _supervisor(tmp_path, database_managed=True)
     identity_pid = 356
     live_pid = 357
@@ -768,6 +1004,7 @@ def test_dead_legacy_identity_does_not_hide_live_legacy_lane_process(
         supervisor,
         pid=identity_pid,
     )
+    command[0] = str(executable_alias)
     identity_path = _write_identity(
         supervisor,
         pid=identity_pid,
@@ -788,7 +1025,7 @@ def test_dead_legacy_identity_does_not_hide_live_legacy_lane_process(
     monkeypatch.setattr(
         supervisor,
         "_list_process_details",
-        lambda: [(live_pid, " ".join(command))],
+        lambda: [(live_pid, shlex.join(command))],
     )
     monkeypatch.setattr(
         supervisor_module,
@@ -799,6 +1036,26 @@ def test_dead_legacy_identity_does_not_hide_live_legacy_lane_process(
         supervisor_module,
         "read_process_command_argv",
         lambda pid: tuple(command) if int(pid) == live_pid else None,
+    )
+    live_birth = ProcessBirthIdentity(
+        pid=live_pid,
+        start_time_ticks=5678,
+        boot_id="boot-test",
+        parent_pid=23,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_birth",
+        lambda pid: live_birth if int(pid) == live_pid else None,
+    )
+    proc_root = tmp_path / "proc"
+    proc_pid = proc_root / str(live_pid)
+    proc_pid.mkdir(parents=True)
+    (proc_pid / "exe").symlink_to(versioned_executable)
+    monkeypatch.setattr(
+        supervisor_module,
+        "_PROCESS_FILESYSTEM_ROOT",
+        proc_root,
     )
     monkeypatch.setattr(
         supervisor_module,
@@ -815,9 +1072,150 @@ def test_dead_legacy_identity_does_not_hide_live_legacy_lane_process(
     )
     assert result["pid"] == live_pid
     assert result["lane_process"]["reason"] == (
-        "legacy_namespace_omitted_lane_argv"
+        "legacy_namespace_omitted_verified_executable_alias_lane_argv"
     )
     assert identity_path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("scenario", "expected_reason"),
+    [
+        ("alternate_process_image", None),
+        (
+            "birth_drift",
+            "legacy_namespace_omitted_lane_executable_identity_inconclusive",
+        ),
+        (
+            "proc_exe_unavailable",
+            "legacy_namespace_omitted_lane_executable_identity_inconclusive",
+        ),
+        (
+            "alias_retargeted",
+            "legacy_namespace_omitted_lane_executable_identity_inconclusive",
+        ),
+    ],
+)
+def test_live_legacy_alias_scan_binds_executed_image_and_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scenario: str,
+    expected_reason: str | None,
+) -> None:
+    generic, versioned, alternate = _versioned_python_alias_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    live_pid = 360
+    command, _scope = _legacy_namespace_omitted_identity(
+        supervisor,
+        pid=live_pid,
+    )
+    command[0] = str(generic)
+    if scenario == "alias_retargeted":
+        generic.unlink()
+        generic.symlink_to(alternate.name)
+
+    monkeypatch.setattr(
+        supervisor,
+        "_list_process_details",
+        lambda: [(live_pid, " ".join(command))],
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "process_is_running",
+        lambda pid: int(pid) == live_pid,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_command_argv",
+        lambda pid: tuple(command) if int(pid) == live_pid else None,
+    )
+    birth_before = ProcessBirthIdentity(
+        pid=live_pid,
+        start_time_ticks=6789,
+        boot_id="boot-test",
+        parent_pid=23,
+    )
+    birth_after = (
+        ProcessBirthIdentity(
+            pid=live_pid,
+            start_time_ticks=6790,
+            boot_id="boot-test",
+            parent_pid=23,
+        )
+        if scenario == "birth_drift"
+        else birth_before
+    )
+    birth_observations = iter((birth_before, birth_after))
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_birth",
+        lambda pid: next(birth_observations) if int(pid) == live_pid else None,
+    )
+    proc_root = tmp_path / "proc"
+    proc_pid = proc_root / str(live_pid)
+    proc_pid.mkdir(parents=True)
+    if scenario != "proc_exe_unavailable":
+        process_image = (
+            alternate if scenario == "alternate_process_image" else versioned
+        )
+        (proc_pid / "exe").symlink_to(process_image)
+    monkeypatch.setattr(
+        supervisor_module,
+        "_PROCESS_FILESYSTEM_ROOT",
+        proc_root,
+    )
+
+    result = supervisor._find_matching_managed_daemon_lane_process()
+
+    if expected_reason is None:
+        assert result is None
+    else:
+        assert result is not None
+        assert result["pid"] == live_pid
+        assert result["reason"] == expected_reason
+
+
+def test_ps_fallback_alias_shape_blocks_when_proc_argv_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generic, _versioned, _alternate = _versioned_python_alias_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    supervisor = _supervisor(tmp_path, database_managed=True)
+    live_pid = 361
+    command, _scope = _legacy_namespace_omitted_identity(
+        supervisor,
+        pid=live_pid,
+    )
+    command[0] = str(generic)
+    monkeypatch.setattr(
+        supervisor,
+        "_list_process_details",
+        lambda: [(live_pid, shlex.join(command))],
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "process_is_running",
+        lambda pid: int(pid) == live_pid,
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "read_process_command_argv",
+        lambda _pid: None,
+    )
+
+    result = supervisor._find_matching_managed_daemon_lane_process()
+
+    assert result is not None
+    assert result["pid"] == live_pid
+    assert result["reason"] == (
+        "legacy_namespace_omitted_executable_alias_lane_process_"
+        "observation_inconclusive"
+    )
 
 
 def test_dead_predecessor_owner_session_identity_is_quarantined(

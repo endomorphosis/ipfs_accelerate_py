@@ -178,6 +178,8 @@ from .worktrees import (
 )
 
 REPO_ROOT = Path.cwd()
+_CURRENT_PROCESS_EXECUTABLE_PATH = Path("/proc/self/exe")
+_PROCESS_FILESYSTEM_ROOT = Path("/proc")
 
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor")
 
@@ -22880,6 +22882,313 @@ class PortalImplementationSupervisor:
             return None
         return tokens[:index] + tokens[index + 2 :], owner_session
 
+    @staticmethod
+    def _python_executable_alias_shape(
+        observed: Sequence[str],
+        expected: Sequence[str],
+    ) -> tuple[Path, Path] | None:
+        """Return the one reviewed generic-to-versioned Python alias shape."""
+
+        observed_tokens = tuple(str(part) for part in observed)
+        expected_tokens = tuple(str(part) for part in expected)
+        if (
+            not observed_tokens
+            or len(observed_tokens) != len(expected_tokens)
+            or observed_tokens[1:] != expected_tokens[1:]
+        ):
+            return None
+        observed_executable = Path(observed_tokens[0])
+        expected_executable = Path(expected_tokens[0])
+        if (
+            not observed_executable.is_absolute()
+            or not expected_executable.is_absolute()
+            or observed_executable.parent != expected_executable.parent
+            or observed_executable.name != "python3"
+            or re.fullmatch(r"python3(?:\.\d+)+", expected_executable.name)
+            is None
+        ):
+            return None
+        return observed_executable, expected_executable
+
+    @staticmethod
+    def _stable_executable_alias_identity(
+        observed: Sequence[str],
+        expected: Sequence[str],
+    ) -> tuple[int, int] | None:
+        """Verify the reviewed alias through stable held-file identities.
+
+        The historical command may use the generic sibling ``python3`` only
+        when it is the exact symlink to the versioned current executable.
+        Both pathnames are opened, checked against their path metadata again,
+        and bound to the executable image of this supervisor.  Group- or
+        other-writable path authorities are not admitted.
+        """
+
+        shaped = PortalImplementationSupervisor._python_executable_alias_shape(
+            observed,
+            expected,
+        )
+        if shaped is None:
+            return None
+        observed_executable, expected_executable = shaped
+        descriptors: list[int] = []
+
+        def trusted_directory_chain(
+            leaf_parent: Path,
+        ) -> tuple[tuple[str, int, int, int, int], ...] | None:
+            chain: list[tuple[str, int, int, int, int]] = []
+            current = leaf_parent
+            while True:
+                metadata = os.lstat(current)
+                if (
+                    stat.S_ISLNK(metadata.st_mode)
+                    or not stat.S_ISDIR(metadata.st_mode)
+                    or metadata.st_uid != 0
+                    or stat.S_IMODE(metadata.st_mode) & 0o022
+                ):
+                    return None
+                chain.append(
+                    (
+                        str(current),
+                        int(metadata.st_dev),
+                        int(metadata.st_ino),
+                        int(metadata.st_mode),
+                        int(metadata.st_uid),
+                    )
+                )
+                if current.parent == current:
+                    break
+                current = current.parent
+            return tuple(chain)
+
+        try:
+            parent_chain_before = trusted_directory_chain(
+                expected_executable.parent
+            )
+            observed_before = os.lstat(observed_executable)
+            expected_before = os.lstat(expected_executable)
+            link_before = os.readlink(observed_executable)
+            if (
+                parent_chain_before is None
+                or not stat.S_ISLNK(observed_before.st_mode)
+                or observed_before.st_uid != 0
+                or not stat.S_ISREG(expected_before.st_mode)
+                or expected_before.st_uid != 0
+                or stat.S_IMODE(expected_before.st_mode) & 0o022
+                or not stat.S_IMODE(expected_before.st_mode) & 0o111
+                or link_before != expected_executable.name
+            ):
+                return None
+
+            open_flags = os.O_RDONLY
+            open_flags |= getattr(os, "O_CLOEXEC", 0)
+            open_flags |= getattr(os, "O_NONBLOCK", 0)
+            for path in (
+                observed_executable,
+                expected_executable,
+                _CURRENT_PROCESS_EXECUTABLE_PATH,
+            ):
+                descriptors.append(os.open(path, open_flags))
+            observed_opened, expected_opened, current_opened = (
+                os.fstat(descriptor) for descriptor in descriptors
+            )
+
+            parent_chain_after = trusted_directory_chain(
+                expected_executable.parent
+            )
+            observed_after = os.lstat(observed_executable)
+            expected_after = os.lstat(expected_executable)
+            observed_target_after = os.stat(observed_executable)
+            expected_target_after = os.stat(expected_executable)
+            link_after = os.readlink(observed_executable)
+        except (AttributeError, OSError, TypeError, ValueError):
+            return None
+        finally:
+            for descriptor in descriptors:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+
+        path_identity_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_nlink",
+            "st_size",
+        )
+
+        def identity(value: os.stat_result) -> tuple[int, ...]:
+            return tuple(int(getattr(value, field)) for field in path_identity_fields)
+
+        try:
+            opened_identity = (
+                int(expected_opened.st_dev),
+                int(expected_opened.st_ino),
+            )
+            verified = bool(
+                parent_chain_after == parent_chain_before
+                and identity(observed_before) == identity(observed_after)
+                and identity(expected_before) == identity(expected_after)
+                and link_after == link_before
+                and all(
+                    stat.S_ISREG(value.st_mode)
+                    for value in (
+                        observed_opened,
+                        expected_opened,
+                        current_opened,
+                    )
+                )
+                and (
+                    int(observed_opened.st_dev),
+                    int(observed_opened.st_ino),
+                )
+                == opened_identity
+                == (
+                    int(current_opened.st_dev),
+                    int(current_opened.st_ino),
+                )
+                == (
+                    int(observed_target_after.st_dev),
+                    int(observed_target_after.st_ino),
+                )
+                == (
+                    int(expected_target_after.st_dev),
+                    int(expected_target_after.st_ino),
+                )
+            )
+        except (AttributeError, TypeError, ValueError):
+            return None
+        return opened_identity if verified else None
+
+    @staticmethod
+    def _commands_match_with_verified_executable_alias(
+        observed: Sequence[str],
+        expected: Sequence[str],
+    ) -> bool:
+        """Compare exact argv or the one descriptor-verified Python alias."""
+
+        observed_tokens = tuple(str(part) for part in observed)
+        expected_tokens = tuple(str(part) for part in expected)
+        return bool(
+            observed_tokens == expected_tokens
+            or PortalImplementationSupervisor._stable_executable_alias_identity(
+                observed_tokens,
+                expected_tokens,
+            )
+            is not None
+        )
+
+    @staticmethod
+    def _live_executable_alias_status(
+        pid: int,
+        observed: Sequence[str],
+        observed_owner_session: str,
+        expected: Sequence[str],
+    ) -> str:
+        """Return ``match``, ``mismatch``, ``inconclusive``, or ``not_alias``.
+
+        A live predecessor is compared through its executed image rather than
+        what the mutable argv pathname happens to name after ``exec``.
+        Process birth, argv, and executable identity are bracketed so PID reuse
+        or an in-place ``exec`` cannot silently authorize a negative scan.
+        """
+
+        observed_tokens = tuple(str(part) for part in observed)
+        expected_tokens = tuple(str(part) for part in expected)
+        if (
+            PortalImplementationSupervisor._python_executable_alias_shape(
+                observed_tokens,
+                expected_tokens,
+            )
+            is None
+        ):
+            return "not_alias"
+        expected_identity = (
+            PortalImplementationSupervisor._stable_executable_alias_identity(
+                observed_tokens,
+                expected_tokens,
+            )
+        )
+        if expected_identity is None:
+            return "inconclusive"
+
+        descriptors: list[int] = []
+        try:
+            birth_before = read_process_birth(int(pid))
+            argv_before = read_process_command_argv(int(pid))
+            process_executable = (
+                _PROCESS_FILESYSTEM_ROOT / str(int(pid)) / "exe"
+            )
+            descriptors.append(
+                os.open(
+                    process_executable,
+                    os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
+                )
+            )
+            executable_before = os.fstat(descriptors[-1])
+            argv_after = read_process_command_argv(int(pid))
+            descriptors.append(
+                os.open(
+                    process_executable,
+                    os.O_RDONLY | getattr(os, "O_CLOEXEC", 0),
+                )
+            )
+            executable_after = os.fstat(descriptors[-1])
+            birth_after = read_process_birth(int(pid))
+        except (OSError, ValueError):
+            return "inconclusive"
+        finally:
+            for descriptor in descriptors:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+
+        normalized_argv_before = (
+            PortalImplementationSupervisor._command_without_exact_owner_session(
+                argv_before
+            )
+            if argv_before is not None
+            else None
+        )
+        normalized_argv_after = (
+            PortalImplementationSupervisor._command_without_exact_owner_session(
+                argv_after
+            )
+            if argv_after is not None
+            else None
+        )
+        if (
+            birth_before is None
+            or birth_after != birth_before
+            or normalized_argv_before
+            != (observed_tokens, str(observed_owner_session))
+            or normalized_argv_after
+            != (observed_tokens, str(observed_owner_session))
+            or not stat.S_ISREG(executable_before.st_mode)
+            or not stat.S_ISREG(executable_after.st_mode)
+            or (
+                int(executable_before.st_dev),
+                int(executable_before.st_ino),
+            )
+            != (
+                int(executable_after.st_dev),
+                int(executable_after.st_ino),
+            )
+        ):
+            return "inconclusive"
+        return (
+            "match"
+            if (
+                int(executable_before.st_dev),
+                int(executable_before.st_ino),
+            )
+            == expected_identity
+            else "mismatch"
+        )
+
     def _managed_daemon_identity_matches_lane_scope(
         self,
         identity: Any,
@@ -22991,7 +23300,10 @@ class PortalImplementationSupervisor:
         return bool(
             expected_command[1] == expected_owner
             and observed_command[1] == observed_owner
-            and observed_command[0] == expected_legacy_command
+            and self._commands_match_with_verified_executable_alias(
+                observed_command[0],
+                expected_legacy_command,
+            )
         )
 
     def _exact_managed_daemon_identity_is_live(self, pid: int) -> bool:
@@ -23531,7 +23843,13 @@ class PortalImplementationSupervisor:
         *,
         exclude_pids: set[int] | None = None,
     ) -> dict[str, Any] | None:
-        """Find a live same-lane daemon while ignoring only owner session."""
+        """Find a live same-lane daemon while ignoring only owner session.
+
+        The one reviewed Python executable alias is matched against the
+        process's executed image.  An alias-shaped command with changing or
+        unavailable executable evidence blocks as inconclusive rather than
+        becoming permission to launch a peer.
+        """
 
         expected = self._command_without_exact_owner_session(
             self._build_daemon_command()
@@ -23566,17 +23884,60 @@ class PortalImplementationSupervisor:
                 if observed_argv is not None
                 else None
             )
-            if observed is not None and observed[0] in {
-                expected[0],
-                legacy_namespace_omitted_argv,
-            }:
+            current_exact = bool(
+                observed is not None and observed[0] == expected[0]
+            )
+            legacy_exact = bool(
+                observed is not None
+                and observed[0] == legacy_namespace_omitted_argv
+            )
+            current_alias_status = (
+                self._live_executable_alias_status(
+                    int(pid),
+                    observed[0],
+                    observed[1],
+                    expected[0],
+                )
+                if observed is not None and not current_exact
+                else "not_alias"
+            )
+            legacy_alias_status = (
+                self._live_executable_alias_status(
+                    int(pid),
+                    observed[0],
+                    observed[1],
+                    legacy_namespace_omitted_argv,
+                )
+                if observed is not None and not legacy_exact
+                else "not_alias"
+            )
+            if observed is not None and (
+                current_exact
+                or legacy_exact
+                or current_alias_status in {"match", "inconclusive"}
+                or legacy_alias_status in {"match", "inconclusive"}
+            ):
+                if current_exact:
+                    reason = "exact_durable_lane_argv"
+                elif legacy_exact:
+                    reason = "legacy_namespace_omitted_lane_argv"
+                elif current_alias_status == "match":
+                    reason = "verified_executable_alias_lane_argv"
+                elif legacy_alias_status == "match":
+                    reason = (
+                        "legacy_namespace_omitted_verified_executable_"
+                        "alias_lane_argv"
+                    )
+                elif current_alias_status == "inconclusive":
+                    reason = "executable_alias_lane_identity_inconclusive"
+                else:
+                    reason = (
+                        "legacy_namespace_omitted_lane_executable_"
+                        "identity_inconclusive"
+                    )
                 return {
                     "pid": int(pid),
-                    "reason": (
-                        "exact_durable_lane_argv"
-                        if observed[0] == expected[0]
-                        else "legacy_namespace_omitted_lane_argv"
-                    ),
+                    "reason": reason,
                     "owner_session_id": observed[1],
                 }
             if observed_argv is not None:
@@ -23587,20 +23948,55 @@ class PortalImplementationSupervisor:
                 )
             except ValueError:
                 nominated = None
-            if nominated is not None and nominated[0] in {
-                expected[0],
-                legacy_namespace_omitted_argv,
-            }:
+            current_nomination_match = bool(
+                nominated is not None and nominated[0] == expected[0]
+            )
+            legacy_nomination_match = bool(
+                nominated is not None
+                and nominated[0] == legacy_namespace_omitted_argv
+            )
+            current_alias_nomination = bool(
+                nominated is not None
+                and self._python_executable_alias_shape(
+                    nominated[0],
+                    expected[0],
+                )
+                is not None
+            )
+            legacy_alias_nomination = bool(
+                nominated is not None
+                and self._python_executable_alias_shape(
+                    nominated[0],
+                    legacy_namespace_omitted_argv,
+                )
+                is not None
+            )
+            if nominated is not None and (
+                current_nomination_match
+                or legacy_nomination_match
+                or current_alias_nomination
+                or legacy_alias_nomination
+            ):
+                if current_nomination_match:
+                    reason = "durable_lane_process_observation_inconclusive"
+                elif legacy_nomination_match:
+                    reason = (
+                        "legacy_namespace_omitted_lane_process_"
+                        "observation_inconclusive"
+                    )
+                elif current_alias_nomination:
+                    reason = (
+                        "executable_alias_lane_process_observation_"
+                        "inconclusive"
+                    )
+                else:
+                    reason = (
+                        "legacy_namespace_omitted_executable_alias_lane_"
+                        "process_observation_inconclusive"
+                    )
                 return {
                     "pid": int(pid),
-                    "reason": (
-                        "durable_lane_process_observation_inconclusive"
-                        if nominated[0] == expected[0]
-                        else (
-                            "legacy_namespace_omitted_lane_process_"
-                            "observation_inconclusive"
-                        )
-                    ),
+                    "reason": reason,
                     "owner_session_id": nominated[1],
                 }
         return None
@@ -23774,11 +24170,22 @@ class PortalImplementationSupervisor:
                             ),
                             "lane_process": matching_lane_process,
                         }
+                    legacy_namespace_lane_revalidated = bool(
+                        not legacy_namespace_lane_exact
+                        or (
+                            current_identity is not None
+                            and self._managed_daemon_identity_matches_legacy_namespace_lane_scope(
+                                current_identity,
+                                pid=identity_pid,
+                            )
+                        )
+                    )
                     if (
                         pid_path.exists()
                         or pid_path.is_symlink()
                         or current_identity is None
                         or current_identity.record_id != identity.record_id
+                        or not legacy_namespace_lane_revalidated
                         or supervised_child_identity_liveness(current_identity)
                         is not OwnerLiveness.DEAD
                     ):
