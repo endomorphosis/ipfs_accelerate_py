@@ -429,6 +429,24 @@ _M62_TARGET_PROJECTION_CID = (
     "baguqeera7wm6juq7pfmxu5b2maugeqcx5njyierw4r2tmmbxexgoivlrkhcq"
 )
 
+_M63_SUCCESSOR_KEY = (
+    "failed_pre_authoritative_m62_float_bounds_successor_materialization"
+)
+_M63_MIGRATION_REVISION = "SAWM-R2-M63"
+_M63_CONTROL_RECORDED_AT = "2026-09-02T17:00:00Z"
+_M63_AUTHORITY_CID = (
+    "sha256:17d068e86e8d00b33c686fbb048350c5281e32e68e8b92c8150fff2186c28632"
+)
+_M63_AUTHORITY_SIZE = 16_519
+_M63_STORE_ID = _M62_STORE_ID
+_M63_COORDINATION_STORE_ID = _M62_COORDINATION_STORE_ID
+_M63_GENERATION = _M62_GENERATION
+_M63_PRIOR_EVENT_WATERMARK = _M61_TARGET_EVENT_WATERMARK
+_M63_TARGET_EVENT_WATERMARK = _M62_TARGET_EVENT_WATERMARK
+_M63_PRIOR_PROJECTION_CID = _M61_TARGET_PROJECTION_CID
+_M63_TARGET_PROJECTION_CID = _M62_TARGET_PROJECTION_CID
+_M63_M62_CONTROL_COMMIT = "b680886741a2d37184d70e18e6a4f8383923dba4"
+
 _M50_SUCCESSOR_KEY = (
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
 )
@@ -1750,6 +1768,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m63_key = _M63_SUCCESSOR_KEY
     m62_key = _M62_SUCCESSOR_KEY
     m61_key = _M61_SUCCESSOR_KEY
     m60_key = _M60_SUCCESSOR_KEY
@@ -1805,6 +1824,120 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m63_key in config:
+        authority = config.get(m63_key)
+        try:
+            materializer = _materializer()
+            expected = (
+                materializer
+                ._expected_m63_failed_pre_authoritative_m62_float_bounds_successor_authority()
+            )
+            reference = materializer._m63_authority_reference()
+            contract = materializer._validated_m63_live_preflight_contract(
+                expected
+            )
+            configured = materializer._m63_successor_configured_on_any_surface(
+                REPO_ROOT, config
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "active M63 failed pre-authoritative M62 float-bounds recovery "
+                "authority is unavailable"
+            ) from exc
+        runtime = expected.get("runtime_binding")
+        prior = expected.get("prior_authority")
+        preservation = expected.get("preservation")
+        failed_m62 = expected.get("observed_failed_m62_materialization")
+        budget = expected.get("credential_ack_startup_budget")
+        chain = expected.get("source_chain")
+        failed_m62_control = (
+            chain.get("failed_m62_control") if isinstance(chain, Mapping) else None
+        )
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        configured_cid = str(reference.get("authority_cid") or "")
+        digest_pattern = re.compile(r"sha256:[0-9a-f]{64}\Z")
+        if (
+            not configured
+            or not isinstance(authority, Mapping)
+            or dict(authority) != dict(reference)
+            or reference.get("migration_revision") != _M63_MIGRATION_REVISION
+            or configured_cid != _M63_AUTHORITY_CID
+            or configured_cid.endswith("PENDING_M63_FINAL_CONTROL_AUTHORITY_CID")
+            or digest_pattern.fullmatch(configured_cid) is None
+            or materializer._identity(expected) != _M63_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M63_AUTHORITY_SIZE
+            or expected.get("migration_revision") != _M63_MIGRATION_REVISION
+            or expected.get("migration_kind") != _M63_SUCCESSOR_KEY
+            or expected.get("control_recorded_at") != _M63_CONTROL_RECORDED_AT
+            or expected.get("authorized") is not True
+            or expected.get("authority") != "operator_control_plane"
+            or not all(
+                isinstance(item, Mapping)
+                for item in (
+                    runtime, prior, preservation, failed_m62, budget, chain,
+                    failed_m62_control, program, owner, contract,
+                )
+            )
+            or int(runtime.get("store_generation") or 0) != _M63_GENERATION
+            or int(contract.get("target_generation") or 0) != _M63_GENERATION
+            or int(contract.get("prior_event_watermark") or 0)
+            != _M63_PRIOR_EVENT_WATERMARK
+            or int(contract.get("target_event_watermark") or 0)
+            != _M63_TARGET_EVENT_WATERMARK
+            or contract.get("prior_projection_cid")
+            != _M63_PRIOR_PROJECTION_CID
+            or contract.get("target_projection_cid")
+            != _M63_TARGET_PROJECTION_CID
+            or contract.get("same_live_owner_required") is not True
+            or contract.get("generation_restart_authorized") is not False
+            or contract.get("m62_receipt_must_remain_absent") is not True
+            or contract.get("m61_receipt_must_be_preserved") is not True
+            or contract.get("event_331_must_be_preserved") is not True
+            or contract.get("event_332_must_be_absent_before_append") is not True
+            or prior.get("migration_revision") != _M61_MIGRATION_REVISION
+            or int(prior.get("event_watermark") or 0)
+            != _M63_PRIOR_EVENT_WATERMARK
+            or prior.get("projection_cid") != _M63_PRIOR_PROJECTION_CID
+            or failed_m62.get("m62_authority_cid") != _M62_AUTHORITY_CID
+            or failed_m62.get("m62_control_commit") != _M63_M62_CONTROL_COMMIT
+            or failed_m62.get("m62_receipt_published") is not False
+            or failed_m62.get("authenticated_mutation_created") is not False
+            or failed_m62.get("event_332_committed") is not False
+            or failed_m62.get("evidence_node_65_committed") is not False
+            or type(budget.get("pipe_io_floor_seconds")) is not int
+            or budget.get("pipe_io_floor_seconds") != 30
+            or type(budget.get("sealed_watchdog_startup_grace_seconds")) is not int
+            or budget.get("sealed_watchdog_startup_grace_seconds") != 300
+            or type(budget.get("effective_timeout_seconds")) is not int
+            or budget.get("effective_timeout_seconds") != 300
+            or failed_m62_control.get("commit") != _M63_M62_CONTROL_COMMIT
+            or failed_m62_control.get("authority_cid") != _M62_AUTHORITY_CID
+            or failed_m62_control.get("pre_authoritative") is not True
+            or failed_m62_control.get("authenticated_mutation_created") is not False
+            or chain.get("repair_commits") != []
+            or chain.get("repair_commit_count") != 0
+            or chain.get("final_control_parent") != _M63_M62_CONTROL_COMMIT
+            or chain.get("final_control_commit_count") != 1
+            or chain.get("current_commit_identity_embedded_in_authority") is not False
+            or int(expected.get("ordinary_source_changes", -1)) != 0
+            or preservation.get("m62_receipt_remains_absent") is not True
+            or preservation.get("m62_receipt_created_or_rewritten") is not False
+            or preservation.get("m61_receipt_preserved_exactly") is not True
+            or preservation.get("m61_receipt_created_or_rewritten") is not False
+            or preservation.get("event_331_preserved_exactly") is not True
+            or preservation.get("m60_receipt_preserved_exactly") is not True
+            or preservation.get("generation_restart") is not False
+            or program.get("store_id") != _M63_STORE_ID
+            or program.get("store_generation") != str(_M63_GENERATION)
+            or owner.get("database_path") != _M63_STORE_ID
+            or owner.get("store_id") != _M63_STORE_ID
+        ):
+            raise OperatorError(
+                "active M63 failed pre-authoritative M62 float-bounds recovery "
+                "authority is invalid"
+            )
+        return MappingProxyType(dict(expected))
     if m62_key in config:
         authority = config.get(m62_key)
         try:
@@ -5961,6 +6094,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            _M63_SUCCESSOR_KEY,
             _M62_SUCCESSOR_KEY,
             _M61_SUCCESSOR_KEY,
             _M60_SUCCESSOR_KEY,
@@ -8370,6 +8504,134 @@ def _require_m18_final_pair_marker(
     return MappingProxyType(dict(observed))
 
 
+def _require_m63_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M63's deny-only receipt while M62's receipt stays absent."""
+
+    key = _M63_SUCCESSOR_KEY
+    if key not in config:
+        return MappingProxyType({})
+    try:
+        expected = (
+            materializer
+            ._expected_m63_failed_pre_authoritative_m62_float_bounds_successor_authority()
+        )
+        reference = materializer._m63_authority_reference()
+        contract = materializer._validated_m63_live_preflight_contract(expected)
+    except Exception as exc:
+        raise OperatorError(
+            "M63 failed pre-authoritative M62 float-bounds recovery authority "
+            "is unavailable"
+        ) from exc
+    configured_cid = str(reference.get("authority_cid") or "")
+    if (
+        dict(authority) != expected
+        or config.get(key) != reference
+        or configured_cid != _M63_AUTHORITY_CID
+        or configured_cid.endswith("PENDING_M63_FINAL_CONTROL_AUTHORITY_CID")
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", configured_cid) is None
+        or materializer._identity(expected) != _M63_AUTHORITY_CID
+        or len(materializer._canonical(expected)) != _M63_AUTHORITY_SIZE
+        or expected.get("control_recorded_at") != _M63_CONTROL_RECORDED_AT
+        or int(contract.get("target_generation") or 0) != _M63_GENERATION
+        or int(contract.get("prior_event_watermark") or 0)
+        != _M63_PRIOR_EVENT_WATERMARK
+        or int(contract.get("target_event_watermark") or 0)
+        != _M63_TARGET_EVENT_WATERMARK
+        or contract.get("prior_projection_cid") != _M63_PRIOR_PROJECTION_CID
+        or contract.get("target_projection_cid") != _M63_TARGET_PROJECTION_CID
+        or contract.get("same_live_owner_required") is not True
+        or contract.get("generation_restart_authorized") is not False
+        or contract.get("m62_receipt_must_remain_absent") is not True
+        or contract.get("m61_receipt_must_be_preserved") is not True
+        or contract.get("event_331_must_be_preserved") is not True
+        or contract.get("event_332_must_be_absent_before_append") is not True
+    ):
+        raise OperatorError(
+            "M63 failed pre-authoritative M62 float-bounds recovery authority differs"
+        )
+    runtime = (REPO_ROOT / _M63_STORE_ID).resolve().parent
+    path = runtime / materializer._M63_FINAL_RECEIPT_NAME
+    m62_path = runtime / materializer._M62_FINAL_RECEIPT_NAME
+    m61_path = runtime / materializer._M61_FINAL_RECEIPT_NAME
+    if os.path.lexists(m62_path):
+        raise OperatorError("M63 requires the failed M62 receipt to remain absent")
+    if not os.path.lexists(m61_path):
+        raise OperatorError("M63 preserved M61 receipt is unavailable")
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            path, root=REPO_ROOT, noun="M63 source successor receipt"
+        )
+        checked_live = materializer._check_m63_materialized(
+            REPO_ROOT, CONFIG_PATH
+        )
+    except Exception as exc:
+        raise OperatorError(
+            "M63 receipt requires fresh live verification after receipt read"
+        ) from exc
+    reported = checked_live.get("m63_source_successor_receipt")
+    if not isinstance(reported, Mapping):
+        reported = checked_live.get("receipt")
+    supplied_receipt: Mapping[str, Any] | None = None
+    if checked is not None:
+        candidate = checked.get("m63_source_successor_receipt")
+        if not isinstance(candidate, Mapping):
+            candidate = checked.get("receipt")
+        if isinstance(candidate, Mapping):
+            supplied_receipt = candidate
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        os.path.lexists(m62_path)
+        or not os.path.lexists(m61_path)
+        or claimed != materializer._identity(unhashed)
+        or not isinstance(reported, Mapping)
+        or dict(reported) != observed
+        or (checked is not None and checked.get("valid") is not True)
+        or (checked is not None and dict(supplied_receipt or {}) != observed)
+        or checked_live.get("valid") is not True
+        or int(checked_live.get("event_watermark") or 0)
+        != _M63_TARGET_EVENT_WATERMARK
+        or checked_live.get("projection_cid") != _M63_TARGET_PROJECTION_CID
+        or observed.get("migration_revision") != _M63_MIGRATION_REVISION
+        or observed.get(f"{key}_cid") != configured_cid
+        or int(observed.get("target_generation") or 0) != _M63_GENERATION
+        or int(observed.get("prior_event_watermark") or 0)
+        != _M63_PRIOR_EVENT_WATERMARK
+        or int(observed.get("target_event_watermark") or 0)
+        != _M63_TARGET_EVENT_WATERMARK
+        or observed.get("prior_projection_cid") != _M63_PRIOR_PROJECTION_CID
+        or observed.get("projection_cid") != _M63_TARGET_PROJECTION_CID
+        or observed.get("same_live_generation_43_owner_verified") is not True
+        or observed.get("generation_restart_authorized") is not False
+        or observed.get("m62_receipt_remains_absent") is not True
+        or observed.get("m62_receipt_created_or_rewritten") is not False
+        or observed.get("m61_receipt_preserved_exactly") is not True
+        or observed.get("m61_receipt_created_or_rewritten") is not False
+        or observed.get("event_331_preserved_exactly") is not True
+        or observed.get("m60_receipt_preserved_exactly") is not True
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+        or observed.get("deny_only_without_fresh_live_revalidation") is not True
+        or any(observed.get(field) != 0 for field in (
+            "task_revision_changes", "task_status_changes", "goal_revision_changes",
+            "goal_status_changes", "provider_call_changes",
+            "provider_invocation_changes", "provider_response_changes",
+            "effect_claim_changes", "merge_attempt_changes", "merge_base_changes",
+            "merge_queue_entry_changes", "accepted_completion_changes",
+        ))
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M63 exact source successor receipt differs")
+    return MappingProxyType(dict(observed))
+
+
 def _require_m62_source_successor_marker(
     config: Mapping[str, Any],
     authority: Mapping[str, Any],
@@ -9603,6 +9865,55 @@ def _require_m48_source_successor_marker(
     ):
         raise OperatorError("M48 exact source successor receipt differs")
     return MappingProxyType(dict(observed))
+
+
+def _verify_m63_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M63's unchanged task heads at event 332/generation 43."""
+
+    materializer._validated_m63_live_preflight_contract(authority)
+    head = materializer._inspect_m37_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M63_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M63_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M63_TARGET_PROJECTION_CID
+        or head.get("projection_cid") != expected_projection_cid
+    ):
+        raise materializer.MigrationRequired("M63 live head projection differs")
+    heads = authority.get("expected_task_heads")
+    if not isinstance(heads, Mapping):
+        raise materializer.MigrationRequired("M63 expected task heads are missing")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        expected_head = heads.get(alias)
+        if (
+            observed is None
+            or not isinstance(expected_head, Mapping)
+            or observed.status != expected_head.get("status")
+            or int(observed.revision) != int(expected_head.get("revision") or 0)
+        ):
+            raise materializer.MigrationRequired(f"M63 task head differs: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
 
 
 def _verify_m62_live_head_task_projection(
@@ -15780,6 +16091,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if _M63_SUCCESSOR_KEY in config:
+        return _require_m63_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if _M62_SUCCESSOR_KEY in config:
         return _require_m62_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -16041,6 +16356,11 @@ def _recover_stale_quack(config: Mapping[str, Any]) -> Mapping[str, Any]:
     ):
         raise OperatorError("stale Quack recovery store binding differs")
     active = _active_source_repair_materialization(config)
+    if active.get("migration_revision") == _M63_MIGRATION_REVISION:
+        raise OperatorError(
+            "M63 requires the exact live generation-43 owner; stale recovery "
+            "requires a separately sealed generation-44 successor"
+        )
     if active.get("migration_revision") == _M62_MIGRATION_REVISION:
         raise OperatorError(
             "M62 requires the exact live generation-43 owner; stale recovery "
@@ -17197,6 +17517,12 @@ def _validate_offline_quack_start(
 ) -> Mapping[str, Any]:
     """Revalidate committed controls and the exact store before native LOAD."""
 
+    if _M63_SUCCESSOR_KEY in config:
+        _active_source_repair_materialization(config)
+        raise OperatorError(
+            "M63 requires the exact live generation-43 owner; Quack restart "
+            "requires a separately sealed generation-44 successor"
+        )
     if _M62_SUCCESSOR_KEY in config:
         _active_source_repair_materialization(config)
         raise OperatorError(
@@ -18762,6 +19088,12 @@ def _run_quack_start(
 ) -> int:
     """Validate and serve Quack under the exact protected native runtime."""
 
+    if _M63_SUCCESSOR_KEY in config:
+        _active_source_repair_materialization(config)
+        raise OperatorError(
+            "M63 requires the exact live generation-43 owner; Quack restart "
+            "requires a separately sealed generation-44 successor"
+        )
     if _M62_SUCCESSOR_KEY in config:
         _active_source_repair_materialization(config)
         raise OperatorError(
@@ -21507,6 +21839,18 @@ def _normalized_live_preflight_contract(
     """Resolve one closed preflight view without shape-dependent aliases."""
 
     revision = str(active_source_repair.get("migration_revision") or "")
+    if revision == _M63_MIGRATION_REVISION:
+        try:
+            return materializer._validated_m63_live_preflight_contract(
+                active_source_repair
+            )
+        except (
+            materializer.MigrationRequired,
+            materializer.MaterializationError,
+        ) as exc:
+            raise OperatorError(
+                f"M63 normalized preflight contract differs: {exc}"
+            ) from exc
     if revision == _M62_MIGRATION_REVISION:
         try:
             return materializer._validated_m62_live_preflight_contract(
@@ -21960,6 +22304,7 @@ def _live_preflight(
         }
     )
     active_revision = str(active_source_repair.get("migration_revision") or "")
+    m63_active = active_revision == _M63_MIGRATION_REVISION
     m62_active = active_revision == _M62_MIGRATION_REVISION
     m61_active = active_revision == _M61_MIGRATION_REVISION
     m60_active = active_revision == _M60_MIGRATION_REVISION
@@ -22006,6 +22351,7 @@ def _live_preflight(
     m18_active = active_revision == "SAWM-R2-M18"
     evidence_only_post_m27 = any(
         (
+            m63_active,
             m62_active,
             m61_active,
             m60_active,
@@ -22044,6 +22390,7 @@ def _live_preflight(
     )
     deferred_live_evidence_marker = any(
         (
+            m63_active,
             m62_active,
             m61_active,
             m60_active,
@@ -22101,6 +22448,11 @@ def _live_preflight(
     discovery = discover_live_quack_endpoint(store)
     expected_uri = str(config["database_program"]["quack_endpoint"])
     if not discovery.uri or discovery.uri != expected_uri or not discovery.token:
+        if m63_active:
+            raise OperatorError(
+                "M63 exact live generation-43 owner is unavailable; a separately "
+                "sealed generation-44 successor is required"
+            )
         if m62_active:
             raise OperatorError(
                 "M62 exact live generation-43 owner is unavailable; a separately "
@@ -22266,6 +22618,11 @@ def _live_preflight(
         or live_identity.get("listen_uri") != expected_uri
         or remote_identity.get("listen_uri") != expected_uri
     ):
+        if m63_active:
+            raise OperatorError(
+                "M63 exact live generation-43 owner binding differs; a separately "
+                "sealed generation-44 successor is required"
+            )
         if m62_active:
             raise OperatorError(
                 "M62 exact live generation-43 owner binding differs; a separately "
@@ -22378,6 +22735,39 @@ def _live_preflight(
     # step.  If the live cursor is still the sealed prior watermark, append
     # and publish before the snapshot gate.  An unhandled newer key fails
     # closed inside materialize() instead of silently selecting history.
+    if m63_active:
+        try:
+            cursor = int(live.snapshot().event_cursor)
+            m62_path = (
+                REPO_ROOT / _M63_STORE_ID
+            ).resolve().parent / materializer._M62_FINAL_RECEIPT_NAME
+            if os.path.lexists(m62_path):
+                raise OperatorError(
+                    "M63 requires the failed M62 receipt to remain absent"
+                )
+            if cursor in {_M63_PRIOR_EVENT_WATERMARK, _M63_TARGET_EVENT_WATERMARK}:
+                if not materializer._m63_successor_configured_on_any_surface(
+                    REPO_ROOT, config
+                ):
+                    raise OperatorError("M63 successor authority is unavailable")
+                materializer._materialize_m63(REPO_ROOT, CONFIG_PATH, config)
+                live.close()
+                live = None
+                live = DatabaseTaskSource(
+                    discovery.uri,
+                    install_schema=False,
+                    repository_tree_id=population["repository_tree_id"],
+                    plan_root_cid=population["plan_root_cid"],
+                    owner_id="sawm-r2-live-preflight",
+                )
+            else:
+                raise OperatorError("M63 live event head is neither 331 nor 332")
+        except OperatorError:
+            raise
+        except Exception as exc:
+            raise OperatorError(
+                f"M63 automatic successor materialize failed: {exc}"
+            ) from exc
     if m62_active:
         try:
             cursor = int(live.snapshot().event_cursor)
@@ -22596,7 +22986,25 @@ def _live_preflight(
     # explicit boundary rather than a MappingProxyType implementation detail.
     receipt_authority = dict(active_source_repair)
     try:
-        if m62_active:
+        if m63_active:
+            try:
+                m63_checked = materializer._check_m63_materialized(
+                    REPO_ROOT, CONFIG_PATH
+                )
+                final_pair_marker = _require_active_final_pair_marker(
+                    config,
+                    active_source_repair,
+                    materializer,
+                    checked=m63_checked,
+                )
+            except (
+                materializer.MigrationRequired,
+                materializer.MaterializationError,
+            ) as exc:
+                raise OperatorError(
+                    f"M63 exact source-successor verification failed: {exc}"
+                ) from exc
+        elif m62_active:
             try:
                 m62_checked = materializer._check_m62_materialized(
                     REPO_ROOT, CONFIG_PATH
@@ -23790,7 +24198,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if _M62_SUCCESSOR_KEY in config:
+            if _M63_SUCCESSOR_KEY in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m63_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif _M62_SUCCESSOR_KEY in config:
                 statuses, _revisions, _receipts = (
                     _verify_m62_live_head_task_projection(
                         live,
@@ -24557,7 +24975,57 @@ def _live_preflight(
         "statuses": statuses,
         "coordination_projection_digest": live_snapshot["projection_cid"],
     }
-    if m62_active and final_pair_marker:
+    if m63_active and final_pair_marker:
+        store_report.update(
+            {
+                "coordination_path": str(
+                    (REPO_ROOT / _M63_COORDINATION_STORE_ID).resolve()
+                ),
+                "final_pair_commit_marker_verified": False,
+                "source_successor_receipt_cid": str(
+                    final_pair_marker["receipt_cid"]
+                ),
+                "source_successor_receipt_verified": True,
+                "source_successor_chain": dict(
+                    final_pair_marker.get("source_chain") or {}
+                ),
+                "m63_authority_cid": materializer._identity(
+                    receipt_authority
+                ),
+                "m63_event_id": str(
+                    final_pair_marker.get("migration_evidence_event_id") or ""
+                ),
+                "m63_evidence_id": str(
+                    final_pair_marker.get("migration_evidence_id") or ""
+                ),
+                "m63_source_successor_receipt": dict(final_pair_marker),
+                "same_live_generation_43_owner_verified": (
+                    final_pair_marker.get(
+                        "same_live_generation_43_owner_verified"
+                    )
+                    is True
+                ),
+                "generation_restart_authorized": False,
+                "m62_receipt_remains_absent": (
+                    final_pair_marker.get("m62_receipt_remains_absent") is True
+                ),
+                "m62_receipt_created_or_rewritten": False,
+                "m61_receipt_preserved_exactly": (
+                    final_pair_marker.get("m61_receipt_preserved_exactly") is True
+                ),
+                "m61_receipt_created_or_rewritten": False,
+                "event_331_preserved_exactly": (
+                    final_pair_marker.get("event_331_preserved_exactly") is True
+                ),
+                "m60_receipt_preserved_exactly": (
+                    final_pair_marker.get("m60_receipt_preserved_exactly") is True
+                ),
+                "source_successor_receipt_completion_authority": False,
+                "source_successor_receipt_launch_authority": False,
+                "fresh_live_revalidation_performed_after_receipt_read": True,
+            }
+        )
+    elif m62_active and final_pair_marker:
         store_report.update(
             {
                 "coordination_path": str(
@@ -25490,6 +25958,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_quack_start(config, config_path)
         if args.command == "quack-recover-stale":
             return _emit(_recover_stale_quack(config))
+        if args.command == "quack-stop" and _M63_SUCCESSOR_KEY in config:
+            _active_source_repair_materialization(config)
+            raise OperatorError(
+                "M63 does not authorize generation-43 Quack stop/restart; "
+                "a separately sealed generation-44 successor is required"
+            )
         if args.command == "quack-stop" and _M62_SUCCESSOR_KEY in config:
             _active_source_repair_materialization(config)
             raise OperatorError(

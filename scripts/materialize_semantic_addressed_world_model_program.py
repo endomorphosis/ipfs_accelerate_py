@@ -4646,6 +4646,82 @@ _M62_FINAL_RECEIPT_NAME = "m62-source-successor-receipt.json"
 _M62_EXPECTED_TASK_HEADS = MappingProxyType(dict(_M61_EXPECTED_TASK_HEADS))
 
 
+# M63 preserves M62's sealed controls verbatim as failed pre-authoritative
+# evidence.  M62 rejected its float-valued startup budget before an
+# authenticated mutation, event 332, evidence 65, or receipt could be created.
+# M63 therefore starts again from the accepted M61 event-331/evidence-64 head,
+# uses integer seconds in every canonical record, and is the sole authority for
+# the event-332/evidence-65 append.
+_M63_MIGRATION_REVISION = "SAWM-R2-M63"
+_M63_SUPERSESSION_MODE = (
+    "append_only_same_owner_failed_pre_authoritative_m62_float_bounds_source_seal"
+)
+_M63_SUPERSESSION_REASON = (
+    "failed_pre_authoritative_m62_float_bounds_successor_materialization"
+)
+_M63_CONTROL_RECORDED_AT = "2026-09-02T17:00:00Z"
+_M63_AUTHORITY_CID = (
+    "sha256:17d068e86e8d00b33c686fbb048350c5281e32e68e8b92c8150fff2186c28632"
+)
+_M63_AUTHORITY_SIZE = 16_519
+_M63_GENERATION = _M61_GENERATION
+_M63_PRIOR_EVENT_WATERMARK = _M61_TARGET_EVENT_WATERMARK
+_M63_TARGET_EVENT_WATERMARK = _M62_TARGET_EVENT_WATERMARK
+_M63_TARGET_PLAN_REVISION = _M61_TARGET_PLAN_REVISION
+_M63_TARGET_QUACK_PORT = _M61_TARGET_QUACK_PORT
+_M63_PRIOR_EVENT_PREFIX_SHA256 = _M62_PRIOR_EVENT_PREFIX_SHA256
+_M63_PRIOR_PROJECTION_CID = _M61_TARGET_PROJECTION_CID
+_M63_TARGET_PROJECTION_CID = _M62_TARGET_PROJECTION_CID
+_M63_SEMANTIC_AUTHORITY_DIGEST = _M61_SEMANTIC_AUTHORITY_DIGEST
+_M63_PRIOR_EVIDENCE_NODE_COUNT = _M61_TARGET_EVIDENCE_NODE_COUNT
+_M63_TARGET_EVIDENCE_NODE_COUNT = _M62_TARGET_EVIDENCE_NODE_COUNT
+_M63_PRIOR_EVIDENCE_EVENT_COUNT = _M61_TARGET_EVIDENCE_EVENT_COUNT
+_M63_TARGET_EVIDENCE_EVENT_COUNT = _M62_TARGET_EVIDENCE_EVENT_COUNT
+_M63_VALIDATION_EVENT_COUNT = _M61_VALIDATION_EVENT_COUNT
+_M63_PASSED_VALIDATION_EVENT_COUNT = _M61_PASSED_VALIDATION_EVENT_COUNT
+_M63_EVIDENCE_KIND = (
+    "operator_control_plane_failed_pre_authoritative_m62_float_bounds_recovery"
+)
+_M63_STORE_ID = _M61_STORE_ID
+_M63_COORDINATION_STORE_ID = _M61_COORDINATION_STORE_ID
+_M63_RUNTIME_ROOT = _M61_RUNTIME_ROOT
+_M63_WORKTREE_ROOT = _M61_WORKTREE_ROOT
+_M63_DATABASE_UUID = _M61_DATABASE_UUID
+_M63_EXTENSION_FINGERPRINT = _M61_EXTENSION_FINGERPRINT
+_M63_LIVE_SERVER_ID = _M61_LIVE_SERVER_ID
+_M63_LIVE_PROCESS_BIRTH_ID = _M61_LIVE_PROCESS_BIRTH_ID
+_M63_LIVE_STARTED_AT = _M61_LIVE_STARTED_AT
+_M63_LIVE_STARTUP_EPOCH = _M61_LIVE_STARTUP_EPOCH
+_M63_LIVE_PROCESS_BIRTH = _M61_LIVE_PROCESS_BIRTH
+_M63_M61_AUTHORITY_CID = _M62_M61_AUTHORITY_CID
+_M63_M61_AUTHORITY_SIZE = _M62_M61_AUTHORITY_SIZE
+_M63_M61_RECEIPT_NAME = _M62_M61_RECEIPT_NAME
+_M63_M61_RECEIPT_SHA256 = _M62_M61_RECEIPT_SHA256
+_M63_M61_RECEIPT_SIZE = _M62_M61_RECEIPT_SIZE
+_M63_M61_RECEIPT_CID = _M62_M61_RECEIPT_CID
+_M63_M61_EVENT_ID = _M62_M61_EVENT_ID
+_M63_M61_EVIDENCE_ID = _M62_M61_EVIDENCE_ID
+_M63_M61_MIGRATION_DIGEST = _M62_M61_MIGRATION_DIGEST
+_M63_M61_EVIDENCE_PROJECTION_DIGEST = _M62_M61_EVIDENCE_PROJECTION_DIGEST
+_M63_M61_PROGRAM_DEFINITION_CID = _M62_M61_PROGRAM_DEFINITION_CID
+_M63_M61_SOURCE_BINDING_CID = _M62_M61_SOURCE_BINDING_CID
+_M63_M61_VALIDATION_DIGEST = _M62_M61_VALIDATION_DIGEST
+_M63_M61_CONTROL_COMMIT = _M62_M61_CONTROL_COMMIT
+_M63_M61_CONTROL_PARENT = _M62_M61_CONTROL_PARENT
+_M63_M61_CONTROL_TREE = _M62_M61_CONTROL_TREE
+_M63_FAILED_M62_AUTHORITY_CID = (
+    "sha256:caf22df089b0088e9530c533828178aff2f2ca23f4ec2ee2fa6cd38b1e910515"
+)
+_M63_FAILED_M62_AUTHORITY_SIZE = 16_599
+_M63_FAILED_M62_CONTROL_COMMIT = "b680886741a2d37184d70e18e6a4f8383923dba4"
+_M63_FAILED_M62_CONTROL_PARENT = "0faff4ce45866753d4053d14025b1dd96b2dbb24"
+_M63_FAILED_M62_CONTROL_TREE = "7ca3786dc2f8ae9ae4860f5a12d44b800d13f611"
+_M63_FINAL_CONTROL_PATHS = _M62_FINAL_CONTROL_PATHS
+_M63_OPERATOR_CONTROL_PATHS = _M62_OPERATOR_CONTROL_PATHS
+_M63_FINAL_RECEIPT_NAME = "m63-source-successor-receipt.json"
+_M63_EXPECTED_TASK_HEADS = MappingProxyType(dict(_M61_EXPECTED_TASK_HEADS))
+
+
 
 # M41 preserves M40's complete control declaration and failed sealed-suite
 # attempt as pre-authoritative history.  M40 was never materialized: the suite
@@ -35530,6 +35606,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m63_successor_configured_on_any_surface(root, config):
+        return _check_m63_materialized(root, config_file)
     if _m62_successor_configured_on_any_surface(root, config):
         return _check_m62_materialized(root, config_file)
     if _m61_successor_configured_on_any_surface(root, config):
@@ -100722,6 +100800,1329 @@ def _materialize_m60(
         }
 
 
+# M63 is intentionally separate from the preserved, failed M62 implementation.
+def _expected_m63_failed_pre_authoritative_m62_float_bounds_successor_authority(
+) -> dict[str, Any]:
+    """Return M63's integer-only recovery of failed pre-authoritative M62."""
+
+    m61 = _expected_m61_post_m60_mappingproxy_identity_normalization_authority()
+    if (
+        _identity(m61) != _M63_M61_AUTHORITY_CID
+        or len(_canonical(m61)) != _M63_M61_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M63 preserved M61 source authority differs")
+    m62 = _expected_m62_post_m61_sealed_credential_ack_startup_grace_authority()
+    if (
+        _identity(m62) != _M63_FAILED_M62_AUTHORITY_CID
+        or len(_canonical(m62)) != _M63_FAILED_M62_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M63 failed pre-authoritative M62 seal differs")
+    endpoint = f"quack:127.0.0.1:{_M63_TARGET_QUACK_PORT}"
+    return {
+        "schema": (
+            "sawm/failed-pre-authoritative-m62-float-bounds-successor-"
+            "materialization-authorization@1"
+        ),
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": _M63_MIGRATION_REVISION,
+        "migration_kind": _M63_SUPERSESSION_REASON,
+        "supersession_mode": _M63_SUPERSESSION_MODE,
+        "control_recorded_at": _M63_CONTROL_RECORDED_AT,
+        "target_store_id": _M63_STORE_ID,
+        "target_coordination_store_id": _M63_COORDINATION_STORE_ID,
+        "target_runtime_root": _M63_RUNTIME_ROOT,
+        "target_generation": _M63_GENERATION,
+        "target_quack_port": _M63_TARGET_QUACK_PORT,
+        "target_plan_revision": _M63_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M63_TARGET_EVENT_WATERMARK,
+        "target_projection_cid": _M63_TARGET_PROJECTION_CID,
+        "runtime_binding": {
+            "run_id": "run-r2-m27",
+            "runtime_root": _M63_RUNTIME_ROOT,
+            "store_id": _M63_STORE_ID,
+            "coordination_store_id": _M63_COORDINATION_STORE_ID,
+            "worktree_root": _M63_WORKTREE_ROOT,
+            "store_generation": _M63_GENERATION,
+            "quack_port": _M63_TARGET_QUACK_PORT,
+            "quack_endpoint": endpoint,
+            "plan_revision": _M63_TARGET_PLAN_REVISION,
+            "prior_event_watermark": _M63_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M63_TARGET_EVENT_WATERMARK,
+            "database_uuid": _M63_DATABASE_UUID,
+            "server_id": _M63_LIVE_SERVER_ID,
+            "process_birth_id": _M63_LIVE_PROCESS_BIRTH_ID,
+        },
+        "prior_authority": {
+            "schema": "sawm/accepted-source-seal-head@1",
+            "migration_revision": _M61_MIGRATION_REVISION,
+            "authority_cid": _M63_M61_AUTHORITY_CID,
+            "authority_size": _M63_M61_AUTHORITY_SIZE,
+            "event_watermark": _M63_PRIOR_EVENT_WATERMARK,
+            "event_prefix_sha256": _M63_PRIOR_EVENT_PREFIX_SHA256,
+            "projection_cid": _M63_PRIOR_PROJECTION_CID,
+            "semantic_authority_digest": _M63_SEMANTIC_AUTHORITY_DIGEST,
+            "event_id": _M63_M61_EVENT_ID,
+            "evidence_id": _M63_M61_EVIDENCE_ID,
+            "evidence_digest": _M63_M61_MIGRATION_DIGEST,
+            "evidence_kind": _M61_EVIDENCE_KIND,
+            "recorded_at": _M61_CONTROL_RECORDED_AT,
+            "owner_id": "sawm-r2-m61-live-source-sealer",
+            "program_definition_cid": _M63_M61_PROGRAM_DEFINITION_CID,
+            "source_binding_cid": _M63_M61_SOURCE_BINDING_CID,
+            "source_head": _M63_M61_CONTROL_COMMIT,
+            "source_tree": _M63_M61_CONTROL_TREE,
+            "validation_digest": _M63_M61_VALIDATION_DIGEST,
+            "receipt_path": f"{_M63_RUNTIME_ROOT}/{_M63_M61_RECEIPT_NAME}",
+            "receipt_sha256": _M63_M61_RECEIPT_SHA256,
+            "receipt_size": _M63_M61_RECEIPT_SIZE,
+            "receipt_cid": _M63_M61_RECEIPT_CID,
+            "expected_task_heads": dict(_M63_EXPECTED_TASK_HEADS),
+        },
+        "live_owner": {
+            "server_id": _M63_LIVE_SERVER_ID,
+            "process_birth_id": _M63_LIVE_PROCESS_BIRTH_ID,
+            "process_birth": dict(_M63_LIVE_PROCESS_BIRTH),
+            "generation": _M63_GENERATION,
+            "started_at": _M63_LIVE_STARTED_AT,
+            "startup_epoch": _M63_LIVE_STARTUP_EPOCH,
+            "status": "ready",
+            "database_uuid": _M63_DATABASE_UUID,
+            "store_id": _M63_STORE_ID,
+            "listen_uri": endpoint,
+            "extension_fingerprint": _M63_EXTENSION_FINGERPRINT,
+            "same_owner_required": True,
+            "generation_restart_authorized": False,
+        },
+        "live_preflight_contract": {
+            "schema": "sawm/live-preflight-contract@1",
+            "migration_revision": _M63_MIGRATION_REVISION,
+            "successor_class": (
+                "same_owner_failed_pre_authoritative_m62_float_bounds_recovery"
+            ),
+            "target_store_id": _M63_STORE_ID,
+            "database_uuid": _M63_DATABASE_UUID,
+            "target_generation": _M63_GENERATION,
+            "prior_event_watermark": _M63_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M63_TARGET_EVENT_WATERMARK,
+            "target_plan_revision": _M63_TARGET_PLAN_REVISION,
+            "prior_projection_cid": _M63_PRIOR_PROJECTION_CID,
+            "target_projection_cid": _M63_TARGET_PROJECTION_CID,
+            "semantic_authority_digest": _M63_SEMANTIC_AUTHORITY_DIGEST,
+            "expected_task_heads": dict(_M63_EXPECTED_TASK_HEADS),
+            "same_live_owner_required": True,
+            "generation_restart_authorized": False,
+            "m62_receipt_must_remain_absent": True,
+            "m61_receipt_must_be_preserved": True,
+            "event_331_must_be_preserved": True,
+            "event_332_must_be_absent_before_append": True,
+        },
+        "target_authority": {
+            "event_watermark": _M63_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M63_TARGET_PROJECTION_CID,
+            "plan_revision": _M63_TARGET_PLAN_REVISION,
+            "operator_task_alias": "SAWM-000",
+            "operator_task_cid": _M42_OPERATOR_TASK_CID,
+            "operator_task_status": "completed",
+            "operator_task_revision": 2,
+            "evidence_kind": _M63_EVIDENCE_KIND,
+        },
+        "observed_failed_m62_materialization": {
+            "schema": "sawm/failed-pre-authoritative-materialization@1",
+            "migration_revision": _M62_MIGRATION_REVISION,
+            "migration_kind": _M62_SUPERSESSION_REASON,
+            "control_recorded_at": _M62_CONTROL_RECORDED_AT,
+            "m62_authority_cid": _M63_FAILED_M62_AUTHORITY_CID,
+            "m62_authority_size": _M63_FAILED_M62_AUTHORITY_SIZE,
+            "m62_control_commit": _M63_FAILED_M62_CONTROL_COMMIT,
+            "m62_control_parent": _M63_FAILED_M62_CONTROL_PARENT,
+            "m62_control_tree": _M63_FAILED_M62_CONTROL_TREE,
+            "failure_stage": "canonical_record_validation_before_authenticated_mutation",
+            "failure_kind": "non_integer_numeric_values_rejected",
+            "rejected_fields": [
+                "credential_ack_startup_budget.effective_timeout_seconds",
+                "credential_ack_startup_budget.pipe_io_floor_seconds",
+                "credential_ack_startup_budget.sealed_watchdog_startup_grace_seconds",
+            ],
+            "m62_receipt_path": f"{_M63_RUNTIME_ROOT}/{_M62_FINAL_RECEIPT_NAME}",
+            "m62_receipt_published": False,
+            "authenticated_mutation_created": False,
+            "event_332_committed": False,
+            "evidence_node_65_committed": False,
+            "accepted_completion_changes": 0,
+        },
+        "credential_ack_startup_budget": {
+            "pipe_io_floor_seconds": 30,
+            "sealed_watchdog_startup_grace_seconds": 300,
+            "effective_timeout_seconds": 300,
+            "timeout_formula": "max(pipe_io_floor,sealed_watchdog_startup_grace)",
+            "finite_nonnegative_validation_retained": True,
+            "nonce_pid_snapshot_and_pipe_identity_checks_unchanged": True,
+            "credential_authority_weakened": False,
+        },
+        "source_chain": {
+            "m61_anchor": {
+                "commit": _M63_M61_CONTROL_COMMIT,
+                "parent": _M63_M61_CONTROL_PARENT,
+                "tree": _M63_M61_CONTROL_TREE,
+                "authority_cid": _M63_M61_AUTHORITY_CID,
+            },
+            "failed_m62_control": {
+                "commit": _M63_FAILED_M62_CONTROL_COMMIT,
+                "parent": _M63_FAILED_M62_CONTROL_PARENT,
+                "tree": _M63_FAILED_M62_CONTROL_TREE,
+                "authority_cid": _M63_FAILED_M62_AUTHORITY_CID,
+                "authority_size": _M63_FAILED_M62_AUTHORITY_SIZE,
+                "pre_authoritative": True,
+                "authenticated_mutation_created": False,
+            },
+            "repair_commits": [],
+            "repair_blobs": {},
+            "repair_modes": {},
+            "final_control_parent": _M63_FAILED_M62_CONTROL_COMMIT,
+            "repair_commit_count": 0,
+            "final_control_commit_count": 1,
+            "current_commit_identity_embedded_in_authority": False,
+        },
+        "expected_task_heads": dict(_M63_EXPECTED_TASK_HEADS),
+        "operator_control_paths": sorted(_M63_OPERATOR_CONTROL_PATHS),
+        "current_datasets_gitlink": m61["current_datasets_gitlink"],
+        "current_datasets_tree": m61["current_datasets_tree"],
+        "current_kit_gitlink": m61["current_kit_gitlink"],
+        "current_kit_tree": m61["current_kit_tree"],
+        "ordinary_source_changes": 0,
+        "exact_changes": {
+            "event_suffix_length": 1,
+            "evidence_node_changes": 1,
+            "evidence_event_changes": 1,
+            "validation_event_changes": 0,
+            "owner_generation_changes": 0,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "goal_revision_changes": 0,
+            "goal_status_changes": 0,
+            "plan_revision_changes": 0,
+            "coordination_semantic_changes": 0,
+            "implementation_provider_invocations": 0,
+            "effect_claim_changes": 0,
+            "merge_attempt_changes": 0,
+            "accepted_completion_changes": 0,
+            "worker_self_approval": False,
+        },
+        "preservation": {
+            "same_live_owner": True,
+            "same_store_generation": True,
+            "generation_restart": False,
+            "m61_authority_preserved_exactly": True,
+            "m61_receipt_preserved_exactly": True,
+            "m61_receipt_created_or_rewritten": False,
+            "event_331_preserved_exactly": True,
+            "m60_receipt_preserved_exactly": True,
+            "m62_authority_preserved_exactly": True,
+            "m62_controls_preserved_exactly": True,
+            "m62_receipt_remains_absent": True,
+            "m62_receipt_created_or_rewritten": False,
+            "task_goal_plan_heads_preserved": True,
+            "four_worktree_lanes_remain_independently_schedulable": True,
+            "shared_duckdb_authority_writes_remain_quack_serialized": True,
+            "no_task_completion_admitted_by_source_repair": True,
+            "worker_self_approval": False,
+        },
+    }
+
+
+def _m63_authority_reference() -> dict[str, Any]:
+    authority = _expected_m63_failed_pre_authoritative_m62_float_bounds_successor_authority()
+    if (
+        _M63_AUTHORITY_CID.endswith("PENDING_M63_FINAL_CONTROL_AUTHORITY_CID")
+        or _identity(authority) != _M63_AUTHORITY_CID
+        or len(_canonical(authority)) != _M63_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M63 source successor authority seal differs")
+    return {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": _M63_MIGRATION_REVISION,
+        "authority_cid": _M63_AUTHORITY_CID,
+    }
+
+
+def _validated_m63_live_preflight_contract(
+    authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    expected = _expected_m63_failed_pre_authoritative_m62_float_bounds_successor_authority()
+    contract = authority.get("live_preflight_contract")
+    owner = authority.get("live_owner")
+    failed_m62 = authority.get("observed_failed_m62_materialization")
+    budget = authority.get("credential_ack_startup_budget")
+    chain = authority.get("source_chain")
+    preservation = authority.get("preservation")
+    if (
+        dict(authority) != expected
+        or not all(
+            isinstance(value, Mapping)
+            for value in (
+                contract, owner, failed_m62, budget, chain, preservation
+            )
+        )
+        or authority.get("authorized") is not True
+        or authority.get("authority") != "operator_control_plane"
+        or authority.get("migration_revision") != _M63_MIGRATION_REVISION
+        or authority.get("migration_kind") != _M63_SUPERSESSION_REASON
+        or contract.get("target_generation") != _M63_GENERATION
+        or contract.get("prior_event_watermark") != _M63_PRIOR_EVENT_WATERMARK
+        or contract.get("target_event_watermark") != _M63_TARGET_EVENT_WATERMARK
+        or contract.get("prior_projection_cid") != _M63_PRIOR_PROJECTION_CID
+        or contract.get("target_projection_cid") != _M63_TARGET_PROJECTION_CID
+        or contract.get("same_live_owner_required") is not True
+        or contract.get("generation_restart_authorized") is not False
+        or contract.get("m62_receipt_must_remain_absent") is not True
+        or contract.get("m61_receipt_must_be_preserved") is not True
+        or contract.get("event_331_must_be_preserved") is not True
+        or contract.get("event_332_must_be_absent_before_append") is not True
+        or owner.get("server_id") != _M63_LIVE_SERVER_ID
+        or owner.get("process_birth_id") != _M63_LIVE_PROCESS_BIRTH_ID
+        or owner.get("process_birth") != dict(_M63_LIVE_PROCESS_BIRTH)
+        or owner.get("same_owner_required") is not True
+        or owner.get("generation_restart_authorized") is not False
+        or failed_m62.get("m62_authority_cid")
+        != _M63_FAILED_M62_AUTHORITY_CID
+        or failed_m62.get("m62_authority_size")
+        != _M63_FAILED_M62_AUTHORITY_SIZE
+        or failed_m62.get("m62_control_commit")
+        != _M63_FAILED_M62_CONTROL_COMMIT
+        or failed_m62.get("m62_control_parent")
+        != _M63_FAILED_M62_CONTROL_PARENT
+        or failed_m62.get("m62_control_tree")
+        != _M63_FAILED_M62_CONTROL_TREE
+        or failed_m62.get("m62_receipt_published") is not False
+        or failed_m62.get("authenticated_mutation_created") is not False
+        or failed_m62.get("event_332_committed") is not False
+        or failed_m62.get("evidence_node_65_committed") is not False
+        or type(budget.get("pipe_io_floor_seconds")) is not int
+        or budget.get("pipe_io_floor_seconds") != 30
+        or type(budget.get("sealed_watchdog_startup_grace_seconds")) is not int
+        or budget.get("sealed_watchdog_startup_grace_seconds") != 300
+        or type(budget.get("effective_timeout_seconds")) is not int
+        or budget.get("effective_timeout_seconds") != 300
+        or chain.get("final_control_parent")
+        != _M63_FAILED_M62_CONTROL_COMMIT
+        or chain.get("repair_commit_count") != 0
+        or chain.get("final_control_commit_count") != 1
+        or chain.get("current_commit_identity_embedded_in_authority") is not False
+        or authority.get("operator_control_paths")
+        != sorted(_M63_OPERATOR_CONTROL_PATHS)
+        or authority.get("exact_changes", {}).get("event_suffix_length") != 1
+        or authority.get("exact_changes", {}).get("task_revision_changes") != 0
+        or authority.get("exact_changes", {}).get("accepted_completion_changes") != 0
+        or preservation.get("m61_receipt_preserved_exactly") is not True
+        or preservation.get("m60_receipt_preserved_exactly") is not True
+        or preservation.get("event_331_preserved_exactly") is not True
+        or preservation.get("m62_authority_preserved_exactly") is not True
+        or preservation.get("m62_controls_preserved_exactly") is not True
+        or preservation.get("m62_receipt_remains_absent") is not True
+        or preservation.get("m62_receipt_created_or_rewritten") is not False
+        or preservation.get("generation_restart") is not False
+        or preservation.get("worker_self_approval") is not False
+    ):
+        raise MaterializationError("M63 live preflight contract differs")
+    return MappingProxyType(dict(contract))
+
+
+def _m63_successor_configured(config: Mapping[str, Any]) -> bool:
+    if _M63_SUPERSESSION_REASON not in config:
+        return False
+    if config.get(_M63_SUPERSESSION_REASON) != _m63_authority_reference():
+        raise MaterializationError("M63 successor authority reference differs")
+    return True
+
+
+def _m63_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M63_SUPERSESSION_REASON
+    migration = _load_json(
+        root
+        / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if any(presence) and not all(presence):
+        raise MaterializationError("M63 successor authority is only partially declared")
+    if not any(presence):
+        return False
+    reference = _m63_authority_reference()
+    if (
+        config.get(key) != reference
+        or migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M63 successor authority differs across controls")
+    return _m63_successor_configured(config)
+
+
+def _assert_m63_historical_m61_controls(
+    scheduler: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    seal: Mapping[str, Any],
+) -> None:
+    m61_key = _M61_SUPERSESSION_REASON
+    m61_reference = _m61_authority_reference()
+    m61_body = _expected_m61_post_m60_mappingproxy_identity_normalization_authority()
+    m62_key = _M62_SUPERSESSION_REASON
+    m62_reference = _m62_authority_reference()
+    m62_body = _expected_m62_post_m61_sealed_credential_ack_startup_grace_authority()
+    if (
+        scheduler.get(m61_key) != m61_reference
+        or migration.get(m61_key) != m61_reference
+        or seal.get(f"{m61_key}_cid") != m61_reference["authority_cid"]
+        or m61_reference.get("authority_cid") != _M63_M61_AUTHORITY_CID
+        or _identity(m61_body) != _M63_M61_AUTHORITY_CID
+        or len(_canonical(m61_body)) != _M63_M61_AUTHORITY_SIZE
+        or scheduler.get(m62_key) != m62_reference
+        or migration.get(m62_key) != m62_reference
+        or seal.get(f"{m62_key}_cid") != m62_reference["authority_cid"]
+        or m62_reference.get("authority_cid")
+        != _M63_FAILED_M62_AUTHORITY_CID
+        or _identity(m62_body) != _M63_FAILED_M62_AUTHORITY_CID
+        or len(_canonical(m62_body)) != _M63_FAILED_M62_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M63 historical M61/M62 controls differ")
+
+
+def _m63_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    authority = _expected_m63_failed_pre_authoritative_m62_float_bounds_successor_authority()
+    reference = _m63_authority_reference()
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if not isinstance(inventory, Mapping):
+        raise MaterializationError("M63 migration inventory is invalid")
+    _assert_m63_historical_m61_controls(config, inventory, seal)
+    key = _M63_SUPERSESSION_REASON
+    if (
+        config.get(key) != reference
+        or inventory.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M63 authority differs across protected controls")
+    _validated_m63_live_preflight_contract(authority)
+    _assert_m63_source_delta(root, population, authority)
+    return authority
+
+
+def _assert_m63_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Require failed M62 control anchor -> one M63 control-only commit."""
+
+    identities = (
+        _M63_M61_CONTROL_COMMIT,
+        _M63_M61_CONTROL_PARENT,
+        _M63_M61_CONTROL_TREE,
+        _M63_FAILED_M62_CONTROL_COMMIT,
+        _M63_FAILED_M62_CONTROL_PARENT,
+        _M63_FAILED_M62_CONTROL_TREE,
+    )
+    if (
+        any(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in identities)
+        or _M63_AUTHORITY_CID.endswith("PENDING_M63_FINAL_CONTROL_AUTHORITY_CID")
+        or _M63_AUTHORITY_SIZE < 1
+    ):
+        raise MaterializationError("M63 final control authority is not resealed")
+    current = str(population["source_binding"]["head"])
+    chain = authority.get("source_chain")
+    controls = set(_M63_FINAL_CONTROL_PATHS)
+    anchor_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M63_M61_CONTROL_COMMIT
+    ).split()
+    failed_m62_parents = _git(
+        root, "rev-list", "--parents", "-n", "1",
+        _M63_FAILED_M62_CONTROL_COMMIT,
+    ).split()
+    current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
+    failed_control = chain.get("failed_m62_control") if isinstance(chain, Mapping) else None
+    if (
+        current in {
+            _M63_M61_CONTROL_COMMIT,
+            _M63_FAILED_M62_CONTROL_COMMIT,
+        }
+        or not isinstance(chain, Mapping)
+        or not isinstance(failed_control, Mapping)
+        or set(authority.get("operator_control_paths") or ())
+        != set(_M63_OPERATOR_CONTROL_PATHS)
+        or chain.get("m61_anchor", {}).get("commit") != _M63_M61_CONTROL_COMMIT
+        or failed_control.get("commit") != _M63_FAILED_M62_CONTROL_COMMIT
+        or failed_control.get("parent") != _M63_FAILED_M62_CONTROL_PARENT
+        or failed_control.get("tree") != _M63_FAILED_M62_CONTROL_TREE
+        or failed_control.get("authority_cid") != _M63_FAILED_M62_AUTHORITY_CID
+        or failed_control.get("authority_size") != _M63_FAILED_M62_AUTHORITY_SIZE
+        or failed_control.get("pre_authoritative") is not True
+        or failed_control.get("authenticated_mutation_created") is not False
+        or chain.get("repair_commits") != []
+        or chain.get("repair_blobs") != {}
+        or chain.get("repair_modes") != {}
+        or chain.get("final_control_parent")
+        != _M63_FAILED_M62_CONTROL_COMMIT
+        or chain.get("repair_commit_count") != 0
+        or chain.get("final_control_commit_count") != 1
+        or chain.get("current_commit_identity_embedded_in_authority") is not False
+        or anchor_parents
+        != [_M63_M61_CONTROL_COMMIT, _M63_M61_CONTROL_PARENT]
+        or failed_m62_parents
+        != [_M63_FAILED_M62_CONTROL_COMMIT, _M63_FAILED_M62_CONTROL_PARENT]
+        or current_parents != [current, _M63_FAILED_M62_CONTROL_COMMIT]
+        or _git(root, "rev-parse", f"{_M63_M61_CONTROL_COMMIT}^{{tree}}")
+        != _M63_M61_CONTROL_TREE
+        or _git(root, "rev-parse", f"{_M63_FAILED_M62_CONTROL_COMMIT}^{{tree}}")
+        != _M63_FAILED_M62_CONTROL_TREE
+        or _m27_name_status(
+            root,
+            _M63_FAILED_M62_CONTROL_PARENT,
+            _M63_FAILED_M62_CONTROL_COMMIT,
+        ) != {path: "M" for path in controls}
+        or _m27_name_status(root, _M63_FAILED_M62_CONTROL_COMMIT, current)
+        != {path: "M" for path in controls}
+        or population["source_binding"].get("tree")
+        != _git(root, "rev-parse", f"{current}^{{tree}}")
+        or int(authority.get("ordinary_source_changes", -1)) != 0
+    ):
+        raise MaterializationError("M63 exact failed-M62/control source chain differs")
+    _assert_m43_current_control_modes(root, current, _M63_OPERATOR_CONTROL_PATHS)
+    for dependency, gitlink_key, tree_key, population_key in (
+        (
+            "ipfs_datasets_py", "current_datasets_gitlink",
+            "current_datasets_tree", "datasets_gitlink",
+        ),
+        (
+            "ipfs_kit_py", "current_kit_gitlink",
+            "current_kit_tree", "kit_gitlink",
+        ),
+    ):
+        gitlink = str(authority[gitlink_key])
+        if (
+            any(
+                _git(root, "rev-parse", f"{head}:{dependency}") != gitlink
+                for head in (
+                    _M63_M61_CONTROL_COMMIT,
+                    _M63_FAILED_M62_CONTROL_PARENT,
+                    _M63_FAILED_M62_CONTROL_COMMIT,
+                    current,
+                )
+            )
+            or population["source_binding"].get(population_key) != gitlink
+            or _git(root / dependency, "rev-parse", f"{gitlink}^{{tree}}")
+            != authority[tree_key]
+        ):
+            raise MaterializationError(f"M63 {dependency} authority differs")
+
+
+def _m63_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    _validated_m63_live_preflight_contract(authority)
+    return _m61_target_paths(
+        root,
+        config,
+        _expected_m61_post_m60_mappingproxy_identity_normalization_authority(),
+    )
+
+
+def _assert_m63_m62_receipt_absent(control: Path) -> dict[str, Any]:
+    """Fail closed if failed pre-authoritative M62 published any receipt."""
+
+    path = control.parent / _M62_FINAL_RECEIPT_NAME
+    if os.path.lexists(path):
+        raise MigrationRequired("M63 requires the failed M62 receipt to remain absent")
+    return {
+        "m62_receipt_remains_absent": True,
+        "m62_receipt_created_or_rewritten": False,
+    }
+
+
+def _m63_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    authority = _expected_m63_failed_pre_authoritative_m62_float_bounds_successor_authority()
+    source = population["source_binding"]
+    return {
+        "schema": (
+            "sawm/failed-pre-authoritative-m62-float-bounds-successor-"
+            "source-seal@1"
+        ),
+        "authority": "operator_control_plane",
+        "migration_revision": _M63_MIGRATION_REVISION,
+        "migration_kind": _M63_SUPERSESSION_REASON,
+        "supersession_mode": _M63_SUPERSESSION_MODE,
+        "authorization_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": source["source_binding_cid"],
+        "current_source_head": source["head"],
+        "current_source_tree": source["tree"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority["prior_authority"],
+        "target_authority": authority["target_authority"],
+        "runtime_binding": authority["runtime_binding"],
+        "live_owner": authority["live_owner"],
+        "live_preflight_contract": authority["live_preflight_contract"],
+        "observed_failed_m62_materialization": authority[
+            "observed_failed_m62_materialization"
+        ],
+        "credential_ack_startup_budget": authority[
+            "credential_ack_startup_budget"
+        ],
+        "source_chain": authority["source_chain"],
+        "exact_changes": authority["exact_changes"],
+        "preservation": authority["preservation"],
+        "authenticated_mutation_route": {
+            "transport": "quack_proxy_only",
+            "endpoint_from_live_owner_discovery": True,
+            "token_from_secret_handoff_or_environment_only": True,
+            "token_in_argv": False,
+            "token_in_evidence": False,
+            "direct_authoritative_file_opened": False,
+        },
+        "scheduler_runtime_root": config["runtime_paths"]["root"],
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _verify_m63_preserved_m61_receipt(
+    root: Path, control: Path
+) -> dict[str, Any]:
+    _expected_m61_post_m60_mappingproxy_identity_normalization_authority()
+    m60_receipt = _verify_m61_preserved_m60_receipt(root, control)
+    path = control.parent / _M63_M61_RECEIPT_NAME
+    observed, observed_sha = _load_nofollow_json(
+        path, root=root, noun="M63 preserved M61 source successor receipt"
+    )
+    receipt_stat = path.stat(follow_symlinks=False)
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        observed_sha != _M63_M61_RECEIPT_SHA256
+        or int(receipt_stat.st_size) != _M63_M61_RECEIPT_SIZE
+        or stat.S_IMODE(receipt_stat.st_mode) != 0o600
+        or receipt_stat.st_nlink != 1
+        or receipt_stat.st_uid != os.geteuid()
+        or claimed != _M63_M61_RECEIPT_CID
+        or claimed != _identity(unhashed)
+        or observed.get("migration_revision") != _M61_MIGRATION_REVISION
+        or observed.get(f"{_M61_SUPERSESSION_REASON}_cid")
+        != _M63_M61_AUTHORITY_CID
+        or observed.get("current_source_binding_cid")
+        != _M63_M61_SOURCE_BINDING_CID
+        or observed.get("target_generation") != _M63_GENERATION
+        or observed.get("target_event_watermark")
+        != _M63_PRIOR_EVENT_WATERMARK
+        or observed.get("projection_cid") != _M63_PRIOR_PROJECTION_CID
+        or observed.get("target_event_prefix_sha256")
+        != _M63_PRIOR_EVENT_PREFIX_SHA256
+        or observed.get("semantic_authority_digest")
+        != _M63_SEMANTIC_AUTHORITY_DIGEST
+        or observed.get("migration_digest") != _M63_M61_MIGRATION_DIGEST
+        or observed.get("migration_evidence_event_id") != _M63_M61_EVENT_ID
+        or observed.get("migration_evidence_id") != _M63_M61_EVIDENCE_ID
+        or observed.get("evidence_projection_digest")
+        != _M63_M61_EVIDENCE_PROJECTION_DIGEST
+        or observed.get("prior_m60_receipt_cid")
+        != m60_receipt.get("receipt_cid")
+        or observed.get("m60_receipt_preserved_exactly") is not True
+        or observed.get("event_330_preserved_exactly") is not True
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+        or observed.get("accepted_completion_changes") != 0
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise MigrationRequired("M63 preserved M61 receipt differs")
+    return observed
+
+
+def _verify_m63_preserved_m61_materialization(
+    connection: Any,
+    receipt: Mapping[str, Any],
+    *,
+    observed_watermark: int,
+) -> dict[str, Any]:
+    """Verify event/evidence 331 independently of current source identity."""
+
+    if observed_watermark not in {
+        _M63_PRIOR_EVENT_WATERMARK,
+        _M63_TARGET_EVENT_WATERMARK,
+    }:
+        raise MigrationRequired("M63 observed head is outside its sealed pair")
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence = connection.execute(
+        "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+        "created_at,body_json FROM evidence_nodes WHERE evidence_id=?",
+        [_M63_M61_EVIDENCE_ID],
+    ).fetchone()
+    event = connection.execute(
+        "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+        "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+        "WHERE global_sequence=?",
+        [_M63_PRIOR_EVENT_WATERMARK],
+    ).fetchone()
+    if evidence is None or event is None:
+        raise MigrationRequired("M63 preserved M61 event/evidence is missing")
+    evidence_row = _positional_rows([evidence], 7)[0]
+    event_row = _positional_rows([event], 10)[0]
+    body = _m38_parse_json(evidence_row[6])
+    envelope = _m38_parse_json(event_row[9])
+    inner = {
+        "evidence_id": _M63_M61_EVIDENCE_ID,
+        "parent_evidence_id": "",
+        "task_cid": _M42_OPERATOR_TASK_CID,
+        "evidence_kind": _M61_EVIDENCE_KIND,
+        "digest": _M63_M61_MIGRATION_DIGEST,
+        "body": body,
+        "created_at": _M61_CONTROL_RECORDED_AT,
+        "revision": 0,
+    }
+    expected_envelope = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": _M63_M61_EVIDENCE_ID,
+        "body": inner,
+        "recorded_at": _M61_CONTROL_RECORDED_AT,
+        "owner_id": "sawm-r2-m61-live-source-sealer",
+    }
+    projection = _verify_m58_exact_evidence_projection(
+        connection,
+        watermark=_M63_PRIOR_EVENT_WATERMARK,
+        observed_watermark=observed_watermark,
+    )
+    if (
+        tuple(evidence_row[:6])
+        != (
+            _M63_M61_EVIDENCE_ID, "", _M42_OPERATOR_TASK_CID,
+            _M61_EVIDENCE_KIND, _M63_M61_MIGRATION_DIGEST,
+            _M61_CONTROL_RECORDED_AT,
+        )
+        or _identity(body) != _M63_M61_MIGRATION_DIGEST
+        or body.get("schema")
+        != "sawm/post-m60-mappingproxy-identity-normalization-source-seal@1"
+        or body.get("migration_revision") != _M61_MIGRATION_REVISION
+        or body.get("migration_kind") != _M61_SUPERSESSION_REASON
+        or body.get("authorization_cid") != _M63_M61_AUTHORITY_CID
+        or body.get("program_definition_cid") != _M63_M61_PROGRAM_DEFINITION_CID
+        or body.get("current_source_binding_cid") != _M63_M61_SOURCE_BINDING_CID
+        or body.get("current_source_head") != _M63_M61_CONTROL_COMMIT
+        or body.get("current_source_tree") != _M63_M61_CONTROL_TREE
+        or body.get("validation_digest") != _M63_M61_VALIDATION_DIGEST
+        or body.get("accepted_completion_changes") != 0
+        or body.get("worker_self_approval") is not False
+        or content_identity(
+            {
+                "task_cid": _M42_OPERATOR_TASK_CID,
+                "evidence_kind": _M61_EVIDENCE_KIND,
+                "digest": _M63_M61_MIGRATION_DIGEST,
+                "body": body,
+            }
+        ) != _M63_M61_EVIDENCE_ID
+        or tuple(event_row[:9])
+        != (
+            _M63_M61_EVENT_ID, "stream:intent", _M63_PRIOR_EVENT_WATERMARK,
+            _M63_PRIOR_EVENT_WATERMARK, "intent.evidence_recorded",
+            _M42_OPERATOR_TASK_CID, "", "session:intent",
+            _M61_CONTROL_RECORDED_AT,
+        )
+        or envelope != expected_envelope
+        or content_identity(
+            {
+                "stream_id": "stream:intent",
+                "sequence": _M63_PRIOR_EVENT_WATERMARK,
+                "global_sequence": _M63_PRIOR_EVENT_WATERMARK,
+                "event_type": "intent.evidence_recorded",
+                "body": expected_envelope,
+            }
+        ) != _M63_M61_EVENT_ID
+        or _event_prefix_digest(connection, _M63_PRIOR_EVENT_WATERMARK)
+        != (_M63_PRIOR_EVENT_PREFIX_SHA256, _M63_PRIOR_EVENT_WATERMARK)
+        or _semantic_authority_digest_on(connection)
+        != _M63_SEMANTIC_AUTHORITY_DIGEST
+        or projection.get("evidence_node_count")
+        != _M63_PRIOR_EVIDENCE_NODE_COUNT
+        or projection.get("evidence_event_count")
+        != _M63_PRIOR_EVIDENCE_EVENT_COUNT
+        or projection.get("validation_event_count")
+        != _M63_VALIDATION_EVENT_COUNT
+        or projection.get("passed_validation_event_count")
+        != _M63_PASSED_VALIDATION_EVENT_COUNT
+        or receipt.get("receipt_cid") != _M63_M61_RECEIPT_CID
+    ):
+        raise MigrationRequired("M63 preserved M61 materialization differs")
+    return {
+        "m61_receipt_preserved_exactly": True,
+        "m61_receipt_created_or_rewritten": False,
+        "event_331_preserved_exactly": True,
+        "m60_receipt_preserved_exactly": True,
+        "prior_m61_event_id": _M63_M61_EVENT_ID,
+        "prior_m61_evidence_id": _M63_M61_EVIDENCE_ID,
+    }
+
+
+def _m63_expected_event_body(
+    body: Mapping[str, Any],
+    *,
+    evidence_id: str,
+    digest: str,
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    target = authority["target_authority"]
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": evidence_id,
+        "body": {
+            "evidence_id": evidence_id,
+            "parent_evidence_id": "",
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": dict(body),
+            "created_at": _M63_CONTROL_RECORDED_AT,
+            "revision": 0,
+        },
+        "recorded_at": _M63_CONTROL_RECORDED_AT,
+        "owner_id": "sawm-r2-m63-live-source-sealer",
+    }
+
+
+def _verify_m63_live_materialization(
+    source: Any,
+    identity: Mapping[str, Any],
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    *,
+    repository_root: Path | None = None,
+) -> dict[str, Any]:
+    root = REPO_ROOT if repository_root is None else Path(repository_root).resolve()
+    control, _coordination = _m63_target_paths(root, config, authority)
+    m62_absence = _assert_m63_m62_receipt_absent(control)
+    m61_receipt = _verify_m63_preserved_m61_receipt(root, control)
+    body = _m63_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence_id = content_identity(
+        {
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": body,
+        }
+    )
+    event_body = _m63_expected_event_body(
+        body, evidence_id=evidence_id, digest=digest, authority=authority
+    )
+    event_id = content_identity(
+        {
+            "stream_id": "stream:intent",
+            "sequence": _M63_TARGET_EVENT_WATERMARK,
+            "global_sequence": _M63_TARGET_EVENT_WATERMARK,
+            "event_type": "intent.evidence_recorded",
+            "body": event_body,
+        }
+    )
+    expected_evidence = (
+        evidence_id, "", target["operator_task_cid"], target["evidence_kind"],
+        digest, _M63_CONTROL_RECORDED_AT, _canonical(body).decode("utf-8"),
+    )
+    expected_event = (
+        event_id, "stream:intent", _M63_TARGET_EVENT_WATERMARK,
+        _M63_TARGET_EVENT_WATERMARK, "intent.evidence_recorded",
+        target["operator_task_cid"], "", "session:intent",
+        _M63_CONTROL_RECORDED_AT, _canonical(event_body).decode("utf-8"),
+    )
+    head = _inspect_m37_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M63_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=_M63_TARGET_PROJECTION_CID,
+    )
+    if (
+        _m38_projection_cid_at_watermark(source, _M63_PRIOR_EVENT_WATERMARK)
+        != _M63_PRIOR_PROJECTION_CID
+        or _m38_projection_cid_at_watermark(source, _M63_TARGET_EVENT_WATERMARK)
+        != _M63_TARGET_PROJECTION_CID
+    ):
+        raise MigrationRequired("M63 prior/target projection derivation differs")
+    restart = _inspect_m58_generation_restart_rows(
+        source,
+        identity,
+        _expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority(),
+    )
+    if (
+        restart.get("live_server_id") != _M63_LIVE_SERVER_ID
+        or restart.get("live_process_birth_id") != _M63_LIVE_PROCESS_BIRTH_ID
+        or restart.get("live_started_at") != _M63_LIVE_STARTED_AT
+        or restart.get("live_startup_epoch") != _M63_LIVE_STARTUP_EPOCH
+        or identity.get("process_birth") != dict(_M63_LIVE_PROCESS_BIRTH)
+    ):
+        raise MigrationRequired("M63 exact same live generation-43 owner differs")
+    with source.intent._connection(write=False) as connection:
+        evidence = connection.execute(
+            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+            "created_at,body_json FROM evidence_nodes WHERE evidence_id=?",
+            [evidence_id],
+        ).fetchone()
+        event = connection.execute(
+            "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+            "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+            "WHERE global_sequence=?",
+            [_M63_TARGET_EVENT_WATERMARK],
+        ).fetchone()
+        prior_prefix = _event_prefix_digest(connection, _M63_PRIOR_EVENT_WATERMARK)
+        prefix = _event_prefix_digest(connection, _M63_TARGET_EVENT_WATERMARK)
+        semantic = _semantic_authority_digest_on(connection)
+        evidence_count = int(
+            connection.execute("SELECT COUNT(*) FROM evidence_nodes").fetchone()[0]
+        )
+        raw_counts = _m43_event_type_counts_on(
+            connection, _M63_TARGET_EVENT_WATERMARK
+        )
+        preserved = _verify_m63_preserved_m61_materialization(
+            connection,
+            m61_receipt,
+            observed_watermark=_M63_TARGET_EVENT_WATERMARK,
+        )
+        evidence_projection = _verify_m58_exact_evidence_projection(
+            connection, watermark=_M63_TARGET_EVENT_WATERMARK
+        )
+    if (
+        not _m39_exact_row_matches(
+            evidence,
+            (
+                "evidence_id", "parent_evidence_id", "task_cid",
+                "evidence_kind", "digest", "created_at", "body_json",
+            ),
+            expected_evidence,
+        )
+        or not _m39_exact_row_matches(
+            event,
+            (
+                "event_id", "stream_id", "sequence", "global_sequence",
+                "event_type", "task_cid", "attempt_id", "session_id",
+                "recorded_at", "body_json",
+            ),
+            expected_event,
+        )
+        or evidence_count != _M63_TARGET_EVIDENCE_NODE_COUNT
+        or raw_counts
+        != (_M63_TARGET_EVIDENCE_EVENT_COUNT, _M63_VALIDATION_EVENT_COUNT)
+        or evidence_projection.get("evidence_node_count")
+        != _M63_TARGET_EVIDENCE_NODE_COUNT
+        or evidence_projection.get("evidence_event_count")
+        != _M63_TARGET_EVIDENCE_EVENT_COUNT
+        or evidence_projection.get("validation_event_count")
+        != _M63_VALIDATION_EVENT_COUNT
+        or evidence_projection.get("passed_validation_event_count")
+        != _M63_PASSED_VALIDATION_EVENT_COUNT
+        or prior_prefix
+        != (_M63_PRIOR_EVENT_PREFIX_SHA256, _M63_PRIOR_EVENT_WATERMARK)
+        or prefix[1] != _M63_TARGET_EVENT_WATERMARK
+        or semantic != _M63_SEMANTIC_AUTHORITY_DIGEST
+        or preserved.get("event_331_preserved_exactly") is not True
+    ):
+        raise MigrationRequired("M63 exact target event/evidence authority differs")
+    return {
+        **head,
+        **restart,
+        **preserved,
+        **m62_absence,
+        "migration_digest": digest,
+        "migration_evidence_id": evidence_id,
+        "migration_evidence_event_id": event_id,
+        "target_event_prefix_sha256": prefix[0],
+        "same_live_generation_43_owner_verified": True,
+        "semantic_authority_digest": semantic,
+        "evidence_node_count": evidence_count,
+        "evidence_event_count": int(raw_counts[0]),
+        "validation_event_count": int(raw_counts[1]),
+        "passed_validation_event_count": _M63_PASSED_VALIDATION_EVENT_COUNT,
+        "evidence_projection_digest": evidence_projection[
+            "evidence_projection_digest"
+        ],
+        "complete_evidence_projection_verified": True,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _expected_m63_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": (
+            "sawm/non-authoritative-failed-pre-authoritative-m62-float-"
+            "bounds-successor-receipt@1"
+        ),
+        "authoritative": False,
+        "completion_authority": False,
+        "launch_authority": False,
+        "deny_only_without_fresh_live_revalidation": True,
+        "fresh_live_revalidation_required_after_receipt_read": True,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M63_MIGRATION_REVISION,
+        "migration_kind": _M63_SUPERSESSION_REASON,
+        "supersession_mode": _M63_SUPERSESSION_MODE,
+        f"{_M63_SUPERSESSION_REASON}_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "source_chain": dict(authority["source_chain"]),
+        "validation_digest": validation_digest,
+        "database_path": _M63_STORE_ID,
+        "coordination_path": _M63_COORDINATION_STORE_ID,
+        "target_generation": _M63_GENERATION,
+        "target_generation_owner": {
+            "server_id": verified["live_server_id"],
+            "process_birth_id": verified["live_process_birth_id"],
+            "started_at": verified["live_started_at"],
+            "startup_epoch": verified["live_startup_epoch"],
+        },
+        "target_plan_revision": _M63_TARGET_PLAN_REVISION,
+        "prior_event_watermark": _M63_PRIOR_EVENT_WATERMARK,
+        "target_event_watermark": _M63_TARGET_EVENT_WATERMARK,
+        "prior_projection_cid": _M63_PRIOR_PROJECTION_CID,
+        "projection_cid": _M63_TARGET_PROJECTION_CID,
+        "migration_digest": verified["migration_digest"],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "migration_evidence_event_id": verified["migration_evidence_event_id"],
+        "prior_event_prefix_sha256": _M63_PRIOR_EVENT_PREFIX_SHA256,
+        "target_event_prefix_sha256": verified["target_event_prefix_sha256"],
+        "semantic_authority_digest": verified["semantic_authority_digest"],
+        "evidence_projection_digest": verified["evidence_projection_digest"],
+        "complete_evidence_projection_verified": True,
+        "prior_evidence_node_count": _M63_PRIOR_EVIDENCE_NODE_COUNT,
+        "evidence_node_count": verified["evidence_node_count"],
+        "prior_evidence_event_count": _M63_PRIOR_EVIDENCE_EVENT_COUNT,
+        "evidence_event_count": verified["evidence_event_count"],
+        "validation_event_count": verified["validation_event_count"],
+        "passed_validation_event_count": verified[
+            "passed_validation_event_count"
+        ],
+        "prior_m61_authority_cid": _M63_M61_AUTHORITY_CID,
+        "prior_m61_receipt_cid": _M63_M61_RECEIPT_CID,
+        "prior_m61_receipt_sha256": _M63_M61_RECEIPT_SHA256,
+        "prior_m61_receipt_size": _M63_M61_RECEIPT_SIZE,
+        "prior_m61_event_id": _M63_M61_EVENT_ID,
+        "prior_m61_evidence_id": _M63_M61_EVIDENCE_ID,
+        "failed_m62_authority_cid": _M63_FAILED_M62_AUTHORITY_CID,
+        "failed_m62_authority_size": _M63_FAILED_M62_AUTHORITY_SIZE,
+        "failed_m62_control_commit": _M63_FAILED_M62_CONTROL_COMMIT,
+        "failed_m62_control_parent": _M63_FAILED_M62_CONTROL_PARENT,
+        "failed_m62_control_tree": _M63_FAILED_M62_CONTROL_TREE,
+        "m62_receipt_remains_absent": verified[
+            "m62_receipt_remains_absent"
+        ],
+        "m62_receipt_created_or_rewritten": verified[
+            "m62_receipt_created_or_rewritten"
+        ],
+        "m61_receipt_preserved_exactly": True,
+        "m61_receipt_created_or_rewritten": False,
+        "event_331_preserved_exactly": True,
+        "m60_receipt_preserved_exactly": True,
+        "same_live_generation_43_owner_verified": True,
+        "generation_restart_authorized": False,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _check_m63_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m63_source_binding_authority(root, population, config)
+    control, coordination = _m63_target_paths(root, config, authority)
+    _verify_m58_current_coordination_confinement(root, coordination)
+    m62_before = _assert_m63_m62_receipt_absent(control)
+    receipt_path = control.parent / _M63_FINAL_RECEIPT_NAME
+    if not os.path.lexists(receipt_path):
+        raise MigrationRequired("M63 source successor receipt is missing")
+    observed, _ = _load_nofollow_json(
+        receipt_path, root=root, noun="M63 source successor receipt"
+    )
+    receipt_stat = os.lstat(receipt_path)
+    if (
+        not stat.S_ISREG(receipt_stat.st_mode)
+        or receipt_stat.st_nlink != 1
+        or stat.S_IMODE(receipt_stat.st_mode) != 0o600
+        or receipt_stat.st_uid != os.geteuid()
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+    ):
+        raise MigrationRequired("M63 source successor receipt is unsafe")
+    m61_before = _verify_m63_preserved_m61_receipt(root, control)
+    validation_digest = _m7_validation_digest(root, population)
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        authority,
+        owner_id="sawm-r2-m63-live-source-sealer",
+    ) as (source, identity):
+        verified = _verify_m63_live_materialization(
+            source,
+            identity,
+            population,
+            config,
+            authority,
+            validation_digest,
+            repository_root=root,
+        )
+    expected = _expected_m63_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    if (
+        observed != expected
+        or _assert_m63_m62_receipt_absent(control) != m62_before
+        or _verify_m63_preserved_m61_receipt(root, control) != m61_before
+    ):
+        raise MigrationRequired("M63 source successor receipt chain differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_failed_pre_authoritative_m62_float_bounds_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "prior_m61_receipt": m61_before,
+        **m62_before,
+        "receipt": observed,
+        "m63_source_successor_receipt": observed,
+        **verified,
+    }
+
+
+def _materialize_m63(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m63_source_binding_authority(root, population, config)
+    control, coordination = _m63_target_paths(root, config, authority)
+    _verify_m58_current_coordination_confinement(root, coordination)
+    receipt_path = control.parent / _M63_FINAL_RECEIPT_NAME
+    with _m58_materialization_lock(root, control):
+        m62_before = _assert_m63_m62_receipt_absent(control)
+        if os.path.lexists(receipt_path):
+            return _check_m63_materialized(root, config_file)
+        m61_before = _verify_m63_preserved_m61_receipt(root, control)
+        validation_digest = _m7_validation_digest(root, population)
+        body = _m63_migration_body(population, config, validation_digest)
+        digest = _identity(body)
+        target = authority["target_authority"]
+        from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+            content_identity,
+        )
+
+        evidence_id = content_identity(
+            {
+                "task_cid": target["operator_task_cid"],
+                "evidence_kind": target["evidence_kind"],
+                "digest": digest,
+                "body": body,
+            }
+        )
+        appended = False
+        with _m28_live_source(
+            root,
+            control,
+            config,
+            population,
+            authority,
+            owner_id="sawm-r2-m63-live-source-sealer",
+        ) as (source, identity):
+            snapshot = source.snapshot()
+            if snapshot.event_cursor == _M63_PRIOR_EVENT_WATERMARK:
+                _inspect_m37_live_projection(
+                    source,
+                    population,
+                    authority,
+                    expected_event_watermark=_M63_PRIOR_EVENT_WATERMARK,
+                    expected_projection_cid=_M63_PRIOR_PROJECTION_CID,
+                )
+                restart = _inspect_m58_generation_restart_rows(
+                    source,
+                    identity,
+                    _expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority(),
+                )
+                with source.intent._connection(write=False) as connection:
+                    target_evidence = connection.execute(
+                        "SELECT 1 FROM evidence_nodes WHERE evidence_id=?",
+                        [evidence_id],
+                    ).fetchone()
+                    target_event = connection.execute(
+                        "SELECT 1 FROM domain_events WHERE global_sequence=?",
+                        [_M63_TARGET_EVENT_WATERMARK],
+                    ).fetchone()
+                    evidence_count = int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM evidence_nodes"
+                        ).fetchone()[0]
+                    )
+                    raw_counts = _m43_event_type_counts_on(
+                        connection, _M63_PRIOR_EVENT_WATERMARK
+                    )
+                    preserved = _verify_m63_preserved_m61_materialization(
+                        connection,
+                        m61_before,
+                        observed_watermark=_M63_PRIOR_EVENT_WATERMARK,
+                    )
+                if (
+                    restart.get("live_server_id") != _M63_LIVE_SERVER_ID
+                    or restart.get("live_process_birth_id")
+                    != _M63_LIVE_PROCESS_BIRTH_ID
+                    or restart.get("live_started_at") != _M63_LIVE_STARTED_AT
+                    or restart.get("live_startup_epoch")
+                    != _M63_LIVE_STARTUP_EPOCH
+                    or identity.get("process_birth") != dict(_M63_LIVE_PROCESS_BIRTH)
+                    or target_evidence is not None
+                    or target_event is not None
+                    or evidence_count != _M63_PRIOR_EVIDENCE_NODE_COUNT
+                    or raw_counts
+                    != (
+                        _M63_PRIOR_EVIDENCE_EVENT_COUNT,
+                        _M63_VALIDATION_EVENT_COUNT,
+                    )
+                    or preserved.get("event_331_preserved_exactly") is not True
+                ):
+                    raise MigrationRequired("M63 exact predecessor authority differs")
+                from ipfs_accelerate_py.agent_supervisor.task_sources import (
+                    intent_repository,
+                )
+
+                original_clock = intent_repository._utc_iso
+
+                def fixed_m63_utc_iso(_moment: Any = None) -> str:
+                    return _M63_CONTROL_RECORDED_AT
+
+                intent_repository._utc_iso = fixed_m63_utc_iso
+                try:
+                    try:
+                        evidence_receipt = source.record_evidence(
+                            task_cid=target["operator_task_cid"],
+                            evidence_kind=target["evidence_kind"],
+                            digest=digest,
+                            body=body,
+                        )
+                    except Exception:
+                        raise MaterializationError(
+                            "authenticated M63 evidence append failed"
+                        ) from None
+                finally:
+                    clock_interference = (
+                        intent_repository._utc_iso is not fixed_m63_utc_iso
+                    )
+                    intent_repository._utc_iso = original_clock
+                if clock_interference or not evidence_receipt.changed:
+                    raise MaterializationError("M63 evidence append clock/CAS differed")
+                appended = True
+            elif snapshot.event_cursor != _M63_TARGET_EVENT_WATERMARK:
+                raise MigrationRequired("M63 live event head is neither 331 nor 332")
+            verified = _verify_m63_live_materialization(
+                source,
+                identity,
+                population,
+                config,
+                authority,
+                validation_digest,
+                repository_root=root,
+            )
+            if verified["migration_evidence_id"] != evidence_id:
+                raise MaterializationError("M63 evidence identity differs")
+        if (
+            _assert_m63_m62_receipt_absent(control) != m62_before
+            or _verify_m63_preserved_m61_receipt(root, control) != m61_before
+        ):
+            raise MigrationRequired("M63 changed its predecessor receipt")
+        expected = _expected_m63_source_successor_receipt(
+            population, authority, validation_digest, verified
+        )
+        receipt = _m52_write_receipt_last(
+            root, receipt_path, expected, noun="M63 source successor receipt"
+        )
+        checked = _check_m63_materialized(root, config_file)
+        if checked.get("receipt") != receipt:
+            raise MigrationRequired("M63 post-publication fresh verification differs")
+        return {
+            **checked,
+            "action": (
+                "materialized_failed_pre_authoritative_m62_float_bounds_successor"
+                if appended
+                else "checked_failed_pre_authoritative_m62_float_bounds_successor"
+            ),
+            "migration_required": False,
+            "receipt": receipt,
+            "m63_source_successor_receipt": receipt,
+        }
+
+
 def _expected_m62_post_m61_sealed_credential_ack_startup_grace_authority(
 ) -> dict[str, Any]:
     """Return M62's same-owner post-M61 source-seal authority."""
@@ -106523,6 +107924,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m63_successor_configured_on_any_surface(root, config):
+        return _materialize_m63(root, config_file, config)
     if _m62_successor_configured_on_any_surface(root, config):
         return _materialize_m62(root, config_file, config)
     if _m61_successor_configured_on_any_surface(root, config):

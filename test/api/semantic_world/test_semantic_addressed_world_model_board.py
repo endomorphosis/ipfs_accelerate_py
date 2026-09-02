@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "failed_pre_authoritative_m62_float_bounds_successor_materialization",
     "post_m61_sealed_credential_ack_startup_grace_successor_materialization",
     "post_m60_mappingproxy_identity_normalization_successor_materialization",
     "partial_m59_receipt_failure_recovery_successor_materialization",
@@ -567,6 +568,95 @@ def test_historical_successor_controls_include_m61_before_m60() -> None:
     assert historical_migration is not None and m61_key not in historical_migration
     assert historical_seal is not None
     assert f"{m61_key}_cid" not in historical_seal
+
+
+def test_historical_successor_controls_include_m63_before_m62() -> None:
+    """M62 fixtures remove M63 while current M63 remains presence-first."""
+
+    m63_key = "failed_pre_authoritative_m62_float_bounds_successor_materialization"
+    m62_key = "post_m61_sealed_credential_ack_startup_grace_successor_materialization"
+    scheduler = {m63_key: {"revision": "M63"}, m62_key: {"revision": "M62"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m63_key}_cid": "sha256:" + "0" * 64,
+        f"{m62_key}_cid": "sha256:" + "f" * 64,
+    }
+
+    current, current_migration, current_seal = _historical_successor_controls_at(
+        m63_key, scheduler, migration, seal
+    )
+    assert current[m63_key] == scheduler[m63_key]
+    assert current_migration is not None
+    assert current_migration[m63_key] == migration[m63_key]
+    assert current_seal is not None
+    assert current_seal[f"{m63_key}_cid"] == seal[f"{m63_key}_cid"]
+
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m62_key, scheduler, migration, seal)
+    )
+    assert m63_key not in historical
+    assert historical_migration is not None and m63_key not in historical_migration
+    assert historical_seal is not None
+    assert f"{m63_key}_cid" not in historical_seal
+
+
+def test_materialize_and_launch_select_m63_before_m62_and_auto_append() -> None:
+    materialize_source = (
+        REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py"
+    ).read_text(encoding="utf-8")
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    m63_dispatch = "if _m63_successor_configured_on_any_surface(root, config):"
+    m62_dispatch = "if _m62_successor_configured_on_any_surface(root, config):"
+    assert m63_dispatch in materialize_source
+    assert m62_dispatch in materialize_source
+    assert materialize_source.find(m63_dispatch) < materialize_source.find(m62_dispatch)
+    assert materialize_source.find("def _materialize_m63(") < (
+        materialize_source.find("def materialize(")
+    )
+    assert "def _check_m63_materialized(" in materialize_source
+    assert "M63 automatic successor materialize failed" in operator_source
+    assert "def _verify_m63_live_head_task_projection(" in operator_source
+    assert operator_source.find("def _verify_m63_live_head_task_projection(") < (
+        operator_source.find("def _verify_m62_live_head_task_projection(")
+    )
+    m63_marker_dispatch = (
+        "if _M63_SUCCESSOR_KEY in config:\n"
+        "        return _require_m63_source_successor_marker"
+    )
+    m62_marker_dispatch = (
+        "if _M62_SUCCESSOR_KEY in config:\n"
+        "        return _require_m62_source_successor_marker"
+    )
+    assert m63_marker_dispatch in operator_source
+    assert m62_marker_dispatch in operator_source
+    assert operator_source.find(m63_marker_dispatch) < operator_source.find(
+        m62_marker_dispatch
+    )
+
+
+def test_m63_validators_treat_m62_as_immutable_failed_history() -> None:
+    board = _load(
+        "scripts/validate_semantic_addressed_world_model_board.py",
+        "sawm_board_m63_historical_m62_test",
+    )
+    dependencies = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_dependency_m63_historical_m62_test",
+    )
+    board_source = inspect.getsource(board._active_successor_migration_errors)
+    dependency_source = inspect.getsource(dependencies.validate_dependencies)
+    assert "m63_key = _M63_SUCCESSOR_KEY" in board_source
+    assert "require_current_source=False" in board_source
+    assert "m63_declared = _m63_successor_declared" in dependency_source
+    assert "if m63_declared" in dependency_source
+    assert "if m62_declared and not m63_declared" in dependency_source
+    m62_errors_source = inspect.getsource(
+        dependencies._m62_post_m61_sealed_credential_ack_startup_grace_errors
+    )
+    assert "require_current_source: bool = True" in m62_errors_source
+    assert "if require_current_source:" in m62_errors_source
 
 
 def test_historical_successor_controls_include_m62_before_m61() -> None:
@@ -1122,6 +1212,162 @@ def test_m59_operator_denies_unsealed_generation_43_restart() -> None:
         assert "generation-44 successor" in source
 
 
+def test_m63_failed_m62_float_bounds_recovery_authority_is_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m63_authority_test",
+    )
+    authority = (
+        materializer
+        ._expected_m63_failed_pre_authoritative_m62_float_bounds_successor_authority()
+    )
+    contract = materializer._validated_m63_live_preflight_contract(authority)
+    prior = authority["prior_authority"]
+    failed = authority["observed_failed_m62_materialization"]
+    budget = authority["credential_ack_startup_budget"]
+    chain = authority["source_chain"]
+    preservation = authority["preservation"]
+
+    assert not materializer._M63_AUTHORITY_CID.endswith(
+        "PENDING_M63_FINAL_CONTROL_AUTHORITY_CID"
+    )
+    assert materializer._identity(authority) == materializer._M63_AUTHORITY_CID
+    assert len(materializer._canonical(authority)) == materializer._M63_AUTHORITY_SIZE
+    assert authority["migration_revision"] == "SAWM-R2-M63"
+    assert authority["control_recorded_at"] == "2026-09-02T17:00:00Z"
+    assert authority["target_generation"] == 43
+    assert authority["target_event_watermark"] == 332
+    assert contract["prior_event_watermark"] == 331
+    assert contract["target_event_watermark"] == 332
+    assert contract["same_live_owner_required"] is True
+    assert contract["generation_restart_authorized"] is False
+    assert contract["m62_receipt_must_remain_absent"] is True
+    assert contract["event_331_must_be_preserved"] is True
+    assert contract["event_332_must_be_absent_before_append"] is True
+    assert prior["migration_revision"] == "SAWM-R2-M61"
+    assert prior["receipt_cid"] == (
+        "sha256:84c24f6aabff68a65b31c5c3e2d66565509767b277e2fe0e23d7e05911ff21ea"
+    )
+    assert failed["m62_authority_cid"] == (
+        "sha256:caf22df089b0088e9530c533828178aff2f2ca23f4ec2ee2fa6cd38b1e910515"
+    )
+    assert failed["m62_receipt_published"] is False
+    assert failed["event_332_committed"] is False
+    assert failed["evidence_node_65_committed"] is False
+    for field, expected in (
+        ("pipe_io_floor_seconds", 30),
+        ("sealed_watchdog_startup_grace_seconds", 300),
+        ("effective_timeout_seconds", 300),
+    ):
+        assert type(budget[field]) is int
+        assert budget[field] == expected
+    assert chain["final_control_parent"] == (
+        "b680886741a2d37184d70e18e6a4f8383923dba4"
+    )
+    assert chain["repair_commit_count"] == 0
+    assert chain["final_control_commit_count"] == 1
+    assert chain["current_commit_identity_embedded_in_authority"] is False
+    assert authority["ordinary_source_changes"] == 0
+    assert preservation["m62_receipt_remains_absent"] is True
+    assert preservation["m62_receipt_created_or_rewritten"] is False
+    assert preservation["event_331_preserved_exactly"] is True
+    assert preservation["no_task_completion_admitted_by_source_repair"] is True
+    assert authority["exact_changes"]["task_status_changes"] == 0
+    assert authority["exact_changes"]["accepted_completion_changes"] == 0
+
+
+def test_m63_materialization_preserves_m61_and_failed_m62_receipt_absence() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m63_structure_test",
+    )
+    materialize_source = inspect.getsource(materializer._materialize_m63)
+    verify_source = inspect.getsource(materializer._verify_m63_live_materialization)
+    preserved_source = inspect.getsource(
+        materializer._verify_m63_preserved_m61_materialization
+    )
+
+    assert materialize_source.index("snapshot = source.snapshot()") < (
+        materialize_source.index("source.record_evidence(")
+    )
+    assert materialize_source.index("source.record_evidence(") < (
+        materialize_source.index("_m52_write_receipt_last(")
+    )
+    for required in (
+        "_assert_m63_m62_receipt_absent",
+        "_verify_m63_preserved_m61_receipt",
+        "_verify_m63_preserved_m61_materialization",
+        "_M63_PRIOR_PROJECTION_CID",
+        "target_evidence",
+        "target_event",
+        "clock_interference",
+    ):
+        assert required in materialize_source
+    assert verify_source.count("_m39_exact_row_matches") == 2
+    assert "_inspect_m58_generation_restart_rows" in verify_source
+    assert "observed_watermark=_M63_TARGET_EVENT_WATERMARK" in verify_source
+    assert "_M63_PRIOR_EVENT_PREFIX_SHA256" in preserved_source
+    assert "_verify_m58_exact_evidence_projection" in preserved_source
+
+
+def test_m63_operator_denies_unsealed_generation_43_restart() -> None:
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m63_restart_denial_test",
+    )
+    branch_specs = (
+        (
+            operator._run_quack_start,
+            "if _M63_SUCCESSOR_KEY in config:",
+            "if _M62_SUCCESSOR_KEY in config:",
+        ),
+        (
+            operator._validate_offline_quack_start,
+            "if _M63_SUCCESSOR_KEY in config:",
+            "if _M62_SUCCESSOR_KEY in config:",
+        ),
+        (
+            operator._recover_stale_quack,
+            'if active.get("migration_revision") == _M63_MIGRATION_REVISION:',
+            'if active.get("migration_revision") == _M62_MIGRATION_REVISION:',
+        ),
+    )
+    for function, start_marker, end_marker in branch_specs:
+        source = inspect.getsource(function)
+        branch = source[source.index(start_marker):source.index(end_marker)]
+        assert "M63 requires the exact live generation-43 owner" in branch
+        assert "generation-44 successor" in branch
+
+
+def test_m63_live_preflight_uses_plain_authority_identity_boundary() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m63_identity_boundary_test",
+    )
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m63_identity_boundary_test",
+    )
+    scheduler = json.loads(
+        (
+            REPO_ROOT
+            / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    selected = operator._active_source_repair_materialization(scheduler)
+    assert isinstance(selected, type(MappingProxyType({})))
+    assert selected["migration_revision"] == "SAWM-R2-M63"
+    assert materializer._identity(dict(selected)) == materializer._M63_AUTHORITY_CID
+
+    source = inspect.getsource(operator._live_preflight)
+    report_start = source.index("if m63_active and final_pair_marker")
+    m63_branch = source[
+        report_start:
+        source.index("elif m62_active and final_pair_marker", report_start)
+    ]
+    assert "materializer._identity(\n                    receipt_authority" in m63_branch
+
+
 def test_m62_sealed_credential_ack_startup_grace_authority_is_exact() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
@@ -1266,6 +1512,10 @@ def test_m62_live_preflight_uses_plain_authority_identity_boundary() -> None:
             REPO_ROOT
             / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json"
         ).read_text(encoding="utf-8")
+    )
+    scheduler, _migration, _seal = _historical_successor_controls_at(
+        "post_m61_sealed_credential_ack_startup_grace_successor_materialization",
+        scheduler,
     )
     selected = operator._active_source_repair_materialization(scheduler)
     assert isinstance(selected, type(MappingProxyType({})))
