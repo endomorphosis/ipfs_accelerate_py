@@ -1,0 +1,276 @@
+{
+  "acceptance_contracts_unchanged": true,
+  "authority": false,
+  "count": 28,
+  "covered_outcomes": [
+    "conflicted",
+    "failed",
+    "human_escalated",
+    "rescued",
+    "retried",
+    "successful"
+  ],
+  "hermetic_sufficient_for_production_promotion": false,
+  "identity": "baguqeeradk74n2mehtph6v5whbsp6qumnhz6nfivvuicp4nqlfaqokw7xjcq",
+  "live": false,
+  "minimum": 20,
+  "objective_id": "ASEH-G020",
+  "objective_revision": "baguqeeray5xunujqwmh4axot3sbeatuger45zdsfkrshdvwaqewv5qnw2xnq",
+  "population_kind": "historical_exact_tree_replay",
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "provenance_fields": [
+    "task_id",
+    "task_cid",
+    "objective_id",
+    "objective_revision",
+    "repository_commit",
+    "repository_tree",
+    "policy_identity",
+    "validator_command",
+    "validator_result_digest",
+    "raw_log_reference",
+    "receipt_cid",
+    "truth_state"
+  ],
+  "required_outcomes": [
+    "successful",
+    "failed",
+    "retried",
+    "rescued",
+    "conflicted",
+    "human_escalated"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-historical-replay-manifest@1",
+  "schema_version": 1,
+  "status": "sealed",
+  "task_id": "ASEH-014",
+  "vectors": [
+    {
+      "identity": "baguqeeraxpgcduyky27mypsu3svh4d64txl7eyjjivnwajsi7cy2kkbd6cra",
+      "outcome": "successful",
+      "repository_tree": "ee94dd95ca70660b3ad14e7705f7d6dd561a6033",
+      "task_cid": "baguqeerass5gtbqtiwsaswpdegxjdzkuoi7hifsihul35i7ld5ver4fm6pva",
+      "task_id": "ASEH-000",
+      "vector_id": "aseh-hist-01"
+    },
+    {
+      "identity": "baguqeerakgofgvrh3plcq5bv6kozm64x5dag7ihj6zphm7qh7xd4zr5hl4uq",
+      "outcome": "successful",
+      "repository_tree": "d1accc90fe20be0e8299c39bf4824d2ed95865b8",
+      "task_cid": "baguqeerau5djlicg5fk7is66o4asezhaa2c35emlhrskak7ug3vtvec53iqq",
+      "task_id": "ASEH-001",
+      "vector_id": "aseh-hist-02"
+    },
+    {
+      "identity": "baguqeerazd7g3rifuljbx5wila4xdq7544ymphneoun4iib7nycivhzimnfq",
+      "outcome": "conflicted",
+      "repository_tree": "8408a68149498debaf0dd9359532cb3f779111fa",
+      "task_cid": "baguqeeray6iu7h6kiajjow44w3l6gexkiihui2423wrhtpou22thcm6sqhbq",
+      "task_id": "ASEH-010",
+      "vector_id": "aseh-hist-03"
+    },
+    {
+      "identity": "baguqeerage5nlvdsfft7c4uo2jpv24zupbj5esbdkx6o3bw4b6mnaqm5gmfa",
+      "outcome": "successful",
+      "repository_tree": "4067ae313f2c770be24add58951cd312592f17fb",
+      "task_cid": "baguqeeratsdptmolefkhmt7jnqn3osnmoou6ofeceuqynerbjzi63vmrvbxq",
+      "task_id": "ASEH-011",
+      "vector_id": "aseh-hist-04"
+    },
+    {
+      "identity": "baguqeerahfoxhqf335a3qhnolo3hpn5gp3zu5bchgfrdjsypjyryoxkbqe4q",
+      "outcome": "rescued",
+      "repository_tree": "46fef6cb781a4f4c97788ca6b24b8ef0616c96ba",
+      "task_cid": "baguqeerahqmsf7qnxxghlgiwvbiijqiy2gylj5coif6bjdqoxnzklolqfqzq",
+      "task_id": "ASEH-012",
+      "vector_id": "aseh-hist-05"
+    },
+    {
+      "identity": "baguqeera6lsvrjcvwp5uoy54ijzrojpjqxz3lukhjr4joxlg3vrmy4brbuaa",
+      "outcome": "human_escalated",
+      "repository_tree": "eaa93e4d91bf3819fa5b79fce7fcab5b375359ea",
+      "task_cid": "baguqeerak4rttvx52w4q2lfcqiua3lcv7rv4ctygpbp367ttclcxtl52b3ua",
+      "task_id": "ASEH-013",
+      "vector_id": "aseh-hist-06"
+    },
+    {
+      "identity": "baguqeera766h2gruemfo7m2qk5vyej6cn6yjdc3wy6btxpknxnopjahidm2a",
+      "outcome": "successful",
+      "repository_tree": "7e3ef048f33b19e179973d3c092f1a2d8235099e",
+      "task_cid": "baguqeerairtxfbwz7adu47img2dwyxy56pwuz5nzer5hpg33v5sx3mh3raja",
+      "task_id": "ASEH-020",
+      "vector_id": "aseh-hist-07"
+    },
+    {
+      "identity": "baguqeerazbbnmlv6zb3jbqzgyhthaqde2c3kdib5yqwiayzy4wwjuaxzjb4a",
+      "outcome": "successful",
+      "repository_tree": "e9a740d0d0eaad8252099748c02091166c8f49a4",
+      "task_cid": "baguqeeramfydtrea4u73aem3cwv2rzshicspexdhytuvbwbto2yk7pcpvzba",
+      "task_id": "ASEH-021",
+      "vector_id": "aseh-hist-08"
+    },
+    {
+      "identity": "baguqeerakvgiqgg2gpbrhayih6z75wyn6chjkkjplm2dtkuratrqqjte3x6a",
+      "outcome": "successful",
+      "repository_tree": "47d0e5145ab354140bb68010b9896617fed6e9c5",
+      "task_cid": "baguqeeratcqeyqyqccvqgojk4qxq5o247m6ilvxjacvoucqgyx43plmiqkzq",
+      "task_id": "ASEH-022",
+      "vector_id": "aseh-hist-09"
+    },
+    {
+      "identity": "baguqeeradlb24zmcq6qmf5ueh5mrggqohktb6i3pzzkj2ldog45l426smwdq",
+      "outcome": "successful",
+      "repository_tree": "7385e099cf7218d31897c47d07e4a0dac34e3a97",
+      "task_cid": "baguqeerayess2igryj3uh3akc64v2hfnzu7u5nj7jgbyjbbzrcz7qjphuxaa",
+      "task_id": "ASEH-023",
+      "vector_id": "aseh-hist-10"
+    },
+    {
+      "identity": "baguqeerafm3hwcookzznivdikerqi6avv23fk5nnn6c5q3arhxwhnxokdhmq",
+      "outcome": "successful",
+      "repository_tree": "331519850893f5bcc7f6ac28d9424603b28849da",
+      "task_cid": "baguqeeran7erlxobndrr5pkiyquzr2k6ze652ck7n6mmpqxystaaephssoda",
+      "task_id": "ASEH-024",
+      "vector_id": "aseh-hist-11"
+    },
+    {
+      "identity": "baguqeera3gtc76a7pdbqpk5e5kyederpy2j6bd2qb3udn4rnky6yd6wfjclq",
+      "outcome": "retried",
+      "repository_tree": "648a830e603ab52433c787871aa2264de73d9e46",
+      "task_cid": "baguqeera37mgpemf23xikp5wb2fuuycykn57gorpjrsgtwi777br47d6scvq",
+      "task_id": "ASEH-030",
+      "vector_id": "aseh-hist-12"
+    },
+    {
+      "identity": "baguqeerazwle4pfhhg6dxsrrpbtswhoittxlaibhyvue4t7x4nby3hy44qva",
+      "outcome": "successful",
+      "repository_tree": "3fc0f458634a17204b7599371b22530b260d3464",
+      "task_cid": "baguqeeraztd6vb5ph7ipd3gh46dsmrvwbfcknlxwr3mesubj6j7jisiizgra",
+      "task_id": "ASEH-031",
+      "vector_id": "aseh-hist-13"
+    },
+    {
+      "identity": "baguqeerafx47y7mo3cj4jcky6oowp5k423elmclont6cpbtqqvtig3ohgmjq",
+      "outcome": "successful",
+      "repository_tree": "520285586de2ecb6ba28e0c096f5571bbdf2303d",
+      "task_cid": "baguqeeratok7rkfphf62mnnmuiutmc7v7dsv7nhx5txpzmvz2oy3s2f3a52q",
+      "task_id": "ASEH-032",
+      "vector_id": "aseh-hist-14"
+    },
+    {
+      "identity": "baguqeeraxn5fs55ijiary3v3usw2cgw43atkuiwwoct5rvrge3in5ncsenvq",
+      "outcome": "successful",
+      "repository_tree": "c0c19a4cdedd12c8109e197e58410fba0fcd53fb",
+      "task_cid": "baguqeerazrumjlclkl2morwckg4j7jrk2txy324iqxb6p3onhaezvwmvftza",
+      "task_id": "ASEH-033",
+      "vector_id": "aseh-hist-15"
+    },
+    {
+      "identity": "baguqeerah3yaz6tjvzk4jicsj557n45ljtxcqed6pxsbszdvqrw55eheausq",
+      "outcome": "successful",
+      "repository_tree": "13c9c5967901b20066ce4586950cac1498fb2e0a",
+      "task_cid": "baguqeerajvqrd72fucgyn2grwhn2v7y6hasqnmlotogazsdcxxghckjujpta",
+      "task_id": "ASEH-034",
+      "vector_id": "aseh-hist-16"
+    },
+    {
+      "identity": "baguqeera2cmsv6jahkc272oek6375vmt7idfewrrthfcnc3rryued7xw7x7a",
+      "outcome": "successful",
+      "repository_tree": "b3e3a393e1b883152db2158c4c6fa0078df779aa",
+      "task_cid": "baguqeeradh6ldqaokukppeglh3vbrcol3j5ibrbmffiikni3eyqwhdcdrabq",
+      "task_id": "ASEH-040",
+      "vector_id": "aseh-hist-17"
+    },
+    {
+      "identity": "baguqeerak6lpiax6bnn7nxwbhr6fnrczylcep4nknwv7tv45dbdobrhpidnq",
+      "outcome": "successful",
+      "repository_tree": "264aa3aa584ecb88f86831381bb7167d3634c9d4",
+      "task_cid": "baguqeera6b7gn33a7xyh2knfhwax42gfqmp2vkffuq3fbgiy2u4xkn3q3i6a",
+      "task_id": "ASEH-041",
+      "vector_id": "aseh-hist-18"
+    },
+    {
+      "identity": "baguqeeravr3fz4kydcv6fvtt4pxhecbxbizycpr7za4sbi7i5clx6eei76ma",
+      "outcome": "successful",
+      "repository_tree": "ebc09a0191b95b4acd054817101ebf113b3bc42f",
+      "task_cid": "baguqeerau5u5hnvlyt6z3xeln7q5tgjypdmrducmpjd7zq47sc3gcejcjara",
+      "task_id": "ASEH-042",
+      "vector_id": "aseh-hist-19"
+    },
+    {
+      "identity": "baguqeeraftflinkyyq47wur5jmls2lumnwt3uubrtpwkho7tsj7hbe6p6v2a",
+      "outcome": "successful",
+      "repository_tree": "d447147245dd75f786a2587a62a8742a5678b7e5",
+      "task_cid": "baguqeerabmcdrfc3krrzp2l3qvlthdfp5ydvetd3ggoblu4nkyptvl32jqla",
+      "task_id": "ASEH-043",
+      "vector_id": "aseh-hist-20"
+    },
+    {
+      "identity": "baguqeeray4ho4rfnifpity4fruz6xhwnkqqmpfodrsuotglnj6ngw3cp2pbq",
+      "outcome": "failed",
+      "repository_tree": "8d8199c607440107fc118d5520ccf514d0b79195",
+      "task_cid": "baguqeera5diyftpbjkx2xw4xtcd4j72v4qsm3w36r55wrxqhs4uxrlayfsna",
+      "task_id": "ASEH-044",
+      "vector_id": "aseh-hist-21"
+    },
+    {
+      "identity": "baguqeera5g3mkjxzdadczzzidksb7dipybxzkj5dwd4evg5nusk3blede2ga",
+      "outcome": "successful",
+      "repository_tree": "9fc9ff084259c1c2dc2c20f8d913ee6aa485679c",
+      "task_cid": "baguqeeraljs5oxafm5vvjsov7t7m7dgysn4bhh6iadvqecv6zow4r4tew3fa",
+      "task_id": "ASEH-045",
+      "vector_id": "aseh-hist-22"
+    },
+    {
+      "identity": "baguqeeradvw7hsv7b7e3tbxngj2bh2i45wk3n5pfqwegekwgpmhpokwr3dqa",
+      "outcome": "successful",
+      "repository_tree": "b2231626f4e8f835d5b4fb65d8c7e8ae6913aa6f",
+      "task_cid": "baguqeeraax2fdlmut3bbkwcghwiuhjxpjpq5evceagv6rvr4jzytx5zoqcqa",
+      "task_id": "ASEH-050",
+      "vector_id": "aseh-hist-23"
+    },
+    {
+      "identity": "baguqeeraegok635vkhcuuhgt7fhly2q6dpzxewhjlacxntaimh3jbww6ujsa",
+      "outcome": "successful",
+      "repository_tree": "30d78733ff6df4db0e0e74c686aff28c6b7b30a2",
+      "task_cid": "baguqeerarrnqjwm6fqv7um4z2wfs7mowqqnqmxpgvnxvl57aq2hx66z52j5q",
+      "task_id": "ASEH-051",
+      "vector_id": "aseh-hist-24"
+    },
+    {
+      "identity": "baguqeerasherwgrmhphnjtke5q2doflnobs4cxv7wx2xtdn7gye64y5ivvoa",
+      "outcome": "successful",
+      "repository_tree": "4994670b3a2d74c4aeb849bc5daa4a981ba28ea9",
+      "task_cid": "baguqeerakkeumzhdtkl7ejpik7gfljgnu3atudnq2laalugldsjl6zslbgfa",
+      "task_id": "ASEH-052",
+      "vector_id": "aseh-hist-25"
+    },
+    {
+      "identity": "baguqeeraizhyxoxp3gcogglnbahxhdhkfdkhlelogbbynh4afhp75lf5dzla",
+      "outcome": "successful",
+      "repository_tree": "75032766aeab8e213f4bd35d9d7d2bd3af8916e8",
+      "task_cid": "baguqeerannqqd4qwt77sy5toha3ctty3d4unraibz4z2vbmnvr2mruz2te5a",
+      "task_id": "ASEH-053",
+      "vector_id": "aseh-hist-26"
+    },
+    {
+      "identity": "baguqeerachsn5wlxwxqllbcn2z6jxvnnmkc4hqgbh4r4ukjvfgbueukkid3a",
+      "outcome": "successful",
+      "repository_tree": "440377d5b5a996655be931293d719f4d2490e3f0",
+      "task_cid": "baguqeeraltuo2zqbv3xjm7vlneaqhkp6dgqb75vtvcrk5u2ywywkucepudra",
+      "task_id": "ASEH-054",
+      "vector_id": "aseh-hist-27"
+    },
+    {
+      "identity": "baguqeera7ryeetgylpmb4ksczp6yogqb2tdgrmw5hbdle7nqwstpcozptffq",
+      "outcome": "successful",
+      "repository_tree": "807d447160501c66b0c77de5db609c93382a2713",
+      "task_cid": "baguqeera2g24etk77qhfklyx3gypxf5tujfpxih4tjt6eiq43ohzjvriw2qq",
+      "task_id": "ASEH-055",
+      "vector_id": "aseh-hist-28"
+    }
+  ],
+  "vectors_identity": "baguqeeraeuvmdisdpb64hz5ybkmu27j3tudgot7ylolih7ewqg5e5rashroq",
+  "vectors_path": "benchmarks/agent_supervisor/efficiency_state_hardening/historical_vectors.jsonl",
+  "vectors_sha256": "sha256:6de6356147f13248a416df88b0a1e8567293ae0dffbf6b94b9de3900986c454d"
+}
