@@ -109796,6 +109796,25 @@ class DatabaseImplementationDaemon:
                 f"retryable attempt {attempt.attempt_id} has no control task"
             )
         task_status = str(task.status or "").strip().lower()
+        if task_status in {"todo", "ready", "completed"}:
+            # SPAR-024: recycle left a retryable local attempt while DuckDB
+            # control was already todo/ready. Forcing that row to retrying
+            # crashed lane-2 and starved the ready claim. Retire the leftover
+            # cursor instead.
+            self._retire_stale_running_attempt(attempt, task)
+            return {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+                "status": task_status,
+                "changed": False,
+                "reason": "control_already_unclaimed",
+                "backoff_seconds": 0,
+                "backoff_ms": 0,
+                "retry_not_before_ms": 0,
+                "evidence_source": evidence_source,
+                "queue_reused": False,
+                "queue_receipt": {},
+            }
         get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
         record_queue_backoff = getattr(
             self.task_source,

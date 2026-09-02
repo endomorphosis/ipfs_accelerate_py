@@ -2734,6 +2734,49 @@ def test_landed_merge_repair_does_not_insert_another_validation_run(
         daemon.close()
 
 
+def test_persist_retry_on_todo_control_retires_instead_of_crashing(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path / "lane")
+    try:
+        daemon.materialize_population(_population(1))
+        retired: list[str] = []
+
+        def fake_retire(attempt: object, task: object, **_kwargs: object) -> object:
+            retired.append(str(getattr(attempt, "attempt_id", "") or ""))
+            return attempt
+
+        daemon._retire_stale_running_attempt = fake_retire  # type: ignore[method-assign]
+        attempt = SimpleNamespace(
+            attempt_id="attempt:e88a71b1cb5243ff9a11d22f1ab8204a",
+            task_cid="task:cid:001",
+            claim_id="claim:leftover",
+            lease_id="lease:leftover",
+            owner_session_id=daemon.owner_session_id,
+            attempt_number=1,
+            fencing_token=1,
+            fence_epoch=1,
+            committed_phase="running",
+            revision=1,
+            finished_at_ms=0,
+        )
+        outcome = daemon._persist_task_retry_state(
+            attempt,  # type: ignore[arg-type]
+            reason="typed_portal_deferral",
+            backoff_ms=30_000,
+            evidence_source="typed_portal_deferral",
+        )
+        assert outcome["status"] in {"todo", "ready"}
+        assert outcome["reason"] == "control_already_unclaimed"
+        assert outcome["changed"] is False
+        assert retired == ["attempt:e88a71b1cb5243ff9a11d22f1ab8204a"]
+        control = daemon.task_source.get("task:cid:001")
+        assert control is not None
+        assert str(control.status).lower() in {"todo", "ready"}
+    finally:
+        daemon.close()
+
+
 def test_landed_merge_defers_after_owner_fatal(tmp_path: Path) -> None:
     daemon = _open_daemon(tmp_path / "lane")
     try:
