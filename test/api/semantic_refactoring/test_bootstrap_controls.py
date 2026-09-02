@@ -1696,6 +1696,47 @@ def test_publish_live_projection_uses_identity_when_live_query_fails(
     assert payload["task_projection"]["dependency_ready_task_ids"] == ["SPAR-018"]
 
 
+def test_publish_live_projection_does_not_select_on_exclusive_serve_connection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    materializer = _materializer()
+    owner_dir = tmp_path / "owner"
+    owner_dir.mkdir()
+    previous = {
+        "schema": "spar/live-owner-projection@1",
+        "task_projection": {
+            "dependency_ready_task_ids": ["SPAR-018"],
+            "active_task_ids": [],
+        },
+    }
+    (owner_dir / "spar-live-projection.json").write_text(
+        json.dumps(previous),
+        encoding="utf-8",
+    )
+    handle = object()
+    server = SimpleNamespace(
+        _connection=handle,
+        _transport_connection=handle,
+        _owner_transaction_lock=threading.RLock(),
+        _identity=SimpleNamespace(
+            process_birth_id="birth:serve",
+            server_id="server:serve",
+            store_id="store:serve",
+            generation=57,
+            schema_revision=3,
+        ),
+    )
+
+    def forbid_select(_connection: object) -> dict[str, object]:
+        raise AssertionError("must not SELECT on the exclusive serve connection")
+
+    monkeypatch.setattr(materializer, "_task_status", forbid_select)
+    payload = materializer._publish_live_projection(server, {"owner": owner_dir})
+    assert payload["generation"] == 57
+    assert payload["task_projection"]["dependency_ready_task_ids"] == ["SPAR-018"]
+
+
 def test_owner_projection_monitor_does_not_force_bounce_when_listener_is_up(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

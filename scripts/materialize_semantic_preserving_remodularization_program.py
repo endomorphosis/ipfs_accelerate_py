@@ -2229,14 +2229,36 @@ def _owner_identity_snapshot(server: Any) -> dict[str, Any]:
     }
 
 
+def _cached_task_projection(paths: Mapping[str, Path]) -> dict[str, Any]:
+    path = paths["owner"] / "spar-live-projection.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+    projection = payload.get("task_projection") if isinstance(payload, dict) else None
+    return dict(projection) if isinstance(projection, dict) else {}
+
+
 def _publish_live_projection(server: Any, paths: Mapping[str, Path]) -> dict[str, Any]:
-    # Periodic projection must not call server.ready() or TCP-probe the
-    # listener. ready() holds `_owner_transaction_lock` across quack_query;
-    # a false ECONNREFUSED probe force-recovers and rebinds quack_serve.
-    # Either path starves typed load_store_generation, so SPAR-018 never
-    # gets claimed. Identity plus a local task SELECT is enough.
+    # Periodic projection must not call server.ready(), TCP-probe the
+    # listener, or SELECT on the exclusive serve connection. quack_serve
+    # owns that native handle; a second statement poisons it with
+    # DuckDBConnectionPolicyError and drops SPAR-018's typed CAS.
     ready = _owner_identity_snapshot(server)
-    task_projection = _owner_task_projection(server)
+    connection = getattr(server, "_connection", None)
+    transport_connection = getattr(server, "_transport_connection", None)
+    serve_owns_exclusive = (
+        connection is not None
+        and transport_connection is not None
+        and connection is transport_connection
+    )
+    if serve_owns_exclusive:
+        task_projection = _cached_task_projection(paths)
+    else:
+        try:
+            task_projection = _owner_task_projection(server)
+        except Exception:
+            task_projection = _cached_task_projection(paths)
     unsigned = {
         "schema": "spar/live-owner-projection@1",
         "observed_at_unix_ns": time.time_ns(),
