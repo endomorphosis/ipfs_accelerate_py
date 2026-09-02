@@ -86953,6 +86953,7 @@ class DatabaseImplementationDaemon:
                 # writer flock.  Even a committed sidecar write followed by
                 # response loss must not leave this object with a usable
                 # lockless DuckDB connection after a successor opens.
+                self._retained_recovery_attempt_authorities = None
                 if self._owns_coordinator and self._coordinator is not None:
                     close = getattr(self._coordinator, "close", None)
                     if callable(close):
@@ -87220,6 +87221,7 @@ class DatabaseImplementationDaemon:
         admitted: dict[str, DatabaseImplementationDaemon] = {}
         lane_paths: dict[int, tuple[Path, Path]] = {}
         store_lanes: dict[Path, int] = {}
+        store_inodes: dict[tuple[int, int], tuple[int, Path]] = {}
         for attempt_id in sorted(pins_by_attempt):
             pin = pins_by_attempt[attempt_id]
             authority = authorities.get(attempt_id)
@@ -87270,6 +87272,8 @@ class DatabaseImplementationDaemon:
             if not (
                 stat_module.S_ISREG(execution_stat.st_mode)
                 and stat_module.S_ISREG(coordination_stat.st_mode)
+                and execution_stat.st_nlink == 1
+                and coordination_stat.st_nlink == 1
                 and not execution_path.is_symlink()
                 and not coordination_path.is_symlink()
                 and resolved_execution == execution_path
@@ -87288,11 +87292,23 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationAuthorityError(
                     "retained lane authority paths are ambiguous"
                 )
-            for path in (resolved_execution, resolved_coordination):
+            for path, path_stat in (
+                (resolved_execution, execution_stat),
+                (resolved_coordination, coordination_stat),
+            ):
                 prior_lane = store_lanes.setdefault(path, expected_lane)
                 if prior_lane != expected_lane:
                     raise DatabaseImplementationAuthorityError(
                         "retained lane authority store is shared across lanes"
+                    )
+                inode = (int(path_stat.st_dev), int(path_stat.st_ino))
+                prior_inode = store_inodes.setdefault(
+                    inode,
+                    (expected_lane, path),
+                )
+                if prior_inode != (expected_lane, path):
+                    raise DatabaseImplementationAuthorityError(
+                        "retained lane authority store inode is ambiguous"
                     )
             try:
                 attempt = authority.get_attempt(attempt_id)

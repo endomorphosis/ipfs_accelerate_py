@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +15,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as daemon_module,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_supervisor as supervisor_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
@@ -42,6 +46,23 @@ pytestmark = pytest.mark.skipif(
 
 _CONTROL_STORE_ID = "test-retained-cross-lane-control"
 _CONTROL_STORE_GENERATION = "pctdd-v1-g9"
+_AUTHENTICATED_CONTROL_STORE_BINDING = {
+    "store_id": _CONTROL_STORE_ID,
+    "generation": 58,
+    "database_uuid": "496924b1-85df-439c-afcf-cb39a6ed0efa",
+    "schema_fingerprint": "sha256:" + "a" * 64,
+    "schema_revision": "1",
+}
+_EXPECTED_CONTROL_SCHEMA_PROFILE = {
+    "profile_revision": "1",
+    "profile_id": "sha256:" + "b" * 64,
+    "control_store_id": _CONTROL_STORE_ID,
+    "control_store_generation": _CONTROL_STORE_GENERATION,
+    "transport_schema_revision": "1",
+    "storage_schema_fingerprint": "sha256:" + "a" * 64,
+    "owner_database_uuid": "496924b1-85df-439c-afcf-cb39a6ed0efa",
+    "owner_generation_floor": 58,
+}
 
 
 def _pins() -> tuple[dict[str, Any], ...]:
@@ -67,6 +88,31 @@ def _open_lane(
         database_path=lane_root / "control.duckdb",
         coordination_path=lane_root / "coordination.duckdb",
         execution_path=lane_root / "execution.duckdb",
+        owner_session_id=owner,
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        task_source=task_source,
+        task_shard_count=4,
+        task_shard_index=lane,
+        strict_task_sharding=True,
+        control_store_id=_CONTROL_STORE_ID,
+        control_store_generation=_CONTROL_STORE_GENERATION,
+    )
+
+
+def _open_canonical_lane(
+    root: Path,
+    *,
+    lane: int,
+    owner: str,
+    task_source: Any = None,
+) -> DatabaseImplementationDaemon:
+    lane_root = root / f"lane-{lane}"
+    lane_root.mkdir(parents=True)
+    return DatabaseImplementationDaemon(
+        database_path=lane_root / "quack-lane-control.duckdb",
+        coordination_path=lane_root / "quack-lane-coordination.duckdb",
+        execution_path=lane_root / "quack-lane-control.execution.duckdb",
         owner_session_id=owner,
         authority_mode="embedded",
         task_source_kind="duckdb",
@@ -259,6 +305,18 @@ def test_retained_attempt_population_routes_to_exact_existing_home_lanes(
             lane0.bind_retained_recovery_attempt_authorities(mismatched)
         assert lane0._retained_recovery_attempt_authorities is None
 
+        hardlink = tmp_path / "foreign-execution-hardlink.duckdb"
+        os.link(lane3.execution_path, hardlink)
+        try:
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="store identity is unsafe",
+            ):
+                lane0.bind_retained_recovery_attempt_authorities(exact)
+        finally:
+            hardlink.unlink()
+        assert lane0._retained_recovery_attempt_authorities is None
+
         lane0.bind_retained_recovery_attempt_authorities(exact)
         assert set(lane0._retained_recovery_attempt_authorities or {}) == set(
             exact
@@ -271,6 +329,10 @@ def test_retained_attempt_population_routes_to_exact_existing_home_lanes(
         assert (
             lane0._retained_recovery_attempt_authority(p034) is lane3
         )
+        lane3.close()
+        lane0.close()
+        assert lane0._retained_recovery_attempt_authorities is None
+        assert lane3._closed is True
     finally:
         lane3.close()
         lane0.close()
@@ -350,13 +412,54 @@ def test_historical_claim_uses_canonical_population_and_only_own_lane_fence(
                     return None
                 return original_source.get(task_cid)
 
-        lane0._task_source = MissingPeerSource()
-        assert not (
-            lane0._retained_recovery_admission_population_admitted_current(
-                admission
+        try:
+            lane0._task_source = MissingPeerSource()
+            assert not (
+                lane0._retained_recovery_admission_population_admitted_current(
+                    admission
+                )
             )
-        )
-        lane0._task_source = original_source
+            peer = original_source.get(
+                occurrences["PCTDD-034"]["task_cid"]
+            )
+            assert peer is not None
+            peer_receipt = dict(peer.body["completion_receipt"])
+            crossed = dict(peer_receipt["retained_recovery_admission"])
+            crossed["controller_quiescence_receipt_id"] = (
+                "sha256:" + "8" * 64
+            )
+            crossed.pop("admission_id")
+            crossed["admission_id"] = (
+                daemon_module._database_fenced_provider_retained_digest(
+                    crossed
+                )
+            )
+            assert database_fenced_provider_historical_retained_admission_valid(
+                crossed
+            )
+            peer_receipt["retained_recovery_admission"] = crossed
+            crossed_peer = SimpleNamespace(
+                task_cid=peer.task_cid,
+                task_alias=peer.task_alias,
+                status=peer.status,
+                revision=peer.revision,
+                body={"completion_receipt": peer_receipt},
+            )
+
+            class CrossedControllerSource:
+                def get(self, task_cid: str):
+                    if task_cid == crossed_peer.task_cid:
+                        return crossed_peer
+                    return original_source.get(task_cid)
+
+            lane0._task_source = CrossedControllerSource()
+            assert not (
+                lane0._retained_recovery_admission_population_admitted_current(
+                    admission
+                )
+            )
+        finally:
+            lane0._task_source = original_source
 
         attempt = lane0.claim_next(
             exclude_task_cids={occurrences["PCTDD-007"]["task_cid"]}
@@ -408,6 +511,12 @@ def test_supervisor_cross_lane_open_requires_locks_and_existing_peer(
         store_generation=_CONTROL_STORE_GENERATION,
     )
     bind = supervisor._bind_retained_recovery_lane_attempt_authorities
+    lane0._authenticated_control_store_binding = dict(
+        _AUTHENTICATED_CONTROL_STORE_BINDING
+    )
+    lane0._expected_control_schema_profile = dict(
+        _EXPECTED_CONTROL_SCHEMA_PROFILE
+    )
     try:
         with pytest.raises(RuntimeError, match="owner/launch fences"):
             bind(
@@ -419,6 +528,25 @@ def test_supervisor_cross_lane_open_requires_locks_and_existing_peer(
                 strict_sharding=True,
                 owner_fence_held=False,
                 managed_daemon_launch_lock_held=True,
+                authenticated_control_store_binding=(
+                    _AUTHENTICATED_CONTROL_STORE_BINDING
+                ),
+                expected_control_schema_profile=(
+                    _EXPECTED_CONTROL_SCHEMA_PROFILE
+                ),
+            )
+        with pytest.raises(RuntimeError, match="control-schema binding"):
+            bind(
+                daemon=lane0,
+                program=program,
+                task_source=lane0.task_source,
+                shard_count=4,
+                shard_index=0,
+                strict_sharding=True,
+                owner_fence_held=True,
+                managed_daemon_launch_lock_held=True,
+                authenticated_control_store_binding=None,
+                expected_control_schema_profile=None,
             )
         with pytest.raises(RuntimeError, match="peer lane is unavailable"):
             bind(
@@ -430,8 +558,178 @@ def test_supervisor_cross_lane_open_requires_locks_and_existing_peer(
                 strict_sharding=True,
                 owner_fence_held=True,
                 managed_daemon_launch_lock_held=True,
+                authenticated_control_store_binding=(
+                    _AUTHENTICATED_CONTROL_STORE_BINDING
+                ),
+                expected_control_schema_profile=(
+                    _EXPECTED_CONTROL_SCHEMA_PROFILE
+                ),
             )
         assert lane0._retained_recovery_attempt_authorities is None
         assert not (state_parent / "lane-3").exists()
+    finally:
+        lane0.close()
+
+
+def test_supervisor_threads_authenticated_schema_to_quack_shaped_peer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pins = _pins()
+    lane_owners = {
+        lane: next(
+            str(pin["predecessor_owner_session_id"])
+            for pin in pins
+            if int(
+                hashlib.sha256(
+                    str(pin["task_alias"]).encode("utf-8")
+                ).hexdigest()[:8],
+                16,
+            )
+            % 4
+            == lane
+        )
+        for lane in (0, 3)
+    }
+    state_parent = tmp_path / "state"
+    lane0 = _open_canonical_lane(
+        state_parent,
+        lane=0,
+        owner=lane_owners[0],
+    )
+    lane3 = _open_canonical_lane(
+        state_parent,
+        lane=3,
+        owner=lane_owners[3],
+        task_source=lane0.task_source,
+    )
+    supervisor = object.__new__(PortalImplementationSupervisor)
+    supervisor.config = SimpleNamespace(
+        repo_root=tmp_path,
+        state_dir=state_parent / "lane-0",
+        max_task_attempts=3,
+        implement=True,
+        task_prefix="## PCTDD-",
+    )
+    program = SimpleNamespace(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        quack_endpoint="quack:127.0.0.1:27278",
+        store_id=_CONTROL_STORE_ID,
+        store_generation=_CONTROL_STORE_GENERATION,
+    )
+    lane0._authenticated_control_store_binding = dict(
+        _AUTHENTICATED_CONTROL_STORE_BINDING
+    )
+    lane0._expected_control_schema_profile = dict(
+        _EXPECTED_CONTROL_SCHEMA_PROFILE
+    )
+    captured: list[dict[str, Any]] = []
+
+    def peer_factory(**kwargs: Any) -> DatabaseImplementationDaemon:
+        captured.append(dict(kwargs))
+        return lane3
+
+    monkeypatch.setattr(
+        supervisor_module,
+        "DatabaseImplementationDaemon",
+        peer_factory,
+    )
+    try:
+        by_lane = {0: lane0, 3: lane3}
+        for pin in pins:
+            home = lane0._task_home_shard_index(str(pin["task_alias"]))
+            _seed_predecessor(by_lane[home], pin)
+        peers = supervisor._bind_retained_recovery_lane_attempt_authorities(
+            daemon=lane0,
+            program=program,
+            task_source=lane0.task_source,
+            shard_count=4,
+            shard_index=0,
+            strict_sharding=True,
+            owner_fence_held=True,
+            managed_daemon_launch_lock_held=True,
+            authenticated_control_store_binding=(
+                _AUTHENTICATED_CONTROL_STORE_BINDING
+            ),
+            expected_control_schema_profile=(
+                _EXPECTED_CONTROL_SCHEMA_PROFILE
+            ),
+        )
+        assert peers == [lane3]
+        assert len(captured) == 1
+        assert captured[0]["authority_mode"] == "quack"
+        assert captured[0]["quack_uri"] == program.quack_endpoint
+        assert captured[0]["authenticated_control_store_binding"] == (
+            _AUTHENTICATED_CONTROL_STORE_BINDING
+        )
+        assert captured[0]["expected_control_schema_profile"] == (
+            _EXPECTED_CONTROL_SCHEMA_PROFILE
+        )
+        assert lane0._retained_recovery_attempt_authorities is not None
+    finally:
+        lane3.close()
+        lane0.close()
+
+
+def test_supervisor_rejects_cross_lane_state_under_symlink_ancestor(
+    tmp_path: Path,
+) -> None:
+    pins = _pins()
+    lane0_owner = next(
+        str(pin["predecessor_owner_session_id"])
+        for pin in pins
+        if pin["task_alias"] == "PCTDD-005"
+    )
+    real_repo = tmp_path / "real-repository"
+    state_parent = real_repo / "state"
+    lane0 = _open_canonical_lane(
+        state_parent,
+        lane=0,
+        owner=lane0_owner,
+    )
+    linked_repo = tmp_path / "linked-repository"
+    linked_repo.symlink_to(real_repo, target_is_directory=True)
+    supervisor = object.__new__(PortalImplementationSupervisor)
+    supervisor.config = SimpleNamespace(
+        repo_root=linked_repo,
+        state_dir=linked_repo / "state" / "lane-0",
+        max_task_attempts=3,
+        implement=True,
+        task_prefix="## PCTDD-",
+    )
+    program = SimpleNamespace(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        quack_endpoint="quack:127.0.0.1:27278",
+        store_id=_CONTROL_STORE_ID,
+        store_generation=_CONTROL_STORE_GENERATION,
+    )
+    lane0._authenticated_control_store_binding = dict(
+        _AUTHENTICATED_CONTROL_STORE_BINDING
+    )
+    lane0._expected_control_schema_profile = dict(
+        _EXPECTED_CONTROL_SCHEMA_PROFILE
+    )
+    try:
+        with pytest.raises(RuntimeError, match="symlink ancestor"):
+            supervisor._bind_retained_recovery_lane_attempt_authorities(
+                daemon=lane0,
+                program=program,
+                task_source=lane0.task_source,
+                shard_count=4,
+                shard_index=0,
+                strict_sharding=True,
+                owner_fence_held=True,
+                managed_daemon_launch_lock_held=True,
+                authenticated_control_store_binding=(
+                    _AUTHENTICATED_CONTROL_STORE_BINDING
+                ),
+                expected_control_schema_profile=(
+                    _EXPECTED_CONTROL_SCHEMA_PROFILE
+                ),
+            )
+        assert lane0._retained_recovery_attempt_authorities is None
+        assert not (real_repo / "state" / "lane-3").exists()
     finally:
         lane0.close()

@@ -16875,6 +16875,8 @@ class PortalImplementationSupervisor:
         strict_sharding: bool,
         owner_fence_held: bool,
         managed_daemon_launch_lock_held: bool,
+        authenticated_control_store_binding: Mapping[str, Any] | None,
+        expected_control_schema_profile: Mapping[str, Any] | None,
     ) -> list[DatabaseImplementationDaemon]:
         """Open and bind only the sealed predecessors' exact home lanes.
 
@@ -16890,6 +16892,18 @@ class PortalImplementationSupervisor:
         if not (owner_fence_held and managed_daemon_launch_lock_held):
             raise RuntimeError(
                 "cross-lane retained recovery lacks its owner/launch fences"
+            )
+        if not (
+            isinstance(authenticated_control_store_binding, Mapping)
+            and isinstance(expected_control_schema_profile, Mapping)
+            and daemon._authenticated_control_store_binding
+            == dict(authenticated_control_store_binding)
+            and daemon._expected_control_schema_profile
+            == dict(expected_control_schema_profile)
+        ):
+            raise RuntimeError(
+                "cross-lane retained recovery lacks its authenticated "
+                "control-schema binding"
             )
         from .database_portal_bridge import (
             DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
@@ -16930,12 +16944,27 @@ class PortalImplementationSupervisor:
         if configured_lane.is_symlink() or configured_parent.is_symlink():
             raise RuntimeError("retained recovery lane root is a symlink")
         try:
+            lexical_repo = Path(
+                os.path.abspath(os.fspath(self.config.repo_root))
+            )
+            resolved_repo = lexical_repo.resolve(strict=True)
             state_parent = configured_parent.resolve(strict=True)
             current_lane = configured_lane.resolve(strict=True)
         except (OSError, RuntimeError) as exc:
             raise RuntimeError(
                 "retained recovery lane root is unavailable"
             ) from exc
+        if not (
+            resolved_repo == lexical_repo
+            and state_parent == configured_parent
+            and current_lane == configured_lane
+            and state_parent.is_relative_to(resolved_repo)
+            and current_lane.is_relative_to(resolved_repo)
+        ):
+            raise RuntimeError(
+                "retained recovery lane root has a symlink ancestor or "
+                "escapes its repository"
+            )
         expected_current_lane = state_parent / f"lane-{shard_index}"
         if not (
             current_lane == expected_current_lane
@@ -17018,6 +17047,7 @@ class PortalImplementationSupervisor:
                         ) from exc
                     if not (
                         stat.S_ISREG(local_stat.st_mode)
+                        and local_stat.st_nlink == 1
                         and not local_path.is_symlink()
                         and local_path.parent.resolve(strict=True)
                         == resolved_lane
@@ -17047,6 +17077,12 @@ class PortalImplementationSupervisor:
                     strict_task_sharding=True,
                     control_store_id=program.store_id,
                     control_store_generation=program.store_generation,
+                    authenticated_control_store_binding=(
+                        authenticated_control_store_binding
+                    ),
+                    expected_control_schema_profile=(
+                        expected_control_schema_profile
+                    ),
                     task_source=task_source,
                     install_schema=False,
                 )
@@ -17413,6 +17449,10 @@ class PortalImplementationSupervisor:
                         owner_fence_held=owner_fence_held,
                         managed_daemon_launch_lock_held=(
                             managed_daemon_launch_lock_held
+                        ),
+                        authenticated_control_store_binding=owner_binding,
+                        expected_control_schema_profile=(
+                            expected_control_schema_profile
                         ),
                     )
                 )
