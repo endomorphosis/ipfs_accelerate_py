@@ -24,7 +24,7 @@ from .core import (
     pid_alive,
     process_args,
     read_json,
-    write_json,
+    write_json_atomic,
 )
 
 JsonDict = dict[str, Any]
@@ -834,7 +834,11 @@ class SupervisorStatusContext:
         payload = self.payload(status, **kwargs)
         path = self.spec.resolve(self.spec.supervisor_status_path)
         assert path is not None
-        write_json(path, payload)
+        # The outer multi-supervisor uses a strict inode-stable reader before
+        # granting restart authority.  Publish the status as one replacement
+        # so readers can observe either complete generation, never a
+        # truncate-in-progress payload.
+        write_json_atomic(path, payload)
         return payload
 
 
