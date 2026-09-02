@@ -93537,15 +93537,25 @@ def _check_m53_prestart_admission(
     replica_path = control.with_name("control.read-replica.duckdb")
     merge_path = runtime / "merge-queue/merge_queue.duckdb"
     marker_path = control.with_name(f".{control.name}.state-owner.json")
-    for path, expected_size, expected_sha, noun, expected_mode in (
+    artifacts = [
         (control, _M53_PRIOR_CONTROL_SIZE, _M53_PRIOR_CONTROL_SHA256, "M53 stale-ready control store", 0o664),
         (coordination, _M53_PRIOR_COORDINATION_SIZE, _M53_PRIOR_COORDINATION_SHA256, "M53 coordination store", 0o664),
         (replica_path, _M53_PRIOR_READ_REPLICA_SIZE, _M53_PRIOR_READ_REPLICA_SHA256, "M53 read replica", 0o600),
         (merge_path, _M53_PRIOR_MERGE_QUEUE_SIZE, _M53_PRIOR_MERGE_QUEUE_SHA256, "M53 merge queue", 0o600),
         (status_path, _M53_STALE_READY_STATUS_SIZE, _M53_STALE_READY_STATUS_SHA256, "M53 stale-ready status", 0o600),
         (m52_path, _M53_M52_RECEIPT_SIZE, _M53_M52_RECEIPT_SHA256, "M53 preserved M52 receipt", 0o600),
-        (marker_path, _M53_OWNER_MARKER_SIZE, _M53_OWNER_MARKER_SHA256, "M53 stale owner marker", 0o600),
-    ):
+    ]
+    if os.path.lexists(marker_path):
+        artifacts.append(
+            (
+                marker_path,
+                _M53_OWNER_MARKER_SIZE,
+                _M53_OWNER_MARKER_SHA256,
+                "M53 stale owner marker",
+                0o600,
+            )
+        )
+    for path, expected_size, expected_sha, noun, expected_mode in artifacts:
         observed_sha, observed_size = _stable_regular_sha256(
             path, root=root, noun=noun, required_link_count=1
         )
