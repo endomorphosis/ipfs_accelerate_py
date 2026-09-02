@@ -862,6 +862,9 @@ def _shared_fenced_provider_recovery_daemon(
     attempt_record = {
         "attempt_id": "attempt:exact-pinned-provider",
         "task_cid": "task:exact-pinned-provider",
+        "owner_session_id": "owner:exact-pinned-provider",
+        "fencing_token": 7,
+        "fence_epoch": 3,
         "status": "blocked",
         "committed_phase": "provider",
     }
@@ -905,10 +908,58 @@ def _shared_fenced_provider_recovery_daemon(
         "no_provider_rearm_original_block_receipt": original,
         "no_provider_rearm_fence": fence,
     }
+    dispatch_rows = [
+        {
+            "dispatch_id": "dispatch:exact-pinned-provider",
+            "attempt_id": attempt.attempt_id,
+            "task_cid": attempt_record["task_cid"],
+            "dispatch_kind": "provider",
+            "idempotency_key": f"provider:{attempt.attempt_id}",
+            "owner_session_id": "owner:exact-pinned-provider",
+            "fencing_token": 7,
+            "fence_epoch": 3,
+            "started_at_ms": 100,
+            "updated_at_ms": 101,
+            "outcome": "started",
+            "body": {"state": "fenced", "result": "unpublished"},
+        }
+    ]
+    empty_rows: list[dict[str, object]] = []
+    callback_population: dict[str, object] = {
+        "schema": (
+            daemon_module.DATABASE_FENCED_PROVIDER_CALLBACK_POPULATION_SCHEMA
+        ),
+        "attempt_id": attempt.attempt_id,
+        "dispatch_journal": {
+            "count": 1,
+            "rows": dispatch_rows,
+            "digest": daemon._database_canonical_digest(
+                dispatch_rows
+            ),
+        },
+        "provider_invocations": {
+            "count": 0,
+            "rows": empty_rows,
+            "digest": daemon_module.DATABASE_EMPTY_CANONICAL_LIST_DIGEST,
+        },
+        "effect_claims": {
+            "count": 0,
+            "rows": empty_rows,
+            "digest": daemon_module.DATABASE_EMPTY_CANONICAL_LIST_DIGEST,
+        },
+    }
+    callback_population["population_id"] = (
+        daemon._database_no_provider_rearm_digest(callback_population)
+    )
     outer_snapshot: dict[str, object] = {
         "schema": daemon_module.DATABASE_FENCED_PROVIDER_OUTER_SNAPSHOT_SCHEMA,
         "attempt_record": attempt_record,
-        "provider_dispatch": {"state": "fenced", "result": "unpublished"},
+        "provider_dispatch": {
+            "outcome": "started",
+            "body": {"state": "fenced", "result": "unpublished"},
+            "updated_at_ms": 101,
+        },
+        "callback_population": callback_population,
         "phase_history": [{"phase": "provider", "state": "fenced"}],
         "provider_invocation_absent": True,
         "effect_claim_absent": True,
@@ -945,7 +996,11 @@ def _shared_fenced_provider_recovery_daemon(
         attempt if attempt_id == attempt.attempt_id else None
     )
     daemon._dispatch_journal_entry = lambda *_args, **kwargs: (
-        {"state": "fenced", "result": "unpublished"}
+        {
+            "outcome": "started",
+            "body": {"state": "fenced", "result": "unpublished"},
+            "updated_at_ms": 101,
+        }
         if kwargs.get("dispatch_kind") == "provider"
         else None
     )
@@ -982,6 +1037,56 @@ def _shared_fenced_provider_recovery_daemon(
     daemon._transition_fenced_provider_recovery_dispatch_fence = (
         transition_dispatch_fence
     )
+
+    def outer_state_matches(
+        selected_attempt: object,
+        snapshot: object,
+        *,
+        require_recovery_dispatch_fence: bool = True,
+    ) -> bool:
+        """Model the closed population; real DuckDB races live elsewhere."""
+
+        if selected_attempt is not attempt or snapshot != outer_snapshot:
+            return False
+        provider = daemon._dispatch_journal_entry(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        effect = daemon._dispatch_journal_entry(
+            attempt,
+            dispatch_kind="effect",
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        )
+        exact = bool(
+            provider == outer_snapshot["provider_dispatch"]
+            and effect is None
+            and daemon.phase_history(attempt.attempt_id)
+            == outer_snapshot["phase_history"]
+            and daemon.provider_invocation_recorded(
+                attempt.attempt_id,
+                idempotency_key=f"provider:{attempt.attempt_id}",
+            )
+            is None
+            and daemon.effect_claim_recorded(
+                attempt.attempt_id,
+                idempotency_key=f"effect:{attempt.attempt_id}",
+            )
+            is None
+        )
+        if not exact or not require_recovery_dispatch_fence:
+            return exact
+        current_fence = dispatch_fence(attempt)
+        return bool(
+            current_fence["fence_id"]
+            == outer_snapshot["recovery_dispatch_fence_id"]
+            and current_fence["snapshot_id"]
+            == outer_snapshot["snapshot_id"]
+            and current_fence["state"]
+            in {"sealed", "admission_pending", "admitted"}
+        )
+
+    daemon._fenced_provider_outer_state_matches = outer_state_matches
     revalidations: list[str] = []
     artifact_drift = {"value": False}
 

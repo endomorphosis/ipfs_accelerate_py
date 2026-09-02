@@ -218,6 +218,18 @@ def _fenced_provider_dispatch_test_inputs(
 ) -> tuple[dict[str, object], dict[str, object]]:
     """Build an exact current outer snapshot for the real execution store."""
 
+    canonical_provider_key = f"provider:{attempt.attempt_id}"
+    if daemon._dispatch_journal_entry(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=canonical_provider_key,
+    ) is None:
+        daemon._begin_callback_dispatch(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=canonical_provider_key,
+        )
+
     evidence: dict[str, object] = {
         "schema": DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_REARM_EVIDENCE_SCHEMA,
         "attempt_id": attempt.attempt_id,
@@ -248,11 +260,14 @@ def _fenced_provider_dispatch_test_inputs(
                 dispatch := daemon._dispatch_journal_entry(
                     attempt,
                     dispatch_kind="provider",
-                    idempotency_key=f"provider:{attempt.attempt_id}",
+                    idempotency_key=canonical_provider_key,
                 ),
                 Mapping,
             )
             else None
+        ),
+        "callback_population": dict(
+            daemon._fenced_provider_callback_population(attempt)
         ),
         "phase_history": daemon.phase_history(attempt.attempt_id),
         "provider_invocation_absent": True,
@@ -523,11 +538,16 @@ def test_real_dispatch_fence_wins_fresh_begin_interleaving(
     )
 
     def late_begin() -> None:
+        late_key = (
+            f"provider:alternate:{attempt.attempt_id}"
+            if dispatch_kind == "provider"
+            else f"effect:{attempt.attempt_id}"
+        )
         try:
             daemon._begin_callback_dispatch(
                 attempt,
                 dispatch_kind=dispatch_kind,
-                idempotency_key=f"{dispatch_kind}:{attempt.attempt_id}",
+                idempotency_key=late_key,
             )
         except BaseException as exc:
             errors.append(exc)
@@ -558,11 +578,259 @@ def test_real_dispatch_fence_wins_fresh_begin_interleaving(
     assert real_dispatch_entry(
         attempt,
         dispatch_kind=dispatch_kind,
-        idempotency_key=f"{dispatch_kind}:{attempt.attempt_id}",
+        idempotency_key=(
+            f"provider:alternate:{attempt.attempt_id}"
+            if dispatch_kind == "provider"
+            else f"effect:{attempt.attempt_id}"
+        ),
     ) is None
     assert daemon._fenced_provider_recovery_dispatch_fence(attempt)[
         "state"
     ] == "sealed"
+    daemon.close()
+
+
+def test_preexisting_alternate_provider_journal_blocks_dispatch_fence(
+    tmp_path: Path,
+) -> None:
+    """A point-identical canonical row cannot hide a second provider row."""
+
+    daemon = _open_daemon(tmp_path)
+    daemon.materialize_population(_population(1))
+    attempt = daemon.claim_next()
+    assert attempt is not None
+    attempt_before = attempt.to_dict()
+    evidence, snapshot = _fenced_provider_dispatch_test_inputs(daemon, attempt)
+    alternate_key = f"provider:alternate:{attempt.attempt_id}"
+    daemon._begin_callback_dispatch(
+        attempt,
+        dispatch_kind="provider",
+        idempotency_key=alternate_key,
+    )
+
+    with pytest.raises(
+        DatabaseImplementationConflictError,
+        match="outer state advanced",
+    ):
+        daemon._install_fenced_provider_recovery_dispatch_fence(
+            attempt,
+            evidence=evidence,
+            snapshot=snapshot,
+        )
+
+    assert daemon._fenced_provider_recovery_dispatch_fence(attempt) is None
+    assert daemon.get_attempt(attempt.attempt_id).to_dict() == attempt_before
+    count = daemon._require_connection().execute(
+        "SELECT COUNT(*) FROM attempt_dispatch_journal WHERE attempt_id = ?",
+        [attempt.attempt_id],
+    ).fetchone()
+    assert count is not None and int(count[0]) == 2
+    daemon.close()
+
+
+@pytest.mark.parametrize("field", ("dispatch_id", "started_at_ms"))
+def test_canonical_provider_row_replacement_blocks_dispatch_fence(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    """Every authority-bearing canonical journal column is snapshot-bound."""
+
+    daemon = _open_daemon(tmp_path)
+    daemon.materialize_population(_population(1))
+    attempt = daemon.claim_next()
+    assert attempt is not None
+    evidence, snapshot = _fenced_provider_dispatch_test_inputs(daemon, attempt)
+    if field == "dispatch_id":
+        daemon._require_connection().execute(
+            """
+            UPDATE attempt_dispatch_journal
+            SET dispatch_id = ?
+            WHERE attempt_id = ? AND dispatch_kind = 'provider'
+            """,
+            ["dispatch:replacement", attempt.attempt_id],
+        )
+    else:
+        daemon._require_connection().execute(
+            """
+            UPDATE attempt_dispatch_journal
+            SET started_at_ms = started_at_ms + 1
+            WHERE attempt_id = ? AND dispatch_kind = 'provider'
+            """,
+            [attempt.attempt_id],
+        )
+
+    with pytest.raises(
+        DatabaseImplementationConflictError,
+        match="outer state advanced",
+    ):
+        daemon._install_fenced_provider_recovery_dispatch_fence(
+            attempt,
+            evidence=evidence,
+            snapshot=snapshot,
+        )
+    assert daemon._fenced_provider_recovery_dispatch_fence(attempt) is None
+    daemon.close()
+
+
+def test_callback_population_digest_tamper_blocks_dispatch_fence(
+    tmp_path: Path,
+) -> None:
+    """A self-inconsistent population digest is rejected before mutation."""
+
+    daemon = _open_daemon(tmp_path)
+    daemon.materialize_population(_population(1))
+    attempt = daemon.claim_next()
+    assert attempt is not None
+    evidence, snapshot = _fenced_provider_dispatch_test_inputs(daemon, attempt)
+    tampered = json.loads(json.dumps(snapshot))
+    tampered["callback_population"]["dispatch_journal"]["digest"] = (
+        "sha256:" + "f" * 64
+    )
+    callback_unsigned = dict(tampered["callback_population"])
+    callback_unsigned.pop("population_id")
+    tampered["callback_population"]["population_id"] = (
+        daemon._database_no_provider_rearm_digest(callback_unsigned)
+    )
+    snapshot_unsigned = dict(tampered)
+    snapshot_unsigned.pop("snapshot_id")
+    tampered["snapshot_id"] = daemon._database_no_provider_rearm_digest(
+        snapshot_unsigned
+    )
+
+    with pytest.raises(
+        DatabaseImplementationConflictError,
+        match="input is invalid",
+    ):
+        daemon._install_fenced_provider_recovery_dispatch_fence(
+            attempt,
+            evidence=evidence,
+            snapshot=tampered,
+        )
+    assert daemon._fenced_provider_recovery_dispatch_fence(attempt) is None
+    daemon.close()
+
+
+def test_independent_alternate_provider_insert_wins_before_fence_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The installer SQL rechecks the whole population after its precheck."""
+
+    daemon = _open_daemon(tmp_path)
+    daemon.materialize_population(_population(1))
+    attempt = daemon.claim_next()
+    assert attempt is not None
+    evidence, snapshot = _fenced_provider_dispatch_test_inputs(daemon, attempt)
+    installer = _second_execution_store_view(daemon)
+    prechecked = threading.Event()
+    release = threading.Event()
+    errors: list[BaseException] = []
+    real_match = installer._fenced_provider_outer_state_matches
+
+    def pause_after_population_precheck(*args: object, **kwargs: object) -> bool:
+        matched = real_match(*args, **kwargs)
+        prechecked.set()
+        assert release.wait(timeout=5)
+        return matched
+
+    monkeypatch.setattr(
+        installer,
+        "_fenced_provider_outer_state_matches",
+        pause_after_population_precheck,
+    )
+
+    def install() -> None:
+        try:
+            installer._install_fenced_provider_recovery_dispatch_fence(
+                attempt,
+                evidence=evidence,
+                snapshot=snapshot,
+            )
+        except BaseException as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=install, daemon=True)
+    thread.start()
+    assert prechecked.wait(timeout=5)
+    try:
+        daemon._begin_callback_dispatch(
+            attempt,
+            dispatch_kind="provider",
+            idempotency_key=f"provider:alternate:{attempt.attempt_id}",
+        )
+    finally:
+        release.set()
+        thread.join(timeout=5)
+        installer._connection.close()
+        installer._connection = None
+
+    assert not thread.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], DatabaseImplementationConflictError)
+    assert daemon._fenced_provider_recovery_dispatch_fence(attempt) is None
+    count = daemon._require_connection().execute(
+        "SELECT COUNT(*) FROM attempt_dispatch_journal WHERE attempt_id = ?",
+        [attempt.attempt_id],
+    ).fetchone()
+    assert count is not None and int(count[0]) == 2
+    daemon.close()
+
+
+def test_independent_phase_commit_wins_after_fence_precheck(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fence CAS also pins the attempt revision backing phase history."""
+
+    daemon = _open_daemon(tmp_path)
+    daemon.materialize_population(_population(1))
+    attempt = daemon.claim_next()
+    assert attempt is not None
+    evidence, snapshot = _fenced_provider_dispatch_test_inputs(daemon, attempt)
+    installer = _second_execution_store_view(daemon)
+    prechecked = threading.Event()
+    release = threading.Event()
+    errors: list[BaseException] = []
+    real_match = installer._fenced_provider_outer_state_matches
+
+    def pause_after_outer_precheck(*args: object, **kwargs: object) -> bool:
+        matched = real_match(*args, **kwargs)
+        prechecked.set()
+        assert release.wait(timeout=5)
+        return matched
+
+    monkeypatch.setattr(
+        installer,
+        "_fenced_provider_outer_state_matches",
+        pause_after_outer_precheck,
+    )
+
+    def install() -> None:
+        try:
+            installer._install_fenced_provider_recovery_dispatch_fence(
+                attempt,
+                evidence=evidence,
+                snapshot=snapshot,
+            )
+        except BaseException as exc:
+            errors.append(exc)
+
+    thread = threading.Thread(target=install, daemon=True)
+    thread.start()
+    assert prechecked.wait(timeout=5)
+    try:
+        daemon.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+    finally:
+        release.set()
+        thread.join(timeout=5)
+        installer._connection.close()
+        installer._connection = None
+
+    assert not thread.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], DatabaseImplementationConflictError)
+    assert daemon._fenced_provider_recovery_dispatch_fence(attempt) is None
+    assert daemon.get_attempt(attempt.attempt_id).revision == attempt.revision + 1
     daemon.close()
 
 
@@ -8332,11 +8600,64 @@ def test_fenced_provider_rearm_preserves_consumed_attempt_and_grants_one_credit(
         "no_provider_rearm_saga_id": saga_id,
         "no_provider_rearm_original_block_receipt": original,
     }
+    dispatch_rows = [
+        {
+            "dispatch_id": "dispatch:fenced-consumed",
+            "attempt_id": original["attempt_id"],
+            "task_cid": task.task_cid,
+            "dispatch_kind": "provider",
+            "idempotency_key": f"provider:{original['attempt_id']}",
+            "owner_session_id": original["owner_session_id"],
+            "fencing_token": original["fencing_token"],
+            "fence_epoch": original["fence_epoch"],
+            "started_at_ms": 100,
+            "updated_at_ms": 100,
+            "outcome": "started",
+            "body": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-callback-dispatch@1"
+                ),
+                "outcome": "unknown_until_callback_returns",
+            },
+        }
+    ]
+    callback_population: dict[str, object] = {
+        "schema": (
+            daemon_module.DATABASE_FENCED_PROVIDER_CALLBACK_POPULATION_SCHEMA
+        ),
+        "attempt_id": original["attempt_id"],
+        "dispatch_journal": {
+            "count": 1,
+            "rows": dispatch_rows,
+            "digest": DatabaseImplementationDaemon._database_canonical_digest(
+                dispatch_rows
+            ),
+        },
+        "provider_invocations": {
+            "count": 0,
+            "rows": [],
+            "digest": daemon_module.DATABASE_EMPTY_CANONICAL_LIST_DIGEST,
+        },
+        "effect_claims": {
+            "count": 0,
+            "rows": [],
+            "digest": daemon_module.DATABASE_EMPTY_CANONICAL_LIST_DIGEST,
+        },
+    }
+    callback_population["population_id"] = (
+        DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+            callback_population
+        )
+    )
     outer_snapshot: dict[str, object] = {
         "schema": DATABASE_FENCED_PROVIDER_OUTER_SNAPSHOT_SCHEMA,
         "attempt_record": {
             "attempt_id": original["attempt_id"],
             "task_cid": task.task_cid,
+            "owner_session_id": original["owner_session_id"],
+            "fencing_token": original["fencing_token"],
+            "fence_epoch": original["fence_epoch"],
             "status": "failed",
             "committed_phase": "failed",
         },
@@ -8349,7 +8670,9 @@ def test_fenced_provider_rearm_preserves_consumed_attempt_and_grants_one_credit(
                 ),
                 "outcome": "unknown_until_callback_returns",
             },
+            "updated_at_ms": 100,
         },
+        "callback_population": callback_population,
         "phase_history": [{"phase": "failed", "status": "failed"}],
         "provider_invocation_absent": True,
         "effect_claim_absent": True,

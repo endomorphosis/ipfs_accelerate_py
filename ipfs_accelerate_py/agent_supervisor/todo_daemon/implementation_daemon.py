@@ -78080,9 +78080,20 @@ DATABASE_NO_PROVIDER_REARM_FENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-no-provider-rearm-fence@1"
 )
-DATABASE_FENCED_PROVIDER_OUTER_SNAPSHOT_SCHEMA = (
+DATABASE_FENCED_PROVIDER_OUTER_SNAPSHOT_V1_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-fenced-provider-outer-attempt-snapshot@1"
+)
+DATABASE_FENCED_PROVIDER_OUTER_SNAPSHOT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-outer-attempt-snapshot@2"
+)
+DATABASE_FENCED_PROVIDER_CALLBACK_POPULATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-callback-population@1"
+)
+DATABASE_EMPTY_CANONICAL_LIST_DIGEST = (
+    "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 )
 DATABASE_FENCED_PROVIDER_RECOVERY_DISPATCH_FENCE_STATES = frozenset(
     {"sealed", "admission_pending", "admitted", "invalidated"}
@@ -86487,6 +86498,112 @@ class DatabaseImplementationDaemon:
         )
 
     @staticmethod
+    def _fenced_provider_callback_population_valid(
+        population: Any,
+    ) -> bool:
+        """Validate the closed attempt-local callback population projection."""
+
+        if not isinstance(population, Mapping):
+            return False
+        record = dict(population)
+        population_id = str(record.pop("population_id", "") or "")
+        expected_groups = {
+            "dispatch_journal",
+            "provider_invocations",
+            "effect_claims",
+        }
+        if (
+            set(population)
+            != {"schema", "attempt_id", *expected_groups, "population_id"}
+            or record.get("schema")
+            != DATABASE_FENCED_PROVIDER_CALLBACK_POPULATION_SCHEMA
+            or not str(record.get("attempt_id") or "")
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", population_id)
+            or population_id
+            != DatabaseImplementationDaemon._database_no_provider_rearm_digest(
+                record
+            )
+        ):
+            return False
+        for name in expected_groups:
+            group = record.get(name)
+            if not isinstance(group, Mapping) or set(group) != {
+                "count",
+                "rows",
+                "digest",
+            }:
+                return False
+            rows = group.get("rows")
+            count = group.get("count")
+            digest = str(group.get("digest") or "")
+            if (
+                not isinstance(rows, list)
+                or type(count) is not int
+                or count != len(rows)
+                or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+                or digest
+                != DatabaseImplementationDaemon._database_canonical_digest(
+                    rows
+                )
+                or not all(isinstance(item, Mapping) for item in rows)
+            ):
+                return False
+        dispatch_rows = record["dispatch_journal"]["rows"]
+        if len(dispatch_rows) != 1:
+            return False
+        dispatch = dict(dispatch_rows[0])
+        integer_fields = {
+            "fencing_token",
+            "fence_epoch",
+            "started_at_ms",
+            "updated_at_ms",
+        }
+        if (
+            set(dispatch)
+            != {
+                "dispatch_id",
+                "attempt_id",
+                "task_cid",
+                "dispatch_kind",
+                "idempotency_key",
+                "owner_session_id",
+                *integer_fields,
+                "outcome",
+                "body",
+            }
+            or dispatch.get("attempt_id") != record.get("attempt_id")
+            or dispatch.get("dispatch_kind") != "provider"
+            or dispatch.get("idempotency_key")
+            != f"provider:{record.get('attempt_id')}"
+            or not all(
+                isinstance(dispatch.get(name), str) and dispatch.get(name)
+                for name in {
+                    "dispatch_id",
+                    "attempt_id",
+                    "task_cid",
+                    "owner_session_id",
+                    "outcome",
+                }
+            )
+            or not isinstance(dispatch.get("body"), Mapping)
+            or not all(
+                type(dispatch.get(name)) is int and int(dispatch[name]) >= 1
+                for name in integer_fields
+            )
+        ):
+            return False
+        for name in ("provider_invocations", "effect_claims"):
+            group = record[name]
+            if (
+                group.get("count") != 0
+                or group.get("rows") != []
+                or group.get("digest")
+                != DATABASE_EMPTY_CANONICAL_LIST_DIGEST
+            ):
+                return False
+        return True
+
+    @staticmethod
     def _fenced_provider_outer_snapshot_valid(snapshot: Any) -> bool:
         """Validate one immutable outer-attempt snapshot for crash recovery."""
 
@@ -86497,12 +86614,28 @@ class DatabaseImplementationDaemon:
         attempt_record = record.get("attempt_record")
         provider_dispatch = record.get("provider_dispatch")
         phase_history = record.get("phase_history")
+        callback_population = record.get("callback_population")
+        callback_dispatch = None
+        if isinstance(callback_population, Mapping):
+            callback_group = callback_population.get("dispatch_journal")
+            callback_rows = (
+                callback_group.get("rows")
+                if isinstance(callback_group, Mapping)
+                else None
+            )
+            if (
+                isinstance(callback_rows, list)
+                and len(callback_rows) == 1
+                and isinstance(callback_rows[0], Mapping)
+            ):
+                callback_dispatch = callback_rows[0]
         return bool(
             set(snapshot)
             == {
                 "schema",
                 "attempt_record",
                 "provider_dispatch",
+                "callback_population",
                 "phase_history",
                 "provider_invocation_absent",
                 "effect_claim_absent",
@@ -86515,10 +86648,27 @@ class DatabaseImplementationDaemon:
             and isinstance(attempt_record, Mapping)
             and bool(str(attempt_record.get("attempt_id") or ""))
             and bool(str(attempt_record.get("task_cid") or ""))
-            and (
-                provider_dispatch is None
-                or isinstance(provider_dispatch, Mapping)
+            and isinstance(provider_dispatch, Mapping)
+            and DatabaseImplementationDaemon._fenced_provider_callback_population_valid(
+                callback_population
             )
+            and callback_population.get("attempt_id")
+            == attempt_record.get("attempt_id")
+            and isinstance(callback_dispatch, Mapping)
+            and callback_dispatch.get("task_cid")
+            == attempt_record.get("task_cid")
+            and callback_dispatch.get("owner_session_id")
+            == attempt_record.get("owner_session_id")
+            and callback_dispatch.get("fencing_token")
+            == attempt_record.get("fencing_token")
+            and callback_dispatch.get("fence_epoch")
+            == attempt_record.get("fence_epoch")
+            and dict(provider_dispatch or {})
+            == {
+                "outcome": callback_dispatch.get("outcome"),
+                "body": dict(callback_dispatch.get("body") or {}),
+                "updated_at_ms": callback_dispatch.get("updated_at_ms"),
+            }
             and isinstance(phase_history, list)
             and all(isinstance(item, Mapping) for item in phase_history)
             and record.get("provider_invocation_absent") is True
@@ -88897,10 +89047,16 @@ class DatabaseImplementationDaemon:
         return MappingProxyType(evidence)
 
     @staticmethod
-    def _database_no_provider_rearm_digest(value: Mapping[str, Any]) -> str:
+    def _database_canonical_digest(value: Any) -> str:
         return "sha256:" + hashlib.sha256(
-            canonical_json(dict(value)).encode("utf-8")
+            canonical_json(value).encode("utf-8")
         ).hexdigest()
+
+    @staticmethod
+    def _database_no_provider_rearm_digest(value: Mapping[str, Any]) -> str:
+        return DatabaseImplementationDaemon._database_canonical_digest(
+            dict(value)
+        )
 
     @staticmethod
     def _database_no_provider_rearm_saga_id(
@@ -89494,6 +89650,135 @@ class DatabaseImplementationDaemon:
             )
         return outcomes
 
+    def _fenced_provider_callback_population(
+        self,
+        attempt: Any,
+    ) -> Mapping[str, Any]:
+        """Read one closed callback population from a single DB snapshot."""
+
+        attempt_id = str(getattr(attempt, "attempt_id", "") or "")
+        if not attempt_id:
+            raise DatabaseImplementationConflictError(
+                "fenced-provider callback population lacks an attempt"
+            )
+        connection = self._require_connection()
+        with self._lock:
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                dispatch_rows = connection.execute(
+                    """
+                    SELECT dispatch_id, attempt_id, task_cid, dispatch_kind,
+                           idempotency_key, owner_session_id, fencing_token,
+                           fence_epoch, started_at_ms, updated_at_ms, outcome,
+                           body_json
+                    FROM attempt_dispatch_journal
+                    WHERE attempt_id = ?
+                    ORDER BY dispatch_kind, idempotency_key, dispatch_id
+                    """,
+                    [attempt_id],
+                ).fetchall()
+                provider_rows = connection.execute(
+                    """
+                    SELECT invocation_id, attempt_id, task_cid,
+                           idempotency_key, owner_session_id, recorded_at_ms,
+                           result_json
+                    FROM provider_invocations
+                    WHERE attempt_id = ?
+                    ORDER BY idempotency_key, invocation_id
+                    """,
+                    [attempt_id],
+                ).fetchall()
+                effect_rows = connection.execute(
+                    """
+                    SELECT effect_id, attempt_id, task_cid, effect_key,
+                           idempotency_key, owner_session_id, recorded_at_ms,
+                           result_json
+                    FROM effect_claims
+                    WHERE attempt_id = ?
+                    ORDER BY idempotency_key, effect_id
+                    """,
+                    [attempt_id],
+                ).fetchall()
+                connection.execute("COMMIT")
+            except Exception as exc:
+                _rollback_database_execution_transaction(connection, exc)
+                raise
+
+        dispatch_projection = [
+            {
+                "dispatch_id": str(row[0] or ""),
+                "attempt_id": str(row[1] or ""),
+                "task_cid": str(row[2] or ""),
+                "dispatch_kind": str(row[3] or ""),
+                "idempotency_key": str(row[4] or ""),
+                "owner_session_id": str(row[5] or ""),
+                "fencing_token": int(row[6]),
+                "fence_epoch": int(row[7]),
+                "started_at_ms": int(row[8]),
+                "updated_at_ms": int(row[9]),
+                "outcome": str(row[10] or ""),
+                "body": _database_daemon_strict_mapping_json(
+                    row[11],
+                    authority="callback dispatch population",
+                ),
+            }
+            for row in dispatch_rows
+        ]
+        provider_projection = [
+            {
+                "invocation_id": str(row[0] or ""),
+                "attempt_id": str(row[1] or ""),
+                "task_cid": str(row[2] or ""),
+                "idempotency_key": str(row[3] or ""),
+                "owner_session_id": str(row[4] or ""),
+                "recorded_at_ms": int(row[5]),
+                "result": _database_daemon_strict_mapping_json(
+                    row[6],
+                    authority="provider invocation population",
+                ),
+            }
+            for row in provider_rows
+        ]
+        effect_projection = [
+            {
+                "effect_id": str(row[0] or ""),
+                "attempt_id": str(row[1] or ""),
+                "task_cid": str(row[2] or ""),
+                "effect_key": str(row[3] or ""),
+                "idempotency_key": str(row[4] or ""),
+                "owner_session_id": str(row[5] or ""),
+                "recorded_at_ms": int(row[6]),
+                "result": _database_daemon_strict_mapping_json(
+                    row[7],
+                    authority="effect claim population",
+                ),
+            }
+            for row in effect_rows
+        ]
+
+        def population_group(rows: list[dict[str, Any]]) -> dict[str, Any]:
+            return {
+                "count": len(rows),
+                "rows": rows,
+                "digest": self._database_canonical_digest(rows),
+            }
+
+        population: dict[str, Any] = {
+            "schema": DATABASE_FENCED_PROVIDER_CALLBACK_POPULATION_SCHEMA,
+            "attempt_id": attempt_id,
+            "dispatch_journal": population_group(dispatch_projection),
+            "provider_invocations": population_group(provider_projection),
+            "effect_claims": population_group(effect_projection),
+        }
+        population["population_id"] = self._database_no_provider_rearm_digest(
+            population
+        )
+        if not self._fenced_provider_callback_population_valid(population):
+            raise DatabaseImplementationConflictError(
+                "fenced-provider callback population is not closed"
+            )
+        return MappingProxyType(population)
+
     def _fenced_provider_outer_state_matches(
         self,
         attempt: Any,
@@ -89518,6 +89803,11 @@ class DatabaseImplementationDaemon:
         ):
             return False
         expected_dispatch = record.get("provider_dispatch")
+        if not isinstance(expected_dispatch, Mapping):
+            # A fenced-provider recovery is available only after the one
+            # canonical provider dispatch crossed its durable launch
+            # boundary.  A missing row is a different (pre-dispatch) route.
+            return False
         current_dispatch = self._dispatch_journal_entry(
             current_attempt,
             dispatch_kind="provider",
@@ -89537,25 +89827,17 @@ class DatabaseImplementationDaemon:
             dict(item) for item in record["phase_history"]
         ]:
             return False
-        callback_state_exact = bool(
-            self.provider_invocation_recorded(
-                str(current_attempt.attempt_id),
-                idempotency_key=f"provider:{current_attempt.attempt_id}",
+        # Close the complete attempt-local callback population, including
+        # every authority-bearing journal column and explicit zero-row
+        # digests.  Point lookup of the conventional idempotency key cannot
+        # hide an alternate-key dispatch or delete/reinsert replacement.
+        try:
+            callback_population = self._fenced_provider_callback_population(
+                current_attempt
             )
-            is None
-            and self.effect_claim_recorded(
-                str(current_attempt.attempt_id),
-                idempotency_key=f"effect:{current_attempt.attempt_id}",
-            )
-            is None
-            and self._dispatch_journal_entry(
-                current_attempt,
-                dispatch_kind="effect",
-                idempotency_key=f"effect:{current_attempt.attempt_id}",
-            )
-            is None
-        )
-        if not callback_state_exact:
+        except Exception:
+            return False
+        if dict(callback_population) != dict(record["callback_population"]):
             return False
         if not require_recovery_dispatch_fence:
             return True
@@ -91686,6 +91968,14 @@ class DatabaseImplementationDaemon:
                 ):
                     continue
                 if fenced_provider_revalidation:
+                    try:
+                        callback_population = (
+                            self._fenced_provider_callback_population(
+                                revalidation_attempt
+                            )
+                        )
+                    except Exception:
+                        continue
                     if (
                         self.provider_invocation_recorded(
                             str(revalidation_attempt.attempt_id),
@@ -91726,6 +92016,7 @@ class DatabaseImplementationDaemon:
                             )
                             else None
                         ),
+                        "callback_population": dict(callback_population),
                         "phase_history": [
                             dict(item) for item in revalidation_phases
                         ],
@@ -93705,6 +93996,35 @@ class DatabaseImplementationDaemon:
                 "fenced-provider snapshot does not bind dispatch fence"
             )
         now = self._now_ms()
+        expected_dispatch = snapshot.get("provider_dispatch")
+        expected_population = snapshot.get("callback_population")
+        if (
+            not isinstance(expected_dispatch, Mapping)
+            or not self._fenced_provider_callback_population_valid(
+                expected_population
+            )
+        ):
+            raise DatabaseImplementationConflictError(
+                "fenced-provider snapshot lacks its closed callback population"
+            )
+        expected_dispatch_rows = expected_population["dispatch_journal"][
+            "rows"
+        ]
+        expected_attempt = snapshot.get("attempt_record")
+        if len(expected_dispatch_rows) != 1:
+            raise DatabaseImplementationConflictError(
+                "fenced-provider canonical dispatch is malformed"
+            )
+        expected_dispatch_row = dict(expected_dispatch_rows[0])
+        expected_dispatch_body = expected_dispatch_row.get("body")
+        if (
+            not isinstance(expected_dispatch_body, Mapping)
+            or not isinstance(expected_attempt, Mapping)
+            or not isinstance(expected_attempt.get("body"), Mapping)
+        ):
+            raise DatabaseImplementationConflictError(
+                "fenced-provider canonical dispatch body is malformed"
+            )
         with self._lock:
             if not self._fenced_provider_outer_state_matches(
                 attempt,
@@ -93735,6 +94055,46 @@ class DatabaseImplementationDaemon:
                     WHERE effect_dispatch.attempt_id = ?
                       AND effect_dispatch.dispatch_kind = 'effect'
                 )
+                  AND (
+                    SELECT COUNT(*)
+                    FROM database_task_attempts current_attempt
+                    WHERE current_attempt.attempt_id = ?
+                      AND current_attempt.claim_id = ?
+                      AND current_attempt.task_cid = ?
+                      AND current_attempt.task_alias = ?
+                      AND current_attempt.attempt_number = ?
+                      AND current_attempt.owner_session_id = ?
+                      AND current_attempt.fencing_token = ?
+                      AND current_attempt.fence_epoch = ?
+                      AND current_attempt.lease_id = ?
+                      AND current_attempt.committed_phase = ?
+                      AND current_attempt.status = ?
+                      AND current_attempt.started_at_ms = ?
+                      AND current_attempt.finished_at_ms IS NOT DISTINCT FROM ?
+                      AND current_attempt.revision = ?
+                      AND current_attempt.body_json = ?
+                  ) = 1
+                  AND (
+                    SELECT COUNT(*) FROM attempt_dispatch_journal dispatch
+                    WHERE dispatch.attempt_id = ?
+                  ) = 1
+                  AND (
+                    SELECT COUNT(*)
+                    FROM attempt_dispatch_journal provider_dispatch
+                    WHERE provider_dispatch.attempt_id = ?
+                      AND provider_dispatch.dispatch_id = ?
+                      AND provider_dispatch.attempt_id = ?
+                      AND provider_dispatch.dispatch_kind = 'provider'
+                      AND provider_dispatch.idempotency_key = ?
+                      AND provider_dispatch.task_cid = ?
+                      AND provider_dispatch.owner_session_id = ?
+                      AND provider_dispatch.fencing_token = ?
+                      AND provider_dispatch.fence_epoch = ?
+                      AND provider_dispatch.started_at_ms = ?
+                      AND provider_dispatch.updated_at_ms = ?
+                      AND provider_dispatch.outcome = ?
+                      AND provider_dispatch.body_json = ?
+                  ) = 1
                 ON CONFLICT (attempt_id) DO NOTHING
                 """,
                 [
@@ -93751,6 +94111,34 @@ class DatabaseImplementationDaemon:
                     attempt.attempt_id,
                     attempt.attempt_id,
                     attempt.attempt_id,
+                    str(expected_attempt.get("attempt_id") or ""),
+                    str(expected_attempt.get("claim_id") or ""),
+                    str(expected_attempt.get("task_cid") or ""),
+                    str(expected_attempt.get("task_alias") or ""),
+                    int(expected_attempt.get("attempt_number") or 0),
+                    str(expected_attempt.get("owner_session_id") or ""),
+                    int(expected_attempt.get("fencing_token") or 0),
+                    int(expected_attempt.get("fence_epoch") or 0),
+                    str(expected_attempt.get("lease_id") or ""),
+                    str(expected_attempt.get("committed_phase") or ""),
+                    str(expected_attempt.get("status") or ""),
+                    int(expected_attempt.get("started_at_ms") or 0),
+                    expected_attempt.get("finished_at_ms"),
+                    int(expected_attempt.get("revision") or 0),
+                    _database_daemon_json(dict(expected_attempt["body"])),
+                    attempt.attempt_id,
+                    attempt.attempt_id,
+                    str(expected_dispatch_row.get("dispatch_id") or ""),
+                    str(expected_dispatch_row.get("attempt_id") or ""),
+                    f"provider:{attempt.attempt_id}",
+                    attempt.task_cid,
+                    attempt.owner_session_id,
+                    int(attempt.fencing_token),
+                    int(attempt.fence_epoch),
+                    int(expected_dispatch_row.get("started_at_ms") or 0),
+                    int(expected_dispatch_row.get("updated_at_ms") or 0),
+                    str(expected_dispatch_row.get("outcome") or ""),
+                    _database_daemon_json(dict(expected_dispatch_body)),
                 ],
             )
         observed = self._fenced_provider_recovery_dispatch_fence(attempt)
