@@ -1777,9 +1777,11 @@ def test_public_run_once_quiesces_and_records_deferred_not_completed(
     ]
 
 
+@pytest.mark.parametrize("event_io_failure", [False, True])
 def test_public_run_once_preserves_current_retained_startup_blocker(
     tmp_path,
     monkeypatch,
+    event_io_failure,
 ):
     supervisor = PortalImplementationSupervisor(_config(tmp_path))
     recorded: list[tuple[str, dict[str, object]]] = []
@@ -1833,11 +1835,12 @@ def test_public_run_once_preserves_current_retained_startup_blocker(
             "blocked retained recovery must not enter ordinary maintenance"
         ),
     )
-    monkeypatch.setattr(
-        supervisor,
-        "_record_event",
-        lambda name, payload: recorded.append((name, dict(payload))),
-    )
+    def record_event(name, payload):
+        if event_io_failure:
+            raise OSError("injected event-store outage")
+        recorded.append((name, dict(payload)))
+
+    monkeypatch.setattr(supervisor, "_record_event", record_event)
     monkeypatch.setattr(
         supervisor,
         "_begin_supervisor_maintenance_heartbeat",
@@ -1854,9 +1857,11 @@ def test_public_run_once_preserves_current_retained_startup_blocker(
     assert result["reason"] == blocked["reason"]
     assert result["reason"] != "database_portal_owner_mutation_fence_unavailable"
     assert result["retained_startup_reconciliation"] == blocked
-    assert recorded == [
-        ("database_portal_retained_startup_blocked", result)
-    ]
+    assert recorded == (
+        []
+        if event_io_failure
+        else [("database_portal_retained_startup_blocked", result)]
+    )
     assert finished == [("deferred", blocked["reason"])]
 
 

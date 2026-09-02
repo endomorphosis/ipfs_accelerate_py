@@ -1005,16 +1005,24 @@ def test_retained_recovery_forwards_one_controller_authenticated_quiescence(
     assert first["managed_daemon_launch_lock_held"] is True
 
 
+@pytest.mark.parametrize(
+    "validator_name",
+    [
+        "database_pctdd005_historical_successor_reconciliation_valid",
+        "database_fenced_provider_historical_retained_reconciliation_valid",
+    ],
+)
 def test_retained_recovery_rejects_legacy_or_wrong_result_schema(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    validator_name: str,
 ) -> None:
     supervisor, program, _events, daemons = (
         _lease_scoped_reconciliation_supervisor(tmp_path, monkeypatch)
     )
     monkeypatch.setattr(
         daemon_module,
-        "database_pctdd005_historical_successor_reconciliation_valid",
+        validator_name,
         lambda _value: False,
     )
 
