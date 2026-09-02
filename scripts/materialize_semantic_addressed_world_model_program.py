@@ -3257,6 +3257,367 @@ _M53_FINAL_RECEIPT_NAME = "m53-source-successor-receipt.json"
 _M53_LIVE_COUNT_QUERIES = _M52_LIVE_COUNT_QUERIES
 _M53_CURRENT_BOOT_ID = "34bca049-fa9b-4f7a-a1df-90e079073f8d"
 
+# M54 is a same-owner, same-generation source/control-plane successor over the
+# already materialized M53 generation-38/event-316 world.  It seals three
+# bounded supervisor repairs and two historical-verifier compatibility fixes,
+# restores current-tree validation before any append, and records exactly one
+# operator evidence event.  The watchdog repair is deliberately deny-only: it
+# observes persistent authenticated shared-authority loss for a bounded window
+# and drains the whole wave to a typed terminal.  It cannot recover or restart
+# Quack and cannot advance a generation.
+_M54_MIGRATION_REVISION = "SAWM-R2-M54"
+_M54_SUPERSESSION_MODE = (
+    "append_only_same_owner_post_m53_shared_authority_terminal_source_seal"
+)
+_M54_SUPERSESSION_REASON = (
+    "post_m53_shared_authority_terminal_successor_materialization"
+)
+_M54_CONTROL_RECORDED_AT = "2026-09-02T04:30:00Z"
+_M54_AUTHORITY_CID = "sha256:PENDING_M54_FINAL_CONTROL_AUTHORITY_CID"
+_M54_AUTHORITY_SIZE = 0
+_M54_GENERATION = _M53_TARGET_GENERATION
+_M54_PRIOR_EVENT_WATERMARK = _M53_TARGET_EVENT_WATERMARK
+_M54_TARGET_EVENT_WATERMARK = 317
+_M54_TARGET_PLAN_REVISION = _M53_TARGET_PLAN_REVISION
+_M54_TARGET_QUACK_PORT = _M53_TARGET_QUACK_PORT
+_M54_PRIOR_EVENT_PREFIX_SHA256 = (
+    "34bdd3f44012b8242eb20ba84bcee0b61d0fe964381086fc03e89b58e9dff64d"
+)
+_M54_PRIOR_PROJECTION_CID = _M53_TARGET_PROJECTION_CID
+_M54_TARGET_PROJECTION_CID = (
+    "baguqeeradnzpsxlaa76ihetfleodfgfbrlh6fyulm6y2sp6exx2a7eep45ka"
+)
+_M54_SEMANTIC_AUTHORITY_DIGEST = _M53_SEMANTIC_AUTHORITY_DIGEST
+_M54_PRIOR_EVIDENCE_NODE_COUNT = _M53_TARGET_EVIDENCE_NODE_COUNT
+_M54_TARGET_EVIDENCE_NODE_COUNT = 58
+_M54_PRIOR_EVIDENCE_EVENT_COUNT = _M53_TARGET_EVIDENCE_EVENT_COUNT
+_M54_TARGET_EVIDENCE_EVENT_COUNT = 47
+_M54_VALIDATION_EVENT_COUNT = _M53_VALIDATION_EVENT_COUNT
+_M54_PASSED_VALIDATION_EVENT_COUNT = _M53_PASSED_VALIDATION_EVENT_COUNT
+_M54_EVIDENCE_KIND = (
+    "operator_control_plane_post_m53_shared_authority_terminal"
+)
+_M54_STORE_ID = _M53_STORE_ID
+_M54_COORDINATION_STORE_ID = _M53_COORDINATION_STORE_ID
+_M54_RUNTIME_ROOT = _M53_RUNTIME_ROOT
+_M54_WORKTREE_ROOT = _M53_WORKTREE_ROOT
+_M54_DATABASE_UUID = _M53_DATABASE_UUID
+_M54_EXTENSION_FINGERPRINT = _M53_EXTENSION_FINGERPRINT
+_M54_LIVE_SERVER_ID = "server:8d4bf813-4a5e-4140-848e-e4f4a965b158"
+_M54_LIVE_PROCESS_BIRTH_ID = "birth:218419a4a86c5a34514153a1b41516c6"
+_M54_LIVE_STARTED_AT = "2026-09-02T03:35:17Z"
+_M54_LIVE_PROCESS_BIRTH = MappingProxyType(
+    {
+        "boot_id": "34bca049-fa9b-4f7a-a1df-90e079073f8d",
+        "parent_pid": 2_383_498,
+        "pid": 2_383_502,
+        "start_time_ticks": 1_034_166,
+    }
+)
+_M54_M53_AUTHORITY_CID = _M53_AUTHORITY_CID
+_M54_M53_AUTHORITY_SIZE = _M53_AUTHORITY_SIZE
+_M54_M53_RECEIPT_NAME = _M53_FINAL_RECEIPT_NAME
+_M54_M53_RECEIPT_SHA256 = (
+    "6217b63785959d131211c7c0703b5b60e927cb11e4f4275faf9c9167a2140055"
+)
+_M54_M53_RECEIPT_SIZE = 3_472
+_M54_M53_RECEIPT_CID = (
+    "sha256:91cc6c4a522ce53dbec70a6d9d72bafb74dd27aebad417ae86a7e25940943bd1"
+)
+_M54_M53_EVENT_ID = (
+    "baguqeerawbcnk6qerfugnl5j2letdpwnojxwqchhpzyldpzopctoyqlxjg6q"
+)
+_M54_M53_EVIDENCE_ID = (
+    "baguqeeraa2iukduc547d5553sw4xvg72hibhoxhxjujbxb45grymukygv5ta"
+)
+_M54_M53_MIGRATION_DIGEST = (
+    "sha256:9a813af10b788032843b6f8fcff25893398edc7d0519427376fa3f80bf1d59ea"
+)
+_M54_M53_SOURCE_BINDING_CID = (
+    "sha256:4c218b6353576bfb6c4f1cf62b31c25ae134db22a7118d8699ad50ee0c7199b5"
+)
+_M54_M53_VALIDATION_DIGEST = (
+    "sha256:3482da3e2c10b991a928a25d4366d7b24c4c6dceca33b6c94247e6fcea71a159"
+)
+_M54_M53_PROGRAM_DEFINITION_CID = (
+    "sha256:f581af1f2234c127231b47bb1bb8d42910b984dcd1bece9a6303949ac1ba0b72"
+)
+_M54_M53_FINAL_CONTROL_COMMIT = (
+    "0ce6f2e07198dfa946c7d96d4c076404fd635ce8"
+)
+_M54_M53_FINAL_CONTROL_PARENT = (
+    "9620143cf08682189728887a4dc1c46867463c53"
+)
+_M54_M53_FINAL_CONTROL_TREE = "e6700a0d068e0d27d2f828e4bed74800c536f69c"
+_M54_M53_FINAL_CONTROL_DIFF_SHA256 = (
+    "e402f1e22d592aa251c9a3f793bc5582d0fd5eb73e802475696ca642bf32abe8"
+)
+_M54_M53_FINAL_CONTROL_BLOBS = MappingProxyType(
+    {
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "0b0d49483d5380c33628a353b632d6598cd2a984"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "ae616fae772e3feff09b1de20133a0be1387ed23"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "04e7c31d698aae1e0e87baf810ee8c7f06fa5bcd"
+        ),
+    }
+)
+_M54_M53_FINAL_CONTROL_MODES = MappingProxyType(
+    {path: "100644" for path in _M54_M53_FINAL_CONTROL_BLOBS}
+)
+_M54_FACADE_COMPATIBILITY_COMMIT = (
+    "f23364f3df64b97f2bb6733d9ae327ede10b6657"
+)
+_M54_FACADE_COMPATIBILITY_PARENT = _M54_M53_FINAL_CONTROL_COMMIT
+_M54_FACADE_COMPATIBILITY_TREE = "3f22a144c5f3d8c7646f46057d6040d33c0d2ae3"
+_M54_FACADE_COMPATIBILITY_DIFF_SHA256 = (
+    "162660a8946f607ccd559de3d01d507d2bfc1692947f7d3bcf3e2173dedc5077"
+)
+_M54_FACADE_COMPATIBILITY_BLOBS = MappingProxyType(
+    {
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "a26374cd5a4f136f93521f0fa8b53843d3a0a94a"
+        )
+    }
+)
+_M54_ATTEMPT_REPAIR_COMMIT = "77601536e583faf723882261711042fabe7be1bd"
+_M54_ATTEMPT_REPAIR_PARENT = _M54_FACADE_COMPATIBILITY_COMMIT
+_M54_ATTEMPT_REPAIR_TREE = "0354737e58b40d9949205c52676ab240429b31b0"
+_M54_ATTEMPT_REPAIR_DIFF_SHA256 = (
+    "632638291a601d65dbff52f84e1415db8b6b36a61a854362be4ba049ea3f572e"
+)
+_M54_ATTEMPT_REPAIR_BLOBS = MappingProxyType(
+    {
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py": (
+            "8b817927773e777e7b09401a7e79150a8683e367"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py": (
+            "1ce363fcc8f3830f2c3f64d37e39c4e2768438da"
+        ),
+        "test/api/test_agent_supervisor_database_implementation_daemon.py": (
+            "741ec129629c506f838d1a28f1c19bc6dbca67c3"
+        ),
+        "test/api/test_agent_supervisor_database_portal_bridge.py": (
+            "577f13012f78b61db83c077edf7ddd01f34f7e6b"
+        ),
+    }
+)
+_M54_RECOVERY_API_REPAIR_COMMIT = (
+    "d2a07a5e6a849dc9d2d30c07df662eaa1cdd03ee"
+)
+_M54_RECOVERY_API_REPAIR_PARENT = _M54_ATTEMPT_REPAIR_COMMIT
+_M54_RECOVERY_API_REPAIR_TREE = "c0df335e5452c314c0ffdf9a72c4649ba9f4fb7a"
+_M54_RECOVERY_API_REPAIR_DIFF_SHA256 = (
+    "ee5820aa70a1b4a88ebd06afc7c485685a954855ee923fd547d08939a3b5d78b"
+)
+_M54_RECOVERY_API_REPAIR_BLOBS = MappingProxyType(
+    {
+        "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py": (
+            "a2de765ee7f672380883cba022565bc4251be9d9"
+        ),
+        "test/api/test_agent_supervisor_quack_state_server.py": (
+            "67bcc5b65c5d275d263cd675b87c5f65ac47f89e"
+        ),
+    }
+)
+_M54_WATCHDOG_REPAIR_COMMIT = "b5b4a312bd2ef7fc48c3cfc0a5eff958a2f7508a"
+_M54_WATCHDOG_REPAIR_PARENT = _M54_RECOVERY_API_REPAIR_COMMIT
+_M54_WATCHDOG_REPAIR_TREE = "6c47eed52a607ad60b3d360fa539c8f0daf84e6f"
+_M54_WATCHDOG_REPAIR_DIFF_SHA256 = (
+    "759d7cbe5b4a741d45d3605e0cd669a2abadf1f7cf8558211241f271557567a1"
+)
+_M54_WATCHDOG_REPAIR_BLOBS = MappingProxyType(
+    {
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py": (
+            "868427c43628ed4dbd4a7369cb24c4bfa108a0c1"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py": (
+            "4fb2f19e7bd61c69e62894ee1f906c25059d7d96"
+        ),
+        "test/api/test_agent_supervisor_database_dispatch_watchdog.py": (
+            "b45409b016918c2d7ad176c4cdd1d177758739fb"
+        ),
+        "test/api/test_agent_supervisor_multi_supervisor_runner_health.py": (
+            "3125c1e17f2659e69127c525545ff9fbd0d95d59"
+        ),
+    }
+)
+_M54_EVENT_VERIFIER_REPAIR_COMMIT = (
+    "d68ce7e2767990f8b4ef9a14e14ca6483a7f81fd"
+)
+_M54_EVENT_VERIFIER_REPAIR_PARENT = _M54_WATCHDOG_REPAIR_COMMIT
+_M54_EVENT_VERIFIER_REPAIR_TREE = "4aca9f35f6c3f239eb24f654d54081f926b1d84d"
+_M54_EVENT_VERIFIER_REPAIR_DIFF_SHA256 = (
+    "1e3b1b221a6d9a35e4b92e1907cbb0ce6356fb2a28b8bfb6a769ce840bdb242e"
+)
+_M54_EVENT_VERIFIER_REPAIR_BLOBS = MappingProxyType(
+    {
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "f2f7dd83cf90e0a96137db3238fb6c16b74f35b7"
+        )
+    }
+)
+_M54_VALIDATION_COMPATIBILITY_COMMIT = (
+    "4a2a64d267d15ce6798dae56c1b4a490732d4c9b"
+)
+_M54_VALIDATION_COMPATIBILITY_PARENT = _M54_EVENT_VERIFIER_REPAIR_COMMIT
+_M54_VALIDATION_COMPATIBILITY_TREE = (
+    "4ca1fc92a4b9fab88192406cabf7b12bc0ace578"
+)
+_M54_VALIDATION_COMPATIBILITY_DIFF_SHA256 = (
+    "0cdb527c254905891ba4bdaa455001067586de26710102b8839ffea9db897e41"
+)
+_M54_VALIDATION_COMPATIBILITY_BLOBS = MappingProxyType(
+    {
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "ea02980d6035ce46a3985fde5d7f8d97842fb161"
+        )
+    }
+)
+_M54_OPERATOR_CONTROL_PATHS = frozenset(_M53_OPERATOR_CONTROL_PATHS)
+_M54_FINAL_RECEIPT_NAME = "m54-source-successor-receipt.json"
+
+# M55 admits one generation-bearing restart of the live generation-38 owner
+# after launch retired the one-time client token vault.  M53's event-316
+# receipt stays on disk.  Events 317-320 are already scheduler task-status
+# changes, so M54's deny-only event-317 terminal cannot be completed and
+# stays unwired.  After a proved-dead gen-38 owner, M55 mints a new vault
+# at generation 39 and appends one evidence event at 321.
+_M55_MIGRATION_REVISION = "SAWM-R2-M55"
+_M55_SUPERSESSION_MODE = (
+    "generation_bearing_live_ready_owner_missing_client_token_vault_restart_source_seal"
+)
+_M55_SUPERSESSION_REASON = (
+    "live_ready_owner_missing_client_token_vault_restart_successor_materialization"
+)
+_M55_CONTROL_RECORDED_AT = "2026-09-02T06:35:00Z"
+_M55_AUTHORITY_CID = (
+    "sha256:9feee86e6e53b6bf7948d78b078a3ee7ce3fc51332f1fcdf1782fdc2fc3804c0"
+)
+_M55_AUTHORITY_SIZE = 30_272
+_M55_PRIOR_GENERATION = _M53_TARGET_GENERATION
+_M55_TARGET_GENERATION = 39
+_M55_PRIOR_EVENT_WATERMARK = 320
+_M55_TARGET_EVENT_WATERMARK = 321
+_M55_TARGET_PLAN_REVISION = _M53_TARGET_PLAN_REVISION
+_M55_TARGET_QUACK_PORT = _M53_TARGET_QUACK_PORT
+_M55_PRIOR_EVENT_PREFIX_SHA256 = (
+    "0e7aa461729b58fa3fbedac7458d828a306c91a8af477bb46b015b4115ff580a"
+)
+_M55_PRIOR_PROJECTION_CID = (
+    "baguqeera67mry5oqi6i4wkmdmlhbql7lfhpfioh3pq5adq7j76audissj4ua"
+)
+_M55_TARGET_PROJECTION_CID = (
+    "baguqeera4y5u77bcjvlfmbe44mpnkzip7hnzs5eqnbcu5mkn7sehgck7mbwq"
+)
+_M55_SEMANTIC_AUTHORITY_DIGEST = _M53_SEMANTIC_AUTHORITY_DIGEST
+_M55_PRIOR_EVIDENCE_NODE_COUNT = _M53_TARGET_EVIDENCE_NODE_COUNT
+_M55_TARGET_EVIDENCE_NODE_COUNT = 58
+_M55_PRIOR_EVIDENCE_EVENT_COUNT = _M53_TARGET_EVIDENCE_EVENT_COUNT
+_M55_TARGET_EVIDENCE_EVENT_COUNT = 47
+_M55_VALIDATION_EVENT_COUNT = _M53_VALIDATION_EVENT_COUNT
+_M55_PASSED_VALIDATION_EVENT_COUNT = _M53_PASSED_VALIDATION_EVENT_COUNT
+_M55_EVIDENCE_KIND = (
+    "operator_control_plane_live_ready_owner_missing_client_token_vault_restart"
+)
+_M55_STORE_ID = _M53_STORE_ID
+_M55_COORDINATION_STORE_ID = _M53_COORDINATION_STORE_ID
+_M55_RUNTIME_ROOT = _M53_RUNTIME_ROOT
+_M55_WORKTREE_ROOT = _M53_WORKTREE_ROOT
+_M55_DATABASE_UUID = _M53_DATABASE_UUID
+_M55_EXTENSION_FINGERPRINT = _M53_EXTENSION_FINGERPRINT
+_M55_PRIOR_SERVER_ID = "server:8d4bf813-4a5e-4140-848e-e4f4a965b158"
+_M55_PRIOR_PROCESS_BIRTH_ID = "birth:218419a4a86c5a34514153a1b41516c6"
+_M55_PRIOR_STARTED_AT = "2026-09-02T03:35:17Z"
+_M55_PRIOR_PROCESS_BIRTH = MappingProxyType(
+    {
+        "boot_id": "34bca049-fa9b-4f7a-a1df-90e079073f8d",
+        "parent_pid": 2_383_498,
+        "pid": 2_383_502,
+        "start_time_ticks": 1_034_166,
+    }
+)
+_M55_M53_AUTHORITY_CID = _M53_AUTHORITY_CID
+_M55_M53_AUTHORITY_SIZE = _M53_AUTHORITY_SIZE
+_M55_M53_RECEIPT_NAME = _M53_FINAL_RECEIPT_NAME
+_M55_M53_RECEIPT_SHA256 = (
+    "6217b63785959d131211c7c0703b5b60e927cb11e4f4275faf9c9167a2140055"
+)
+_M55_M53_RECEIPT_SIZE = 3_472
+_M55_M53_RECEIPT_CID = (
+    "sha256:91cc6c4a522ce53dbec70a6d9d72bafb74dd27aebad417ae86a7e25940943bd1"
+)
+_M55_M53_EVENT_ID = (
+    "baguqeerawbcnk6qerfugnl5j2letdpwnojxwqchhpzyldpzopctoyqlxjg6q"
+)
+_M55_M53_EVIDENCE_ID = (
+    "baguqeeraa2iukduc547d5553sw4xvg72hibhoxhxjujbxb45grymukygv5ta"
+)
+_M55_M53_EVENT_WATERMARK = _M53_TARGET_EVENT_WATERMARK
+_M55_M53_FINAL_CONTROL_COMMIT = (
+    "4a2a64d267d15ce6798dae56c1b4a490732d4c9b"
+)
+_M55_OPERATOR_TASK_CID = (
+    "sha256:8b8f43dd51ea4d8467af0e5cae4100478f16666d36c6f4fad49c23fd8e43a3d6"
+)
+_M55_OPERATOR_CONTROL_PATHS = frozenset(_M53_OPERATOR_CONTROL_PATHS)
+_M55_ZERO_ROW_AUTHORITY_COUNTS = _M53_ZERO_ROW_AUTHORITY_COUNTS
+_M55_FINAL_RECEIPT_NAME = "m55-source-successor-receipt.json"
+_M55_LIVE_COUNT_QUERIES = _M53_LIVE_COUNT_QUERIES
+_M55_CURRENT_BOOT_ID = "34bca049-fa9b-4f7a-a1df-90e079073f8d"
+_M55_EXPECTED_TASK_HEADS = MappingProxyType(
+    {
+        "SAWM-000": {"revision": 2, "status": "completed"},
+        "SAWM-001": {"revision": 18, "status": "completed"},
+        "SAWM-002": {"revision": 4, "status": "completed"},
+        "SAWM-003": {"revision": 7, "status": "completed"},
+        "SAWM-004": {"revision": 7, "status": "completed"},
+        "SAWM-005": {"revision": 4, "status": "completed"},
+        "SAWM-006": {"revision": 19, "status": "in_progress"},
+        "SAWM-007": {"revision": 7, "status": "completed"},
+        "SAWM-008": {"revision": 21, "status": "in_progress"},
+        "SAWM-009": {"revision": 2, "status": "todo"},
+        "SAWM-010": {"revision": 4, "status": "completed"},
+        "SAWM-011": {"revision": 4, "status": "completed"},
+        "SAWM-012": {"revision": 9, "status": "completed"},
+        "SAWM-013": {"revision": 2, "status": "todo"},
+        "SAWM-014": {"revision": 2, "status": "todo"},
+        "SAWM-015": {"revision": 7, "status": "completed"},
+        "SAWM-016": {"revision": 2, "status": "todo"},
+        "SAWM-017": {"revision": 2, "status": "todo"},
+        "SAWM-018": {"revision": 2, "status": "todo"},
+        "SAWM-019": {"revision": 2, "status": "todo"},
+        "SAWM-020": {"revision": 2, "status": "todo"},
+        "SAWM-021": {"revision": 2, "status": "todo"},
+        "SAWM-022": {"revision": 2, "status": "todo"},
+        "SAWM-023": {"revision": 2, "status": "todo"},
+        "SAWM-024": {"revision": 2, "status": "todo"},
+        "SAWM-025": {"revision": 2, "status": "todo"},
+        "SAWM-026": {"revision": 2, "status": "todo"},
+        "SAWM-027": {"revision": 2, "status": "todo"},
+        "SAWM-028": {"revision": 2, "status": "todo"},
+        "SAWM-029": {"revision": 2, "status": "todo"},
+        "SAWM-030": {"revision": 2, "status": "todo"},
+        "SAWM-031": {"revision": 2, "status": "todo"},
+        "SAWM-032": {"revision": 2, "status": "todo"},
+        "SAWM-033": {"revision": 2, "status": "todo"},
+        "SAWM-034": {"revision": 2, "status": "todo"},
+        "SAWM-035": {"revision": 2, "status": "todo"},
+        "SAWM-036": {"revision": 2, "status": "todo"},
+        "SAWM-037": {"revision": 2, "status": "todo"},
+        "SAWM-038": {"revision": 2, "status": "todo"},
+        "SAWM-039": {"revision": 2, "status": "todo"},
+        "SAWM-040": {"revision": 2, "status": "todo"},
+        "SAWM-041": {"revision": 2, "status": "todo"},
+        "SAWM-042": {"revision": 2, "status": "todo"},
+        "SAWM-043": {"revision": 2, "status": "todo"},
+        "SAWM-044": {"revision": 2, "status": "todo"},
+    }
+)
+
 # M41 preserves M40's complete control declaration and failed sealed-suite
 # attempt as pre-authoritative history.  M40 was never materialized: the suite
 # passed 285 tests and failed 22 historical-fixture cases because the helper
@@ -34140,6 +34501,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m55_successor_configured_on_any_surface(root, config):
+        return _check_m55_materialized(root, config_file)
     if _m53_successor_configured_on_any_surface(root, config):
         return _check_m53_materialized(root, config_file)
     if _m52_successor_configured_on_any_surface(root, config):
@@ -94187,6 +94550,810 @@ def _materialize_m53(
     }
 
 
+def _expected_m55_live_ready_owner_missing_client_token_vault_restart_authority() -> dict[str, Any]:
+    """Return M55's generation-39/event-321 token-vault restart authority."""
+
+    m53 = _expected_m53_post_reboot_stale_ready_restart_authority()
+    if (
+        _identity(m53) != _M55_M53_AUTHORITY_CID
+        or len(_canonical(m53)) != _M55_M53_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M55 preserved M53 source authority differs")
+    authority = json.loads(_canonical(m53))
+    authority.update(
+        {
+            "schema": (
+                "sawm/live-ready-owner-missing-client-token-vault-restart-"
+                "successor-materialization-authorization@1"
+            ),
+            "migration_revision": _M55_MIGRATION_REVISION,
+            "migration_kind": _M55_SUPERSESSION_REASON,
+            "supersession_mode": _M55_SUPERSESSION_MODE,
+            "control_recorded_at": _M55_CONTROL_RECORDED_AT,
+            "target_generation": _M55_TARGET_GENERATION,
+            "target_event_watermark": _M55_TARGET_EVENT_WATERMARK,
+            "target_projection_cid": _M55_TARGET_PROJECTION_CID,
+            "ordinary_source_changes": 0,
+        }
+    )
+    authority["expected_task_heads"] = dict(_M55_EXPECTED_TASK_HEADS)
+    authority["runtime_binding"]["store_generation"] = _M55_TARGET_GENERATION
+    authority["runtime_binding"]["target_event_watermark"] = (
+        _M55_TARGET_EVENT_WATERMARK
+    )
+    authority["stopped_owner"] = {
+        "schema": "sawm/live-ready-generation-38-owner-after-handoff-retirement@1",
+        "generation": _M55_PRIOR_GENERATION,
+        "status": "ready",
+        "lifecycle": "ready",
+        "server_id": _M55_PRIOR_SERVER_ID,
+        "process_birth_id": _M55_PRIOR_PROCESS_BIRTH_ID,
+        "process_birth": dict(_M55_PRIOR_PROCESS_BIRTH),
+        "started_at": _M55_PRIOR_STARTED_AT,
+        "listen_uri": f"quack:127.0.0.1:{_M55_TARGET_QUACK_PORT}",
+        "database_uuid": _M55_DATABASE_UUID,
+        "store_id": _M55_STORE_ID,
+        "token_handoff_retired": True,
+        "client_token_vault_absent": True,
+        "target_identity_is_runtime_generated": True,
+        "current_boot_id": _M55_CURRENT_BOOT_ID,
+    }
+    authority["stopped_prestart_artifacts"] = {
+        "m53_receipt_sha256": _M55_M53_RECEIPT_SHA256,
+        "m53_receipt_size": _M55_M53_RECEIPT_SIZE,
+        "m53_receipt_present": True,
+        "m55_receipt_absent": True,
+        "client_token_vault_absent": True,
+    }
+    authority["target_authority"].update(
+        {
+            "event_watermark": _M55_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M55_TARGET_PROJECTION_CID,
+            "evidence_kind": _M55_EVIDENCE_KIND,
+            "generation": _M55_TARGET_GENERATION,
+        }
+    )
+    authority["live_preflight_contract"].update(
+        {
+            "migration_revision": _M55_MIGRATION_REVISION,
+            "successor_class": "live_ready_owner_missing_client_token_vault_restart",
+            "m53_authority_cid": _M55_M53_AUTHORITY_CID,
+            "m53_receipt_must_remain_present": True,
+            "prior_event_watermark": _M55_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M55_TARGET_EVENT_WATERMARK,
+            "prior_projection_cid": _M55_PRIOR_PROJECTION_CID,
+            "target_projection_cid": _M55_TARGET_PROJECTION_CID,
+            "target_generation": _M55_TARGET_GENERATION,
+            "apply_when_uri_ready_and_token_missing": True,
+        }
+    )
+    authority["source_chain"] = {
+        "m53_final_control_commit": _M55_M53_FINAL_CONTROL_COMMIT,
+        "final_control_parent": _M55_M53_FINAL_CONTROL_COMMIT,
+        "repair_commit_count": 0,
+        "final_control_commit_count": 1,
+        "current_commit_identity_embedded_in_authority": False,
+    }
+    authority["preservation"].update(
+        {
+            "m53_authority_preserved_exactly": True,
+            "m53_receipt_preserved_exactly": True,
+            "event_316_preserved": True,
+            "sawm_006_in_progress_revision_19": True,
+            "sawm_008_in_progress_revision_21": True,
+        }
+    )
+    changes = dict(authority.get("exact_changes") or {})
+    changes.update(
+        {
+            "event_suffix_length": 1,
+            "evidence_node_changes": 1,
+            "credential_row_changes": 1,
+            "state_server_row_changes": 2,
+            "store_generation_row_changes": 1,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "accepted_completion_changes": 0,
+        }
+    )
+    authority["exact_changes"] = changes
+    return authority
+
+
+def _m55_authority_reference() -> dict[str, Any]:
+    authority = _expected_m55_live_ready_owner_missing_client_token_vault_restart_authority()
+    if (
+        not _M55_AUTHORITY_CID.endswith("PENDING_M55_FINAL_CONTROL_AUTHORITY_CID")
+        and _identity(authority) != _M55_AUTHORITY_CID
+    ):
+        raise MaterializationError("M55 source successor authority CID differs")
+    return {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": _M55_MIGRATION_REVISION,
+        "authority_cid": _M55_AUTHORITY_CID,
+    }
+
+
+def _validated_m55_live_preflight_contract(
+    authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    expected = _expected_m55_live_ready_owner_missing_client_token_vault_restart_authority()
+    contract = authority.get("live_preflight_contract")
+    if (
+        _identity(authority) != _identity(expected)
+        or not isinstance(contract, Mapping)
+        or contract.get("migration_revision") != _M55_MIGRATION_REVISION
+        or contract.get("target_generation") != _M55_TARGET_GENERATION
+        or contract.get("target_event_watermark") != _M55_TARGET_EVENT_WATERMARK
+        or contract.get("target_projection_cid") != _M55_TARGET_PROJECTION_CID
+        or contract.get("prior_projection_cid") != _M55_PRIOR_PROJECTION_CID
+        or contract.get("m53_receipt_must_remain_present") is not True
+        or contract.get("apply_when_uri_ready_and_token_missing") is not True
+    ):
+        raise MaterializationError("M55 live-preflight contract differs")
+    return MappingProxyType(
+        {
+            "migration_revision": _M55_MIGRATION_REVISION,
+            "target_store_id": _M55_STORE_ID,
+            "database_uuid": _M55_DATABASE_UUID,
+            "target_generation": _M55_TARGET_GENERATION,
+            "target_event_watermark": _M55_TARGET_EVENT_WATERMARK,
+            "target_plan_revision": _M55_TARGET_PLAN_REVISION,
+            "target_projection_cid": _M55_TARGET_PROJECTION_CID,
+            "semantic_authority_digest": _M55_SEMANTIC_AUTHORITY_DIGEST,
+            "prior_event_watermark": _M55_PRIOR_EVENT_WATERMARK,
+            "preserved_plan_anchor": {},
+            "expected_task_heads": dict(_M55_EXPECTED_TASK_HEADS),
+        }
+    )
+
+
+def _m55_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    authority = _expected_m55_live_ready_owner_missing_client_token_vault_restart_authority()
+    reference = _m55_authority_reference()
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if not isinstance(inventory, Mapping):
+        raise MaterializationError("M55 migration inventory is invalid")
+    key = _M55_SUPERSESSION_REASON
+    if (
+        config.get(key) != reference
+        or inventory.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M55 authority differs across protected controls")
+    _validated_m55_live_preflight_contract(authority)
+    return authority
+
+
+def _m55_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    runtime = authority["runtime_binding"]
+    program = config.get("database_program")
+    owner = config.get("quack_owner")
+    expected_runtime_paths = {
+        "root": _M55_RUNTIME_ROOT,
+        "state": f"{_M55_RUNTIME_ROOT}/state",
+        "worktrees": _M55_WORKTREE_ROOT,
+        "merge_queue": f"{_M55_RUNTIME_ROOT}/merge-queue",
+        "logs": f"{_M55_RUNTIME_ROOT}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+    if (
+        not isinstance(program, Mapping)
+        or not isinstance(owner, Mapping)
+        or program.get("store_id") != _M55_STORE_ID
+        or program.get("store_generation") != str(_M55_TARGET_GENERATION)
+        or program.get("quack_endpoint") != runtime["quack_endpoint"]
+        or program.get("worktree_root") != _M55_WORKTREE_ROOT
+        or owner.get("database_path") != _M55_STORE_ID
+        or owner.get("store_id") != _M55_STORE_ID
+        or owner.get("port") != _M55_TARGET_QUACK_PORT
+        or owner.get("state_dir") != f"{_M55_RUNTIME_ROOT}/quack-owner"
+        or config.get("runtime_paths") != expected_runtime_paths
+    ):
+        raise MaterializationError("scheduler M55 runtime binding differs")
+    control = (root / _M55_STORE_ID).resolve()
+    coordination = (root / _M55_COORDINATION_STORE_ID).resolve()
+    if not control.is_relative_to(root) or not coordination.is_relative_to(root):
+        raise MaterializationError("M55 runtime path escapes repository")
+    return control, coordination
+
+
+def _check_m55_prestart_admission(
+    root: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Admit restart of a proved-dead generation-38 owner to generation 39."""
+
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m55_source_binding_authority(root, population, config)
+    control, coordination = _m55_target_paths(root, config, authority)
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        discover_live_quack_endpoint,
+    )
+    discovery = discover_live_quack_endpoint(control)
+    if discovery.uri:
+        raise MigrationRequired("M55 requires no live Quack owner")
+    if discovery.reason not in {"owner_status_rejected", "no_live_owner"}:
+        raise MigrationRequired(
+            "M55 offline discovery reason differs: " + str(discovery.reason)
+        )
+    runtime = control.parent
+    final_path = runtime / _M55_FINAL_RECEIPT_NAME
+    m53_path = runtime / _M55_M53_RECEIPT_NAME
+    if os.path.lexists(final_path):
+        raise MigrationRequired("M55 prestart admission is already consumed")
+    if not os.path.lexists(m53_path):
+        raise MigrationRequired("M55 requires the preserved M53 receipt")
+    m53_sha, m53_size = _stable_regular_sha256(
+        m53_path, root=root, noun="M55 preserved M53 receipt", required_link_count=1
+    )
+    if (m53_sha, m53_size) != (_M55_M53_RECEIPT_SHA256, _M55_M53_RECEIPT_SIZE):
+        raise MigrationRequired("M55 preserved M53 receipt differs")
+    if stat.S_IMODE(os.lstat(m53_path).st_mode) != 0o600:
+        raise MigrationRequired("M55 preserved M53 receipt mode differs")
+    token_files = list((runtime / "quack-owner").glob("*.quack-token"))
+    if token_files:
+        raise MigrationRequired("M55 requires the retired client token vault to stay absent")
+    status_path = runtime / "quack-owner/quack-state-server.status.json"
+    status, _ = _load_nofollow_json(status_path, root=root, noun="M55 prior Quack status")
+    identity = status.get("identity")
+    if (
+        not isinstance(identity, Mapping)
+        or identity.get("server_id") != _M55_PRIOR_SERVER_ID
+        or identity.get("process_birth_id") != _M55_PRIOR_PROCESS_BIRTH_ID
+        or identity.get("process_birth") != dict(_M55_PRIOR_PROCESS_BIRTH)
+        or identity.get("database_uuid") != _M55_DATABASE_UUID
+        or identity.get("store_id") != _M55_STORE_ID
+        or identity.get("started_at") != _M55_PRIOR_STARTED_AT
+        or int(identity.get("generation") or 0) != _M55_PRIOR_GENERATION
+        or identity.get("listen_uri") != f"quack:127.0.0.1:{_M55_TARGET_QUACK_PORT}"
+        or status.get("lifecycle") not in {"ready", "stopped"}
+        or identity.get("status") not in {"ready", "stopped"}
+    ):
+        raise MigrationRequired("M55 generation-38 owner status differs")
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        OwnerLiveness,
+        ProcessBirthIdentity,
+        owner_liveness,
+    )
+    birth = ProcessBirthIdentity.from_dict(identity.get("process_birth"))
+    if owner_liveness(birth) is not OwnerLiveness.DEAD:
+        raise MigrationRequired("M55 requires proved-dead generation-38 process birth")
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        reclaim_stale_owner_marker,
+    )
+    marker_path = control.with_name(f".{control.name}.state-owner.json")
+    reclaimed = reclaim_stale_owner_marker(
+        marker_path=marker_path,
+        lock_path=control.with_name(f".{control.name}.state-owner.lock"),
+    )
+    if reclaimed.get("reclaimed") is not True and reclaimed.get("reason") != "no_marker":
+        raise MigrationRequired("M55 stale owner marker could not be reclaimed")
+    return {
+        "valid": True,
+        "action": "admitted_live_ready_generation_38_restart_to_generation_39",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "prior_generation": _M55_PRIOR_GENERATION,
+        "target_generation": _M55_TARGET_GENERATION,
+        "prior_event_watermark": _M55_PRIOR_EVENT_WATERMARK,
+        "prior_projection_cid": _M55_PRIOR_PROJECTION_CID,
+        "m53_receipt_preserved_exactly": True,
+        "prior_process_birth_verified_dead": True,
+        "client_token_vault_absent": True,
+        "stale_owner_marker_reclaimed": True,
+        "prestart_authorization_consumed": False,
+    }
+
+
+def _m55_successor_configured(config: Mapping[str, Any]) -> bool:
+    if _M55_SUPERSESSION_REASON not in config:
+        return False
+    if config.get(_M55_SUPERSESSION_REASON) != _m55_authority_reference():
+        raise MaterializationError("M55 successor authority reference differs")
+    return True
+
+
+def _m55_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M55_SUPERSESSION_REASON
+    migration = _load_json(
+        root
+        / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if any(presence) and not all(presence):
+        raise MaterializationError("M55 successor authority is only partially declared")
+    if not any(presence):
+        return False
+    reference = _m55_authority_reference()
+    if (
+        config.get(key) != reference
+        or migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M55 successor authority differs across controls")
+    return _m55_successor_configured(config)
+
+
+def _m55_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    authority = _expected_m55_live_ready_owner_missing_client_token_vault_restart_authority()
+    return {
+        "schema": "sawm/live-ready-owner-missing-client-token-vault-restart-source-seal@1",
+        "authority": "operator_control_plane",
+        "migration_revision": _M55_MIGRATION_REVISION,
+        "migration_kind": _M55_SUPERSESSION_REASON,
+        "supersession_mode": _M55_SUPERSESSION_MODE,
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "validation_digest": validation_digest,
+        "authorization_cid": _identity(authority),
+        "runtime_binding": authority["runtime_binding"],
+        "prior_authority": authority["prior_authority"],
+        "stopped_owner": authority["stopped_owner"],
+        "target_authority": authority["target_authority"],
+        "source_chain": authority["source_chain"],
+        "exact_changes": authority["exact_changes"],
+        "preservation": authority["preservation"],
+        "scheduler_runtime_root": config["runtime_paths"]["root"],
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _inspect_m55_generation_restart_rows(
+    source: Any,
+    identity: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify dynamic generation 39 against the preserved generation-38 birth."""
+
+    del authority
+    server_id = str(identity.get("server_id") or "")
+    birth_id = str(identity.get("process_birth_id") or "")
+    started_at = str(identity.get("started_at") or "")
+    if (
+        not server_id
+        or not birth_id
+        or not started_at
+        or server_id == _M55_PRIOR_SERVER_ID
+        or birth_id == _M55_PRIOR_PROCESS_BIRTH_ID
+        or identity.get("status") != "ready"
+        or identity.get("store_id") != _M55_STORE_ID
+        or identity.get("database_uuid") != _M55_DATABASE_UUID
+        or identity.get("listen_uri") != f"quack:127.0.0.1:{_M55_TARGET_QUACK_PORT}"
+        or identity.get("extension_fingerprint") != _M55_EXTENSION_FINGERPRINT
+        or int(identity.get("generation") or 0) != _M55_TARGET_GENERATION
+        or int(identity.get("fence_epoch") or 0) != _M55_TARGET_GENERATION
+        or int(identity.get("credential_generation") or 0) != _M55_TARGET_GENERATION
+        or int(identity.get("revision") or 0) != 0
+        or int(identity.get("schema_revision") or 0) != 1
+        or int(identity.get("startup_epoch") or 0) < 1
+    ):
+        raise MigrationRequired("M55 live generation-39 identity differs")
+    with source.intent._connection(write=False) as connection:
+        counts = {
+            table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+            for table in (
+                "state_servers",
+                "store_generations",
+                "credentials",
+                "server_epochs",
+                "capability_snapshots",
+            )
+        }
+    if counts != {name: _M55_TARGET_GENERATION for name in counts}:
+        raise MigrationRequired("M55 generation-bearing row counts differ")
+    return {
+        "generation_38_39_restart_rows_verified": True,
+        "prior_owner_generation": _M55_PRIOR_GENERATION,
+        "live_owner_generation": _M55_TARGET_GENERATION,
+        "live_server_id": server_id,
+        "live_process_birth_id": birth_id,
+        "live_started_at": started_at,
+    }
+
+
+def _verify_m55_live_materialization(
+    source: Any,
+    identity: Mapping[str, Any],
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    *,
+    repository_root: Path | None = None,
+) -> dict[str, Any]:
+    """Verify dynamic generation 39 and the sole M55 event-321 append."""
+
+    root = REPO_ROOT if repository_root is None else Path(repository_root).resolve()
+    control, _coordination = _m55_target_paths(root, config, authority)
+    m53_path = control.parent / _M55_M53_RECEIPT_NAME
+    m53_before = _stable_regular_sha256(
+        m53_path, root=root, noun="M55 preserved M53 receipt", required_link_count=1
+    )
+    if m53_before != (_M55_M53_RECEIPT_SHA256, _M55_M53_RECEIPT_SIZE):
+        raise MigrationRequired("M55 preserved M53 receipt differs")
+    del validation_digest
+    target = authority["target_authority"]
+    head = _inspect_m37_live_projection(
+        source, population, authority,
+        expected_event_watermark=_M55_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=_M55_TARGET_PROJECTION_CID,
+    )
+    if (
+        _m38_projection_cid_at_watermark(source, _M55_PRIOR_EVENT_WATERMARK)
+        != _M55_PRIOR_PROJECTION_CID
+        or _m38_projection_cid_at_watermark(source, _M55_TARGET_EVENT_WATERMARK)
+        != _M55_TARGET_PROJECTION_CID
+    ):
+        raise MigrationRequired("M55 prior/target projection derivation differs")
+    restart = _inspect_m55_generation_restart_rows(source, identity, authority)
+    with source.intent._connection(write=False) as connection:
+        evidence_rows = _positional_rows(
+            connection.execute(
+                "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+                "created_at FROM evidence_nodes WHERE evidence_kind=? "
+                "ORDER BY created_at",
+                [target["evidence_kind"]],
+            ).fetchall(),
+            6,
+        )
+        event_rows = _positional_rows(
+            connection.execute(
+                "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+                "attempt_id,session_id,recorded_at FROM domain_events "
+                "WHERE global_sequence=?",
+                [_M55_TARGET_EVENT_WATERMARK],
+            ).fetchall(),
+            9,
+        )
+        prior_prefix = _event_prefix_digest(connection, _M55_PRIOR_EVENT_WATERMARK)
+        prefix = _event_prefix_digest(connection, _M55_TARGET_EVENT_WATERMARK)
+        semantic = _semantic_authority_digest_on(connection)
+        evidence_count = int(connection.execute("SELECT COUNT(*) FROM evidence_nodes").fetchone()[0])
+        raw_counts = _m43_event_type_counts_on(connection, _M55_TARGET_EVENT_WATERMARK)
+    if (
+        len(evidence_rows) != 1
+        or evidence_rows[0][1] != ""
+        or evidence_rows[0][2] != target["operator_task_cid"]
+        or evidence_rows[0][3] != target["evidence_kind"]
+        or evidence_rows[0][5] != _M55_CONTROL_RECORDED_AT
+        or len(event_rows) != 1
+        or event_rows[0][1] != "stream:intent"
+        or event_rows[0][2] != _M55_TARGET_EVENT_WATERMARK
+        or event_rows[0][3] != _M55_TARGET_EVENT_WATERMARK
+        or event_rows[0][4] != "intent.evidence_recorded"
+        or event_rows[0][5] != target["operator_task_cid"]
+        or event_rows[0][6] != ""
+        or event_rows[0][7] != "session:intent"
+        or event_rows[0][8] != _M55_CONTROL_RECORDED_AT
+        or evidence_count != _M55_TARGET_EVIDENCE_NODE_COUNT
+        or raw_counts != (_M55_TARGET_EVIDENCE_EVENT_COUNT, _M55_VALIDATION_EVENT_COUNT)
+        or prior_prefix != (_M55_PRIOR_EVENT_PREFIX_SHA256, _M55_PRIOR_EVENT_WATERMARK)
+        or prefix[1] != _M55_TARGET_EVENT_WATERMARK
+        or _stable_regular_sha256(
+            m53_path, root=root, noun="M55 preserved M53 receipt",
+            required_link_count=1,
+        ) != m53_before
+    ):
+        raise MigrationRequired("M55 exact target event/evidence authority differs")
+    evidence_id = str(evidence_rows[0][0])
+    event_id = str(event_rows[0][0])
+    digest = str(evidence_rows[0][4])
+    return {
+        **head,
+        **restart,
+        "migration_digest": digest,
+        "migration_evidence_id": evidence_id,
+        "migration_evidence_event_id": event_id,
+        "target_event_prefix_sha256": prefix[0],
+        "prior_event_prefix_verified": True,
+        "prior_projection_recomputed": True,
+        "target_projection_recomputed": True,
+        "m53_receipt_preserved_exactly": True,
+        "semantic_authority_digest": semantic,
+        "evidence_node_count": evidence_count,
+        "evidence_event_count": int(raw_counts[0]),
+        "validation_event_count": int(raw_counts[1]),
+        "passed_validation_event_count": _M55_PASSED_VALIDATION_EVENT_COUNT,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _expected_m55_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": "sawm/non-authoritative-live-ready-owner-missing-client-token-vault-restart-receipt@1",
+        "authoritative": False,
+        "completion_authority": False,
+        "launch_authority": False,
+        "deny_only_without_fresh_live_revalidation": True,
+        "fresh_live_revalidation_required_after_receipt_read": True,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M55_MIGRATION_REVISION,
+        "migration_kind": _M55_SUPERSESSION_REASON,
+        "supersession_mode": _M55_SUPERSESSION_MODE,
+        f"{_M55_SUPERSESSION_REASON}_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"]["source_binding_cid"],
+        "source_chain": dict(authority["source_chain"]),
+        "validation_digest": validation_digest,
+        "database_path": _M55_STORE_ID,
+        "coordination_path": _M55_COORDINATION_STORE_ID,
+        "prior_generation": _M55_PRIOR_GENERATION,
+        "target_generation": _M55_TARGET_GENERATION,
+        "target_generation_owner": {
+            "server_id": verified["live_server_id"],
+            "process_birth_id": verified["live_process_birth_id"],
+            "started_at": verified["live_started_at"],
+        },
+        "prior_event_watermark": _M55_PRIOR_EVENT_WATERMARK,
+        "target_event_watermark": _M55_TARGET_EVENT_WATERMARK,
+        "prior_projection_cid": _M55_PRIOR_PROJECTION_CID,
+        "projection_cid": _M55_TARGET_PROJECTION_CID,
+        "migration_digest": verified["migration_digest"],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "migration_evidence_event_id": verified["migration_evidence_event_id"],
+        "prior_event_prefix_sha256": _M55_PRIOR_EVENT_PREFIX_SHA256,
+        "target_event_prefix_sha256": verified["target_event_prefix_sha256"],
+        "semantic_authority_digest": verified["semantic_authority_digest"],
+        "prior_evidence_node_count": _M55_PRIOR_EVIDENCE_NODE_COUNT,
+        "evidence_node_count": verified["evidence_node_count"],
+        "prior_evidence_event_count": _M55_PRIOR_EVIDENCE_EVENT_COUNT,
+        "evidence_event_count": verified["evidence_event_count"],
+        "validation_event_count": verified["validation_event_count"],
+        "passed_validation_event_count": verified["passed_validation_event_count"],
+        "generation_38_39_restart_rows_verified": True,
+        "m53_receipt_preserved_exactly": True,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _check_m55_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    """Read the deny-only receipt, then freshly verify every live authority."""
+
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m55_source_binding_authority(root, population, config)
+    control, coordination = _m55_target_paths(root, config, authority)
+    final_path = control.parent / _M55_FINAL_RECEIPT_NAME
+    if not os.path.lexists(final_path):
+        raise MigrationRequired("M55 source successor receipt is missing")
+    observed, _ = _load_nofollow_json(
+        final_path, root=root, noun="M55 source successor receipt"
+    )
+    final_stat = os.lstat(final_path)
+    if (
+        not stat.S_ISREG(final_stat.st_mode)
+        or final_stat.st_nlink != 1
+        or stat.S_IMODE(final_stat.st_mode) != 0o600
+        or final_stat.st_uid != os.geteuid()
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+    ):
+        raise MigrationRequired("M55 source successor receipt is unsafe")
+    m53_before = _stable_regular_sha256(
+        control.parent / _M55_M53_RECEIPT_NAME,
+        root=root,
+        noun="M55 preserved M53 receipt",
+        required_link_count=1,
+    )
+    with _m28_live_source(
+        root, control, config, population, authority,
+        owner_id="sawm-r2-m55-live-source-sealer",
+    ) as (source, identity):
+        verified = _verify_m55_live_materialization(
+            source, identity, population, config, authority, "",
+            repository_root=root,
+        )
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        claimed != _identity(unhashed)
+        or observed.get("projection_cid") != _M55_TARGET_PROJECTION_CID
+        or observed.get("target_event_watermark") != _M55_TARGET_EVENT_WATERMARK
+        or observed.get("prior_event_watermark") != _M55_PRIOR_EVENT_WATERMARK
+        or observed.get("prior_projection_cid") != _M55_PRIOR_PROJECTION_CID
+        or observed.get("migration_revision") != _M55_MIGRATION_REVISION
+        or observed.get("migration_kind") != _M55_SUPERSESSION_REASON
+        or observed.get(f"{_M55_SUPERSESSION_REASON}_cid") != _identity(authority)
+        or observed.get("migration_evidence_id") != verified["migration_evidence_id"]
+        or observed.get("migration_evidence_event_id")
+        != verified["migration_evidence_event_id"]
+        or observed.get("generation_38_39_restart_rows_verified") is not True
+        or observed.get("m53_receipt_preserved_exactly") is not True
+        or m53_before != (_M55_M53_RECEIPT_SHA256, _M55_M53_RECEIPT_SIZE)
+        or _stable_regular_sha256(
+            control.parent / _M55_M53_RECEIPT_NAME,
+            root=root,
+            noun="M55 preserved M53 receipt",
+            required_link_count=1,
+        ) != m53_before
+    ):
+        raise MigrationRequired("M55 source successor receipt chain differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_live_ready_owner_missing_client_token_vault_restart_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": observed.get("validation_digest"),
+        "prior_authority": authority,
+        "receipt": observed,
+        "m55_source_successor_receipt": observed,
+        **verified,
+    }
+
+
+def _materialize_m55(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Append one M55 evidence event through live generation 39."""
+
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m55_source_binding_authority(root, population, config)
+    control, _coordination = _m55_target_paths(root, config, authority)
+    final_path = control.parent / _M55_FINAL_RECEIPT_NAME
+    m53_path = control.parent / _M55_M53_RECEIPT_NAME
+    if not os.path.lexists(m53_path):
+        raise MigrationRequired("M55 requires the preserved M53 receipt")
+    m53_before = _stable_regular_sha256(
+        m53_path, root=root, noun="M55 preserved M53 receipt", required_link_count=1
+    )
+    if m53_before != (_M55_M53_RECEIPT_SHA256, _M55_M53_RECEIPT_SIZE):
+        raise MigrationRequired("M55 preserved M53 receipt differs")
+    validation_digest = _m7_validation_digest(root, population)
+    body = _m55_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    appended = False
+    with _m28_live_source(
+        root, control, config, population, authority,
+        owner_id="sawm-r2-m55-live-source-sealer",
+    ) as (source, identity):
+        snapshot = source.snapshot()
+        if snapshot.event_cursor == _M55_PRIOR_EVENT_WATERMARK:
+            if os.path.lexists(final_path):
+                raise MigrationRequired("M55 receipt exists before event 321")
+            if (
+                _m38_projection_cid_at_watermark(source, _M55_PRIOR_EVENT_WATERMARK)
+                != _M55_PRIOR_PROJECTION_CID
+            ):
+                raise MigrationRequired("M55 live prior projection differs")
+            _inspect_m55_generation_restart_rows(source, identity, authority)
+            from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+            original_clock = intent_repository._utc_iso
+
+            def fixed_m55_utc_iso(_moment: Any = None) -> str:
+                return _M55_CONTROL_RECORDED_AT
+
+            intent_repository._utc_iso = fixed_m55_utc_iso
+            try:
+                try:
+                    evidence_receipt = source.record_evidence(
+                        task_cid=target["operator_task_cid"],
+                        evidence_kind=target["evidence_kind"],
+                        digest=digest,
+                        body=body,
+                    )
+                except Exception:
+                    raise MaterializationError("authenticated M55 evidence append failed") from None
+            finally:
+                clock_interference = intent_repository._utc_iso is not fixed_m55_utc_iso
+                intent_repository._utc_iso = original_clock
+            if clock_interference or not evidence_receipt.changed:
+                raise MaterializationError("M55 evidence append clock/CAS differed")
+            appended = True
+        elif snapshot.event_cursor != _M55_TARGET_EVENT_WATERMARK:
+            raise MigrationRequired("M55 live event head is neither 320 nor 321")
+        verified = _verify_m55_live_materialization(
+            source, identity, population, config, authority, validation_digest,
+            repository_root=root,
+        )
+        if appended and verified["migration_digest"] != digest:
+            raise MaterializationError("M55 evidence identity differs")
+    if _stable_regular_sha256(
+        m53_path, root=root, noun="M55 preserved M53 receipt",
+        required_link_count=1,
+    ) != m53_before:
+        raise MigrationRequired("M55 predecessor receipt changed")
+    if os.path.lexists(final_path):
+        checked = _check_m55_materialized(root, config_file)
+        return {
+            **checked,
+            "action": (
+                "materialized_live_ready_owner_missing_client_token_vault_restart_successor"
+                if appended else
+                "checked_live_ready_owner_missing_client_token_vault_restart_successor"
+            ),
+            "migration_required": False,
+            "receipt": checked.get("receipt"),
+            "m55_source_successor_receipt": checked.get("receipt"),
+        }
+    expected = _expected_m55_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    receipt = _m52_write_receipt_last(
+        root, final_path, expected, noun="M55 source successor receipt"
+    )
+    checked = _check_m55_materialized(root, config_file)
+    if checked.get("receipt") != receipt:
+        raise MigrationRequired("M55 post-publication fresh verification differs")
+    return {
+        **checked,
+        "action": (
+            "materialized_live_ready_owner_missing_client_token_vault_restart_successor"
+            if appended else
+            "checked_live_ready_owner_missing_client_token_vault_restart_successor"
+        ),
+        "migration_required": False,
+        "receipt": receipt,
+        "m55_source_successor_receipt": receipt,
+    }
+
+
 def _validated_m52_live_preflight_contract(
     authority: Mapping[str, Any],
 ) -> Mapping[str, Any]:
@@ -95628,6 +96795,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m55_successor_configured_on_any_surface(root, config):
+        return _materialize_m55(root, config_file, config)
     if _m53_successor_configured_on_any_surface(root, config):
         return _materialize_m53(root, config_file, config)
     if _m52_successor_configured_on_any_surface(root, config):

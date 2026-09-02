@@ -267,6 +267,30 @@ _M53_TARGET_PROJECTION_CID = (
 )
 _M53_TARGET_QUACK_PORT = _M52_TARGET_QUACK_PORT
 
+_M55_SUCCESSOR_KEY = (
+    "live_ready_owner_missing_client_token_vault_restart_successor_materialization"
+)
+_M55_MIGRATION_REVISION = "SAWM-R2-M55"
+_M55_AUTHORITY_CID = (
+    "sha256:9feee86e6e53b6bf7948d78b078a3ee7ce3fc51332f1fcdf1782fdc2fc3804c0"
+)
+_M55_AUTHORITY_SIZE = 30_272
+_M55_STORE_ID = _M53_STORE_ID
+_M55_COORDINATION_STORE_ID = _M53_COORDINATION_STORE_ID
+_M55_WORKTREE_ROOT = _M53_WORKTREE_ROOT
+_M55_PRIOR_GENERATION = 38
+_M55_GENERATION = 39
+_M55_TARGET_PLAN_REVISION = _M53_TARGET_PLAN_REVISION
+_M55_PRIOR_EVENT_WATERMARK = 320
+_M55_TARGET_EVENT_WATERMARK = 321
+_M55_PRIOR_PROJECTION_CID = (
+    "baguqeera67mry5oqi6i4wkmdmlhbql7lfhpfioh3pq5adq7j76audissj4ua"
+)
+_M55_TARGET_PROJECTION_CID = (
+    "baguqeera4y5u77bcjvlfmbe44mpnkzip7hnzs5eqnbcu5mkn7sehgck7mbwq"
+)
+_M55_TARGET_QUACK_PORT = _M53_TARGET_QUACK_PORT
+
 _M50_SUCCESSOR_KEY = (
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
 )
@@ -1527,6 +1551,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m55_key = _M55_SUCCESSOR_KEY
     m53_key = _M53_SUCCESSOR_KEY
     m52_key = _M52_SUCCESSOR_KEY
     m51_key = _M51_SUCCESSOR_KEY
@@ -1574,6 +1599,47 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m55_key in config:
+        try:
+            materializer = _materializer()
+            expected = (
+                materializer
+                ._expected_m55_live_ready_owner_missing_client_token_vault_restart_authority()
+            )
+            reference = materializer._m55_authority_reference()
+            contract = materializer._validated_m55_live_preflight_contract(
+                expected
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "active M55 token-vault restart authority is unavailable"
+            ) from exc
+        runtime = expected.get("runtime_binding")
+        stopped = expected.get("stopped_owner")
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        if (
+            config.get(m55_key) != reference
+            or materializer._identity(expected) != _M55_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M55_AUTHORITY_SIZE
+            or not all(
+                isinstance(item, Mapping)
+                for item in (runtime, stopped, program, owner, contract)
+            )
+            or expected.get("migration_revision") != _M55_MIGRATION_REVISION
+            or expected.get("migration_kind") != _M55_SUCCESSOR_KEY
+            or runtime.get("store_generation") != _M55_GENERATION
+            or runtime.get("target_event_watermark")
+            != _M55_TARGET_EVENT_WATERMARK
+            or stopped.get("generation") != _M55_PRIOR_GENERATION
+            or stopped.get("token_handoff_retired") is not True
+            or stopped.get("client_token_vault_absent") is not True
+            or program.get("store_generation") != str(_M55_GENERATION)
+            or owner.get("store_id") != _M55_STORE_ID
+            or contract.get("target_generation") != _M55_GENERATION
+        ):
+            raise OperatorError("active M55 token-vault restart authority is invalid")
+        return expected
     if m53_key in config:
         try:
             materializer = _materializer()
@@ -5285,6 +5351,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            _M55_SUCCESSOR_KEY,
             _M53_SUCCESSOR_KEY,
             _M52_SUCCESSOR_KEY,
             _M51_SUCCESSOR_KEY,
@@ -7686,6 +7753,71 @@ def _require_m18_final_pair_marker(
     return MappingProxyType(dict(observed))
 
 
+def _require_m55_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M55's deny-only receipt plus a fresh live verification."""
+
+    del checked
+    key = _M55_SUCCESSOR_KEY
+    if key not in config:
+        return MappingProxyType({})
+    expected = materializer._expected_m55_live_ready_owner_missing_client_token_vault_restart_authority()
+    reference = materializer._m55_authority_reference()
+    if (
+        dict(authority) != expected
+        or config.get(key) != reference
+        or materializer._identity(expected) != _M55_AUTHORITY_CID
+        or len(materializer._canonical(expected)) != _M55_AUTHORITY_SIZE
+    ):
+        raise OperatorError("M55 token-vault restart authority differs")
+    runtime = (REPO_ROOT / _M55_STORE_ID).resolve().parent
+    final_path = runtime / materializer._M55_FINAL_RECEIPT_NAME
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            final_path, root=REPO_ROOT, noun="M55 source successor receipt"
+        )
+        checked_live = materializer._check_m55_materialized(REPO_ROOT, CONFIG_PATH)
+    except Exception as exc:
+        raise OperatorError(
+            "M55 receipt requires fresh live verification after receipt read"
+        ) from exc
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    reported = checked_live.get("m55_source_successor_receipt")
+    if not isinstance(reported, Mapping):
+        reported = checked_live.get("receipt")
+    if (
+        claimed != materializer._identity(unhashed)
+        or dict(reported or {}) != observed
+        or checked_live.get("valid") is not True
+        or checked_live.get("event_watermark") != _M55_TARGET_EVENT_WATERMARK
+        or checked_live.get("projection_cid") != _M55_TARGET_PROJECTION_CID
+        or observed.get("migration_revision") != _M55_MIGRATION_REVISION
+        or observed.get(f"{key}_cid") != _M55_AUTHORITY_CID
+        or observed.get("generation_38_39_restart_rows_verified") is not True
+        or observed.get("m53_receipt_preserved_exactly") is not True
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+        or observed.get("deny_only_without_fresh_live_revalidation") is not True
+        or any(observed.get(field) != 0 for field in (
+            "task_revision_changes", "task_status_changes", "goal_revision_changes",
+            "goal_status_changes", "provider_call_changes",
+            "provider_invocation_changes", "provider_response_changes",
+            "effect_claim_changes", "merge_attempt_changes", "merge_base_changes",
+            "merge_queue_entry_changes", "accepted_completion_changes",
+        ))
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise OperatorError("M55 exact source successor receipt differs")
+    return MappingProxyType(dict(observed))
+
+
 def _require_m53_source_successor_marker(
     config: Mapping[str, Any],
     authority: Mapping[str, Any],
@@ -8178,6 +8310,52 @@ def _require_m48_source_successor_marker(
     ):
         raise OperatorError("M48 exact source successor receipt differs")
     return MappingProxyType(dict(observed))
+
+
+def _verify_m55_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M55's live heads at event 321/generation 39."""
+
+    materializer._validated_m55_live_preflight_contract(authority)
+    head = materializer._inspect_m37_live_projection(
+        source, population, authority,
+        expected_event_watermark=_M55_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M55_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M55_TARGET_PROJECTION_CID
+    ):
+        raise materializer.MigrationRequired("M55 live head projection differs")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    heads = authority.get("expected_task_heads")
+    if not isinstance(heads, Mapping):
+        raise materializer.MigrationRequired("M55 expected task heads are missing")
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        expected_head = heads.get(alias)
+        if (
+            observed is None
+            or not isinstance(expected_head, Mapping)
+            or observed.status != expected_head.get("status")
+            or int(observed.revision) != int(expected_head.get("revision") or 0)
+        ):
+            raise materializer.MigrationRequired(f"M55 task head differs: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
 
 
 def _verify_m53_live_head_task_projection(
@@ -13976,6 +14154,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if _M55_SUCCESSOR_KEY in config:
+        return _require_m55_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if _M53_SUCCESSOR_KEY in config:
         return _require_m53_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -14205,6 +14387,11 @@ def _recover_stale_quack(config: Mapping[str, Any]) -> Mapping[str, Any]:
     ):
         raise OperatorError("stale Quack recovery store binding differs")
     active = _active_source_repair_materialization(config)
+    if active.get("migration_revision") == _M55_MIGRATION_REVISION:
+        raise OperatorError(
+            "M55 binds a proved-dead generation-38 owner; use the sealed "
+            "generation-39 quack-start path instead of stale-owner recovery"
+        )
     if active.get("migration_revision") == _M53_MIGRATION_REVISION:
         raise OperatorError(
             "M53 binds a process-dead generation-37 owner; use the sealed "
@@ -15234,6 +15421,36 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
+    if _M55_SUCCESSOR_KEY in config:
+        active_materialization = _active_source_repair_materialization(config)
+        try:
+            admitted = materializer._check_m55_prestart_admission(REPO_ROOT, config)
+        except Exception as exc:
+            raise OperatorError(
+                "M55 live-ready generation-38 restart is not admissible"
+            ) from exc
+        if (
+            admitted.get("valid") is not True
+            or admitted.get("action")
+            != "admitted_live_ready_generation_38_restart_to_generation_39"
+            or admitted.get("prior_generation") != _M55_PRIOR_GENERATION
+            or admitted.get("target_generation") != _M55_GENERATION
+            or admitted.get("prior_event_watermark")
+            != _M55_PRIOR_EVENT_WATERMARK
+            or admitted.get("prior_projection_cid")
+            != _M55_PRIOR_PROJECTION_CID
+            or admitted.get("m53_receipt_preserved_exactly") is not True
+            or admitted.get("prior_process_birth_verified_dead") is not True
+            or admitted.get("client_token_vault_absent") is not True
+            or admitted.get("prestart_authorization_consumed") is not False
+        ):
+            raise OperatorError("M55 prestart admission report differs")
+        return MappingProxyType({
+            "dependency_valid": True,
+            "board_valid": True,
+            "prior_authority": active_materialization,
+            "store": admitted,
+        })
     if _M53_SUCCESSOR_KEY in config:
         active_materialization = _active_source_repair_materialization(config)
         try:
@@ -15954,6 +16171,61 @@ def _sealed_quack_native_runtime(config_path: Path) -> Iterator[Any]:
             os.close(descriptor)
 
 
+def _stop_m55_live_owner_if_token_vault_missing(
+    config: Mapping[str, Any],
+) -> None:
+    """Stop the sealed generation-38 owner when launch retired its vault."""
+
+    if _M55_SUCCESSOR_KEY not in config:
+        return
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        discover_live_quack_endpoint,
+    )
+    store = REPO_ROOT / config["database_program"]["store_id"]
+    discovery = discover_live_quack_endpoint(store)
+    expected_uri = str(config["database_program"]["quack_endpoint"])
+    if not discovery.uri:
+        return
+    if discovery.uri != expected_uri:
+        raise OperatorError("M55 live owner URI differs from the sealed endpoint")
+    if discovery.token:
+        raise OperatorError(
+            "M55 will not stop an authenticated live generation-38 owner"
+        )
+    status_path = Path(discovery.status_path or "")
+    try:
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        identity = status["identity"]
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise OperatorError("M55 live generation-38 status is unreadable") from exc
+    if (
+        identity.get("server_id") != "server:8d4bf813-4a5e-4140-848e-e4f4a965b158"
+        or identity.get("process_birth_id")
+        != "birth:218419a4a86c5a34514153a1b41516c6"
+        or int(identity.get("generation") or 0) != _M55_PRIOR_GENERATION
+        or identity.get("listen_uri") != expected_uri
+    ):
+        raise OperatorError("M55 live generation-38 owner identity differs")
+    ops = _load_script(
+        "scripts/ops/agent_supervisor/quack_state_server.py",
+        "_sawm_m55_quack_stop",
+    )
+    if int(ops.main(_quack_args(config, "stop"))) != 0:
+        raise OperatorError("M55 fenced quack-stop request failed")
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        OwnerLiveness,
+        ProcessBirthIdentity,
+        owner_liveness,
+    )
+    birth = ProcessBirthIdentity.from_dict(identity.get("process_birth") or {})
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        if owner_liveness(birth) is OwnerLiveness.DEAD:
+            return
+        time.sleep(0.2)
+    raise OperatorError("M55 live generation-38 owner did not stop")
+
+
 def _run_quack_start(
     config: Mapping[str, Any],
     config_path: Path = CONFIG_PATH,
@@ -15967,6 +16239,7 @@ def _run_quack_start(
             # mutate the authoritative control store.  The same reservation is
             # retained and reused by every subsequent native extension LOAD.
             transport.prepare_extension_custody()
+            _stop_m55_live_owner_if_token_vault_missing(config)
             _validate_offline_quack_start(config, config_path)
             return _start_quack(config, transport=transport)
         except BaseException:
@@ -18623,6 +18896,18 @@ def _normalized_live_preflight_contract(
     """Resolve one closed preflight view without shape-dependent aliases."""
 
     revision = str(active_source_repair.get("migration_revision") or "")
+    if revision == _M55_MIGRATION_REVISION:
+        try:
+            return materializer._validated_m55_live_preflight_contract(
+                active_source_repair
+            )
+        except (
+            materializer.MigrationRequired,
+            materializer.MaterializationError,
+        ) as exc:
+            raise OperatorError(
+                f"M55 normalized preflight contract differs: {exc}"
+            ) from exc
     if revision == _M53_MIGRATION_REVISION:
         try:
             return materializer._validated_m53_live_preflight_contract(
@@ -18968,6 +19253,7 @@ def _live_preflight(
         }
     )
     active_revision = str(active_source_repair.get("migration_revision") or "")
+    m55_active = active_revision == _M55_MIGRATION_REVISION
     m53_active = active_revision == _M53_MIGRATION_REVISION
     m52_active = active_revision == _M52_MIGRATION_REVISION
     m51_active = active_revision == _M51_MIGRATION_REVISION
@@ -19006,6 +19292,7 @@ def _live_preflight(
     m18_active = active_revision == "SAWM-R2-M18"
     evidence_only_post_m27 = any(
         (
+            m55_active,
             m53_active,
             m52_active,
             m51_active,
@@ -19036,6 +19323,7 @@ def _live_preflight(
     )
     deferred_live_evidence_marker = any(
         (
+            m55_active,
             m53_active,
             m52_active,
             m51_active,
@@ -19085,6 +19373,16 @@ def _live_preflight(
     discovery = discover_live_quack_endpoint(store)
     expected_uri = str(config["database_program"]["quack_endpoint"])
     if not discovery.uri or discovery.uri != expected_uri or not discovery.token:
+        if m55_active:
+            if discovery.uri == expected_uri and not discovery.token:
+                raise OperatorError(
+                    "M55 live generation-38 owner is missing the client token "
+                    "vault; run the sealed quack-stop then quack-start admission"
+                )
+            raise OperatorError(
+                "M55 exact live generation-39 owner is unavailable; run the "
+                "sealed offline quack-start admission first"
+            )
         if m53_active:
             raise OperatorError(
                 "M53 exact live generation-38 owner is unavailable; run the "
@@ -19190,6 +19488,8 @@ def _live_preflight(
         or live_identity.get("listen_uri") != expected_uri
         or remote_identity.get("listen_uri") != expected_uri
     ):
+        if m55_active:
+            raise OperatorError("M55 exact live generation-39 owner binding differs")
         if m53_active:
             raise OperatorError("M53 exact live generation-38 owner binding differs")
         if m52_active:
@@ -19274,6 +19574,26 @@ def _live_preflight(
     # step.  If the live cursor is still the sealed prior watermark, append
     # and publish before the snapshot gate.  An unhandled newer key fails
     # closed inside materialize() instead of silently selecting history.
+    if m55_active:
+        try:
+            cursor = int(live.snapshot().event_cursor)
+            if cursor == _M55_PRIOR_EVENT_WATERMARK:
+                materializer.materialize(REPO_ROOT, CONFIG_PATH)
+                live = DatabaseTaskSource(
+                    discovery.uri,
+                    install_schema=False,
+                    repository_tree_id=population["repository_tree_id"],
+                    plan_root_cid=population["plan_root_cid"],
+                    owner_id="sawm-r2-live-preflight",
+                )
+            elif cursor != _M55_TARGET_EVENT_WATERMARK:
+                raise OperatorError("M55 live event head is neither 320 nor 321")
+        except OperatorError:
+            raise
+        except Exception as exc:
+            raise OperatorError(
+                f"M55 automatic successor materialize failed: {exc}"
+            ) from exc
     if m53_active:
         try:
             cursor = int(live.snapshot().event_cursor)
@@ -19299,7 +19619,44 @@ def _live_preflight(
     # explicit boundary rather than a MappingProxyType implementation detail.
     receipt_authority = dict(active_source_repair)
     try:
-        if m53_active:
+        if m55_active:
+            try:
+                m55_verified = materializer._verify_m55_live_materialization(
+                    live,
+                    live_identity,
+                    population,
+                    config,
+                    active_source_repair,
+                    validation_digest,
+                    repository_root=REPO_ROOT,
+                )
+                expected_m55_receipt = (
+                    materializer._expected_m55_source_successor_receipt(
+                        population,
+                        receipt_authority,
+                        validation_digest,
+                        m55_verified,
+                    )
+                )
+                final_pair_marker = _require_active_final_pair_marker(
+                    config,
+                    active_source_repair,
+                    materializer,
+                    checked={
+                        "valid": True,
+                        "receipt": expected_m55_receipt,
+                        "m55_source_successor_receipt": expected_m55_receipt,
+                        **m55_verified,
+                    },
+                )
+            except (
+                materializer.MigrationRequired,
+                materializer.MaterializationError,
+            ) as exc:
+                raise OperatorError(
+                    f"M55 exact token-vault restart verification failed: {exc}"
+                ) from exc
+        elif m53_active:
             try:
                 m53_verified = materializer._verify_m53_live_materialization(
                     live,
@@ -20254,7 +20611,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if _M53_SUCCESSOR_KEY in config:
+            if _M55_SUCCESSOR_KEY in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m55_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif _M53_SUCCESSOR_KEY in config:
                 statuses, _revisions, _receipts = (
                     _verify_m53_live_head_task_projection(
                         live,
@@ -20939,6 +21306,34 @@ def _live_preflight(
         "direct_authoritative_file_opened": False,
         "statuses": statuses,
     }
+    if m55_active and final_pair_marker:
+        store_report.update(
+            {
+                "coordination_path": str(
+                    (REPO_ROOT / _M55_COORDINATION_STORE_ID).resolve()
+                ),
+                "final_pair_commit_marker_verified": False,
+                "source_successor_receipt_cid": str(
+                    final_pair_marker["receipt_cid"]
+                ),
+                "source_successor_receipt_verified": True,
+                "source_successor_chain": dict(
+                    final_pair_marker.get("source_chain") or {}
+                ),
+                "m55_authority_cid": _M55_AUTHORITY_CID,
+                "m55_event_id": str(
+                    final_pair_marker.get("migration_evidence_event_id") or ""
+                ),
+                "m55_evidence_id": str(
+                    final_pair_marker.get("migration_evidence_id") or ""
+                ),
+                "m55_source_successor_receipt": dict(final_pair_marker),
+                "m53_receipt_preserved_exactly": True,
+                "source_successor_receipt_completion_authority": False,
+                "source_successor_receipt_launch_authority": False,
+                "fresh_live_revalidation_performed_after_receipt_read": True,
+            }
+        )
     if m53_active and final_pair_marker:
         store_report.update(
             {

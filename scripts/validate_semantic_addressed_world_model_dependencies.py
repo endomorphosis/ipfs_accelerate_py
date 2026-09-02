@@ -220,6 +220,15 @@ _M53_SUCCESSOR_KEY = (
     "post_reboot_stale_ready_generation_37_restart_successor_materialization"
 )
 _M53_MIGRATION_REVISION = "SAWM-R2-M53"
+_M55_AUTHORITY_CID = (
+    "sha256:9feee86e6e53b6bf7948d78b078a3ee7ce3fc51332f1fcdf1782fdc2fc3804c0"
+)
+_M55_AUTHORITY_SIZE = 30_272
+_M55_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M55_FINAL_CONTROL_AUTHORITY_CID"
+_M55_SUCCESSOR_KEY = (
+    "live_ready_owner_missing_client_token_vault_restart_successor_materialization"
+)
+_M55_MIGRATION_REVISION = "SAWM-R2-M55"
 _M47_AUTHORITY_CID = (
     "sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444"
 )
@@ -3451,6 +3460,120 @@ def _m18_portal_completion_persistence_errors(
             "M18 portal-completion authority is unavailable: "
             f"{type(exc).__name__}: {exc}"
         ]
+
+
+def _m55_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = _M55_SUCCESSOR_KEY
+    return key in scheduler or key in migration or f"{key}_cid" in seal
+
+
+def _m55_live_ready_owner_missing_client_token_vault_restart_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path,
+) -> list[str]:
+    """Validate M55's exact generation-39 token-vault restart authority."""
+
+    errors: list[str] = []
+    key = _M55_SUCCESSOR_KEY
+    presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m55_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M55 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer
+            ._expected_m55_live_ready_owner_missing_client_token_vault_restart_authority()
+        )
+        reference = dict(materializer._m55_authority_reference())
+        if (
+            not all(presence)
+            or scheduler.get(key) != reference
+            or migration.get(key) != reference
+            or seal.get(f"{key}_cid") != _M55_AUTHORITY_CID
+            or materializer._identity(expected) != _M55_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M55_AUTHORITY_SIZE
+            or materializer._M55_AUTHORITY_CID == _M55_UNSEALED_AUTHORITY_CID
+            or materializer._M55_AUTHORITY_CID != _M55_AUTHORITY_CID
+            or expected.get("migration_revision") != _M55_MIGRATION_REVISION
+            or expected.get("migration_kind") != key
+            or expected.get("target_generation") != 39
+            or expected.get("target_event_watermark") != 321
+        ):
+            errors.append("M55 token-vault restart authority differs")
+    except Exception as exc:
+        errors.append(
+            f"M55 token-vault restart authority unavailable: {type(exc).__name__}: {exc}"
+        )
+    return errors
+
+
+def _m55_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = _M55_SUCCESSOR_KEY
+    return key in scheduler or key in migration or f"{key}_cid" in seal
+
+
+def _m55_live_ready_owner_missing_client_token_vault_restart_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path,
+) -> list[str]:
+    """Validate M55's exact generation-39 token-vault restart authority."""
+
+    errors: list[str] = []
+    key = _M55_SUCCESSOR_KEY
+    presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m55_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M55 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer
+            ._expected_m55_live_ready_owner_missing_client_token_vault_restart_authority()
+        )
+        reference = dict(materializer._m55_authority_reference())
+        if (
+            not all(presence)
+            or scheduler.get(key) != reference
+            or migration.get(key) != reference
+            or seal.get(f"{key}_cid") != _M55_AUTHORITY_CID
+            or materializer._identity(expected) != _M55_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M55_AUTHORITY_SIZE
+            or materializer._M55_AUTHORITY_CID == _M55_UNSEALED_AUTHORITY_CID
+            or materializer._M55_AUTHORITY_CID != _M55_AUTHORITY_CID
+            or expected.get("migration_revision") != _M55_MIGRATION_REVISION
+            or expected.get("migration_kind") != key
+            or expected.get("target_generation") != 39
+            or expected.get("target_event_watermark") != 321
+        ):
+            errors.append("M55 token-vault restart authority differs")
+    except Exception as exc:
+        errors.append(
+            f"M55 token-vault restart authority unavailable: {type(exc).__name__}: {exc}"
+        )
+    return errors
 
 
 def _m53_successor_declared(
@@ -14705,6 +14828,62 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m55_key = _M55_SUCCESSOR_KEY
+    m55_presence = (
+        m55_key in scheduler,
+        m55_key in migration,
+        f"{m55_key}_cid" in seal,
+    )
+    if any(m55_presence):
+        if not all(m55_presence):
+            return effective, ["active M55 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m55_nested_source_materializer",
+                REPO_ROOT
+                / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M55 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer
+                ._expected_m55_live_ready_owner_missing_client_token_vault_restart_authority()
+            )
+            materializer._validated_m55_live_preflight_contract(authority)
+            reference = dict(materializer._m55_authority_reference())
+        except Exception as exc:
+            return effective, [
+                f"active M55 nested-source authority unavailable: {exc}"
+            ]
+        if (
+            scheduler.get(m55_key) != reference
+            or migration.get(m55_key) != reference
+            or seal.get(f"{m55_key}_cid") != _M55_AUTHORITY_CID
+            or materializer._identity(authority) != _M55_AUTHORITY_CID
+            or len(materializer._canonical(authority)) != _M55_AUTHORITY_SIZE
+        ):
+            return effective, ["active M55 nested-source authority differs"]
+        for package, gitlink_key, tree_key in (
+            ("ipfs_datasets_py", "current_datasets_gitlink", "current_datasets_tree"),
+            ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree"),
+        ):
+            gitlink = str(authority.get(gitlink_key) or "")
+            tree = str(authority.get(tree_key) or "")
+            if (
+                package not in effective
+                or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+                or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            ):
+                return effective, ["active M55 nested-source identity is invalid"]
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
     m53_key = _M53_SUCCESSOR_KEY
     m53_presence = (
         m53_key in scheduler,
@@ -16594,6 +16773,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m55_key = _M55_SUCCESSOR_KEY
+        m55_presence = (
+            m55_key in scheduler_probe,
+            m55_key in migration_probe,
+            f"{m55_key}_cid" in seal,
+        )
         m53_key = _M53_SUCCESSOR_KEY
         m53_presence = (
             m53_key in scheduler_probe,
@@ -16812,7 +16997,42 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m53_presence):
+        if any(m55_presence):
+            scheduled = scheduler_probe.get(m55_key)
+            migrated = migration_probe.get(m55_key)
+            if not all(m55_presence) or scheduled != migrated:
+                unexpected = ["M55 authority is partial or differs across controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m55_source_status_materializer",
+                    root
+                    / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M55 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer
+                        ._expected_m55_live_ready_owner_missing_client_token_vault_restart_authority()
+                    )
+                    materializer._validated_m55_live_preflight_contract(expected)
+                    reference = dict(materializer._m55_authority_reference())
+                    if (
+                        scheduled != reference
+                        or seal.get(f"{m55_key}_cid") != _M55_AUTHORITY_CID
+                        or materializer._identity(expected)
+                        != _M55_AUTHORITY_CID
+                        or len(materializer._canonical(expected))
+                        != _M55_AUTHORITY_SIZE
+                    ):
+                        unexpected = [
+                            "M55 authority/CID differs across controls"
+                        ]
+                    else:
+                        unexpected = []
+        elif any(m53_presence):
             scheduled = scheduler_probe.get(m53_key)
             migrated = migration_probe.get(m53_key)
             if not all(m53_presence) or scheduled != migrated:
@@ -18490,6 +18710,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m55_declared = _m55_successor_declared(scheduler, seal, migration)
         m53_declared = _m53_successor_declared(scheduler, seal, migration)
         m52_declared = _m52_successor_declared(scheduler, seal, migration)
         m51_declared = _m51_successor_declared(scheduler, seal, migration)
@@ -18519,7 +18740,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m53_declared
+            m55_declared
+            or m53_declared
             or m52_declared
             or m51_declared
             or m50_declared
@@ -18549,13 +18771,19 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m53_declared:
+            if m55_declared:
+                protocol_errors.extend(
+                    _m55_live_ready_owner_missing_client_token_vault_restart_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+            if m53_declared and not m55_declared:
                 protocol_errors.extend(
                     _m53_post_reboot_stale_ready_restart_errors(
                         scheduler, seal, migration, root=root
                     )
                 )
-            if m52_declared and not m53_declared:
+            if m52_declared and not m53_declared and not m55_declared:
                 protocol_errors.extend(
                     _m52_test_compatibility_and_control_hash_successor_errors(
                         scheduler, seal, migration, root=root
@@ -19407,6 +19635,13 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             protocol_errors.append("closed atomic mutation catalog is absent")
         if "read_only=True" not in operator_source or "canonical writer without loading or serving Quack" not in operator_source:
             protocol_errors.append("read-only Quack replica / sealed writer boundary is absent")
+        if not _has_presence_based_key_selection(
+            operator_source,
+            "live_ready_owner_missing_client_token_vault_restart_successor_materialization",
+        ):
+            protocol_errors.append(
+                "operator does not select the M55 authority by fail-closed key presence"
+            )
         if not _has_presence_based_key_selection(
             operator_source,
             "post_reboot_stale_ready_generation_37_restart_successor_materialization",
