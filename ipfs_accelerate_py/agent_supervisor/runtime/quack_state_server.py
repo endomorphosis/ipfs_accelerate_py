@@ -5888,7 +5888,15 @@ class QuackStateServer:
             finally:
                 repository.close()
             try:
-                self._refresh_read_replica()
+                replica_live = (
+                    self._transport_connection is not None
+                    and (self._read_replica_observation or {}).get("live") is True
+                )
+                if not replica_live:
+                    # Recopying a live replica stops quack_serve and revokes
+                    # typed grants, so SPAR-018 CAS died with
+                    # authorization_denied while the owner stayed ready.
+                    self._refresh_read_replica()
             except BaseException as exc:
                 # Replica projection is non-authoritative.  Fail-closing the
                 # exclusive serve here dropped SPAR-018 grant issuance

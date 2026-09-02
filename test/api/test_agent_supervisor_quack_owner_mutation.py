@@ -1075,6 +1075,34 @@ def test_owner_command_requires_strict_status_publication_before_signed_success(
         server.stop()
 
 
+def test_owner_command_skips_replica_refresh_when_replica_already_live(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    server, _identity, token, _database = _server(tmp_path)
+    request = _owner_command_request(server, token, request_id="2" * 32)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+    refreshes: list[bool] = []
+
+    def count_refresh(*_args: object, **_kwargs: object) -> dict[str, object]:
+        refreshes.append(True)
+        raise AssertionError("must not bounce a live replica")
+
+    server._transport_connection = object()
+    server._read_replica_observation = {"live": True}
+    monkeypatch.setattr(server, "_refresh_read_replica", count_refresh)
+    try:
+        _publish(server, request)
+        assert server.service_mutation_inbox() == 1
+        response = _done(server, request)
+        assert response["ok"] is True
+        assert refreshes == []
+        assert server.lifecycle.value == "ready"
+        assert server._read_replica_observation.get("live") is True
+    finally:
+        server.stop()
+
+
 def test_owner_command_replica_refresh_failure_keeps_serve_ready(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1088,6 +1116,10 @@ def test_owner_command_replica_refresh_failure_keeps_serve_ready(
             "injected replica refresh failure"
         )
 
+    server._read_replica_observation = {
+        **dict(server._read_replica_observation or {}),
+        "live": False,
+    }
     monkeypatch.setattr(server, "_refresh_read_replica", fail_replica)
     try:
         _publish(server, request)
