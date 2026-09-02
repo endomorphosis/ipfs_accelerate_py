@@ -3259,6 +3259,15 @@ class _OwnerProjectionMonitor:
                 if now >= next_projection:
                     _publish_live_projection(self.server, self.paths)
                     next_projection = now + 1.0
+                connection = getattr(self.server, "_connection", None)
+                if (
+                    connection is not None
+                    and not _owner_connection_unusable(connection)
+                    and not _owner_listener_ready(self.server)
+                ):
+                    # quack_serve can exit without poisoning the Python
+                    # wrapper. Restart it so SPAR-018 typed grants attach.
+                    _restart_owner_serve_if_down(self.server, connection)
             except BaseException as exc:
                 recovered = False
                 recover_error_type = ""
