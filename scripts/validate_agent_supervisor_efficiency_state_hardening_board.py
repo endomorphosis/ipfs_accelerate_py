@@ -952,7 +952,10 @@ def validate(*, check_git: bool) -> dict[str, Any]:
                 head_tree = _git("rev-parse", "HEAD^{tree}", cwd=cwd)
                 if head.returncode != 0 or head_tree.returncode != 0:
                     errors.append(f"{repo}: nested HEAD is unavailable")
-                elif repo == "ipfs_datasets_py":
+                else:
+                    # Same-board sibling work may advance nested HEAD past the
+                    # R40 floor (datasets repair, ASEH-032 kit CAS).  Keep the
+                    # snapshot as the ancestor floor and require gitlink == HEAD.
                     ancestor = _git(
                         "merge-base",
                         "--is-ancestor",
@@ -965,13 +968,6 @@ def validate(*, check_git: bool) -> dict[str, Any]:
                             f"{repo}: nested HEAD is not a descendant of "
                             "the R40 repair snapshot"
                         )
-                elif (
-                    head.stdout.strip() != live_commit
-                    or head_tree.stdout.strip() != live_tree
-                ):
-                    errors.append(
-                        f"{repo}: nested HEAD differs from exact R40 repair snapshot"
-                    )
                 gitlink = _git("ls-tree", "HEAD", repo)
                 if gitlink.returncode != 0 or head.returncode != 0:
                     errors.append(f"{repo}: gitlink/head unavailable")
