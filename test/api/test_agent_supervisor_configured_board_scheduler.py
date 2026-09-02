@@ -2972,6 +2972,9 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
                 tasks[0],
                 1,
                 baseline_ref=baseline,
+                expected_candidate_fingerprint=(
+                    self._proposal_candidate_fingerprint(())
+                ),
             )
             assert commit_result["reason"] == "no_changes", commit_result
             branch = self._git_current_branch(workspace)
@@ -2995,6 +2998,7 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
                             "changed_files": [],
                         },
                     },
+                    require_no_change_policy_gate=False,
                 )
             )
         assert self._release_implementation_task_claim(
