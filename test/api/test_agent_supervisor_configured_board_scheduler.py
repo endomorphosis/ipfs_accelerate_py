@@ -1131,6 +1131,135 @@ def test_plan_bound_identity_capture_failure_fences_before_child_exec(
         shutil.rmtree(runtime_root, ignore_errors=True)
 
 
+def test_plan_bound_prebirth_failure_closes_gate_and_pid_reservation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_head = _git(REPO_ROOT, "rev-parse", "HEAD").stdout.strip()
+    source_tree = _git(REPO_ROOT, "rev-parse", "HEAD^{tree}").stdout.strip()
+    control_plane_pin, control_plane_launch = _test_sealed_control_plane(
+        tmp_path,
+        source_head=source_head,
+        source_tree=source_tree,
+    )
+    runtime_relative = Path("data/agent_supervisor") / (
+        "plan-bound-prebirth-cleanup-"
+        + _test_lifecycle_token(tmp_path, "prebirth-cleanup")
+    )
+    runtime_root = REPO_ROOT / runtime_relative
+    lane_relative = runtime_relative / "lane-0"
+    lane_root = REPO_ROOT / lane_relative
+    supervisor_pid = lane_root / "supervisor.pid"
+    store_relative = runtime_relative / "plan-revision-store"
+    plan_args = (
+        "--state-dir",
+        str(lane_relative),
+        "--state-prefix",
+        "prebirth_cleanup",
+        "--plan-bound-dispatch",
+        "--plan-revision-store-path",
+        str(store_relative),
+        "--plan-bound-revision-cid",
+        "revision:test",
+        "--plan-bound-plan-root-cid",
+        "plan-root:test",
+        "--plan-bound-execution-plan-cid",
+        "execution-plan:test",
+        "--plan-bound-capacity-snapshot-id",
+        "capacity:test",
+        "--plan-bound-slice-manifest-cid",
+        "manifest:test",
+        "--plan-bound-slice-id",
+        "slice:test",
+        "--plan-bound-source-head",
+        source_head,
+        "--plan-bound-source-tree",
+        source_tree,
+        "--plan-bound-task-source-revision",
+        "task-source:test",
+        "--plan-bound-configuration-root",
+        "configuration:test",
+        "--plan-bound-accepted-tree-root",
+        str(REPO_ROOT),
+        "--plan-bound-lane-id",
+        "lane-0",
+        "--execution-slice-task-id",
+        "TEST-A",
+        "--execution-slice-task-cid",
+        "task-cid:test-a",
+    )
+    track = multi_runner_module.SupervisorTrack(
+        name="prebirth-cleanup",
+        script_path=Path(multi_runner_module.PLAN_BOUND_ACCEPTED_ENTRY_PATH),
+        log_path=lane_root / "supervisor.log",
+        supervisor_pid_path=supervisor_pid,
+        daemon_pid_path=lane_root / "daemon.pid",
+        supervisor_status_path=lane_root / "supervisor-status.json",
+        extra_args=plan_args,
+    )
+    opened_gate_fds: list[int] = []
+    opened_reservation_fds: list[int] = []
+    observe_next_pipe = {"enabled": False}
+    original_pipe = os.pipe
+    original_reserve = multi_runner_module._reserve_owned_pid_projection
+
+    def observed_pipe():
+        descriptors = original_pipe()
+        if observe_next_pipe["enabled"]:
+            opened_gate_fds.extend(descriptors)
+            observe_next_pipe["enabled"] = False
+        return descriptors
+
+    def mark_accepted_tree_validated(**_kwargs):
+        observe_next_pipe["enabled"] = True
+
+    def observed_reserve(path, **kwargs):
+        descriptor, identity = original_reserve(path, **kwargs)
+        opened_reservation_fds.append(descriptor)
+        return descriptor, identity
+
+    monkeypatch.setattr(multi_runner_module.os, "pipe", observed_pipe)
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_validate_plan_bound_accepted_tree",
+        mark_accepted_tree_validated,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_reserve_owned_pid_projection",
+        observed_reserve,
+    )
+    try:
+        with pytest.raises(
+            multi_runner_module.SupervisorRunWindowExpired,
+            match="run window closed before supervisor process birth",
+        ):
+            multi_runner_module.start_track(
+                track,
+                repo_root=REPO_ROOT,
+                common_args=(),
+                python_executable=sys.executable,
+                accepted_control_plane_pin=control_plane_pin,
+                accepted_control_plane_descriptor=(
+                    control_plane_launch.descriptor
+                ),
+                birth_deadline_monotonic_seconds=0.0,
+                output=lambda _message: None,
+            )
+
+        assert len(opened_gate_fds) == 2
+        for descriptor in opened_gate_fds:
+            with pytest.raises(OSError):
+                os.fstat(descriptor)
+        assert len(opened_reservation_fds) == 1
+        with pytest.raises(OSError):
+            os.fstat(opened_reservation_fds[0])
+        assert not supervisor_pid.exists()
+        assert not (lane_root / "supervisor.log").exists()
+    finally:
+        shutil.rmtree(runtime_root, ignore_errors=True)
+
+
 def test_legacy_track_in_mixed_runner_inherits_no_sealed_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1641,6 +1770,12 @@ def test_detached_runner_publishes_pid_before_child_adopts_projection(
                 artifact_label="master PID projection",
             )
         )
+        multi_runner_module._activate_run_generation_binding(
+            pid_path,
+            label="pid-adoption-order",
+            master_pid=os.getpid(),
+            run_started_at_ns=time.time_ns(),
+        )
         adoption_finished.set()
 
     child_thread: threading.Thread | None = None
@@ -1676,6 +1811,7 @@ def test_detached_runner_publishes_pid_before_child_adopts_projection(
     assert reservation.adopted_existing is True
     assert reservation.descriptor is None
     assert report["master_pid"] == os.getpid()
+    assert report["active_binding_cid"].startswith("baguqeera")
     assert pid_path.read_bytes() == f"{os.getpid()}\n".encode("ascii")
     assert multi_runner_module._remove_owned_pid_projection(
         pid_path,
@@ -2083,6 +2219,222 @@ def test_plan_bound_lane_dead_pid_is_quarantined_after_private_confinement(
         "sha256:" + hashlib.sha256(stale_payload).hexdigest()
     )
     assert receipt["receipt_id"].startswith("baguqeera")
+
+
+def test_plan_bound_pid_recovery_never_follows_swapped_state_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_root = tmp_path / "state"
+    displaced_root = tmp_path / "state-displaced"
+    outside_root = tmp_path / "other-authority-root"
+    lane_state = state_root / "lane-0"
+    outside_lane = outside_root / "lane-0"
+    state_root.mkdir(mode=0o700)
+    lane_state.mkdir(mode=0o700)
+    outside_root.mkdir(mode=0o700)
+    outside_lane.mkdir(mode=0o700)
+    pid_path = lane_state / "supervisor.pid"
+    outside_pid = outside_lane / "supervisor.pid"
+    pid_path.write_text("3554889\n", encoding="ascii")
+    outside_pid.write_text("3554890\n", encoding="ascii")
+    swapped = False
+
+    def swap_after_directory_pin(_pid: int):
+        nonlocal swapped
+        if not swapped:
+            state_root.rename(displaced_root)
+            state_root.symlink_to(outside_root, target_is_directory=True)
+            swapped = True
+        return multi_runner_module.OwnerLiveness.DEAD
+
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_pid_projection_liveness",
+        swap_after_directory_pin,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="plan-bound state path changed during recovery",
+    ):
+        multi_runner_module._recover_plan_bound_lane_pid_projection(
+            pid_path,
+            state_root=state_root,
+        )
+
+    assert swapped is True
+    assert outside_pid.read_bytes() == b"3554890\n"
+    assert not (outside_lane / "stale-pid-projections").exists()
+    assert not (displaced_root / "lane-0" / "supervisor.pid").exists()
+    assert any(
+        (displaced_root / "lane-0" / "stale-pid-projections").glob(
+            "supervisor.pid.dead-3554889-*.pid"
+        )
+    )
+
+
+def test_plan_bound_absent_pid_revalidates_swapped_state_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_root = tmp_path / "state"
+    displaced_root = tmp_path / "state-displaced"
+    outside_root = tmp_path / "other-authority-root"
+    lane_state = state_root / "lane-0"
+    outside_lane = outside_root / "lane-0"
+    state_root.mkdir(mode=0o700)
+    lane_state.mkdir(mode=0o700)
+    outside_root.mkdir(mode=0o700)
+    outside_lane.mkdir(mode=0o700)
+    outside_pid = outside_lane / "supervisor.pid"
+    outside_pid.write_text("3554890\n", encoding="ascii")
+    original_stat = os.stat
+    swapped = False
+
+    def swap_before_absent_leaf_stat(path, *args, **kwargs):
+        nonlocal swapped
+        if (
+            not swapped
+            and path == "supervisor.pid"
+            and kwargs.get("dir_fd") is not None
+        ):
+            state_root.rename(displaced_root)
+            state_root.symlink_to(outside_root, target_is_directory=True)
+            swapped = True
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        multi_runner_module.os,
+        "stat",
+        swap_before_absent_leaf_stat,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="plan-bound state path changed during recovery",
+    ):
+        multi_runner_module._recover_plan_bound_lane_pid_projection(
+            lane_state / "supervisor.pid",
+            state_root=state_root,
+        )
+
+    assert swapped is True
+    assert outside_pid.read_bytes() == b"3554890\n"
+    assert not (outside_lane / "stale-pid-projections").exists()
+
+
+def test_plan_bound_lane_creation_is_descriptor_pinned_before_repair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_root = tmp_path / "state"
+    displaced_root = tmp_path / "state-displaced"
+    outside_root = tmp_path / "other-authority-root"
+    outside_lane = outside_root / "lane-0"
+    state_root.mkdir(mode=0o700)
+    outside_root.mkdir(mode=0o700)
+    outside_lane.mkdir(mode=0o775)
+    os.chmod(outside_lane, 0o775)
+    original_mkdir = os.mkdir
+    swapped = False
+
+    def swap_during_descriptor_relative_lane_create(path, *args, **kwargs):
+        nonlocal swapped
+        if (
+            not swapped
+            and path == "lane-0"
+            and kwargs.get("dir_fd") is not None
+        ):
+            state_root.rename(displaced_root)
+            state_root.symlink_to(outside_root, target_is_directory=True)
+            swapped = True
+        return original_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        multi_runner_module.os,
+        "mkdir",
+        swap_during_descriptor_relative_lane_create,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="plan-bound state path changed during recovery",
+    ):
+        multi_runner_module._recover_plan_bound_lane_pid_projection(
+            state_root / "lane-0" / "supervisor.pid",
+            state_root=state_root,
+        )
+
+    assert swapped is True
+    assert stat.S_IMODE(outside_lane.stat().st_mode) == 0o775
+    assert not (outside_lane / ".supervisor.pid.update.lock").exists()
+    assert stat.S_IMODE((displaced_root / "lane-0").stat().st_mode) == 0o700
+
+
+def test_plan_bound_pid_quarantine_retains_evidence_when_replace_interrupts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_root = tmp_path / "state"
+    lane_state = state_root / "lane-0"
+    state_root.mkdir(mode=0o700)
+    lane_state.mkdir(mode=0o700)
+    pid_path = lane_state / "supervisor.pid"
+    stale_pid = 3_554_889
+    stale_payload = f"{stale_pid}\n".encode("ascii")
+    pid_path.write_bytes(stale_payload)
+    original_replace = os.replace
+    replaced = False
+
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_pid_projection_liveness",
+        lambda _pid: multi_runner_module.OwnerLiveness.DEAD,
+    )
+
+    def interrupt_after_kernel_replace(*args, **kwargs):
+        nonlocal replaced
+        original_replace(*args, **kwargs)
+        replaced = True
+        raise KeyboardInterrupt("interrupt after PID quarantine rename")
+
+    monkeypatch.setattr(
+        multi_runner_module.os,
+        "replace",
+        interrupt_after_kernel_replace,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        multi_runner_module._recover_plan_bound_lane_pid_projection(
+            pid_path,
+            state_root=state_root,
+        )
+
+    quarantined = list(
+        (lane_state / "stale-pid-projections").glob(
+            "supervisor.pid.dead-3554889-*.pid"
+        )
+    )
+    assert replaced is True
+    assert not pid_path.exists()
+    assert len(quarantined) == 1
+    assert quarantined[0].read_bytes() == stale_payload
+
+
+def test_plan_bound_state_root_rejects_other_writable_parent(
+    tmp_path: Path,
+) -> None:
+    shared_parent = tmp_path / "shared"
+    shared_parent.mkdir(mode=0o777)
+    os.chmod(shared_parent, 0o777)
+
+    with pytest.raises(ValueError, match="state-root parent is unsafe"):
+        multi_runner_module._create_owner_only_plan_bound_state_root(
+            shared_parent / "state"
+        )
+
+    assert not (shared_parent / "state").exists()
 
 
 @pytest.mark.parametrize(
@@ -6970,6 +7322,7 @@ def test_runner_bounds_process_birth_chain_and_concurrent_append_one_winner(
     )
     track = donor.track(stamp="20260808T-birth-budget").resolve(repo)
     start_count = 0
+    transient_recovery_admission_failures = 0
     concurrent_results: tuple[str, str] | None = None
     spawned: list[subprocess.Popen[bytes]] = []
     provider_calls = 0
@@ -6990,9 +7343,20 @@ def test_runner_bounds_process_birth_chain_and_concurrent_append_one_winner(
         **_kwargs,
     ) -> subprocess.Popen[bytes]:
         nonlocal start_count, concurrent_results
+        nonlocal transient_recovery_admission_failures
         start_count += 1
         if start_count == 1:
             return seeded_process
+        if start_count == 2 and transient_recovery_admission_failures == 0:
+            # A proposal-ready handoff has already been admitted, but the
+            # exact source capsule may be replaced concurrently.  This
+            # pre-Popen error is safe to retry and must not consume a process
+            # birth generation or replay the provider.
+            start_count -= 1
+            transient_recovery_admission_failures += 1
+            raise multi_runner_module.ConfiguredBoardLiveCapsuleError(
+                "simulated recoverable-handoff source replacement"
+            )
         generation = start_count - 1
         assert 1 <= generation <= (
             execution_plan_module.MAX_PLAN_BOUND_WAVE_TRANSFERS
@@ -7085,6 +7449,12 @@ def test_runner_bounds_process_birth_chain_and_concurrent_append_one_winner(
             process.wait(timeout=5)
 
     assert concurrent_results is not None
+    assert transient_recovery_admission_failures == 1
+    assert any(
+        receipt["cause"] == "recoverable_plan_bound_handoff"
+        and receipt["retry_authority"] is True
+        for receipt in result["restart_failure_receipts"]
+    )
     assert start_count == (
         execution_plan_module.MAX_PLAN_BOUND_WAVE_TRANSFERS + 1
     )
@@ -7343,10 +7713,12 @@ def test_runner_reassigns_preclaim_crash_in_freed_slot_while_peer_waits(
     tracks = (donor.track().resolve(repo), peer.track().resolve(repo))
     spawned: list[subprocess.Popen[bytes]] = []
     started_names: list[str] = []
+    started_pid_names: list[str] = []
     live_widths: list[int] = []
     peer_waiting_when_recovery_started = False
     peer_waiting_path: Path | None = None
     peer_completed_path: Path | None = None
+    transient_reassignment_admission_failures = 0
 
     def spawn_bound_process(
         track: multi_runner_module.SupervisorTrack,
@@ -7461,12 +7833,22 @@ def test_runner_reassigns_preclaim_crash_in_freed_slot_while_peer_waits(
         return process
 
     def controlled_start(track, **_kwargs):
+        nonlocal transient_reassignment_admission_failures
+        started_pid_names.append(Path(track.supervisor_pid_path).name)
         if track.name == donor.name:
             started_names.append(track.name)
             live_widths.append(
                 sum(item.poll() is None for item in (crashed, *spawned))
             )
             return crashed
+        if (
+            track.name.startswith("recovery-")
+            and transient_reassignment_admission_failures == 0
+        ):
+            transient_reassignment_admission_failures += 1
+            raise multi_runner_module.ConfiguredBoardLiveCapsuleError(
+                "simulated reassignment source replacement"
+            )
         return spawn_bound_process(
             track,
             barrier_waiter=track.name == peer.name,
@@ -7495,6 +7877,12 @@ def test_runner_reassigns_preclaim_crash_in_freed_slot_while_peer_waits(
         output=lambda _message: None,
     )
     assert result["reassignment_count"] == 1
+    assert transient_reassignment_admission_failures == 1
+    assert any(
+        receipt["cause"] == "plan_bound_reassignment"
+        and receipt["retry_authority"] is True
+        for receipt in result["restart_failure_receipts"]
+    )
     assert result["reassignment_blockers"] == []
     assert result["track_count"] == 3
     assert result["all_trees_fenced"] is True
@@ -7504,6 +7892,28 @@ def test_runner_reassigns_preclaim_crash_in_freed_slot_while_peer_waits(
         name for name in started_names if name.startswith("recovery-")
     ]
     assert len(recovery_names) == 1
+    first_run_start_count = len(started_names)
+    rehydration_output: list[str] = []
+    resumed = multi_runner_module.run_supervisor_tracks(
+        (tracks[0],),
+        repo_root=repo,
+        common_args=(),
+        duration_seconds=0.05,
+        heartbeat_interval_seconds=0.01,
+        stop_grace_seconds=0.1,
+        plan_bound_children=(donor,),
+        accepted_control_plane_pin=control_plane_pin,
+        accepted_control_plane_descriptor=control_plane_launch.descriptor,
+        output=rehydration_output.append,
+    )
+    resumed_names = started_names[first_run_start_count:]
+    assert resumed["all_trees_fenced"] is True
+    assert len(resumed_names) == 1
+    assert resumed_names[0] == recovery_names[0]
+    assert any(
+        "rehydrated accepted plan-bound reassignment" in message
+        for message in rehydration_output
+    )
     reassignment = ProductionParallelPlanAdapter(
         PlanRevisionStore(repo / donor.plan_revision_store_path)
     ).load_slice_reassignment(
@@ -7514,6 +7924,79 @@ def test_runner_reassigns_preclaim_crash_in_freed_slot_while_peer_waits(
     assert reassignment[1].generation == 1
     assert reassignment[1].recipient_lane_id.startswith("recovery-1-")
     assert reassignment[1].recipient_lane_id != donor.lane_id
+    canonical_child = multi_runner_module._current_plan_bound_child(
+        donor,
+        repo_root=repo,
+    )
+    canonical_track = canonical_child.track(
+        stamp="canonical-track-drift"
+    ).resolve(repo)
+    wrong_pid_name = "wrong_current_owner_supervisor.pid"
+    canonical_child_drifted_track = replace(
+        canonical_track,
+        supervisor_pid_path=(
+            canonical_track.supervisor_pid_path.parent / wrong_pid_name
+        ),
+        daemon_pid_path=(
+            canonical_track.daemon_pid_path.parent
+            / "wrong_current_owner_daemon.pid"
+        ),
+    )
+    canonical_track_start_count = len(started_pid_names)
+    canonical_track_resumed = multi_runner_module.run_supervisor_tracks(
+        (canonical_child_drifted_track,),
+        repo_root=repo,
+        common_args=(),
+        duration_seconds=0.05,
+        heartbeat_interval_seconds=0.01,
+        stop_grace_seconds=0.1,
+        plan_bound_children=(canonical_child,),
+        accepted_control_plane_pin=control_plane_pin,
+        accepted_control_plane_descriptor=control_plane_launch.descriptor,
+        output=lambda _message: None,
+    )
+    assert canonical_track_resumed["all_trees_fenced"] is True
+    canonical_pid_name = Path(
+        canonical_child.track(
+            stamp="canonical-track-drift"
+        ).supervisor_pid_path
+    ).name
+    assert started_pid_names[canonical_track_start_count:] == [
+        canonical_pid_name
+    ]
+    assert canonical_pid_name != wrong_pid_name
+    drifted_child = replace(
+        canonical_child,
+        name="drifted-current-owner",
+        state_dir=str(
+            Path(str(canonical_child.state_dir)).parent
+            / "drifted-current-owner"
+        ),
+        state_prefix="drifted_current_owner",
+    )
+    drifted_track = drifted_child.track(
+        stamp="namespace-drift"
+    ).resolve(repo)
+    drift_start_count = len(started_names)
+    drift_output: list[str] = []
+    drift_resumed = multi_runner_module.run_supervisor_tracks(
+        (drifted_track,),
+        repo_root=repo,
+        common_args=(),
+        duration_seconds=0.05,
+        heartbeat_interval_seconds=0.01,
+        stop_grace_seconds=0.1,
+        plan_bound_children=(drifted_child,),
+        accepted_control_plane_pin=control_plane_pin,
+        accepted_control_plane_descriptor=control_plane_launch.descriptor,
+        output=drift_output.append,
+    )
+    assert drift_resumed["all_trees_fenced"] is True
+    assert started_names[drift_start_count:] == [canonical_child.name]
+    assert any(
+        "rehydrated accepted plan-bound reassignment" in message
+        for message in drift_output
+    )
 
 
 def test_recovery_artifact_binding_uses_exact_reassigned_lane_name(
