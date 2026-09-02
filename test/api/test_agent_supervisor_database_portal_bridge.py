@@ -79,6 +79,41 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
 )
 
 
+def _terminal_retained_occurrence_reconciliation(
+    daemon_module: object,
+    bridge_module: object,
+) -> dict[str, object]:
+    outcomes = [
+        {
+            "task_alias": str(pin["task_alias"]),
+            "task_cid": str(pin["task_cid"]),
+            "reconciled": True,
+            "blocked": False,
+            "reason": "retained_occurrence_task_terminal",
+            "admission_id": "",
+            "consumption_id": "",
+        }
+        for pin in getattr(
+            bridge_module,
+            "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS",
+        )
+    ]
+    return {
+        "schema": getattr(
+            daemon_module,
+            "DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA",
+        ),
+        "attempted": True,
+        "reconciled": True,
+        "blocked": False,
+        "reason": "retained_occurrence_reconciliation_complete",
+        "expected_occurrence_count": 3,
+        "admitted_count": 0,
+        "already_consumed_count": 3,
+        "outcomes": outcomes,
+    }
+
+
 _PCTDD_WORKTREE_SUBMODULE_PATHS = (
     "external/ipfs_accelerate",
     "external/ipfs_datasets",
@@ -5132,35 +5167,27 @@ def test_nested_setup_failure_rearm_rechecks_prepared_completion_at_barrier(
     _repo, daemon, _bridge, attempt, _paths = (
         _seed_blocked_pre_provider_setup_failure(tmp_path, monkeypatch)
     )
-    original_lookup = daemon.coordinator._prepared_completion_unlocked
+    original_lookup = daemon.coordinator._task_completion_exists_unlocked
     lookup_count = 0
 
     def inject_prepared_race(
         connection: object,
         task_cid: str,
-        *,
-        required: bool,
-        include_promoted: bool = False,
-    ) -> object:
+    ) -> bool:
         nonlocal lookup_count
         lookup_count += 1
-        if lookup_count >= 3:
-            return {"status": "prepared", "task_cid": task_cid}
-        return original_lookup(
-            connection,
-            task_cid,
-            required=required,
-            include_promoted=include_promoted,
-        )
+        if lookup_count >= 2:
+            return True
+        return original_lookup(connection, task_cid)
 
     monkeypatch.setattr(
         daemon.coordinator,
-        "_prepared_completion_unlocked",
+        "_task_completion_exists_unlocked",
         inject_prepared_race,
     )
     try:
         result = daemon.run_once()
-        assert lookup_count >= 3
+        assert lookup_count >= 2
         assert result["selection_idle_reason"] == (
             "database_no_provider_rearm_recovery_fenced"
         )
@@ -5274,7 +5301,10 @@ def test_nested_setup_failure_shared_fence_recovers_after_origin_lane_loss(
         def crash_after_shared_pending(
             _claim: object,
             callback: Callable[[], object],
+            *,
+            lease: object,
         ) -> None:
+            assert lease is not None
             callback()
             raise SystemExit("injected origin loss after shared pending CAS")
 
@@ -9021,6 +9051,151 @@ def test_supervisor_sigterm_reconciles_database_portal_before_restart(
         successor.close()
 
 
+def test_quack_sigterm_retains_owner_then_launch_fences_through_reconciliation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    state_dir = repo / "state"
+    state_dir.mkdir(parents=True)
+    program = DatabaseProgramConfig(
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        endpoint_secret_handle="env://SELECTED_QUACK_TOKEN",
+        quack_endpoint="quack://127.0.0.1:41307",
+        store_id="state/control.duckdb",
+        store_generation="pctdd-v1-g6",
+        schema_revision="3",
+    )
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=repo / "non-authoritative.md",
+            state_path=state_dir / "pctdd_task_state.json",
+            strategy_path=state_dir / "pctdd_strategy.json",
+            events_path=state_dir / "pctdd_supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            state_prefix="pctdd",
+            task_prefix="## PCTDD-",
+            database_program=program,
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_forever_loop",
+        lambda: signal.raise_signal(signal.SIGTERM),
+    )
+
+    from threading import Event, Thread
+
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        serialized_lock_update,
+    )
+
+    order: list[str] = []
+    owner_fence_active = False
+    owner_fence_entries = 0
+    competing_launch_attempted = Event()
+    competing_launch_acquired = Event()
+    competing_thread: list[Thread] = []
+
+    class OwnerMutationFence:
+        def __enter__(self) -> DatabaseProgramConfig:
+            nonlocal owner_fence_active, owner_fence_entries
+            assert not owner_fence_active
+            owner_fence_entries += 1
+            owner_fence_active = True
+            order.append("owner_enter")
+            return program
+
+        def __exit__(self, *_args: object) -> None:
+            nonlocal owner_fence_active
+            order.append("owner_exit")
+            owner_fence_active = False
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        lambda: OwnerMutationFence(),
+    )
+
+    def competing_launch() -> None:
+        competing_launch_attempted.set()
+        with serialized_lock_update(
+            supervisor._managed_daemon_launch_lock_path()
+        ):
+            competing_launch_acquired.set()
+
+    def terminate_under_both_fences(**kwargs: object) -> dict[str, object]:
+        assert kwargs == {"_launch_lock_held": True}
+        assert owner_fence_active
+        order.append("terminate")
+        thread = Thread(target=competing_launch, daemon=True)
+        competing_thread.append(thread)
+        thread.start()
+        assert competing_launch_attempted.wait(timeout=1.0)
+        assert not competing_launch_acquired.is_set()
+        return {
+            "pid": 4321,
+            "terminated": True,
+            "quiesced": True,
+            "remaining_pid": None,
+            "markers_removed": True,
+            "daemon_fence": {"safe_to_restart": True},
+            "provider_runner_fence": {"safe_to_restart": True},
+        }
+
+    monkeypatch.setattr(
+        supervisor,
+        "_terminate_managed_daemon_tree",
+        terminate_under_both_fences,
+    )
+
+    def forbidden_reacquisition() -> dict[str, object]:
+        raise AssertionError("Quack shutdown must use its retained fences")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_reconcile_interrupted_database_portal_attempts",
+        forbidden_reacquisition,
+    )
+
+    def reconcile_under_both_fences(
+        selected_program: DatabaseProgramConfig,
+        *,
+        owner_fence_held: bool = False,
+        trigger: str = "supervisor_signal_shutdown",
+    ) -> dict[str, object]:
+        assert selected_program is program
+        assert owner_fence_held
+        assert owner_fence_active
+        assert trigger == "supervisor_signal_shutdown"
+        assert not competing_launch_acquired.is_set()
+        order.append("reconcile")
+        return {
+            "reconciled": True,
+            "blocked": False,
+            "safe_to_restart": True,
+        }
+
+    monkeypatch.setattr(
+        supervisor,
+        "_reconcile_interrupted_database_portal_attempts_bound",
+        reconcile_under_both_fences,
+    )
+
+    with pytest.raises(SystemExit) as stopped:
+        supervisor.run_forever()
+
+    assert stopped.value.code == 128 + signal.SIGTERM
+    assert competing_thread
+    competing_thread[0].join(timeout=2.0)
+    assert competing_launch_acquired.is_set()
+    assert owner_fence_entries == 1
+    assert not owner_fence_active
+    assert order == ["owner_enter", "terminate", "reconcile", "owner_exit"]
+
+
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_supervisor_shutdown_does_not_open_or_mutate_db_when_not_quiesced(
     tmp_path: Path,
@@ -9120,6 +9295,9 @@ def test_quack_shutdown_reconciliation_scopes_exact_program_environment(
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
         implementation_daemon as daemon_module,
     )
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        duckdb_state as duckdb_state_module,
+    )
 
     repo = tmp_path / "repo"
     state_dir = repo / "state"
@@ -9166,6 +9344,35 @@ def test_quack_shutdown_reconciliation_scopes_exact_program_environment(
     before = {name: os.environ.get(name) for name in conflicting}
     selected = program.environment()
     observed: dict[str, object] = {}
+    owner_binding = {
+        "server_id": "server:quack-shutdown-fixture",
+        "store_id": program.store_id,
+        "database_uuid": "496924b1-85df-439c-afcf-cb39a6ed0efa",
+        "schema_revision": 3,
+        "schema_fingerprint": "sha256:" + "a" * 64,
+        "generation": 58,
+        "process_birth_id": "process:quack-shutdown-fixture",
+        "listen_uri": "quack:127.0.0.1:41307",
+        "extension_fingerprint": "sha256:" + "b" * 64,
+    }
+    empty_barrier = {
+        "store_id": program.store_id,
+        "active_request_count": 0,
+        "active_processing_count": 0,
+    }
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_mutation_inbox_barrier",
+        lambda store_id: {
+            **empty_barrier,
+            "store_id": store_id,
+        },
+    )
+    monkeypatch.setattr(
+        duckdb_state_module,
+        "_resolve_quack_token_handle",
+        lambda **_kwargs: ("fixture-secret", dict(owner_binding)),
+    )
 
     def assert_selected_environment() -> None:
         for name, value in selected.items():
@@ -9212,6 +9419,14 @@ def test_quack_shutdown_reconciliation_scopes_exact_program_environment(
             }
             return {"reconciled": True, "blocked": False}
 
+        def reconcile_retained_fenced_provider_occurrences(
+            self,
+        ) -> dict[str, object]:
+            return _terminal_retained_occurrence_reconciliation(
+                daemon_module,
+                bridge_module,
+            )
+
         def close(self) -> None:
             assert_selected_environment()
             observed["closed"] = True
@@ -9242,7 +9457,12 @@ def test_quack_shutdown_reconciliation_scopes_exact_program_environment(
 
     result = supervisor._reconcile_interrupted_database_portal_attempts()
 
-    assert result == {"reconciled": True, "blocked": False}
+    assert result["reconciled"] is True
+    assert result["blocked"] is False
+    # This fixture proves environment scoping for a foreign g6 store.  The
+    # sealed g9 retained-occurrence repair must not run merely because a task
+    # prefix resembles PCTDD.
+    assert "retained_occurrence_reconciliation" not in result
     assert observed["closed"] is True
     assert observed["callbacks"] == (
         "effect_fn",
@@ -15573,6 +15793,14 @@ def test_relative_database_state_dir_uses_repository_anchored_attempt_root(
         ) -> dict[str, object]:
             return {"reconciled": True, "blocked": False}
 
+        def reconcile_retained_fenced_provider_occurrences(
+            self,
+        ) -> dict[str, object]:
+            return _terminal_retained_occurrence_reconciliation(
+                daemon_module,
+                bridge_module,
+            )
+
         def close(self) -> None:
             return None
 
@@ -15714,6 +15942,14 @@ def test_plan_bound_database_child_uses_one_effective_sharding_contract(
                 "blocked": False,
                 "repair_batch_pending": False,
             }
+
+        def reconcile_retained_fenced_provider_occurrences(
+            self,
+        ) -> dict[str, object]:
+            return _terminal_retained_occurrence_reconciliation(
+                daemon_module,
+                bridge_module,
+            )
 
         def close(self) -> None:
             return None

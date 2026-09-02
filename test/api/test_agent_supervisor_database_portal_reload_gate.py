@@ -954,7 +954,13 @@ def test_quack_projection_uses_one_connection_and_detects_generation_churn(
     from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state
 
     events: list[str] = []
-    owner_values = iter((_owner_binding(41), _owner_binding(after_generation)))
+    owner_values = iter(
+        (
+            _owner_binding(41),
+            _owner_binding(after_generation),
+            _owner_binding(after_generation),
+        )
+    )
 
     class Connection:
         def __init__(self):
@@ -991,6 +997,15 @@ def test_quack_projection_uses_one_connection_and_detects_generation_churn(
         lambda _store: tmp_path / "owner.lock",
     )
     monkeypatch.setattr(duckdb_state, "exclusive_file_lock", owner_lock)
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_mutation_inbox_barrier",
+        lambda store_id: {
+            "store_id": store_id,
+            "active_request_count": 0,
+            "active_processing_count": 0,
+        },
+    )
     monkeypatch.setattr(
         duckdb_state,
         "_resolve_quack_token_handle",
@@ -1173,6 +1188,163 @@ def test_outer_owner_receipt_uses_existing_fence_and_one_quack_transaction(
         "lock",
         "BEGIN TRANSACTION",
         "receipt",
+        "COMMIT",
+        "close",
+        "unlock",
+    ]
+
+
+def test_outer_owner_receipt_and_task_cas_share_fence_and_transaction(
+    tmp_path,
+    monkeypatch,
+):
+    supervisor = PortalImplementationSupervisor(_config(tmp_path))
+    program = supervisor.config.database_program
+    assert program is not None
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        database_task_source,
+        duckdb_state,
+        intent_repository,
+    )
+
+    events: list[str] = []
+    owner_values = iter(
+        (_owner_status_with_replica(41), _owner_status_with_replica(41))
+    )
+    mutation_barrier = _empty_quack_mutation_barrier()
+
+    class Connection:
+        def __init__(self):
+            self._quack_mutation_binding = _owner_binding(41)
+            self.in_transaction = False
+
+        def execute(self, statement, _parameters=None):
+            events.append(statement)
+            if statement == "BEGIN TRANSACTION":
+                self.in_transaction = True
+            elif statement in {"COMMIT", "ROLLBACK"}:
+                self.in_transaction = False
+            return self
+
+        def close(self):
+            events.append("close")
+
+    connection = Connection()
+
+    @contextmanager
+    def mutation_fence():
+        events.append("lock")
+        try:
+            yield program
+        finally:
+            events.append("unlock")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_reload_mutation_fence",
+        mutation_fence,
+    )
+    monkeypatch.setattr(
+        duckdb_state,
+        "_resolve_quack_token_handle",
+        lambda **_kwargs: ("not-published", next(owner_values)),
+    )
+    monkeypatch.setattr(
+        duckdb_state,
+        "open_quack_transport_connection",
+        lambda _uri, *, token: connection,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_database_portal_mutation_inbox_barrier",
+        lambda _store_id: dict(mutation_barrier),
+    )
+
+    def read_receipt(_source, **subject):
+        events.append("receipt")
+        return {
+            "authority": {
+                "owner_binding": _owner_binding(41),
+                "read_replica_observation": dict(
+                    subject["controller_replica_observation"]
+                ),
+                "mutation_barrier": dict(
+                    subject["controller_mutation_barrier"]
+                ),
+            }
+        }
+
+    monkeypatch.setattr(
+        database_task_source.DatabaseTaskSource,
+        "fenced_provider_outer_authority_population_receipt",
+        read_receipt,
+    )
+    monkeypatch.setattr(
+        intent_repository,
+        "fenced_provider_outer_authority_population_receipt_valid",
+        lambda _receipt: True,
+    )
+
+    def apply_cas(_repository, actual_connection, **arguments):
+        assert actual_connection is connection
+        assert connection.in_transaction is True
+        assert arguments["task_cid"] == "cid:PCTDD-006"
+        assert arguments["expected_revision"] == 28
+        events.append("cas")
+        return SimpleNamespace(changed=True, revision=29)
+
+    monkeypatch.setattr(
+        intent_repository.IntentRepository,
+        "_cas_task_status_on_connection",
+        apply_cas,
+    )
+    subject = {
+        "task_cid": "cid:PCTDD-006",
+        "task_alias": "PCTDD-006",
+        "task_revision": 28,
+        "expected_task_status": "blocked",
+        "attempt_id": "attempt:outer",
+        "claim_id": "claim:outer",
+        "lease_id": "lease:outer",
+        "owner_session_id": "owner:lane-0",
+        "fencing_token": 6,
+        "fence_epoch": 0,
+        "expected_store_id": "state/control.duckdb",
+        "expected_store_generation": 41,
+        "receipt_nonce": "nonce:outer",
+        "receipt_epoch": 1,
+    }
+
+    def callback(receipt, pinned):
+        events.append("callback")
+        assert receipt["authority"]["owner_binding"]["generation"] == 41
+        result = pinned.cas_task_status(
+            task_cid="cid:PCTDD-006",
+            expected_revision=28,
+            new_status="retrying",
+        )
+        with pytest.raises(RuntimeError, match="one-shot"):
+            pinned.cas_task_status(
+                task_cid="cid:PCTDD-006",
+                expected_revision=29,
+                new_status="blocked",
+            )
+        return {"resulting_revision": result.revision}
+
+    result = (
+        supervisor._database_portal_execute_with_fenced_provider_outer_authority_cas(
+            subject=subject,
+            callback=callback,
+        )
+    )
+
+    assert result == {"resulting_revision": 29}
+    assert events == [
+        "lock",
+        "BEGIN TRANSACTION",
+        "receipt",
+        "callback",
+        "cas",
         "COMMIT",
         "close",
         "unlock",

@@ -4962,6 +4962,11 @@ class PortalImplementationDaemon:
             | None
         ) = None,
         worktree_pool_enabled: bool | None = None,
+        worktree_seed_context_enabled: bool = True,
+        worktree_base_ref: str | None = None,
+        worktree_source_relative_path: str | None = None,
+        worktree_source_ref: str | None = None,
+        worktree_source_git_common_dir: str | None = None,
         worktree_pool_max_entries: int | None = None,
         worktree_pool: WorktreePool | None = None,
         maintenance_interval_seconds: float | None = None,
@@ -5202,6 +5207,28 @@ class PortalImplementationDaemon:
             if worktree_pool_enabled is None
             else bool(worktree_pool_enabled)
         )
+        self.worktree_seed_context_enabled = bool(
+            worktree_seed_context_enabled
+        )
+        self.worktree_base_ref = str(worktree_base_ref or "").strip()
+        source_relative = str(worktree_source_relative_path or "").strip()
+        source_ref = str(worktree_source_ref or "").strip()
+        source_common = str(worktree_source_git_common_dir or "").strip()
+        if len({bool(source_relative), bool(source_ref), bool(source_common)}) != 1:
+            raise ValueError(
+                "worktree source path, ref, and Git authority must be configured together"
+            )
+        if source_relative:
+            source_path = PurePosixPath(source_relative)
+            if (
+                source_path.is_absolute()
+                or source_path.as_posix() != source_relative
+                or any(part in {"", ".", ".."} for part in source_path.parts)
+            ):
+                raise ValueError("worktree source path must be canonical")
+        self.worktree_source_relative_path = source_relative
+        self.worktree_source_ref = source_ref
+        self.worktree_source_git_common_dir = source_common
         configured_pool_size = (
             _env_int(WORKTREE_POOL_MAX_ENTRIES_ENV, DEFAULT_WORKTREE_POOL_MAX_ENTRIES)
             if worktree_pool_max_entries is None
@@ -39025,7 +39052,13 @@ class PortalImplementationDaemon:
                     retained_candidate_retry_required
                 ),
             )
-            baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
+            baseline_ref = self._create_seeded_worktree(
+                worktree_path,
+                branch_name,
+                task=task,
+                allow_pool=self.worktree_pool_enabled,
+                seed_context=self.worktree_seed_context_enabled,
+            )
             # A pooled checkout keeps a stable physical path so Git does not
             # have to relocate populated submodule worktrees.  Resolve the
             # task's provisional timestamp path before any command, state, or
@@ -43775,8 +43808,8 @@ class PortalImplementationDaemon:
         seed_context: bool = True,
         offline_local_only: bool = False,
     ) -> str:
+        base_ref = self.worktree_base_ref or self._main_branch_name()
         if self.worktree_pool is not None and allow_pool:
-            base_ref = self._main_branch_name()
             cache_key = self._implementation_worktree_cache_key()
 
             def activate(candidate: Path) -> None:
@@ -43850,7 +43883,7 @@ class PortalImplementationDaemon:
             return baseline_ref
 
         self._run_git(
-            ["worktree", "add", "-b", branch_name, str(worktree_path), self._main_branch_name()],
+            ["worktree", "add", "-b", branch_name, str(worktree_path), base_ref],
             cwd=self.repo_root,
         )
         baseline_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
@@ -43867,6 +43900,54 @@ class PortalImplementationDaemon:
                 task=task,
                 overwrite_existing=True,
             )
+        if self.worktree_base_ref:
+            expected_base = self._run_git(
+                ["rev-parse", f"{self.worktree_base_ref}^{{commit}}"],
+                cwd=self.repo_root,
+            ).stdout.strip()
+            observed_status = self._run_git(
+                ["status", "--porcelain", "--untracked-files=all"],
+                cwd=worktree_path,
+            ).stdout.strip()
+            if baseline_ref != expected_base or observed_status:
+                raise RuntimeError(
+                    "retained recovery worktree did not preserve its exact clean baseline"
+                )
+        if self.worktree_source_relative_path:
+            source_path = worktree_path / self.worktree_source_relative_path
+            if source_path.is_symlink() or not source_path.is_dir():
+                raise RuntimeError(
+                    "retained recovery source checkout is unavailable"
+                )
+            expected_source = self._run_git(
+                ["rev-parse", f"{self.worktree_source_ref}^{{commit}}"],
+                cwd=source_path,
+            ).stdout.strip()
+            observed_source = self._run_git(
+                ["rev-parse", "HEAD"], cwd=source_path
+            ).stdout.strip()
+            source_status = self._run_git(
+                ["status", "--porcelain", "--untracked-files=all"],
+                cwd=source_path,
+            ).stdout.strip()
+            source_common_text = self._run_git(
+                ["rev-parse", "--git-common-dir"], cwd=source_path
+            ).stdout.strip()
+            observed_common = Path(source_common_text)
+            if not observed_common.is_absolute():
+                observed_common = source_path / observed_common
+            expected_common = Path(
+                self.worktree_source_git_common_dir
+            ).resolve(strict=True)
+            observed_common = observed_common.resolve(strict=True)
+            if (
+                observed_source != expected_source
+                or source_status
+                or observed_common != expected_common
+            ):
+                raise RuntimeError(
+                    "retained recovery source checkout drifted from its clean baseline"
+                )
         return baseline_ref
 
     def _effective_pooled_worktree_path(self, requested_path: Path) -> Path:
@@ -78125,6 +78206,104 @@ DATABASE_FENCED_PROVIDER_INNER_MAX_FIELD_BYTES = 1 * 1024 * 1024
 DATABASE_FENCED_PROVIDER_INNER_MAX_RECEIPT_BYTES = 16 * 1024 * 1024
 _DATABASE_FENCED_PROVIDER_INNER_BIGINT_MIN = -(2**63)
 _DATABASE_FENCED_PROVIDER_INNER_BIGINT_MAX = 2**63 - 1
+# Additive successor records for the three operator-reviewed retained
+# occurrences.  These schemas intentionally do not widen either population
+# receipt above: the full receipts remain ephemeral access-controlled
+# observations, while only their compact CIDs and exact bindings cross the
+# canonical task-status boundary.
+DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-admission@2"
+)
+DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-consumption@2"
+)
+DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-retained-reconciliation@2"
+)
+_DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_FIELDS = frozenset(
+    {
+        "schema",
+        "manifest_id",
+        "credit_id",
+        "occurrence_id",
+        "task_cid",
+        "task_alias",
+        "board_namespace",
+        "recovery_mode",
+        "candidate_disposition",
+        "disposition_repository_root",
+        "disposition_git_common_dir",
+        "disposition_baseline_ref",
+        "source_repository_root",
+        "source_git_common_dir",
+        "source_relative_path",
+        "expected_task_revision",
+        "expected_task_status",
+        "predecessor_attempt_id",
+        "predecessor_claim_id",
+        "predecessor_lease_id",
+        "predecessor_owner_session_id",
+        "predecessor_branch",
+        "predecessor_attempt_number",
+        "predecessor_fencing_token",
+        "predecessor_fence_epoch",
+        "receipt_nonce",
+        "receipt_epoch",
+        "inner_receipt_cid",
+        "inner_query_profile_id",
+        "coordinator_receipt_cid",
+        "outer_receipt_cid",
+        "outer_query_profile_id",
+        "owner_store_id",
+        "owner_generation_floor",
+        "owner_live_generation",
+        "owner_database_uuid",
+        "owner_schema_fingerprint",
+        "owner_binding_cid",
+        "owner_schema_revision",
+        "control_store_generation",
+        "clean_baseline_ref",
+        "retained_ref",
+        "retained_commit",
+        "retained_worktree_path",
+        "credit_ordinal",
+        "allow_pool",
+        "seed_prior_attempt",
+        "retry_policy",
+        "one_shot",
+        "admission_id",
+    }
+)
+_DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_FIELDS = frozenset(
+    {
+        "schema",
+        "admission_id",
+        "manifest_id",
+        "credit_id",
+        "occurrence_id",
+        "task_cid",
+        "task_alias",
+        "recovery_mode",
+        "candidate_disposition",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "expected_task_revision",
+        "expected_task_status",
+        "resulting_task_revision",
+        "resulting_task_status",
+        "consumed_before_worker_start",
+        "one_shot",
+        "consumption_id",
+    }
+)
 DATABASE_EMPTY_CANONICAL_LIST_DIGEST = (
     "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 )
@@ -79231,24 +79410,56 @@ def _database_inner_process_binding_valid(authority: Mapping[str, Any]) -> bool:
     control = authority.get("control_schema_evidence")
     birth = authority.get("process_birth")
     record = authority.get("process_instance_record")
-    if (
-        not isinstance(control, Mapping)
-        or set(control)
-        != {
+    authority_mode = authority.get("authority_mode")
+    control_shape_valid = bool(
+        isinstance(control, Mapping)
+        and set(control)
+        == {
             "state_schema_revision",
             "profile_id",
             "schema_fingerprint",
             "verified",
         }
-        or any(
-            type(control.get(name)) is not str
+        and all(
+            type(control.get(name)) is str
             for name in (
                 "state_schema_revision",
                 "profile_id",
                 "schema_fingerprint",
             )
         )
-        or type(control.get("verified")) is not bool
+        and type(control.get("verified")) is bool
+    )
+    verified_profile = bool(
+        control_shape_valid
+        and control.get("verified") is True
+        and control.get("state_schema_revision")
+        == DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
+        and control.get("profile_id")
+        == "datasets-authoritative-operational-control-plane@1"
+        and (
+            control.get("schema_fingerprint") == ""
+            if authority_mode == "quack"
+            else re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(control.get("schema_fingerprint") or ""),
+            )
+            is not None
+        )
+    )
+    legacy_embedded_profile = bool(
+        control_shape_valid
+        and authority_mode in {"embedded", "embedded_exclusive"}
+        and dict(control)
+        == {
+            "state_schema_revision": "",
+            "profile_id": "",
+            "schema_fingerprint": "",
+            "verified": False,
+        }
+    )
+    if (
+        not (verified_profile or legacy_embedded_profile)
         or not isinstance(birth, Mapping)
         or set(birth)
         != {"pid", "start_time_ticks", "boot_id", "parent_pid"}
@@ -79667,6 +79878,727 @@ def database_fenced_provider_inner_population_receipt_valid(value: Any) -> bool:
     return receipt_cid == DatabaseImplementationDaemon._database_canonical_digest(
         unsigned
     )
+
+
+def _database_fenced_provider_retained_digest(value: Any) -> str:
+    """Return the one canonical SHA-256 identity used by the @2 chain."""
+
+    return "sha256:" + hashlib.sha256(
+        canonical_json(value).encode("utf-8")
+    ).hexdigest()
+
+
+def _database_fenced_provider_retained_disposition_id(
+    occurrence: Mapping[str, Any],
+) -> str:
+    return _database_fenced_provider_retained_digest(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-fenced-provider-retained-disposition@2"
+            ),
+            "occurrence_id": _database_fenced_provider_retained_digest(
+                dict(occurrence)
+            ),
+            "recovery_mode": occurrence["recovery_mode"],
+            "candidate_disposition": occurrence["candidate_disposition"],
+            "predecessor_branch": occurrence["predecessor_branch"],
+            "clean_baseline_ref": occurrence["clean_baseline_ref"],
+            "retained_ref": occurrence["retained_ref"],
+            "retained_commit": occurrence["retained_commit"],
+            "retained_worktree_path": occurrence["retained_worktree_path"],
+        }
+    )
+
+
+def _database_fenced_provider_retained_fence_record(
+    *,
+    occurrence: Mapping[str, Any],
+    manifest_id: str,
+    credit_id: str,
+    attempt_id: str,
+    task_cid: str,
+    fencing_token: int,
+    fence_epoch: int,
+) -> dict[str, Any]:
+    record = {
+        "attempt_id": attempt_id,
+        "task_cid": task_cid,
+        "evidence_id": _database_fenced_provider_retained_digest(
+            dict(occurrence)
+        ),
+        "migration_manifest_id": manifest_id,
+        "migration_credit_id": credit_id,
+        "snapshot_id": _database_fenced_provider_retained_disposition_id(
+            occurrence
+        ),
+        "fencing_token": fencing_token,
+        "fence_epoch": fence_epoch,
+    }
+    record["fence_id"] = _database_fenced_provider_retained_digest(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-fenced-provider-retained-dispatch-fence@2"
+            ),
+            **record,
+        }
+    )
+    return record
+
+
+def _database_fenced_provider_retained_occurrence_for_admission(
+    value: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Resolve one exact operator-owned occurrence from a compact admission."""
+
+    try:
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+        )
+    except Exception:
+        return None
+    matches = [
+        item
+        for item in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        if isinstance(item, Mapping)
+        and item.get("task_cid") == value.get("task_cid")
+        and item.get("task_alias") == value.get("task_alias")
+        and _database_fenced_provider_retained_digest(dict(item))
+        == value.get("occurrence_id")
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def database_fenced_provider_retained_admission_valid(value: Any) -> bool:
+    """Validate the compact, forward-only @2 recovery admission.
+
+    Full inner and outer receipts are deliberately absent.  This validator
+    proves only that the compact record is self-consistent with one sealed
+    operator occurrence and with its content-addressed manifest/credit IDs.
+    Leaf receipt validity is checked while constructing the admission at the
+    controller-owned transaction boundary.
+    """
+
+    if not isinstance(value, Mapping):
+        return False
+    record = dict(value)
+    if (
+        set(record) != _DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_FIELDS
+        or record.get("schema")
+        != DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA
+    ):
+        return False
+    unsigned = dict(record)
+    admission_id = str(unsigned.pop("admission_id", "") or "")
+    if (
+        re.fullmatch(r"sha256:[0-9a-f]{64}", admission_id) is None
+        or _database_fenced_provider_retained_digest(unsigned) != admission_id
+    ):
+        return False
+    occurrence = _database_fenced_provider_retained_occurrence_for_admission(
+        record
+    )
+    if occurrence is None:
+        return False
+    try:
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            database_fenced_provider_retained_credit,
+        )
+
+        credit = dict(database_fenced_provider_retained_credit(occurrence))
+    except Exception:
+        return False
+    exact_occurrence_fields = {
+        "task_cid": "task_cid",
+        "task_alias": "task_alias",
+        "board_namespace": "board_namespace",
+        "recovery_mode": "recovery_mode",
+        "candidate_disposition": "candidate_disposition",
+        "disposition_repository_root": "disposition_repository_root",
+        "disposition_git_common_dir": "disposition_git_common_dir",
+        "disposition_baseline_ref": "disposition_baseline_ref",
+        "source_repository_root": "source_repository_root",
+        "source_git_common_dir": "source_git_common_dir",
+        "source_relative_path": "source_relative_path",
+        "expected_task_revision": "blocked_task_revision",
+        "expected_task_status": "blocked_task_status",
+        "predecessor_attempt_id": "predecessor_attempt_id",
+        "predecessor_claim_id": "predecessor_claim_id",
+        "predecessor_lease_id": "predecessor_lease_id",
+        "predecessor_owner_session_id": "predecessor_owner_session_id",
+        "predecessor_branch": "predecessor_branch",
+        "predecessor_attempt_number": "predecessor_attempt_number",
+        "predecessor_fencing_token": "predecessor_fencing_token",
+        "predecessor_fence_epoch": "predecessor_fence_epoch",
+        "receipt_nonce": "receipt_nonce",
+        "receipt_epoch": "receipt_epoch",
+        "inner_query_profile_id": "inner_query_profile_id",
+        "outer_query_profile_id": "outer_query_profile_id",
+        "owner_store_id": "owner_store_id",
+        "owner_generation_floor": "owner_generation_floor",
+        "owner_database_uuid": "owner_database_uuid",
+        "owner_schema_fingerprint": "owner_schema_fingerprint",
+        "owner_schema_revision": "owner_schema_revision",
+        "control_store_generation": "control_store_generation",
+        "clean_baseline_ref": "clean_baseline_ref",
+        "retained_ref": "retained_ref",
+        "retained_commit": "retained_commit",
+        "retained_worktree_path": "retained_worktree_path",
+        "credit_ordinal": "credit_ordinal",
+        "allow_pool": "allow_pool",
+        "seed_prior_attempt": "seed_prior_attempt",
+        "retry_policy": "retry_policy",
+        "one_shot": "one_shot",
+    }
+    if (
+        record.get("manifest_id")
+        != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+        or record.get("credit_id")
+        != _database_fenced_provider_retained_digest(credit)
+        or any(
+            type(record.get(target)) is not type(occurrence.get(source))
+            or record.get(target) != occurrence.get(source)
+            for target, source in exact_occurrence_fields.items()
+        )
+        or record.get("expected_task_status") != "blocked"
+        or record.get("one_shot") is not True
+        or record.get("credit_ordinal") != 1
+        or any(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(record.get(name) or ""),
+            )
+            is None
+            for name in (
+                "manifest_id",
+                "credit_id",
+                "occurrence_id",
+                "inner_receipt_cid",
+                "inner_query_profile_id",
+                "coordinator_receipt_cid",
+                "outer_receipt_cid",
+                "outer_query_profile_id",
+            )
+        )
+        or type(record.get("owner_generation_floor")) is not int
+        or record["owner_generation_floor"] < 1
+        or type(record.get("owner_live_generation")) is not int
+        or record["owner_live_generation"] < record["owner_generation_floor"]
+        or re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            str(record.get("owner_database_uuid") or ""),
+        )
+        is None
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(record.get("owner_schema_fingerprint") or ""),
+        )
+        is None
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(record.get("owner_binding_cid") or ""),
+        )
+        is None
+    ):
+        return False
+    return True
+
+
+def database_fenced_provider_retained_admission(
+    *,
+    occurrence: Mapping[str, Any],
+    credit: Mapping[str, Any],
+    inner_receipt: Mapping[str, Any],
+    outer_receipt: Mapping[str, Any],
+    expected_task_revision: int,
+    expected_task_status: str,
+) -> Mapping[str, Any]:
+    """Join exact inner and outer receipts into one compact @2 admission."""
+
+    try:
+        from ..task_sources.intent_repository import (
+            fenced_provider_outer_authority_population_receipt_valid,
+        )
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            database_fenced_provider_retained_credit,
+        )
+    except Exception as exc:
+        raise DatabaseImplementationConflictError(
+            "retained recovery authorities are unavailable"
+        ) from exc
+    if not all(
+        isinstance(item, Mapping)
+        for item in (occurrence, credit, inner_receipt, outer_receipt)
+    ):
+        raise TypeError("retained recovery admission requires mappings")
+    occurrence_record = dict(occurrence)
+    exact_occurrences = [
+        dict(item)
+        for item in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        if isinstance(item, Mapping)
+        and canonical_json(dict(item)) == canonical_json(occurrence_record)
+    ]
+    if len(exact_occurrences) != 1:
+        raise DatabaseImplementationConflictError(
+            "retained recovery occurrence is not operator reviewed"
+        )
+    expected_credit = dict(
+        database_fenced_provider_retained_credit(exact_occurrences[0])
+    )
+    if canonical_json(dict(credit)) != canonical_json(expected_credit):
+        raise DatabaseImplementationConflictError(
+            "retained recovery credit does not bind the occurrence"
+        )
+    # Keep validator invocation order deterministic: the execution/coordinator
+    # receipt is checked before the controller-owned Quack receipt.
+    if not database_fenced_provider_inner_population_receipt_valid(
+        inner_receipt
+    ):
+        raise DatabaseImplementationConflictError(
+            "retained recovery inner receipt is invalid"
+        )
+    if not fenced_provider_outer_authority_population_receipt_valid(
+        outer_receipt
+    ):
+        raise DatabaseImplementationConflictError(
+            "retained recovery outer receipt is invalid"
+        )
+    inner = dict(inner_receipt)
+    outer = dict(outer_receipt)
+    inner_subject = inner.get("subject")
+    outer_subject = outer.get("subject")
+    cross_store = outer.get("cross_store_context")
+    owner_binding = (
+        outer.get("authority", {}).get("owner_binding")
+        if isinstance(outer.get("authority"), Mapping)
+        else None
+    )
+    if not all(
+        isinstance(item, Mapping)
+        for item in (inner_subject, outer_subject, cross_store, owner_binding)
+    ):
+        raise DatabaseImplementationConflictError(
+            "retained recovery receipt projections are incomplete"
+        )
+    pin = exact_occurrences[0]
+    common_bindings = {
+        "task_cid": "task_cid",
+        "task_alias": "task_alias",
+        "task_revision": "blocked_task_revision",
+        "attempt_id": "predecessor_attempt_id",
+        "claim_id": "predecessor_claim_id",
+        "owner_session_id": "predecessor_owner_session_id",
+        "fencing_token": "predecessor_fencing_token",
+        "fence_epoch": "predecessor_fence_epoch",
+    }
+    credit_id = _database_fenced_provider_retained_digest(expected_credit)
+    assessment = outer.get("publication_assessment")
+    inner_groups = inner.get("groups")
+    inner_authority = inner.get("authority")
+    observed_generation = owner_binding.get("generation")
+    owner_binding_cid = _database_fenced_provider_retained_digest(
+        dict(owner_binding)
+    )
+    if (
+        type(expected_task_revision) is not int
+        or expected_task_revision != pin["blocked_task_revision"]
+        or expected_task_status != pin["blocked_task_status"]
+        or any(
+            inner_subject.get(target) != pin[source]
+            or outer_subject.get(target) != pin[source]
+            for target, source in common_bindings.items()
+        )
+        or inner_subject.get("lease_id") != pin["predecessor_lease_id"]
+        or inner_subject.get("attempt_number")
+        != pin["predecessor_attempt_number"]
+        or inner_subject.get("recovery_manifest_id")
+        != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+        or inner_subject.get("recovery_credit_id") != credit_id
+        or outer_subject.get("expected_task_status")
+        != pin["blocked_task_status"]
+        or outer_subject.get("expected_store_id") != pin["owner_store_id"]
+        or type(observed_generation) is not int
+        or observed_generation < pin["owner_generation_floor"]
+        or outer_subject.get("expected_store_generation")
+        != observed_generation
+        or cross_store.get("coordination_lease_id")
+        != pin["predecessor_lease_id"]
+        or owner_binding.get("store_id") != pin["owner_store_id"]
+        or owner_binding.get("database_uuid") != pin["owner_database_uuid"]
+        or owner_binding.get("schema_fingerprint")
+        != pin["owner_schema_fingerprint"]
+        or owner_binding.get("schema_revision")
+        != pin["owner_schema_revision"]
+        or not isinstance(inner_authority, Mapping)
+        or inner_authority.get("authority_mode") != "quack"
+        or inner_authority.get("control_store_id") != pin["owner_store_id"]
+        or inner_authority.get("control_store_generation")
+        != pin["control_store_generation"]
+        or inner.get("receipt_nonce") != pin["receipt_nonce"]
+        or outer.get("receipt_nonce") != pin["receipt_nonce"]
+        or inner.get("receipt_epoch") != pin["receipt_epoch"]
+        or outer.get("receipt_epoch") != pin["receipt_epoch"]
+        or inner.get("query_profile_id") != pin["inner_query_profile_id"]
+        or outer.get("query_profile_id") != pin["outer_query_profile_id"]
+        or not isinstance(assessment, Mapping)
+        or any(type(value) is not int or value != 0 for value in assessment.values())
+        or not isinstance(inner_groups, Mapping)
+        or any(
+            not isinstance(inner_groups.get(name), Mapping)
+            or inner_groups[name].get("count") != 0
+            for name in ("provider_invocations", "effect_claims")
+        )
+    ):
+        raise DatabaseImplementationConflictError(
+            "retained recovery receipt bindings drifted"
+        )
+    record: dict[str, Any] = {
+        "schema": DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
+        "manifest_id": DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+        "credit_id": credit_id,
+        "occurrence_id": _database_fenced_provider_retained_digest(pin),
+        "task_cid": pin["task_cid"],
+        "task_alias": pin["task_alias"],
+        "board_namespace": pin["board_namespace"],
+        "recovery_mode": pin["recovery_mode"],
+        "candidate_disposition": pin["candidate_disposition"],
+        "disposition_repository_root": pin["disposition_repository_root"],
+        "disposition_git_common_dir": pin["disposition_git_common_dir"],
+        "disposition_baseline_ref": pin["disposition_baseline_ref"],
+        "source_repository_root": pin["source_repository_root"],
+        "source_git_common_dir": pin["source_git_common_dir"],
+        "source_relative_path": pin["source_relative_path"],
+        "expected_task_revision": expected_task_revision,
+        "expected_task_status": expected_task_status,
+        "predecessor_attempt_id": pin["predecessor_attempt_id"],
+        "predecessor_claim_id": pin["predecessor_claim_id"],
+        "predecessor_lease_id": pin["predecessor_lease_id"],
+        "predecessor_owner_session_id": pin[
+            "predecessor_owner_session_id"
+        ],
+        "predecessor_branch": pin["predecessor_branch"],
+        "predecessor_attempt_number": pin["predecessor_attempt_number"],
+        "predecessor_fencing_token": pin["predecessor_fencing_token"],
+        "predecessor_fence_epoch": pin["predecessor_fence_epoch"],
+        "receipt_nonce": pin["receipt_nonce"],
+        "receipt_epoch": pin["receipt_epoch"],
+        "inner_receipt_cid": str(inner.get("receipt_cid") or ""),
+        "inner_query_profile_id": pin["inner_query_profile_id"],
+        "coordinator_receipt_cid": str(
+            inner.get("coordinator_receipt_cid") or ""
+        ),
+        "outer_receipt_cid": str(outer.get("receipt_cid") or ""),
+        "outer_query_profile_id": pin["outer_query_profile_id"],
+        "owner_store_id": pin["owner_store_id"],
+        "owner_generation_floor": pin["owner_generation_floor"],
+        "owner_live_generation": observed_generation,
+        "owner_database_uuid": pin["owner_database_uuid"],
+        "owner_schema_fingerprint": pin["owner_schema_fingerprint"],
+        "owner_binding_cid": owner_binding_cid,
+        "owner_schema_revision": pin["owner_schema_revision"],
+        "control_store_generation": pin["control_store_generation"],
+        "clean_baseline_ref": pin["clean_baseline_ref"],
+        "retained_ref": pin["retained_ref"],
+        "retained_commit": pin["retained_commit"],
+        "retained_worktree_path": pin["retained_worktree_path"],
+        "credit_ordinal": pin["credit_ordinal"],
+        "allow_pool": pin["allow_pool"],
+        "seed_prior_attempt": pin["seed_prior_attempt"],
+        "retry_policy": pin["retry_policy"],
+        "one_shot": True,
+    }
+    record["admission_id"] = _database_fenced_provider_retained_digest(record)
+    if not database_fenced_provider_retained_admission_valid(record):
+        raise DatabaseImplementationConflictError(
+            "retained recovery admission failed closed validation"
+        )
+    return MappingProxyType(record)
+
+
+def database_fenced_provider_retained_consumption_valid(value: Any) -> bool:
+    """Validate the compact one-shot retrying -> in-progress consumption."""
+
+    if not isinstance(value, Mapping):
+        return False
+    record = dict(value)
+    if (
+        set(record) != _DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_FIELDS
+        or record.get("schema")
+        != DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_SCHEMA
+    ):
+        return False
+    unsigned = dict(record)
+    consumption_id = str(unsigned.pop("consumption_id", "") or "")
+    return bool(
+        re.fullmatch(r"sha256:[0-9a-f]{64}", consumption_id)
+        and _database_fenced_provider_retained_digest(unsigned)
+        == consumption_id
+        and all(
+            re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(record.get(name) or ""),
+            )
+            for name in (
+                "admission_id",
+                "manifest_id",
+                "credit_id",
+                "occurrence_id",
+            )
+        )
+        and all(
+            type(record.get(name)) is str and bool(record.get(name))
+            for name in (
+                "task_cid",
+                "task_alias",
+                "recovery_mode",
+                "candidate_disposition",
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+            )
+        )
+        and all(
+            type(record.get(name)) is int and int(record[name]) >= minimum
+            for name, minimum in (
+                ("attempt_number", 1),
+                ("fencing_token", 0),
+                ("fence_epoch", 0),
+                ("expected_task_revision", 0),
+                ("resulting_task_revision", 1),
+            )
+        )
+        and record.get("expected_task_status") == "retrying"
+        and record.get("resulting_task_status") == "in_progress"
+        and record.get("resulting_task_revision")
+        == record.get("expected_task_revision") + 1
+        and record.get("consumed_before_worker_start") is True
+        and record.get("one_shot") is True
+    )
+
+
+def database_fenced_provider_retained_consumption_matches_admission(
+    *,
+    admission: Any,
+    consumption: Any,
+) -> bool:
+    """Close the one-shot consumption over its exact retained admission.
+
+    A standalone consumption digest cannot establish which sealed occurrence
+    it consumed.  Replay and reconciliation therefore use this cross-record
+    predicate before treating any retry credit as spent.
+    """
+
+    if not (
+        database_fenced_provider_retained_admission_valid(admission)
+        and database_fenced_provider_retained_consumption_valid(consumption)
+    ):
+        return False
+    exact = (
+        "manifest_id",
+        "credit_id",
+        "occurrence_id",
+        "task_cid",
+        "task_alias",
+        "recovery_mode",
+        "candidate_disposition",
+    )
+    return bool(
+        consumption.get("admission_id") == admission.get("admission_id")
+        and all(consumption.get(name) == admission.get(name) for name in exact)
+        and consumption.get("expected_task_revision")
+        == admission.get("expected_task_revision") + 1
+        and consumption.get("expected_task_status") == "retrying"
+        and consumption.get("resulting_task_revision")
+        == consumption.get("expected_task_revision") + 1
+        and consumption.get("resulting_task_status") == "in_progress"
+    )
+
+
+def database_fenced_provider_retained_reconciliation_valid(value: Any) -> bool:
+    """Validate the exact terminal three-occurrence controller aggregate."""
+
+    if not isinstance(value, Mapping):
+        return False
+    record = dict(value)
+    fields = {
+        "schema",
+        "attempted",
+        "reconciled",
+        "blocked",
+        "reason",
+        "expected_occurrence_count",
+        "admitted_count",
+        "already_consumed_count",
+        "outcomes",
+    }
+    if (
+        set(record) != fields
+        or record.get("schema")
+        != DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA
+        or record.get("attempted") is not True
+        or record.get("reconciled") is not True
+        or record.get("blocked") is not False
+        or record.get("reason")
+        != "retained_occurrence_reconciliation_complete"
+        or record.get("expected_occurrence_count") != 3
+        or type(record.get("admitted_count")) is not int
+        or type(record.get("already_consumed_count")) is not int
+        or record["admitted_count"] < 0
+        or record["already_consumed_count"] < 0
+        or record["admitted_count"] + record["already_consumed_count"] != 3
+        or type(record.get("outcomes")) is not list
+        or len(record["outcomes"]) != 3
+    ):
+        return False
+    try:
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+        )
+    except Exception:
+        return False
+    pins = {
+        (str(item.get("task_alias") or ""), str(item.get("task_cid") or ""))
+        for item in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        if isinstance(item, Mapping)
+    }
+    outcomes = record["outcomes"]
+    if {
+        (str(item.get("task_alias") or ""), str(item.get("task_cid") or ""))
+        for item in outcomes
+        if isinstance(item, Mapping)
+    } != pins:
+        return False
+    admitted = 0
+    consumed = 0
+    outcome_fields = {
+        "task_alias",
+        "task_cid",
+        "reconciled",
+        "blocked",
+        "reason",
+        "admission_id",
+        "consumption_id",
+    }
+    for outcome in outcomes:
+        if (
+            not isinstance(outcome, Mapping)
+            or set(outcome) != outcome_fields
+            or outcome.get("reconciled") is not True
+            or outcome.get("blocked") is not False
+        ):
+            return False
+        reason = outcome.get("reason")
+        admission_id = str(outcome.get("admission_id") or "")
+        consumption_id = str(outcome.get("consumption_id") or "")
+        if reason in {
+            "retained_occurrence_admitted",
+            "retained_occurrence_admission_current",
+        }:
+            if (
+                re.fullmatch(r"sha256:[0-9a-f]{64}", admission_id) is None
+                or consumption_id
+            ):
+                return False
+            admitted += 1
+        elif reason == "retained_occurrence_already_consumed":
+            if (
+                re.fullmatch(r"sha256:[0-9a-f]{64}", admission_id) is None
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", consumption_id)
+                is None
+            ):
+                return False
+            consumed += 1
+        else:
+            return False
+    return bool(
+        admitted == record["admitted_count"]
+        and consumed == record["already_consumed_count"]
+    )
+
+
+def database_fenced_provider_retained_consumption(
+    *,
+    admission: Mapping[str, Any],
+    attempt_id: str,
+    claim_id: str,
+    lease_id: str,
+    owner_session_id: str,
+    attempt_number: int,
+    fencing_token: int,
+    fence_epoch: int,
+    expected_task_revision: int,
+    expected_task_status: str,
+    resulting_task_revision: int,
+    resulting_task_status: str,
+) -> Mapping[str, Any]:
+    """Construct the one durable consumption marker before worker creation."""
+
+    if not database_fenced_provider_retained_admission_valid(admission):
+        raise DatabaseImplementationConflictError(
+            "retained recovery consumption requires an exact admission"
+        )
+    admitted = dict(admission)
+    if (
+        expected_task_status != "retrying"
+        or resulting_task_status != "in_progress"
+        or type(expected_task_revision) is not int
+        or type(resulting_task_revision) is not int
+        or resulting_task_revision != expected_task_revision + 1
+        or expected_task_revision
+        != int(admitted["expected_task_revision"]) + 1
+        or any(
+            type(value) is not str or not value
+            for value in (attempt_id, claim_id, lease_id, owner_session_id)
+        )
+        or any(
+            type(value) is not int or value < minimum
+            for value, minimum in (
+                (attempt_number, 1),
+                (fencing_token, 0),
+                (fence_epoch, 0),
+            )
+        )
+    ):
+        raise DatabaseImplementationConflictError(
+            "retained recovery consumption transition is invalid"
+        )
+    record: dict[str, Any] = {
+        "schema": DATABASE_FENCED_PROVIDER_RETAINED_CONSUMPTION_SCHEMA,
+        "admission_id": admitted["admission_id"],
+        "manifest_id": admitted["manifest_id"],
+        "credit_id": admitted["credit_id"],
+        "occurrence_id": admitted["occurrence_id"],
+        "task_cid": admitted["task_cid"],
+        "task_alias": admitted["task_alias"],
+        "recovery_mode": admitted["recovery_mode"],
+        "candidate_disposition": admitted["candidate_disposition"],
+        "attempt_id": attempt_id,
+        "claim_id": claim_id,
+        "lease_id": lease_id,
+        "owner_session_id": owner_session_id,
+        "attempt_number": attempt_number,
+        "fencing_token": fencing_token,
+        "fence_epoch": fence_epoch,
+        "expected_task_revision": expected_task_revision,
+        "expected_task_status": expected_task_status,
+        "resulting_task_revision": resulting_task_revision,
+        "resulting_task_status": resulting_task_status,
+        "consumed_before_worker_start": True,
+        "one_shot": True,
+    }
+    record["consumption_id"] = _database_fenced_provider_retained_digest(
+        record
+    )
+    if not database_fenced_provider_retained_consumption_valid(record):
+        raise DatabaseImplementationConflictError(
+            "retained recovery consumption failed closed validation"
+        )
+    return MappingProxyType(record)
 
 
 class DatabaseImplementationDaemonError(RuntimeError):
@@ -84335,6 +85267,7 @@ class DatabaseImplementationDaemon:
         self._effect_fn = effect_fn
         self._validation_fn = validation_fn
         self._database_portal_bridge: Any = None
+        self._database_portal_outer_authority_cas: Callable[..., Any] | None = None
         self._database_portal_reconciliation_checked = False
         self._database_portal_reconciliation_result: dict[str, Any] = {}
         self.require_real_execution = bool(require_real_execution)
@@ -85087,6 +86020,30 @@ class DatabaseImplementationDaemon:
             )
             self._database_portal_reconciliation_checked = False
             self._database_portal_reconciliation_result = {}
+
+    def bind_database_portal_outer_authority_cas(
+        self,
+        callback: Callable[..., Any],
+    ) -> None:
+        """Bind the controller's sole outer-receipt plus Quack-CAS authority.
+
+        A managed child cannot construct this capability for itself.  The
+        supervisor supplies it only while reconciling a quiesced program, and
+        the callback owns the controller mutation fence and authenticated
+        Quack transaction.
+        """
+
+        if not callable(callback):
+            raise TypeError("database Portal outer authority must be callable")
+        with self._lock:
+            if (
+                self._database_portal_outer_authority_cas is not None
+                and self._database_portal_outer_authority_cas is not callback
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "database Portal outer authority is already bound"
+                )
+            self._database_portal_outer_authority_cas = callback
 
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
@@ -88049,6 +89006,383 @@ class DatabaseImplementationDaemon:
             "invalid",
         }
 
+    @staticmethod
+    def _retained_recovery_consumption_is_current(
+        task: Any,
+        *,
+        admission: Any,
+        consumption: Any,
+    ) -> bool:
+        """Bind an exact consumed pair to its current canonical task epoch."""
+
+        if not database_fenced_provider_retained_consumption_matches_admission(
+            admission=admission,
+            consumption=consumption,
+        ):
+            return False
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        task_alias = str(getattr(task, "task_alias", "") or task_cid)
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        revision = getattr(task, "revision", None)
+        receipt = dict(
+            getattr(task, "body", {}).get("completion_receipt") or {}
+        )
+        if not (
+            type(revision) is int
+            and revision >= consumption["resulting_task_revision"]
+            and admission.get("task_cid") == task_cid
+            and admission.get("task_alias") == task_alias
+            and consumption.get("task_cid") == task_cid
+            and consumption.get("task_alias") == task_alias
+            and receipt.get("retained_recovery_admission") == dict(admission)
+            and receipt.get("retained_recovery_consumption")
+            == dict(consumption)
+            and status
+            in {
+                "in_progress",
+                "blocked",
+                "complete",
+                "completed",
+                "done",
+                "skipped",
+                "cancelled",
+                "failed",
+                "quarantined",
+                "rejected",
+            }
+        ):
+            return False
+        if status != "in_progress":
+            return True
+        claim_fields = (
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+        )
+        return bool(
+            revision == consumption["resulting_task_revision"]
+            and receipt.get("operation") == "database_claim"
+            and all(
+                receipt.get(name) == consumption.get(name)
+                for name in claim_fields
+            )
+        )
+
+    def _retained_recovery_dispatch_fence_is_current(
+        self,
+        occurrence: Mapping[str, Any],
+        *,
+        allowed_states: frozenset[str],
+    ) -> bool:
+        """Recompute the complete V2 fence from its sealed occurrence."""
+
+        try:
+            from .database_portal_bridge import (
+                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+                database_fenced_provider_retained_credit,
+            )
+
+            pin = dict(occurrence)
+            attempt = self.get_attempt(str(pin["predecessor_attempt_id"]))
+            if attempt is None:
+                return False
+            attempt_bindings = {
+                "task_cid": "task_cid",
+                "task_alias": "task_alias",
+                "attempt_id": "predecessor_attempt_id",
+                "claim_id": "predecessor_claim_id",
+                "lease_id": "predecessor_lease_id",
+                "owner_session_id": "predecessor_owner_session_id",
+                "attempt_number": "predecessor_attempt_number",
+                "fencing_token": "predecessor_fencing_token",
+                "fence_epoch": "predecessor_fence_epoch",
+            }
+            if any(
+                getattr(attempt, target) != pin.get(source)
+                for target, source in attempt_bindings.items()
+            ):
+                return False
+            credit = dict(database_fenced_provider_retained_credit(pin))
+            expected = _database_fenced_provider_retained_fence_record(
+                occurrence=pin,
+                manifest_id=DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+                credit_id=_database_fenced_provider_retained_digest(credit),
+                attempt_id=attempt.attempt_id,
+                task_cid=attempt.task_cid,
+                fencing_token=int(attempt.fencing_token),
+                fence_epoch=int(attempt.fence_epoch),
+            )
+            observed = self._fenced_provider_recovery_dispatch_fence(attempt)
+        except Exception:
+            return False
+        return bool(
+            isinstance(observed, Mapping)
+            and observed.get("state") in allowed_states
+            and all(observed.get(name) == value for name, value in expected.items())
+        )
+
+    def _retained_recovery_admission_fence_is_current(
+        self,
+        admission: Any,
+        *,
+        allowed_states: frozenset[str],
+    ) -> bool:
+        """Bind an admission to the recomputed fence for its sole pin."""
+
+        if not database_fenced_provider_retained_admission_valid(admission):
+            return False
+        occurrence = _database_fenced_provider_retained_occurrence_for_admission(
+            admission
+        )
+        return bool(
+            occurrence is not None
+            and self._retained_recovery_dispatch_fence_is_current(
+                occurrence,
+                allowed_states=allowed_states,
+            )
+        )
+
+    def _retained_recovery_admission_is_current_for_task(
+        self,
+        task: Any,
+        admission: Any,
+        *,
+        require_admitted_fence: bool = True,
+    ) -> bool:
+        """Prevent a valid one-shot admission from being spliced to a peer."""
+
+        if not database_fenced_provider_retained_admission_valid(admission):
+            return False
+        receipt = dict(
+            getattr(task, "body", {}).get("completion_receipt") or {}
+        )
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        task_alias = str(getattr(task, "task_alias", "") or task_cid)
+        return bool(
+            admission.get("task_cid") == task_cid
+            and admission.get("task_alias") == task_alias
+            and receipt.get("retained_recovery_admission") == dict(admission)
+            and receipt.get("retained_recovery_consumption") is None
+            and str(getattr(task, "status", "") or "").strip().lower()
+            == "retrying"
+            and type(getattr(task, "revision", None)) is int
+            and int(task.revision)
+            == int(admission.get("expected_task_revision", -2)) + 1
+            and (
+                not require_admitted_fence
+                or self._retained_recovery_admission_fence_is_current(
+                    admission,
+                    allowed_states=frozenset({"admitted"}),
+                )
+            )
+        )
+
+    def _retained_recovery_aggregate_admitted_current(self) -> bool:
+        """Require the closed three-pin fence population before any claim."""
+
+        try:
+            from .database_portal_bridge import (
+                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+                database_fenced_provider_retained_manifest,
+                database_fenced_provider_retained_manifest_valid,
+            )
+
+            manifest = database_fenced_provider_retained_manifest()
+        except Exception:
+            return False
+        if not (
+            database_fenced_provider_retained_manifest_valid(manifest)
+            and len(DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS) == 3
+        ):
+            return False
+        try:
+            for occurrence in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS:
+                task = self.task_source.get(str(occurrence["task_cid"]))
+                if not (
+                    task is not None
+                    and str(getattr(task, "task_alias", "") or "")
+                    == str(occurrence["task_alias"])
+                    and self._retained_recovery_reserved_epoch_state(task)
+                    in {"admitted", "consumed"}
+                    and self._retained_recovery_dispatch_fence_is_current(
+                        occurrence,
+                        allowed_states=frozenset({"admitted"}),
+                    )
+                ):
+                    return False
+        except Exception:
+            return False
+        return True
+
+    def _retained_recovery_reserved_epoch_state(self, task: Any) -> str:
+        """Classify the two one-shot revisions reserved by the sealed board.
+
+        The compact admission and consumption records are the only durable
+        discriminators for these revisions.  If either record is removed, an
+        otherwise ordinary-looking retry receipt must not regain general
+        retry authority.  Task CID, alias, status, and exact revision reserve
+        the epoch even when both compact records have been deleted.
+        """
+
+        try:
+            from .database_portal_bridge import (
+                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            )
+
+            task_cid = str(getattr(task, "task_cid", "") or "")
+            task_alias = str(getattr(task, "task_alias", "") or "")
+            cid_matches = [
+                dict(pin)
+                for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+                if pin.get("task_cid") == task_cid
+            ]
+            alias_matches = [
+                dict(pin)
+                for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+                if task_alias and pin.get("task_alias") == task_alias
+            ]
+            if len(cid_matches) == 1:
+                pin = cid_matches[0]
+                if task_alias != pin.get("task_alias"):
+                    return "invalid_reserved_identity"
+            elif alias_matches:
+                # A reserved alias may not be rebound to another CID.
+                return "invalid_reserved_identity"
+            else:
+                return "not_applicable"
+            revision = getattr(task, "revision", None)
+            status = str(
+                getattr(task, "status", "") or ""
+            ).strip().lower()
+            receipt = dict(
+                getattr(task, "body", {}).get("completion_receipt") or {}
+            )
+            admission = receipt.get("retained_recovery_admission")
+            consumption = receipt.get("retained_recovery_consumption")
+            retrying_revision = int(pin["blocked_task_revision"]) + 1
+            consumed_revision = retrying_revision + 1
+            if revision == retrying_revision:
+                if (
+                    status == "retrying"
+                    and consumption is None
+                    and self._retained_recovery_admission_is_current_for_task(
+                        task,
+                        admission,
+                        require_admitted_fence=False,
+                    )
+                ):
+                    if self._retained_recovery_admission_fence_is_current(
+                        admission,
+                        allowed_states=frozenset({"admitted"}),
+                    ):
+                        return "admitted"
+                    if self._retained_recovery_admission_fence_is_current(
+                        admission,
+                        allowed_states=frozenset({"admission_pending"}),
+                    ):
+                        return "admission_pending"
+                return "invalid_retrying_epoch"
+            if type(revision) is int and revision >= consumed_revision:
+                if (
+                    self._retained_recovery_consumption_is_current(
+                        task,
+                        admission=admission,
+                        consumption=consumption,
+                    )
+                    and self._retained_recovery_admission_fence_is_current(
+                        admission,
+                        allowed_states=frozenset({"admitted"}),
+                    )
+                ):
+                    return "consumed"
+                return "invalid_consumed_epoch"
+        except Exception:
+            # A named reserved task whose epoch cannot be classified is never
+            # allowed to fall through to the ordinary retry route.
+            try:
+                task_cid = str(getattr(task, "task_cid", "") or "")
+                task_alias = str(getattr(task, "task_alias", "") or "")
+                known_cids = {
+                    "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a",
+                    "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq",
+                    "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada",
+                }
+                if task_cid in known_cids or task_alias in {
+                    "PCTDD-006",
+                    "PCTDD-007",
+                    "PCTDD-034",
+                }:
+                    return "invalid_reserved_epoch"
+            except Exception:
+                pass
+        return "not_applicable"
+
+    def retained_recovery_reconciliation_matches_current(
+        self,
+        value: Any,
+    ) -> bool:
+        """Bind a syntactic terminal aggregate to current durable state."""
+
+        if not database_fenced_provider_retained_reconciliation_valid(value):
+            return False
+        try:
+            from .database_portal_bridge import (
+                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            )
+
+            outcomes = {
+                (item["task_alias"], item["task_cid"]): item
+                for item in value["outcomes"]
+            }
+            for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS:
+                task = self.task_source.get(str(pin["task_cid"]))
+                outcome = outcomes[(pin["task_alias"], pin["task_cid"])]
+                receipt = dict(
+                    getattr(task, "body", {}).get("completion_receipt") or {}
+                )
+                admission = receipt.get("retained_recovery_admission")
+                consumption = receipt.get("retained_recovery_consumption")
+                if outcome["reason"] == "retained_occurrence_already_consumed":
+                    if not (
+                        self._retained_recovery_consumption_is_current(
+                            task,
+                            admission=admission,
+                            consumption=consumption,
+                        )
+                        and self._retained_recovery_admission_fence_is_current(
+                            admission,
+                            allowed_states=frozenset({"admitted"}),
+                        )
+                        and outcome["admission_id"]
+                        == admission.get("admission_id")
+                        and outcome["consumption_id"]
+                        == consumption.get("consumption_id")
+                    ):
+                        return False
+                elif not (
+                    outcome["reason"]
+                    in {
+                        "retained_occurrence_admitted",
+                        "retained_occurrence_admission_current",
+                    }
+                    and consumption is None
+                    and self._retained_recovery_admission_is_current_for_task(
+                        task,
+                        admission,
+                    )
+                    and outcome["admission_id"]
+                    == admission.get("admission_id")
+                    and outcome["consumption_id"] == ""
+                ):
+                    return False
+        except Exception:
+            return False
+        return self._retained_recovery_aggregate_admitted_current()
+
     def _automatic_claim_forbidden_current(self, task: Any) -> bool:
         """Apply static policy plus exact irrevocable admission integrity.
 
@@ -88062,11 +89396,29 @@ class DatabaseImplementationDaemon:
         that could first block and later revive the same credit.
         """
 
+        reserved_epoch = self._retained_recovery_reserved_epoch_state(task)
+        if (
+            reserved_epoch.startswith("invalid_")
+            or reserved_epoch in {"admission_pending", "consumed"}
+        ):
+            return True
         if self._automatic_claim_forbidden(task):
             return True
         receipt = dict(
             getattr(task, "body", {}).get("completion_receipt") or {}
         )
+        retained_admission = receipt.get("retained_recovery_admission")
+        if retained_admission is not None:
+            if (
+                not self._retained_recovery_admission_is_current_for_task(
+                    task,
+                    retained_admission,
+                )
+            ):
+                return True
+            return not bool(
+                self._retained_recovery_aggregate_admitted_current()
+            )
         evidence = receipt.get("no_provider_rearm_evidence")
         if not isinstance(evidence, Mapping) or str(
             evidence.get("schema") or ""
@@ -88265,6 +89617,9 @@ class DatabaseImplementationDaemon:
         # integer, but the authority defect must remain latched until a trusted
         # repair changes the validation epoch.
         malformed = receipt.get("malformed") is True and same_epoch
+        reserved_epoch = self._retained_recovery_reserved_epoch_state(task)
+        if reserved_epoch.startswith("invalid_"):
+            malformed = True
         policy_mismatch = False
         persisted_max_task_attempts: int | None = None
         try:
@@ -88304,7 +89659,47 @@ class DatabaseImplementationDaemon:
             else self.max_task_attempts
         )
         fenced_provider_retry_credit = False
+        retained_recovery_admission: dict[str, Any] | None = None
+        retained_recovery_consumption: dict[str, Any] | None = None
         if same_epoch:
+            nominated_admission = receipt.get("retained_recovery_admission")
+            nominated_consumption = receipt.get("retained_recovery_consumption")
+            if nominated_admission is not None:
+                admission_current = bool(
+                    (
+                        nominated_consumption is None
+                        and self._retained_recovery_admission_is_current_for_task(
+                            task,
+                            nominated_admission,
+                        )
+                    )
+                    or (
+                        nominated_consumption is not None
+                        and self._retained_recovery_consumption_is_current(
+                            task,
+                            admission=nominated_admission,
+                            consumption=nominated_consumption,
+                        )
+                    )
+                )
+                if admission_current:
+                    retained_recovery_admission = dict(nominated_admission)
+                else:
+                    malformed = True
+            if nominated_consumption is not None:
+                if (
+                    retained_recovery_admission is not None
+                    and self._retained_recovery_consumption_is_current(
+                        task,
+                        admission=retained_recovery_admission,
+                        consumption=nominated_consumption,
+                    )
+                ):
+                    retained_recovery_consumption = dict(
+                        nominated_consumption
+                    )
+                else:
+                    malformed = True
             try:
                 nested_evidence = receipt.get("no_provider_rearm_evidence")
                 fenced_attempt_id = str(
@@ -88361,7 +89756,7 @@ class DatabaseImplementationDaemon:
                 )
             except (TypeError, ValueError):
                 fenced_provider_retry_credit = False
-        return {
+        state = {
             "schema": DATABASE_RETRY_BUDGET_SCHEMA,
             "validation_spec_cid": validation_spec_cid,
             "attempts_used": attempts_used,
@@ -88382,6 +89777,13 @@ class DatabaseImplementationDaemon:
                 )
             ),
         }
+        if retained_recovery_admission is not None:
+            state["retained_recovery_admission"] = retained_recovery_admission
+        if retained_recovery_consumption is not None:
+            state["retained_recovery_consumption"] = (
+                retained_recovery_consumption
+            )
+        return state
 
     def _retry_budget_receipt(
         self,
@@ -88391,6 +89793,7 @@ class DatabaseImplementationDaemon:
         operation: str,
         attempt: Any | None = None,
         reason: str = "",
+        retained_recovery_consumption: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         used = max(0, int(attempts_used))
         budget_state = self._retry_budget_state(task)
@@ -88411,6 +89814,38 @@ class DatabaseImplementationDaemon:
         prior_receipt = dict(
             getattr(task, "body", {}).get("completion_receipt") or {}
         )
+        retained_admission = prior_receipt.get(
+            "retained_recovery_admission"
+        )
+        retained_consumption = (
+            retained_recovery_consumption
+            if retained_recovery_consumption is not None
+            else prior_receipt.get("retained_recovery_consumption")
+        )
+        if retained_admission is not None:
+            if not database_fenced_provider_retained_admission_valid(
+                retained_admission
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained recovery admission changed before retry receipt"
+                )
+            receipt["retained_recovery_admission"] = dict(
+                retained_admission
+            )
+        if retained_consumption is not None:
+            if (
+                retained_admission is None
+                or not database_fenced_provider_retained_consumption_matches_admission(
+                    admission=retained_admission,
+                    consumption=retained_consumption,
+                )
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained recovery consumption changed before retry receipt"
+                )
+            receipt["retained_recovery_consumption"] = dict(
+                retained_consumption
+            )
         if (
             prior_receipt.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
             and str(prior_receipt.get("validation_spec_cid") or "")
@@ -88658,6 +90093,89 @@ class DatabaseImplementationDaemon:
             and _typed_mapping_contains(binding, expected)
         )
 
+    @staticmethod
+    def _retained_recovery_pair_is_exact_for_attempt(
+        task: Any,
+        attempt: "DatabaseTaskAttempt",
+    ) -> bool:
+        """Bind the canonical one-shot pair to the attempt-local copy."""
+
+        task_receipt = dict(
+            getattr(task, "body", {}).get("completion_receipt") or {}
+        )
+        retry_budget_raw = getattr(attempt, "body", {}).get("retry_budget")
+        retry_budget = (
+            dict(retry_budget_raw)
+            if isinstance(retry_budget_raw, Mapping)
+            else {}
+        )
+        task_admission = task_receipt.get("retained_recovery_admission")
+        task_consumption = task_receipt.get("retained_recovery_consumption")
+        attempt_admission = retry_budget.get("retained_recovery_admission")
+        attempt_consumption = retry_budget.get("retained_recovery_consumption")
+        task_has_pair = task_admission is not None or task_consumption is not None
+        attempt_has_pair = (
+            attempt_admission is not None or attempt_consumption is not None
+        )
+        if not task_has_pair and not attempt_has_pair:
+            try:
+                from .database_portal_bridge import (
+                    DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+                )
+
+                control_claim = getattr(attempt, "body", {}).get(
+                    "control_claim"
+                )
+                cid_matches = [
+                    pin
+                    for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+                    if attempt.task_cid == pin.get("task_cid")
+                ]
+                alias_matches = [
+                    pin
+                    for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+                    if attempt.task_alias
+                    and attempt.task_alias == pin.get("task_alias")
+                ]
+                if len(cid_matches) == 1 and (
+                    attempt.task_alias != cid_matches[0].get("task_alias")
+                ):
+                    return False
+                if not cid_matches and alias_matches:
+                    return False
+                retained_epoch = bool(
+                    isinstance(control_claim, Mapping)
+                    and len(cid_matches) == 1
+                    and control_claim.get("revision")
+                    == int(cid_matches[0]["blocked_task_revision"]) + 2
+                )
+            except Exception:
+                return False
+            return not retained_epoch
+        if not (task_has_pair and attempt_has_pair):
+            return False
+        return bool(
+            task_admission == attempt_admission
+            and task_consumption == attempt_consumption
+            and database_fenced_provider_retained_consumption_matches_admission(
+                admission=task_admission,
+                consumption=task_consumption,
+            )
+            and task_admission.get("task_cid") == attempt.task_cid
+            and task_admission.get("task_alias") == attempt.task_alias
+            and task_consumption.get("attempt_id") == attempt.attempt_id
+            and task_consumption.get("claim_id") == attempt.claim_id
+            and task_consumption.get("lease_id") == attempt.lease_id
+            and task_consumption.get("owner_session_id")
+            == attempt.owner_session_id
+            and task_consumption.get("attempt_number")
+            == int(attempt.attempt_number)
+            and task_consumption.get("fencing_token")
+            == int(attempt.fencing_token)
+            and task_consumption.get("fence_epoch")
+            == int(attempt.fence_epoch)
+        )
+
     def _finalize_failed_attempt(
         self,
         attempt: "DatabaseTaskAttempt",
@@ -88677,6 +90195,19 @@ class DatabaseImplementationDaemon:
         """
 
         current = self.get_attempt(attempt.attempt_id) or attempt
+        budget = dict(current.body.get("retry_budget") or {})
+        retained_one_shot_consumed = (
+            database_fenced_provider_retained_consumption_matches_admission(
+                admission=budget.get("retained_recovery_admission"),
+                consumption=budget.get("retained_recovery_consumption"),
+            )
+        )
+        if retained_one_shot_consumed:
+            # The canonical retrying -> in_progress CAS spent this exact
+            # operator credit before Portal/provider construction.  Neither
+            # an unlimited ordinary retry policy nor a pre-provider deferral
+            # may recreate retrying authority for the consumed one-shot.
+            attempt_consumed = True
         provider_route_cooldown: dict[str, int] = {}
         if not attempt_consumed:
             callback_state = self._database_callback_boundary_state(current)
@@ -88709,7 +90240,13 @@ class DatabaseImplementationDaemon:
                 ),
             }
         task = self.task_source.get(current.task_cid)
-        budget = dict(current.body.get("retry_budget") or {})
+        if task is not None and not self._retained_recovery_pair_is_exact_for_attempt(
+            task,
+            current,
+        ):
+            raise DatabaseImplementationConflictError(
+                "retained recovery task and attempt chains differ"
+            )
         try:
             claimed_attempts_used = max(
                 1,
@@ -88742,6 +90279,7 @@ class DatabaseImplementationDaemon:
             retry_cap = self.max_task_attempts
         retry_exhausted = bool(
             force_block
+            or retained_one_shot_consumed
             or (retry_cap > 0 and attempts_used >= retry_cap)
         )
         target_status = "blocked" if retry_exhausted else "retrying"
@@ -88790,7 +90328,9 @@ class DatabaseImplementationDaemon:
                     "non-consuming retry receipt changed its exact refund "
                     "authority"
                 )
-            retry_exhausted = bool(receipt.get("retry_exhausted"))
+            retry_exhausted = bool(
+                receipt.get("retry_exhausted") or retained_one_shot_consumed
+            )
             target_status = "blocked" if retry_exhausted else "retrying"
         elif exact_control:
             receipt = self._retry_budget_receipt(
@@ -88894,6 +90434,18 @@ class DatabaseImplementationDaemon:
         if reconciliation_evidence:
             receipt["terminal_reconciliation"] = dict(
                 reconciliation_evidence
+            )
+        if (
+            retained_one_shot_consumed
+            and already_finalized
+            and task is not None
+            and task_status == "retrying"
+        ):
+            self._cas_task_status_database(
+                task.task_cid,
+                expected_revision=int(task.revision),
+                new_status="blocked",
+                receipt=receipt,
             )
         if exact_control and task_status == "in_progress":
             self._cas_task_status_database(
@@ -91823,6 +93375,12 @@ class DatabaseImplementationDaemon:
             "implementation_dispatched": False,
             "completion_mode": "provider_forbidden_already_landed",
         }
+        for retained_name in (
+            "retained_recovery_admission",
+            "retained_recovery_consumption",
+        ):
+            if retained_name in blocked_receipt:
+                receipt[retained_name] = dict(blocked_receipt[retained_name])
         receipt["recovery_receipt_id"] = content_identity(receipt)
         return receipt
 
@@ -91859,6 +93417,8 @@ class DatabaseImplementationDaemon:
         optional_fields = {
             "reconciled_by_process_instance_id",
             "unknown_outcome_rearm_count",
+            "retained_recovery_admission",
+            "retained_recovery_consumption",
         }
         record = dict(receipt)
         if "unknown_outcome_rearm_count" in record:
@@ -91932,6 +93492,10 @@ class DatabaseImplementationDaemon:
                 == record.get("attempts_used")
                 and retry_budget.get("max_task_attempts")
                 == record.get("max_task_attempts")
+                and self._retained_recovery_pair_is_exact_for_attempt(
+                    task,
+                    attempt,
+                )
             )
         except (TypeError, ValueError):
             return False
@@ -92172,6 +93736,15 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationConflictError(
                 "blocked landed recovery claim is not exact and terminal"
             )
+        terminal_lease = self.coordinator.get_lease(attempt.lease_id)
+        if (
+            terminal_lease is None
+            or terminal_lease.to_dict()
+            != claim.as_fenced_lease().to_dict()
+        ):
+            raise DatabaseImplementationConflictError(
+                "blocked landed recovery lease is not exact and terminal"
+            )
         if self.coordinator.get_prepared_task_completion(attempt.task_cid) is not None:
             raise DatabaseImplementationConflictError(
                 "blocked landed recovery conflicts with completion preparation"
@@ -92371,7 +93944,11 @@ class DatabaseImplementationDaemon:
             )
 
         try:
-            barrier(claim, complete_control_task)
+            barrier(
+                claim,
+                complete_control_task,
+                lease=terminal_lease,
+            )
         except Exception:
             current = self.task_source.get(str(task.task_cid))
             if (
@@ -92579,7 +94156,19 @@ class DatabaseImplementationDaemon:
                 # missing or stale proof remains blocked there and never
                 # inherits generic retry authority.
                 continue
-            if self._automatic_claim_forbidden_current(task):
+            retained_landed_authority = bool(
+                self._retained_recovery_reserved_epoch_state(task)
+                == "consumed"
+                and selected_attempt is not None
+                and self._retained_recovery_pair_is_exact_for_attempt(
+                    task,
+                    selected_attempt,
+                )
+            )
+            if (
+                self._automatic_claim_forbidden_current(task)
+                and not retained_landed_authority
+            ):
                 outcomes.append(
                     {
                         "task_cid": str(task.task_cid),
@@ -92872,6 +94461,804 @@ class DatabaseImplementationDaemon:
             receipt=receipt,
             evidence=evidence,
         )
+
+    @staticmethod
+    def _retained_recovery_disposition_is_current(
+        occurrence: Mapping[str, Any],
+    ) -> bool:
+        """Revalidate the immutable Git side of one retained disposition."""
+
+        pin = dict(occurrence)
+        def git(*args: str, cwd: Path) -> tuple[int, str]:
+            try:
+                result = subprocess.run(
+                    ["git", *args],
+                    cwd=cwd,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    timeout=10,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return 127, ""
+            return result.returncode, result.stdout.strip()
+
+        def authority(
+            root_field: str, common_field: str
+        ) -> tuple[Path, Path] | None:
+            try:
+                declared_root = Path(str(pin.get(root_field) or ""))
+                declared_common = Path(str(pin.get(common_field) or ""))
+                if declared_root.is_symlink() or declared_common.is_symlink():
+                    return None
+                root = declared_root.resolve(strict=True)
+                expected_common = declared_common.resolve(strict=True)
+            except (OSError, RuntimeError):
+                return None
+            if not root.is_dir() or not expected_common.is_dir():
+                return None
+            root_status, observed_root = git(
+                "rev-parse", "--show-toplevel", cwd=root
+            )
+            common_status, observed_common = git(
+                "rev-parse", "--git-common-dir", cwd=root
+            )
+            if root_status != 0 or common_status != 0:
+                return None
+            try:
+                observed_root_path = Path(observed_root).resolve(strict=True)
+                observed_common_path = Path(observed_common)
+                if not observed_common_path.is_absolute():
+                    observed_common_path = root / observed_common_path
+                observed_common_path = observed_common_path.resolve(strict=True)
+            except (OSError, RuntimeError):
+                return None
+            if (
+                observed_root_path != root
+                or observed_common_path != expected_common
+            ):
+                return None
+            return root, expected_common
+
+        disposition_authority = authority(
+            "disposition_repository_root", "disposition_git_common_dir"
+        )
+        source_authority = authority(
+            "source_repository_root", "source_git_common_dir"
+        )
+        if disposition_authority is None or source_authority is None:
+            return False
+        repository_root, expected_common_dir = disposition_authority
+        source_root, _source_common_dir = source_authority
+
+        disposition_baseline = str(
+            pin.get("disposition_baseline_ref") or ""
+        )
+        baseline = str(pin.get("clean_baseline_ref") or "")
+        source_relative = str(pin.get("source_relative_path") or "")
+        source_relative_path = PurePosixPath(source_relative)
+        if not (
+            re.fullmatch(r"[0-9a-f]{40}", disposition_baseline)
+            and re.fullmatch(r"[0-9a-f]{40}", baseline)
+            and source_relative_path.as_posix() == source_relative
+            and not source_relative_path.is_absolute()
+            and all(
+                part not in {"", ".", ".."}
+                for part in source_relative_path.parts
+            )
+        ):
+            return False
+        disposition_baseline_status, _ = git(
+            "cat-file",
+            "-e",
+            f"{disposition_baseline}^{{commit}}",
+            cwd=repository_root,
+        )
+        baseline_status, _ = git(
+            "cat-file", "-e", f"{baseline}^{{commit}}", cwd=source_root
+        )
+        gitlink_status, gitlink = git(
+            "ls-tree",
+            disposition_baseline,
+            source_relative,
+            cwd=repository_root,
+        )
+        try:
+            nested_from_outer = (
+                repository_root / source_relative_path
+            ).resolve(strict=True)
+        except (OSError, RuntimeError):
+            return False
+        if not (
+            disposition_baseline_status == 0
+            and baseline_status == 0
+            and nested_from_outer == source_root
+            and gitlink_status == 0
+            and gitlink
+            == f"160000 commit {baseline}\t{source_relative}"
+        ):
+            return False
+        mode = str(pin.get("recovery_mode") or "")
+        disposition = str(pin.get("candidate_disposition") or "")
+        predecessor_branch = str(pin.get("predecessor_branch") or "")
+        if not predecessor_branch.startswith("implementation/"):
+            return False
+        branch_status, _ = git(
+            "show-ref",
+            "--verify",
+            "--quiet",
+            f"refs/heads/{predecessor_branch}",
+            cwd=repository_root,
+        )
+        if branch_status != 1:
+            return False
+        if mode == "runner_fenced_clean_removed":
+            return bool(
+                disposition == "clean_removed"
+                and pin.get("retained_ref") == ""
+                and pin.get("retained_commit") == ""
+                and pin.get("retained_worktree_path") == ""
+            )
+        if mode != "unpublished_rescue_quarantined":
+            return False
+        retained_ref = str(pin.get("retained_ref") or "")
+        retained_commit = str(pin.get("retained_commit") or "")
+        if (
+            disposition != "rescue_quarantined"
+            or not retained_ref.startswith("refs/heads/rescue/")
+            or not re.fullmatch(r"[0-9a-f]{40}", retained_commit)
+        ):
+            return False
+        ref_status, ref_target = git(
+            "rev-parse",
+            "--verify",
+            f"{retained_ref}^{{commit}}",
+            cwd=repository_root,
+        )
+        if ref_status != 0 or ref_target != retained_commit:
+            return False
+        retained_worktree = str(pin.get("retained_worktree_path") or "")
+        if not retained_worktree:
+            return True
+        worktree = Path(retained_worktree)
+        if (
+            not worktree.is_absolute()
+            or worktree.is_symlink()
+            or not worktree.is_dir()
+        ):
+            return False
+        root_status, worktree_root = git(
+            "rev-parse", "--show-toplevel", cwd=worktree
+        )
+        head_status, worktree_head = git("rev-parse", "HEAD", cwd=worktree)
+        common_status, worktree_common = git(
+            "rev-parse", "--git-common-dir", cwd=worktree
+        )
+        try:
+            worktree_common_path = Path(worktree_common)
+            if not worktree_common_path.is_absolute():
+                worktree_common_path = worktree / worktree_common_path
+            worktree_common_path = worktree_common_path.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return False
+        return bool(
+            head_status == 0
+            and root_status == 0
+            and Path(worktree_root).resolve(strict=True)
+            == worktree.resolve(strict=True)
+            and common_status == 0
+            and worktree_head == retained_commit
+            and worktree_common_path == expected_common_dir
+        )
+
+    def reconcile_retained_fenced_provider_occurrences(
+        self,
+    ) -> dict[str, Any]:
+        """Admit the three exact @2 occurrences without starting a worker.
+
+        Each blocked task is joined to its exact execution/coordinator
+        receipt and a controller-fenced Quack outer receipt.  The final
+        blocked -> retrying CAS is queued in the same authenticated Quack
+        transaction as that outer observation.  Only compact IDs enter task
+        state; the one-shot credit is consumed later by claim_next's canonical
+        retrying -> in_progress CAS.
+        """
+
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            database_fenced_provider_retained_credit,
+            database_fenced_provider_retained_manifest,
+            database_fenced_provider_retained_manifest_valid,
+        )
+
+        # Rebuild the manifest before consulting task state.  This checks its
+        # static content identity and closed three-occurrence population.
+        manifest = database_fenced_provider_retained_manifest()
+        if not database_fenced_provider_retained_manifest_valid(manifest):
+            raise DatabaseImplementationConflictError(
+                "retained recovery manifest identity is not current"
+            )
+        expected_count = len(
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        )
+        outcomes: list[dict[str, Any]] = []
+        admitted_count = 0
+        already_consumed_count = 0
+        outer_authority = self._database_portal_outer_authority_cas
+
+        # Establish the complete closed population before the first task CAS.
+        # Only an admitted or consumed fence is irrevocable.  A provisional
+        # admission can survive a crash before aggregate promotion, so its
+        # mutable Git disposition must be replayed while both controller
+        # mutation fences are still held.
+        preflight_outcomes: list[dict[str, Any]] = []
+        preflight_failed = False
+        for immutable_pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS:
+            pin = dict(immutable_pin)
+            alias = str(pin.get("task_alias") or "")
+            task_cid = str(pin.get("task_cid") or "")
+            preflight = {
+                "task_alias": alias,
+                "task_cid": task_cid,
+                "reconciled": False,
+                "blocked": True,
+                "reason": "retained_occurrence_preflight_not_run",
+                "admission_id": "",
+                "consumption_id": "",
+            }
+            if preflight_failed:
+                preflight_outcomes.append(preflight)
+                continue
+            try:
+                task = self.task_source.get(task_cid)
+                if task is None or str(
+                    getattr(task, "task_alias", "") or ""
+                ) != alias:
+                    raise DatabaseImplementationConflictError(
+                        "retained recovery task identity is unavailable"
+                    )
+                receipt = dict(
+                    getattr(task, "body", {}).get("completion_receipt") or {}
+                )
+                admission = receipt.get("retained_recovery_admission")
+                consumption = receipt.get("retained_recovery_consumption")
+                if admission is not None and consumption is not None:
+                    if not (
+                        self._retained_recovery_consumption_is_current(
+                            task,
+                            admission=admission,
+                            consumption=consumption,
+                        )
+                        and self._retained_recovery_admission_fence_is_current(
+                            admission,
+                            allowed_states=frozenset({"admitted"}),
+                        )
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "retained recovery consumed chain drifted"
+                        )
+                elif admission is not None:
+                    predecessor = self.get_attempt(
+                        str(pin["predecessor_attempt_id"])
+                    )
+                    occurrence_fence = (
+                        self._fenced_provider_recovery_dispatch_fence(
+                            predecessor
+                        )
+                        if predecessor is not None
+                        else None
+                    )
+                    pending = bool(
+                        isinstance(occurrence_fence, Mapping)
+                        and occurrence_fence.get("state")
+                        == "admission_pending"
+                    )
+                    if not (
+                        consumption is None
+                        and str(task.status or "").strip().lower() == "retrying"
+                        and int(task.revision)
+                        == int(pin["blocked_task_revision"]) + 1
+                        and database_fenced_provider_retained_admission_valid(
+                            admission
+                        )
+                        and admission.get("occurrence_id")
+                        == _database_fenced_provider_retained_digest(pin)
+                        and self._retained_recovery_admission_fence_is_current(
+                            admission,
+                            allowed_states=frozenset(
+                                {"admission_pending", "admitted"}
+                            ),
+                        )
+                        and (
+                            not pending
+                            or (
+                                getattr(
+                                    outer_authority,
+                                    "__database_portal_owner_fence_held__",
+                                    False,
+                                )
+                                is True
+                                and getattr(
+                                    outer_authority,
+                                    "__database_portal_checkout_mutation_lease_held__",
+                                    False,
+                                )
+                                is True
+                                and self._retained_recovery_disposition_is_current(
+                                    pin
+                                )
+                            )
+                        )
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "retained recovery provisional admission drifted"
+                        )
+                else:
+                    if not (
+                        consumption is None
+                        and str(task.status or "").strip().lower()
+                        == pin["blocked_task_status"]
+                        and int(task.revision) == pin["blocked_task_revision"]
+                        and callable(outer_authority)
+                        and getattr(
+                            outer_authority,
+                            "__database_portal_owner_fence_held__",
+                            False,
+                        )
+                        is True
+                        and getattr(
+                            outer_authority,
+                            "__database_portal_checkout_mutation_lease_held__",
+                            False,
+                        )
+                        is True
+                        and self._retained_recovery_disposition_is_current(pin)
+                        and self.get_attempt(
+                            str(pin["predecessor_attempt_id"])
+                        )
+                        is not None
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "retained recovery fresh occurrence is not exact"
+                        )
+                    predecessor = self.get_attempt(
+                        str(pin["predecessor_attempt_id"])
+                    )
+                    existing_fence = (
+                        self._fenced_provider_recovery_dispatch_fence(
+                            predecessor
+                        )
+                        if predecessor is not None
+                        else None
+                    )
+                    if existing_fence is not None and not (
+                        self._retained_recovery_dispatch_fence_is_current(
+                            pin,
+                            allowed_states=frozenset(
+                                {"sealed", "admission_pending"}
+                            ),
+                        )
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "retained recovery pre-existing fence drifted"
+                        )
+                preflight["reason"] = "retained_occurrence_preflight_exact"
+            except Exception as exc:
+                _reraise_database_execution_storage_art_fatal(exc)
+                preflight_failed = True
+                preflight.update(
+                    {
+                        "reason": "retained_occurrence_preflight_blocked",
+                        "error_type": type(exc).__name__,
+                    }
+                )
+            preflight_outcomes.append(preflight)
+
+        if preflight_failed:
+            return {
+                "schema": DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA,
+                "attempted": True,
+                "reconciled": False,
+                "blocked": True,
+                "reason": "retained_occurrence_reconciliation_blocked",
+                "expected_occurrence_count": expected_count,
+                "admitted_count": 0,
+                "already_consumed_count": 0,
+                "outcomes": preflight_outcomes,
+            }
+
+        for immutable_pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS:
+            pin = dict(immutable_pin)
+            alias = str(pin.get("task_alias") or "")
+            task_cid = str(pin.get("task_cid") or "")
+            outcome: dict[str, Any] = {
+                "task_alias": alias,
+                "task_cid": task_cid,
+                "reconciled": False,
+                "blocked": True,
+                "reason": "retained_occurrence_unchecked",
+                "admission_id": "",
+                "consumption_id": "",
+            }
+            try:
+                task = self.task_source.get(task_cid)
+                if task is None or str(
+                    getattr(task, "task_alias", "") or ""
+                ) != alias:
+                    raise DatabaseImplementationConflictError(
+                        "retained recovery task identity is unavailable"
+                    )
+                current_status = str(task.status or "").strip().lower()
+                current_receipt = dict(
+                    getattr(task, "body", {}).get("completion_receipt") or {}
+                )
+                current_admission = current_receipt.get(
+                    "retained_recovery_admission"
+                )
+                current_consumption = current_receipt.get(
+                    "retained_recovery_consumption"
+                )
+
+                if current_admission is not None and current_consumption is not None:
+                    if not (
+                        self._retained_recovery_consumption_is_current(
+                            task,
+                            admission=current_admission,
+                            consumption=current_consumption,
+                        )
+                        and self._retained_recovery_admission_fence_is_current(
+                            current_admission,
+                            allowed_states=frozenset({"admitted"}),
+                        )
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "retained recovery consumed chain drifted"
+                        )
+                    already_consumed_count += 1
+                    outcome.update(
+                        {
+                            "reconciled": True,
+                            "blocked": False,
+                            "reason": "retained_occurrence_already_consumed",
+                            "admission_id": str(
+                                current_admission.get("admission_id") or ""
+                            ),
+                            "consumption_id": str(
+                                current_consumption.get("consumption_id") or ""
+                            ),
+                        }
+                    )
+                    outcomes.append(outcome)
+                    continue
+
+                predecessor = self.get_attempt(
+                    str(pin["predecessor_attempt_id"])
+                )
+                if predecessor is None:
+                    raise DatabaseImplementationConflictError(
+                        "retained recovery predecessor attempt is unavailable"
+                    )
+                credit = dict(
+                    database_fenced_provider_retained_credit(pin)
+                )
+                fence = self._fenced_provider_recovery_dispatch_fence(
+                    predecessor
+                )
+
+                if current_admission is not None:
+                    if not (
+                        current_consumption is None
+                        and current_status == "retrying"
+                        and int(task.revision)
+                        == int(pin["blocked_task_revision"]) + 1
+                        and database_fenced_provider_retained_admission_valid(
+                            current_admission
+                        )
+                        and current_admission.get("task_cid") == task_cid
+                        and self._retained_recovery_admission_fence_is_current(
+                            current_admission,
+                            allowed_states=frozenset(
+                                {"admission_pending", "admitted"}
+                            ),
+                        )
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "retained recovery provisional admission drifted"
+                        )
+                    admitted_count += 1
+                    outcome.update(
+                        {
+                            "reconciled": True,
+                            "blocked": False,
+                            "reason": "retained_occurrence_admission_current",
+                            "admission_id": str(
+                                current_admission.get("admission_id") or ""
+                            ),
+                        }
+                    )
+                    outcomes.append(outcome)
+                    continue
+
+                if not (
+                    current_status == pin["blocked_task_status"]
+                    and int(task.revision) == pin["blocked_task_revision"]
+                    and callable(outer_authority)
+                    and getattr(
+                        outer_authority,
+                        "__database_portal_owner_fence_held__",
+                        False,
+                    )
+                    is True
+                    and getattr(
+                        outer_authority,
+                        "__database_portal_checkout_mutation_lease_held__",
+                        False,
+                    )
+                    is True
+                    and self._retained_recovery_disposition_is_current(pin)
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "retained recovery blocked revision is not exact"
+                    )
+                if fence is None:
+                    fence = self._install_retained_recovery_dispatch_fence(
+                        predecessor,
+                        occurrence=pin,
+                        credit=credit,
+                    )
+                if fence.get("state") == "sealed":
+                    fence = (
+                        self._transition_fenced_provider_recovery_dispatch_fence(
+                            predecessor,
+                            expected_state="sealed",
+                            new_state="admission_pending",
+                        )
+                    )
+                if fence.get("state") != "admission_pending":
+                    raise DatabaseImplementationConflictError(
+                        "retained recovery dispatch fence is not pending"
+                    )
+
+                inner_receipt = self.fenced_provider_inner_population_receipt(
+                    predecessor,
+                    task_revision=int(task.revision),
+                    recovery_manifest_id=str(fence["migration_manifest_id"]),
+                    recovery_credit_id=str(fence["migration_credit_id"]),
+                    receipt_nonce=str(pin["receipt_nonce"]),
+                    receipt_epoch=int(pin["receipt_epoch"]),
+                )
+                admission_box: dict[str, Mapping[str, Any]] = {}
+
+                def admit(
+                    outer_receipt: Mapping[str, Any],
+                    pinned_repository: Any,
+                    *,
+                    _pin: Mapping[str, Any] = pin,
+                    _credit: Mapping[str, Any] = credit,
+                    _inner_receipt: Mapping[str, Any] = inner_receipt,
+                    _task: PortalTask = task,
+                    _admission_box: dict[str, Mapping[str, Any]] = admission_box,
+                    _task_cid: str = task_cid,
+                ) -> Any:
+                    admission = database_fenced_provider_retained_admission(
+                        occurrence=_pin,
+                        credit=_credit,
+                        inner_receipt=_inner_receipt,
+                        outer_receipt=outer_receipt,
+                        expected_task_revision=int(_task.revision),
+                        expected_task_status=str(_task.status),
+                    )
+                    budget = self._retry_budget_state(_task)
+                    retry_cap = int(budget["max_task_attempts"])
+                    receipt = self._retry_budget_receipt(
+                        _task,
+                        attempts_used=(
+                            max(0, retry_cap - 1) if retry_cap > 0 else 0
+                        ),
+                        operation=(
+                            "database_fenced_provider_retained_rearmed"
+                        ),
+                        reason="operator_reviewed_no_accepted_publication",
+                    )
+                    receipt["retained_recovery_admission"] = dict(admission)
+                    _admission_box["admission"] = admission
+                    return pinned_repository.cas_task_status(
+                        task_cid=_task_cid,
+                        expected_revision=int(_task.revision),
+                        new_status="retrying",
+                        receipt=receipt,
+                    )
+
+                subject = {
+                    "task_cid": task_cid,
+                    "task_alias": alias,
+                    "task_revision": int(task.revision),
+                    "expected_task_status": str(task.status),
+                    "attempt_id": str(pin["predecessor_attempt_id"]),
+                    "claim_id": str(pin["predecessor_claim_id"]),
+                    "lease_id": str(pin["predecessor_lease_id"]),
+                    "owner_session_id": str(
+                        pin["predecessor_owner_session_id"]
+                    ),
+                    "fencing_token": int(
+                        pin["predecessor_fencing_token"]
+                    ),
+                    "fence_epoch": int(pin["predecessor_fence_epoch"]),
+                    "expected_store_id": str(pin["owner_store_id"]),
+                    "minimum_store_generation": int(
+                        pin["owner_generation_floor"]
+                    ),
+                    "expected_database_uuid": str(
+                        pin["owner_database_uuid"]
+                    ),
+                    "expected_schema_fingerprint": str(
+                        pin["owner_schema_fingerprint"]
+                    ),
+                    "receipt_nonce": str(pin["receipt_nonce"]),
+                    "receipt_epoch": int(pin["receipt_epoch"]),
+                }
+                try:
+                    outer_authority(subject=subject, callback=admit)
+                except Exception:
+                    # COMMIT response loss is resolved only by exact canonical
+                    # readback.  No other observed state grants admission.
+                    pass
+                admission = admission_box.get("admission")
+                current = self.task_source.get(task_cid)
+                current_receipt = dict(
+                    getattr(current, "body", {}).get(
+                        "completion_receipt"
+                    )
+                    or {}
+                ) if current is not None else {}
+                observed_admission = current_receipt.get(
+                    "retained_recovery_admission"
+                )
+                if not (
+                    admission is not None
+                    and current is not None
+                    and str(current.status).strip().lower() == "retrying"
+                    and int(current.revision) == int(task.revision) + 1
+                    and observed_admission == dict(admission)
+                    and database_fenced_provider_retained_admission_valid(
+                        observed_admission
+                    )
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "retained recovery Quack CAS was not observed exactly"
+                    )
+                if not self._retained_recovery_admission_fence_is_current(
+                    admission,
+                    allowed_states=frozenset({"admission_pending"}),
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "retained recovery dispatch fence is not pending"
+                    )
+                admitted_count += 1
+                outcome.update(
+                    {
+                        "reconciled": True,
+                        "blocked": False,
+                        "reason": "retained_occurrence_admitted",
+                        "admission_id": str(
+                            admission.get("admission_id") or ""
+                        ),
+                    }
+                )
+            except Exception as exc:
+                _reraise_database_execution_storage_art_fatal(exc)
+                outcome.update(
+                    {
+                        "reason": "retained_occurrence_reconciliation_blocked",
+                        "error_type": type(exc).__name__,
+                    }
+                )
+            outcomes.append(outcome)
+
+        # The execution fences are the durable aggregate barrier.  Promote
+        # none until every task has either an exact current admission or an
+        # exact consumed chain.  A partial promotion remains globally
+        # nonclaimable because claim_next requires all three exact fences.
+        provisional_blocked = bool(
+            expected_count != 3
+            or len(outcomes) != expected_count
+            or any(item.get("blocked") is not False for item in outcomes)
+            or admitted_count + already_consumed_count != expected_count
+        )
+        if not provisional_blocked:
+            for index, immutable_pin in enumerate(
+                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+            ):
+                pin = dict(immutable_pin)
+                task = self.task_source.get(str(pin["task_cid"]))
+                receipt = dict(
+                    getattr(task, "body", {}).get("completion_receipt") or {}
+                ) if task is not None else {}
+                admission = receipt.get("retained_recovery_admission")
+                consumption = receipt.get("retained_recovery_consumption")
+                if admission is not None and consumption is not None:
+                    # Preflight already proved the exact consumed chain and
+                    # its admitted fence.  It is irrevocable and needs no
+                    # mutable disposition replay.
+                    continue
+                try:
+                    if not (
+                        admission is not None
+                        and consumption is None
+                        and self._retained_recovery_admission_fence_is_current(
+                            admission,
+                            allowed_states=frozenset(
+                                {"admission_pending", "admitted"}
+                            ),
+                        )
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "retained recovery aggregate admission drifted"
+                        )
+                    predecessor = self.get_attempt(
+                        str(pin["predecessor_attempt_id"])
+                    )
+                    fence = (
+                        self._fenced_provider_recovery_dispatch_fence(
+                            predecessor
+                        )
+                        if predecessor is not None
+                        else None
+                    )
+                    if isinstance(fence, Mapping) and fence.get("state") == (
+                        "admission_pending"
+                    ):
+                        if not self._retained_recovery_disposition_is_current(pin):
+                            raise DatabaseImplementationConflictError(
+                                "retained recovery pending disposition drifted"
+                            )
+                        self._transition_fenced_provider_recovery_dispatch_fence(
+                            predecessor,
+                            expected_state="admission_pending",
+                            new_state="admitted",
+                        )
+                    if not self._retained_recovery_admission_fence_is_current(
+                        admission,
+                        allowed_states=frozenset({"admitted"}),
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "retained recovery aggregate fence promotion failed"
+                        )
+                except Exception as exc:
+                    _reraise_database_execution_storage_art_fatal(exc)
+                    provisional_blocked = True
+                    outcomes[index].update(
+                        {
+                            "reconciled": False,
+                            "blocked": True,
+                            "reason": (
+                                "retained_occurrence_aggregate_promotion_blocked"
+                            ),
+                            "error_type": type(exc).__name__,
+                        }
+                    )
+                    break
+
+        blocked = bool(
+            provisional_blocked
+            or not self._retained_recovery_aggregate_admitted_current()
+        )
+        return {
+            "schema": DATABASE_FENCED_PROVIDER_RETAINED_RECONCILIATION_SCHEMA,
+            "attempted": True,
+            "reconciled": not blocked,
+            "blocked": blocked,
+            "reason": (
+                "retained_occurrence_reconciliation_complete"
+                if not blocked
+                else "retained_occurrence_reconciliation_blocked"
+            ),
+            "expected_occurrence_count": expected_count,
+            "admitted_count": admitted_count,
+            "already_consumed_count": already_consumed_count,
+            "outcomes": outcomes,
+        }
 
     def reconcile_blocked_unknown_outcome_tasks(self) -> list[dict[str, Any]]:
         """Rearm dead unknown-outcome blocks after the blocking session ends.
@@ -93178,6 +95565,15 @@ class DatabaseImplementationDaemon:
                         claim_record.get(name) != expected
                         for name, expected in expected_terminal_claim.items()
                     )
+                ):
+                    continue
+                terminal_lease = self.coordinator.get_lease(
+                    str(expected_terminal_claim["lease_id"])
+                )
+                if (
+                    terminal_lease is None
+                    or terminal_lease.to_dict()
+                    != terminal_claim.as_fenced_lease().to_dict()
                 ):
                     continue
 
@@ -93557,7 +95953,11 @@ class DatabaseImplementationDaemon:
                 barrier_committed = False
                 fenced_admission_provisional = False
                 try:
-                    rearmed_task = barrier(terminal_claim, rearm_control_task)
+                    rearmed_task = barrier(
+                        terminal_claim,
+                        rearm_control_task,
+                        lease=terminal_lease,
+                    )
                     resulting_task = (
                         getattr(rearmed_task, "task", None)
                         or (
@@ -94167,6 +96567,10 @@ class DatabaseImplementationDaemon:
         if (
             receipt.get("schema") != DATABASE_RETRY_BUDGET_SCHEMA
             or not _typed_mapping_contains(receipt, receipt_expected)
+            or not self._retained_recovery_pair_is_exact_for_attempt(
+                task,
+                attempt,
+            )
         ):
             raise DatabaseImplementationDispatchOutcomeUnknownError(
                 "canonical retry receipt no longer binds the running attempt"
@@ -94292,11 +96696,56 @@ class DatabaseImplementationDaemon:
                 now_ms=self._now_ms(),
             )
             return None
+        retained_admission = retry_state.get("retained_recovery_admission")
+        prior_retained_consumption = retry_state.get(
+            "retained_recovery_consumption"
+        )
+        retained_consumption: Mapping[str, Any] | None = None
+        if retained_admission is not None:
+            if (
+                prior_retained_consumption is not None
+                or not self._retained_recovery_admission_is_current_for_task(
+                    task,
+                    retained_admission,
+                )
+                or not self._retained_recovery_aggregate_admitted_current()
+            ):
+                self.coordinator.release(
+                    claim.as_fenced_lease(),
+                    reason="retained_recovery_credit_not_claimable",
+                    expected_fencing_token=int(claim.fencing_token),
+                    expected_fence_epoch=int(claim.fence_epoch),
+                    now_ms=self._now_ms(),
+                )
+                return None
+            retained_consumption = (
+                database_fenced_provider_retained_consumption(
+                    admission=retained_admission,
+                    attempt_id=str(claim.attempt_id),
+                    claim_id=str(claim.claim_id),
+                    lease_id=str(claim.lease_id),
+                    owner_session_id=str(claim.owner_session_id),
+                    attempt_number=int(claim.attempt_number),
+                    fencing_token=int(claim.fencing_token),
+                    fence_epoch=int(claim.fence_epoch),
+                    expected_task_revision=int(task.revision),
+                    expected_task_status="retrying",
+                    resulting_task_revision=int(task.revision) + 1,
+                    resulting_task_status="in_progress",
+                )
+            )
         global_attempt_number = int(retry_state["attempts_used"]) + 1
         task_alias = (
             str(task.task_alias)
             if task is not None and getattr(task, "task_alias", None)
             else str(claim.task_cid)
+        )
+        claim_receipt = self._retry_budget_receipt(
+            task,
+            attempts_used=global_attempt_number,
+            operation="database_claim",
+            attempt=claim,
+            retained_recovery_consumption=retained_consumption,
         )
         # Move durable task status through the database only (never Markdown).
         try:
@@ -94305,12 +96754,7 @@ class DatabaseImplementationDaemon:
                 task.task_cid,
                 expected_revision=int(task.revision),
                 new_status="in_progress",
-                receipt=self._retry_budget_receipt(
-                    task,
-                    attempts_used=global_attempt_number,
-                    operation="database_claim",
-                    attempt=claim,
-                ),
+                receipt=claim_receipt,
             )
         except Exception as exc:
             _reraise_database_execution_storage_art_fatal(exc)
@@ -94331,18 +96775,9 @@ class DatabaseImplementationDaemon:
                 unknown_committed = bool(
                     latest is not None
                     and str(latest.status).strip().lower() == "in_progress"
-                    and latest_receipt.get("schema")
-                    == DATABASE_RETRY_BUDGET_SCHEMA
-                    and str(latest_receipt.get("claim_id") or "")
-                    == str(claim.claim_id)
-                    and str(latest_receipt.get("attempt_id") or "")
-                    == str(claim.attempt_id)
-                    and int(latest_receipt.get("fencing_token") or -1)
-                    == int(claim.fencing_token)
-                    and int(latest_receipt.get("fence_epoch") or -1)
-                    == int(claim.fence_epoch)
-                    and int(latest_receipt.get("attempts_used") or -1)
-                    == global_attempt_number
+                    and int(getattr(latest, "revision", -1))
+                    == int(task.revision) + 1
+                    and latest_receipt == claim_receipt
                 )
                 if unknown_committed:
                     # Exact read-after-unknown proves the CAS committed.  Keep
@@ -94399,17 +96834,18 @@ class DatabaseImplementationDaemon:
             )
         if self._automatic_claim_forbidden_current(task):
             # A nested artifact can advance after ready selection but before
-            # the canonical claim CAS.  Restore the exact admitted receipt to
-            # a blocked, structurally non-dispatchable state before releasing
-            # the local claim; no attempt/provider is created.
-            original_receipt = dict(
-                task.body.get("completion_receipt") or {}
-            )
-            self._cas_task_status_database(
-                claimed_task.task_cid,
-                expected_revision=int(claimed_task.revision),
-                new_status="blocked",
-                receipt=original_receipt,
+            # the canonical claim CAS.  Settle the local claim first; a crash
+            # then leaves a non-dispatchable in-progress orphan for exact
+            # reconciliation.  A retained claim has already consumed its
+            # one-shot credit, so preserve the post-CAS admission+consumption
+            # pair rather than restoring the preclaim admission-only receipt.
+            blocked_receipt = dict(
+                (
+                    claimed_task.body
+                    if retained_consumption is not None
+                    else task.body
+                ).get("completion_receipt")
+                or {}
             )
             self.coordinator.release(
                 claim.as_fenced_lease(),
@@ -94417,6 +96853,17 @@ class DatabaseImplementationDaemon:
                 expected_fencing_token=int(claim.fencing_token),
                 expected_fence_epoch=int(claim.fence_epoch),
                 now_ms=self._now_ms(),
+            )
+            if retained_consumption is not None:
+                # Keep the exact consumed R+2 marker for the strict retained
+                # orphan authority.  Writing a blocked ``database_claim``
+                # receipt here would create an unrecognizable R+3 terminal.
+                return None
+            self._cas_task_status_database(
+                claimed_task.task_cid,
+                expected_revision=int(claimed_task.revision),
+                new_status="blocked",
+                receipt=blocked_receipt,
             )
             return None
         retry_budget = {
@@ -94428,6 +96875,10 @@ class DatabaseImplementationDaemon:
                 >= int(retry_state["max_task_attempts"])
             ),
         }
+        if retained_consumption is not None:
+            retry_budget["retained_recovery_consumption"] = dict(
+                retained_consumption
+            )
         control_claim = {
             "task_cid": str(claimed_task.task_cid),
             "revision": int(claimed_task.revision),
@@ -94445,6 +96896,28 @@ class DatabaseImplementationDaemon:
             )
         except BaseException as insert_exc:
             _reraise_database_execution_storage_art_fatal(insert_exc)
+            if retained_consumption is not None:
+                # The canonical retrying -> in_progress CAS is the one-shot
+                # consumption boundary.  A local insert failure may not refund
+                # it or reopen retrying authority.  Leave the live claim and
+                # durable in-progress marker for exact orphan reconciliation;
+                # no provider has been constructed or started at this point.
+                self._record_event(
+                    "execution_attempt_insert_consumed_recovery_pending",
+                    task_cid=str(task.task_cid),
+                    body={
+                        "claim_id": str(claim.claim_id),
+                        "attempt_id": str(claim.attempt_id),
+                        "retained_recovery_admission_id": str(
+                            retained_admission.get("admission_id") or ""
+                        ),
+                        "retained_recovery_consumption_id": str(
+                            retained_consumption.get("consumption_id") or ""
+                        ),
+                        "exception_type": type(insert_exc).__name__,
+                    },
+                )
+                return None
             # The canonical claim CAS is already durable.  Compensate before
             # propagating process-control exceptions so an insert failure can
             # never leave an accepted claim with no resumable local attempt.
@@ -95419,6 +97892,152 @@ class DatabaseImplementationDaemon:
         ):
             raise DatabaseImplementationConflictError(
                 "fenced-provider dispatch fence CAS was not exact"
+            )
+        return observed
+
+    def _install_retained_recovery_dispatch_fence(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        occurrence: Mapping[str, Any],
+        credit: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Seal one exact @2 predecessor before either receipt is captured.
+
+        This is a parallel successor to the historical @1 installer above.
+        It does not reinterpret an @1 evidence object or snapshot.  The
+        operator manifest nominates one exact already-fenced occurrence; the
+        execution store independently requires the matching attempt and zero
+        provider-result/effect rows before it installs the nonclaimable
+        ``sealed`` fence.
+        """
+
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            database_fenced_provider_retained_credit,
+        )
+
+        pin = dict(occurrence)
+        expected_credit = dict(
+            database_fenced_provider_retained_credit(pin)
+        )
+        attempt_bindings = {
+            "task_cid": "task_cid",
+            "task_alias": "task_alias",
+            "attempt_id": "predecessor_attempt_id",
+            "claim_id": "predecessor_claim_id",
+            "lease_id": "predecessor_lease_id",
+            "owner_session_id": "predecessor_owner_session_id",
+            "attempt_number": "predecessor_attempt_number",
+            "fencing_token": "predecessor_fencing_token",
+            "fence_epoch": "predecessor_fence_epoch",
+        }
+        if (
+            canonical_json(dict(credit)) != canonical_json(expected_credit)
+            or any(
+                getattr(attempt, target) != pin.get(source)
+                for target, source in attempt_bindings.items()
+            )
+        ):
+            raise DatabaseImplementationConflictError(
+                "retained recovery dispatch-fence input drifted"
+            )
+        occurrence_id = _database_fenced_provider_retained_digest(pin)
+        credit_id = _database_fenced_provider_retained_digest(expected_credit)
+        expected_fence = _database_fenced_provider_retained_fence_record(
+            occurrence=pin,
+            manifest_id=DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+            credit_id=credit_id,
+            attempt_id=attempt.attempt_id,
+            task_cid=attempt.task_cid,
+            fencing_token=int(attempt.fencing_token),
+            fence_epoch=int(attempt.fence_epoch),
+        )
+        disposition_id = expected_fence["snapshot_id"]
+        fence_id = expected_fence["fence_id"]
+        existing = self._fenced_provider_recovery_dispatch_fence(attempt)
+        if existing is not None:
+            if all(
+                existing.get(name) == value
+                for name, value in {
+                    "fence_id": fence_id,
+                    "attempt_id": attempt.attempt_id,
+                    "task_cid": attempt.task_cid,
+                    **expected_fence,
+                }.items()
+            ):
+                return existing
+            raise DatabaseImplementationConflictError(
+                "another recovery dispatch fence already owns the occurrence"
+            )
+        with self._lock:
+            self._require_connection().execute(
+                """
+                INSERT INTO attempt_recovery_dispatch_fences(
+                    fence_id, attempt_id, task_cid, evidence_id,
+                    migration_manifest_id, migration_credit_id, snapshot_id,
+                    fencing_token, fence_epoch, installed_at_ms, state
+                )
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'sealed'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM provider_invocations provider
+                    WHERE provider.attempt_id = ?
+                )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM effect_claims effect
+                    WHERE effect.attempt_id = ?
+                )
+                  AND (
+                    SELECT COUNT(*) FROM database_task_attempts current_attempt
+                    WHERE current_attempt.attempt_id = ?
+                      AND current_attempt.claim_id = ?
+                      AND current_attempt.task_cid = ?
+                      AND current_attempt.task_alias = ?
+                      AND current_attempt.attempt_number = ?
+                      AND current_attempt.owner_session_id = ?
+                      AND current_attempt.lease_id = ?
+                      AND current_attempt.fencing_token = ?
+                      AND current_attempt.fence_epoch = ?
+                  ) = 1
+                ON CONFLICT (attempt_id) DO NOTHING
+                """,
+                [
+                    fence_id,
+                    attempt.attempt_id,
+                    attempt.task_cid,
+                    expected_fence["evidence_id"],
+                    expected_fence["migration_manifest_id"],
+                    expected_fence["migration_credit_id"],
+                    disposition_id,
+                    int(attempt.fencing_token),
+                    int(attempt.fence_epoch),
+                    self._now_ms(),
+                    attempt.attempt_id,
+                    attempt.attempt_id,
+                    attempt.attempt_id,
+                    attempt.claim_id,
+                    attempt.task_cid,
+                    attempt.task_alias,
+                    int(attempt.attempt_number),
+                    attempt.owner_session_id,
+                    attempt.lease_id,
+                    int(attempt.fencing_token),
+                    int(attempt.fence_epoch),
+                ],
+            )
+        observed = self._fenced_provider_recovery_dispatch_fence(attempt)
+        if not (
+            isinstance(observed, Mapping)
+            and observed.get("fence_id") == fence_id
+            and observed.get("evidence_id") == occurrence_id
+            and observed.get("migration_manifest_id")
+            == DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+            and observed.get("migration_credit_id") == credit_id
+            and observed.get("snapshot_id") == disposition_id
+            and observed.get("state") == "sealed"
+        ):
+            raise DatabaseImplementationConflictError(
+                "retained recovery dispatch fence was not installed exactly"
             )
         return observed
 
@@ -96480,6 +99099,10 @@ class DatabaseImplementationDaemon:
         task = self.task_source.get(current.task_cid)
         if task is None:
             raise KeyError(current.task_cid)
+        if not self._retained_recovery_pair_is_exact_for_attempt(task, current):
+            raise DatabaseImplementationConflictError(
+                "retained recovery completion chain changed"
+            )
         task_status = str(task.status).strip().lower()
         successful_statuses = {"completed", "complete", "done"}
         unsuccessful_terminal_statuses = {
@@ -96547,25 +99170,37 @@ class DatabaseImplementationDaemon:
                 claim,
                 allow_logically_completed=True,
             )
+            completion_receipt = {
+                "operation": "database_complete",
+                "attempt_id": current.attempt_id,
+                "claim_id": current.claim_id,
+                "task_cid": current.task_cid,
+                "attempt_number": int(current.attempt_number),
+                "lease_id": current.lease_id,
+                "owner_session_id": self.owner_session_id,
+                "fencing_token": int(current.fencing_token),
+                "fence_epoch": int(current.fence_epoch),
+                "evidence_digest": digest,
+                "coordination_preparation": dict(prepared),
+                "validation": validation_payload,
+                "control_claim": control_claim_binding,
+            }
+            current_task_receipt = dict(
+                getattr(task, "body", {}).get("completion_receipt") or {}
+            )
+            for retained_name in (
+                "retained_recovery_admission",
+                "retained_recovery_consumption",
+            ):
+                if retained_name in current_task_receipt:
+                    completion_receipt[retained_name] = dict(
+                        current_task_receipt[retained_name]
+                    )
             cas_result = self._cas_task_status_database(
                 current.task_cid,
                 expected_revision=int(task.revision),
                 new_status="completed",
-                receipt={
-                    "operation": "database_complete",
-                    "attempt_id": current.attempt_id,
-                    "claim_id": current.claim_id,
-                    "task_cid": current.task_cid,
-                    "attempt_number": int(current.attempt_number),
-                    "lease_id": current.lease_id,
-                    "owner_session_id": self.owner_session_id,
-                    "fencing_token": int(current.fencing_token),
-                    "fence_epoch": int(current.fence_epoch),
-                    "evidence_digest": digest,
-                    "coordination_preparation": dict(prepared),
-                    "validation": validation_payload,
-                    "control_claim": control_claim_binding,
-                },
+                receipt=completion_receipt,
                 evidence_digests=[digest],
             )
             to_dict = getattr(cas_result, "to_dict", None)
@@ -97691,6 +100326,885 @@ class DatabaseImplementationDaemon:
             outcomes.append(outcome)
         return outcomes
 
+    def _retained_orphan_consumed_receipt_is_current(
+        self,
+        task: Any,
+        *,
+        pin: Mapping[str, Any],
+        claim: Any,
+        lease: Any,
+        expected_claim_state: str,
+    ) -> bool:
+        """Validate the closed canonical R+2 claim receipt without repair."""
+
+        receipt = dict(
+            getattr(task, "body", {}).get("completion_receipt") or {}
+        )
+        admission = receipt.get("retained_recovery_admission")
+        consumption = receipt.get("retained_recovery_consumption")
+        required_fields = {
+            "schema",
+            "operation",
+            "task_cid",
+            "validation_spec_cid",
+            "attempts_used",
+            "max_task_attempts",
+            "retry_exhausted",
+            "process_instance_id",
+            "owner_session_id",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "retained_recovery_admission",
+            "retained_recovery_consumption",
+        }
+        allowed_fields = required_fields | {"unknown_outcome_rearm_count"}
+        claim_fields = (
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+        )
+        text_fields = (
+            "validation_spec_cid",
+            "process_instance_id",
+            "owner_session_id",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+        )
+        int_fields = (
+            "attempts_used",
+            "max_task_attempts",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+        )
+        try:
+            cap = receipt["max_task_attempts"]
+            expected_attempts_used = cap if cap > 0 else 1
+            optional_rearm_count = receipt.get("unknown_outcome_rearm_count")
+            budget_state = self._retry_budget_state(task)
+            return bool(
+                set(receipt) == required_fields
+                or set(receipt) == allowed_fields
+            ) and bool(
+                isinstance(admission, Mapping)
+                and isinstance(consumption, Mapping)
+                and database_fenced_provider_retained_consumption_matches_admission(
+                    admission=admission,
+                    consumption=consumption,
+                )
+                and str(getattr(task, "status", "") or "").strip().lower()
+                == "in_progress"
+                and type(getattr(task, "revision", None)) is int
+                and int(task.revision)
+                == int(pin["blocked_task_revision"]) + 2
+                and consumption.get("resulting_task_revision")
+                == int(task.revision)
+                and consumption.get("resulting_task_status") == "in_progress"
+                and admission.get("task_cid")
+                == str(getattr(task, "task_cid", "") or "")
+                and admission.get("task_alias")
+                == str(getattr(task, "task_alias", "") or "")
+                and consumption.get("task_cid") == admission.get("task_cid")
+                and consumption.get("task_alias") == admission.get("task_alias")
+                and receipt.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
+                and receipt.get("operation") == "database_claim"
+                and receipt.get("task_cid") == admission.get("task_cid")
+                and receipt.get("validation_spec_cid")
+                == self._retry_budget_validation_spec_cid(task)
+                and all(
+                    isinstance(receipt.get(name), str)
+                    and 0 < len(receipt[name]) <= 1024
+                    and not any(
+                        character in receipt[name] for character in "\0\n\r"
+                    )
+                    for name in text_fields
+                )
+                and all(
+                    type(receipt.get(name)) is int
+                    and receipt[name] >= (0 if name == "max_task_attempts" else 1)
+                    for name in int_fields
+                )
+                and type(cap) is int
+                and cap == self.max_task_attempts
+                and receipt.get("attempts_used") == expected_attempts_used
+                and receipt.get("retry_exhausted") is (cap > 0)
+                and (
+                    "unknown_outcome_rearm_count" not in receipt
+                    or (
+                        type(optional_rearm_count) is int
+                        and 0
+                        <= optional_rearm_count
+                        <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+                    )
+                )
+                and all(
+                    receipt.get(name) == consumption.get(name)
+                    for name in claim_fields
+                )
+                and self._retained_orphan_claim_matches(
+                    claim,
+                    task=task,
+                    consumption=consumption,
+                )
+                and str(
+                    getattr(
+                        getattr(claim, "state", ""),
+                        "value",
+                        getattr(claim, "state", ""),
+                    )
+                    or ""
+                )
+                == expected_claim_state
+                and self._retained_orphan_lease_matches(
+                    lease,
+                    task=task,
+                    consumption=consumption,
+                    expected_state=expected_claim_state,
+                )
+                and budget_state.get("malformed") is False
+                and budget_state.get("policy_mismatch") is False
+                and self._retained_recovery_admission_fence_is_current(
+                    admission,
+                    allowed_states=frozenset({"admitted"}),
+                )
+            )
+        except Exception as exc:
+            _reraise_database_execution_storage_art_fatal(exc)
+            return False
+
+    @staticmethod
+    def _retained_orphan_claim_matches(
+        claim: Any,
+        *,
+        task: Any,
+        consumption: Mapping[str, Any],
+    ) -> bool:
+        """Bind a coordinator claim to one consumed compact authorization."""
+
+        if claim is None:
+            return False
+        expected = {
+            "claim_id": consumption.get("claim_id"),
+            "task_cid": str(getattr(task, "task_cid", "") or ""),
+            "attempt_id": consumption.get("attempt_id"),
+            "lease_id": consumption.get("lease_id"),
+            "owner_session_id": consumption.get("owner_session_id"),
+            "attempt_number": consumption.get("attempt_number"),
+            "fencing_token": consumption.get("fencing_token"),
+            "fence_epoch": consumption.get("fence_epoch"),
+        }
+        return all(getattr(claim, name, None) == value for name, value in expected.items())
+
+    @staticmethod
+    def _retained_orphan_lease_matches(
+        lease: Any,
+        *,
+        task: Any,
+        consumption: Mapping[str, Any],
+        expected_state: str,
+    ) -> bool:
+        """Require the task-claim projection and fenced lease to agree."""
+
+        if lease is None:
+            return False
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        lease_kind = str(
+            getattr(
+                getattr(lease, "lease_kind", ""),
+                "value",
+                getattr(lease, "lease_kind", ""),
+            )
+            or ""
+        )
+        lease_mode = str(
+            getattr(
+                getattr(lease, "mode", ""),
+                "value",
+                getattr(lease, "mode", ""),
+            )
+            or ""
+        )
+        lease_state = str(
+            getattr(
+                getattr(lease, "state", ""),
+                "value",
+                getattr(lease, "state", ""),
+            )
+            or ""
+        )
+        return bool(
+            getattr(lease, "lease_id", None) == consumption.get("lease_id")
+            and lease_kind == "task"
+            and lease_mode == "exclusive"
+            and getattr(lease, "scope", None) == task_cid
+            and getattr(lease, "scope_key", None) == f"task:{task_cid}"
+            and getattr(lease, "task_cid", None) == task_cid
+            and getattr(lease, "claim_id", None) == consumption.get("claim_id")
+            and getattr(lease, "attempt_id", None)
+            == consumption.get("attempt_id")
+            and getattr(lease, "owner_session_id", None)
+            == consumption.get("owner_session_id")
+            and getattr(lease, "attempt_number", None)
+            == consumption.get("attempt_number")
+            and getattr(lease, "fencing_token", None)
+            == consumption.get("fencing_token")
+            and getattr(lease, "fence_epoch", None)
+            == consumption.get("fence_epoch")
+            and lease_state == expected_state
+        )
+
+    def _retained_orphan_block_receipt_is_current(
+        self,
+        task: Any,
+        *,
+        pin: Mapping[str, Any],
+        claim: Any,
+        lease: Any,
+        expected_claim_state: str = "released",
+    ) -> bool:
+        """Recognize only the exact idempotent R+3 orphan terminal."""
+
+        receipt = dict(
+            getattr(task, "body", {}).get("completion_receipt") or {}
+        )
+        admission = receipt.get("retained_recovery_admission")
+        consumption = receipt.get("retained_recovery_consumption")
+        required_fields = {
+            "schema",
+            "operation",
+            "task_cid",
+            "validation_spec_cid",
+            "attempts_used",
+            "max_task_attempts",
+            "retry_exhausted",
+            "process_instance_id",
+            "owner_session_id",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "retained_recovery_admission",
+            "retained_recovery_consumption",
+            "reason",
+            "orphaned_attempt_id",
+            "orphaned_claim_id",
+            "authority_outcome",
+            "policy_mismatch",
+            "malformed",
+            "configured_max_task_attempts",
+            "retained_recovery_consumed",
+        }
+        allowed_fields = required_fields | {"unknown_outcome_rearm_count"}
+        claim_fields = (
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+        )
+        text_fields = (
+            "validation_spec_cid",
+            "process_instance_id",
+            "owner_session_id",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+        )
+        claim_state = str(
+            getattr(
+                getattr(claim, "state", ""),
+                "value",
+                getattr(claim, "state", ""),
+            )
+            or ""
+        )
+        try:
+            cap = receipt["max_task_attempts"]
+            configured_cap = receipt["configured_max_task_attempts"]
+            expected_attempts_used = cap if cap > 0 else 1
+            optional_rearm_count = receipt.get("unknown_outcome_rearm_count")
+            budget_state = self._retry_budget_state(task)
+            return bool(
+                (set(receipt) == required_fields or set(receipt) == allowed_fields)
+                and isinstance(admission, Mapping)
+                and isinstance(consumption, Mapping)
+                and database_fenced_provider_retained_consumption_matches_admission(
+                    admission=admission,
+                    consumption=consumption,
+                )
+                and str(getattr(task, "status", "") or "").strip().lower()
+                == "blocked"
+                and type(getattr(task, "revision", None)) is int
+                and int(task.revision)
+                == int(pin["blocked_task_revision"]) + 3
+                and receipt.get("schema") == DATABASE_RETRY_BUDGET_SCHEMA
+                and receipt.get("operation")
+                == "database_retained_recovery_consumed_orphan_blocked"
+                and receipt.get("reason")
+                == "retained_recovery_consumed_without_local_attempt"
+                and receipt.get("task_cid")
+                == str(getattr(task, "task_cid", "") or "")
+                and admission.get("task_cid") == receipt.get("task_cid")
+                and admission.get("task_alias")
+                == str(getattr(task, "task_alias", "") or "")
+                and consumption.get("task_cid") == admission.get("task_cid")
+                and consumption.get("task_alias") == admission.get("task_alias")
+                and consumption.get("resulting_task_revision")
+                == int(pin["blocked_task_revision"]) + 2
+                and consumption.get("resulting_task_status") == "in_progress"
+                and receipt.get("validation_spec_cid")
+                == self._retry_budget_validation_spec_cid(task)
+                and all(
+                    isinstance(receipt.get(name), str)
+                    and 0 < len(receipt[name]) <= 1024
+                    and not any(
+                        character in receipt[name] for character in "\0\n\r"
+                    )
+                    for name in text_fields
+                )
+                and type(cap) is int
+                and cap >= 0
+                and type(configured_cap) is int
+                and cap == configured_cap == self.max_task_attempts
+                and type(receipt.get("attempts_used")) is int
+                and receipt.get("attempts_used") == expected_attempts_used
+                and type(receipt.get("attempt_number")) is int
+                and receipt.get("attempt_number") >= 1
+                and type(receipt.get("fencing_token")) is int
+                and receipt.get("fencing_token") >= 1
+                and type(receipt.get("fence_epoch")) is int
+                and receipt.get("fence_epoch") >= 1
+                and receipt.get("retry_exhausted") is True
+                and receipt.get("retained_recovery_consumed") is True
+                and receipt.get("malformed") is False
+                and receipt.get("policy_mismatch") is False
+                and receipt.get("authority_outcome") == "unknown"
+                and (
+                    "unknown_outcome_rearm_count" not in receipt
+                    or (
+                        type(optional_rearm_count) is int
+                        and 0
+                        <= optional_rearm_count
+                        <= DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT
+                    )
+                )
+                and receipt.get("orphaned_attempt_id")
+                == consumption.get("attempt_id")
+                and receipt.get("orphaned_claim_id")
+                == consumption.get("claim_id")
+                and all(
+                    receipt.get(name) == consumption.get(name)
+                    for name in claim_fields
+                )
+                and self._retained_orphan_claim_matches(
+                    claim,
+                    task=task,
+                    consumption=consumption,
+                )
+                and claim_state == expected_claim_state
+                and self._retained_orphan_lease_matches(
+                    lease,
+                    task=task,
+                    consumption=consumption,
+                    expected_state=expected_claim_state,
+                )
+                and budget_state.get("malformed") is False
+                and budget_state.get("policy_mismatch") is False
+                and self._retained_recovery_admission_fence_is_current(
+                    admission,
+                    allowed_states=frozenset({"admitted"}),
+                )
+            )
+        except Exception as exc:
+            _reraise_database_execution_storage_art_fatal(exc)
+            return False
+
+    def reconcile_retained_recovery_orphaned_claims(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Repair only exact consumed R+2 orphans from the sealed manifest.
+
+        This is intentionally not a general in-progress scan.  It runs while
+        the controller owns the Quack mutation fence and may only settle the
+        three reviewed one-shot occurrences.  Prepared completions and local
+        resumable attempts retain precedence and are left to their ordinary
+        reconciliation authorities.
+        """
+
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            database_fenced_provider_retained_manifest,
+            database_fenced_provider_retained_manifest_valid,
+        )
+
+        if not database_fenced_provider_retained_manifest_valid(
+            database_fenced_provider_retained_manifest()
+        ):
+            raise DatabaseImplementationConflictError(
+                "retained orphan manifest identity is not current"
+            )
+        owner_cas = self._database_portal_outer_authority_cas
+        pinned_store_ids = {
+            str(pin["owner_store_id"])
+            for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        }
+        pinned_generations = {
+            str(pin["control_store_generation"])
+            for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        }
+        if not (
+            self.authority_mode == "quack"
+            and self.task_source_kind == "duckdb"
+            and pinned_store_ids == {self.control_store_id}
+            and pinned_generations == {self.control_store_generation}
+            and callable(owner_cas)
+            and getattr(
+                owner_cas,
+                "__database_portal_owner_fence_held__",
+                False,
+            )
+            is True
+            and getattr(
+                owner_cas,
+                "__database_portal_checkout_mutation_lease_held__",
+                False,
+            )
+            is True
+        ):
+            raise DatabaseImplementationConflictError(
+                "retained orphan repair lacks its exact controller fences"
+            )
+        # Build and validate the complete immutable three-pin plan before the
+        # first release or control-task CAS.  This prevents a corrupt later pin
+        # from leaving an earlier occurrence partially repaired.
+        plans: list[dict[str, Any]] = []
+        for immutable_pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS:
+            pin = dict(immutable_pin)
+            task = self.task_source.get(str(pin["task_cid"]))
+            if task is None or str(getattr(task, "task_alias", "") or "") != str(
+                pin["task_alias"]
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained orphan task identity is unavailable"
+                )
+            status = str(getattr(task, "status", "") or "").strip().lower()
+            revision = getattr(task, "revision", None)
+            reserved_state = self._retained_recovery_reserved_epoch_state(task)
+            if reserved_state.startswith("invalid_"):
+                raise DatabaseImplementationConflictError(
+                    "retained orphan reserved epoch lost its compact receipts"
+                )
+            receipt = dict(
+                getattr(task, "body", {}).get("completion_receipt") or {}
+            )
+            admission = receipt.get("retained_recovery_admission")
+            consumption = receipt.get("retained_recovery_consumption")
+            consumed_revision = int(pin["blocked_task_revision"]) + 2
+            already_blocked_revision = consumed_revision + 1
+            is_consumed_orphan = bool(
+                status == "in_progress"
+                and revision == consumed_revision
+                and reserved_state == "consumed"
+            )
+            is_already_blocked = bool(
+                status == "blocked" and revision == already_blocked_revision
+            )
+            if not (is_consumed_orphan or is_already_blocked):
+                plans.append({"action": "skip", "pin": pin})
+                continue
+            if not database_fenced_provider_retained_consumption_matches_admission(
+                admission=admission,
+                consumption=consumption,
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained orphan compact pair is not exact"
+                )
+            attempt_id = str(consumption.get("attempt_id") or "")
+            claim_id = str(consumption.get("claim_id") or "")
+            if not attempt_id or not claim_id:
+                raise DatabaseImplementationConflictError(
+                    "retained orphan claim identity is incomplete"
+                )
+            if self.get_attempt(attempt_id) is not None:
+                # A durable local attempt belongs to ordinary phase and
+                # prepared-completion reconciliation, never orphan cleanup.
+                plans.append({"action": "skip", "pin": pin})
+                continue
+            prepared = self.coordinator.get_prepared_task_completion(
+                str(task.task_cid)
+            )
+            if prepared is not None:
+                plans.append({"action": "skip", "pin": pin})
+                continue
+            claim = self.coordinator.get_task_claim(claim_id)
+            if not self._retained_orphan_claim_matches(
+                claim,
+                task=task,
+                consumption=consumption,
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained orphan coordinator claim is unavailable or drifted"
+                )
+            claim_state = str(
+                getattr(getattr(claim, "state", ""), "value", claim.state)
+                or ""
+            )
+            if claim_state not in {"accepted", "released", "expired"}:
+                raise DatabaseImplementationConflictError(
+                    "retained orphan coordinator claim state is not admissible"
+                )
+            lease = self.coordinator.get_lease(str(consumption["lease_id"]))
+            if not self._retained_orphan_lease_matches(
+                lease,
+                task=task,
+                consumption=consumption,
+                expected_state=claim_state,
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained orphan fenced lease is unavailable or drifted"
+                )
+            if is_consumed_orphan and not (
+                self._retained_orphan_consumed_receipt_is_current(
+                    task,
+                    pin=pin,
+                    claim=claim,
+                    lease=lease,
+                    expected_claim_state=claim_state,
+                )
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained orphan R+2 claim receipt is not closed and exact"
+                )
+            if is_already_blocked:
+                if not self._retained_orphan_block_receipt_is_current(
+                    task,
+                    pin=pin,
+                    claim=claim,
+                    lease=lease,
+                    expected_claim_state=claim_state,
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "retained orphan blocked readback is not exact"
+                    )
+            plans.append(
+                {
+                    "action": (
+                        "already_blocked"
+                        if is_already_blocked
+                        else "settle_and_block"
+                    ),
+                    "pin": pin,
+                    "task": task,
+                    "admission": dict(admission),
+                    "consumption": dict(consumption),
+                    "claim": claim,
+                    "lease": lease,
+                    "claim_state": claim_state,
+                    "attempt_id": attempt_id,
+                    "claim_id": claim_id,
+                    "consumed_revision": consumed_revision,
+                }
+            )
+
+        outcomes: list[dict[str, Any]] = []
+        for plan in plans:
+            if plan["action"] == "skip":
+                continue
+            pin = plan["pin"]
+            task = self.task_source.get(str(pin["task_cid"]))
+            consumption = plan["consumption"]
+            if not (
+                task is not None
+                and str(getattr(task, "task_alias", "") or "")
+                == str(pin["task_alias"])
+                and dict(
+                    getattr(task, "body", {}).get("completion_receipt") or {}
+                ).get("retained_recovery_admission")
+                == plan["admission"]
+                and dict(
+                    getattr(task, "body", {}).get("completion_receipt") or {}
+                ).get("retained_recovery_consumption")
+                == consumption
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained orphan plan changed before execution"
+                )
+            claim = self.coordinator.get_task_claim(plan["claim_id"])
+            if not self._retained_orphan_claim_matches(
+                claim,
+                task=task,
+                consumption=consumption,
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained orphan claim changed before execution"
+                )
+            claim_state = str(
+                getattr(getattr(claim, "state", ""), "value", claim.state)
+                or ""
+            )
+            lease = self.coordinator.get_lease(str(consumption["lease_id"]))
+            if not self._retained_orphan_lease_matches(
+                lease,
+                task=task,
+                consumption=consumption,
+                expected_state=claim_state,
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained orphan lease changed before execution"
+                )
+            if plan["action"] == "settle_and_block" and not (
+                self._retained_orphan_consumed_receipt_is_current(
+                    task,
+                    pin=pin,
+                    claim=claim,
+                    lease=lease,
+                    expected_claim_state=claim_state,
+                )
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained orphan R+2 receipt changed before settlement"
+                )
+            if claim_state == "accepted":
+                now_ms = self._now_ms()
+                try:
+                    expires_at_ms = int(
+                        getattr(claim, "expires_at_ms", 0) or 0
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise DatabaseImplementationConflictError(
+                        "retained orphan claim expiry is malformed"
+                    ) from exc
+                expected_terminal_state = (
+                    "expired" if expires_at_ms <= now_ms else "released"
+                )
+                terminalize = getattr(
+                    self.coordinator,
+                    "terminalize_unprepared_task_claim",
+                    None,
+                )
+                if not callable(terminalize):
+                    raise DatabaseImplementationAuthorityError(
+                        "coordinator cannot atomically settle retained orphan"
+                    )
+                try:
+                    claim, lease = terminalize(
+                        claim,
+                        lease=lease,
+                        reason=(
+                            "retained_recovery_consumed_without_local_attempt"
+                        ),
+                        now_ms=now_ms,
+                    )
+                except Exception as exc:
+                    _reraise_database_execution_storage_art_fatal(exc)
+                    reread = self.coordinator.get_task_claim(plan["claim_id"])
+                    reread_lease = self.coordinator.get_lease(
+                        str(consumption["lease_id"])
+                    )
+                    if not (
+                        self._retained_orphan_claim_matches(
+                            reread,
+                            task=task,
+                            consumption=consumption,
+                        )
+                        and str(
+                            getattr(
+                                getattr(reread, "state", ""),
+                                "value",
+                                reread.state,
+                            )
+                            or ""
+                        )
+                        == expected_terminal_state
+                        and self._retained_orphan_lease_matches(
+                            reread_lease,
+                            task=task,
+                            consumption=consumption,
+                            expected_state=expected_terminal_state,
+                        )
+                    ):
+                        raise
+                    claim = reread
+                    lease = reread_lease
+                if not (
+                    self._retained_orphan_claim_matches(
+                        claim,
+                        task=task,
+                        consumption=consumption,
+                    )
+                    and str(
+                        getattr(
+                            getattr(claim, "state", ""),
+                            "value",
+                            claim.state,
+                        )
+                        or ""
+                    )
+                    == expected_terminal_state
+                    and self._retained_orphan_lease_matches(
+                        lease,
+                        task=task,
+                        consumption=consumption,
+                        expected_state=expected_terminal_state,
+                    )
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "retained orphan claim did not terminalize exactly"
+                    )
+                claim_state = expected_terminal_state
+            elif claim_state != "released":
+                if claim_state != "expired":
+                    raise DatabaseImplementationConflictError(
+                        "retained orphan claim advanced before settlement"
+                    )
+            terminal_barrier = getattr(
+                self.coordinator,
+                "execute_with_terminal_task_claim_barrier",
+                None,
+            )
+            if not callable(terminal_barrier):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator lacks retained orphan terminal barrier"
+                )
+            if plan["action"] == "already_blocked":
+                def validate_blocked_control_task(
+                    *,
+                    _task_cid: str = str(task.task_cid),
+                    _pin: Mapping[str, Any] = pin,
+                    _claim: Any = claim,
+                    _lease: Any = lease,
+                    _claim_state: str = claim_state,
+                ) -> Any:
+                    readback = self.task_source.get(_task_cid)
+                    if not self._retained_orphan_block_receipt_is_current(
+                        readback,
+                        pin=_pin,
+                        claim=_claim,
+                        lease=_lease,
+                        expected_claim_state=_claim_state,
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "retained orphan blocked readback changed"
+                        )
+                    return readback
+
+                # R+3 is idempotent only while the exact terminal claim and
+                # lease remain the latest task fence and no prepared
+                # completion exists.  Receipt equality alone cannot exclude
+                # a successor claim acquired after the first repair.
+                terminal_barrier(
+                    claim,
+                    validate_blocked_control_task,
+                    lease=lease,
+                )
+                outcomes.append(
+                    {
+                        "task_cid": str(task.task_cid),
+                        "task_alias": str(pin["task_alias"]),
+                        "attempt_id": plan["attempt_id"],
+                        "claim_id": plan["claim_id"],
+                        "status": "blocked",
+                        "retry_exhausted": True,
+                        "reason": "retained_consumed_orphan_already_blocked",
+                    }
+                )
+                continue
+            current_receipt = dict(
+                getattr(task, "body", {}).get("completion_receipt") or {}
+            )
+            attempts_used = current_receipt.get("attempts_used")
+            if type(attempts_used) is not int or attempts_used < 1:
+                raise DatabaseImplementationConflictError(
+                    "retained orphan retry budget ordinal is malformed"
+                )
+            recovery_receipt = self._retry_budget_receipt(
+                task,
+                attempts_used=attempts_used,
+                operation=(
+                    "database_retained_recovery_consumed_orphan_blocked"
+                ),
+                attempt=claim,
+                reason="retained_recovery_consumed_without_local_attempt",
+            )
+            recovery_receipt.update(
+                {
+                    "orphaned_attempt_id": plan["attempt_id"],
+                    "orphaned_claim_id": plan["claim_id"],
+                    "authority_outcome": "unknown",
+                    "policy_mismatch": False,
+                    "malformed": False,
+                    "configured_max_task_attempts": self.max_task_attempts,
+                    "retained_recovery_consumed": True,
+                    "retry_exhausted": True,
+                }
+            )
+            def block_control_task(
+                *,
+                _task_cid: str = str(task.task_cid),
+                _consumed_revision: int = int(plan["consumed_revision"]),
+                _recovery_receipt: Mapping[str, Any] = recovery_receipt,
+            ) -> Any:
+                return self._cas_task_status_database(
+                    _task_cid,
+                    expected_revision=_consumed_revision,
+                    new_status="blocked",
+                    receipt=_recovery_receipt,
+                )
+
+            try:
+                terminal_barrier(
+                    claim,
+                    block_control_task,
+                    lease=lease,
+                )
+            except Exception as exc:
+                _reraise_database_execution_storage_art_fatal(exc)
+                readback = self.task_source.get(str(task.task_cid))
+                if not self._retained_orphan_block_receipt_is_current(
+                    readback,
+                    pin=pin,
+                    claim=claim,
+                    lease=lease,
+                    expected_claim_state=claim_state,
+                ):
+                    raise
+            readback = self.task_source.get(str(task.task_cid))
+            if not self._retained_orphan_block_receipt_is_current(
+                readback,
+                pin=pin,
+                claim=claim,
+                lease=lease,
+                expected_claim_state=claim_state,
+            ):
+                raise DatabaseImplementationConflictError(
+                    "retained orphan terminal CAS did not read back exactly"
+                )
+            outcomes.append(
+                {
+                    "task_cid": str(task.task_cid),
+                    "task_alias": str(pin["task_alias"]),
+                    "attempt_id": plan["attempt_id"],
+                    "claim_id": plan["claim_id"],
+                    "status": "blocked",
+                    "retry_exhausted": True,
+                    "reason": "retained_recovery_consumed_without_local_attempt",
+                }
+            )
+        return outcomes
+
     def reconcile_orphaned_canonical_claims(self) -> list[dict[str, Any]]:
         """Repair claim CASes that committed before local attempt insertion."""
 
@@ -97703,6 +101217,14 @@ class DatabaseImplementationDaemon:
             return []
         outcomes: list[dict[str, Any]] = []
         for task in getattr(page, "tasks", ()):
+            # The sealed one-shot revisions are repaired only by the strict
+            # fixed-three controller-fenced helper above.  A generic scan may
+            # never refund or reinterpret their compact authorization chain.
+            if (
+                self._retained_recovery_reserved_epoch_state(task)
+                != "not_applicable"
+            ):
+                continue
             receipt = dict(task.body.get("completion_receipt") or {})
             if (
                 receipt.get("schema") != DATABASE_RETRY_BUDGET_SCHEMA
@@ -97720,15 +101242,28 @@ class DatabaseImplementationDaemon:
             except (TypeError, ValueError):
                 attempts_used = 1
             budget_state = self._retry_budget_state(task)
+            retained_consumption = receipt.get(
+                "retained_recovery_consumption"
+            )
+            consumed_retained_recovery = bool(
+                database_fenced_provider_retained_consumption_matches_admission(
+                    admission=receipt.get("retained_recovery_admission"),
+                    consumption=retained_consumption,
+                )
+            )
             retry_cap = int(budget_state["max_task_attempts"])
             exhausted = bool(
-                budget_state["retry_exhausted"]
+                consumed_retained_recovery
+                or budget_state["retry_exhausted"]
                 or (retry_cap > 0 and attempts_used >= retry_cap)
             )
             recovery_receipt = self._retry_budget_receipt(
                 task,
                 attempts_used=attempts_used,
                 operation=(
+                    "database_retained_recovery_consumed_orphan_blocked"
+                    if consumed_retained_recovery
+                    else (
                     "database_retry_policy_mismatch_blocked"
                     if budget_state.get("policy_mismatch")
                     else (
@@ -97740,8 +101275,13 @@ class DatabaseImplementationDaemon:
                             else "database_orphaned_claim_rearmed"
                         )
                     )
+                    )
                 ),
-                reason="canonical_claim_has_no_local_attempt",
+                reason=(
+                    "retained_recovery_consumed_without_local_attempt"
+                    if consumed_retained_recovery
+                    else "canonical_claim_has_no_local_attempt"
+                ),
             )
             recovery_receipt.update(
                 {
@@ -97753,6 +101293,9 @@ class DatabaseImplementationDaemon:
                     ),
                     "malformed": bool(budget_state.get("malformed")),
                     "configured_max_task_attempts": self.max_task_attempts,
+                    "retained_recovery_consumed": (
+                        consumed_retained_recovery
+                    ),
                 }
             )
             recovery_receipt["retry_exhausted"] = exhausted
@@ -97783,6 +101326,9 @@ class DatabaseImplementationDaemon:
                     "retry_exhausted": exhausted,
                     "attempts_used": attempts_used,
                     "reason": "canonical_claim_has_no_local_attempt",
+                    "retained_recovery_consumed": (
+                        consumed_retained_recovery
+                    ),
                 }
             )
         return outcomes

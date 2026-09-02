@@ -2616,15 +2616,15 @@ def fenced_provider_outer_authority_population_receipt_valid(value: Any) -> bool
     replica = authority["read_replica_observation"]
     barrier = authority["mutation_barrier"]
     owner_specs = {item[0]: item for item in _FENCED_PROVIDER_OUTER_OWNER_RECORD_SPECS}
-    for field, spec in owner_specs.items():
+    for field_name, spec in owner_specs.items():
         if not _fenced_provider_outer_group_valid(
-            authority.get(field),
-            group_name=field,
+            authority.get(field_name),
+            group_name=field_name,
             table=spec[1],
             columns=spec[2],
             json_columns=frozenset(spec[3]),
             bigint_columns=frozenset(spec[4]),
-        ) or int(authority[field]["count"]) != 1:
+        ) or int(authority[field_name]["count"]) != 1:
             return False
     server_row = authority["state_server_record"]["rows"][0]
     generation_row = authority["store_generation_record"]["rows"][0]
@@ -3151,6 +3151,10 @@ class IntentRepository:
         ):
             raise IntentRepositoryIntegrityError(
                 "outer receipt lacks a closed controller replica barrier"
+            )
+        if getattr(connection, "in_transaction", False) is not True:
+            raise IntentRepositoryIntegrityError(
+                "outer authority receipt requires an active caller-owned transaction"
             )
         binding_before = _fenced_provider_outer_normalize_binding(connection)
         if (
@@ -5405,8 +5409,9 @@ class IntentRepository:
                 missing.append(f"criterion:{criterion or item.get('ordinal')}")
         return (not missing), tuple(missing)
 
-    def cas_task_status(
+    def _cas_task_status_on_connection(
         self,
+        connection: Any,
         *,
         task_cid: str,
         expected_revision: int,
@@ -5414,14 +5419,30 @@ class IntentRepository:
         receipt: Mapping[str, Any] | None = None,
         evidence_digests: Sequence[str] | None = None,
         allow_completion_without_evidence: bool = False,
+        _recorded_at: str | None = None,
     ) -> IntentReceipt:
+        """Apply one task-status CAS on a caller-owned active transaction.
+
+        The caller owns BEGIN/COMMIT/ROLLBACK and must keep the supplied
+        connection fenced for this whole call.  This is the narrow seam used
+        by the supervisor's authenticated Quack read-and-CAS transaction; it
+        deliberately does not open a connection or commit independently.
+        """
+
         tcid = _identifier(task_cid, noun="task_cid")
         expected = _positive_int(expected_revision, noun="expected_revision")
         status_text = _status(new_status, allowed=_TASK_STATUSES, noun="task")
         receipt_map = _mapping(receipt, noun="status receipt")
-        now = _utc_iso()
+        now = str(_recorded_at) if _recorded_at is not None else _utc_iso()
+        if (
+            connection is None
+            or getattr(connection, "in_transaction", False) is not True
+        ):
+            raise IntentRepositoryIntegrityError(
+                "task status CAS requires a caller-owned active transaction"
+            )
 
-        with self._connection(write=True) as connection:
+        def apply() -> IntentReceipt:
             row = connection.execute(
                 """
                 SELECT task_cid, task_alias, goal_cid, status, revision, body_json
@@ -5644,6 +5665,40 @@ class IntentRepository:
                 subject_id=resolved_cid,
                 task_cid=resolved_cid,
                 body=event_body,
+            )
+
+        return apply()
+
+    def cas_task_status(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
+        allow_completion_without_evidence: bool = False,
+    ) -> IntentReceipt:
+        # Preserve the ordinary fail-before-open behavior and timestamp
+        # placement while sharing the exact mutation implementation with the
+        # caller-owned transaction path above.
+        tcid = _identifier(task_cid, noun="task_cid")
+        expected = _positive_int(expected_revision, noun="expected_revision")
+        status_text = _status(new_status, allowed=_TASK_STATUSES, noun="task")
+        receipt_map = _mapping(receipt, noun="status receipt")
+        now = _utc_iso()
+        with self._connection(write=True) as connection:
+            return self._cas_task_status_on_connection(
+                connection,
+                task_cid=tcid,
+                expected_revision=expected,
+                new_status=status_text,
+                receipt=receipt_map,
+                evidence_digests=evidence_digests,
+                allow_completion_without_evidence=(
+                    allow_completion_without_evidence
+                ),
+                _recorded_at=now,
             )
 
     def _missing_evidence_on(

@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import signal
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -1231,7 +1232,143 @@ def bind_database_portal_execution_from_args(
         or None
     )
 
-    def portal_factory(paths: Any, task_alias: str) -> object:
+    def portal_factory(
+        paths: Any,
+        task_alias: str,
+        retained_policy: Mapping[str, Any] | None = None,
+    ) -> object:
+        if retained_policy is not None:
+            retained_fields = {
+                "schema",
+                "admission_id",
+                "consumption_id",
+                "allow_pool",
+                "seed_prior_attempt",
+                "disposition_repository_root",
+                "disposition_git_common_dir",
+                "disposition_baseline_ref",
+                "clean_baseline_ref",
+                "source_repository_root",
+                "source_git_common_dir",
+                "source_relative_path",
+            }
+            if not (
+                isinstance(retained_policy, Mapping)
+                and set(retained_policy) == retained_fields
+                and retained_policy.get("schema")
+                == (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "retained-recovery-portal-execution-policy@2"
+                )
+                and retained_policy.get("allow_pool") is False
+                and retained_policy.get("seed_prior_attempt") is False
+                and all(
+                    isinstance(retained_policy.get(name), str)
+                    and str(retained_policy[name]).startswith("sha256:")
+                    and len(str(retained_policy[name])) == 71
+                    for name in ("admission_id", "consumption_id")
+                )
+            ):
+                raise RuntimeError("retained recovery Portal policy is malformed")
+            def git_output(root: Path, *args: str) -> tuple[int, str]:
+                result = subprocess.run(
+                    ["git", *args],
+                    cwd=root,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                    timeout=10,
+                )
+                return result.returncode, result.stdout.strip()
+
+            try:
+                expected_root = Path(
+                    str(retained_policy["disposition_repository_root"])
+                ).resolve(strict=True)
+                expected_common = Path(
+                    str(retained_policy["disposition_git_common_dir"])
+                ).resolve(strict=True)
+                actual_root = repo_root.resolve(strict=True)
+                source_root = Path(
+                    str(retained_policy["source_repository_root"])
+                ).resolve(strict=True)
+                source_common = Path(
+                    str(retained_policy["source_git_common_dir"])
+                ).resolve(strict=True)
+                source_relative = Path(
+                    str(retained_policy["source_relative_path"])
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise RuntimeError(
+                    "retained recovery source authority is unavailable"
+                ) from exc
+            if (
+                source_relative.is_absolute()
+                or any(part in {"", ".", ".."} for part in source_relative.parts)
+                or source_root != (actual_root / source_relative).resolve(strict=True)
+            ):
+                raise RuntimeError("retained recovery source path drifted")
+            common_status, common_text = git_output(
+                actual_root, "rev-parse", "--git-common-dir"
+            )
+            common_path = Path(common_text)
+            if not common_path.is_absolute():
+                common_path = actual_root / common_path
+            source_common_status, source_common_text = git_output(
+                source_root, "rev-parse", "--git-common-dir"
+            )
+            observed_source_common = Path(source_common_text)
+            if not observed_source_common.is_absolute():
+                observed_source_common = source_root / observed_source_common
+            try:
+                common_path = common_path.resolve(strict=True)
+                observed_source_common = observed_source_common.resolve(strict=True)
+            except (OSError, RuntimeError) as exc:
+                raise RuntimeError(
+                    "retained recovery Git authority is unavailable"
+                ) from exc
+            disposition_baseline = str(
+                retained_policy["disposition_baseline_ref"]
+            )
+            source_baseline = str(retained_policy["clean_baseline_ref"])
+            outer_baseline_status, outer_baseline = git_output(
+                actual_root,
+                "rev-parse",
+                "--verify",
+                f"{disposition_baseline}^{{commit}}",
+            )
+            source_baseline_status, observed_source_baseline = git_output(
+                source_root,
+                "rev-parse",
+                "--verify",
+                f"{source_baseline}^{{commit}}",
+            )
+            gitlink_status, gitlink = git_output(
+                actual_root,
+                "ls-tree",
+                disposition_baseline,
+                source_relative.as_posix(),
+            )
+            expected_gitlink = (
+                f"160000 commit {source_baseline}\t{source_relative.as_posix()}"
+            )
+            if not (
+                expected_root == actual_root
+                and expected_common == common_path
+                and common_status == 0
+                and source_common_status == 0
+                and source_common == observed_source_common
+                and outer_baseline_status == 0
+                and outer_baseline == disposition_baseline
+                and source_baseline_status == 0
+                and observed_source_baseline == source_baseline
+                and gitlink_status == 0
+                and gitlink == expected_gitlink
+            ):
+                raise RuntimeError(
+                    "retained recovery source authority or baseline drifted"
+                )
         return portal_daemon_class(
             todo_path=paths.task_projection,
             state_path=paths.state,
@@ -1252,7 +1389,9 @@ def bind_database_portal_execution_from_args(
             # retry loops multiply (for example 2 outer x 2 inner calls).
             max_task_attempts=1,
             implementation_log_dir=paths.implementation_logs,
-            use_ephemeral_worktree=not parsed.no_ephemeral_worktree,
+            use_ephemeral_worktree=(
+                True if retained_policy is not None else not parsed.no_ephemeral_worktree
+            ),
             worktree_root=parsed.worktree_root,
             merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
             merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
@@ -1287,6 +1426,30 @@ def bind_database_portal_execution_from_args(
             ),
             merge_reconciliation_max_merges=parsed.merge_reconciliation_max_merges,
             merged_worktree_cleanup_max=parsed.merged_worktree_cleanup_max,
+            worktree_pool_enabled=(
+                False if retained_policy is not None else None
+            ),
+            worktree_seed_context_enabled=(retained_policy is None),
+            worktree_base_ref=(
+                str(retained_policy["disposition_baseline_ref"])
+                if retained_policy is not None
+                else None
+            ),
+            worktree_source_relative_path=(
+                str(retained_policy["source_relative_path"])
+                if retained_policy is not None
+                else None
+            ),
+            worktree_source_ref=(
+                str(retained_policy["clean_baseline_ref"])
+                if retained_policy is not None
+                else None
+            ),
+            worktree_source_git_common_dir=(
+                str(retained_policy["source_git_common_dir"])
+                if retained_policy is not None
+                else None
+            ),
             task_shard_count=1,
             task_shard_index=0,
             strict_task_sharding=False,
@@ -1298,6 +1461,8 @@ def bind_database_portal_execution_from_args(
                 parsed, "maintenance_interval_seconds", None
             ),
         )
+
+    setattr(portal_factory, "__database_portal_retained_policy_aware__", True)
 
     bridge = DatabasePortalExecutionBridge(
         task_source=task_source,

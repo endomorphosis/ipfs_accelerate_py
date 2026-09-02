@@ -60,6 +60,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     open_intent_repository,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+    _PinnedFencedIntentRepository,
     _PinnedReadIntentRepository,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
@@ -1584,6 +1585,55 @@ def test_cas_heads_reject_stale_revisions(tmp_path: Path) -> None:
                 title="stale",
                 expected_revision=0,
             )
+
+
+def test_task_status_cas_can_share_a_caller_owned_transaction(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        task = repo.get_task(ids["task_a"])
+        assert task is not None
+        revision = int(task["revision"])
+
+        # The factored seam neither commits nor rolls back its caller's
+        # transaction.  An outer failure therefore leaves no partial status,
+        # revision, or event publication behind.
+        with pytest.raises(RuntimeError, match="abort caller transaction"):
+            with repo._connection(write=True) as connection:
+                receipt = repo._cas_task_status_on_connection(
+                    connection,
+                    task_cid=ids["task_a"],
+                    expected_revision=revision,
+                    new_status="blocked",
+                )
+                assert receipt.changed is True
+                assert connection.in_transaction is True
+                raise RuntimeError("abort caller transaction")
+
+        unchanged = repo.get_task(ids["task_a"])
+        assert unchanged is not None
+        assert unchanged["status"] == "ready"
+        assert int(unchanged["revision"]) == revision
+
+        with repo._connection(write=True) as connection:
+            pinned = _PinnedFencedIntentRepository(
+                connection,
+                owner_id="database-implementation-daemon:owner:test",
+            )
+            receipt = pinned.cas_task_status(
+                task_cid=ids["task_a"],
+                expected_revision=revision,
+                new_status="blocked",
+            )
+            assert receipt.changed is True
+            assert pinned.task_status_cas_consumed is True
+            assert connection.in_transaction is True
+
+        changed = repo.get_task(ids["task_a"])
+        assert changed is not None
+        assert changed["status"] == "blocked"
+        assert int(changed["revision"]) == revision + 1
 
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Callable, Mapping
+from typing import Any, Callable, Mapping
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
@@ -72,6 +72,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_RETRY_BUDGET_BACKPRESSURE_SCHEMA,
     DATABASE_RETRY_BUDGET_SCHEMA,
     DATABASE_TASK_ATTEMPT_INTERFACE,
+    DATABASE_TERMINAL_LANDED_COMPLETION_OPERATION,
     DATABASE_UNKNOWN_OUTCOME_REARM_LIMIT,
     DATABASE_UNKNOWN_OUTCOME_REARM_OPERATION,
     DatabaseImplementationAuthorityError,
@@ -88,6 +89,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     parse_args,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
     DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_BACKOFF_SECONDS,
     DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_EVIDENCE_SCHEMA,
     DATABASE_PORTAL_DEFERRED_PROVIDER_REARM_REASON,
@@ -449,6 +451,20 @@ def test_inner_population_receipt_fails_without_writer_flock_and_on_tamper(
             canonical_json(unsigned).encode("utf-8")
         ).hexdigest()
         return unsigned
+
+    legacy_quack = copy.deepcopy(receipt)
+    legacy_quack["authority"]["authority_mode"] = "quack"
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(legacy_quack)
+    )
+
+    partial_legacy_profile = copy.deepcopy(receipt)
+    partial_legacy_profile["authority"]["control_schema_evidence"][
+        "profile_id"
+    ] = "datasets-authoritative-operational-control-plane@1"
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(partial_legacy_profile)
+    )
 
     subject_splice = copy.deepcopy(receipt)
     subject_splice["subject"]["task_cid"] = "task:forged"
@@ -8805,7 +8821,7 @@ def test_normal_fenced_provider_promotion_response_loss_recovers_once(
         max_task_attempts=1,
     )
     population = _population(1)
-    population["tasks"][0]["task_id"] = "PCTDD-006"
+    population["tasks"][0]["task_id"] = "DQP-T006"
     daemon.materialize_population(population)
     attempt = daemon.claim_next()
     assert attempt is not None
@@ -9038,7 +9054,7 @@ def test_fenced_provider_rearm_preserves_consumed_attempt_and_grants_one_credit(
 ) -> None:
     task = SimpleNamespace(
         task_cid="task:cid:fenced-consumed",
-        task_alias="PCTDD-006",
+        task_alias="DQP-T006",
         validations=(),
         body={},
         revision=13,
@@ -9484,6 +9500,34 @@ def test_quiesced_stale_release_budget_rejects_predecessors_and_near_misses(
     )
 
 
+def _historical_quiesced_release_task_cid(task_alias: str) -> str:
+    if task_alias == "PCTDD-005":
+        return "task:cid:pctdd-005"
+    matches = [
+        str(pin["task_cid"])
+        for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        if pin["task_alias"] == task_alias
+    ]
+    assert len(matches) == 1
+    return matches[0]
+
+
+@pytest.mark.parametrize("task_alias", ("PCTDD-006", "PCTDD-007", "PCTDD-034"))
+def test_retained_recovery_reserved_alias_cannot_be_rebound(task_alias: str) -> None:
+    daemon = object.__new__(DatabaseImplementationDaemon)
+    task = SimpleNamespace(
+        task_cid=f"task:forged:{task_alias.lower()}",
+        task_alias=task_alias,
+        status="blocked",
+        revision=1,
+        body={},
+    )
+    assert daemon._retained_recovery_reserved_epoch_state(task) == (
+        "invalid_reserved_identity"
+    )
+    assert daemon._automatic_claim_forbidden_current(task) is True
+
+
 @pytest.mark.parametrize(
     ("task_alias", "attempt_number", "attempts_used", "rearm_count"),
     (
@@ -9509,7 +9553,7 @@ def test_exact_quiesced_stale_release_bypasses_terminal_landed_selector(
         max_task_attempts=2,
     )
     task = SimpleNamespace(
-        task_cid=f"task:cid:{task_alias.lower()}",
+        task_cid=_historical_quiesced_release_task_cid(task_alias),
         task_alias=task_alias,
         status="blocked",
         revision=1,
@@ -9592,7 +9636,7 @@ def test_near_quiesced_release_remains_in_terminal_landed_quarantine(
         max_task_attempts=2,
     )
     task = SimpleNamespace(
-        task_cid=f"task:cid:{task_alias.lower()}",
+        task_cid=_historical_quiesced_release_task_cid(task_alias),
         task_alias=task_alias,
         status="blocked",
         revision=1,
@@ -10146,9 +10190,14 @@ def test_quiesced_stale_release_rearm_is_fenced_nonconsuming_and_effect_free(
             daemon.coordinator.execute_with_terminal_task_claim_barrier
         )
 
-        def terminal_barrier(claim: object, callback: Callable[[], object]) -> object:
+        def terminal_barrier(
+            claim: object,
+            callback: Callable[[], object],
+            *,
+            lease: object,
+        ) -> object:
             terminal_barrier_calls.append(str(getattr(claim, "claim_id", "")))
-            return real_terminal_barrier(claim, callback)
+            return real_terminal_barrier(claim, callback, lease=lease)
 
         monkeypatch.setattr(
             daemon.coordinator,

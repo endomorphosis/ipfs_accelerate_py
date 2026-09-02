@@ -16,13 +16,13 @@ import subprocess
 import sys
 import time
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from ...llm_router import (
     AgentImplementationControlPlanePin,
@@ -220,7 +220,8 @@ _DATABASE_CLAIM_REQUIRED_FIELDS = frozenset(
     "attempt_id claim_id lease_id attempt_number fencing_token fence_epoch".split()
 )
 _DATABASE_CLAIM_OPTIONAL_FIELDS = frozenset(
-    "unknown_outcome_rearm_count unknown_outcome_rearm_count_malformed".split()
+    "unknown_outcome_rearm_count unknown_outcome_rearm_count_malformed "
+    "retained_recovery_admission retained_recovery_consumption".split()
 )
 
 
@@ -262,6 +263,252 @@ class _PinnedReadIntentRepository(IntentRepository):
                 **subject,
             )
         )
+
+
+class _PinnedFencedIntentRepository(_PinnedReadIntentRepository):
+    """One-shot task-CAS capability over a caller-owned Quack transaction.
+
+    Every inherited mutation still reaches the read-only ``_connection``
+    override and fails.  Only this exact task-status CAS bypasses connection
+    creation, lock acquisition, and transaction ownership.  The surrounding
+    supervisor operation owns all three and commits the buffered Quack bundle.
+    """
+
+    def __init__(
+        self,
+        connection: Any,
+        *,
+        owner_id: str,
+        session_id: str = "session:intent",
+    ) -> None:
+        super().__init__(connection)
+        # Match the ordinary DatabaseImplementationDaemon-owned repository.
+        # The inherited CAS appends an event and therefore needs these two
+        # durable actor identities even though this facade never opens itself.
+        self.owner_id = str(owner_id)
+        self.session_id = str(session_id)
+        self.evidence_freshness_seconds = 3600
+        self._clock_ms = lambda: int(time.time() * 1000)
+        self._task_status_cas_attempted = False
+        self._task_status_cas_changed = False
+
+    @property
+    def task_status_cas_consumed(self) -> bool:
+        return self._task_status_cas_changed
+
+    def cas_task_status(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any] | None = None,
+        evidence_digests: Sequence[str] | None = None,
+        allow_completion_without_evidence: bool = False,
+    ) -> Any:
+        self._require_open()
+        if self._task_status_cas_attempted:
+            raise RuntimeError("pinned task-status CAS is one-shot")
+        if getattr(self._connection_value, "in_transaction", False) is not True:
+            raise RuntimeError("pinned task-status CAS lacks its active transaction")
+        self._task_status_cas_attempted = True
+        result = self._cas_task_status_on_connection(
+            self._connection_value,
+            task_cid=task_cid,
+            expected_revision=expected_revision,
+            new_status=new_status,
+            receipt=receipt,
+            evidence_digests=evidence_digests,
+            allow_completion_without_evidence=allow_completion_without_evidence,
+        )
+        if result.changed is not True:
+            raise RuntimeError("pinned task-status CAS did not advance its revision")
+        self._task_status_cas_changed = True
+        return result
+
+
+_OWNER_FENCED_INTENT_CAPABILITY = object()
+
+
+class _OwnerFencedIntentRepository(IntentRepository):
+    """Quack repository used only beneath the supervisor's owner fence.
+
+    Ordinary repositories acquire the owner mutation ``flock`` per method.
+    Startup reconciliation already owns that lock across quiescence, so a
+    second descriptor would self-deadlock.  This private capability preserves
+    normal per-method connections and transactions while deliberately omitting
+    only that redundant lock acquisition.
+    """
+
+    def __init__(
+        self,
+        database_path: str,
+        *,
+        owner_id: str,
+        owner_binding: Mapping[str, Any],
+        mutation_barrier: Callable[[str], Mapping[str, Any]],
+        capability: object,
+    ) -> None:
+        if capability is not _OWNER_FENCED_INTENT_CAPABILITY:
+            raise RuntimeError("owner-fenced repository capability is unavailable")
+        super().__init__(
+            database_path,
+            owner_id=owner_id,
+            install_schema=False,
+        )
+        if not self._quack_transport:
+            raise RuntimeError("owner-fenced repository requires Quack")
+        self._fenced_owner_binding = dict(owner_binding)
+        self._fenced_store_id = str(owner_binding.get("store_id") or "")
+        if not self._fenced_store_id or not callable(mutation_barrier):
+            raise RuntimeError("owner-fenced repository lacks its Quack barrier")
+        self._mutation_barrier = mutation_barrier
+        self._owner_fence_active = True
+
+    def close(self) -> None:
+        self._owner_fence_active = False
+        super().close()
+
+    def _binding_is_current_lineage(self, value: Any) -> bool:
+        expected = self._fenced_owner_binding
+        return bool(
+            isinstance(value, Mapping)
+            and all(
+                value.get(name) == expected.get(name)
+                for name in _QUACK_OWNER_BINDING_FIELDS
+            )
+        )
+
+    def _empty_mutation_barrier(self) -> dict[str, Any]:
+        barrier = dict(self._mutation_barrier(self._fenced_store_id))
+        if (
+            barrier.get("store_id") != self._fenced_store_id
+            or barrier.get("active_request_count") != 0
+            or barrier.get("active_processing_count") != 0
+        ):
+            raise RuntimeError("owner-fenced Quack mutation barrier is not empty")
+        return barrier
+
+    @staticmethod
+    def _connection_owner_binding(value: Any) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise RuntimeError("owner-fenced Quack binding is unavailable")
+        binding = {
+            name: value.get(name) for name in _QUACK_OWNER_BINDING_FIELDS
+        }
+        if set(binding) != set(_QUACK_OWNER_BINDING_FIELDS):
+            raise RuntimeError("owner-fenced Quack binding is incomplete")
+        return binding
+
+    @contextmanager
+    def _connection(self, *, write: bool = False) -> Any:
+        self._require_open()
+        if not self._owner_fence_active:
+            raise RuntimeError("owner-fenced repository outlived its fence")
+        from ..task_sources.duckdb_state import (
+            DuckDBQuackMutationConflictError,
+            DuckDBQuackMutationTransitionError,
+            DuckDBQuackMutationUnknownOutcomeError,
+            _resolve_quack_token_handle,
+            open_duckdb_connection,
+        )
+        from ..task_sources.intent_repository import (
+            IntentRepositoryConflictError,
+            IntentRepositoryIntegrityError,
+            IntentRepositoryTransitionError,
+            IntentRepositoryUnknownOutcomeError,
+        )
+        barrier_before = self._empty_mutation_barrier()
+        _ignored_secret, owner_before_raw = _resolve_quack_token_handle(
+            uri=self._open_target
+        )
+        owner_before = self._connection_owner_binding(owner_before_raw)
+        if not self._binding_is_current_lineage(owner_before):
+            raise IntentRepositoryIntegrityError(
+                "owner-fenced Quack owner changed during reconciliation"
+            )
+        if self._empty_mutation_barrier() != barrier_before:
+            raise IntentRepositoryIntegrityError(
+                "owner-fenced Quack inbox changed before connection"
+            )
+        connection = open_duckdb_connection(self._open_target)
+        transaction_started = False
+        try:
+            connection_binding = self._connection_owner_binding(
+                getattr(connection, "_quack_mutation_binding", None)
+            )
+            if (
+                not self._binding_is_current_lineage(connection_binding)
+                or connection_binding != owner_before
+                or self._empty_mutation_barrier() != barrier_before
+            ):
+                raise IntentRepositoryIntegrityError(
+                    "owner-fenced Quack connection changed store lineage"
+                )
+            if write:
+                connection.execute("BEGIN TRANSACTION")
+                transaction_started = True
+                if self._empty_mutation_barrier() != barrier_before:
+                    raise IntentRepositoryIntegrityError(
+                        "owner-fenced Quack inbox changed before transaction"
+                    )
+            try:
+                yield connection
+                if transaction_started:
+                    if self._empty_mutation_barrier() != barrier_before:
+                        raise IntentRepositoryIntegrityError(
+                            "owner-fenced Quack inbox changed before commit"
+                        )
+                    connection.execute("COMMIT")
+                    transaction_started = False
+            except DuckDBQuackMutationConflictError as exc:
+                raise IntentRepositoryConflictError(
+                    "remote task revision or event-head CAS conflicted"
+                ) from exc
+            except DuckDBQuackMutationTransitionError as exc:
+                raise IntentRepositoryTransitionError(
+                    "remote task status transition is not admitted"
+                ) from exc
+            except DuckDBQuackMutationUnknownOutcomeError as exc:
+                raise IntentRepositoryUnknownOutcomeError(
+                    "remote mutation outcome requires exact reconciliation"
+                ) from exc
+            barrier_after = self._empty_mutation_barrier()
+            _ignored_secret, owner_after_raw = _resolve_quack_token_handle(
+                uri=self._open_target
+            )
+            owner_after = self._connection_owner_binding(owner_after_raw)
+            connection_after = self._connection_owner_binding(
+                getattr(connection, "_quack_mutation_binding", None)
+            )
+            if not (
+                barrier_after == barrier_before
+                and owner_after
+                == connection_after
+                == connection_binding
+                == owner_before
+                == self._fenced_owner_binding
+            ):
+                raise IntentRepositoryIntegrityError(
+                    "owner-fenced Quack owner or inbox advanced during operation"
+                )
+        except BaseException:
+            if transaction_started:
+                try:
+                    connection.execute("ROLLBACK")
+                except Exception:
+                    pass
+                transaction_started = False
+            raise
+        finally:
+            try:
+                connection.close()
+            finally:
+                # A synchronous COMMIT response is not the final startup
+                # observation.  Prove that no owner-side request remains
+                # unsettled after the transport handle itself is gone.
+                self._empty_mutation_barrier()
+
 
 def _read_control_plane_source_snapshot() -> dict[str, Any]:
     """Return the current accelerator control-plane tree and file identity."""
@@ -364,6 +611,32 @@ PROVIDER_CAPACITY_BACKOFF_IDLE_REASON = "provider_capacity_backoff"
 # --- restored IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX ---
 
 IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX = "implementation_retry_deferred:"
+
+# Lower ranks are preferred when ranking ready work under policy.  These
+# tables are the closed scheduler vocabulary originally introduced with the
+# disposition-selection contract; losing them turns ordinary selection into
+# a runtime NameError and stalls the supervisor before provider admission.
+_DISPOSITION_SELECTION_PRIORITY: dict[str, int] = {
+    "closed_deterministic": 0,
+    "residual_llm_authorized": 1,
+    "abstain_review": 2,
+    "defer_capability": 3,
+}
+_DISPOSITION_IDLE_CLASSES: frozenset[str] = frozenset(
+    {"abstain_review", "defer_capability"}
+)
+_QUIESCENT_EMPTY_BACKLOG_IDLE_REASONS: frozenset[str] = frozenset(
+    {"no_shard_selectable_ready_tasks", "no_tasks_found"}
+)
+_QUIESCENT_POLICY_IDLE_REASONS: frozenset[str] = frozenset(
+    {
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+        "all_selectable_ready_tasks_deferred_by_resource_claim",
+        "all_selectable_ready_tasks_deprioritized_as_off_mission",
+        "no_eligible_ready_tasks_after_selection_filters",
+        PROVIDER_CAPACITY_BACKOFF_IDLE_REASON,
+    }
+)
 
 
 # --- restored SupervisorSchedulerConfigError ---
@@ -7230,6 +7503,11 @@ class PortalImplementationSupervisor:
                 and program.authority_mode == "quack"
                 and program.task_source_kind == "duckdb"
             )
+            retained_recovery_required = bool(
+                database_guard_required
+                and program is not None
+                and self._retained_fenced_provider_program_applicable(program)
+            )
             if database_guard_required:
                 try:
                     # Global order for Quack maintenance is owner mutation
@@ -7242,9 +7520,18 @@ class PortalImplementationSupervisor:
                                 fenced_program
                             )
                         )
-                        if not self._database_portal_reload_projection_is_idle(
-                            projection
-                        ):
+                        projection_idle = (
+                            self._database_portal_reload_projection_is_idle(
+                                projection
+                            )
+                        )
+                        retained_projection_admitted = bool(
+                            retained_recovery_required
+                            and self._database_portal_reload_projection_is_authenticated_lane_local(
+                                projection
+                            )
+                        )
+                        if not projection_idle and not retained_projection_admitted:
                             result = {
                                 "stuck": False,
                                 "maintenance_blocked": True,
@@ -7272,6 +7559,28 @@ class PortalImplementationSupervisor:
                                         "managed_child_quiescence": quiescence,
                                     }
                                 else:
+                                    if retained_recovery_required:
+                                        with self._database_reconciliation_program_environment(
+                                            fenced_program
+                                        ):
+                                            retained_startup = self._reconcile_interrupted_database_portal_attempts_bound(
+                                                fenced_program,
+                                                owner_fence_held=True,
+                                                trigger="supervisor_startup_prelaunch",
+                                            )
+                                        if not (
+                                            retained_startup.get("reconciled")
+                                            is True
+                                            and retained_startup.get("blocked")
+                                            is not True
+                                            and retained_startup.get(
+                                                "safe_to_restart"
+                                            )
+                                            is True
+                                        ):
+                                            raise RuntimeError(
+                                                "retained recovery prelaunch gate blocked"
+                                            )
                                     projection = (
                                         self._database_portal_reload_projection_fenced(
                                             fenced_program
@@ -8997,17 +9306,9 @@ class PortalImplementationSupervisor:
             self._run_forever_loop()
         finally:
             if stop_signal is not None:
-                with serialized_lock_update(
-                    self._managed_daemon_launch_lock_path()
-                ):
-                    cleanup = self._terminate_managed_daemon_tree(
-                        _launch_lock_held=True
-                    )
-                    interrupted_reconciliation = (
-                        self._reconcile_interrupted_implementation_after_shutdown(
-                            cleanup=cleanup
-                        )
-                    )
+                cleanup, interrupted_reconciliation = (
+                    self._shutdown_managed_daemon_and_reconcile()
+                )
                 try:
                     self._record_event(
                         "supervisor_signal_shutdown",
@@ -9032,6 +9333,54 @@ class PortalImplementationSupervisor:
             if handlers_installed:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
+
+    def _shutdown_managed_daemon_and_reconcile(
+        self,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Quiesce and reconcile without opening a competing launch window.
+
+        The launch fence remains held from process-tree termination through
+        durable interrupted-attempt reconciliation.  Quack additionally
+        requires the global lock order owner mutation fence -> launch fence;
+        pass that already-fenced program into the bound reconciliation path so
+        neither authority fence is reacquired in reverse order.
+        """
+
+        program = self.config.database_program
+        quack_database_program = bool(
+            program is not None
+            and program.authority_mode == "quack"
+            and program.task_source_kind == "duckdb"
+        )
+        if quack_database_program:
+            with self._database_portal_reload_mutation_fence() as fenced_program:
+                with serialized_lock_update(
+                    self._managed_daemon_launch_lock_path()
+                ):
+                    cleanup = self._terminate_managed_daemon_tree(
+                        _launch_lock_held=True
+                    )
+                    reconciliation = (
+                        self._reconcile_interrupted_implementation_after_shutdown(
+                            cleanup=cleanup,
+                            _fenced_database_program=fenced_program,
+                            _owner_fence_held=True,
+                            _launch_lock_held=True,
+                        )
+                    )
+                    return cleanup, reconciliation
+
+        with serialized_lock_update(self._managed_daemon_launch_lock_path()):
+            cleanup = self._terminate_managed_daemon_tree(
+                _launch_lock_held=True
+            )
+            reconciliation = (
+                self._reconcile_interrupted_implementation_after_shutdown(
+                    cleanup=cleanup,
+                    _launch_lock_held=True,
+                )
+            )
+            return cleanup, reconciliation
 
     def _run_forever_loop(self) -> None:
         self.ensure_event_log_file()
@@ -9067,6 +9416,7 @@ class PortalImplementationSupervisor:
             ),
             preflight,
         )
+        preflight = self._await_prelaunch_maintenance(preflight)
         self._last_supervisor_maintenance_at = time.monotonic()
         while True:
             loop = self.shared_supervisor_loop_class(
@@ -9103,10 +9453,14 @@ class PortalImplementationSupervisor:
                 recovery = self.run_once()
             except Exception as exc:
                 recovery = {
+                    "maintenance_blocked": True,
                     "error_type": type(exc).__name__,
                     "error": str(exc),
                 }
-                logger.warning("Supervisor recovery pass failed; restarting child loop anyway", exc_info=True)
+                logger.warning(
+                    "Supervisor recovery pass failed; child relaunch remains fenced",
+                    exc_info=True,
+                )
                 self._record_event(
                     "supervisor_loop_recovery_failed",
                     {
@@ -9127,6 +9481,7 @@ class PortalImplementationSupervisor:
                     },
                 )
 
+            recovery = self._await_prelaunch_maintenance(recovery)
             delay_seconds = self._supervisor_loop_recovery_delay_seconds()
             self._record_event(
                 "supervisor_loop_restarting_after_recovery",
@@ -9136,6 +9491,43 @@ class PortalImplementationSupervisor:
                 },
             )
             time.sleep(delay_seconds)
+
+    def _await_prelaunch_maintenance(
+        self,
+        initial: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Retry self-healing maintenance while child launch is fenced."""
+
+        result = dict(initial)
+        while result.get("maintenance_blocked") is True:
+            delay_seconds = self._supervisor_loop_recovery_delay_seconds()
+            self._record_event(
+                "supervisor_prelaunch_fenced_for_recovery",
+                {
+                    "reason": str(
+                        result.get("reason")
+                        or result.get("error")
+                        or "maintenance_blocked"
+                    ),
+                    "delay_seconds": delay_seconds,
+                },
+            )
+            time.sleep(delay_seconds)
+            try:
+                result = dict(self.run_once(include_refill=False))
+            except Exception as exc:
+                result = {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": "prelaunch_recovery_failed",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+                logger.warning(
+                    "Prelaunch recovery remains blocked",
+                    exc_info=True,
+                )
+        return result
 
     def _supervisor_loop_recovery_delay_seconds(self) -> float:
         """Back off between outer loop recovery attempts without exceeding one check interval."""
@@ -9220,7 +9612,20 @@ class PortalImplementationSupervisor:
             watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
             watchdog_accept_fresh_child_log=True,
             stop_grace_seconds=15.0,
-            max_restarts=max(0, int(self.config.max_restarts)),
+            # The exact retained-recovery program must return through the
+            # owner-fenced prelaunch reconciliation after every child exit.
+            # One SupervisorLoop launch per outer cycle prevents its internal
+            # restart loop from bypassing that gate.
+            max_restarts=(
+                1
+                if (
+                    self.config.database_program is not None
+                    and self._retained_fenced_provider_program_applicable(
+                        self.config.database_program
+                    )
+                )
+                else max(0, int(self.config.max_restarts))
+            ),
             child_env=managed_daemon_environment,
             status_static_fields={
                 "todo_path": str(self.config.todo_path),
@@ -14659,6 +15064,9 @@ class PortalImplementationSupervisor:
         self,
         *,
         cleanup: Mapping[str, Any] | None = None,
+        _fenced_database_program: DatabaseProgramConfig | None = None,
+        _owner_fence_held: bool = False,
+        _launch_lock_held: bool = False,
     ) -> dict[str, Any]:
         """Close an interrupted attempt only after proving it is quiescent."""
 
@@ -14679,15 +15087,27 @@ class PortalImplementationSupervisor:
                     if isinstance(cleanup, Mapping)
                     else None
                 )
+                retained_recovery_applicable = bool(
+                    self.config.database_program is not None
+                    and self._retained_fenced_provider_program_applicable(
+                        self.config.database_program
+                    )
+                )
                 if (
                     not isinstance(cleanup, Mapping)
                     or cleanup.get("quiesced") is not True
                     or cleanup.get("remaining_pid") is not None
                     or cleanup.get("markers_removed") is not True
                     or not isinstance(daemon_fence, Mapping)
-                    or daemon_fence.get("safe_to_restart") is not True
                     or not isinstance(lane_provider_fence, Mapping)
-                    or lane_provider_fence.get("safe_to_restart") is not True
+                    or (
+                        not retained_recovery_applicable
+                        and (
+                            daemon_fence.get("safe_to_restart") is not True
+                            or lane_provider_fence.get("safe_to_restart")
+                            is not True
+                        )
+                    )
                 ):
                     return {
                         "reconciled": False,
@@ -14699,6 +15119,27 @@ class PortalImplementationSupervisor:
                             else {}
                         ),
                     }
+                if _fenced_database_program is not None:
+                    program = self.config.database_program
+                    if not (
+                        program is not None
+                        and program.authority_mode == "quack"
+                        and program.task_source_kind == "duckdb"
+                        and _fenced_database_program is program
+                        and _owner_fence_held
+                        and _launch_lock_held
+                    ):
+                        raise RuntimeError(
+                            "shutdown reconciliation lacks its exact retained "
+                            "Quack owner and launch fences"
+                        )
+                    with self._database_reconciliation_program_environment(
+                        _fenced_database_program
+                    ):
+                        return self._reconcile_interrupted_database_portal_attempts_bound(
+                            _fenced_database_program,
+                            owner_fence_held=True,
+                        )
                 return self._reconcile_interrupted_database_portal_attempts()
             daemon = self._build_worktree_reconciliation_daemon()
             return daemon.reconcile_quiesced_active_attempt()
@@ -14721,10 +15162,95 @@ class PortalImplementationSupervisor:
         program = self.config.database_program
         if program is None:
             raise RuntimeError("database Portal reconciliation lacks a program")
-        with self._database_reconciliation_program_environment(program):
-            return self._reconcile_interrupted_database_portal_attempts_bound(
-                program
+        if not (
+            program.authority_mode == "quack"
+            and program.task_source_kind == "duckdb"
+        ):
+            # Embedded-exclusive stores have no remote owner inbox or owner
+            # generation to fence.  Preserve their existing scoped authority
+            # path; callers already quiesce the managed child before entering
+            # shutdown reconciliation.
+            with self._database_reconciliation_program_environment(program):
+                return self._reconcile_interrupted_database_portal_attempts_bound(
+                    program,
+                    owner_fence_held=False,
+                )
+        with self._database_portal_reload_mutation_fence() as fenced_program:
+            with serialized_lock_update(
+                self._managed_daemon_launch_lock_path()
+            ):
+                quiescence = self._terminate_managed_daemon_tree(
+                    grace_seconds=2.0,
+                    _launch_lock_held=True,
+                )
+                if quiescence.get("quiesced") is not True:
+                    return {
+                        "reconciled": False,
+                        "blocked": True,
+                        "reason": "managed_database_daemon_not_quiesced",
+                        "safe_to_restart": False,
+                        "managed_daemon_cleanup": quiescence,
+                    }
+                with self._database_reconciliation_program_environment(
+                    fenced_program
+                ):
+                    return self._reconcile_interrupted_database_portal_attempts_bound(
+                        fenced_program,
+                        owner_fence_held=True,
+                    )
+
+    def _retained_fenced_provider_program_applicable(
+        self,
+        program: DatabaseProgramConfig,
+    ) -> bool:
+        """Match the operator recovery to its sole board/store authority."""
+
+        declared_candidate = bool(
+            program.store_id
+            == (
+                "data/agent_supervisor/"
+                "parallel_content_sealing_proof_carrying_tdd_v1_g9/"
+                "control.duckdb"
             )
+            and program.store_generation == "pctdd-v1-g9"
+            and self.config.task_prefix.startswith("PCTDD-")
+        )
+        if not declared_candidate:
+            return False
+        try:
+            from .database_portal_bridge import (
+                DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            )
+
+            pins = tuple(
+                dict(item)
+                for item in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+            )
+            repo_root = self.config.repo_root.resolve(strict=True)
+        except Exception as exc:
+            raise RuntimeError(
+                "could not establish retained recovery repository authority"
+            ) from exc
+        exact_authority = bool(
+            len(pins) == 3
+            and {item["board_namespace"] for item in pins}
+            == {"parallel-content-sealing-proof-carrying-tdd-v1"}
+            and {item["owner_store_id"] for item in pins}
+            == {program.store_id}
+            and {item["control_store_generation"] for item in pins}
+            == {program.store_generation}
+            and {
+                Path(item["disposition_repository_root"]).resolve(strict=True)
+                for item in pins
+            }
+            == {repo_root}
+            and self.config.task_prefix.startswith("PCTDD-")
+        )
+        if not exact_authority:
+            raise RuntimeError(
+                "retained recovery repository authority does not match its seal"
+            )
+        return True
 
     @staticmethod
     def _normalized_quack_owner_binding(
@@ -14773,6 +15299,7 @@ class PortalImplementationSupervisor:
             ATTEMPT_PHASE_CLAIMED,
             DATABASE_RETRY_BUDGET_SCHEMA,
             DatabaseTaskAttempt,
+            database_fenced_provider_retained_consumption_matches_admission,
         )
 
         body = getattr(task, "body", None)
@@ -14829,11 +15356,13 @@ class PortalImplementationSupervisor:
         int_values = {
             name: required_int(name, minimum) for name, minimum in int_fields
         }
-        if int_values["attempts_used"] != int_values["attempt_number"]:
-            raise RuntimeError("database claim receipt attempt is inconsistent")
         if not isinstance(receipt.get("retry_exhausted"), bool):
             raise RuntimeError("database claim retry state is malformed")
-        for name in _DATABASE_CLAIM_OPTIONAL_FIELDS:
+        retained_names = {
+            "retained_recovery_admission",
+            "retained_recovery_consumption",
+        }
+        for name in _DATABASE_CLAIM_OPTIONAL_FIELDS - retained_names:
             if name not in receipt:
                 continue
             observed = receipt[name]
@@ -14846,6 +15375,67 @@ class PortalImplementationSupervisor:
             )
             if not valid:
                 raise RuntimeError("database claim optional state is malformed")
+        retained_admission = receipt.get("retained_recovery_admission")
+        retained_consumption = receipt.get("retained_recovery_consumption")
+        if (retained_admission is None) != (retained_consumption is None):
+            raise RuntimeError(
+                "database claim retained recovery chain is incomplete"
+            )
+        if retained_admission is None:
+            if int_values["attempts_used"] != int_values["attempt_number"]:
+                raise RuntimeError(
+                    "database claim receipt attempt is inconsistent"
+                )
+        else:
+            # The coordinator ordinal is monotonic across validation epochs,
+            # while the reviewed one-shot admission resets only the canonical
+            # retry budget to cap-1 before this claim consumes its final unit.
+            # Never equate those distinct counters on retained recovery.
+            retry_cap = int_values["max_task_attempts"]
+            expected_attempts_used = retry_cap if retry_cap > 0 else 1
+            if (
+                int_values["attempts_used"] != expected_attempts_used
+                or receipt.get("retry_exhausted") is not (retry_cap > 0)
+            ):
+                raise RuntimeError(
+                    "database claim retained retry budget is not exact"
+                )
+        if retained_admission is not None:
+            if not (
+                database_fenced_provider_retained_consumption_matches_admission(
+                    admission=retained_admission,
+                    consumption=retained_consumption,
+                )
+                and retained_consumption.get("expected_task_revision")
+                == retained_admission.get("expected_task_revision") + 1
+                and retained_admission.get("task_cid") == task_cid
+                and retained_admission.get("task_alias")
+                == str(getattr(task, "task_alias", "") or task_cid)
+                and retained_consumption.get("task_cid") == task_cid
+                and retained_consumption.get("task_alias")
+                == str(getattr(task, "task_alias", "") or task_cid)
+                and retained_consumption.get("attempt_id")
+                == text_values["attempt_id"]
+                and retained_consumption.get("claim_id")
+                == text_values["claim_id"]
+                and retained_consumption.get("lease_id")
+                == text_values["lease_id"]
+                and retained_consumption.get("owner_session_id")
+                == text_values["owner_session_id"]
+                and retained_consumption.get("attempt_number")
+                == int_values["attempt_number"]
+                and retained_consumption.get("fencing_token")
+                == int_values["fencing_token"]
+                and retained_consumption.get("fence_epoch")
+                == int_values["fence_epoch"]
+                and retained_consumption.get("resulting_task_revision")
+                == int(getattr(task, "revision", 0) or 0)
+                and retained_consumption.get("resulting_task_status")
+                == str(getattr(task, "status", "") or "")
+            ):
+                raise RuntimeError(
+                    "database claim retained recovery chain is not exact"
+                )
         return DatabaseTaskAttempt(
             attempt_id=text_values["attempt_id"],
             claim_id=text_values["claim_id"],
@@ -15027,6 +15617,79 @@ class PortalImplementationSupervisor:
             "post_provider_recovery": bool(lifecycle.is_terminal),
         }
 
+    def _database_portal_retained_orphan_candidate(
+        self,
+        task_source: Any,
+        task: Any,
+        attempt: Any,
+    ) -> dict[str, Any] | None:
+        """Project only the exact CAS-before-local-insert retained orphan."""
+
+        from .database_portal_bridge import (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+            DatabasePortalExecutionBridge,
+        )
+        from .implementation_daemon import (
+            database_fenced_provider_retained_admission_valid,
+            database_fenced_provider_retained_consumption_matches_admission,
+        )
+
+        receipt = dict(
+            getattr(task, "body", {}).get("completion_receipt") or {}
+        )
+        admission = receipt.get("retained_recovery_admission")
+        consumption = receipt.get("retained_recovery_consumption")
+        if not (
+            database_fenced_provider_retained_admission_valid(admission)
+            and database_fenced_provider_retained_consumption_matches_admission(
+                admission=admission,
+                consumption=consumption,
+            )
+            and any(
+                pin.get("task_cid") == attempt.task_cid
+                and pin.get("task_alias") == attempt.task_alias
+                and admission.get("task_cid") == pin.get("task_cid")
+                and admission.get("task_alias") == pin.get("task_alias")
+                for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+            )
+        ):
+            return None
+        attempt_root = self.config.state_dir / (
+            f"{self.config.state_prefix}_database_portal_attempts"
+        )
+        bridge = DatabasePortalExecutionBridge(
+            task_source=task_source,
+            attempt_root=attempt_root,
+            portal_factory=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("orphan projection cannot enter Portal")
+            ),
+        )
+        paths = bridge._paths(attempt)
+        try:
+            authority_root = attempt_root.resolve()
+            candidate_parent = paths.root.parent.resolve()
+        except (OSError, RuntimeError):
+            return None
+        if (
+            attempt_root.is_symlink()
+            or paths.root.is_symlink()
+            or paths.root.exists()
+            or candidate_parent != authority_root
+        ):
+            return None
+        return {
+            "task_id": str(attempt.task_alias),
+            "task_cid": str(attempt.task_cid),
+            "task_revision": int(getattr(task, "revision", 0) or 0),
+            "attempt_id": str(attempt.attempt_id),
+            "binding_id": "",
+            "lifecycle_record_id": "",
+            "lifecycle_state": "retained_orphan_candidate",
+            "workspace_path": "",
+            "active_phase": "claim_committed_before_local_attempt",
+            "post_provider_recovery": False,
+        }
+
     def _database_portal_claim_projection(self, task_source: Any) -> dict[str, Any]:
         """Read and validate the complete bounded in-progress population."""
 
@@ -15084,13 +15747,21 @@ class PortalImplementationSupervisor:
 
         attempts: list[dict[str, Any]] = []
         for task, attempt in nominated:
-            attempts.append(
-                self._database_portal_claim_lifecycle(
+            try:
+                projected = self._database_portal_claim_lifecycle(
                     task_source,
                     task,
                     attempt,
                 )
-            )
+            except Exception:
+                projected = self._database_portal_retained_orphan_candidate(
+                    task_source,
+                    task,
+                    attempt,
+                )
+                if projected is None:
+                    raise
+            attempts.append(projected)
         active_count = sum(
             1 for item in attempts if not item["post_provider_recovery"]
         )
@@ -15205,6 +15876,108 @@ class PortalImplementationSupervisor:
             and dict(owner) == normalized_owner
         )
 
+    @classmethod
+    def _database_portal_reload_projection_is_authenticated_lane_local(
+        cls,
+        projection: Mapping[str, Any],
+    ) -> bool:
+        """Admit a closed owner-fenced projection before destructive recovery."""
+
+        owner = projection.get("quack_owner")
+        attempts = projection.get("attempts")
+        task_ids = projection.get("task_ids")
+        expected_attempt_fields = {
+            "task_id",
+            "task_cid",
+            "task_revision",
+            "attempt_id",
+            "binding_id",
+            "lifecycle_record_id",
+            "lifecycle_state",
+            "workspace_path",
+            "active_phase",
+            "post_provider_recovery",
+        }
+        try:
+            normalized_owner = cls._normalized_quack_owner_binding(owner)
+        except Exception:
+            return False
+        if not (
+            set(projection) == set(cls._database_portal_reload_projection_base())
+            and projection.get("schema")
+            == DATABASE_PORTAL_RELOAD_PROJECTION_SCHEMA
+            and projection.get("applicable") is True
+            and projection.get("authority_available") is True
+            and projection.get("integrity_verified") is True
+            and not str(projection.get("error_type") or "")
+            and isinstance(owner, Mapping)
+            and dict(owner) == normalized_owner
+            and type(projection.get("task_source_revision")) is int
+            and projection.get("task_source_revision") >= 0
+            and isinstance(task_ids, list)
+            and isinstance(attempts, list)
+            and len(attempts) <= DATABASE_PORTAL_RELOAD_MAX_PAGES * DATABASE_PORTAL_RELOAD_PAGE_LIMIT
+            and all(isinstance(item, Mapping) for item in attempts)
+            and all(set(item) == expected_attempt_fields for item in attempts)
+            and len({str(item.get("task_cid") or "") for item in attempts})
+            == len(attempts)
+            and all(
+                isinstance(item.get("task_id"), str)
+                and bool(item.get("task_id"))
+                and isinstance(item.get("task_cid"), str)
+                and bool(item.get("task_cid"))
+                and isinstance(item.get("attempt_id"), str)
+                and bool(item.get("attempt_id"))
+                and type(item.get("task_revision")) is int
+                and item.get("task_revision") >= 0
+                and type(item.get("post_provider_recovery")) is bool
+                for item in attempts
+            )
+            and task_ids == [item["task_id"] for item in attempts]
+            and type(projection.get("nonterminal_attempt_count")) is int
+            and type(projection.get("post_provider_recovery_saga_count")) is int
+            and projection.get("nonterminal_attempt_count")
+            == sum(not item["post_provider_recovery"] for item in attempts)
+            and projection.get("post_provider_recovery_saga_count")
+            == sum(item["post_provider_recovery"] for item in attempts)
+            and projection.get("activity_detected") is bool(attempts)
+            and projection.get("defer_reload") is bool(attempts)
+            and projection.get("defer_maintenance") is bool(attempts)
+            and projection.get("reason")
+            == (
+                "database_portal_claim_or_recovery_saga"
+                if attempts
+                else "database_portal_population_idle"
+            )
+        ):
+            return False
+        for item in attempts:
+            orphan = item.get("lifecycle_state") == "retained_orphan_candidate"
+            if orphan:
+                if not (
+                    item.get("binding_id") == ""
+                    and item.get("lifecycle_record_id") == ""
+                    and item.get("workspace_path") == ""
+                    and item.get("active_phase")
+                    == "claim_committed_before_local_attempt"
+                    and item.get("post_provider_recovery") is False
+                ):
+                    return False
+            elif not (
+                all(
+                    isinstance(item.get(name), str) and bool(item.get(name))
+                    for name in (
+                        "binding_id",
+                        "lifecycle_record_id",
+                        "lifecycle_state",
+                        "workspace_path",
+                    )
+                )
+                and isinstance(item.get("active_phase"), str)
+            ):
+                return False
+        return True
+
     @contextmanager
     def _database_portal_reload_mutation_fence(
         self,
@@ -15257,6 +16030,8 @@ class PortalImplementationSupervisor:
         )
         connection: Any | None = None
         transaction_started = False
+        mutation_barrier_before: dict[str, Any] | None = None
+        owner_before: dict[str, Any] | None = None
         try:
             from ..task_sources.database_task_source import DatabaseTaskSource
             from ..task_sources.duckdb_state import (
@@ -15264,12 +16039,21 @@ class PortalImplementationSupervisor:
                 open_quack_transport_connection,
             )
 
+            mutation_barrier_before = dict(
+                self._database_portal_mutation_inbox_barrier(program.store_id)
+            )
             secret, raw_owner_before = _resolve_quack_token_handle(
                 uri=program.quack_endpoint
             )
             owner_before = self._normalized_quack_owner_binding(
                 raw_owner_before
             )
+            if dict(
+                self._database_portal_mutation_inbox_barrier(program.store_id)
+            ) != mutation_barrier_before:
+                raise RuntimeError(
+                    "Quack mutation inbox changed before projection"
+                )
             connection = open_quack_transport_connection(
                 program.quack_endpoint,
                 token=secret,
@@ -15311,8 +16095,14 @@ class PortalImplementationSupervisor:
                 owner_after = self._normalized_quack_owner_binding(
                     raw_owner_after
                 )
+                mutation_barrier_after = dict(
+                    self._database_portal_mutation_inbox_barrier(
+                        program.store_id
+                    )
+                )
                 if not (
                     dict(raw_owner_before) == dict(raw_owner_after)
+                    and mutation_barrier_before == mutation_barrier_after
                     and owner_before
                     == connection_before
                     == connection_after
@@ -15341,6 +16131,22 @@ class PortalImplementationSupervisor:
                     connection.close()
                 finally:
                     connection = None
+            final_barrier = dict(
+                self._database_portal_mutation_inbox_barrier(program.store_id)
+            )
+            _secret, raw_owner_final = _resolve_quack_token_handle(
+                uri=program.quack_endpoint
+            )
+            owner_final = self._normalized_quack_owner_binding(
+                raw_owner_final
+            )
+            if not (
+                final_barrier == mutation_barrier_before
+                and owner_before == owner_final
+            ):
+                raise RuntimeError(
+                    "Quack owner or mutation inbox changed after projection"
+                )
             return base
         except Exception as exc:
             return self._database_portal_reload_inconclusive_projection(exc)
@@ -15468,6 +16274,240 @@ class PortalImplementationSupervisor:
                     connection.close()
                 except Exception:
                     pass
+
+    def _database_portal_execute_with_fenced_provider_outer_authority_cas_fenced(
+        self,
+        program: DatabaseProgramConfig,
+        *,
+        subject: Mapping[str, Any],
+        callback: Callable[[Mapping[str, Any], Any], Any],
+    ) -> Any:
+        """Make one outer-observation-bound Quack CAS the final operation.
+
+        The caller already owns the Quack mutation lock.  This method retains
+        one authenticated replica transaction while it captures the complete
+        outer receipt and proves the owner/inbox did not advance.  The callback
+        receives that ephemeral receipt and a one-shot CAS-only repository.
+        Its buffered mutation is committed synchronously as the final fallible
+        operation; teardown cannot turn an admitted CAS into reported failure.
+        """
+
+        from ..task_sources.database_task_source import DatabaseTaskSource
+        from ..task_sources.duckdb_state import (
+            DuckDBQuackMutationConflictError,
+            DuckDBQuackMutationTransitionError,
+            DuckDBQuackMutationUnknownOutcomeError,
+            _resolve_quack_token_handle,
+            open_quack_transport_connection,
+        )
+        from ..task_sources.intent_repository import (
+            IntentRepositoryConflictError,
+            IntentRepositoryTransitionError,
+            IntentRepositoryUnknownOutcomeError,
+            _fenced_provider_outer_replica_observation_valid,
+            fenced_provider_outer_authority_population_receipt_valid,
+        )
+
+        if not isinstance(subject, Mapping):
+            raise TypeError("outer authority CAS subject must be a mapping")
+        if not callable(callback):
+            raise TypeError("outer authority CAS callback must be callable")
+        subject_map = dict(subject)
+        generation_floor = subject_map.pop("minimum_store_generation", None)
+        expected_database_uuid = subject_map.pop("expected_database_uuid", None)
+        expected_schema_fingerprint = subject_map.pop(
+            "expected_schema_fingerprint", None
+        )
+        dynamic_generation = generation_floor is not None
+        if dynamic_generation:
+            if (
+                type(generation_floor) is not int
+                or generation_floor < 1
+                or "expected_store_generation" in subject_map
+                or not isinstance(expected_database_uuid, str)
+                or not expected_database_uuid
+                or not isinstance(expected_schema_fingerprint, str)
+                or re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", expected_schema_fingerprint
+                )
+                is None
+            ):
+                raise RuntimeError(
+                    "outer authority CAS generation-floor binding is malformed"
+                )
+        elif expected_database_uuid is not None or expected_schema_fingerprint is not None:
+            raise RuntimeError(
+                "outer authority CAS lineage requires a generation floor"
+            )
+        if str(subject_map.get("expected_store_id") or "") != program.store_id:
+            raise RuntimeError(
+                "outer authority CAS store differs from the sealed program"
+            )
+
+        connection: Any | None = None
+        transaction_started = False
+        secret, raw_owner_before = _resolve_quack_token_handle(
+            uri=program.quack_endpoint
+        )
+        replica_before = (
+            raw_owner_before.get("read_replica")
+            if isinstance(raw_owner_before, Mapping)
+            else None
+        )
+        if not _fenced_provider_outer_replica_observation_valid(replica_before):
+            raise RuntimeError(
+                "Quack outer CAS lacks its exact live read replica"
+            )
+        mutation_barrier_before = self._database_portal_mutation_inbox_barrier(
+            program.store_id
+        )
+        owner_before = self._normalized_quack_owner_binding(raw_owner_before)
+        if dynamic_generation:
+            if (
+                owner_before["database_uuid"] != expected_database_uuid
+                or owner_before["schema_fingerprint"]
+                != expected_schema_fingerprint
+                or owner_before["generation"] < generation_floor
+            ):
+                raise RuntimeError(
+                    "Quack owner is outside the sealed store lineage or generation floor"
+                )
+            # The public outer receipt remains exact-generation.  Only the
+            # controller derives this value, under the owner mutation fence,
+            # from the authenticated live binding.
+            subject_map["expected_store_generation"] = owner_before[
+                "generation"
+            ]
+        try:
+            connection = open_quack_transport_connection(
+                program.quack_endpoint,
+                token=secret,
+            )
+            connection_before = self._normalized_quack_owner_binding(
+                getattr(connection, "_quack_mutation_binding", None)
+            )
+            if owner_before != connection_before:
+                raise RuntimeError(
+                    "Quack CAS connection differs from published owner"
+                )
+            connection.execute("BEGIN TRANSACTION")
+            transaction_started = True
+            pinned = _PinnedFencedIntentRepository(
+                connection,
+                owner_id=(
+                    "database-implementation-daemon:"
+                    f"{self.config.database_owner_session_id}"
+                ),
+            )
+            task_source = DatabaseTaskSource(
+                intent=pinned,
+                owner_id="database-portal-outer-authority-cas",
+            )
+            receipt = dict(
+                task_source.fenced_provider_outer_authority_population_receipt(
+                    controller_replica_observation=dict(replica_before),
+                    controller_mutation_barrier=mutation_barrier_before,
+                    **subject_map,
+                )
+            )
+
+            # All checks precede the mutation callback.  Once COMMIT submits
+            # the authenticated owner bundle, only suppressed teardown follows.
+            connection_after_read = self._normalized_quack_owner_binding(
+                getattr(connection, "_quack_mutation_binding", None)
+            )
+            _ignored_secret, raw_owner_after_read = _resolve_quack_token_handle(
+                uri=program.quack_endpoint
+            )
+            owner_after_read = self._normalized_quack_owner_binding(
+                raw_owner_after_read
+            )
+            mutation_barrier_after_read = (
+                self._database_portal_mutation_inbox_barrier(program.store_id)
+            )
+            if not (
+                dict(raw_owner_before) == dict(raw_owner_after_read)
+                and mutation_barrier_before == mutation_barrier_after_read
+                and owner_before
+                == connection_before
+                == connection_after_read
+                == owner_after_read
+                == receipt.get("authority", {}).get("owner_binding")
+                and dict(replica_before)
+                == receipt.get("authority", {}).get(
+                    "read_replica_observation"
+                )
+                and dict(mutation_barrier_before)
+                == receipt.get("authority", {}).get("mutation_barrier")
+            ):
+                raise RuntimeError(
+                    "Quack owner generation changed before outer authority CAS"
+                )
+            if not fenced_provider_outer_authority_population_receipt_valid(
+                receipt
+            ):
+                raise RuntimeError(
+                    "Quack outer authority CAS receipt failed closed validation"
+                )
+
+            callback_result = callback(MappingProxyType(receipt), pinned)
+            if not pinned.task_status_cas_consumed:
+                raise RuntimeError(
+                    "outer authority callback did not queue its one-shot task CAS"
+                )
+            try:
+                connection.execute("COMMIT")
+            except DuckDBQuackMutationConflictError as exc:
+                raise IntentRepositoryConflictError(
+                    "remote task revision or event-head CAS conflicted"
+                ) from exc
+            except DuckDBQuackMutationTransitionError as exc:
+                raise IntentRepositoryTransitionError(
+                    "remote task status transition is not admitted"
+                ) from exc
+            except DuckDBQuackMutationUnknownOutcomeError as exc:
+                raise IntentRepositoryUnknownOutcomeError(
+                    "remote mutation outcome requires exact reconciliation"
+                ) from exc
+            transaction_started = False
+            return callback_result
+        finally:
+            if connection is not None:
+                if transaction_started:
+                    with suppress(Exception):
+                        connection.execute("ROLLBACK")
+                with suppress(Exception):
+                    connection.close()
+
+    def _database_portal_execute_with_fenced_provider_outer_authority_cas(
+        self,
+        *,
+        subject: Mapping[str, Any],
+        callback: Callable[[Mapping[str, Any], Any], Any],
+    ) -> Any:
+        """Retain the current owner fence through one outer receipt and CAS."""
+
+        if not self._database_portal_is_configured():
+            raise RuntimeError("Quack database portal is not configured")
+        fence = self._database_portal_reload_mutation_fence()
+        program = fence.__enter__()
+        execute_fenced = (
+            self._database_portal_execute_with_fenced_provider_outer_authority_cas_fenced
+        )
+        try:
+            result = execute_fenced(
+                program,
+                subject=subject,
+                callback=callback,
+            )
+        except BaseException:
+            error = sys.exc_info()
+            with suppress(BaseException):
+                fence.__exit__(*error)
+            raise
+        with suppress(BaseException):
+            fence.__exit__(None, None, None)
+        return result
 
     @staticmethod
     def _database_portal_mutation_inbox_barrier(
@@ -15641,11 +16681,17 @@ class PortalImplementationSupervisor:
     def _reconcile_interrupted_database_portal_attempts_bound(
         self,
         program: DatabaseProgramConfig,
+        *,
+        owner_fence_held: bool = False,
+        trigger: str = "supervisor_signal_shutdown",
     ) -> dict[str, Any]:
         """Run reconciliation with the accepted program bindings active."""
 
         from .database_portal_bridge import DatabasePortalExecutionBridge
-        from .implementation_daemon import DatabaseImplementationDaemon
+        from .implementation_daemon import (
+            DatabaseImplementationDaemon,
+            database_fenced_provider_retained_reconciliation_valid,
+        )
 
         (
             database_path,
@@ -15662,29 +16708,89 @@ class PortalImplementationSupervisor:
             effective_strict_sharding,
         ) = self._effective_managed_daemon_sharding()
 
-        daemon = DatabaseImplementationDaemon(
-            database_path=database_path,
-            coordination_path=coordination_path,
-            execution_path=execution_path,
-            owner_session_id=self.config.database_owner_session_id,
-            authority_mode=program.authority_mode,
-            task_source_kind=program.task_source_kind,
-            quack_uri=program.quack_endpoint,
-            markdown_path=None,
-            state_path=None,
-            strategy_path=None,
-            events_path=None,
-            pid_path=None,
-            queue_path=None,
-            max_task_attempts=self.config.max_task_attempts,
-            require_real_execution=self.config.implement,
-            task_prefix=self.config.task_prefix,
-            task_shard_count=effective_shard_count,
-            task_shard_index=effective_shard_index,
-            strict_task_sharding=effective_strict_sharding,
-            control_store_id=program.store_id,
-            control_store_generation=program.store_generation,
-        )
+        owner_fenced_task_source: Any | None = None
+        owner_binding: dict[str, Any] | None = None
+        owner_barrier: dict[str, Any] | None = None
+        if owner_fence_held:
+            from ..task_sources.database_task_source import DatabaseTaskSource
+            from ..task_sources.duckdb_state import _resolve_quack_token_handle
+
+            owner_barrier = dict(
+                self._database_portal_mutation_inbox_barrier(program.store_id)
+            )
+            _secret, raw_owner_binding = _resolve_quack_token_handle(
+                uri=program.quack_endpoint
+            )
+            owner_binding = self._normalized_quack_owner_binding(
+                raw_owner_binding
+            )
+            if (
+                owner_binding.get("store_id") != program.store_id
+                or dict(
+                    self._database_portal_mutation_inbox_barrier(
+                        program.store_id
+                    )
+                )
+                != owner_barrier
+            ):
+                raise RuntimeError(
+                    "owner-fenced reconciliation changed Quack owner or inbox"
+                )
+            owner_fenced_intent: Any | None = None
+            try:
+                owner_fenced_intent = _OwnerFencedIntentRepository(
+                    program.quack_endpoint,
+                    owner_id=(
+                        "database-implementation-daemon:"
+                        f"{self.config.database_owner_session_id}"
+                    ),
+                    owner_binding=owner_binding,
+                    mutation_barrier=(
+                        self._database_portal_mutation_inbox_barrier
+                    ),
+                    capability=_OWNER_FENCED_INTENT_CAPABILITY,
+                )
+                owner_fenced_task_source = DatabaseTaskSource(
+                    intent=owner_fenced_intent,
+                    owner_id=(
+                        "database-implementation-daemon:"
+                        f"{self.config.database_owner_session_id}"
+                    ),
+                )
+            except BaseException:
+                if owner_fenced_intent is not None:
+                    owner_fenced_intent.close()
+                raise
+
+        try:
+            daemon = DatabaseImplementationDaemon(
+                database_path=database_path,
+                coordination_path=coordination_path,
+                execution_path=execution_path,
+                owner_session_id=self.config.database_owner_session_id,
+                authority_mode=program.authority_mode,
+                task_source_kind=program.task_source_kind,
+                quack_uri=program.quack_endpoint,
+                markdown_path=None,
+                state_path=None,
+                strategy_path=None,
+                events_path=None,
+                pid_path=None,
+                queue_path=None,
+                max_task_attempts=self.config.max_task_attempts,
+                require_real_execution=self.config.implement,
+                task_prefix=self.config.task_prefix,
+                task_shard_count=effective_shard_count,
+                task_shard_index=effective_shard_index,
+                strict_task_sharding=effective_strict_sharding,
+                control_store_id=program.store_id,
+                control_store_generation=program.store_generation,
+                task_source=owner_fenced_task_source,
+            )
+        except BaseException:
+            if owner_fenced_task_source is not None:
+                owner_fenced_task_source.close()
+            raise
         attempt_root = _repository_anchored_path(
             self.config.repo_root,
             self.config.state_dir,
@@ -15770,12 +16876,67 @@ class PortalImplementationSupervisor:
                 validation_fn=bridge.validate_effect,
             )
             daemon.bind_database_portal_bridge(bridge)
+            bind_outer_authority_cas = getattr(
+                daemon,
+                "bind_database_portal_outer_authority_cas",
+                None,
+            )
+            if callable(bind_outer_authority_cas):
+                if owner_fence_held:
+                    def outer_authority_cas(
+                        *,
+                        subject: Mapping[str, Any],
+                        callback: Callable[[Mapping[str, Any], Any], Any],
+                    ) -> Any:
+                        return self._database_portal_execute_with_fenced_provider_outer_authority_cas_fenced(
+                            program,
+                            subject=subject,
+                            callback=callback,
+                        )
+
+                    setattr(
+                        outer_authority_cas,
+                        "__database_portal_owner_fence_held__",
+                        True,
+                    )
+                    setattr(
+                        outer_authority_cas,
+                        "__database_portal_checkout_mutation_lease_held__",
+                        True,
+                    )
+                else:
+                    outer_authority_cas = getattr(
+                        self,
+                        "_database_portal_execute_with_fenced_provider_"
+                        "outer_authority_cas",
+                    )
+                bind_outer_authority_cas(outer_authority_cas)
+            # Close the exact task-CAS-before-local-attempt crash window before
+            # ordinary Portal reconciliation.  This performs no callback and
+            # consumes any retained one-shot chain permanently before release.
+            retained_program = self._retained_fenced_provider_program_applicable(
+                program
+            )
+            if retained_program and not owner_fence_held:
+                return {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "database_portal_retained_owner_fence_absent",
+                    "reconciliation_complete": False,
+                    "quiesced": False,
+                    "safe_to_restart": False,
+                }
+            orphaned_claim_reconciliations = (
+                daemon.reconcile_retained_recovery_orphaned_claims()
+                if retained_program
+                else []
+            )
             shutdown_repair_deadline = time.monotonic() + 30.0
             prior_progress_token = ""
             for _page_index in range(64):
                 reconciliation = (
                     daemon.reconcile_quiesced_database_portal_attempts(
-                        trigger="supervisor_signal_shutdown",
+                        trigger=trigger,
                         force=True,
                     )
                 )
@@ -15783,7 +16944,152 @@ class PortalImplementationSupervisor:
                     reconciliation.get("repair_batch_pending") is not True
                     or reconciliation.get("blocked") is True
                 ):
-                    return reconciliation
+                    if reconciliation.get("blocked") is True:
+                        return reconciliation
+                    if reconciliation.get("reconciled") is not True:
+                        return reconciliation
+                    if not retained_program:
+                        return reconciliation
+                    if not owner_fence_held:
+                        return {
+                            **dict(reconciliation),
+                            "reconciled": False,
+                            "blocked": True,
+                            "reason": (
+                                "database_portal_retained_owner_fence_absent"
+                            ),
+                            "reconciliation_complete": False,
+                            "quiesced": False,
+                            "safe_to_restart": False,
+                        }
+                    reconcile_retained = getattr(
+                        daemon,
+                        "reconcile_retained_fenced_provider_occurrences",
+                        None,
+                    )
+                    if not callable(reconcile_retained):
+                        return {
+                            **dict(reconciliation),
+                            "reconciled": False,
+                            "blocked": True,
+                            "reason": (
+                                "database_portal_retained_reconciliation_"
+                                "authority_unavailable"
+                            ),
+                            "reconciliation_complete": False,
+                            "quiesced": False,
+                            "safe_to_restart": False,
+                        }
+                    checkout_operation = (
+                        "database_portal_retained_recovery_admission"
+                    )
+                    checkout_lock_path = (
+                        board_scoped_checkout_mutation_lock_path(
+                            self.config.repo_root,
+                            "parallel-content-sealing-proof-carrying-tdd-v1",
+                        )
+                    )
+                    checkout_metadata = (
+                        self._supervisor_checkout_lock_metadata(
+                            operation=checkout_operation,
+                            extra={
+                                "task_id": "PCTDD-RETAINED-RECOVERY",
+                                "owner_store_id": program.store_id,
+                                "owner_store_generation": (
+                                    program.store_generation
+                                ),
+                            },
+                        )
+                    )
+                    checkout_lease, _reason, _existing = (
+                        self._acquire_supervisor_checkout_lease(
+                            checkout_lock_path,
+                            checkout_metadata,
+                        )
+                    )
+                    if checkout_lease is None:
+                        return {
+                            **dict(reconciliation),
+                            "reconciled": False,
+                            "blocked": True,
+                            "reason": (
+                                "database_portal_retained_checkout_fence_"
+                                "unavailable"
+                            ),
+                            "reconciliation_complete": False,
+                            "quiesced": False,
+                            "safe_to_restart": False,
+                        }
+                    try:
+                        retained_reconciliation = dict(reconcile_retained())
+                    except Exception as exc:
+                        return {
+                            **dict(reconciliation),
+                            "reconciled": False,
+                            "blocked": True,
+                            "reason": (
+                                "database_portal_retained_reconciliation_"
+                                "failed"
+                            ),
+                            "reconciliation_complete": False,
+                            "quiesced": False,
+                            "safe_to_restart": False,
+                            "retained_occurrence_reconciliation": {
+                                "blocked": True,
+                                "error_type": type(exc).__name__,
+                            },
+                        }
+                    finally:
+                        self._release_supervisor_checkout_lease(
+                            checkout_lease,
+                            operation=checkout_operation,
+                        )
+                    result = {
+                        **dict(reconciliation),
+                        "orphaned_claim_reconciliations": list(
+                            orphaned_claim_reconciliations
+                        ),
+                        "retained_occurrence_reconciliation": (
+                            retained_reconciliation
+                        ),
+                    }
+                    retained_matches_current = getattr(
+                        daemon,
+                        "retained_recovery_reconciliation_matches_current",
+                        None,
+                    )
+                    if not (
+                        retained_reconciliation.get("blocked") is False
+                        and database_fenced_provider_retained_reconciliation_valid(
+                            retained_reconciliation
+                        )
+                        and callable(retained_matches_current)
+                        and retained_matches_current(retained_reconciliation)
+                    ):
+                        result.update(
+                            {
+                                "reconciled": False,
+                                "blocked": True,
+                                "reason": (
+                                    "database_portal_retained_"
+                                    "reconciliation_blocked"
+                                ),
+                                "reconciliation_complete": False,
+                                "quiesced": False,
+                                "safe_to_restart": False,
+                            }
+                        )
+                    else:
+                        result.update(
+                            {
+                                "reconciled": True,
+                                "blocked": False,
+                                "reconciliation_complete": True,
+                                "quiesced": True,
+                                "safe_to_restart": True,
+                            }
+                        )
+                    return result
                 # The managed child is quiesced and the shared launch lock is
                 # held by the caller.  Drain the next fixed-size durable page
                 # before releasing that lock; a plan-bound --once successor
@@ -15839,7 +17145,37 @@ class PortalImplementationSupervisor:
                 "safe_to_restart": False,
             }
         finally:
-            daemon.close()
+            try:
+                daemon.close()
+            finally:
+                try:
+                    if owner_fenced_task_source is not None:
+                        owner_fenced_task_source.close()
+                finally:
+                    if owner_binding is not None and owner_barrier is not None:
+                        from ..task_sources.duckdb_state import (
+                            _resolve_quack_token_handle,
+                        )
+
+                        final_barrier = dict(
+                            self._database_portal_mutation_inbox_barrier(
+                                program.store_id
+                            )
+                        )
+                        _secret, final_raw_owner = _resolve_quack_token_handle(
+                            uri=program.quack_endpoint
+                        )
+                        final_owner = self._normalized_quack_owner_binding(
+                            final_raw_owner
+                        )
+                        if not (
+                            final_barrier == owner_barrier
+                            and final_owner == owner_binding
+                        ):
+                            raise RuntimeError(
+                                "owner-fenced reconciliation did not finish "
+                                "under one exact Quack owner and empty inbox"
+                            )
 
     def _reconciliation_guardrail_discovery_dir(self) -> Path:
         return (

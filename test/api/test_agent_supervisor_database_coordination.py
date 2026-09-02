@@ -1938,6 +1938,417 @@ def test_released_same_key_retry_creates_new_claim(tmp_path: Path) -> None:
         coordinator.close()
 
 
+def test_terminal_claim_lease_barrier_rejects_successor_fence(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:terminal-barrier-successor",
+            task_id="TERMINAL-BARRIER-SUCCESSOR",
+        )
+        old = coordinator.claim_task(
+            task_cid="task:terminal-barrier-successor",
+            owner_session_id="session:old",
+        )
+        coordinator.release(old.as_fenced_lease(), reason="old-terminal")
+        old = coordinator.get_task_claim(old.claim_id)
+        assert old is not None and old.state is LeaseState.RELEASED
+        old_lease = coordinator.get_lease(old.lease_id)
+        assert old_lease is not None and old_lease.state is LeaseState.RELEASED
+
+        successor = coordinator.claim_task(
+            task_cid=old.task_cid,
+            owner_session_id="session:successor",
+        )
+        called: list[str] = []
+        with pytest.raises(
+            DatabaseCoordinationStaleFenceError,
+            match="latest fence|successor task authority",
+        ):
+            coordinator.execute_with_terminal_task_claim_barrier(
+                old,
+                lambda: called.append("control-cas"),
+                lease=old_lease,
+            )
+        assert called == []
+        current = coordinator.get_task_claim(successor.claim_id)
+        assert current is not None and current.state is LeaseState.ACCEPTED
+    finally:
+        coordinator.close()
+
+
+def test_terminal_claim_lease_barrier_admits_exact_latest_terminal(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:terminal-barrier-exact",
+            task_id="TERMINAL-BARRIER-EXACT",
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:terminal-barrier-exact",
+            owner_session_id="session:old",
+        )
+        coordinator.release(claim.as_fenced_lease(), reason="exact-terminal")
+        claim = coordinator.get_task_claim(claim.claim_id)
+        assert claim is not None and claim.state is LeaseState.RELEASED
+        lease = coordinator.get_lease(claim.lease_id)
+        assert lease is not None and lease.state is LeaseState.RELEASED
+        called: list[str] = []
+
+        result = coordinator.execute_with_terminal_task_claim_barrier(
+            claim,
+            lambda: called.append("control-cas") or "committed",
+            lease=lease,
+        )
+
+        assert result == "committed"
+        assert called == ["control-cas"]
+    finally:
+        coordinator.close()
+
+
+def test_unprepared_terminalization_never_releases_prepared_claim(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:prepared-terminalization",
+            task_id="PREPARED-TERMINALIZATION",
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:prepared-terminalization",
+            owner_session_id="session:worker",
+        )
+        coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=7,
+            evidence_digest="sha256:" + "a" * 64,
+        )
+
+        with pytest.raises(
+            DatabaseCoordinationNotReadyError,
+            match="preparation owns settlement",
+        ):
+            coordinator.terminalize_unprepared_task_claim(
+                claim,
+                lease=claim.as_fenced_lease(),
+                reason="must-not-release",
+            )
+
+        claim_readback = coordinator.get_task_claim(claim.claim_id)
+        lease_readback = coordinator.get_lease(claim.lease_id)
+        assert claim_readback is not None
+        assert claim_readback.state is LeaseState.ACCEPTED
+        assert lease_readback is not None
+        assert lease_readback.state is LeaseState.ACCEPTED
+        assert coordinator.get_prepared_task_completion(claim.task_cid) is not None
+    finally:
+        coordinator.close()
+
+
+def test_renewed_claim_terminalizes_and_cross_store_barrier_remains_exact(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:renewed-terminal-barrier",
+            task_id="RENEWED-TERMINAL-BARRIER",
+        )
+        original = coordinator.claim_task(
+            task_cid="task:renewed-terminal-barrier",
+            owner_session_id="session:worker",
+        )
+        clock.advance(1_000)
+        renewed_lease = coordinator.renew(
+            original.as_fenced_lease(),
+            lease_ms=90_000,
+            now_ms=clock(),
+        )
+        renewed_claim = coordinator.get_task_claim(original.claim_id)
+        assert renewed_claim is not None
+        assert renewed_claim.revision > original.revision
+        assert renewed_claim.as_fenced_lease().to_dict() == renewed_lease.to_dict()
+
+        terminal_claim, terminal_lease = (
+            coordinator.terminalize_unprepared_task_claim(
+                renewed_claim,
+                lease=renewed_lease,
+                reason="renewed-orphan-terminal",
+                now_ms=clock(),
+            )
+        )
+        called: list[str] = []
+        result = coordinator.execute_with_terminal_task_claim_barrier(
+            terminal_claim,
+            lambda: called.append("control-cas") or "committed",
+            lease=terminal_lease,
+        )
+
+        assert result == "committed"
+        assert called == ["control-cas"]
+        assert terminal_claim.state is LeaseState.RELEASED
+        assert terminal_lease.state is LeaseState.RELEASED
+    finally:
+        coordinator.close()
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    (
+        "attempt_revision",
+        "attempt_started_at",
+        "attempt_finished_at",
+        "claim_body_malformed",
+        "lease_body_malformed",
+    ),
+)
+def test_unprepared_terminalization_rejects_corrupt_running_authority_without_mutation(
+    tmp_path: Path,
+    corruption: str,
+) -> None:
+    coordinator, clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid=f"task:terminalization-corrupt:{corruption}",
+            task_id=f"TERMINALIZATION-CORRUPT-{corruption}",
+        )
+        claim = coordinator.claim_task(
+            task_cid=f"task:terminalization-corrupt:{corruption}",
+            owner_session_id="session:worker",
+        )
+        lease = claim.as_fenced_lease()
+        connection = coordinator._require()
+        coordinator._begin(connection)
+        if corruption == "attempt_revision":
+            connection.execute(
+                "UPDATE task_attempts SET revision = 999 WHERE attempt_id = ?",
+                [claim.attempt_id],
+            )
+        elif corruption == "attempt_started_at":
+            connection.execute(
+                "UPDATE task_attempts SET started_at_ms = started_at_ms + 1 "
+                "WHERE attempt_id = ?",
+                [claim.attempt_id],
+            )
+        elif corruption == "attempt_finished_at":
+            connection.execute(
+                "UPDATE task_attempts SET finished_at_ms = ? WHERE attempt_id = ?",
+                [clock(), claim.attempt_id],
+            )
+        elif corruption == "claim_body_malformed":
+            connection.execute(
+                "UPDATE task_claims SET body_json = 'xx' WHERE claim_id = ?",
+                [claim.claim_id],
+            )
+        else:
+            connection.execute(
+                "UPDATE fenced_leases SET body_json = 'xx' WHERE lease_id = ?",
+                [claim.lease_id],
+            )
+        coordinator._commit_if_idle(connection)
+
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.terminalize_unprepared_task_claim(
+                claim,
+                lease=lease,
+                reason="must-not-terminalize",
+                now_ms=clock(),
+            )
+
+        observed_claim = coordinator.get_task_claim(claim.claim_id)
+        observed_lease = coordinator.get_lease(claim.lease_id)
+        observed_attempt = coordinator.get_task_attempt(claim.attempt_id)
+        assert observed_claim is not None
+        assert observed_claim.state is LeaseState.ACCEPTED
+        assert observed_lease is not None
+        assert observed_lease.state is LeaseState.ACCEPTED
+        assert observed_attempt is not None
+        assert observed_attempt.status is AttemptStatus.RUNNING
+        terminal_event_count = connection.execute(
+            "SELECT COUNT(*) FROM lease_events "
+            "WHERE lease_id = ? AND event_type IN ('released', 'expired')",
+            [claim.lease_id],
+        ).fetchone()
+        assert terminal_event_count is not None
+        assert int(terminal_event_count[0]) == 0
+    finally:
+        coordinator.close()
+
+
+def test_unprepared_terminalization_rejects_regressed_clock_without_mutation(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:terminalization-regressed-clock",
+            task_id="TERMINALIZATION-REGRESSED-CLOCK",
+        )
+        claim = coordinator.claim_task(
+            task_cid="task:terminalization-regressed-clock",
+            owner_session_id="session:worker",
+        )
+
+        with pytest.raises(DatabaseCoordinationStaleFenceError, match="clock"):
+            coordinator.terminalize_unprepared_task_claim(
+                claim,
+                lease=claim.as_fenced_lease(),
+                now_ms=claim.claimed_at_ms - 1,
+            )
+
+        observed_claim = coordinator.get_task_claim(claim.claim_id)
+        observed_attempt = coordinator.get_task_attempt(claim.attempt_id)
+        assert observed_claim is not None
+        assert observed_claim.state is LeaseState.ACCEPTED
+        assert observed_attempt is not None
+        assert observed_attempt.status is AttemptStatus.RUNNING
+    finally:
+        coordinator.close()
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    (
+        "attempt_revision",
+        "attempt_finished_at",
+        "claim_released_at",
+        "terminal_event_timestamp",
+        "claim_body_malformed",
+        "lease_body_malformed",
+        "terminal_event_body_malformed",
+        "terminal_event_empty_reason",
+        "attempt_status_oversized",
+    ),
+)
+def test_terminal_claim_barrier_rejects_corrupt_durable_relation_before_callback(
+    tmp_path: Path,
+    corruption: str,
+) -> None:
+    coordinator, clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid=f"task:terminal-barrier-corrupt:{corruption}",
+            task_id=f"TERMINAL-BARRIER-CORRUPT-{corruption}",
+        )
+        original = coordinator.claim_task(
+            task_cid=f"task:terminal-barrier-corrupt:{corruption}",
+            owner_session_id="session:worker",
+        )
+        claim, lease = coordinator.terminalize_unprepared_task_claim(
+            original,
+            lease=original.as_fenced_lease(),
+            reason="canonical-release",
+            now_ms=clock(),
+        )
+        connection = coordinator._require()
+        coordinator._begin(connection)
+        if corruption == "attempt_revision":
+            connection.execute(
+                "UPDATE task_attempts SET revision = 999 WHERE attempt_id = ?",
+                [claim.attempt_id],
+            )
+        elif corruption == "attempt_finished_at":
+            connection.execute(
+                "UPDATE task_attempts SET finished_at_ms = finished_at_ms + 1 "
+                "WHERE attempt_id = ?",
+                [claim.attempt_id],
+            )
+        elif corruption == "claim_released_at":
+            connection.execute(
+                "UPDATE task_claims SET released_at_ms = released_at_ms + 1 "
+                "WHERE claim_id = ?",
+                [claim.claim_id],
+            )
+        elif corruption == "terminal_event_timestamp":
+            connection.execute(
+                "UPDATE lease_events SET observed_at_ms = observed_at_ms + 1 "
+                "WHERE lease_id = ? AND event_type = 'released'",
+                [claim.lease_id],
+            )
+        elif corruption == "claim_body_malformed":
+            connection.execute(
+                "UPDATE task_claims SET body_json = 'xx' WHERE claim_id = ?",
+                [claim.claim_id],
+            )
+        elif corruption == "lease_body_malformed":
+            connection.execute(
+                "UPDATE fenced_leases SET body_json = 'xx' WHERE lease_id = ?",
+                [claim.lease_id],
+            )
+        elif corruption == "terminal_event_body_malformed":
+            connection.execute(
+                "UPDATE lease_events SET body_json = repeat('x', "
+                "octet_length(encode(body_json))) "
+                "WHERE lease_id = ? AND event_type = 'released'",
+                [claim.lease_id],
+            )
+        elif corruption == "terminal_event_empty_reason":
+            connection.execute(
+                "UPDATE lease_events SET body_json = '{\"reason\":\"\"}' "
+                "WHERE lease_id = ? AND event_type = 'released'",
+                [claim.lease_id],
+            )
+        else:
+            connection.execute(
+                "UPDATE task_attempts SET status = repeat('x', 300000) "
+                "WHERE attempt_id = ?",
+                [claim.attempt_id],
+            )
+        coordinator._commit_if_idle(connection)
+        called: list[str] = []
+
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.execute_with_terminal_task_claim_barrier(
+                claim,
+                lambda: called.append("control-cas"),
+                lease=lease,
+            )
+
+        assert called == []
+    finally:
+        coordinator.close()
+
+
+def test_terminal_claim_barrier_admits_exact_expired_relation(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:terminal-barrier-expired",
+            task_id="TERMINAL-BARRIER-EXPIRED",
+        )
+        original = coordinator.claim_task(
+            task_cid="task:terminal-barrier-expired",
+            owner_session_id="session:worker",
+        )
+        clock.advance(60_001)
+        claim, lease = coordinator.terminalize_unprepared_task_claim(
+            original,
+            lease=original.as_fenced_lease(),
+            now_ms=clock(),
+        )
+        called: list[str] = []
+
+        result = coordinator.execute_with_terminal_task_claim_barrier(
+            claim,
+            lambda: called.append("control-cas") or "committed",
+            lease=lease,
+        )
+
+        assert claim.state is LeaseState.EXPIRED
+        assert lease.state is LeaseState.EXPIRED
+        assert result == "committed"
+        assert called == ["control-cas"]
+    finally:
+        coordinator.close()
+
+
 def test_exact_task_claim_protection_rejects_identity_mismatch(tmp_path: Path) -> None:
     coordinator, _clock = _open(tmp_path)
     try:

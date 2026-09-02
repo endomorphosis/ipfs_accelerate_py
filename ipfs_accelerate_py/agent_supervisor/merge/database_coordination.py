@@ -138,6 +138,7 @@ MAX_FENCED_TASK_AUTHORITY_RECEIPT_BYTES: Final[int] = 16 * 1024 * 1024
 _FENCED_TASK_AUTHORITY_BIGINT_MIN: Final[int] = -(2**63)
 _FENCED_TASK_AUTHORITY_BIGINT_MAX: Final[int] = 2**63 - 1
 MAX_PAYLOAD_BYTES: Final[int] = 262_144
+MAX_TERMINAL_EVENT_BODY_BYTES: Final[int] = 6 * 256 + len('{"reason":""}')
 MAX_DEPENDENCY_EVIDENCE: Final[int] = 32
 MAX_PREPARED_COMPLETION_QUERY: Final[int] = 1_000
 PREPARED_COMPLETION_STATUS: Final[str] = "prepared"
@@ -407,6 +408,269 @@ def _row_get(mapping: Mapping[str, Any], *names: str, default: Any = None) -> An
         if str(key).lower() in wanted and value is not None:
             return value
     return default
+
+
+_MISSING_ROW_VALUE: Final[object] = object()
+
+
+def _row_value_including_null(
+    mapping: Mapping[str, Any],
+    name: str,
+    *,
+    default: Any = _MISSING_ROW_VALUE,
+) -> Any:
+    """Return one named row value without normalizing SQL NULL.
+
+    ``_row_get`` deliberately skips NULLs for compatibility projections. A
+    durable fencing barrier cannot: NULL versus a terminal timestamp is
+    authority-relevant. Reject ambiguous case-folded columns as corruption.
+    """
+
+    matches = [
+        value
+        for key, value in mapping.items()
+        if str(key).lower() == str(name).lower()
+    ]
+    if len(matches) > 1:
+        raise DatabaseCoordinationError(f"row contains ambiguous {name} columns")
+    if matches:
+        return matches[0]
+    if default is not _MISSING_ROW_VALUE:
+        return default
+    raise DatabaseCoordinationError(f"row omits required {name} column")
+
+
+def _require_exact_canonical_row_body(
+    mapping: Mapping[str, Any],
+    expected_body: Mapping[str, Any],
+    *,
+    noun: str,
+) -> None:
+    """Require raw durable ``body_json`` to equal the supplied canonical body."""
+
+    raw = _row_value_including_null(mapping, "body_json", default=None)
+    expected = _canonical_json(
+        _bounded_mapping(dict(expected_body), name=f"{noun}_body")
+    )
+    if type(raw) is not str or raw != expected:
+        raise DatabaseCoordinationStaleFenceError(
+            f"{noun} durable body is not the exact canonical projection"
+        )
+
+
+_TERMINAL_AUTHORITY_TEXT_COLUMNS: Final[dict[str, tuple[str, ...]]] = {
+    "task_claims": (
+        "claim_id",
+        "task_cid",
+        "owner_session_id",
+        "state",
+        "attempt_id",
+        "lease_id",
+        "worktree_id",
+        "idempotency_key",
+        "body_json",
+    ),
+    "fenced_leases": (
+        "lease_id",
+        "lease_kind",
+        "scope_key",
+        "scope",
+        "mode",
+        "owner_session_id",
+        "state",
+        "task_cid",
+        "worktree_id",
+        "resource_kind",
+        "resource_id",
+        "repository_id",
+        "path",
+        "claim_id",
+        "attempt_id",
+        "idempotency_key",
+        "body_json",
+    ),
+    "task_attempts": (
+        "attempt_id",
+        "task_cid",
+        "owner_session_id",
+        "status",
+    ),
+}
+_TERMINAL_AUTHORITY_KEY_COLUMNS: Final[dict[str, str]] = {
+    "task_claims": "claim_id",
+    "fenced_leases": "lease_id",
+    "task_attempts": "attempt_id",
+}
+
+
+def _terminal_claim_text_projection(
+    claim: Mapping[str, Any],
+) -> dict[str, str]:
+    return {
+        "claim_id": str(claim["claim_id"]),
+        "task_cid": str(claim["task_cid"]),
+        "owner_session_id": str(claim["owner_session_id"]),
+        "state": str(claim["state"]),
+        "attempt_id": str(claim["attempt_id"]),
+        "lease_id": str(claim["lease_id"]),
+        "worktree_id": str(claim.get("worktree_id") or ""),
+        "idempotency_key": str(claim.get("idempotency_key") or ""),
+        "body_json": _canonical_json(
+            _bounded_mapping(
+                claim.get("body") or {},
+                name="terminal_task_claim_body",
+            )
+        ),
+    }
+
+
+def _terminal_lease_text_projection(
+    lease: Mapping[str, Any],
+) -> dict[str, str]:
+    return {
+        "lease_id": str(lease["lease_id"]),
+        "lease_kind": str(lease["lease_kind"]),
+        "scope_key": str(lease["scope_key"]),
+        "scope": str(lease["scope"]),
+        "mode": str(lease["mode"]),
+        "owner_session_id": str(lease["owner_session_id"]),
+        "state": str(lease["state"]),
+        "task_cid": str(lease.get("task_cid") or ""),
+        "worktree_id": str(lease.get("worktree_id") or ""),
+        "resource_kind": str(lease.get("resource_kind") or ""),
+        "resource_id": str(lease.get("resource_id") or ""),
+        "repository_id": str(lease.get("repository_id") or ""),
+        "path": str(lease.get("path") or ""),
+        "claim_id": str(lease.get("claim_id") or ""),
+        "attempt_id": str(lease.get("attempt_id") or ""),
+        "idempotency_key": str(lease.get("idempotency_key") or ""),
+        "body_json": _canonical_json(
+            _bounded_mapping(
+                lease.get("body") or {},
+                name="terminal_task_lease_body",
+            )
+        ),
+    }
+
+
+def _terminal_attempt_text_projection(
+    identity: Mapping[str, Any],
+    *,
+    status: str,
+) -> dict[str, str]:
+    return {
+        "attempt_id": str(identity["attempt_id"]),
+        "task_cid": str(identity["task_cid"]),
+        "owner_session_id": str(identity["owner_session_id"]),
+        "status": status,
+    }
+
+
+def _require_terminal_authority_row_fetch_bounds(
+    connection: Any,
+    *,
+    table: str,
+    key: str,
+    expected_text: Mapping[str, str],
+    noun: str,
+) -> None:
+    """Bound every durable VARCHAR before fetching one authority row."""
+
+    columns = _TERMINAL_AUTHORITY_TEXT_COLUMNS.get(table)
+    key_column = _TERMINAL_AUTHORITY_KEY_COLUMNS.get(table)
+    if columns is None or key_column is None or set(expected_text) != set(columns):
+        raise DatabaseCoordinationError(
+            "terminal authority row preflight received an unknown projection"
+        )
+    length_columns = ", ".join(
+        (
+            'COALESCE(MAX(octet_length(encode("{column}"))), -1) '
+            'AS "bytes_{index}"'
+        ).format(column=column, index=index)
+        for index, column in enumerate(columns)
+    )
+    row = connection.execute(
+        f'SELECT COUNT(*) AS "row_count", {length_columns} '
+        f'FROM "{table}" WHERE "{key_column}" = ?',
+        [key],
+    ).fetchone()
+    projection = _row_mapping(row)
+    count = _row_get(projection, "row_count", "0", default=-1)
+    if type(count) is not int or count != 1:
+        raise DatabaseCoordinationStaleFenceError(
+            f"{noun} durable row is absent or ambiguous"
+        )
+    for index, column in enumerate(columns, start=1):
+        observed = _row_get(
+            projection,
+            f"bytes_{index - 1}",
+            str(index),
+            default=-1,
+        )
+        expected = len(expected_text[column].encode("utf-8"))
+        if type(observed) is not int or observed != expected:
+            raise DatabaseCoordinationStaleFenceError(
+                f"{noun} durable {column} length is not exact"
+            )
+
+
+def _require_terminal_event_fetch_bounds(
+    connection: Any,
+    *,
+    lease_id: str,
+    scope_key: str,
+    event_type: str,
+) -> None:
+    """Prove one terminal event is bounded before materializing its strings."""
+
+    row = connection.execute(
+        """
+        SELECT COUNT(*) AS row_count,
+               COALESCE(MAX(octet_length(encode(event_id))), -1)
+                   AS event_id_bytes,
+               COALESCE(MAX(octet_length(encode(lease_id))), -1)
+                   AS lease_id_bytes,
+               COALESCE(MAX(octet_length(encode(scope_key))), -1)
+                   AS scope_key_bytes,
+               COALESCE(MAX(octet_length(encode(event_type))), -1)
+                   AS event_type_bytes,
+               COALESCE(MAX(octet_length(encode(body_json))), -1)
+                   AS body_json_bytes
+        FROM lease_events
+        WHERE lease_id = ? AND event_type IN (?, ?)
+        """,
+        [lease_id, "released", "expired"],
+    ).fetchone()
+    projection = _row_mapping(row)
+    expected_lengths = {
+        "event_id_bytes": len("lease-event:") + 32,
+        "lease_id_bytes": len(lease_id.encode("utf-8")),
+        "scope_key_bytes": len(scope_key.encode("utf-8")),
+        "event_type_bytes": len(event_type.encode("utf-8")),
+    }
+    count = _row_get(projection, "row_count", "0", default=-1)
+    if type(count) is not int or count != 1:
+        raise DatabaseCoordinationStaleFenceError(
+            "terminal task lease lacks one exact terminal event"
+        )
+    for index, (name, expected) in enumerate(expected_lengths.items(), start=1):
+        observed = _row_get(projection, name, str(index), default=-1)
+        if type(observed) is not int or observed != expected:
+            raise DatabaseCoordinationStaleFenceError(
+                "terminal task lease event text bounds are not exact"
+            )
+    body_bytes = _row_get(projection, "body_json_bytes", "5", default=-1)
+    minimum_body_bytes = 2 if event_type == "expired" else len('{"reason":"x"}')
+    maximum_body_bytes = (
+        2 if event_type == "expired" else MAX_TERMINAL_EVENT_BODY_BYTES
+    )
+    if (
+        type(body_bytes) is not int
+        or not minimum_body_bytes <= body_bytes <= maximum_body_bytes
+    ):
+        raise DatabaseCoordinationStaleFenceError(
+            "terminal task lease event body exceeds its closed bound"
+        )
 
 
 def _split_sql_statements(sql_text: str) -> list[str]:
@@ -4118,6 +4382,43 @@ class DatabaseCoordinator:
         }
 
     @staticmethod
+    def _closed_task_claim_projection(
+        claim: TaskClaim | Mapping[str, Any],
+    ) -> TaskClaim:
+        """Normalize only the complete public ``TaskClaim`` projection."""
+
+        if isinstance(claim, TaskClaim):
+            return claim
+        supplied = dict(claim)
+        try:
+            projected = TaskClaim(
+                claim_id=supplied["claim_id"],
+                task_cid=supplied["task_cid"],
+                owner_session_id=supplied["owner_session_id"],
+                fencing_token=supplied["fencing_token"],
+                fence_epoch=supplied["fence_epoch"],
+                claimed_at_ms=supplied["claimed_at_ms"],
+                expires_at_ms=supplied["expires_at_ms"],
+                state=supplied["state"],
+                revision=supplied["revision"],
+                attempt_id=supplied["attempt_id"],
+                attempt_number=supplied["attempt_number"],
+                lease_id=supplied["lease_id"],
+                worktree_id=supplied.get("worktree_id", ""),
+                idempotency_key=supplied.get("idempotency_key", ""),
+                body=supplied.get("body", {}),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise DatabaseCoordinationStaleFenceError(
+                "task claim projection is incomplete or malformed"
+            ) from exc
+        if projected.to_dict() != supplied:
+            raise DatabaseCoordinationStaleFenceError(
+                "task claim projection is not a closed exact record"
+            )
+        return projected
+
+    @staticmethod
     def _resource_claim_identity(
         claim: ResourceClaim | Mapping[str, Any],
     ) -> dict[str, Any]:
@@ -4723,6 +5024,21 @@ class DatabaseCoordinator:
             "prepared_at_ms",
         )
         return normalized
+
+    @staticmethod
+    def _task_completion_exists_unlocked(
+        connection: Any,
+        task_cid: str,
+    ) -> bool:
+        """Return only the bounded negative/positive completion fact."""
+
+        return (
+            connection.execute(
+                "SELECT 1 FROM task_completions WHERE task_cid = ? LIMIT 1",
+                [task_cid],
+            ).fetchone()
+            is not None
+        )
 
     def _prepared_completion_unlocked(
         self,
@@ -5386,10 +5702,322 @@ class DatabaseCoordinator:
                 self._fenced_callback_active = False
                 self._fenced_callback_reentry_detected = False
 
+    def terminalize_unprepared_task_claim(
+        self,
+        claim: TaskClaim | Mapping[str, Any],
+        *,
+        lease: FencedLease | Mapping[str, Any],
+        reason: str = "released",
+        now_ms: int | None = None,
+    ) -> tuple[TaskClaim, FencedLease]:
+        """Atomically terminalize one exact claim only without PREPARED work.
+
+        Recovery must not first release an accepted claim and only later learn
+        that completion preparation owns it.  This primitive holds the
+        coordinator transaction across the exact claim/lease/latest-fence and
+        no-completion checks and the accepted -> released/expired transition.
+        A concurrent completion preparation therefore wins wholly or fails;
+        it can never observe authority that this call partially settled.
+        """
+
+        claim_projection = self._closed_task_claim_projection(claim)
+        supplied_claim = claim_projection.to_dict()
+        identity = self._task_claim_identity(supplied_claim)
+        supplied_lease = (
+            lease.to_dict() if isinstance(lease, FencedLease) else dict(lease)
+        )
+        if str(supplied_claim.get("state") or "") != LeaseState.ACCEPTED.value:
+            raise DatabaseCoordinationStaleFenceError(
+                "unprepared terminalization requires an accepted task claim"
+            )
+        if (
+            not supplied_lease
+            or supplied_lease
+            != claim_projection.as_fenced_lease().to_dict()
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "unprepared terminalization requires the exact accepted lease"
+            )
+        now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
+        if (
+            now < int(claim_projection.claimed_at_ms)
+            or now < int(supplied_lease.get("acquired_at_ms") or 0)
+        ):
+            raise DatabaseCoordinationStaleFenceError(
+                "unprepared terminalization clock precedes task authority"
+            )
+        reason_text = str(reason or "released")[:256]
+        task_cid = str(identity["task_cid"])
+        scope_key = exclusive_scope_key(
+            lease_kind=LeaseKind.TASK,
+            scope=task_cid,
+            task_cid=task_cid,
+        )
+
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            if not getattr(connection, "in_transaction", False):
+                raise DatabaseCoordinationError(
+                    "could not start unprepared task terminalization transaction"
+                )
+            try:
+                _require_terminal_authority_row_fetch_bounds(
+                    connection,
+                    table="task_claims",
+                    key=str(identity["claim_id"]),
+                    expected_text=_terminal_claim_text_projection(
+                        supplied_claim
+                    ),
+                    noun="accepted task claim",
+                )
+                _require_terminal_authority_row_fetch_bounds(
+                    connection,
+                    table="fenced_leases",
+                    key=str(identity["lease_id"]),
+                    expected_text=_terminal_lease_text_projection(
+                        supplied_lease
+                    ),
+                    noun="accepted task lease",
+                )
+                _require_terminal_authority_row_fetch_bounds(
+                    connection,
+                    table="task_attempts",
+                    key=str(identity["attempt_id"]),
+                    expected_text=_terminal_attempt_text_projection(
+                        identity,
+                        status=AttemptStatus.RUNNING.value,
+                    ),
+                    noun="accepted task attempt",
+                )
+                attempt_row = connection.execute(
+                    "SELECT * FROM task_attempts WHERE attempt_id = ?",
+                    [identity["attempt_id"]],
+                ).fetchone()
+                if attempt_row is None:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "accepted task attempt disappeared before terminalization"
+                    )
+                attempt_mapping = _row_mapping(attempt_row)
+                expected_running_attempt = {
+                    "attempt_id": identity["attempt_id"],
+                    "task_cid": identity["task_cid"],
+                    "attempt_number": identity["attempt_number"],
+                    "owner_session_id": identity["owner_session_id"],
+                    "fencing_token": identity["fencing_token"],
+                    "fence_epoch": identity["fence_epoch"],
+                    "started_at_ms": claim_projection.claimed_at_ms,
+                    "finished_at_ms": None,
+                    "status": AttemptStatus.RUNNING.value,
+                    "revision": 1,
+                }
+                if any(
+                    _row_value_including_null(
+                        attempt_mapping,
+                        name,
+                        default=_MISSING_ROW_VALUE,
+                    )
+                    != expected
+                    for name, expected in expected_running_attempt.items()
+                ):
+                    raise DatabaseCoordinationStaleFenceError(
+                        "accepted task attempt projection is not exact"
+                    )
+                claim_row = connection.execute(
+                    "SELECT * FROM task_claims WHERE claim_id = ?",
+                    [identity["claim_id"]],
+                ).fetchone()
+                lease_row = connection.execute(
+                    "SELECT * FROM fenced_leases WHERE lease_id = ?",
+                    [identity["lease_id"]],
+                ).fetchone()
+                if claim_row is None or lease_row is None:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "accepted task claim or lease disappeared before terminalization"
+                    )
+                claim_mapping = _row_mapping(claim_row)
+                lease_mapping = _row_mapping(lease_row)
+                _require_exact_canonical_row_body(
+                    claim_mapping,
+                    supplied_claim.get("body") or {},
+                    noun="accepted task claim",
+                )
+                _require_exact_canonical_row_body(
+                    lease_mapping,
+                    supplied_lease.get("body") or {},
+                    noun="accepted task lease",
+                )
+                observed_claim = self._task_claim_from_row(claim_row)
+                observed_lease = self._lease_from_row(lease_row)
+                if (
+                    observed_claim.to_dict() != supplied_claim
+                    or observed_lease.to_dict() != supplied_lease
+                ):
+                    raise DatabaseCoordinationStaleFenceError(
+                        "accepted task claim or lease changed before terminalization"
+                    )
+                if self._task_completion_exists_unlocked(connection, task_cid):
+                    raise DatabaseCoordinationNotReadyError(
+                        f"task {task_cid} completion preparation owns settlement",
+                        evidence={
+                            "task_cid": task_cid,
+                            "reason": "completion_preparation_precedes_terminalization",
+                        },
+                    )
+
+                expired = bool(
+                    int(observed_claim.expires_at_ms) <= now
+                    or int(observed_lease.expires_at_ms) <= now
+                )
+                if expired:
+                    self._expire_scope(connection, scope_key, now)
+                    terminal_state = LeaseState.EXPIRED
+                    expected_attempt_status = AttemptStatus.EXPIRED
+                else:
+                    self._protect_task_claim_unlocked(
+                        connection,
+                        identity=identity,
+                        now=now,
+                        expected_attempt_status=AttemptStatus.RUNNING,
+                        allow_logically_completed=False,
+                        record_event=False,
+                    )
+                    connection.execute(
+                        """
+                        UPDATE fenced_leases
+                        SET state = ?, revision = revision + 1
+                        WHERE lease_id = ? AND state = ?
+                          AND fencing_token = ? AND fence_epoch = ?
+                        """,
+                        [
+                            LeaseState.RELEASED.value,
+                            identity["lease_id"],
+                            LeaseState.ACCEPTED.value,
+                            identity["fencing_token"],
+                            identity["fence_epoch"],
+                        ],
+                    )
+                    connection.execute(
+                        """
+                        UPDATE task_claims
+                        SET state = ?, released_at_ms = ?, revision = revision + 1
+                        WHERE claim_id = ? AND state = ?
+                          AND fencing_token = ? AND fence_epoch = ?
+                        """,
+                        [
+                            LeaseState.RELEASED.value,
+                            now,
+                            identity["claim_id"],
+                            LeaseState.ACCEPTED.value,
+                            identity["fencing_token"],
+                            identity["fence_epoch"],
+                        ],
+                    )
+                    connection.execute(
+                        """
+                        UPDATE task_attempts
+                        SET status = ?, finished_at_ms = ?, revision = revision + 1
+                        WHERE attempt_id = ? AND status = ?
+                        """,
+                        [
+                            AttemptStatus.RELEASED.value,
+                            now,
+                            identity["attempt_id"],
+                            AttemptStatus.RUNNING.value,
+                        ],
+                    )
+                    self._record_event(
+                        connection,
+                        lease_id=str(identity["lease_id"]),
+                        scope_key=scope_key,
+                        event_type="released",
+                        fencing_token=int(identity["fencing_token"]),
+                        fence_epoch=int(identity["fence_epoch"]),
+                        observed_at_ms=now,
+                        body={"reason": reason_text},
+                    )
+                    terminal_state = LeaseState.RELEASED
+                    expected_attempt_status = AttemptStatus.RELEASED
+
+                # Reuse the complete latest-fence/identity validator after the
+                # transition and repeat the no-completion check in the same
+                # transaction before publication.
+                _require_terminal_authority_row_fetch_bounds(
+                    connection,
+                    table="task_claims",
+                    key=str(identity["claim_id"]),
+                    expected_text=_terminal_claim_text_projection(
+                        {
+                            **supplied_claim,
+                            "state": terminal_state.value,
+                        }
+                    ),
+                    noun="terminal task claim",
+                )
+                _require_terminal_authority_row_fetch_bounds(
+                    connection,
+                    table="fenced_leases",
+                    key=str(identity["lease_id"]),
+                    expected_text=_terminal_lease_text_projection(
+                        {
+                            **supplied_lease,
+                            "state": terminal_state.value,
+                        }
+                    ),
+                    noun="terminal task lease",
+                )
+                _require_terminal_authority_row_fetch_bounds(
+                    connection,
+                    table="task_attempts",
+                    key=str(identity["attempt_id"]),
+                    expected_text=_terminal_attempt_text_projection(
+                        identity,
+                        status=expected_attempt_status.value,
+                    ),
+                    noun="terminal task attempt",
+                )
+                terminal_lease = self._protect_task_claim_unlocked(
+                    connection,
+                    identity=identity,
+                    now=now,
+                    expected_attempt_status=expected_attempt_status,
+                    allow_logically_completed=False,
+                    record_event=False,
+                    expected_lease_state=terminal_state,
+                )
+                if self._task_completion_exists_unlocked(connection, task_cid):
+                    raise DatabaseCoordinationNotReadyError(
+                        f"task {task_cid} completion preparation raced settlement",
+                        evidence={
+                            "task_cid": task_cid,
+                            "reason": "completion_preparation_raced_terminalization",
+                        },
+                    )
+                terminal_claim_row = connection.execute(
+                    "SELECT * FROM task_claims WHERE claim_id = ?",
+                    [identity["claim_id"]],
+                ).fetchone()
+                if terminal_claim_row is None:
+                    raise DatabaseCoordinationStaleFenceError(
+                        "terminal task claim disappeared before commit"
+                    )
+                terminal_claim = self._task_claim_from_row(terminal_claim_row)
+                if terminal_claim.as_fenced_lease().to_dict() != terminal_lease.to_dict():
+                    raise DatabaseCoordinationStaleFenceError(
+                        "terminal task claim and lease projections diverged"
+                    )
+                connection.commit()
+                return terminal_claim, terminal_lease
+            except BaseException:
+                self._rollback_if_open(connection)
+                raise
+
     def execute_with_terminal_task_claim_barrier(
         self,
         claim: TaskClaim | Mapping[str, Any],
         callback: Callable[[], Any],
+        *,
+        lease: FencedLease | Mapping[str, Any],
     ) -> Any:
         """Run one control CAS behind an exact terminal-claim barrier.
 
@@ -5401,13 +6029,18 @@ class DatabaseCoordinator:
         afterwards.  Re-entry into this coordinator from the callback is
         rejected, so a racing preparation or claim rewrite cannot be hidden
         inside the control transition.
+
+        The exact terminal task lease must still be the latest fence for its
+        scope, with no successor authority. The raw claim, lease, attempt, and
+        unique terminal event must also form the complete canonical terminal
+        relation; compatibility projections may not normalize away corrupt
+        JSON or terminal timestamps.
         """
 
         if not callable(callback):
             raise TypeError("callback must be callable")
-        supplied = (
-            claim.to_dict() if isinstance(claim, TaskClaim) else dict(claim)
-        )
+        claim_projection = self._closed_task_claim_projection(claim)
+        supplied = claim_projection.to_dict()
         identity = self._task_claim_identity(supplied)
         supplied_state = str(supplied.get("state") or "").strip().lower()
         if supplied_state not in {
@@ -5416,6 +6049,50 @@ class DatabaseCoordinator:
         }:
             raise DatabaseCoordinationStaleFenceError(
                 "terminal task-claim barrier requires released or expired authority"
+            )
+        supplied_lease = (
+            lease.to_dict()
+            if isinstance(lease, FencedLease)
+            else dict(lease)
+        )
+        if supplied_lease != claim_projection.as_fenced_lease().to_dict():
+            raise DatabaseCoordinationStaleFenceError(
+                "terminal task lease is not the claim's exact projection"
+            )
+        if supplied_lease:
+            lease_state = str(supplied_lease.get("state") or "").strip().lower()
+            expected_scope_key = exclusive_scope_key(
+                lease_kind=LeaseKind.TASK,
+                scope=str(identity["task_cid"]),
+                task_cid=str(identity["task_cid"]),
+            )
+            exact_lease_claim = {
+                "lease_id": identity["lease_id"],
+                "claim_id": identity["claim_id"],
+                "attempt_id": identity["attempt_id"],
+                "task_cid": identity["task_cid"],
+                "owner_session_id": identity["owner_session_id"],
+                "attempt_number": identity["attempt_number"],
+                "fencing_token": identity["fencing_token"],
+                "fence_epoch": identity["fence_epoch"],
+            }
+            if (
+                lease_state != supplied_state
+                or supplied_lease.get("lease_kind") != LeaseKind.TASK.value
+                or supplied_lease.get("mode") != LeaseMode.EXCLUSIVE.value
+                or supplied_lease.get("scope") != identity["task_cid"]
+                or supplied_lease.get("scope_key") != expected_scope_key
+                or any(
+                    supplied_lease.get(name) != expected
+                    for name, expected in exact_lease_claim.items()
+                )
+            ):
+                raise DatabaseCoordinationStaleFenceError(
+                    "terminal task lease does not match its exact claim"
+                )
+        else:
+            raise DatabaseCoordinationStaleFenceError(
+                "terminal task-claim barrier requires its exact lease"
             )
 
         with self._lock:
@@ -5428,6 +6105,13 @@ class DatabaseCoordinator:
             self._fenced_callback_reentry_detected = False
             try:
                 def exact_terminal_claim() -> TaskClaim:
+                    _require_terminal_authority_row_fetch_bounds(
+                        connection,
+                        table="task_claims",
+                        key=str(identity["claim_id"]),
+                        expected_text=_terminal_claim_text_projection(supplied),
+                        noun="terminal task claim",
+                    )
                     row = connection.execute(
                         "SELECT * FROM task_claims WHERE claim_id = ?",
                         [identity["claim_id"]],
@@ -5436,6 +6120,12 @@ class DatabaseCoordinator:
                         raise DatabaseCoordinationStaleFenceError(
                             "terminal task claim disappeared before control CAS"
                         )
+                    claim_mapping = _row_mapping(row)
+                    _require_exact_canonical_row_body(
+                        claim_mapping,
+                        supplied.get("body") or {},
+                        noun="terminal task claim",
+                    )
                     observed = self._task_claim_from_row(row)
                     if observed.to_dict() != supplied:
                         raise DatabaseCoordinationStaleFenceError(
@@ -5448,15 +6138,284 @@ class DatabaseCoordinator:
                         raise DatabaseCoordinationStaleFenceError(
                             "terminal task claim became active before control CAS"
                         )
-                    if self._prepared_completion_unlocked(
+                    if self._task_completion_exists_unlocked(
                         connection,
                         str(identity["task_cid"]),
-                        required=False,
-                        include_promoted=True,
-                    ) is not None:
+                    ):
                         raise DatabaseCoordinationStaleFenceError(
                             "task completion appeared before recovery control CAS"
                         )
+                    if supplied_lease is not None:
+                        _require_terminal_authority_row_fetch_bounds(
+                            connection,
+                            table="fenced_leases",
+                            key=str(identity["lease_id"]),
+                            expected_text=_terminal_lease_text_projection(
+                                supplied_lease
+                            ),
+                            noun="terminal task lease",
+                        )
+                        lease_row = connection.execute(
+                            "SELECT * FROM fenced_leases WHERE lease_id = ?",
+                            [identity["lease_id"]],
+                        ).fetchone()
+                        if lease_row is None:
+                            raise DatabaseCoordinationStaleFenceError(
+                                "terminal task lease disappeared before control CAS"
+                            )
+                        lease_mapping = _row_mapping(lease_row)
+                        _require_exact_canonical_row_body(
+                            lease_mapping,
+                            supplied_lease.get("body") or {},
+                            noun="terminal task lease",
+                        )
+                        observed_lease = self._lease_from_row(lease_row)
+                        if observed_lease.to_dict() != supplied_lease:
+                            raise DatabaseCoordinationStaleFenceError(
+                                "terminal task lease changed before control CAS"
+                            )
+                        if observed_lease.state.value != supplied_state:
+                            raise DatabaseCoordinationStaleFenceError(
+                                "terminal task lease state disagrees with its claim"
+                            )
+                        expected_attempt_status = (
+                            AttemptStatus.RELEASED.value
+                            if supplied_state == LeaseState.RELEASED.value
+                            else AttemptStatus.EXPIRED.value
+                        )
+                        _require_terminal_authority_row_fetch_bounds(
+                            connection,
+                            table="task_attempts",
+                            key=str(identity["attempt_id"]),
+                            expected_text=_terminal_attempt_text_projection(
+                                identity,
+                                status=expected_attempt_status,
+                            ),
+                            noun="terminal task attempt",
+                        )
+                        attempt_row = connection.execute(
+                            "SELECT * FROM task_attempts WHERE attempt_id = ?",
+                            [identity["attempt_id"]],
+                        ).fetchone()
+                        if attempt_row is None:
+                            raise DatabaseCoordinationStaleFenceError(
+                                "terminal task attempt disappeared before control CAS"
+                            )
+                        attempt = _row_mapping(attempt_row)
+                        finished_at_ms = _row_value_including_null(
+                            attempt,
+                            "finished_at_ms",
+                            default=None,
+                        )
+                        if (
+                            type(finished_at_ms) is not int
+                            or finished_at_ms < int(observed.claimed_at_ms)
+                        ):
+                            raise DatabaseCoordinationStaleFenceError(
+                                "terminal task attempt timestamp is not exact"
+                            )
+                        exact_attempt = {
+                            "attempt_id": identity["attempt_id"],
+                            "task_cid": identity["task_cid"],
+                            "attempt_number": identity["attempt_number"],
+                            "owner_session_id": identity["owner_session_id"],
+                            "fencing_token": identity["fencing_token"],
+                            "fence_epoch": identity["fence_epoch"],
+                            "started_at_ms": observed.claimed_at_ms,
+                            "finished_at_ms": finished_at_ms,
+                            "status": expected_attempt_status,
+                            # Attempts start at revision 1. Renew changes only
+                            # claim/lease rows; the sole RUNNING -> terminal
+                            # transition increments the attempt exactly once.
+                            "revision": 2,
+                        }
+                        if any(
+                            _row_get(attempt, name, default=None) != expected
+                            for name, expected in exact_attempt.items()
+                        ):
+                            raise DatabaseCoordinationStaleFenceError(
+                                "terminal task attempt projection is not exact"
+                            )
+                        scope_key = observed_lease.scope_key
+                        released_at_ms = _row_value_including_null(
+                            claim_mapping,
+                            "released_at_ms",
+                            default=None,
+                        )
+                        if supplied_state == LeaseState.RELEASED.value:
+                            if (
+                                type(released_at_ms) is not int
+                                or released_at_ms != finished_at_ms
+                            ):
+                                raise DatabaseCoordinationStaleFenceError(
+                                    "released claim and attempt timestamps diverged"
+                                )
+                        elif (
+                            released_at_ms is not None
+                            or finished_at_ms < int(observed.expires_at_ms)
+                        ):
+                            raise DatabaseCoordinationStaleFenceError(
+                                "expired claim has a noncanonical terminal timestamp"
+                            )
+
+                        expected_event_type = (
+                            "released"
+                            if supplied_state == LeaseState.RELEASED.value
+                            else "expired"
+                        )
+                        _require_terminal_event_fetch_bounds(
+                            connection,
+                            lease_id=str(identity["lease_id"]),
+                            scope_key=scope_key,
+                            event_type=expected_event_type,
+                        )
+                        terminal_event_row = connection.execute(
+                            """
+                            SELECT event_id, lease_id, scope_key, event_type,
+                                   fencing_token, fence_epoch, observed_at_ms,
+                                   body_json
+                            FROM lease_events
+                            WHERE lease_id = ? AND event_type IN (?, ?)
+                            ORDER BY observed_at_ms, event_id
+                            LIMIT 1
+                            """,
+                            [identity["lease_id"], "released", "expired"],
+                        ).fetchone()
+                        if terminal_event_row is None:
+                            raise DatabaseCoordinationStaleFenceError(
+                                "terminal task lease lacks one exact terminal event"
+                            )
+                        terminal_event = _row_mapping(terminal_event_row)
+                        event_body_raw = _row_value_including_null(
+                            terminal_event,
+                            "body_json",
+                            default=None,
+                        )
+                        try:
+                            event_body = json.loads(
+                                event_body_raw
+                                if type(event_body_raw) is str
+                                else ""
+                            )
+                        except json.JSONDecodeError as exc:
+                            raise DatabaseCoordinationStaleFenceError(
+                                "terminal task lease event body is malformed"
+                            ) from exc
+                        exact_event = {
+                            "lease_id": identity["lease_id"],
+                            "scope_key": scope_key,
+                            "event_type": expected_event_type,
+                            "fencing_token": identity["fencing_token"],
+                            "fence_epoch": identity["fence_epoch"],
+                            "observed_at_ms": finished_at_ms,
+                        }
+                        event_id = _row_get(
+                            terminal_event,
+                            "event_id",
+                            default="",
+                        )
+                        event_body_valid = bool(
+                            isinstance(event_body, Mapping)
+                            and type(event_body_raw) is str
+                            and event_body_raw == _canonical_json(dict(event_body))
+                            and (
+                                event_body == {}
+                                if expected_event_type == "expired"
+                                else set(event_body) == {"reason"}
+                                and type(event_body.get("reason")) is str
+                                and 1 <= len(str(event_body["reason"])) <= 256
+                            )
+                        )
+                        if (
+                            type(event_id) is not str
+                            or re.fullmatch(
+                                r"lease-event:[0-9a-f]{32}", event_id
+                            )
+                            is None
+                            or not event_body_valid
+                            or any(
+                                _row_get(terminal_event, name, default=None)
+                                != expected
+                                for name, expected in exact_event.items()
+                            )
+                        ):
+                            raise DatabaseCoordinationStaleFenceError(
+                                "terminal task lease event projection is not exact"
+                            )
+                        latest_fence_row = connection.execute(
+                            """
+                            SELECT COALESCE(MAX(fencing_token), 0) AS max_token,
+                                   COALESCE(MAX(fence_epoch), 0) AS max_epoch
+                            FROM token_history WHERE scope_key = ?
+                            """,
+                            [scope_key],
+                        ).fetchone()
+                        latest_fence = _row_mapping(latest_fence_row)
+                        if (
+                            int(
+                                _row_get(
+                                    latest_fence,
+                                    "max_token",
+                                    "0",
+                                    default=0,
+                                )
+                            )
+                            != int(identity["fencing_token"])
+                            or int(
+                                _row_get(
+                                    latest_fence,
+                                    "max_epoch",
+                                    "1",
+                                    default=0,
+                                )
+                            )
+                            != int(identity["fence_epoch"])
+                        ):
+                            raise DatabaseCoordinationStaleFenceError(
+                                "terminal task lease is not the latest fence"
+                            )
+                        competing_claim = connection.execute(
+                            """
+                            SELECT 1 FROM task_claims
+                            WHERE task_cid = ? AND claim_id <> ?
+                              AND (
+                                  state = ?
+                                  OR fencing_token > ?
+                                  OR fence_epoch > ?
+                              )
+                            LIMIT 1
+                            """,
+                            [
+                                identity["task_cid"],
+                                identity["claim_id"],
+                                LeaseState.ACCEPTED.value,
+                                identity["fencing_token"],
+                                identity["fence_epoch"],
+                            ],
+                        ).fetchone()
+                        competing_lease = connection.execute(
+                            """
+                            SELECT 1 FROM fenced_leases
+                            WHERE scope_key = ? AND lease_id <> ?
+                              AND (
+                                  state = ?
+                                  OR fencing_token > ?
+                                  OR fence_epoch > ?
+                              )
+                            LIMIT 1
+                            """,
+                            [
+                                scope_key,
+                                identity["lease_id"],
+                                LeaseState.ACCEPTED.value,
+                                identity["fencing_token"],
+                                identity["fence_epoch"],
+                            ],
+                        ).fetchone()
+                        if competing_claim is not None or competing_lease is not None:
+                            raise DatabaseCoordinationStaleFenceError(
+                                "successor task authority exists before control CAS"
+                            )
                     return observed
 
                 exact_terminal_claim()

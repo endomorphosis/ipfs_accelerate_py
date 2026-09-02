@@ -383,6 +383,373 @@ DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS: Final[
         "workspace_path": "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery/data/agent_supervisor/parallel_content_sealing_proof_carrying_tdd_v1_g9/worktrees/workspace_5128543bd18c_61f132aa9cb0",
     }),
 )
+
+# This V2 contract is deliberately additive to the historical @1 migration
+# manifest above.  It names only three later, operator-reviewed occurrences
+# and carries no admission, receipt, or consumption identifier.  A credit
+# points to this manifest; the manifest never points back to a credit.
+DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-manifest@2"
+)
+DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_REVISION: Final[str] = (
+    "pctdd-retained-occurrence-recovery-2026-09-02"
+)
+DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_CLAIM: Final[str] = (
+    "operator_reviewed_exact_occurrences_only"
+)
+DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PREDECESSOR_ID: Final[str] = (
+    "sha256:3b4e8c471c67839e4ce5e45596065d02a0da180bb8a617c0f7cc1b5ae48bbbe0"
+)
+DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_FIELDS: Final[frozenset[str]] = (
+    frozenset(
+        {
+            "schema",
+            "revision",
+            "claim_boundary",
+            "operator_owned",
+            "predecessor_manifest_id",
+            "one_shot",
+            "occurrence_count",
+            "occurrences",
+        }
+    )
+)
+DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_OCCURRENCE_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "task_cid",
+        "task_alias",
+        "board_namespace",
+        "blocked_task_revision",
+        "blocked_task_status",
+        "predecessor_attempt_id",
+        "predecessor_claim_id",
+        "predecessor_lease_id",
+        "predecessor_owner_session_id",
+        "predecessor_attempt_number",
+        "predecessor_fencing_token",
+        "predecessor_fence_epoch",
+        "predecessor_branch",
+        "recovery_mode",
+        "candidate_disposition",
+        "disposition_repository_root",
+        "disposition_git_common_dir",
+        "disposition_baseline_ref",
+        "source_repository_root",
+        "source_git_common_dir",
+        "source_relative_path",
+        "clean_baseline_ref",
+        "retained_ref",
+        "retained_commit",
+        "retained_worktree_path",
+        "receipt_nonce",
+        "receipt_epoch",
+        "inner_query_profile_id",
+        "outer_query_profile_id",
+        "owner_store_id",
+        "owner_generation_floor",
+        "owner_database_uuid",
+        "owner_schema_fingerprint",
+        "control_store_generation",
+        "owner_schema_revision",
+        "allow_pool",
+        "seed_prior_attempt",
+        "one_shot",
+        "retry_policy",
+        "credit_ordinal",
+    }
+)
+_DATABASE_FENCED_PROVIDER_RETAINED_RETRY_POLICY: Final[str] = (
+    "one_shot_clean_baseline_no_pool_no_prior_attempt_seed"
+)
+DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS: Final[
+    tuple[Mapping[str, Any], ...]
+] = (
+    MappingProxyType(
+        {
+            "task_cid": (
+                "baguqeerah7muo423u3xf5gi32hazctify2i55cavbdugzzythfqdl4wyif6a"
+            ),
+            "task_alias": "PCTDD-006",
+            "board_namespace": (
+                "parallel-content-sealing-proof-carrying-tdd-v1"
+            ),
+            "blocked_task_revision": 29,
+            "blocked_task_status": "blocked",
+            "predecessor_attempt_id": (
+                "attempt:a92f248ffc8a48ba8d20be2245b3ec0b"
+            ),
+            "predecessor_claim_id": (
+                "claim:592d71a1465f497f9ef01da7233ab80f"
+            ),
+            "predecessor_lease_id": (
+                "lease:450ced156d22479f9b07cfe33731f869"
+            ),
+            "predecessor_owner_session_id": (
+                "embedded-store:5a477a1db9402e639fecebb83f5f0873"
+            ),
+            "predecessor_attempt_number": 6,
+            "predecessor_fencing_token": 6,
+            "predecessor_fence_epoch": 6,
+            "predecessor_branch": (
+                "implementation/pctdd-006-0c4324168ce4-attempt-1-1788326381"
+            ),
+            "recovery_mode": "runner_fenced_clean_removed",
+            "candidate_disposition": "clean_removed",
+            "disposition_repository_root": (
+                "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery"
+            ),
+            "disposition_git_common_dir": "/home/barberb/lift_coding/.git",
+            "disposition_baseline_ref": (
+                "c258b76c81fa79664c1944b6413230bda90a0f4d"
+            ),
+            "source_repository_root": (
+                "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery/"
+                "external/ipfs_accelerate"
+            ),
+            "source_git_common_dir": (
+                "/home/barberb/lift_coding/.git/worktrees/"
+                "parallel-content-sealing-proof-carrying-tdd-v1/modules/"
+                "external/ipfs_accelerate"
+            ),
+            "source_relative_path": "external/ipfs_accelerate",
+            "clean_baseline_ref": (
+                "4c834658f0750e01c12cb0c6f6a99160c91b3947"
+            ),
+            "retained_ref": "",
+            "retained_commit": "",
+            "retained_worktree_path": "",
+            "receipt_nonce": "retained-recovery:PCTDD-006:r29",
+            "receipt_epoch": 1,
+            "inner_query_profile_id": (
+                "sha256:1efeeb4904696fc50e0e0e8508fb131d759cb4566366d39ed5d44d2b27b12685"
+            ),
+            "outer_query_profile_id": (
+                "sha256:d38e766d6d5cde6ae0aee54c3ff731db7be31aea1826b106400fe1492682f19d"
+            ),
+            "owner_store_id": (
+                "data/agent_supervisor/"
+                "parallel_content_sealing_proof_carrying_tdd_v1_g9/"
+                "control.duckdb"
+            ),
+            # Generation 58 was the last exact owner observed while these
+            # occurrences were reviewed.  Quack deliberately advances its
+            # owner generation on every clean restart, so this is a floor
+            # within the pinned database lineage rather than a brittle live
+            # generation.  The controller binds the exact current generation
+            # inside the authenticated outer-authority transaction.
+            "owner_generation_floor": 58,
+            "owner_database_uuid": "496924b1-85df-439c-afcf-cb39a6ed0efa",
+            "owner_schema_fingerprint": (
+                "sha256:3ea5f70cebacfe748017c9540bf87016075443f4ccc33376ec0a179ed576e190"
+            ),
+            "control_store_generation": "pctdd-v1-g9",
+            "owner_schema_revision": 1,
+            "allow_pool": False,
+            "seed_prior_attempt": False,
+            "one_shot": True,
+            "retry_policy": _DATABASE_FENCED_PROVIDER_RETAINED_RETRY_POLICY,
+            "credit_ordinal": 1,
+        }
+    ),
+    MappingProxyType(
+        {
+            "task_cid": (
+                "baguqeerazst6lunrikvyslwfqzfbqbpwiivb5hxjsdzwvd7jjsqnnfpadwuq"
+            ),
+            "task_alias": "PCTDD-007",
+            "board_namespace": (
+                "parallel-content-sealing-proof-carrying-tdd-v1"
+            ),
+            "blocked_task_revision": 29,
+            "blocked_task_status": "blocked",
+            "predecessor_attempt_id": (
+                "attempt:83b5e64c7ccf42f2974566c359b70315"
+            ),
+            "predecessor_claim_id": (
+                "claim:7fd804c8be594c1495af71fcd7b63c41"
+            ),
+            "predecessor_lease_id": (
+                "lease:b5609354a0ea4f2a8ae3440f4a328a4e"
+            ),
+            "predecessor_owner_session_id": (
+                "embedded-store:5a477a1db9402e639fecebb83f5f0873"
+            ),
+            "predecessor_attempt_number": 6,
+            "predecessor_fencing_token": 6,
+            "predecessor_fence_epoch": 6,
+            "predecessor_branch": (
+                "implementation/pctdd-007-e272ca1f906f-attempt-1-1788327085"
+            ),
+            "recovery_mode": "unpublished_rescue_quarantined",
+            "candidate_disposition": "rescue_quarantined",
+            "disposition_repository_root": (
+                "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery"
+            ),
+            "disposition_git_common_dir": "/home/barberb/lift_coding/.git",
+            "disposition_baseline_ref": (
+                "c258b76c81fa79664c1944b6413230bda90a0f4d"
+            ),
+            "source_repository_root": (
+                "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery/"
+                "external/ipfs_accelerate"
+            ),
+            "source_git_common_dir": (
+                "/home/barberb/lift_coding/.git/worktrees/"
+                "parallel-content-sealing-proof-carrying-tdd-v1/modules/"
+                "external/ipfs_accelerate"
+            ),
+            "source_relative_path": "external/ipfs_accelerate",
+            "clean_baseline_ref": (
+                "4c834658f0750e01c12cb0c6f6a99160c91b3947"
+            ),
+            "retained_ref": (
+                "refs/heads/rescue/worktree/implementation-pctdd-007-e272ca1f906f-"
+                "attempt-1-1788327085-7ddadbb06fd5"
+            ),
+            "retained_commit": (
+                "c553fa651328f07a3fe0808e87e6e5d5ef725ce8"
+            ),
+            "retained_worktree_path": (
+                "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery/"
+                "data/agent_supervisor/"
+                "parallel_content_sealing_proof_carrying_tdd_v1_g9/worktrees/"
+                "workspace_02d59ce87e86_da22051c246e"
+            ),
+            "receipt_nonce": "retained-recovery:PCTDD-007:r29",
+            "receipt_epoch": 1,
+            "inner_query_profile_id": (
+                "sha256:1efeeb4904696fc50e0e0e8508fb131d759cb4566366d39ed5d44d2b27b12685"
+            ),
+            "outer_query_profile_id": (
+                "sha256:d38e766d6d5cde6ae0aee54c3ff731db7be31aea1826b106400fe1492682f19d"
+            ),
+            "owner_store_id": (
+                "data/agent_supervisor/"
+                "parallel_content_sealing_proof_carrying_tdd_v1_g9/"
+                "control.duckdb"
+            ),
+            "owner_generation_floor": 58,
+            "owner_database_uuid": "496924b1-85df-439c-afcf-cb39a6ed0efa",
+            "owner_schema_fingerprint": (
+                "sha256:3ea5f70cebacfe748017c9540bf87016075443f4ccc33376ec0a179ed576e190"
+            ),
+            "control_store_generation": "pctdd-v1-g9",
+            "owner_schema_revision": 1,
+            "allow_pool": False,
+            "seed_prior_attempt": False,
+            "one_shot": True,
+            "retry_policy": _DATABASE_FENCED_PROVIDER_RETAINED_RETRY_POLICY,
+            "credit_ordinal": 1,
+        }
+    ),
+    MappingProxyType(
+        {
+            "task_cid": (
+                "baguqeerali4k6zayrolznqdh23y4xcpnznnowygnnx6vvhsdixztv7peiada"
+            ),
+            "task_alias": "PCTDD-034",
+            "board_namespace": (
+                "parallel-content-sealing-proof-carrying-tdd-v1"
+            ),
+            "blocked_task_revision": 48,
+            "blocked_task_status": "blocked",
+            "predecessor_attempt_id": (
+                "attempt:5433cd22926e4038aeb5f3afe09bf746"
+            ),
+            "predecessor_claim_id": (
+                "claim:22ed8a9d8f724839870489eface28b99"
+            ),
+            "predecessor_lease_id": (
+                "lease:ee136782611c469c847378111c54388a"
+            ),
+            "predecessor_owner_session_id": (
+                "embedded-store:0008211c1bb7dd1d47df908faafb9185"
+            ),
+            "predecessor_attempt_number": 11,
+            "predecessor_fencing_token": 11,
+            "predecessor_fence_epoch": 11,
+            "predecessor_branch": (
+                "implementation/pctdd-034-6cc49f41f873-attempt-1-1788325977"
+            ),
+            "recovery_mode": "unpublished_rescue_quarantined",
+            "candidate_disposition": "rescue_quarantined",
+            "disposition_repository_root": (
+                "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery"
+            ),
+            "disposition_git_common_dir": "/home/barberb/lift_coding/.git",
+            "disposition_baseline_ref": (
+                "c258b76c81fa79664c1944b6413230bda90a0f4d"
+            ),
+            "source_repository_root": (
+                "/home/barberb/lift_coding/.worktrees/pctdd-g9-orphan-recovery/"
+                "external/ipfs_accelerate"
+            ),
+            "source_git_common_dir": (
+                "/home/barberb/lift_coding/.git/worktrees/"
+                "parallel-content-sealing-proof-carrying-tdd-v1/modules/"
+                "external/ipfs_accelerate"
+            ),
+            "source_relative_path": "external/ipfs_accelerate",
+            "clean_baseline_ref": (
+                "4c834658f0750e01c12cb0c6f6a99160c91b3947"
+            ),
+            "retained_ref": (
+                "refs/heads/rescue/worktree/implementation-pctdd-034-6cc49f41f873-"
+                "attempt-1-1788325977-ff3818cf61da"
+            ),
+            "retained_commit": (
+                "f0f2aa59daa96ffaa4c49510221f28fdc3b5cda0"
+            ),
+            "retained_worktree_path": "",
+            "receipt_nonce": "retained-recovery:PCTDD-034:r48",
+            "receipt_epoch": 1,
+            "inner_query_profile_id": (
+                "sha256:1efeeb4904696fc50e0e0e8508fb131d759cb4566366d39ed5d44d2b27b12685"
+            ),
+            "outer_query_profile_id": (
+                "sha256:d38e766d6d5cde6ae0aee54c3ff731db7be31aea1826b106400fe1492682f19d"
+            ),
+            "owner_store_id": (
+                "data/agent_supervisor/"
+                "parallel_content_sealing_proof_carrying_tdd_v1_g9/"
+                "control.duckdb"
+            ),
+            "owner_generation_floor": 58,
+            "owner_database_uuid": "496924b1-85df-439c-afcf-cb39a6ed0efa",
+            "owner_schema_fingerprint": (
+                "sha256:3ea5f70cebacfe748017c9540bf87016075443f4ccc33376ec0a179ed576e190"
+            ),
+            "control_store_generation": "pctdd-v1-g9",
+            "owner_schema_revision": 1,
+            "allow_pool": False,
+            "seed_prior_attempt": False,
+            "one_shot": True,
+            "retry_policy": _DATABASE_FENCED_PROVIDER_RETAINED_RETRY_POLICY,
+            "credit_ordinal": 1,
+        }
+    ),
+)
+# Retain the more descriptive alias for callers that treat the population as
+# an ordered tuple, while making ``..._PINS`` the canonical public symbol.
+DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_OCCURRENCES: Final[
+    tuple[Mapping[str, Any], ...]
+] = DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+# Computed over the closed manifest body returned by
+# ``database_fenced_provider_retained_manifest``.  It intentionally is not a
+# field of that body, so the content-address relation is acyclic.
+DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID: Final[str] = (
+    "sha256:23b7fb59fcf73c901f2b93e95b3433d2c07704beeb64121ceef911d9b4f775b1"
+)
+DATABASE_FENCED_PROVIDER_RETAINED_CREDIT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-fenced-provider-no-accepted-publication-credit@2"
+)
+DATABASE_FENCED_PROVIDER_RETAINED_CREDIT_FIELDS: Final[frozenset[str]] = (
+    frozenset({"schema", "manifest_id", "occurrence"})
+)
 _STALE_DISPATCH_MIGRATION_REPLAY_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "reconciled",
@@ -2406,6 +2773,151 @@ def _sha256_bytes(value: bytes) -> str:
     return f"sha256:{hashlib.sha256(value).hexdigest()}"
 
 
+def _database_fenced_provider_retained_manifest_body() -> dict[str, Any]:
+    """Build a fresh, acyclic body for the exact V2 occurrence manifest."""
+
+    return {
+        "schema": DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_SCHEMA,
+        "revision": DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_REVISION,
+        "claim_boundary": DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_CLAIM,
+        "operator_owned": True,
+        "predecessor_manifest_id": (
+            DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PREDECESSOR_ID
+        ),
+        "one_shot": True,
+        "occurrence_count": 3,
+        "occurrences": [
+            dict(occurrence)
+            for occurrence in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        ],
+    }
+
+
+def _database_fenced_provider_retained_occurrence_pin(
+    occurrence: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    """Return the sole exact V2 occurrence pin matched by ``occurrence``."""
+
+    try:
+        if (
+            set(occurrence)
+            != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_OCCURRENCE_FIELDS
+        ):
+            return None
+    except (TypeError, ValueError):
+        return None
+    matches = [
+        pin
+        for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+        if all(
+            type(occurrence.get(field)) is type(pin.get(field))
+            and occurrence.get(field) == pin.get(field)
+            for field in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_OCCURRENCE_FIELDS
+        )
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def database_fenced_provider_retained_manifest() -> dict[str, Any]:
+    """Return the closed manifest for the three exact reviewed occurrences.
+
+    The content address is exposed separately as
+    ``DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID``.  Omitting that ID from
+    its own body keeps the manifest-to-credit relation acyclic.
+    """
+
+    return _database_fenced_provider_retained_manifest_body()
+
+
+def database_fenced_provider_retained_manifest_valid(value: Any) -> bool:
+    """Validate the exact closed V2 manifest and its static content address."""
+
+    if (
+        type(value) is not dict
+        or set(value) != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_FIELDS
+        or type(value.get("schema")) is not str
+        or value.get("schema")
+        != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_SCHEMA
+        or type(value.get("revision")) is not str
+        or value.get("revision")
+        != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_REVISION
+        or type(value.get("claim_boundary")) is not str
+        or value.get("claim_boundary")
+        != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_CLAIM
+        or type(value.get("operator_owned")) is not bool
+        or value.get("operator_owned") is not True
+        or type(value.get("predecessor_manifest_id")) is not str
+        or value.get("predecessor_manifest_id")
+        != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PREDECESSOR_ID
+        or type(value.get("one_shot")) is not bool
+        or value.get("one_shot") is not True
+        or type(value.get("occurrence_count")) is not int
+        or value.get("occurrence_count") != 3
+        or type(value.get("occurrences")) is not list
+        or len(value["occurrences"]) != 3
+    ):
+        return False
+    for occurrence, pin in zip(
+        value["occurrences"],
+        DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS,
+        strict=True,
+    ):
+        if (
+            type(occurrence) is not dict
+            or _database_fenced_provider_retained_occurrence_pin(occurrence)
+            is not pin
+        ):
+            return False
+    return bool(
+        _sha256_bytes(_canonical_json(value))
+        == DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+    )
+
+
+def database_fenced_provider_retained_credit(
+    occurrence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the one-shot credit for one exact occurrence in the manifest."""
+
+    if not database_fenced_provider_retained_manifest_valid(
+        database_fenced_provider_retained_manifest()
+    ):
+        raise ValueError("retained occurrence manifest is not current")
+    if not isinstance(occurrence, Mapping):
+        raise TypeError("retained occurrence must be a mapping")
+    pin = _database_fenced_provider_retained_occurrence_pin(occurrence)
+    if pin is None:
+        raise ValueError("retained occurrence is not an exact manifest member")
+    return {
+        "schema": DATABASE_FENCED_PROVIDER_RETAINED_CREDIT_SCHEMA,
+        "manifest_id": DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID,
+        "occurrence": dict(pin),
+    }
+
+
+def database_fenced_provider_retained_credit_valid(value: Any) -> bool:
+    """Validate one exact, acyclic manifest-derived V2 credit."""
+
+    if (
+        type(value) is not dict
+        or set(value) != DATABASE_FENCED_PROVIDER_RETAINED_CREDIT_FIELDS
+        or type(value.get("schema")) is not str
+        or value.get("schema") != DATABASE_FENCED_PROVIDER_RETAINED_CREDIT_SCHEMA
+        or type(value.get("manifest_id")) is not str
+        or value.get("manifest_id")
+        != DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID
+        or type(value.get("occurrence")) is not dict
+        or _database_fenced_provider_retained_occurrence_pin(
+            value["occurrence"]
+        )
+        is None
+    ):
+        return False
+    return database_fenced_provider_retained_manifest_valid(
+        database_fenced_provider_retained_manifest()
+    )
+
+
 def _sha256_file(path: Path) -> str:
     try:
         return _sha256_bytes(path.read_bytes())
@@ -3283,6 +3795,126 @@ class DatabasePortalExecutionBridge:
         ) = None
         self._binding_lookup: Callable[[Any], Mapping[str, Any] | None] | None = None
 
+    @staticmethod
+    def _retained_recovery_execution_policy(
+        attempt: Any,
+    ) -> Mapping[str, Any] | None:
+        """Return the exact no-pool/no-seed policy consumed by this attempt."""
+
+        body = getattr(attempt, "body", None)
+        control_claim = (
+            body.get("control_claim") if isinstance(body, Mapping) else None
+        )
+        attempt_cid = str(getattr(attempt, "task_cid", "") or "")
+        attempt_alias = str(getattr(attempt, "task_alias", "") or "")
+        cid_matches = [
+            pin
+            for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+            if pin.get("task_cid") == attempt_cid
+        ]
+        alias_matches = [
+            pin
+            for pin in DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS
+            if attempt_alias and pin.get("task_alias") == attempt_alias
+        ]
+        if len(cid_matches) == 1 and (
+            attempt_alias != cid_matches[0].get("task_alias")
+        ):
+            raise DatabasePortalBridgeError(
+                "retained recovery attempt changed its sealed alias"
+            )
+        if not cid_matches and alias_matches:
+            raise DatabasePortalBridgeError(
+                "retained recovery alias was rebound to another task CID"
+            )
+        retained_epoch = bool(
+            isinstance(control_claim, Mapping)
+            and len(cid_matches) == 1
+            and control_claim.get("revision")
+            == int(cid_matches[0]["blocked_task_revision"]) + 2
+        )
+        retry_budget = body.get("retry_budget") if isinstance(body, Mapping) else None
+        if not isinstance(retry_budget, Mapping):
+            if retained_epoch:
+                raise DatabasePortalBridgeError(
+                    "retained recovery attempt lost its one-shot policy"
+                )
+            return None
+        admission = retry_budget.get("retained_recovery_admission")
+        consumption = retry_budget.get("retained_recovery_consumption")
+        if admission is None and consumption is None:
+            if retained_epoch:
+                raise DatabasePortalBridgeError(
+                    "retained recovery attempt lost its one-shot policy"
+                )
+            return None
+        from .implementation_daemon import (
+            database_fenced_provider_retained_consumption_matches_admission,
+        )
+
+        if not database_fenced_provider_retained_consumption_matches_admission(
+            admission=admission,
+            consumption=consumption,
+        ):
+            raise DatabasePortalBridgeError(
+                "retained recovery attempt policy is not an exact consumed chain"
+            )
+        attempt_bindings = {
+            "task_cid": "task_cid",
+            "task_alias": "task_alias",
+            "attempt_id": "attempt_id",
+            "claim_id": "claim_id",
+            "lease_id": "lease_id",
+            "owner_session_id": "owner_session_id",
+            "attempt_number": "attempt_number",
+            "fencing_token": "fencing_token",
+            "fence_epoch": "fence_epoch",
+        }
+        if any(
+            getattr(attempt, attempt_field, None)
+            != consumption.get(receipt_field)
+            for attempt_field, receipt_field in attempt_bindings.items()
+        ) or any(
+            admission.get(name) != getattr(attempt, name, None)
+            for name in ("task_cid", "task_alias")
+        ):
+            raise DatabasePortalBridgeError(
+                "retained recovery chain does not own this attempt"
+            )
+        if not (
+            admission.get("allow_pool") is False
+            and admission.get("seed_prior_attempt") is False
+            and admission.get("retry_policy")
+            == "one_shot_clean_baseline_no_pool_no_prior_attempt_seed"
+        ):
+            raise DatabasePortalBridgeError(
+                "retained recovery attempt widened its sealed execution policy"
+            )
+        return MappingProxyType(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "retained-recovery-portal-execution-policy@2"
+                ),
+                "admission_id": admission["admission_id"],
+                "consumption_id": consumption["consumption_id"],
+                "allow_pool": False,
+                "seed_prior_attempt": False,
+                "disposition_repository_root": admission[
+                    "disposition_repository_root"
+                ],
+                "disposition_git_common_dir": admission[
+                    "disposition_git_common_dir"
+                ],
+                "disposition_baseline_ref": admission[
+                    "disposition_baseline_ref"
+                ],
+                "clean_baseline_ref": admission["clean_baseline_ref"],
+                "source_repository_root": admission["source_repository_root"],
+                "source_git_common_dir": admission["source_git_common_dir"],
+                "source_relative_path": admission["source_relative_path"],
+            }
+        )
     def bind_attempt_binding_authority(
         self,
         *,
@@ -4399,10 +5031,26 @@ class DatabasePortalExecutionBridge:
                 raise
         self._prepare_private_event_log(paths)
         summaries: list[Mapping[str, Any]] = []
-        daemon = self.portal_factory(
-            paths,
-            str(binding.get("task_alias") or attempt.task_cid),
-        )
+        retained_policy = self._retained_recovery_execution_policy(attempt)
+        if retained_policy is not None:
+            if getattr(
+                self.portal_factory,
+                "__database_portal_retained_policy_aware__",
+                False,
+            ) is not True:
+                raise DatabasePortalBridgeError(
+                    "Portal factory cannot enforce retained recovery policy"
+                )
+            daemon = self.portal_factory(
+                paths,
+                str(binding.get("task_alias") or attempt.task_cid),
+                retained_policy,
+            )
+        else:
+            daemon = self.portal_factory(
+                paths,
+                str(binding.get("task_alias") or attempt.task_cid),
+            )
         if daemon is None or not callable(getattr(daemon, "run_once", None)):
             raise DatabasePortalBridgeError(
                 "portal_factory did not return a Portal-compatible daemon"
@@ -15377,6 +16025,17 @@ __all__ = (
     "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_MANIFEST_SCHEMA",
     "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_PINS",
     "DATABASE_PORTAL_FENCED_PROVIDER_UNPUBLISHED_MIGRATION_STATUS",
+    "DATABASE_FENCED_PROVIDER_RETAINED_CREDIT_FIELDS",
+    "DATABASE_FENCED_PROVIDER_RETAINED_CREDIT_SCHEMA",
+    "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_CLAIM",
+    "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_FIELDS",
+    "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_ID",
+    "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_OCCURRENCES",
+    "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_OCCURRENCE_FIELDS",
+    "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PINS",
+    "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_PREDECESSOR_ID",
+    "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_REVISION",
+    "DATABASE_FENCED_PROVIDER_RETAINED_MANIFEST_SCHEMA",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_AUTHORIZATION_SCHEMA",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_FIELDS",
     "DATABASE_PORTAL_HISTORICAL_INTERRUPTED_IMPLEMENTATION_STATE_TRANSITION_REARM_EVIDENCE_SCHEMA",
@@ -15396,4 +16055,8 @@ __all__ = (
     "DatabasePortalPreEntryPublicationDeferred",
     "DatabasePortalExecutionBridge",
     "PortalDaemonFactory",
+    "database_fenced_provider_retained_credit",
+    "database_fenced_provider_retained_credit_valid",
+    "database_fenced_provider_retained_manifest",
+    "database_fenced_provider_retained_manifest_valid",
 )
