@@ -1,6 +1,6 @@
 # Semantic-Addressed Neuro-Symbolic Program World Model
 
-Status: operator-owned R2 program control
+Status: operator-owned R2 program control. M53 admits one post-reboot restart of the process-dead generation-37 owner at event 315 to generation 38 / event 316 without changing SAWM-006/SAWM-008 in-progress heads.
 
 Plan revision: `SAWM-PLAN-R2`
 

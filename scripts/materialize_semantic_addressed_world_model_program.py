@@ -3149,6 +3149,114 @@ _M52_PRESTART_SCHEMA_RECEIPT_NAME = "m52-prestart-schema-receipt.json"
 _M52_FINAL_RECEIPT_NAME = "m52-source-successor-receipt.json"
 _M52_LIVE_COUNT_QUERIES = _M51_LIVE_COUNT_QUERIES
 
+# M53 admits one post-reboot restart of the process-dead generation-37 owner
+# that M52 started.  The M52 receipt is preserved.  Status still says ready
+# against the pre-reboot boot id; the process is gone.  M53 freezes that
+# stale-ready store at event 315 and admits generation 38 / event 316.
+_M53_MIGRATION_REVISION = "SAWM-R2-M53"
+_M53_SUPERSESSION_MODE = (
+    "generation_bearing_post_reboot_stale_ready_restart_source_seal"
+)
+_M53_SUPERSESSION_REASON = (
+    "post_reboot_stale_ready_generation_37_restart_successor_materialization"
+)
+_M53_CONTROL_RECORDED_AT = "2026-09-02T01:50:00Z"
+_M53_AUTHORITY_CID = (
+    "sha256:a0e0e768087e70a27aff88ae1959a638534ef6f9e5b94e8b6d4030b15b01edc8"
+)
+_M53_AUTHORITY_SIZE = 30_561
+_M53_PRIOR_GENERATION = 37
+_M53_TARGET_GENERATION = 38
+_M53_PRIOR_EVENT_WATERMARK = 315
+_M53_TARGET_EVENT_WATERMARK = 316
+_M53_TARGET_PLAN_REVISION = _M52_TARGET_PLAN_REVISION
+_M53_TARGET_QUACK_PORT = _M52_TARGET_QUACK_PORT
+_M53_PRIOR_EVENT_PREFIX_SHA256 = (
+    "5485a8f590eeec3739d94d7ff773613ba9108f63972c554ad55afaeb5d79e28d"
+)
+_M53_PRIOR_PROJECTION_CID = (
+    "baguqeeraukz4kjw3oszuxm7mvupnlmlo6celvjivkxmabxmpkklctsjb6oga"
+)
+_M53_TARGET_PROJECTION_CID = (
+    "baguqeerayh3goxbqiclzj3lzaxzgmqlqaopjmcsbuhastfmtti2xyfd5qxwa"
+)
+_M53_SEMANTIC_AUTHORITY_DIGEST = (
+    "sha256:8db8853398b6837b16e3b564074da31415b77bf6a0328d591f010c773d9e3a34"
+)
+_M53_PRIOR_EVIDENCE_NODE_COUNT = 56
+_M53_TARGET_EVIDENCE_NODE_COUNT = 57
+_M53_PRIOR_EVIDENCE_EVENT_COUNT = 45
+_M53_TARGET_EVIDENCE_EVENT_COUNT = 46
+_M53_VALIDATION_EVENT_COUNT = 11
+_M53_PASSED_VALIDATION_EVENT_COUNT = 11
+_M53_EVIDENCE_KIND = "operator_control_plane_post_reboot_stale_ready_restart"
+_M53_STORE_ID = _M52_STORE_ID
+_M53_COORDINATION_STORE_ID = _M52_COORDINATION_STORE_ID
+_M53_RUNTIME_ROOT = _M52_RUNTIME_ROOT
+_M53_WORKTREE_ROOT = _M52_WORKTREE_ROOT
+_M53_DATABASE_UUID = _M52_DATABASE_UUID
+_M53_EXTENSION_FINGERPRINT = _M52_EXTENSION_FINGERPRINT
+_M53_PRIOR_SERVER_ID = "server:1c5134bb-72c2-4150-8f13-7f6fe81140e6"
+_M53_PRIOR_PROCESS_BIRTH_ID = "birth:770dc99045fd29e11af603d7a879c261"
+_M53_PRIOR_STARTED_AT = "2026-09-01T20:56:42Z"
+_M53_PRIOR_STARTUP_EPOCH = 1_788_296_202
+_M53_PRIOR_PROCESS_BIRTH = MappingProxyType(
+    {
+        "boot_id": "9aa489ce-ec92-4861-bb0b-bce906f1e114",
+        "parent_pid": 1_710_690,
+        "pid": 2_825_255,
+        "start_time_ticks": 7_677_176,
+    }
+)
+_M53_PRIOR_CONTROL_SHA256 = (
+    "b5cfea73e18f22100d0f5801a4ed593ac90bc82d553979ae5ba8bcb0237d018c"
+)
+_M53_PRIOR_CONTROL_SIZE = 43_528_192
+_M53_PRIOR_COORDINATION_SHA256 = (
+    "ec4359d0c8e88fd954a30cd13da80ec21651003f055b7101c3c85d0262171da8"
+)
+_M53_PRIOR_COORDINATION_SIZE = 20_721_664
+_M53_PRIOR_READ_REPLICA_SHA256 = _M53_PRIOR_CONTROL_SHA256
+_M53_PRIOR_READ_REPLICA_SIZE = _M53_PRIOR_CONTROL_SIZE
+_M53_PRIOR_MERGE_QUEUE_SHA256 = (
+    "46c9aa3b98e199a395b2743399d039ecfb823c1dc9aaade3d99105f3d187438f"
+)
+_M53_PRIOR_MERGE_QUEUE_SIZE = 3_944_448
+_M53_STALE_READY_STATUS_SHA256 = (
+    "4d2e0404afca9d570dcb282ad3c28249ce12f31f7c5dd26fa997f3c11de460dd"
+)
+_M53_STALE_READY_STATUS_SIZE = 2_405
+_M53_M52_RECEIPT_SHA256 = (
+    "1c64bbe412238efdcf5e7fba86b7705997886cdbe0ac8db33facefb7379596a5"
+)
+_M53_M52_RECEIPT_SIZE = 9_383
+_M53_M52_RECEIPT_CID = (
+    "sha256:d03c44c8887d70780e656cd67df3204a0206eb7f2f7a67e2e987f897e2f81c17"
+)
+_M53_M52_PRESTART_RECEIPT_SHA256 = (
+    "a75d74ae91636b3e1b5d0125d335291ecf6b0d59657bce62d4453e2046e2e14d"
+)
+_M53_M52_PRESTART_RECEIPT_SIZE = 4_210
+_M53_OWNER_MARKER_SHA256 = (
+    "619880ddfb80987dbe43ee9a9650a026d032accdd5e63a07a67163a26716bbce"
+)
+_M53_OWNER_MARKER_SIZE = 581
+_M53_M52_AUTHORITY_CID = _M52_AUTHORITY_CID
+_M53_M52_AUTHORITY_SIZE = _M52_AUTHORITY_SIZE
+_M53_M52_FINAL_CONTROL_COMMIT = (
+    "a98c79b3e7479c341ea44f519ab8024736f9aa52"
+)
+_M53_M52_FINAL_CONTROL_PARENT = _M52_REPAIR_COMMIT
+_M53_M52_FINAL_CONTROL_TREE = (
+    "ee477cdc56997c4dff5ece2ce2bbabd07d0e8fec"
+)
+_M53_OPERATOR_CONTROL_PATHS = frozenset(_M52_OPERATOR_CONTROL_PATHS)
+_M53_ZERO_ROW_AUTHORITY_COUNTS = _M52_ZERO_ROW_AUTHORITY_COUNTS
+_M53_PRESTART_SCHEMA_RECEIPT_NAME = "m53-prestart-schema-receipt.json"
+_M53_FINAL_RECEIPT_NAME = "m53-source-successor-receipt.json"
+_M53_LIVE_COUNT_QUERIES = _M52_LIVE_COUNT_QUERIES
+_M53_CURRENT_BOOT_ID = "34bca049-fa9b-4f7a-a1df-90e079073f8d"
+
 # M41 preserves M40's complete control declaration and failed sealed-suite
 # attempt as pre-authoritative history.  M40 was never materialized: the suite
 # passed 285 tests and failed 22 historical-fixture cases because the helper
@@ -93173,6 +93281,315 @@ def _m52_authority_reference() -> dict[str, Any]:
         "schema": "sawm/operator-control-authority-reference@1",
         "migration_revision": _M52_MIGRATION_REVISION,
         "authority_cid": _M52_AUTHORITY_CID,
+    }
+
+
+def _expected_m53_post_reboot_stale_ready_restart_authority() -> dict[str, Any]:
+    """Return M53's generation-38/event-316 post-reboot restart authority."""
+
+    m52 = _expected_m52_live_quack_catalog_compatibility_authority()
+    if (
+        _identity(m52) != _M53_M52_AUTHORITY_CID
+        or len(_canonical(m52)) != _M53_M52_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M53 preserved M52 source authority differs")
+    authority = json.loads(_canonical(m52))
+    authority.update(
+        {
+            "schema": (
+                "sawm/post-reboot-stale-ready-generation-37-restart-"
+                "successor-materialization-authorization@1"
+            ),
+            "migration_revision": _M53_MIGRATION_REVISION,
+            "migration_kind": _M53_SUPERSESSION_REASON,
+            "supersession_mode": _M53_SUPERSESSION_MODE,
+            "control_recorded_at": _M53_CONTROL_RECORDED_AT,
+            "target_generation": _M53_TARGET_GENERATION,
+            "target_event_watermark": _M53_TARGET_EVENT_WATERMARK,
+            "target_projection_cid": _M53_TARGET_PROJECTION_CID,
+            "ordinary_source_changes": 0,
+        }
+    )
+    heads = dict(authority.get("expected_task_heads") or {})
+    heads["SAWM-006"] = {"revision": 17, "status": "in_progress"}
+    heads["SAWM-008"] = {"revision": 19, "status": "in_progress"}
+    authority["expected_task_heads"] = heads
+    authority["runtime_binding"]["store_generation"] = _M53_TARGET_GENERATION
+    authority["runtime_binding"]["target_event_watermark"] = (
+        _M53_TARGET_EVENT_WATERMARK
+    )
+    authority["stopped_owner"] = {
+        "schema": "sawm/stale-ready-generation-37-owner@1",
+        "generation": _M53_PRIOR_GENERATION,
+        "status": "ready",
+        "lifecycle": "ready",
+        "server_id": _M53_PRIOR_SERVER_ID,
+        "process_birth_id": _M53_PRIOR_PROCESS_BIRTH_ID,
+        "process_birth": dict(_M53_PRIOR_PROCESS_BIRTH),
+        "started_at": _M53_PRIOR_STARTED_AT,
+        "startup_epoch": _M53_PRIOR_STARTUP_EPOCH,
+        "listen_uri": f"quack:127.0.0.1:{_M53_TARGET_QUACK_PORT}",
+        "database_uuid": _M53_DATABASE_UUID,
+        "store_id": _M53_STORE_ID,
+        "process_dead_after_reboot": True,
+        "pre_reboot_boot_id": _M53_PRIOR_PROCESS_BIRTH["boot_id"],
+        "current_boot_id": _M53_CURRENT_BOOT_ID,
+        "status_projection_stopped_at_absent": True,
+    }
+    authority["prior_authority"]["control_store_sha256"] = (
+        _M53_PRIOR_CONTROL_SHA256
+    )
+    authority["stopped_prestart_artifacts"] = {
+        "control_sha256": _M53_PRIOR_CONTROL_SHA256,
+        "control_size": _M53_PRIOR_CONTROL_SIZE,
+        "coordination_sha256": _M53_PRIOR_COORDINATION_SHA256,
+        "coordination_size": _M53_PRIOR_COORDINATION_SIZE,
+        "read_replica_sha256": _M53_PRIOR_READ_REPLICA_SHA256,
+        "read_replica_size": _M53_PRIOR_READ_REPLICA_SIZE,
+        "merge_queue_sha256": _M53_PRIOR_MERGE_QUEUE_SHA256,
+        "merge_queue_size": _M53_PRIOR_MERGE_QUEUE_SIZE,
+        "stale_ready_status_sha256": _M53_STALE_READY_STATUS_SHA256,
+        "stale_ready_status_size": _M53_STALE_READY_STATUS_SIZE,
+        "m52_receipt_sha256": _M53_M52_RECEIPT_SHA256,
+        "m52_receipt_size": _M53_M52_RECEIPT_SIZE,
+        "m52_receipt_present": True,
+        "m53_receipt_absent": True,
+    }
+    authority["prestart_schema_receipt_policy"]["path"] = (
+        f"{_M53_RUNTIME_ROOT}/{_M53_PRESTART_SCHEMA_RECEIPT_NAME}"
+    )
+    authority["target_authority"].update(
+        {
+            "event_watermark": _M53_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M53_TARGET_PROJECTION_CID,
+            "evidence_kind": _M53_EVIDENCE_KIND,
+            "generation": _M53_TARGET_GENERATION,
+        }
+    )
+    authority["live_preflight_contract"].update(
+        {
+            "migration_revision": _M53_MIGRATION_REVISION,
+            "successor_class": "post_reboot_stale_ready_restart",
+            "m52_authority_cid": _M53_M52_AUTHORITY_CID,
+            "m52_receipt_must_remain_present": True,
+            "prior_event_watermark": _M53_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M53_TARGET_EVENT_WATERMARK,
+            "prior_projection_cid": _M53_PRIOR_PROJECTION_CID,
+            "target_projection_cid": _M53_TARGET_PROJECTION_CID,
+            "target_generation": _M53_TARGET_GENERATION,
+        }
+    )
+    authority["source_chain"] = {
+        "m52_final_control_commit": _M53_M52_FINAL_CONTROL_COMMIT,
+        "m52_final_control_parent": _M53_M52_FINAL_CONTROL_PARENT,
+        "m52_final_control_tree": _M53_M52_FINAL_CONTROL_TREE,
+        "final_control_parent": _M53_M52_FINAL_CONTROL_COMMIT,
+        "repair_commit_count": 0,
+        "final_control_commit_count": 1,
+        "current_commit_identity_embedded_in_authority": False,
+    }
+    authority["preservation"].update(
+        {
+            "m52_authority_preserved_exactly": True,
+            "m52_receipt_preserved_exactly": True,
+            "generation_37_task_heads_preserved": True,
+            "sawm_006_in_progress_revision_17": True,
+            "sawm_008_in_progress_revision_19": True,
+        }
+    )
+    return authority
+
+
+def _m53_authority_reference() -> dict[str, Any]:
+    authority = _expected_m53_post_reboot_stale_ready_restart_authority()
+    if (
+        not _M53_AUTHORITY_CID.endswith("PENDING_M53_FINAL_CONTROL_AUTHORITY_CID")
+        and _identity(authority) != _M53_AUTHORITY_CID
+    ):
+        raise MaterializationError("M53 source successor authority CID differs")
+    return {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": _M53_MIGRATION_REVISION,
+        "authority_cid": _M53_AUTHORITY_CID,
+    }
+
+
+def _validated_m53_live_preflight_contract(
+    authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    expected = _expected_m53_post_reboot_stale_ready_restart_authority()
+    contract = authority.get("live_preflight_contract")
+    if (
+        _identity(authority) != _identity(expected)
+        or not isinstance(contract, Mapping)
+        or contract.get("migration_revision") != _M53_MIGRATION_REVISION
+        or contract.get("target_generation") != _M53_TARGET_GENERATION
+        or contract.get("target_event_watermark") != _M53_TARGET_EVENT_WATERMARK
+        or contract.get("target_projection_cid") != _M53_TARGET_PROJECTION_CID
+        or contract.get("prior_projection_cid") != _M53_PRIOR_PROJECTION_CID
+        or contract.get("m52_receipt_must_remain_present") is not True
+    ):
+        raise MaterializationError("M53 live-preflight contract differs")
+    return MappingProxyType(
+        {
+            "migration_revision": _M53_MIGRATION_REVISION,
+            "target_store_id": _M53_STORE_ID,
+            "database_uuid": _M53_DATABASE_UUID,
+            "target_generation": _M53_TARGET_GENERATION,
+            "target_event_watermark": _M53_TARGET_EVENT_WATERMARK,
+            "target_plan_revision": _M53_TARGET_PLAN_REVISION,
+            "target_projection_cid": _M53_TARGET_PROJECTION_CID,
+            "semantic_authority_digest": _M53_SEMANTIC_AUTHORITY_DIGEST,
+            "preserved_plan_anchor": {},
+            "expected_task_heads": dict(expected.get("expected_task_heads") or {}),
+        }
+    )
+
+
+def _m53_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    authority = _expected_m53_post_reboot_stale_ready_restart_authority()
+    reference = _m53_authority_reference()
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if not isinstance(inventory, Mapping):
+        raise MaterializationError("M53 migration inventory is invalid")
+    key = _M53_SUPERSESSION_REASON
+    if (
+        config.get(key) != reference
+        or inventory.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M53 authority differs across protected controls")
+    _validated_m53_live_preflight_contract(authority)
+    return authority
+
+
+def _m53_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    runtime = authority["runtime_binding"]
+    program = config.get("database_program")
+    owner = config.get("quack_owner")
+    expected_runtime_paths = {
+        "root": _M53_RUNTIME_ROOT,
+        "state": f"{_M53_RUNTIME_ROOT}/state",
+        "worktrees": _M53_WORKTREE_ROOT,
+        "merge_queue": f"{_M53_RUNTIME_ROOT}/merge-queue",
+        "logs": f"{_M53_RUNTIME_ROOT}/logs",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+    if (
+        not isinstance(program, Mapping)
+        or not isinstance(owner, Mapping)
+        or program.get("store_id") != _M53_STORE_ID
+        or program.get("store_generation") != str(_M53_TARGET_GENERATION)
+        or program.get("quack_endpoint") != runtime["quack_endpoint"]
+        or program.get("worktree_root") != _M53_WORKTREE_ROOT
+        or owner.get("database_path") != _M53_STORE_ID
+        or owner.get("store_id") != _M53_STORE_ID
+        or owner.get("port") != _M53_TARGET_QUACK_PORT
+        or owner.get("state_dir") != f"{_M53_RUNTIME_ROOT}/quack-owner"
+        or config.get("runtime_paths") != expected_runtime_paths
+    ):
+        raise MaterializationError("scheduler M53 runtime binding differs")
+    control = (root / _M53_STORE_ID).resolve()
+    coordination = (root / _M53_COORDINATION_STORE_ID).resolve()
+    if not control.is_relative_to(root) or not coordination.is_relative_to(root):
+        raise MaterializationError("M53 runtime path escapes repository")
+    return control, coordination
+
+
+def _check_m53_prestart_admission(
+    root: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Admit restart of the process-dead generation-37 owner to generation 38."""
+
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m53_source_binding_authority(root, population, config)
+    control, coordination = _m53_target_paths(root, config, authority)
+    _assert_offline(control)
+    runtime = control.parent
+    final_path = runtime / _M53_FINAL_RECEIPT_NAME
+    m52_path = runtime / _M52_FINAL_RECEIPT_NAME
+    if os.path.lexists(final_path):
+        raise MigrationRequired("M53 prestart admission is already consumed")
+    if not os.path.lexists(m52_path):
+        raise MigrationRequired("M53 requires the preserved M52 receipt")
+    status_path = runtime / "quack-owner/quack-state-server.status.json"
+    replica_path = control.with_name("control.read-replica.duckdb")
+    merge_path = runtime / "merge-queue/merge_queue.duckdb"
+    marker_path = control.with_name(f".{control.name}.state-owner.json")
+    for path, expected_size, expected_sha, noun, expected_mode in (
+        (control, _M53_PRIOR_CONTROL_SIZE, _M53_PRIOR_CONTROL_SHA256, "M53 stale-ready control store", 0o664),
+        (coordination, _M53_PRIOR_COORDINATION_SIZE, _M53_PRIOR_COORDINATION_SHA256, "M53 coordination store", 0o664),
+        (replica_path, _M53_PRIOR_READ_REPLICA_SIZE, _M53_PRIOR_READ_REPLICA_SHA256, "M53 read replica", 0o600),
+        (merge_path, _M53_PRIOR_MERGE_QUEUE_SIZE, _M53_PRIOR_MERGE_QUEUE_SHA256, "M53 merge queue", 0o600),
+        (status_path, _M53_STALE_READY_STATUS_SIZE, _M53_STALE_READY_STATUS_SHA256, "M53 stale-ready status", 0o600),
+        (m52_path, _M53_M52_RECEIPT_SIZE, _M53_M52_RECEIPT_SHA256, "M53 preserved M52 receipt", 0o600),
+    ):
+        observed_sha, observed_size = _stable_regular_sha256(
+            path, root=root, noun=noun, required_link_count=1
+        )
+        if (
+            (observed_sha, observed_size) != (expected_sha, expected_size)
+            or stat.S_IMODE(os.lstat(path).st_mode) != expected_mode
+        ):
+            raise MigrationRequired(f"{noun} bytes/mode differ")
+    status, _ = _load_nofollow_json(status_path, root=root, noun="M53 stale-ready Quack status")
+    identity = status.get("identity")
+    if (
+        status.get("lifecycle") != "ready"
+        or not isinstance(identity, Mapping)
+        or identity.get("status") != "ready"
+        or identity.get("server_id") != _M53_PRIOR_SERVER_ID
+        or identity.get("process_birth_id") != _M53_PRIOR_PROCESS_BIRTH_ID
+        or identity.get("process_birth") != dict(_M53_PRIOR_PROCESS_BIRTH)
+        or identity.get("database_uuid") != _M53_DATABASE_UUID
+        or identity.get("store_id") != _M53_STORE_ID
+        or identity.get("started_at") != _M53_PRIOR_STARTED_AT
+        or int(identity.get("generation") or 0) != _M53_PRIOR_GENERATION
+        or identity.get("listen_uri") != f"quack:127.0.0.1:{_M53_TARGET_QUACK_PORT}"
+    ):
+        raise MigrationRequired("M53 stale-ready owner status differs")
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        OwnerLiveness,
+        ProcessBirthIdentity,
+        owner_liveness,
+    )
+    birth = ProcessBirthIdentity.from_dict(identity.get("process_birth"))
+    if owner_liveness(birth) is not OwnerLiveness.DEAD:
+        raise MigrationRequired("M53 requires proved-dead generation-37 process birth")
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        reclaim_stale_owner_marker,
+    )
+    reclaimed = reclaim_stale_owner_marker(
+        marker_path=marker_path,
+        lock_path=control.with_name(f".{control.name}.state-owner.lock"),
+    )
+    if reclaimed.get("reclaimed") is not True and reclaimed.get("reason") != "no_marker":
+        raise MigrationRequired("M53 stale owner marker could not be reclaimed")
+    return {
+        "valid": True,
+        "action": "admitted_stale_ready_generation_37_restart_to_generation_38",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "prior_generation": _M53_PRIOR_GENERATION,
+        "target_generation": _M53_TARGET_GENERATION,
+        "prior_event_watermark": _M53_PRIOR_EVENT_WATERMARK,
+        "prior_projection_cid": _M53_PRIOR_PROJECTION_CID,
+        "m52_receipt_preserved_exactly": True,
+        "prior_process_birth_verified_dead": True,
+        "stale_owner_marker_reclaimed": True,
+        "prestart_authorization_consumed": False,
     }
 
 

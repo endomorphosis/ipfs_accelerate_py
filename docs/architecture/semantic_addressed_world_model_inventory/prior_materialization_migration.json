@@ -1,4 +1,5 @@
 {
+  "post_reboot_stale_ready_generation_37_restart_successor_materialization": {"authority_cid":"sha256:a0e0e768087e70a27aff88ae1959a638534ef6f9e5b94e8b6d4030b15b01edc8","migration_revision":"SAWM-R2-M53","schema":"sawm/operator-control-authority-reference@1"},
   "test_compatibility_and_control_hash_successor_materialization": {"authority_cid":"sha256:97457278d806c1706fc43ad177bea8c66f18c02f2dbcc399121c26aba926e52d","migration_revision":"SAWM-R2-M52","schema":"sawm/operator-control-authority-reference@1"},
   "live_quack_catalog_compatibility_successor_materialization": {"authority_cid":"sha256:64c4319d273cb9d561a8176c2a152c458e58df10c612c9a9b8235b21ccd4eceb","migration_revision":"SAWM-R2-M51","schema":"sawm/operator-control-authority-reference@1"},
   "post_m49_fenced_worktree_quarantine_recovery_successor_materialization": {"authority_cid":"sha256:57e54164eb55a8015c9324db6a414981446a2a455c0308cd65f6a8e219563ea9","migration_revision":"SAWM-R2-M50","schema":"sawm/operator-control-authority-reference@1"},

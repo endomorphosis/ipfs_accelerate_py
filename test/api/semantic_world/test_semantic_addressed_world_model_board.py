@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "post_reboot_stale_ready_generation_37_restart_successor_materialization",
     "test_compatibility_and_control_hash_successor_materialization",
     "live_quack_catalog_compatibility_successor_materialization",
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization",
@@ -428,6 +429,27 @@ def test_historical_successor_controls_include_m49_before_m48() -> None:
     assert historical_migration is not None and m49_key not in historical_migration
     assert historical_seal is not None
     assert f"{m49_key}_cid" not in historical_seal
+
+
+def test_historical_successor_controls_include_m53_before_m52() -> None:
+    m53_key = "post_reboot_stale_ready_generation_37_restart_successor_materialization"
+    m52_key = "test_compatibility_and_control_hash_successor_materialization"
+    scheduler = {m53_key: {"revision": "M53"}, m52_key: {"revision": "M52"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m53_key}_cid": "sha256:" + "0" * 64,
+        f"{m52_key}_cid": "sha256:" + "1" * 64,
+    }
+    current, _, _ = _historical_successor_controls_at(
+        m53_key, scheduler, migration, seal
+    )
+    assert m53_key in current
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m52_key, scheduler, migration, seal)
+    )
+    assert m53_key not in historical
+    assert historical_migration is not None and m53_key not in historical_migration
+    assert historical_seal is not None and f"{m53_key}_cid" not in historical_seal
 
 
 def test_historical_successor_controls_include_m52_before_m51() -> None:
