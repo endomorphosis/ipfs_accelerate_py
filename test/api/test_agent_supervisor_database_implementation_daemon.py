@@ -1564,6 +1564,32 @@ def test_sandbox_host_failure_quarantine_reopens(tmp_path: Path) -> None:
         daemon.close()
 
 
+def test_false_terminal_unstalls_protected_path_verification_lock_timeout(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:protected-lock-timeout-unstall",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        _block_task_terminal(
+            daemon,
+            "task:cid:001",
+            reason="implementation_protected_path_verification_lock_timeout",
+        )
+        outcomes = daemon.reconcile_false_terminal_portal_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+        assert retried.body["completion_receipt"]["previous_reason"] == (
+            "implementation_protected_path_verification_lock_timeout"
+        )
+    finally:
+        daemon.close()
+
+
 def test_false_terminal_unstalls_operator_merge_protected_path_block(
     tmp_path: Path,
 ) -> None:
