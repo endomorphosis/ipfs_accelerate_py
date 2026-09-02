@@ -8559,77 +8559,100 @@ def _terminate_managed_process(
         # A caller-created Popen has no durable run/profile binding.  Refuse to
         # turn its PID into signal authority.
         return False, ()
+    graceful_seconds = max(0.1, float(grace_seconds))
+    graceful_deadline = time.monotonic() + graceful_seconds
+    # Reserve one short, bounded force-fence interval after the graceful
+    # deadline.  This is one absolute transaction deadline, not a second copy
+    # of ``grace_seconds``.
+    final_deadline = graceful_deadline + 1.0
     adapter = LinuxProcessAdapter()
     tree = adapter.snapshot(profile)
     if not tree.members:
         # Immediately after Popen the child may not yet expose its inherited
         # lifecycle environment in /proc.  An empty first snapshot is not
         # proof of absence while the exact unreaped Popen child is live.
-        observation_deadline = time.monotonic() + min(
-            0.5,
-            max(0.1, grace_seconds),
+        observation_deadline = min(
+            graceful_deadline,
+            time.monotonic() + min(
+                0.5,
+                graceful_seconds,
+            ),
         )
         while process.poll() is None and time.monotonic() < observation_deadline:
             time.sleep(0.01)
             tree = adapter.snapshot(profile)
             if tree.members:
                 break
-        if not tree.members:
-            if process.poll() is not None:
-                return True, (int(process.pid),)
-            # The still-unreaped Popen handle proves this exact PID remains
-            # our child and has not been reused.  Fence that root, then prove
-            # no inherited-profile descendants survived before returning.
+
+    observed_pids = {int(process.pid)}
+
+    def remember_and_validate(current_tree: object) -> None:
+        members = tuple(getattr(current_tree, "members", ()))
+        roots = tuple(getattr(current_tree, "roots", ()))
+        observed_pids.update(int(item.pid) for item in members)
+        process_member = next(
+            (item for item in members if int(item.pid) == int(process.pid)),
+            None,
+        )
+        if process_member is not None and int(process.pid) not in {
+            int(item.pid) for item in roots
+        }:
+            raise ProcessIdentityMismatch(
+                "managed Popen does not identify the marker-bound tree root"
+            )
+
+    remember_and_validate(tree)
+
+    # The unreaped Popen handle is exact authority for its own child PID.  Ask
+    # the supervisor root to latch shutdown before descendants receive TERM;
+    # otherwise a restart loop can replace a daemon while the first snapshot
+    # is being drained.  Profile discovery remains the authority for every
+    # detached or reparented descendant.
+    if process.poll() is None:
+        try:
+            process.terminate()
+        except OSError:
+            pass
+
+    current_tree = tree
+    while True:
+        now = time.monotonic()
+        if current_tree.members:
+            remaining_grace = max(0.0, graceful_deadline - now)
+            remaining_total = max(0.0, final_deadline - now)
+            adapter.terminate(
+                current_tree,
+                grace_seconds=remaining_grace,
+                deadline_ms=max(1, int(remaining_total * 1000)),
+            )
+
+        now = time.monotonic()
+        if now >= graceful_deadline and process.poll() is None:
+            # An unreaped Popen child cannot have had its PID reused.  Force
+            # only that exact root after its graceful budget is exhausted.
             try:
-                process.terminate()
+                process.kill()
             except OSError:
                 pass
-            try:
-                process.wait(timeout=max(0.1, grace_seconds))
-            except subprocess.TimeoutExpired:
-                try:
-                    process.kill()
-                except OSError:
-                    pass
-                try:
-                    process.wait(timeout=max(0.1, grace_seconds))
-                except subprocess.TimeoutExpired:
-                    return False, (int(process.pid),)
-            residual = adapter.snapshot(profile)
-            if residual.members:
-                adapter.terminate(
-                    residual,
-                    grace_seconds=grace_seconds,
-                    deadline_ms=max(
-                        1,
-                        int(max(0.0, grace_seconds) * 1000) + 1_000,
-                    ),
-                )
-            return bool(
-                process.poll() is not None
-                and not adapter.snapshot(profile).members
-            ), (int(process.pid),)
-    root_ids = {item.pid for item in tree.roots}
-    process_member = next(
-        (item for item in tree.members if item.pid == process.pid), None
-    )
-    if process_member is not None and process.pid not in root_ids:
-        raise ProcessIdentityMismatch(
-            "managed Popen does not identify the marker-bound tree root"
-        )
-    member_pids = tuple(item.pid for item in tree.members)
-    adapter.terminate(
-        tree,
-        grace_seconds=grace_seconds,
-        deadline_ms=max(1, int(max(0.0, grace_seconds) * 1000) + 1_000),
-    )
-    deadline = time.monotonic() + max(0.1, grace_seconds) + 1.0
-    while time.monotonic() < deadline:
-        if not any(adapter.identity_alive(item) for item in tree.members):
-            if not adapter.snapshot(profile).members:
-                return True, member_pids
-        time.sleep(0.02)
-    return False, member_pids
+
+        # Re-snapshot after every fence pass.  A supervisor may have replaced
+        # a descendant after the initial snapshot but before its root stopped;
+        # those late members must be fenced to an empty fixed point.
+        residual = adapter.snapshot(profile)
+        remember_and_validate(residual)
+        root_exited = process.poll() is not None
+        if root_exited and not residual.members:
+            return True, tuple(sorted(observed_pids))
+        if time.monotonic() >= final_deadline:
+            return False, tuple(sorted(observed_pids))
+
+        current_tree = residual
+        if not current_tree.members:
+            # Only the exact Popen root remains (or /proc has not exposed its
+            # markers yet).  Poll without extending the absolute deadline.
+            time.sleep(
+                min(0.02, max(0.0, final_deadline - time.monotonic()))
+            )
 
 
 def stop_tracks(
@@ -8666,15 +8689,32 @@ def stop_tracks(
                 stopped.extend(member_pids)
             elif process is not None:
                 all_fenced = False
+                diagnostic = (
+                    "ProcessTreeNotFenced:"
+                    f"track={track.name}:process_pid={int(process.pid)}:"
+                    "observed_pids="
+                    + ",".join(str(int(pid)) for pid in sorted(set(member_pids)))
+                )
+                stop_failure_receipts.append(
+                    {
+                        "track": track.name,
+                        "process_pid": int(process.pid),
+                        "error_type": "ProcessTreeNotFenced",
+                        "error_digest": "sha256:"
+                        + hashlib.sha256(diagnostic.encode("utf-8")).hexdigest(),
+                        "all_trees_fenced": False,
+                        "task_completion_authority": False,
+                    }
+                )
                 safe_emit(
                     "could not verify complete shutdown for "
                     f"{track.name} pid={process.pid}"
                 )
             if process is not None:
-                try:
-                    process.wait(timeout=max(0.1, grace_seconds))
-                except subprocess.TimeoutExpired:
-                    pass
+                # ``_terminate_managed_process`` owns the complete bounded
+                # wait.  Poll once to reap an exited direct child, but never
+                # add a third grace interval after a failed fence.
+                process.poll()
             if fenced and process is not None:
                 resolved = track.resolve(repo_root)
                 if _remove_stale_pid_marker_if_unchanged(

@@ -1032,25 +1032,41 @@ def test_stale_lane_fence_failure_does_not_stop_other_lanes(
         stamp="RUN",
     )
     output: list[str] = []
+    unfenced_processes: dict[int, subprocess.Popen[bytes]] = {}
 
     def refuse_fence(process, *, grace_seconds):
-        del process, grace_seconds
+        del grace_seconds
+        if process is not None:
+            unfenced_processes[int(process.pid)] = process
         return False, ()
 
     monkeypatch.setattr(runner, "_terminate_managed_process", refuse_fence)
 
-    result = run_supervisor_tracks(
-        [stale_track, live_track],
-        repo_root=tmp_path,
-        common_args=[],
-        duration_seconds=0.8,
-        heartbeat_interval_seconds=0.05,
-        supervisor_status_stale_seconds=0.01,
-        stop_grace_seconds=0.2,
-        python_executable=sys.executable,
-        label="test runner",
-        output=output.append,
-    )
+    try:
+        result = run_supervisor_tracks(
+            [stale_track, live_track],
+            repo_root=tmp_path,
+            common_args=[],
+            duration_seconds=0.8,
+            heartbeat_interval_seconds=0.05,
+            supervisor_status_stale_seconds=0.01,
+            stop_grace_seconds=0.2,
+            python_executable=sys.executable,
+            label="test runner",
+            output=output.append,
+        )
+    finally:
+        # The test deliberately replaces the real fence with a deny-only
+        # result.  Retain that control-plane outcome while still reaping the
+        # exact test-owned Popen children.
+        for process in unfenced_processes.values():
+            if process.poll() is None:
+                process.terminate()
+            try:
+                process.wait(timeout=1.0)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=1.0)
 
     assert result["interrupted"] == ""
     # The other lane keeps running for the remainder of the bounded window,
@@ -2432,6 +2448,362 @@ def test_teardown_aggregates_one_track_failure_and_fences_later_tracks(
     assert [
         item["track"] for item in receipt["stop_failure_receipts"]
     ] == [first.name]
+
+
+def test_teardown_records_typed_receipt_when_fence_returns_false(
+    tmp_path,
+    monkeypatch,
+):
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    track = _track(tmp_path)
+
+    class FakeProcess:
+        pid = 505001
+
+        @staticmethod
+        def poll():
+            return None
+
+    def deny_fence(_process, *, grace_seconds):
+        del grace_seconds
+        return False, (505001, 505002)
+
+    monkeypatch.setattr(runner, "_terminate_managed_process", deny_fence)
+
+    result = runner.stop_tracks(
+        [track],
+        {track.name: FakeProcess()},
+        repo_root=tmp_path,
+        grace_seconds=0.1,
+        output=lambda _line: None,
+    )
+
+    assert result["all_trees_fenced"] is False
+    assert result["stopped_pids"] == []
+    expected_diagnostic = (
+        "ProcessTreeNotFenced:track=T:process_pid=505001:"
+        "observed_pids=505001,505002"
+    )
+    assert result["stop_failure_receipts"] == [
+        {
+            "track": track.name,
+            "process_pid": 505001,
+            "error_type": "ProcessTreeNotFenced",
+            "error_digest": "sha256:"
+            + hashlib.sha256(expected_diagnostic.encode("utf-8")).hexdigest(),
+            "all_trees_fenced": False,
+            "task_completion_authority": False,
+        }
+    ]
+
+
+def test_managed_fence_signals_exact_popen_root_when_snapshot_omits_it(
+    tmp_path,
+    monkeypatch,
+):
+    """A partial /proc snapshot must not falsely prove the direct child dead."""
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    profile = runner.LifecycleProfile(
+        target_id="supervisor-track:partial-snapshot",
+        run_id="partial-snapshot-run",
+        configuration_root="partial-snapshot-config",
+        repository_root=str(tmp_path),
+        state_root=str(state_dir),
+        run_root=str(state_dir / "lifecycle-run"),
+        argv=(sys.executable, "worker.py"),
+        cwd=str(tmp_path),
+    )
+
+    class Member:
+        def __init__(self, pid, parent_pid):
+            self.pid = pid
+            self.parent_pid = parent_pid
+
+    class Tree:
+        def __init__(self, members):
+            self.members = tuple(members)
+
+        @property
+        def roots(self):
+            member_pids = {item.pid for item in self.members}
+            return tuple(
+                item for item in self.members if item.parent_pid not in member_pids
+            )
+
+    class ExactProcess:
+        pid = 510001
+
+        def __init__(self):
+            self.returncode = None
+            self.terminate_calls = 0
+            self.kill_calls = 0
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.terminate_calls += 1
+            self.returncode = 0
+
+        def kill(self):
+            self.kill_calls += 1
+            self.returncode = -signal.SIGKILL
+
+    child = Member(510002, 510001)
+
+    class PartialSnapshotAdapter:
+        def __init__(self):
+            self.members = (child,)
+            self.terminate_calls = []
+
+        def snapshot(self, selected_profile):
+            assert selected_profile is profile
+            return Tree(self.members)
+
+        def terminate(self, tree, *, grace_seconds, deadline_ms):
+            assert grace_seconds >= 0
+            assert deadline_ms > 0
+            self.terminate_calls.append(tuple(item.pid for item in tree.members))
+            self.members = ()
+
+        def identity_alive(self, identity):
+            return identity in self.members
+
+    process = ExactProcess()
+    process._agent_supervisor_lifecycle_profile = profile
+    adapter = PartialSnapshotAdapter()
+    monkeypatch.setattr(runner, "LinuxProcessAdapter", lambda: adapter)
+
+    fenced, observed_pids = runner._terminate_managed_process(
+        process,
+        grace_seconds=0.1,
+    )
+
+    assert fenced is True
+    assert observed_pids == (510001, 510002)
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 0
+    assert process.poll() == 0
+    assert adapter.terminate_calls == [(510002,)]
+
+
+def test_managed_fence_rescans_and_forces_late_descendant_with_one_deadline(
+    tmp_path,
+    monkeypatch,
+):
+    """A daemon replacement born during grace is fenced in the same transaction."""
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    profile = runner.LifecycleProfile(
+        target_id="supervisor-track:late-descendant",
+        run_id="late-descendant-run",
+        configuration_root="late-descendant-config",
+        repository_root=str(tmp_path),
+        state_root=str(state_dir),
+        run_root=str(state_dir / "lifecycle-run"),
+        argv=(sys.executable, "worker.py"),
+        cwd=str(tmp_path),
+    )
+
+    class Member:
+        def __init__(self, pid, parent_pid):
+            self.pid = pid
+            self.parent_pid = parent_pid
+
+    class Tree:
+        def __init__(self, members):
+            self.members = tuple(members)
+
+        @property
+        def roots(self):
+            member_pids = {item.pid for item in self.members}
+            return tuple(
+                item for item in self.members if item.parent_pid not in member_pids
+            )
+
+    class DelayedRootProcess:
+        pid = 520001
+
+        def __init__(self):
+            self.returncode = None
+            self.terminate_calls = 0
+            self.kill_calls = 0
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            # Model a supervisor whose Python signal handler is delayed while
+            # native work is in flight.  Its first daemon can still exit and
+            # be replaced before the root consumes TERM.
+            self.terminate_calls += 1
+
+        def kill(self):
+            self.kill_calls += 1
+            self.returncode = -signal.SIGKILL
+
+    root = Member(520001, 1)
+    first_child = Member(520002, 520001)
+    late_child = Member(520003, 520001)
+
+    class RespawningAdapter:
+        def __init__(self):
+            self.members = (root, first_child)
+            self.terminate_calls = []
+
+        def snapshot(self, selected_profile):
+            assert selected_profile is profile
+            return Tree(self.members)
+
+        def terminate(self, tree, *, grace_seconds, deadline_ms):
+            assert grace_seconds >= 0
+            assert deadline_ms > 0
+            pids = tuple(item.pid for item in tree.members)
+            self.terminate_calls.append(pids)
+            if pids == (root.pid, first_child.pid):
+                self.members = (late_child,)
+            elif pids == (late_child.pid,):
+                self.members = ()
+
+        def identity_alive(self, identity):
+            return identity in self.members
+
+    process = DelayedRootProcess()
+    process._agent_supervisor_lifecycle_profile = profile
+    adapter = RespawningAdapter()
+    monkeypatch.setattr(runner, "LinuxProcessAdapter", lambda: adapter)
+
+    started = time.monotonic()
+    fenced, observed_pids = runner._terminate_managed_process(
+        process,
+        grace_seconds=0.1,
+    )
+    elapsed = time.monotonic() - started
+
+    assert fenced is True
+    assert observed_pids == (520001, 520002, 520003)
+    assert adapter.terminate_calls == [(520001, 520002), (520003,)]
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 1
+    assert process.poll() == -signal.SIGKILL
+    assert elapsed < 0.5
+
+
+def test_managed_fence_real_process_rescans_late_detached_descendant(tmp_path):
+    """A real supervisor replacement cannot escape the profile fence."""
+
+    state_dir = tmp_path / "state"
+    run_dir = state_dir / "lifecycle-run"
+    state_dir.mkdir()
+    child_path = tmp_path / "child.py"
+    root_path = tmp_path / "root.py"
+    initial_pid_path = state_dir / "initial-child.pid"
+    late_pid_path = state_dir / "late-child.pid"
+    child_path.write_text(
+        "import signal\n"
+        "import sys\n"
+        "import time\n"
+        "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))\n"
+        "while True:\n"
+        "    time.sleep(0.01)\n",
+        encoding="utf-8",
+    )
+    root_path.write_text(
+        "import signal\n"
+        "import subprocess\n"
+        "import sys\n"
+        "import time\n"
+        "from pathlib import Path\n"
+        "stopping = False\n"
+        "def stop(*_):\n"
+        "    global stopping\n"
+        "    stopping = True\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        f"child_argv = [sys.executable, {str(child_path)!r}]\n"
+        "child = subprocess.Popen(child_argv, start_new_session=True)\n"
+        f"Path({str(initial_pid_path)!r}).write_text(str(child.pid), "
+        "encoding='ascii')\n"
+        "while not stopping:\n"
+        "    time.sleep(0.01)\n"
+        "deadline = time.monotonic() + 2.0\n"
+        "while child.poll() is None and time.monotonic() < deadline:\n"
+        "    time.sleep(0.01)\n"
+        "replacement = subprocess.Popen(child_argv, start_new_session=True)\n"
+        f"Path({str(late_pid_path)!r}).write_text(str(replacement.pid), "
+        "encoding='ascii')\n"
+        "time.sleep(0.05)\n",
+        encoding="utf-8",
+    )
+    profile = runner.LifecycleProfile(
+        target_id="supervisor-track:real-late-descendant",
+        run_id=f"real-late-descendant-{os.getpid()}-{time.time_ns()}",
+        configuration_root="real-late-descendant-config",
+        repository_root=str(tmp_path.resolve()),
+        state_root=str(state_dir.resolve()),
+        run_root=str(run_dir.resolve()),
+        argv=(sys.executable, str(root_path.resolve())),
+        cwd=str(tmp_path.resolve()),
+    )
+    process = subprocess.Popen(
+        profile.argv,
+        cwd=profile.cwd,
+        env=profile.launch_environment(1),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    process._agent_supervisor_lifecycle_profile = profile
+    adapter = runner.LinuxProcessAdapter()
+
+    try:
+        ready_deadline = time.monotonic() + 5.0
+        initial_tree = adapter.snapshot(profile)
+        while (
+            (not initial_pid_path.exists() or len(initial_tree.members) < 2)
+            and process.poll() is None
+            and time.monotonic() < ready_deadline
+        ):
+            time.sleep(0.01)
+            initial_tree = adapter.snapshot(profile)
+        assert process.poll() is None
+        assert initial_pid_path.exists()
+        assert len(initial_tree.members) == 2
+
+        started = time.monotonic()
+        fenced, observed_pids = runner._terminate_managed_process(
+            process,
+            grace_seconds=0.3,
+        )
+        elapsed = time.monotonic() - started
+
+        assert fenced is True
+        assert late_pid_path.exists()
+        late_pid = int(late_pid_path.read_text(encoding="ascii"))
+        assert late_pid in observed_pids
+        assert not adapter.snapshot(profile).members
+        assert process.poll() is not None
+        assert elapsed < 1.5
+    finally:
+        if process.poll() is None:
+            process.kill()
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=1.0)
+        cleanup_deadline = time.monotonic() + 2.0
+        while time.monotonic() < cleanup_deadline:
+            residual = adapter.snapshot(profile)
+            if not residual.members:
+                break
+            adapter.terminate(residual, grace_seconds=0.0, deadline_ms=100)
+            time.sleep(0.01)
+        assert not adapter.snapshot(profile).members
 
 
 def test_detached_parent_rejects_stale_binding_and_preserves_dead_child_marker(
