@@ -1,0 +1,56 @@
+{
+  "aggregates": {
+    "seeded_critical_omissions_accepted": 0,
+    "seeded_stale_packs_admitted": 0
+  },
+  "arms": [
+    "direct_minimal_orchestration_baseline",
+    "sealed_current_supervisor_baseline",
+    "candidate_optimized_supervisor"
+  ],
+  "authority": false,
+  "hermetic_sufficient_for_live_reuse": false,
+  "hermetic_sufficient_for_production_promotion": false,
+  "interface": "AsehContextPackBenchmark@1",
+  "live": false,
+  "negative_cases": {
+    "fixture_as_live": {
+      "accepted": 0,
+      "count": 0,
+      "rejected": 0
+    },
+    "seeded_critical_omissions": {
+      "accepted": 0,
+      "count": 0,
+      "detected": 0,
+      "rejected": 0
+    },
+    "seeded_stale_packs": {
+      "admitted": 0,
+      "count": 0,
+      "rejected": 0
+    }
+  },
+  "objective_id": "ASEH-G040",
+  "paired_fixtures": [],
+  "population_kind": "hermetic_development",
+  "promotion_without_paired_campaign": false,
+  "required_metrics": [
+    "eligible_reuse",
+    "context_tokens_before",
+    "context_tokens_after",
+    "expansion_precision",
+    "expansion_recall",
+    "critical_omission_detection",
+    "stale_rejection",
+    "build_cost",
+    "retrieval_cost",
+    "audit_overhead",
+    "net_provider_cost_effect"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-context-pack-benchmark-manifest@1",
+  "schema_version": 1,
+  "simulated_as_live": false,
+  "status": "unsealed",
+  "task_id": "ASEH-035"
+}
