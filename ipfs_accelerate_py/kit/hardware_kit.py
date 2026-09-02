@@ -430,34 +430,19 @@ class HardwareKit:
         return stamp_consolidation(result)
 
     def _test_cpu(self, test_level: str) -> Dict[str, Any]:
-        """Test CPU functionality. A passing host test is not production_authorized."""
-        from ipfs_accelerate_py.assurance.hardware_capability_ladder import (
-            declared_cpu_baseline,
-            stamp_consolidation,
-        )
+        """Live CPU canary. Passing execution is not production_authorized.
 
-        result = stamp_consolidation(declared_cpu_baseline(cores=None, test_level=test_level))
-        result["tests_passed"] = False
+        PCPR-037: stdlib CPU kernel, cancellation, timeout, cleanup, and
+        fail-closed resource admission. Numpy is not required. CUDA and
+        model/provider paths stay typed unavailable.
+        """
+        from ipfs_accelerate_py.assurance.cpu_execution import qualify_live_cpu_execution
 
-        try:
-            if test_level == "basic":
-                import numpy as np
-
-                x = np.ones(10)
-                del x
-                result["tests_passed"] = True
-            elif test_level == "comprehensive":
-                import numpy as np
-
-                x = np.random.randn(1000, 1000)
-                y = np.dot(x, x)
-                del x, y
-                result["tests_passed"] = True
-        except Exception as e:
-            result["error"] = str(e)
-
-        result["canary_passed"] = True if result["tests_passed"] else None
-        return stamp_consolidation(result)
+        report = qualify_live_cpu_execution(test_level=test_level)
+        report["tests_passed"] = bool(report.get("cpu_execution_qualified") is True)
+        report["production_authorized"] = False
+        report["qualified"] = False
+        return report
 
     def recommend_hardware(
         self, model_name: str, task: str = "inference", consider_available_only: bool = True
