@@ -18,6 +18,7 @@ license = { text = "GNU Affero General Public License v3 or later (AGPLv3+)" }
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: MacOS",
@@ -53,6 +54,24 @@ package-dir = {"" = "."}
 
 [tool.setuptools.package-data]
 "*" = ["*.txt", "*.md"]
+
+[tool.ipfs_accelerate_py.clean-package]
+schema = "ipfs_accelerate_py/assurance/clean-package@1"
+interface = "AccelerateCleanPackage@1"
+task-id = "PCPR-052"
+goal-id = "PCPR-G600"
+requires-sibling-source-trees = false
+requires-recursive-submodules = false
+editable-local-dependencies = false
+sys-path-injection = false
+import-network = false
+mutable-git-release-requires = false
+runtime-requires-authority = "requirements.txt"
+development-requirements-role = "source-checkout-development-and-integration"
+named-git-extras-role = "source-checkout-development-and-integration"
+named-git-extras = ["libp2p", "mcp-p2p", "ipfs-transformers", "ipfs-model-manager"]
+sibling-trees = ["ipfs_datasets_py", "ipfs_kit_py", "ipfs_model_manager_py", "ipfs_transformers_py", ".tools"]
+recursive-submodule-trees = ["docs/fastmcp", "docs/mcp-python-sdk", "ipfs_accelerate_py/mcplusplus", "test/doc-builder", "test/huggingface_doc_builder", "test/huggingface_transformers"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
@@ -170,13 +189,12 @@ viz = [
   "plotly>=5.22.0",
 ]
 full = [
+  # Convenience release extra. Git pins live in named development extras.
   "torch>=2.1",
   "transformers>=4.46",
   "uvicorn>=0.27.0",
   "fastapi>=0.110.0",
   "sentence-transformers",
-  "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@b397988ed9e3e656475c1cf4417b84efdb95daf3",
-  "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
 ]
 testing = [
   "pytest>=8.0.0",
@@ -211,16 +229,26 @@ mcp = [
   "PyGithub>=2.3.0",
 ]
 mcp-p2p = [
+  # Source-checkout development extra only. Not the PCPR-052 release profile.
   "libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f",
   "protobuf>=5.27.0",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
 ]
 libp2p = [
+  # Source-checkout development extra only. Not the PCPR-052 release profile.
   "libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f",
   "protobuf>=5.27.0",
   "pymultihash>=0.8.2",
   "dnspython>=2.2.1",
+]
+ipfs-transformers = [
+  # Source-checkout development extra only. Not the PCPR-052 release profile.
+  "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@b397988ed9e3e656475c1cf4417b84efdb95daf3",
+]
+ipfs-model-manager = [
+  # Source-checkout development extra only. Not the PCPR-052 release profile.
+  "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
 ]
 webnn = [
   "playwright>=1.31.0",
@@ -232,14 +260,12 @@ llama_cpp = [
   "huggingface_hub>=0.24.0",
 ]
 all = [
-  # aggregate without native P2P by default
+  # Aggregate convenience extra without native P2P or Git pins.
   "torch>=2.1",
   "transformers>=4.46",
   "uvicorn>=0.27.0",
   "fastapi>=0.110.0",
   "sentence-transformers",
-  "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@b397988ed9e3e656475c1cf4417b84efdb95daf3",
-  "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
   "pytest>=8.0.0",
   "pytest-timeout>=2.4.0",
   "pytest-cov>=4.0.0",
@@ -423,5 +449,12 @@ console-target = "ipfs_accelerate_py.proof_context.cli.__main__:main"
 runtime-authority-widened = false
 
 [tool.setuptools.packages.find]
-include = ["ipfs_accelerate_py*", "scripts", "scripts.*"]
-exclude = ["test*", "benchmarks*"]
+include = ["ipfs_accelerate_py", "ipfs_accelerate_py.*", "scripts", "scripts.*"]
+exclude = [
+    "ipfs_datasets_py*",
+    "ipfs_kit_py*",
+    "ipfs_model_manager_py*",
+    "ipfs_transformers_py*",
+    "test*",
+    "benchmarks*",
+]

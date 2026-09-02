@@ -27,3 +27,18 @@ global-exclude *.py[cod]
 global-exclude *.so
 global-exclude .git*
 global-exclude .DS_Store
+
+# PCPR-052: clean installs must not require sibling source trees or
+# recursive submodule checkouts. These directories are gitlinks or
+# development-checkout clutter and are not distribution members.
+prune ipfs_datasets_py
+prune ipfs_kit_py
+prune ipfs_model_manager_py
+prune ipfs_transformers_py
+prune .tools
+prune docs/fastmcp
+prune docs/mcp-python-sdk
+prune ipfs_accelerate_py/mcplusplus
+prune test/doc-builder
+prune test/huggingface_doc_builder
+prune test/huggingface_transformers

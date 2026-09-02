@@ -434,6 +434,20 @@ def _read_optional_deps(pyproject_path: Path) -> dict[str, list[str]]:
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text() if (this_directory / "README.md").exists() else ""
 
+PYTHON_REQUIRES = ">=3.12"
+SETUP_PACKAGE_INCLUDES = [
+    "ipfs_accelerate_py",
+    "ipfs_accelerate_py.*",
+    "scripts",
+    "scripts.*",
+]
+SETUP_PACKAGE_EXCLUDES = [
+    "ipfs_datasets_py*",
+    "ipfs_kit_py*",
+    "ipfs_model_manager_py*",
+    "ipfs_transformers_py*",
+]
+
 install_requires = _read_requirements(this_directory / "requirements.txt")
 extras_require = _read_optional_deps(this_directory / "pyproject.toml")
 proof_reuse_requirements = _read_requirements(
@@ -457,7 +471,10 @@ if proof_reuse_requirements:
 setup(
     name="ipfs_accelerate_py",
     version="0.0.45",
-    packages=find_packages(include=["ipfs_accelerate_py", "ipfs_accelerate_py.*", "scripts", "scripts.*"]),
+    packages=find_packages(
+        include=SETUP_PACKAGE_INCLUDES,
+        exclude=SETUP_PACKAGE_EXCLUDES,
+    ),
     include_package_data=True,
     description="A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution",
     long_description=long_description,
@@ -473,7 +490,7 @@ setup(
         "Operating System :: Microsoft :: Windows",
         "Operating System :: MacOS",
     ],
-    python_requires=">=3.12",
+    python_requires=PYTHON_REQUIRES,
     keywords="machine learning, IPFS, hardware-acceleration, inference, distributed computing, WebGPU, WebNN",
     install_requires=install_requires,
     extras_require=extras_require,
