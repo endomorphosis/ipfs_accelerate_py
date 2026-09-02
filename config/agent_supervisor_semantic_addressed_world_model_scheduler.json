@@ -1,4 +1,5 @@
 {
+  "partial_m59_receipt_failure_recovery_successor_materialization": {"authority_cid":"sha256:c8ce92862d1cbfddc3b4ebce55242148c17e5a2f0b013d36cf7aafb46653a917","migration_revision":"SAWM-R2-M60","schema":"sawm/operator-control-authority-reference@1"},
   "post_m58_quack_snapshot_row_normalization_successor_materialization": {"authority_cid":"sha256:7966d5c7bbb909cffe2e6c34c0659d31da9c943b6b11b134c5703f87c5452ef5","migration_revision":"SAWM-R2-M59","schema":"sawm/operator-control-authority-reference@1"},
   "post_m57_stall_unblock_and_shutdown_fence_restart_successor_materialization": {"authority_cid":"sha256:3c0d89599c4ba6d3825992127335f071b15bf49d389b5bfa09eeb7aa584d22c5","migration_revision":"SAWM-R2-M58","schema":"sawm/operator-control-authority-reference@1"},
   "post_m56_live_ready_owner_missing_client_token_vault_restart_successor_materialization": {"authority_cid":"sha256:ca402f78a63e84a937f1f62ea97ebbccc67264bb2c47c4aaaac3473ec9fb9590","migration_revision":"SAWM-R2-M57","schema":"sawm/operator-control-authority-reference@1"},
