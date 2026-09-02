@@ -10,7 +10,10 @@ Production execution is admitted only when ``production_authorized`` is
 True. PCPR-037 may record live CPU execution as ``cpu_execution_qualified``
 without granting ``production_authorized``. PCPR-038 may record live CUDA
 execution as ``cuda_execution_qualified`` without granting
-``production_authorized``. Model/provider qualification remains PCPR-039.
+``production_authorized``. PCPR-039 may record live model/provider
+execution as ``model_provider_execution_qualified`` and
+``model_compatible`` without granting ``production_authorized`` or the
+release-grade ``qualified`` rung.
 A closed PCPR release is never minted here.
 """
 
@@ -348,8 +351,8 @@ def assess_ladder(report: Mapping[str, Any]) -> dict[str, Any]:
                 "blocking_rung": rung,
             }
     # All evidence rungs True still cannot authorize production here.
-    # PCPR-037/PCPR-038 record CPU/CUDA execution beside this ladder; model
-    # qualification remains PCPR-039. This helper never grants
+    # PCPR-037/PCPR-038/PCPR-039 record CPU, CUDA, and model/provider
+    # execution beside this ladder. This helper never grants
     # production_authorized.
     return {
         "production_authorized": False,
@@ -462,6 +465,47 @@ def from_live_cuda_execution(
     payload["cuda_execution_task_id"] = "PCPR-038"
     payload["cuda_execution_schema"] = "ipfs_accelerate_py/assurance/cuda-execution@1"
     payload["cuda_execution_interface"] = "CudaExecution@1"
+    return payload
+
+
+def from_live_model_provider_execution(
+    *,
+    canary_passed: bool,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Record a live model/provider canary. Never production_authorized.
+
+    PCPR-039 may set ``model_provider_execution_qualified`` and
+    ``model_compatible`` after live load/inference probes. The ladder
+    ``qualified`` rung and ``production_authorized`` remain False.
+    Callers must not pass ``live=True`` into ``empty_ladder``; this helper
+    overlays live model/provider execution after the fail-closed baseline.
+    """
+
+    payload = empty_ladder(
+        backend="model_provider",
+        declared=True,
+        origin="live_observed",
+        evidence_kind="measured",
+        outcome="Observed" if canary_passed else "Unavailable",
+        extra=extra,
+    )
+    payload["available"] = True
+    payload["installed"] = True
+    payload["detected"] = True
+    payload["canary_passed"] = bool(canary_passed)
+    payload["resource_sufficient"] = True if canary_passed else None
+    payload["model_compatible"] = True if canary_passed else None
+    payload["qualified"] = False
+    payload["production_authorized"] = False
+    payload["live"] = True
+    payload["simulated"] = False
+    payload["model_provider_execution_qualified"] = bool(canary_passed)
+    payload["model_provider_execution_task_id"] = "PCPR-039"
+    payload["model_provider_execution_schema"] = (
+        "ipfs_accelerate_py/assurance/model-provider-execution@1"
+    )
+    payload["model_provider_execution_interface"] = "ModelProviderExecution@1"
     return payload
 
 
@@ -594,6 +638,7 @@ __all__ = (
     "from_device_visibility",
     "from_live_cpu_execution",
     "from_live_cuda_execution",
+    "from_live_model_provider_execution",
     "from_measured_absence",
     "from_package_import",
     "from_platform_presence",

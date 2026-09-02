@@ -375,6 +375,9 @@ class HardwareKit:
         if accelerator in ["cpu", "all"]:
             results["tests"]["cpu"] = self._test_cpu(test_level)
 
+        if accelerator in ["model_provider", "model"]:
+            results["tests"]["model_provider"] = self._test_model_provider(test_level)
+
         return results
 
     def _test_cuda(self, test_level: str) -> Dict[str, Any]:
@@ -404,6 +407,26 @@ class HardwareKit:
 
         report = qualify_live_cpu_execution(test_level=test_level)
         report["tests_passed"] = bool(report.get("cpu_execution_qualified") is True)
+        report["production_authorized"] = False
+        report["qualified"] = False
+        return report
+
+    def _test_model_provider(self, test_level: str) -> Dict[str, Any]:
+        """Live model/provider canary. Passing execution is not production_authorized.
+
+        PCPR-039: local OpenAI-compatible canary model-server plus, when
+        present, a live llama.cpp local LLM path. Torch, transformers, and
+        HuggingFace Hub downloads are not qualification. Missing llama.cpp
+        stays typed unavailable.
+        """
+        from ipfs_accelerate_py.assurance.model_provider_execution import (
+            qualify_live_model_provider_execution,
+        )
+
+        report = qualify_live_model_provider_execution(test_level=test_level)
+        report["tests_passed"] = bool(
+            report.get("model_provider_execution_qualified") is True
+        )
         report["production_authorized"] = False
         report["qualified"] = False
         return report
