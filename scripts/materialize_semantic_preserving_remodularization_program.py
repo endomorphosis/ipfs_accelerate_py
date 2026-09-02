@@ -3243,7 +3243,10 @@ class _OwnerProjectionMonitor:
             try:
                 process_inbox()
             except Exception:
-                pass
+                if _owner_connection_unusable(
+                    getattr(self.server, "_connection", None)
+                ):
+                    raise
         _process_mutations(self.server, self.mutation_dir)
 
     def _run(self) -> None:
