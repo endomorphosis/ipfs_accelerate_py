@@ -7588,15 +7588,8 @@ class PortalImplementationSupervisor:
                                                 owner_fence_held=True,
                                                 trigger="supervisor_startup_prelaunch",
                                             )
-                                        if not (
-                                            retained_startup.get("reconciled")
-                                            is True
-                                            and retained_startup.get("blocked")
-                                            is not True
-                                            and retained_startup.get(
-                                                "safe_to_restart"
-                                            )
-                                            is True
+                                        if not self._retained_startup_allows_normal_launch(
+                                            retained_startup
                                         ):
                                             raise RuntimeError(
                                                 "retained recovery prelaunch gate blocked"
@@ -15297,6 +15290,26 @@ class PortalImplementationSupervisor:
                 "retained recovery repository authority does not match its seal"
             )
         return True
+
+    @staticmethod
+    def _retained_startup_allows_normal_launch(
+        retained_startup: Mapping[str, Any] | None,
+    ) -> bool:
+        """Require exact completed reconciliation before ordinary dispatch.
+
+        Task aliases, diagnostic reasons, and nested recovery hints are not
+        restart authority.  In particular, no later daemon-side gate may be
+        used to bypass an explicit ``safe_to_restart=False`` prelaunch result.
+        """
+
+        return bool(
+            isinstance(retained_startup, Mapping)
+            and retained_startup.get("reconciled") is True
+            and retained_startup.get("blocked") is False
+            and retained_startup.get("reconciliation_complete") is True
+            and retained_startup.get("quiesced") is True
+            and retained_startup.get("safe_to_restart") is True
+        )
 
     @staticmethod
     def _normalized_quack_owner_binding(

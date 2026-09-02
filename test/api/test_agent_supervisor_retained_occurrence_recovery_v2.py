@@ -497,6 +497,43 @@ def test_retained_manifest_uses_explicit_base_namespace_with_g9_branch(
     assert not supervisor._retained_fenced_provider_program_applicable(program)
 
 
+def test_retained_startup_normal_launch_requires_exact_safe_evidence() -> None:
+    admitted = {
+        "reconciled": True,
+        "blocked": False,
+        "reconciliation_complete": True,
+        "quiesced": True,
+        "safe_to_restart": True,
+    }
+    allows = PortalImplementationSupervisor._retained_startup_allows_normal_launch
+
+    assert allows(admitted)
+    assert not allows(None)
+    for field in admitted:
+        missing = dict(admitted)
+        missing.pop(field)
+        assert not allows(missing), field
+
+    unsafe_extra_gate_hint = {
+        **admitted,
+        "safe_to_restart": False,
+        "reason": "database_portal_retained_reconciliation_blocked",
+        "task_alias": "PCTDD-005",
+        "blocked_task_ids": ["PCTDD-006", "PCTDD-007", "PCTDD-034"],
+        "outcomes": [
+            {
+                "task_alias": "PCTDD-005",
+                "reason": "callback_authority_incomplete_blocked",
+                "provider_dispatched": False,
+            }
+        ],
+        "retained_occurrence_reconciliation": {
+            "reason": "database_unknown_outcome_blocked",
+        },
+    }
+    assert not allows(unsafe_extra_gate_hint)
+
+
 def test_credit_is_acyclic_closed_and_rejects_unknown_or_cross_pin_data() -> None:
     occurrence = _pin("PCTDD-006")
     credit = dict(database_fenced_provider_retained_credit(occurrence))
