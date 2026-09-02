@@ -145,6 +145,26 @@ CONFIGURED_BOARD_LIVE_SEAL_VERIFIERS = MappingProxyType(
     }
 )
 PLAN_BOUND_REPLAN_RETURN_CODE = 75
+SHARED_AUTHORITY_TERMINAL_STATUS = "shared_authority_terminal"
+SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND = (
+    "shared_database_authority_unavailable"
+)
+DATABASE_AUTHORITY_WATCHDOG_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-authority-watchdog@1"
+)
+IMPLEMENTATION_SUPERVISOR_STATUS_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "todo_implementation_supervisor.supervisor"
+)
+SHARED_AUTHORITY_PENDING_BLOCKERS = frozenset(
+    {
+        "implementation_worker_active",
+        "validation_worker_active",
+        "managed_child_not_live",
+        "managed_child_has_descendants",
+        "supervisor_checkout_transaction_active",
+    }
+)
 SEALED_CONTROL_PLANE_MODULES = frozenset(
     {
         "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler",
@@ -4922,6 +4942,135 @@ def terminal_task_state_fields(
     }
 
 
+def _shared_authority_terminal_projection(
+    payload: Mapping[str, Any],
+    *,
+    expected_store_generation: str,
+    expected_repo_root: Path,
+) -> dict[str, object]:
+    """Strictly decode the one lane terminal that forbids blind restart."""
+
+    if (
+        payload.get("schema") != IMPLEMENTATION_SUPERVISOR_STATUS_SCHEMA
+        or payload.get("status") != SHARED_AUTHORITY_TERMINAL_STATUS
+        or not isinstance(payload.get("run_id"), str)
+        or not payload.get("run_id")
+        or payload.get("shared_authority_terminal") is not True
+        or payload.get("terminal_kind")
+        != SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND
+        or payload.get("attempt_budget_consumed") is not False
+        or payload.get("provider_invocation_consumed") is not False
+        or payload.get("task_completion_authority") is not False
+        or payload.get("generation_restart_authorized") is not False
+        or payload.get("control_plane_reload_authorized") is not False
+        or payload.get("operator_successor_required") is not True
+    ):
+        return {}
+    generation = payload.get("configured_store_generation")
+    watchdog = payload.get("database_authority_watchdog")
+    guard = payload.get("database_authority_terminal_guard")
+    if (
+        not expected_store_generation
+        or not isinstance(generation, str)
+        or generation != expected_store_generation
+        or not isinstance(watchdog, Mapping)
+        or watchdog.get("schema") != DATABASE_AUTHORITY_WATCHDOG_SCHEMA
+        or watchdog.get("state") != "terminal"
+        or watchdog.get("terminal") is not True
+        or not isinstance(guard, Mapping)
+        or guard.get("safe") is not True
+        or guard.get("blockers") != []
+        or guard.get("attempt_budget_consumed") is not False
+        or guard.get("provider_invocation_consumed") is not False
+        or guard.get("task_completion_authority") is not False
+        or guard.get("generation_restart_authorized") is not False
+        or guard.get("operator_successor_required") is not True
+    ):
+        return {}
+    try:
+        payload_repo_root = Path(str(payload.get("repo_root") or "")).resolve(
+            strict=True
+        )
+        canonical_expected_repo_root = expected_repo_root.resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        return {}
+    if payload_repo_root != canonical_expected_repo_root:
+        return {}
+    return {
+        "shared_authority_terminal": True,
+        "shared_authority_terminal_kind": (
+            SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND
+        ),
+        "configured_store_generation": generation,
+        "attempt_budget_consumed": False,
+        "provider_invocation_consumed": False,
+        "task_completion_authority": False,
+        "generation_restart_authorized": False,
+        "control_plane_reload_authorized": False,
+        "operator_successor_required": True,
+    }
+
+
+def _shared_authority_pending_projection(
+    payload: Mapping[str, Any],
+    *,
+    expected_store_generation: str,
+    expected_repo_root: Path,
+) -> dict[str, object]:
+    """Decode secret-free pending evidence without granting stop authority."""
+
+    watchdog = payload.get("database_authority_watchdog")
+    guard = payload.get("database_authority_terminal_guard")
+    blockers = guard.get("blockers") if isinstance(guard, Mapping) else None
+    if (
+        not expected_store_generation
+        or payload.get("schema") != IMPLEMENTATION_SUPERVISOR_STATUS_SCHEMA
+        or not isinstance(payload.get("run_id"), str)
+        or not payload.get("run_id")
+        or payload.get("shared_authority_terminal") is not False
+        or payload.get("shared_authority_terminal_pending") is not True
+        or payload.get("terminal_kind")
+        != SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND
+        or payload.get("configured_store_generation")
+        != expected_store_generation
+        or payload.get("attempt_budget_consumed") is not False
+        or payload.get("provider_invocation_consumed") is not False
+        or payload.get("task_completion_authority") is not False
+        or payload.get("generation_restart_authorized") is not False
+        or payload.get("control_plane_reload_authorized") is not False
+        or payload.get("operator_successor_required") is not True
+        or not isinstance(watchdog, Mapping)
+        or watchdog.get("schema") != DATABASE_AUTHORITY_WATCHDOG_SCHEMA
+        or watchdog.get("state") != "terminal"
+        or watchdog.get("terminal") is not True
+        or not isinstance(guard, Mapping)
+        or guard.get("safe") is not False
+        or not isinstance(blockers, list)
+        or not blockers
+        or any(item not in SHARED_AUTHORITY_PENDING_BLOCKERS for item in blockers)
+    ):
+        return {}
+    try:
+        if (
+            Path(str(payload.get("repo_root") or "")).resolve(strict=True)
+            != expected_repo_root.resolve(strict=True)
+        ):
+            return {}
+    except (OSError, RuntimeError, ValueError):
+        return {}
+    return {
+        "shared_authority_terminal_pending": True,
+        "shared_authority_terminal_kind": (
+            SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND
+        ),
+        "shared_authority_terminal_blockers": list(blockers),
+        "configured_store_generation": expected_store_generation,
+        "task_completion_authority": False,
+        "generation_restart_authorized": False,
+        "operator_successor_required": True,
+    }
+
+
 def supervisor_status_health_fields(
     track: SupervisorTrack,
     *,
@@ -5010,17 +5159,17 @@ def supervisor_status_health_fields(
             **fields,
         }
 
-    payload = _read_json_dict(status_path)
-    if not payload:
+    try:
+        payload, status_evidence = _read_stable_regular_json(status_path)
+    except _StableArtifactReadError:
+        return awaiting_current_generation("unsafe")
+    if payload is None:
         return awaiting_current_generation("missing")
+    status_mtime = float(int(status_evidence.get("mtime_ns") or 0)) / 1e9
     updated_at = _parse_status_timestamp(payload.get("updated_at") or payload.get("heartbeat_at"))
     if updated_at is None:
         return awaiting_current_generation("unknown")
     if startup_started_at is not None:
-        try:
-            status_mtime = status_path.stat().st_mtime
-        except OSError:
-            return awaiting_current_generation("missing")
         recorded_supervisor_pid = payload.get("supervisor_pid")
         expected_pid_is_bound = bool(
             type(expected_supervisor_pid) is int
@@ -5050,11 +5199,71 @@ def supervisor_status_health_fields(
                 supervisor_status_predates_process=status_predates_process,
             )
     age_seconds = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds())
+    expected_store_generation = str(
+        getattr(resolved.database_program, "store_generation", "") or ""
+    )
+    terminal_projection = _shared_authority_terminal_projection(
+        payload,
+        expected_store_generation=expected_store_generation,
+        expected_repo_root=repo_root,
+    )
+    if terminal_projection:
+        recorded_supervisor_pid = payload.get("supervisor_pid")
+        try:
+            terminal_not_before = float(
+                supervisor_status_not_before_epoch_seconds
+            )
+        except (TypeError, ValueError):
+            terminal_not_before = 0.0
+        terminal_process_bound = bool(
+            type(expected_supervisor_pid) is int
+            and expected_supervisor_pid > 1
+            and type(recorded_supervisor_pid) is int
+            and recorded_supervisor_pid == expected_supervisor_pid
+            and terminal_not_before > 0.0
+            and updated_at.timestamp() + 1e-6 >= terminal_not_before
+            and status_mtime + 1e-6 >= terminal_not_before
+        )
+        terminal_fresh = bool(
+            stale_seconds <= 0 or age_seconds <= stale_seconds
+        )
+        if terminal_process_bound and terminal_fresh:
+            return {
+                "supervisor_status": SHARED_AUTHORITY_TERMINAL_STATUS,
+                "supervisor_status_path": str(status_path),
+                "supervisor_status_age_seconds": round(age_seconds, 1),
+                "supervisor_terminal_process_bound": True,
+                "supervisor_terminal_fresh": True,
+                "restart_supervisor": False,
+                **terminal_projection,
+            }
+    pending_projection = _shared_authority_pending_projection(
+        payload,
+        expected_store_generation=expected_store_generation,
+        expected_repo_root=repo_root,
+    )
+    try:
+        pending_not_before = float(
+            supervisor_status_not_before_epoch_seconds
+        )
+        pending_status_mtime = status_mtime
+    except (TypeError, ValueError):
+        pending_not_before = 0.0
+        pending_status_mtime = 0.0
+    pending_process_bound = bool(
+        type(expected_supervisor_pid) is int
+        and expected_supervisor_pid > 1
+        and payload.get("supervisor_pid") == expected_supervisor_pid
+        and pending_not_before > 0.0
+        and updated_at.timestamp() + 1e-6 >= pending_not_before
+        and pending_status_mtime + 1e-6 >= pending_not_before
+    )
     if stale_seconds <= 0 or age_seconds <= stale_seconds:
         return {
             "supervisor_status": "live",
             "supervisor_status_path": str(status_path),
             "supervisor_status_age_seconds": round(age_seconds, 1),
+            **(pending_projection if pending_process_bound else {}),
         }
 
     child_state_path = _relative_or_absolute_path(
@@ -5120,6 +5329,14 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
         parts.append(f"supervisor_active_task_id={active_task_id}")
     if fields.get("restart_supervisor"):
         parts.append("restart_supervisor=true")
+    if fields.get("shared_authority_terminal_pending"):
+        parts.append("shared_authority_terminal_pending=true")
+        blockers = fields.get("shared_authority_terminal_blockers")
+        if isinstance(blockers, list) and blockers:
+            parts.append(
+                "shared_authority_terminal_blockers="
+                + ",".join(str(item) for item in blockers)
+            )
     return " ".join(parts)
 
 
@@ -8166,6 +8383,10 @@ def run_supervisor_tracks(
     reassignment_count = 0
     reassignment_blockers: list[str] = []
     scope_drift_receipts: list[dict[str, Any]] = []
+    shared_authority_terminals: list[dict[str, Any]] = []
+    shared_authority_terminal_tracks: set[str] = set()
+    shared_authority_fenced_tracks: list[dict[str, Any]] = []
+    shared_authority_fenced_track_names: set[str] = set()
     replan_required = False
     run_started_at = time.time()
     process_started_at: dict[str, float] = {}
@@ -8342,8 +8563,13 @@ def run_supervisor_tracks(
                 max(0.0, deadline - time.monotonic()),
             )
             time.sleep(sleep_for)
+            observations: list[tuple[Any, ...]] = []
             for track in tuple(managed_tracks):
-                if track.name in bounded_finished_tracks:
+                if (
+                    track.name in bounded_finished_tracks
+                    or track.name in shared_authority_terminal_tracks
+                    or track.name in shared_authority_fenced_track_names
+                ):
                     continue
                 process = processes.get(track.name)
                 resolved = track.resolve(resolved_repo_root)
@@ -8368,7 +8594,81 @@ def run_supervisor_tracks(
                         process_started_monotonic.get(track.name)
                     ),
                 )
-                if process is not None and process.poll() is None and pid_alive(process.pid):
+                observations.append(
+                    (
+                        track,
+                        process,
+                        resolved,
+                        daemon_fields,
+                        supervisor_fields,
+                    )
+                )
+                if supervisor_fields.get("shared_authority_terminal") is True:
+                    terminal = {
+                        "track": track.name,
+                        "terminal_kind": str(
+                            supervisor_fields.get(
+                                "shared_authority_terminal_kind"
+                            )
+                            or ""
+                        ),
+                        "configured_store_generation": str(
+                            supervisor_fields.get(
+                                "configured_store_generation"
+                            )
+                            or ""
+                        ),
+                        "task_completion_authority": False,
+                        "generation_restart_authorized": False,
+                        "control_plane_reload_authorized": False,
+                        "operator_successor_required": True,
+                        "supervisor_status_path": str(
+                            supervisor_fields.get("supervisor_status_path")
+                            or ""
+                        ),
+                        "supervisor_terminal_process_bound": bool(
+                            supervisor_fields.get(
+                                "supervisor_terminal_process_bound"
+                            )
+                        ),
+                        "supervisor_terminal_fresh": bool(
+                            supervisor_fields.get("supervisor_terminal_fresh")
+                        ),
+                    }
+                    shared_authority_terminals.append(terminal)
+                    shared_authority_terminal_tracks.add(track.name)
+                    _emit(
+                        output,
+                        (
+                            "shared-authority drain: current process-bound "
+                            f"safe terminal track={track.name} "
+                            f"terminal_kind={terminal['terminal_kind']} "
+                            "configured_store_generation="
+                            f"{terminal['configured_store_generation']}"
+                        ),
+                    )
+
+            # Observe every non-settled track before taking any restart,
+            # reassignment, or task-disposition action.  Otherwise an exited
+            # track ordered before the first shared-authority terminal could
+            # be restarted or terminalized in the same poll that a later
+            # track already proved the shared authority unavailable.
+            shared_authority_drain = bool(shared_authority_terminal_tracks)
+            for (
+                track,
+                process,
+                resolved,
+                daemon_fields,
+                supervisor_fields,
+            ) in observations:
+                if track.name in shared_authority_terminal_tracks:
+                    continue
+                process_live = bool(
+                    process is not None
+                    and process.poll() is None
+                    and pid_alive(process.pid)
+                )
+                if process_live:
                     supervisor_summary = format_supervisor_status_fields(supervisor_fields)
                     heartbeat_parts = [
                         f"heartbeat {track.name} supervisor_pid={process.pid}",
@@ -8380,7 +8680,21 @@ def run_supervisor_tracks(
                         output,
                         " ".join(heartbeat_parts),
                     )
-                    if supervisor_fields.get("restart_supervisor"):
+                    if shared_authority_drain:
+                        # Another lane has proved the shared authority loss.
+                        # This current live lane must publish its own
+                        # process-bound safe terminal; never fence or restart
+                        # it based only on its peer's status.
+                        _emit(
+                            output,
+                            (
+                                "shared-authority drain pending "
+                                f"track={track.name} supervisor_pid={process.pid}"
+                            ),
+                        )
+                    elif (
+                        supervisor_fields.get("restart_supervisor")
+                    ):
                         daemon_pid = daemon_fields.get("daemon_pid")
                         _emit(
                             output,
@@ -8414,6 +8728,43 @@ def run_supervisor_tracks(
                             terminal_tracks.add(track.name)
                     continue
                 old_pid = None if process is None else process.pid
+                if shared_authority_drain:
+                    # A peer terminal cannot authorize task disposition.  An
+                    # already exited lane can, however, be coordinator-proved
+                    # safe by fencing its residual process tree.  Preserve all
+                    # task, attempt, worktree, and lock records untouched.
+                    if process is not None:
+                        fenced, member_pids = _terminate_managed_process(
+                            process,
+                            grace_seconds=stop_grace_seconds,
+                        )
+                    else:
+                        fenced, member_pids = True, []
+                    if not fenced:
+                        raise SupervisorRunInterrupted(
+                            "could not fence exited shared-authority peer "
+                            f"{track.name} descendants"
+                        )
+                    shared_authority_fenced_track_names.add(track.name)
+                    shared_authority_fenced_tracks.append(
+                        {
+                            "track": track.name,
+                            "supervisor_pid": int(old_pid or 0),
+                            "member_pids": [int(pid) for pid in member_pids],
+                            "process_tree_fenced": True,
+                            "task_disposition_written": False,
+                            "attempt_budget_consumed": False,
+                            "provider_invocation_consumed": False,
+                        }
+                    )
+                    _emit(
+                        output,
+                        (
+                            "shared-authority drain: exited peer tree fenced "
+                            f"track={track.name} old_pid={old_pid or 'none'}"
+                        ),
+                    )
+                    continue
                 if "--plan-bound-dispatch" in track.extra_args:
                     returncode = None if process is None else process.poll()
                     if process is not None:
@@ -8641,6 +8992,33 @@ def run_supervisor_tracks(
                             f"could not fence exited {track.name} descendants"
                         )
                 processes[track.name] = start_managed_track(track)
+            if shared_authority_terminals:
+                # This is a shared state-authority terminal, not a task/slice
+                # failure.  Do not restart lanes, reassign slices, fabricate
+                # task disposition, or fence a peer with live effects.  The
+                # whole wave can stop only after every non-finished lane has
+                # supplied its own current process-bound safe terminal or its
+                # already exited process tree was coordinator-fenced above.
+                required_tracks = {
+                    candidate.name
+                    for candidate in managed_tracks
+                    if candidate.name not in bounded_finished_tracks
+                }
+                settled_tracks = (
+                    shared_authority_terminal_tracks
+                    | shared_authority_fenced_track_names
+                )
+                if required_tracks.issubset(settled_tracks):
+                    blocked = (
+                        "shared database authority unavailable; every live "
+                        "lane reached a process-bound safe terminal and exact "
+                        "generation restart requires a sealed operator successor"
+                    )
+                    _emit(output, f"blocked: {blocked}")
+                    break
+                # Authority is unavailable, so neither reassignment nor any
+                # normal exited-lane restart may proceed during this drain.
+                continue
             dispatch_pending_reassignments()
             if replan_required:
                 _emit(
@@ -8672,6 +9050,12 @@ def run_supervisor_tracks(
                         "all supervisor tracks reached fresh terminal quiescence",
                     )
                 break
+        if shared_authority_terminals and not blocked:
+            blocked = (
+                "shared database authority drain exceeded its finite run "
+                "window before every live lane reached a safe terminal"
+            )
+            _emit(output, f"blocked: {blocked}")
         if (
             plan_children_by_name
             and not terminal_quiescent
@@ -8689,6 +9073,8 @@ def run_supervisor_tracks(
             _emit(output, f"blocked: {blocked}")
         if terminal_quiescent:
             _emit(output, "completed after terminal board drain")
+        elif shared_authority_terminals:
+            _emit(output, "ended at typed shared-authority terminal")
         else:
             _emit(output, "completed requested run window")
     except PlanBoundProcessBirthError as exc:
@@ -8734,6 +9120,8 @@ def run_supervisor_tracks(
         "terminal_quiescent": terminal_quiescent,
         "replan_required": replan_required,
         "scope_drift_receipts": scope_drift_receipts,
+        "shared_authority_terminals": shared_authority_terminals,
+        "shared_authority_fenced_tracks": shared_authority_fenced_tracks,
     }
 
 
@@ -9579,6 +9967,8 @@ def main(argv: list[str] | None = None) -> int:
         run_result.get("completed") is not True
         or run_result.get("all_trees_fenced") is not True
     ):
+        return 2
+    if run_result.get("shared_authority_terminals"):
         return 2
     return 0
 
