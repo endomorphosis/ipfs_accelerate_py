@@ -283,6 +283,22 @@ _M60_PRIOR_PROJECTION_CID = (
 _M60_TARGET_PROJECTION_CID = (
     "baguqeeralfpnll4xq4q6civgnvtysarwknb6qclztsiqph6wupks63ysj2qa"
 )
+_M61_AUTHORITY_CID = (
+    "sha256:3da8076203177ab442e2fc59fe2a6a33571dba4d5328baf486579e5f1cd9e09a"
+)
+_M61_AUTHORITY_SIZE = 16_340
+_M61_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M61_FINAL_CONTROL_AUTHORITY_CID"
+_M61_SUCCESSOR_KEY = (
+    "post_m60_mappingproxy_identity_normalization_successor_materialization"
+)
+_M61_MIGRATION_REVISION = "SAWM-R2-M61"
+_M61_GENERATION = 43
+_M61_PRIOR_EVENT_WATERMARK = 330
+_M61_TARGET_EVENT_WATERMARK = 331
+_M61_PRIOR_PROJECTION_CID = _M60_TARGET_PROJECTION_CID
+_M61_TARGET_PROJECTION_CID = (
+    "baguqeerasshcjudjgsl563kvif67woq446wiqivjvqa24ep5b5evdvgemk4q"
+)
 _M47_AUTHORITY_CID = (
     "sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444"
 )
@@ -3581,6 +3597,106 @@ def _m58_post_m57_stall_unblock_and_shutdown_fence_restart_errors(
     return errors
 
 
+def _m61_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = _M61_SUCCESSOR_KEY
+    return key in scheduler or key in migration or f"{key}_cid" in seal
+
+
+def _m61_post_m60_mappingproxy_identity_normalization_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path,
+) -> list[str]:
+    """Validate M61's exact same-owner generation-43/event-331 authority."""
+
+    errors: list[str] = []
+    key = _M61_SUCCESSOR_KEY
+    presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m61_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M61 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer
+            ._expected_m61_post_m60_mappingproxy_identity_normalization_authority()
+        )
+        reference = dict(materializer._m61_authority_reference())
+        contract = materializer._validated_m61_live_preflight_contract(expected)
+        configured = materializer._m61_successor_configured_on_any_surface(
+            root, scheduler
+        )
+        prior = expected.get("prior_authority")
+        chain = expected.get("source_chain")
+        preservation = expected.get("preservation")
+        materializer._assert_m61_source_delta(
+            root, materializer.build_population(root), expected
+        )
+        if (
+            not all(presence)
+            or configured is not True
+            or not isinstance(prior, Mapping)
+            or not isinstance(chain, Mapping)
+            or not isinstance(preservation, Mapping)
+            or scheduler.get(key) != reference
+            or migration.get(key) != reference
+            or seal.get(f"{key}_cid") != _M61_AUTHORITY_CID
+            or materializer._identity(expected) != _M61_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M61_AUTHORITY_SIZE
+            or materializer._M61_AUTHORITY_CID == _M61_UNSEALED_AUTHORITY_CID
+            or materializer._M61_AUTHORITY_CID != _M61_AUTHORITY_CID
+            or materializer._M61_AUTHORITY_SIZE != _M61_AUTHORITY_SIZE
+            or expected.get("migration_revision") != _M61_MIGRATION_REVISION
+            or expected.get("migration_kind") != key
+            or expected.get("target_generation") != _M61_GENERATION
+            or expected.get("target_event_watermark")
+            != _M61_TARGET_EVENT_WATERMARK
+            or expected.get("target_projection_cid")
+            != _M61_TARGET_PROJECTION_CID
+            or prior.get("migration_revision") != _M60_MIGRATION_REVISION
+            or prior.get("authority_cid") != _M60_AUTHORITY_CID
+            or prior.get("event_watermark") != _M61_PRIOR_EVENT_WATERMARK
+            or prior.get("projection_cid") != _M61_PRIOR_PROJECTION_CID
+            or prior.get("receipt_cid")
+            != materializer._M61_M60_RECEIPT_CID
+            or contract.get("target_generation") != _M61_GENERATION
+            or contract.get("prior_event_watermark")
+            != _M61_PRIOR_EVENT_WATERMARK
+            or contract.get("target_event_watermark")
+            != _M61_TARGET_EVENT_WATERMARK
+            or contract.get("prior_projection_cid")
+            != _M61_PRIOR_PROJECTION_CID
+            or contract.get("target_projection_cid")
+            != _M61_TARGET_PROJECTION_CID
+            or contract.get("same_live_owner_required") is not True
+            or contract.get("generation_restart_authorized") is not False
+            or contract.get("m60_receipt_must_be_preserved") is not True
+            or contract.get("event_330_must_be_preserved") is not True
+            or chain.get("repair_commit_count") != 2
+            or chain.get("final_control_commit_count") != 1
+            or chain.get("current_commit_identity_embedded_in_authority") is not False
+            or preservation.get("m60_receipt_preserved_exactly") is not True
+            or preservation.get("generation_restart") is not False
+        ):
+            errors.append("M61 MappingProxy identity-normalization authority differs")
+    except Exception as exc:
+        errors.append(
+            "M61 MappingProxy identity-normalization authority unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        )
+    return errors
+
+
 def _m60_successor_declared(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
@@ -3596,6 +3712,7 @@ def _m60_partial_m59_receipt_failure_recovery_errors(
     migration: Mapping[str, Any],
     *,
     root: Path,
+    require_current_source: bool = True,
 ) -> list[str]:
     """Validate M60's exact same-owner generation-43/event-330 authority."""
 
@@ -3623,9 +3740,10 @@ def _m60_partial_m59_receipt_failure_recovery_errors(
         prior = expected.get("prior_authority")
         chain = expected.get("source_chain")
         preservation = expected.get("preservation")
-        materializer._assert_m60_source_delta(
-            root, materializer.build_population(root), expected
-        )
+        if require_current_source:
+            materializer._assert_m60_source_delta(
+                root, materializer.build_population(root), expected
+            )
         if (
             not all(presence)
             or configured is not True
@@ -15174,6 +15292,68 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m61_key = _M61_SUCCESSOR_KEY
+    m61_presence = (
+        m61_key in scheduler,
+        m61_key in migration,
+        f"{m61_key}_cid" in seal,
+    )
+    if any(m61_presence):
+        if not all(m61_presence):
+            return effective, ["active M61 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m61_nested_source_materializer",
+                REPO_ROOT
+                / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M61 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer
+                ._expected_m61_post_m60_mappingproxy_identity_normalization_authority()
+            )
+            materializer._validated_m61_live_preflight_contract(authority)
+            materializer._assert_m61_source_delta(
+                REPO_ROOT, materializer.build_population(REPO_ROOT), authority
+            )
+            reference = dict(materializer._m61_authority_reference())
+        except Exception as exc:
+            return effective, [
+                f"active M61 nested-source authority unavailable: {exc}"
+            ]
+        if (
+            scheduler.get(m61_key) != reference
+            or migration.get(m61_key) != reference
+            or seal.get(f"{m61_key}_cid") != _M61_AUTHORITY_CID
+            or materializer._identity(authority) != _M61_AUTHORITY_CID
+            or len(materializer._canonical(authority)) != _M61_AUTHORITY_SIZE
+        ):
+            return effective, ["active M61 nested-source authority differs"]
+        for package, gitlink_key, tree_key in (
+            (
+                "ipfs_datasets_py", "current_datasets_gitlink",
+                "current_datasets_tree",
+            ),
+            ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree"),
+        ):
+            gitlink = str(authority.get(gitlink_key) or "")
+            tree = str(authority.get(tree_key) or "")
+            if (
+                package not in effective
+                or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+                or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            ):
+                return effective, ["active M61 nested-source identity is invalid"]
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
     m60_key = _M60_SUCCESSOR_KEY
     m60_presence = (
         m60_key in scheduler,
@@ -17417,6 +17597,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m61_key = _M61_SUCCESSOR_KEY
+        m61_presence = (
+            m61_key in scheduler_probe,
+            m61_key in migration_probe,
+            f"{m61_key}_cid" in seal,
+        )
         m60_key = _M60_SUCCESSOR_KEY
         m60_presence = (
             m60_key in scheduler_probe,
@@ -17671,7 +17857,44 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m60_presence):
+        if any(m61_presence):
+            scheduled = scheduler_probe.get(m61_key)
+            migrated = migration_probe.get(m61_key)
+            if not all(m61_presence) or scheduled != migrated:
+                unexpected = ["M61 authority is partial or differs across controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m61_source_status_materializer",
+                    root
+                    / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M61 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer
+                        ._expected_m61_post_m60_mappingproxy_identity_normalization_authority()
+                    )
+                    materializer._validated_m61_live_preflight_contract(expected)
+                    materializer._assert_m61_source_delta(
+                        root, materializer.build_population(root), expected
+                    )
+                    reference = dict(materializer._m61_authority_reference())
+                    if (
+                        scheduled != reference
+                        or seal.get(f"{m61_key}_cid") != _M61_AUTHORITY_CID
+                        or materializer._identity(expected) != _M61_AUTHORITY_CID
+                        or len(materializer._canonical(expected))
+                        != _M61_AUTHORITY_SIZE
+                    ):
+                        unexpected = [
+                            "M61 authority/CID differs across controls"
+                        ]
+                    else:
+                        unexpected = []
+        elif any(m60_presence):
             scheduled = scheduler_probe.get(m60_key)
             migrated = migration_probe.get(m60_key)
             if not all(m60_presence) or scheduled != migrated:
@@ -19569,6 +19792,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m61_declared = _m61_successor_declared(scheduler, seal, migration)
         m60_declared = _m60_successor_declared(scheduler, seal, migration)
         m59_declared = _m59_successor_declared(scheduler, seal, migration)
         m58_declared = _m58_successor_declared(scheduler, seal, migration)
@@ -19604,7 +19828,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m60_declared
+            m61_declared
+            or m60_declared
             or m59_declared
             or m58_declared
             or m57_declared
@@ -19640,7 +19865,27 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m60_declared:
+            if m61_declared:
+                protocol_errors.extend(
+                    _m61_post_m60_mappingproxy_identity_normalization_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+                if not m60_declared:
+                    protocol_errors.append(
+                        "M61 successor does not preserve the immutable M60 controls"
+                    )
+                else:
+                    protocol_errors.extend(
+                        _m60_partial_m59_receipt_failure_recovery_errors(
+                            scheduler,
+                            seal,
+                            migration,
+                            root=root,
+                            require_current_source=False,
+                        )
+                    )
+            if m60_declared and not m61_declared:
                 protocol_errors.extend(
                     _m60_partial_m59_receipt_failure_recovery_errors(
                         scheduler, seal, migration, root=root

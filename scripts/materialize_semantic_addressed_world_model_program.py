@@ -4428,6 +4428,114 @@ _M60_FINAL_RECEIPT_NAME = "m60-source-successor-receipt.json"
 _M60_EXPECTED_TASK_HEADS = MappingProxyType(dict(_M59_EXPECTED_TASK_HEADS))
 
 
+# M61 preserves the accepted M60 event-330/evidence-63 append and receipt,
+# then seals the bounded MappingProxyType identity-boundary repair.  It keeps
+# the exact generation-43 owner, appends one evidence-only event, and neither
+# authorizes a restart nor changes any task, goal, provider, or completion.
+_M61_MIGRATION_REVISION = "SAWM-R2-M61"
+_M61_SUPERSESSION_MODE = (
+    "append_only_same_owner_post_m60_mappingproxy_identity_normalization_source_seal"
+)
+_M61_SUPERSESSION_REASON = (
+    "post_m60_mappingproxy_identity_normalization_successor_materialization"
+)
+_M61_CONTROL_RECORDED_AT = "2026-09-02T15:39:31Z"
+_M61_AUTHORITY_CID = (
+    "sha256:3da8076203177ab442e2fc59fe2a6a33571dba4d5328baf486579e5f1cd9e09a"
+)
+_M61_AUTHORITY_SIZE = 16_340
+_M61_GENERATION = _M60_GENERATION
+_M61_PRIOR_EVENT_WATERMARK = _M60_TARGET_EVENT_WATERMARK
+_M61_TARGET_EVENT_WATERMARK = 331
+_M61_TARGET_PLAN_REVISION = _M60_TARGET_PLAN_REVISION
+_M61_TARGET_QUACK_PORT = _M60_TARGET_QUACK_PORT
+_M61_PRIOR_EVENT_PREFIX_SHA256 = (
+    "240292917ade535d1573bd4782266ba992bcfcca062d7659857633522fd85ce8"
+)
+_M61_PRIOR_PROJECTION_CID = _M60_TARGET_PROJECTION_CID
+_M61_TARGET_PROJECTION_CID = (
+    "baguqeerasshcjudjgsl563kvif67woq446wiqivjvqa24ep5b5evdvgemk4q"
+)
+_M61_SEMANTIC_AUTHORITY_DIGEST = (
+    "sha256:cb8d6361dd0e5cbfaf31730489e5c74ceff80cbb4a0f3f1bf049f043bfb70003"
+)
+_M61_PRIOR_EVIDENCE_NODE_COUNT = _M60_TARGET_EVIDENCE_NODE_COUNT
+_M61_TARGET_EVIDENCE_NODE_COUNT = 64
+_M61_PRIOR_EVIDENCE_EVENT_COUNT = _M60_TARGET_EVIDENCE_EVENT_COUNT
+_M61_TARGET_EVIDENCE_EVENT_COUNT = 53
+_M61_VALIDATION_EVENT_COUNT = _M60_VALIDATION_EVENT_COUNT
+_M61_PASSED_VALIDATION_EVENT_COUNT = _M60_PASSED_VALIDATION_EVENT_COUNT
+_M61_EVIDENCE_KIND = (
+    "operator_control_plane_post_m60_mappingproxy_identity_normalization"
+)
+_M61_STORE_ID = _M60_STORE_ID
+_M61_COORDINATION_STORE_ID = _M60_COORDINATION_STORE_ID
+_M61_RUNTIME_ROOT = _M60_RUNTIME_ROOT
+_M61_WORKTREE_ROOT = _M60_WORKTREE_ROOT
+_M61_DATABASE_UUID = _M60_DATABASE_UUID
+_M61_EXTENSION_FINGERPRINT = _M60_EXTENSION_FINGERPRINT
+_M61_LIVE_SERVER_ID = _M60_LIVE_SERVER_ID
+_M61_LIVE_PROCESS_BIRTH_ID = _M60_LIVE_PROCESS_BIRTH_ID
+_M61_LIVE_STARTED_AT = _M60_LIVE_STARTED_AT
+_M61_LIVE_STARTUP_EPOCH = _M60_LIVE_STARTUP_EPOCH
+_M61_LIVE_PROCESS_BIRTH = _M60_LIVE_PROCESS_BIRTH
+_M61_M60_AUTHORITY_CID = _M60_AUTHORITY_CID
+_M61_M60_AUTHORITY_SIZE = _M60_AUTHORITY_SIZE
+_M61_M60_RECEIPT_NAME = _M60_FINAL_RECEIPT_NAME
+_M61_M60_RECEIPT_SHA256 = (
+    "01dba37249272279c3b75c5b0bcda1420282681500ac7d1d416ff3cbbf06b35b"
+)
+_M61_M60_RECEIPT_SIZE = 4_913
+_M61_M60_RECEIPT_CID = (
+    "sha256:0869f0fb17baa8841c9dfe7dfaff74b8ee8e97e32ea942b721f1a452d0b43c49"
+)
+_M61_M60_EVENT_ID = (
+    "baguqeerasetkukdm7r6wvokiyn2opeixrhtamubmwgyvhbs2qsknreacyoda"
+)
+_M61_M60_EVIDENCE_ID = (
+    "baguqeerabvbj62gtdcxcvq4z5c5ubzof7kt2esemhhtw5xxbr3uvm4ubu6ba"
+)
+_M61_M60_MIGRATION_DIGEST = (
+    "sha256:8440528ccaa8489b0c1253ed164a49879c6e9d211bf1d84381a53de612cd4597"
+)
+_M61_M60_PROGRAM_DEFINITION_CID = (
+    "sha256:f581af1f2234c127231b47bb1bb8d42910b984dcd1bece9a6303949ac1ba0b72"
+)
+_M61_M60_SOURCE_BINDING_CID = (
+    "sha256:189619129c050a94900a40489ba9cb2c15fc0a96babaa8c6afd7d1b05ec3a9d0"
+)
+_M61_M60_VALIDATION_DIGEST = (
+    "sha256:8a75f0788c18d5ea525a819d99f8ac474cf109c0426e3f307234cc436835a0e7"
+)
+_M61_M60_CONTROL_COMMIT = "f44296111f2ec5a02c385274a695ed890fff6e50"
+_M61_M60_CONTROL_PARENT = _M60_VERIFIER_REPAIR_COMMIT
+_M61_M60_CONTROL_TREE = "73459c29f8d1ea020790ada26dbe3e0e8c297425"
+_M61_REPAIR_PARENT = _M61_M60_CONTROL_COMMIT
+_M61_REPAIR_INTERMEDIATE_COMMIT = "50119ae8e3d452be96d9b74b2019a1df3591efb7"
+_M61_REPAIR_COMMIT = "3aead9b34a0b8d58a4833a5ce2faec723fe04fab"
+_M61_REPAIR_TREE = "1bb36d95749cfbe64ea2624a1c359f3988a169d4"
+_M61_REPAIR_DIFF_SHA256 = (
+    "2ca51685e31f2b23d9aba67b4cebac0be03850fba37707ee8a02f3135be98a82"
+)
+_M61_REPAIR_BLOBS = MappingProxyType(
+    {
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "e0390cbba6380bfe0ffbc9dbb6a3524025f7581d"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "f89c4161df86895cf452e635f6dba9ddcad97fc4"
+        ),
+    }
+)
+_M61_REPAIR_MODES = MappingProxyType({path: "100644" for path in _M61_REPAIR_BLOBS})
+_M61_FINAL_CONTROL_PATHS = _M60_FINAL_CONTROL_PATHS
+_M61_OPERATOR_CONTROL_PATHS = frozenset(
+    set(_M60_OPERATOR_CONTROL_PATHS) | set(_M61_REPAIR_BLOBS)
+)
+_M61_FINAL_RECEIPT_NAME = "m61-source-successor-receipt.json"
+_M61_EXPECTED_TASK_HEADS = MappingProxyType(dict(_M60_EXPECTED_TASK_HEADS))
+
+
 
 # M41 preserves M40's complete control declaration and failed sealed-suite
 # attempt as pre-authoritative history.  M40 was never materialized: the suite
@@ -35312,6 +35420,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m61_successor_configured_on_any_surface(root, config):
+        return _check_m61_materialized(root, config_file)
     if _m60_successor_configured_on_any_surface(root, config):
         return _check_m60_materialized(root, config_file)
     if _m59_successor_configured_on_any_surface(root, config):
@@ -100500,6 +100610,1224 @@ def _materialize_m60(
         }
 
 
+def _expected_m61_post_m60_mappingproxy_identity_normalization_authority(
+) -> dict[str, Any]:
+    """Return M61's same-owner post-M60 source-seal authority."""
+
+    m60 = _expected_m60_partial_m59_receipt_failure_recovery_authority()
+    if (
+        _identity(m60) != _M61_M60_AUTHORITY_CID
+        or len(_canonical(m60)) != _M61_M60_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M61 preserved M60 source authority differs")
+    endpoint = f"quack:127.0.0.1:{_M61_TARGET_QUACK_PORT}"
+    return {
+        "schema": (
+            "sawm/post-m60-mappingproxy-identity-normalization-successor-"
+            "materialization-authorization@1"
+        ),
+        "authorized": True,
+        "authority": "operator_control_plane",
+        "migration_revision": _M61_MIGRATION_REVISION,
+        "migration_kind": _M61_SUPERSESSION_REASON,
+        "supersession_mode": _M61_SUPERSESSION_MODE,
+        "control_recorded_at": _M61_CONTROL_RECORDED_AT,
+        "target_store_id": _M61_STORE_ID,
+        "target_coordination_store_id": _M61_COORDINATION_STORE_ID,
+        "target_runtime_root": _M61_RUNTIME_ROOT,
+        "target_generation": _M61_GENERATION,
+        "target_quack_port": _M61_TARGET_QUACK_PORT,
+        "target_plan_revision": _M61_TARGET_PLAN_REVISION,
+        "target_event_watermark": _M61_TARGET_EVENT_WATERMARK,
+        "target_projection_cid": _M61_TARGET_PROJECTION_CID,
+        "runtime_binding": {
+            "run_id": "run-r2-m27",
+            "runtime_root": _M61_RUNTIME_ROOT,
+            "store_id": _M61_STORE_ID,
+            "coordination_store_id": _M61_COORDINATION_STORE_ID,
+            "worktree_root": _M61_WORKTREE_ROOT,
+            "store_generation": _M61_GENERATION,
+            "quack_port": _M61_TARGET_QUACK_PORT,
+            "quack_endpoint": endpoint,
+            "plan_revision": _M61_TARGET_PLAN_REVISION,
+            "prior_event_watermark": _M61_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M61_TARGET_EVENT_WATERMARK,
+            "database_uuid": _M61_DATABASE_UUID,
+            "server_id": _M61_LIVE_SERVER_ID,
+            "process_birth_id": _M61_LIVE_PROCESS_BIRTH_ID,
+        },
+        "prior_authority": {
+            "schema": "sawm/accepted-source-seal-head@1",
+            "migration_revision": _M60_MIGRATION_REVISION,
+            "authority_cid": _M61_M60_AUTHORITY_CID,
+            "authority_size": _M61_M60_AUTHORITY_SIZE,
+            "event_watermark": _M61_PRIOR_EVENT_WATERMARK,
+            "event_prefix_sha256": _M61_PRIOR_EVENT_PREFIX_SHA256,
+            "projection_cid": _M61_PRIOR_PROJECTION_CID,
+            "semantic_authority_digest": _M61_SEMANTIC_AUTHORITY_DIGEST,
+            "event_id": _M61_M60_EVENT_ID,
+            "evidence_id": _M61_M60_EVIDENCE_ID,
+            "evidence_digest": _M61_M60_MIGRATION_DIGEST,
+            "evidence_kind": _M60_EVIDENCE_KIND,
+            "recorded_at": _M60_CONTROL_RECORDED_AT,
+            "owner_id": "sawm-r2-m60-live-source-sealer",
+            "program_definition_cid": _M61_M60_PROGRAM_DEFINITION_CID,
+            "source_binding_cid": _M61_M60_SOURCE_BINDING_CID,
+            "source_head": _M61_M60_CONTROL_COMMIT,
+            "source_tree": _M61_M60_CONTROL_TREE,
+            "validation_digest": _M61_M60_VALIDATION_DIGEST,
+            "receipt_path": f"{_M61_RUNTIME_ROOT}/{_M61_M60_RECEIPT_NAME}",
+            "receipt_sha256": _M61_M60_RECEIPT_SHA256,
+            "receipt_size": _M61_M60_RECEIPT_SIZE,
+            "receipt_cid": _M61_M60_RECEIPT_CID,
+            "expected_task_heads": dict(_M61_EXPECTED_TASK_HEADS),
+        },
+        "live_owner": {
+            "server_id": _M61_LIVE_SERVER_ID,
+            "process_birth_id": _M61_LIVE_PROCESS_BIRTH_ID,
+            "process_birth": dict(_M61_LIVE_PROCESS_BIRTH),
+            "generation": _M61_GENERATION,
+            "started_at": _M61_LIVE_STARTED_AT,
+            "startup_epoch": _M61_LIVE_STARTUP_EPOCH,
+            "status": "ready",
+            "database_uuid": _M61_DATABASE_UUID,
+            "store_id": _M61_STORE_ID,
+            "listen_uri": endpoint,
+            "extension_fingerprint": _M61_EXTENSION_FINGERPRINT,
+            "same_owner_required": True,
+            "generation_restart_authorized": False,
+        },
+        "live_preflight_contract": {
+            "schema": "sawm/live-preflight-contract@1",
+            "migration_revision": _M61_MIGRATION_REVISION,
+            "successor_class": "same_owner_post_m60_mappingproxy_identity_normalization",
+            "target_store_id": _M61_STORE_ID,
+            "database_uuid": _M61_DATABASE_UUID,
+            "target_generation": _M61_GENERATION,
+            "prior_event_watermark": _M61_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M61_TARGET_EVENT_WATERMARK,
+            "target_plan_revision": _M61_TARGET_PLAN_REVISION,
+            "prior_projection_cid": _M61_PRIOR_PROJECTION_CID,
+            "target_projection_cid": _M61_TARGET_PROJECTION_CID,
+            "semantic_authority_digest": _M61_SEMANTIC_AUTHORITY_DIGEST,
+            "expected_task_heads": dict(_M61_EXPECTED_TASK_HEADS),
+            "same_live_owner_required": True,
+            "generation_restart_authorized": False,
+            "m60_receipt_must_be_preserved": True,
+            "event_330_must_be_preserved": True,
+            "event_331_must_be_absent_before_append": True,
+        },
+        "target_authority": {
+            "event_watermark": _M61_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M61_TARGET_PROJECTION_CID,
+            "plan_revision": _M61_TARGET_PLAN_REVISION,
+            "operator_task_alias": "SAWM-000",
+            "operator_task_cid": _M42_OPERATOR_TASK_CID,
+            "operator_task_status": "completed",
+            "operator_task_revision": 2,
+            "evidence_kind": _M61_EVIDENCE_KIND,
+        },
+        "accepted_control_plane_repair": {
+            "schema": "sawm/bounded-control-plane-repair@1",
+            "defect": "immutable_authority_mappingproxy_passed_to_json_identity_encoder",
+            "resolution": (
+                "normalize_the_outer_immutable_authority_to_its_closed_plain_"
+                "mapping_at_the_existing_identity_boundary"
+            ),
+            "repair_parent": _M61_REPAIR_PARENT,
+            "repair_intermediate_commit": _M61_REPAIR_INTERMEDIATE_COMMIT,
+            "repair_commit": _M61_REPAIR_COMMIT,
+            "repair_tree": _M61_REPAIR_TREE,
+            "repair_diff_sha256": _M61_REPAIR_DIFF_SHA256,
+            "changed_paths": sorted(_M61_REPAIR_BLOBS),
+            "blob_oids": dict(_M61_REPAIR_BLOBS),
+            "blob_modes": dict(_M61_REPAIR_MODES),
+            "ordinary_program_implementation": False,
+            "authority_weakened": False,
+        },
+        "source_chain": {
+            "m60_anchor": {
+                "commit": _M61_M60_CONTROL_COMMIT,
+                "parent": _M61_M60_CONTROL_PARENT,
+                "tree": _M61_M60_CONTROL_TREE,
+                "authority_cid": _M61_M60_AUTHORITY_CID,
+            },
+            "repair_commits": [
+                {
+                    "commit": _M61_REPAIR_INTERMEDIATE_COMMIT,
+                    "parent": _M61_REPAIR_PARENT,
+                },
+                {
+                    "commit": _M61_REPAIR_COMMIT,
+                    "parent": _M61_REPAIR_INTERMEDIATE_COMMIT,
+                    "tree": _M61_REPAIR_TREE,
+                },
+            ],
+            "repair_diff_sha256": _M61_REPAIR_DIFF_SHA256,
+            "repair_blobs": dict(_M61_REPAIR_BLOBS),
+            "repair_modes": dict(_M61_REPAIR_MODES),
+            "final_control_parent": _M61_REPAIR_COMMIT,
+            "repair_commit_count": 2,
+            "final_control_commit_count": 1,
+            "current_commit_identity_embedded_in_authority": False,
+        },
+        "expected_task_heads": dict(_M61_EXPECTED_TASK_HEADS),
+        "operator_control_paths": sorted(_M61_OPERATOR_CONTROL_PATHS),
+        "current_datasets_gitlink": m60["current_datasets_gitlink"],
+        "current_datasets_tree": m60["current_datasets_tree"],
+        "current_kit_gitlink": m60["current_kit_gitlink"],
+        "current_kit_tree": m60["current_kit_tree"],
+        "ordinary_source_changes": len(_M61_REPAIR_BLOBS),
+        "exact_changes": {
+            "event_suffix_length": 1,
+            "evidence_node_changes": 1,
+            "evidence_event_changes": 1,
+            "validation_event_changes": 0,
+            "owner_generation_changes": 0,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "goal_revision_changes": 0,
+            "goal_status_changes": 0,
+            "plan_revision_changes": 0,
+            "coordination_semantic_changes": 0,
+            "implementation_provider_invocations": 0,
+            "effect_claim_changes": 0,
+            "merge_attempt_changes": 0,
+            "accepted_completion_changes": 0,
+            "worker_self_approval": False,
+        },
+        "preservation": {
+            "same_live_owner": True,
+            "same_store_generation": True,
+            "generation_restart": False,
+            "m60_authority_preserved_exactly": True,
+            "m60_receipt_preserved_exactly": True,
+            "m60_receipt_created_or_rewritten": False,
+            "event_330_preserved_exactly": True,
+            "task_goal_plan_heads_preserved": True,
+            "four_worktree_lanes_remain_independently_schedulable": True,
+            "shared_duckdb_authority_writes_remain_quack_serialized": True,
+            "no_task_completion_admitted_by_source_repair": True,
+            "worker_self_approval": False,
+        },
+    }
+
+
+def _m61_authority_reference() -> dict[str, Any]:
+    authority = _expected_m61_post_m60_mappingproxy_identity_normalization_authority()
+    if (
+        not _M61_AUTHORITY_CID.endswith("PENDING_M61_FINAL_CONTROL_AUTHORITY_CID")
+        and _identity(authority) != _M61_AUTHORITY_CID
+    ):
+        raise MaterializationError("M61 source successor authority CID differs")
+    return {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": _M61_MIGRATION_REVISION,
+        "authority_cid": _M61_AUTHORITY_CID,
+    }
+
+
+def _validated_m61_live_preflight_contract(
+    authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    expected = _expected_m61_post_m60_mappingproxy_identity_normalization_authority()
+    contract = authority.get("live_preflight_contract")
+    owner = authority.get("live_owner")
+    repair = authority.get("accepted_control_plane_repair")
+    chain = authority.get("source_chain")
+    preservation = authority.get("preservation")
+    if (
+        dict(authority) != expected
+        or not all(
+            isinstance(value, Mapping)
+            for value in (contract, owner, repair, chain, preservation)
+        )
+        or authority.get("authorized") is not True
+        or authority.get("authority") != "operator_control_plane"
+        or authority.get("migration_revision") != _M61_MIGRATION_REVISION
+        or authority.get("migration_kind") != _M61_SUPERSESSION_REASON
+        or contract.get("target_generation") != _M61_GENERATION
+        or contract.get("prior_event_watermark") != _M61_PRIOR_EVENT_WATERMARK
+        or contract.get("target_event_watermark") != _M61_TARGET_EVENT_WATERMARK
+        or contract.get("prior_projection_cid") != _M61_PRIOR_PROJECTION_CID
+        or contract.get("target_projection_cid") != _M61_TARGET_PROJECTION_CID
+        or contract.get("same_live_owner_required") is not True
+        or contract.get("generation_restart_authorized") is not False
+        or contract.get("m60_receipt_must_be_preserved") is not True
+        or owner.get("server_id") != _M61_LIVE_SERVER_ID
+        or owner.get("process_birth_id") != _M61_LIVE_PROCESS_BIRTH_ID
+        or owner.get("process_birth") != dict(_M61_LIVE_PROCESS_BIRTH)
+        or owner.get("same_owner_required") is not True
+        or owner.get("generation_restart_authorized") is not False
+        or repair.get("repair_commit") != _M61_REPAIR_COMMIT
+        or repair.get("authority_weakened") is not False
+        or chain.get("final_control_parent") != _M61_REPAIR_COMMIT
+        or chain.get("repair_commit_count") != 2
+        or chain.get("final_control_commit_count") != 1
+        or chain.get("current_commit_identity_embedded_in_authority") is not False
+        or authority.get("operator_control_paths")
+        != sorted(_M61_OPERATOR_CONTROL_PATHS)
+        or authority.get("exact_changes", {}).get("event_suffix_length") != 1
+        or authority.get("exact_changes", {}).get("task_revision_changes") != 0
+        or authority.get("exact_changes", {}).get("accepted_completion_changes") != 0
+        or preservation.get("m60_receipt_preserved_exactly") is not True
+        or preservation.get("generation_restart") is not False
+        or preservation.get("worker_self_approval") is not False
+    ):
+        raise MaterializationError("M61 live preflight contract differs")
+    return MappingProxyType(dict(contract))
+
+
+def _m61_successor_configured(config: Mapping[str, Any]) -> bool:
+    if _M61_SUPERSESSION_REASON not in config:
+        return False
+    if config.get(_M61_SUPERSESSION_REASON) != _m61_authority_reference():
+        raise MaterializationError("M61 successor authority reference differs")
+    return True
+
+
+def _m61_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M61_SUPERSESSION_REASON
+    migration = _load_json(
+        root
+        / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if any(presence) and not all(presence):
+        raise MaterializationError("M61 successor authority is only partially declared")
+    if not any(presence):
+        return False
+    reference = _m61_authority_reference()
+    if (
+        config.get(key) != reference
+        or migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M61 successor authority differs across controls")
+    return _m61_successor_configured(config)
+
+
+def _assert_m61_historical_m60_controls(
+    scheduler: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    seal: Mapping[str, Any],
+) -> None:
+    key = _M60_SUPERSESSION_REASON
+    reference = _m60_authority_reference()
+    body = _expected_m60_partial_m59_receipt_failure_recovery_authority()
+    if (
+        scheduler.get(key) != reference
+        or migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+        or reference.get("authority_cid") != _M61_M60_AUTHORITY_CID
+        or _identity(body) != _M61_M60_AUTHORITY_CID
+        or len(_canonical(body)) != _M61_M60_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M61 historical M60 authority differs")
+
+
+def _m61_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    authority = _expected_m61_post_m60_mappingproxy_identity_normalization_authority()
+    reference = _m61_authority_reference()
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if not isinstance(inventory, Mapping):
+        raise MaterializationError("M61 migration inventory is invalid")
+    _assert_m61_historical_m60_controls(config, inventory, seal)
+    key = _M61_SUPERSESSION_REASON
+    if (
+        config.get(key) != reference
+        or inventory.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M61 authority differs across protected controls")
+    _validated_m61_live_preflight_contract(authority)
+    _assert_m61_source_delta(root, population, authority)
+    return authority
+
+
+def _assert_m61_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Require the exact M60 -> two repair commits -> control commit chain."""
+
+    identities = (
+        _M61_M60_CONTROL_COMMIT,
+        _M61_M60_CONTROL_PARENT,
+        _M61_M60_CONTROL_TREE,
+        _M61_REPAIR_PARENT,
+        _M61_REPAIR_INTERMEDIATE_COMMIT,
+        _M61_REPAIR_COMMIT,
+        _M61_REPAIR_TREE,
+        *tuple(_M61_REPAIR_BLOBS.values()),
+    )
+    if (
+        any(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in identities)
+        or _M61_AUTHORITY_CID.endswith("PENDING_M61_FINAL_CONTROL_AUTHORITY_CID")
+        or _M61_AUTHORITY_SIZE < 1
+    ):
+        raise MaterializationError("M61 final control identities are not resealed")
+    current = str(population["source_binding"]["head"])
+    chain = authority.get("source_chain")
+    controls = set(_M61_FINAL_CONTROL_PATHS)
+    repairs = set(_M61_REPAIR_BLOBS)
+    anchor_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M61_M60_CONTROL_COMMIT
+    ).split()
+    intermediate_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M61_REPAIR_INTERMEDIATE_COMMIT
+    ).split()
+    repair_parents = _git(
+        root, "rev-list", "--parents", "-n", "1", _M61_REPAIR_COMMIT
+    ).split()
+    current_parents = _git(root, "rev-list", "--parents", "-n", "1", current).split()
+    binary_diff = subprocess.run(
+        [
+            "git", "diff", "--binary", _M61_REPAIR_PARENT,
+            _M61_REPAIR_COMMIT, "--", *sorted(repairs),
+        ],
+        cwd=root,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        timeout=20,
+    )
+    if binary_diff.returncode:
+        raise MaterializationError("M61 repair binary diff is unavailable")
+    if (
+        current in {
+            _M61_M60_CONTROL_COMMIT,
+            _M61_REPAIR_INTERMEDIATE_COMMIT,
+            _M61_REPAIR_COMMIT,
+        }
+        or not isinstance(chain, Mapping)
+        or set(authority.get("operator_control_paths") or ())
+        != set(_M61_OPERATOR_CONTROL_PATHS)
+        or chain.get("m60_anchor", {}).get("commit") != _M61_M60_CONTROL_COMMIT
+        or chain.get("final_control_parent") != _M61_REPAIR_COMMIT
+        or chain.get("repair_commit_count") != 2
+        or chain.get("final_control_commit_count") != 1
+        or chain.get("current_commit_identity_embedded_in_authority") is not False
+        or anchor_parents
+        != [_M61_M60_CONTROL_COMMIT, _M61_M60_CONTROL_PARENT]
+        or intermediate_parents
+        != [_M61_REPAIR_INTERMEDIATE_COMMIT, _M61_REPAIR_PARENT]
+        or repair_parents
+        != [_M61_REPAIR_COMMIT, _M61_REPAIR_INTERMEDIATE_COMMIT]
+        or current_parents != [current, _M61_REPAIR_COMMIT]
+        or _git(root, "rev-parse", f"{_M61_M60_CONTROL_COMMIT}^{{tree}}")
+        != _M61_M60_CONTROL_TREE
+        or _git(root, "rev-parse", f"{_M61_REPAIR_COMMIT}^{{tree}}")
+        != _M61_REPAIR_TREE
+        or _m27_name_status(root, _M61_REPAIR_PARENT, _M61_REPAIR_COMMIT)
+        != {path: "M" for path in repairs}
+        or _m27_name_status(root, _M61_REPAIR_COMMIT, current)
+        != {path: "M" for path in controls}
+        or hashlib.sha256(binary_diff.stdout).hexdigest()
+        != _M61_REPAIR_DIFF_SHA256
+        or population["source_binding"].get("tree")
+        != _git(root, "rev-parse", f"{current}^{{tree}}")
+        or int(authority.get("ordinary_source_changes", -1)) != len(repairs)
+    ):
+        raise MaterializationError("M61 exact repair/control source chain differs")
+    for path, oid in _M61_REPAIR_BLOBS.items():
+        if (
+            _git(root, "rev-parse", f"{_M61_REPAIR_COMMIT}:{path}") != oid
+            or _git(root, "ls-tree", _M61_REPAIR_COMMIT, "--", path)
+            != f"{_M61_REPAIR_MODES[path]} blob {oid}\t{path}"
+        ):
+            raise MaterializationError(f"M61 repair blob/mode differs: {path}")
+    _assert_m43_current_control_modes(root, current, _M61_OPERATOR_CONTROL_PATHS)
+    for dependency, gitlink_key, tree_key, population_key in (
+        (
+            "ipfs_datasets_py", "current_datasets_gitlink",
+            "current_datasets_tree", "datasets_gitlink",
+        ),
+        (
+            "ipfs_kit_py", "current_kit_gitlink",
+            "current_kit_tree", "kit_gitlink",
+        ),
+    ):
+        gitlink = str(authority[gitlink_key])
+        if (
+            any(
+                _git(root, "rev-parse", f"{head}:{dependency}") != gitlink
+                for head in (
+                    _M61_M60_CONTROL_COMMIT,
+                    _M61_REPAIR_INTERMEDIATE_COMMIT,
+                    _M61_REPAIR_COMMIT,
+                    current,
+                )
+            )
+            or population["source_binding"].get(population_key) != gitlink
+            or _git(root / dependency, "rev-parse", f"{gitlink}^{{tree}}")
+            != authority[tree_key]
+        ):
+            raise MaterializationError(f"M61 {dependency} authority differs")
+
+
+def _m61_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    _validated_m61_live_preflight_contract(authority)
+    return _m60_target_paths(
+        root,
+        config,
+        _expected_m60_partial_m59_receipt_failure_recovery_authority(),
+    )
+
+
+def _m61_migration_body(
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    validation_digest: str,
+) -> dict[str, Any]:
+    authority = _expected_m61_post_m60_mappingproxy_identity_normalization_authority()
+    source = population["source_binding"]
+    return {
+        "schema": "sawm/post-m60-mappingproxy-identity-normalization-source-seal@1",
+        "authority": "operator_control_plane",
+        "migration_revision": _M61_MIGRATION_REVISION,
+        "migration_kind": _M61_SUPERSESSION_REASON,
+        "supersession_mode": _M61_SUPERSESSION_MODE,
+        "authorization_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": source["source_binding_cid"],
+        "current_source_head": source["head"],
+        "current_source_tree": source["tree"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority["prior_authority"],
+        "target_authority": authority["target_authority"],
+        "runtime_binding": authority["runtime_binding"],
+        "live_owner": authority["live_owner"],
+        "live_preflight_contract": authority["live_preflight_contract"],
+        "accepted_control_plane_repair": authority["accepted_control_plane_repair"],
+        "source_chain": authority["source_chain"],
+        "exact_changes": authority["exact_changes"],
+        "preservation": authority["preservation"],
+        "authenticated_mutation_route": {
+            "transport": "quack_proxy_only",
+            "endpoint_from_live_owner_discovery": True,
+            "token_from_secret_handoff_or_environment_only": True,
+            "token_in_argv": False,
+            "token_in_evidence": False,
+            "direct_authoritative_file_opened": False,
+        },
+        "scheduler_runtime_root": config["runtime_paths"]["root"],
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _verify_m61_preserved_m60_receipt(
+    root: Path, control: Path
+) -> dict[str, Any]:
+    m60 = _expected_m60_partial_m59_receipt_failure_recovery_authority()
+    _assert_m60_m59_receipt_absent(root, m60)
+    path = control.parent / _M61_M60_RECEIPT_NAME
+    observed, observed_sha = _load_nofollow_json(
+        path, root=root, noun="M61 preserved M60 source successor receipt"
+    )
+    receipt_stat = path.stat(follow_symlinks=False)
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        observed_sha != _M61_M60_RECEIPT_SHA256
+        or int(receipt_stat.st_size) != _M61_M60_RECEIPT_SIZE
+        or stat.S_IMODE(receipt_stat.st_mode) != 0o600
+        or receipt_stat.st_nlink != 1
+        or receipt_stat.st_uid != os.geteuid()
+        or claimed != _M61_M60_RECEIPT_CID
+        or claimed != _identity(unhashed)
+        or observed.get("migration_revision") != _M60_MIGRATION_REVISION
+        or observed.get(f"{_M60_SUPERSESSION_REASON}_cid")
+        != _M61_M60_AUTHORITY_CID
+        or observed.get("current_source_binding_cid")
+        != _M61_M60_SOURCE_BINDING_CID
+        or observed.get("target_generation") != _M61_GENERATION
+        or observed.get("target_event_watermark")
+        != _M61_PRIOR_EVENT_WATERMARK
+        or observed.get("projection_cid") != _M61_PRIOR_PROJECTION_CID
+        or observed.get("target_event_prefix_sha256")
+        != _M61_PRIOR_EVENT_PREFIX_SHA256
+        or observed.get("semantic_authority_digest")
+        != _M61_SEMANTIC_AUTHORITY_DIGEST
+        or observed.get("migration_digest") != _M61_M60_MIGRATION_DIGEST
+        or observed.get("migration_evidence_event_id") != _M61_M60_EVENT_ID
+        or observed.get("migration_evidence_id") != _M61_M60_EVIDENCE_ID
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+        or observed.get("accepted_completion_changes") != 0
+        or observed.get("worker_self_approval") is not False
+    ):
+        raise MigrationRequired("M61 preserved M60 receipt differs")
+    return observed
+
+
+def _verify_m61_preserved_m60_materialization(
+    connection: Any,
+    receipt: Mapping[str, Any],
+    *,
+    observed_watermark: int,
+) -> dict[str, Any]:
+    """Verify event/evidence 330 independently of current source identity."""
+
+    if observed_watermark not in {
+        _M61_PRIOR_EVENT_WATERMARK,
+        _M61_TARGET_EVENT_WATERMARK,
+    }:
+        raise MigrationRequired("M61 observed head is outside its sealed pair")
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence = connection.execute(
+        "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+        "created_at,body_json FROM evidence_nodes WHERE evidence_id=?",
+        [_M61_M60_EVIDENCE_ID],
+    ).fetchone()
+    event = connection.execute(
+        "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+        "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+        "WHERE global_sequence=?",
+        [_M61_PRIOR_EVENT_WATERMARK],
+    ).fetchone()
+    if evidence is None or event is None:
+        raise MigrationRequired("M61 preserved M60 event/evidence is missing")
+    evidence_row = _positional_rows([evidence], 7)[0]
+    event_row = _positional_rows([event], 10)[0]
+    body = _m38_parse_json(evidence_row[6])
+    envelope = _m38_parse_json(event_row[9])
+    inner = {
+        "evidence_id": _M61_M60_EVIDENCE_ID,
+        "parent_evidence_id": "",
+        "task_cid": _M42_OPERATOR_TASK_CID,
+        "evidence_kind": _M60_EVIDENCE_KIND,
+        "digest": _M61_M60_MIGRATION_DIGEST,
+        "body": body,
+        "created_at": _M60_CONTROL_RECORDED_AT,
+        "revision": 0,
+    }
+    expected_envelope = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": _M61_M60_EVIDENCE_ID,
+        "body": inner,
+        "recorded_at": _M60_CONTROL_RECORDED_AT,
+        "owner_id": "sawm-r2-m60-live-source-sealer",
+    }
+    projection = _verify_m58_exact_evidence_projection(
+        connection,
+        watermark=_M61_PRIOR_EVENT_WATERMARK,
+        observed_watermark=observed_watermark,
+    )
+    if (
+        tuple(evidence_row[:6])
+        != (
+            _M61_M60_EVIDENCE_ID, "", _M42_OPERATOR_TASK_CID,
+            _M60_EVIDENCE_KIND, _M61_M60_MIGRATION_DIGEST,
+            _M60_CONTROL_RECORDED_AT,
+        )
+        or _identity(body) != _M61_M60_MIGRATION_DIGEST
+        or body.get("schema")
+        != "sawm/partial-m59-receipt-failure-recovery-source-seal@1"
+        or body.get("migration_revision") != _M60_MIGRATION_REVISION
+        or body.get("migration_kind") != _M60_SUPERSESSION_REASON
+        or body.get("authorization_cid") != _M61_M60_AUTHORITY_CID
+        or body.get("program_definition_cid") != _M61_M60_PROGRAM_DEFINITION_CID
+        or body.get("current_source_binding_cid") != _M61_M60_SOURCE_BINDING_CID
+        or body.get("current_source_head") != _M61_M60_CONTROL_COMMIT
+        or body.get("current_source_tree") != _M61_M60_CONTROL_TREE
+        or body.get("validation_digest") != _M61_M60_VALIDATION_DIGEST
+        or body.get("accepted_completion_changes") != 0
+        or body.get("worker_self_approval") is not False
+        or content_identity(
+            {
+                "task_cid": _M42_OPERATOR_TASK_CID,
+                "evidence_kind": _M60_EVIDENCE_KIND,
+                "digest": _M61_M60_MIGRATION_DIGEST,
+                "body": body,
+            }
+        ) != _M61_M60_EVIDENCE_ID
+        or tuple(event_row[:9])
+        != (
+            _M61_M60_EVENT_ID, "stream:intent", _M61_PRIOR_EVENT_WATERMARK,
+            _M61_PRIOR_EVENT_WATERMARK, "intent.evidence_recorded",
+            _M42_OPERATOR_TASK_CID, "", "session:intent",
+            _M60_CONTROL_RECORDED_AT,
+        )
+        or envelope != expected_envelope
+        or content_identity(
+            {
+                "stream_id": "stream:intent",
+                "sequence": _M61_PRIOR_EVENT_WATERMARK,
+                "global_sequence": _M61_PRIOR_EVENT_WATERMARK,
+                "event_type": "intent.evidence_recorded",
+                "body": expected_envelope,
+            }
+        ) != _M61_M60_EVENT_ID
+        or _event_prefix_digest(connection, _M61_PRIOR_EVENT_WATERMARK)
+        != (_M61_PRIOR_EVENT_PREFIX_SHA256, _M61_PRIOR_EVENT_WATERMARK)
+        or _semantic_authority_digest_on(connection)
+        != _M61_SEMANTIC_AUTHORITY_DIGEST
+        or projection.get("evidence_node_count")
+        != _M61_PRIOR_EVIDENCE_NODE_COUNT
+        or projection.get("evidence_event_count")
+        != _M61_PRIOR_EVIDENCE_EVENT_COUNT
+        or projection.get("validation_event_count")
+        != _M61_VALIDATION_EVENT_COUNT
+        or projection.get("passed_validation_event_count")
+        != _M61_PASSED_VALIDATION_EVENT_COUNT
+        or receipt.get("receipt_cid") != _M61_M60_RECEIPT_CID
+    ):
+        raise MigrationRequired("M61 preserved M60 materialization differs")
+    return {
+        "m60_receipt_preserved_exactly": True,
+        "event_330_preserved_exactly": True,
+        "prior_m60_event_id": _M61_M60_EVENT_ID,
+        "prior_m60_evidence_id": _M61_M60_EVIDENCE_ID,
+    }
+
+
+def _m61_expected_event_body(
+    body: Mapping[str, Any],
+    *,
+    evidence_id: str,
+    digest: str,
+    authority: Mapping[str, Any],
+) -> dict[str, Any]:
+    target = authority["target_authority"]
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/intent-event@1",
+        "event_type": "intent.evidence_recorded",
+        "subject_id": evidence_id,
+        "body": {
+            "evidence_id": evidence_id,
+            "parent_evidence_id": "",
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": dict(body),
+            "created_at": _M61_CONTROL_RECORDED_AT,
+            "revision": 0,
+        },
+        "recorded_at": _M61_CONTROL_RECORDED_AT,
+        "owner_id": "sawm-r2-m61-live-source-sealer",
+    }
+
+
+def _verify_m61_live_materialization(
+    source: Any,
+    identity: Mapping[str, Any],
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    *,
+    repository_root: Path | None = None,
+) -> dict[str, Any]:
+    root = REPO_ROOT if repository_root is None else Path(repository_root).resolve()
+    control, _coordination = _m61_target_paths(root, config, authority)
+    m60_receipt = _verify_m61_preserved_m60_receipt(root, control)
+    body = _m61_migration_body(population, config, validation_digest)
+    digest = _identity(body)
+    target = authority["target_authority"]
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+        content_identity,
+    )
+
+    evidence_id = content_identity(
+        {
+            "task_cid": target["operator_task_cid"],
+            "evidence_kind": target["evidence_kind"],
+            "digest": digest,
+            "body": body,
+        }
+    )
+    event_body = _m61_expected_event_body(
+        body, evidence_id=evidence_id, digest=digest, authority=authority
+    )
+    event_id = content_identity(
+        {
+            "stream_id": "stream:intent",
+            "sequence": _M61_TARGET_EVENT_WATERMARK,
+            "global_sequence": _M61_TARGET_EVENT_WATERMARK,
+            "event_type": "intent.evidence_recorded",
+            "body": event_body,
+        }
+    )
+    expected_evidence = (
+        evidence_id, "", target["operator_task_cid"], target["evidence_kind"],
+        digest, _M61_CONTROL_RECORDED_AT, _canonical(body).decode("utf-8"),
+    )
+    expected_event = (
+        event_id, "stream:intent", _M61_TARGET_EVENT_WATERMARK,
+        _M61_TARGET_EVENT_WATERMARK, "intent.evidence_recorded",
+        target["operator_task_cid"], "", "session:intent",
+        _M61_CONTROL_RECORDED_AT, _canonical(event_body).decode("utf-8"),
+    )
+    head = _inspect_m37_live_projection(
+        source,
+        population,
+        authority,
+        expected_event_watermark=_M61_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=_M61_TARGET_PROJECTION_CID,
+    )
+    if (
+        _m38_projection_cid_at_watermark(source, _M61_PRIOR_EVENT_WATERMARK)
+        != _M61_PRIOR_PROJECTION_CID
+        or _m38_projection_cid_at_watermark(source, _M61_TARGET_EVENT_WATERMARK)
+        != _M61_TARGET_PROJECTION_CID
+    ):
+        raise MigrationRequired("M61 prior/target projection derivation differs")
+    restart = _inspect_m58_generation_restart_rows(
+        source,
+        identity,
+        _expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority(),
+    )
+    if (
+        restart.get("live_server_id") != _M61_LIVE_SERVER_ID
+        or restart.get("live_process_birth_id") != _M61_LIVE_PROCESS_BIRTH_ID
+        or restart.get("live_started_at") != _M61_LIVE_STARTED_AT
+        or restart.get("live_startup_epoch") != _M61_LIVE_STARTUP_EPOCH
+        or identity.get("process_birth") != dict(_M61_LIVE_PROCESS_BIRTH)
+    ):
+        raise MigrationRequired("M61 exact same live generation-43 owner differs")
+    with source.intent._connection(write=False) as connection:
+        evidence = connection.execute(
+            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+            "created_at,body_json FROM evidence_nodes WHERE evidence_id=?",
+            [evidence_id],
+        ).fetchone()
+        event = connection.execute(
+            "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+            "attempt_id,session_id,recorded_at,body_json FROM domain_events "
+            "WHERE global_sequence=?",
+            [_M61_TARGET_EVENT_WATERMARK],
+        ).fetchone()
+        prior_prefix = _event_prefix_digest(connection, _M61_PRIOR_EVENT_WATERMARK)
+        prefix = _event_prefix_digest(connection, _M61_TARGET_EVENT_WATERMARK)
+        semantic = _semantic_authority_digest_on(connection)
+        evidence_count = int(
+            connection.execute("SELECT COUNT(*) FROM evidence_nodes").fetchone()[0]
+        )
+        raw_counts = _m43_event_type_counts_on(
+            connection, _M61_TARGET_EVENT_WATERMARK
+        )
+        preserved = _verify_m61_preserved_m60_materialization(
+            connection,
+            m60_receipt,
+            observed_watermark=_M61_TARGET_EVENT_WATERMARK,
+        )
+        evidence_projection = _verify_m58_exact_evidence_projection(
+            connection, watermark=_M61_TARGET_EVENT_WATERMARK
+        )
+    if (
+        not _m39_exact_row_matches(
+            evidence,
+            (
+                "evidence_id", "parent_evidence_id", "task_cid",
+                "evidence_kind", "digest", "created_at", "body_json",
+            ),
+            expected_evidence,
+        )
+        or not _m39_exact_row_matches(
+            event,
+            (
+                "event_id", "stream_id", "sequence", "global_sequence",
+                "event_type", "task_cid", "attempt_id", "session_id",
+                "recorded_at", "body_json",
+            ),
+            expected_event,
+        )
+        or evidence_count != _M61_TARGET_EVIDENCE_NODE_COUNT
+        or raw_counts
+        != (_M61_TARGET_EVIDENCE_EVENT_COUNT, _M61_VALIDATION_EVENT_COUNT)
+        or evidence_projection.get("evidence_node_count")
+        != _M61_TARGET_EVIDENCE_NODE_COUNT
+        or evidence_projection.get("evidence_event_count")
+        != _M61_TARGET_EVIDENCE_EVENT_COUNT
+        or evidence_projection.get("validation_event_count")
+        != _M61_VALIDATION_EVENT_COUNT
+        or evidence_projection.get("passed_validation_event_count")
+        != _M61_PASSED_VALIDATION_EVENT_COUNT
+        or prior_prefix
+        != (_M61_PRIOR_EVENT_PREFIX_SHA256, _M61_PRIOR_EVENT_WATERMARK)
+        or prefix[1] != _M61_TARGET_EVENT_WATERMARK
+        or semantic != _M61_SEMANTIC_AUTHORITY_DIGEST
+        or preserved.get("event_330_preserved_exactly") is not True
+    ):
+        raise MigrationRequired("M61 exact target event/evidence authority differs")
+    return {
+        **head,
+        **restart,
+        **preserved,
+        "migration_digest": digest,
+        "migration_evidence_id": evidence_id,
+        "migration_evidence_event_id": event_id,
+        "target_event_prefix_sha256": prefix[0],
+        "same_live_generation_43_owner_verified": True,
+        "semantic_authority_digest": semantic,
+        "evidence_node_count": evidence_count,
+        "evidence_event_count": int(raw_counts[0]),
+        "validation_event_count": int(raw_counts[1]),
+        "passed_validation_event_count": _M61_PASSED_VALIDATION_EVENT_COUNT,
+        "evidence_projection_digest": evidence_projection[
+            "evidence_projection_digest"
+        ],
+        "complete_evidence_projection_verified": True,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+
+
+def _expected_m61_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": (
+            "sawm/non-authoritative-post-m60-mappingproxy-identity-"
+            "normalization-receipt@1"
+        ),
+        "authoritative": False,
+        "completion_authority": False,
+        "launch_authority": False,
+        "deny_only_without_fresh_live_revalidation": True,
+        "fresh_live_revalidation_required_after_receipt_read": True,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M61_MIGRATION_REVISION,
+        "migration_kind": _M61_SUPERSESSION_REASON,
+        "supersession_mode": _M61_SUPERSESSION_MODE,
+        f"{_M61_SUPERSESSION_REASON}_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "source_chain": dict(authority["source_chain"]),
+        "validation_digest": validation_digest,
+        "database_path": _M61_STORE_ID,
+        "coordination_path": _M61_COORDINATION_STORE_ID,
+        "target_generation": _M61_GENERATION,
+        "target_generation_owner": {
+            "server_id": verified["live_server_id"],
+            "process_birth_id": verified["live_process_birth_id"],
+            "started_at": verified["live_started_at"],
+            "startup_epoch": verified["live_startup_epoch"],
+        },
+        "target_plan_revision": _M61_TARGET_PLAN_REVISION,
+        "prior_event_watermark": _M61_PRIOR_EVENT_WATERMARK,
+        "target_event_watermark": _M61_TARGET_EVENT_WATERMARK,
+        "prior_projection_cid": _M61_PRIOR_PROJECTION_CID,
+        "projection_cid": _M61_TARGET_PROJECTION_CID,
+        "migration_digest": verified["migration_digest"],
+        "migration_evidence_id": verified["migration_evidence_id"],
+        "migration_evidence_event_id": verified["migration_evidence_event_id"],
+        "prior_event_prefix_sha256": _M61_PRIOR_EVENT_PREFIX_SHA256,
+        "target_event_prefix_sha256": verified["target_event_prefix_sha256"],
+        "semantic_authority_digest": verified["semantic_authority_digest"],
+        "evidence_projection_digest": verified["evidence_projection_digest"],
+        "complete_evidence_projection_verified": True,
+        "prior_evidence_node_count": _M61_PRIOR_EVIDENCE_NODE_COUNT,
+        "evidence_node_count": verified["evidence_node_count"],
+        "prior_evidence_event_count": _M61_PRIOR_EVIDENCE_EVENT_COUNT,
+        "evidence_event_count": verified["evidence_event_count"],
+        "validation_event_count": verified["validation_event_count"],
+        "passed_validation_event_count": verified[
+            "passed_validation_event_count"
+        ],
+        "prior_m60_authority_cid": _M61_M60_AUTHORITY_CID,
+        "prior_m60_receipt_cid": _M61_M60_RECEIPT_CID,
+        "prior_m60_receipt_sha256": _M61_M60_RECEIPT_SHA256,
+        "prior_m60_receipt_size": _M61_M60_RECEIPT_SIZE,
+        "prior_m60_event_id": _M61_M60_EVENT_ID,
+        "prior_m60_evidence_id": _M61_M60_EVIDENCE_ID,
+        "m60_receipt_preserved_exactly": True,
+        "m60_receipt_created_or_rewritten": False,
+        "event_330_preserved_exactly": True,
+        "same_live_generation_43_owner_verified": True,
+        "generation_restart_authorized": False,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _check_m61_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m61_source_binding_authority(root, population, config)
+    control, coordination = _m61_target_paths(root, config, authority)
+    _verify_m58_current_coordination_confinement(root, coordination)
+    receipt_path = control.parent / _M61_FINAL_RECEIPT_NAME
+    if not os.path.lexists(receipt_path):
+        raise MigrationRequired("M61 source successor receipt is missing")
+    observed, _ = _load_nofollow_json(
+        receipt_path, root=root, noun="M61 source successor receipt"
+    )
+    receipt_stat = os.lstat(receipt_path)
+    if (
+        not stat.S_ISREG(receipt_stat.st_mode)
+        or receipt_stat.st_nlink != 1
+        or stat.S_IMODE(receipt_stat.st_mode) != 0o600
+        or receipt_stat.st_uid != os.geteuid()
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+    ):
+        raise MigrationRequired("M61 source successor receipt is unsafe")
+    m60_before = _verify_m61_preserved_m60_receipt(root, control)
+    validation_digest = _m7_validation_digest(root, population)
+    with _m28_live_source(
+        root,
+        control,
+        config,
+        population,
+        authority,
+        owner_id="sawm-r2-m61-live-source-sealer",
+    ) as (source, identity):
+        verified = _verify_m61_live_materialization(
+            source,
+            identity,
+            population,
+            config,
+            authority,
+            validation_digest,
+            repository_root=root,
+        )
+    expected = _expected_m61_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    if (
+        observed != expected
+        or _verify_m61_preserved_m60_receipt(root, control) != m60_before
+    ):
+        raise MigrationRequired("M61 source successor receipt chain differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_post_m60_mappingproxy_identity_normalization_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": validation_digest,
+        "prior_authority": authority,
+        "prior_m60_receipt": m60_before,
+        "receipt": observed,
+        "m61_source_successor_receipt": observed,
+        **verified,
+    }
+
+
+def _materialize_m61(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m61_source_binding_authority(root, population, config)
+    control, coordination = _m61_target_paths(root, config, authority)
+    _verify_m58_current_coordination_confinement(root, coordination)
+    receipt_path = control.parent / _M61_FINAL_RECEIPT_NAME
+    with _m58_materialization_lock(root, control):
+        if os.path.lexists(receipt_path):
+            return _check_m61_materialized(root, config_file)
+        m60_before = _verify_m61_preserved_m60_receipt(root, control)
+        validation_digest = _m7_validation_digest(root, population)
+        body = _m61_migration_body(population, config, validation_digest)
+        digest = _identity(body)
+        target = authority["target_authority"]
+        from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+            content_identity,
+        )
+
+        evidence_id = content_identity(
+            {
+                "task_cid": target["operator_task_cid"],
+                "evidence_kind": target["evidence_kind"],
+                "digest": digest,
+                "body": body,
+            }
+        )
+        appended = False
+        with _m28_live_source(
+            root,
+            control,
+            config,
+            population,
+            authority,
+            owner_id="sawm-r2-m61-live-source-sealer",
+        ) as (source, identity):
+            snapshot = source.snapshot()
+            if snapshot.event_cursor == _M61_PRIOR_EVENT_WATERMARK:
+                _inspect_m37_live_projection(
+                    source,
+                    population,
+                    authority,
+                    expected_event_watermark=_M61_PRIOR_EVENT_WATERMARK,
+                    expected_projection_cid=_M61_PRIOR_PROJECTION_CID,
+                )
+                restart = _inspect_m58_generation_restart_rows(
+                    source,
+                    identity,
+                    _expected_m58_post_m57_stall_unblock_and_shutdown_fence_restart_authority(),
+                )
+                with source.intent._connection(write=False) as connection:
+                    target_evidence = connection.execute(
+                        "SELECT 1 FROM evidence_nodes WHERE evidence_id=?",
+                        [evidence_id],
+                    ).fetchone()
+                    target_event = connection.execute(
+                        "SELECT 1 FROM domain_events WHERE global_sequence=?",
+                        [_M61_TARGET_EVENT_WATERMARK],
+                    ).fetchone()
+                    evidence_count = int(
+                        connection.execute(
+                            "SELECT COUNT(*) FROM evidence_nodes"
+                        ).fetchone()[0]
+                    )
+                    raw_counts = _m43_event_type_counts_on(
+                        connection, _M61_PRIOR_EVENT_WATERMARK
+                    )
+                    preserved = _verify_m61_preserved_m60_materialization(
+                        connection,
+                        m60_before,
+                        observed_watermark=_M61_PRIOR_EVENT_WATERMARK,
+                    )
+                if (
+                    restart.get("live_server_id") != _M61_LIVE_SERVER_ID
+                    or restart.get("live_process_birth_id")
+                    != _M61_LIVE_PROCESS_BIRTH_ID
+                    or restart.get("live_started_at") != _M61_LIVE_STARTED_AT
+                    or restart.get("live_startup_epoch")
+                    != _M61_LIVE_STARTUP_EPOCH
+                    or identity.get("process_birth") != dict(_M61_LIVE_PROCESS_BIRTH)
+                    or target_evidence is not None
+                    or target_event is not None
+                    or evidence_count != _M61_PRIOR_EVIDENCE_NODE_COUNT
+                    or raw_counts
+                    != (
+                        _M61_PRIOR_EVIDENCE_EVENT_COUNT,
+                        _M61_VALIDATION_EVENT_COUNT,
+                    )
+                    or preserved.get("event_330_preserved_exactly") is not True
+                ):
+                    raise MigrationRequired("M61 exact predecessor authority differs")
+                from ipfs_accelerate_py.agent_supervisor.task_sources import (
+                    intent_repository,
+                )
+
+                original_clock = intent_repository._utc_iso
+
+                def fixed_m61_utc_iso(_moment: Any = None) -> str:
+                    return _M61_CONTROL_RECORDED_AT
+
+                intent_repository._utc_iso = fixed_m61_utc_iso
+                try:
+                    try:
+                        evidence_receipt = source.record_evidence(
+                            task_cid=target["operator_task_cid"],
+                            evidence_kind=target["evidence_kind"],
+                            digest=digest,
+                            body=body,
+                        )
+                    except Exception:
+                        raise MaterializationError(
+                            "authenticated M61 evidence append failed"
+                        ) from None
+                finally:
+                    clock_interference = (
+                        intent_repository._utc_iso is not fixed_m61_utc_iso
+                    )
+                    intent_repository._utc_iso = original_clock
+                if clock_interference or not evidence_receipt.changed:
+                    raise MaterializationError("M61 evidence append clock/CAS differed")
+                appended = True
+            elif snapshot.event_cursor != _M61_TARGET_EVENT_WATERMARK:
+                raise MigrationRequired("M61 live event head is neither 330 nor 331")
+            verified = _verify_m61_live_materialization(
+                source,
+                identity,
+                population,
+                config,
+                authority,
+                validation_digest,
+                repository_root=root,
+            )
+            if verified["migration_evidence_id"] != evidence_id:
+                raise MaterializationError("M61 evidence identity differs")
+        if _verify_m61_preserved_m60_receipt(root, control) != m60_before:
+            raise MigrationRequired("M61 changed its predecessor receipt")
+        expected = _expected_m61_source_successor_receipt(
+            population, authority, validation_digest, verified
+        )
+        receipt = _m52_write_receipt_last(
+            root, receipt_path, expected, noun="M61 source successor receipt"
+        )
+        checked = _check_m61_materialized(root, config_file)
+        if checked.get("receipt") != receipt:
+            raise MigrationRequired("M61 post-publication fresh verification differs")
+        return {
+            **checked,
+            "action": (
+                "materialized_post_m60_mappingproxy_identity_normalization_successor"
+                if appended
+                else "checked_post_m60_mappingproxy_identity_normalization_successor"
+            ),
+            "migration_required": False,
+            "receipt": receipt,
+            "m61_source_successor_receipt": receipt,
+        }
+
+
 def _expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_authority() -> dict[str, Any]:
     """Return M57's generation-42/event-327 token-vault restart authority."""
 
@@ -103854,6 +105182,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m61_successor_configured_on_any_surface(root, config):
+        return _materialize_m61(root, config_file, config)
     if _m60_successor_configured_on_any_surface(root, config):
         return _materialize_m60(root, config_file, config)
     if _m59_successor_configured_on_any_surface(root, config):
