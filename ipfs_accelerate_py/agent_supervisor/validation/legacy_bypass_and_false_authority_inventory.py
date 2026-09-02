@@ -370,6 +370,7 @@ PATH_CLASS_CATALOG: Final[tuple[PathClassRecipe, ...]] = (
             "simulation namespace; ordinary runtime cannot instantiate them."
         ),
         relpaths=(
+            "ipfs_accelerate_py/compatibility/simulation/legacy_mock_coordinator.py",
             "ipfs_accelerate_py/ipfs_accelerate.py",
             "ipfs_accelerate_py/datasets_integration/workflow.py",
             "ipfs_accelerate_py/llm_router.py",

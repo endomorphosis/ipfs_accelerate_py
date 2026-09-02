@@ -27,6 +27,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ipfs_accelerate_py")
 
+# PCPR-030: this module is an explicit compatibility surface, not ordinary runtime.
+PCPR_030_COMPATIBILITY_SURFACE = True
+ORDINARY_RUNTIME = False
+
 
 class ipfs_accelerate_py:
     """

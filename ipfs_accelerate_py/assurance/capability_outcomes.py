@@ -228,6 +228,7 @@ SIMULATION_NAMESPACES: Final[frozenset[str]] = frozenset(
         "cuda_mock_implementation",
         "skillset_mock_model",
         "ai_model_server_mock",
+        "legacy_mock_coordinator",
     }
 )
 

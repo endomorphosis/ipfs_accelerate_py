@@ -203,9 +203,11 @@ def test_workflow_coordinator_init():
     """Test that WorkflowCoordinator initializes correctly."""
     from ipfs_accelerate_py.datasets_integration import WorkflowCoordinator
 
-    coordinator = WorkflowCoordinator()
+    coordinator = WorkflowCoordinator(explicit_simulation=True)
     assert isinstance(coordinator.enabled, bool)
     assert coordinator.cache_dir.exists()
+    assert coordinator.live is False
+    assert coordinator.origin == "simulated"
 
     status = coordinator.get_status()
     assert isinstance(status, dict)
@@ -216,7 +218,7 @@ def test_workflow_coordinator_task_submission():
     """Test task submission functionality."""
     from ipfs_accelerate_py.datasets_integration import WorkflowCoordinator
 
-    coordinator = WorkflowCoordinator()
+    coordinator = WorkflowCoordinator(explicit_simulation=True)
 
     # Should not raise error
     result = coordinator.submit_task(task_id="test-task", task_type="test", data={"key": "value"})
@@ -228,7 +230,7 @@ def test_workflow_coordinator_task_lifecycle():
     """Test full task lifecycle."""
     from ipfs_accelerate_py.datasets_integration import WorkflowCoordinator
 
-    coordinator = WorkflowCoordinator()
+    coordinator = WorkflowCoordinator(explicit_simulation=True)
 
     # Submit task
     coordinator.submit_task("lifecycle-task", "test", {"key": "value"})
@@ -281,7 +283,7 @@ def test_graceful_fallback():
     manager = DatasetsManager()
     fs = FilesystemHandler()
     logger = ProvenanceLogger()
-    coordinator = WorkflowCoordinator()
+    coordinator = WorkflowCoordinator(explicit_simulation=True)
 
     # All should have valid status
     assert isinstance(manager.get_status(), dict)

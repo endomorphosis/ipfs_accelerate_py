@@ -142,7 +142,8 @@ def main():
 
     coordinator = WorkflowCoordinator(
         {
-            "enable_p2p": False  # Disabled for safety in examples
+            "enable_p2p": False,  # Disabled for safety in examples
+            "explicit_simulation": True,  # PCPR-030: quarantined coordinator
         }
     )
 

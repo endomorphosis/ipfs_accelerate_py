@@ -14,29 +14,25 @@ class WorkflowCoordinator:
     """
     Coordinator for P2P workflow scheduling and task distribution.
 
-    Provides a unified interface for:
-    - Task submission and scheduling
-    - Worker coordination
-    - Distributed consensus
-    - Task prioritization
-
-    Uses ipfs_datasets_py's P2PWorkflowScheduler when available, falling back
-    to local task queue otherwise.
-
-    Attributes:
-        enabled (bool): Whether P2P workflow scheduling is active
-        workflow_scheduler: P2PWorkflowScheduler instance (if available)
-        task_queue (List): Local task queue (fallback mode)
+    PCPR-030 quarantines this class behind explicit simulation. Ordinary
+    runtime, including MCP tools, cannot instantiate it. Local-queue
+    fallback without a live backend is simulation, never live.
 
     Example:
-        >>> coordinator = WorkflowCoordinator()
+        >>> coordinator = WorkflowCoordinator(explicit_simulation=True)
         >>> coordinator.submit_task("infer-001", "inference", {
         ...     "model": "bert-base",
         ...     "input": "text data"
         ... }, priority=8)
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        config: Optional[Dict[str, Any]] = None,
+        *,
+        explicit_simulation: bool = False,
+        explicit_test_mode: Optional[bool] = None,
+    ):
         """
         Initialize the workflow coordinator.
 
@@ -44,8 +40,22 @@ class WorkflowCoordinator:
             config: Optional configuration dictionary
                 - enable_p2p: Enable P2P mode (default: False for safety)
                 - cache_dir: Directory for task cache
+                - explicit_simulation: Opt into the quarantined simulation namespace
+            explicit_simulation: Required for ordinary callers; simulation is never live
+            explicit_test_mode: Optional explicit test-mode override
         """
+        from ipfs_accelerate_py.compatibility.simulation.legacy_mock_coordinator import (
+            admit_legacy_workflow_coordinator,
+        )
+
         self.config = config or {}
+        admit_legacy_workflow_coordinator(
+            explicit_simulation=explicit_simulation,
+            config=self.config,
+            explicit_test_mode=explicit_test_mode,
+        )
+        self.origin = "simulated"
+        self.live = False
         self.enabled = False
         self.workflow_scheduler = None
         self.task_queue = []
@@ -382,4 +392,7 @@ class WorkflowCoordinator:
             "cache_dir": str(self.cache_dir),
             "pending_tasks": len(self.list_pending_tasks()),
             "workflow_scheduler": self.workflow_scheduler is not None,
+            "origin": getattr(self, "origin", "simulated"),
+            "live": False,
+            "outcome": "Simulated",
         }

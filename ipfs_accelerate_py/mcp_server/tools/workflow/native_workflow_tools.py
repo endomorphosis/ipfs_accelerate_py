@@ -25,6 +25,10 @@ def workflow_coordinator_submit_task(
     registration so observed contracts resolve on the MCP++ path.
     """
     try:
+        from ipfs_accelerate_py.compatibility.simulation.legacy_mock_coordinator import (
+            LegacyMockCoordinatorError,
+            quarantined_coordinator_unavailable_result,
+        )
         from ipfs_accelerate_py.datasets_integration.workflow import (
             WorkflowCoordinator,
         )
@@ -45,6 +49,11 @@ def workflow_coordinator_submit_task(
             "mediation": "mcp_plus_plus",
             "package_id": "ipfs_accelerate_py",
         }
+    except LegacyMockCoordinatorError as exc:
+        return quarantined_coordinator_unavailable_result(
+            task_id=task_id,
+            error=str(exc),
+        )
     except Exception as exc:  # pragma: no cover - defensive boundary
         return {
             "status": "error",

@@ -881,7 +881,7 @@ def test_current_paths_match_bindings() -> None:
     by_id = {item.path_id: item for item in paths}
     worker = by_id["mock-worker-accelerate"]
     assert worker.kind is PathKind.MOCK_WORKERS
-    assert worker.reachability is ReachabilityDisposition.PRODUCTION_REACHABLE
+    assert worker.reachability is ReachabilityDisposition.COMPATIBILITY_ONLY
     assert worker.origin_taint is OriginTaint.MOCK
     fallback = by_id["fallback-hardware-success"]
     assert fallback.kind is PathKind.FALLBACK_SUCCESS_PATHS

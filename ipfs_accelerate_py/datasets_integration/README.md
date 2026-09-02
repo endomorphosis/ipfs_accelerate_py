@@ -120,7 +120,7 @@ P2P workflow scheduling and task distribution:
 ```python
 from ipfs_accelerate_py.datasets_integration import WorkflowCoordinator
 
-coordinator = WorkflowCoordinator({"enable_p2p": True})
+coordinator = WorkflowCoordinator({"enable_p2p": True, "explicit_simulation": True})
 
 # Submit task
 coordinator.submit_task(
@@ -290,7 +290,7 @@ history = logger.query_logs({"type": "inference", "model": "bert-base"}, limit=1
 ```python
 from ipfs_accelerate_py.datasets_integration import WorkflowCoordinator, ProvenanceLogger
 
-coordinator = WorkflowCoordinator({"enable_p2p": True})
+coordinator = WorkflowCoordinator({"enable_p2p": True, "explicit_simulation": True})
 logger = ProvenanceLogger()
 
 # Coordinator submits work
@@ -431,7 +431,7 @@ print(get_datasets_status())
 
 **Solution**: P2P is disabled by default. Enable explicitly:
 ```python
-coordinator = WorkflowCoordinator({"enable_p2p": True})
+coordinator = WorkflowCoordinator({"enable_p2p": True, "explicit_simulation": True})
 ```
 
 ### Issue: IPFS daemon not running

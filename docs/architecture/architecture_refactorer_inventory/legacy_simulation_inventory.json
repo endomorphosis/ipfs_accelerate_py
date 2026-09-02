@@ -22,13 +22,13 @@
       "path_id": "deprecated-workflow-coordinator",
       "present": true,
       "production_authority": false,
-      "reachability": "production_reachable",
+      "reachability": "compatibility_only",
       "source_span": {
         "end_line": 13,
         "path": "ipfs_accelerate_py/datasets_integration/workflow.py",
         "start_line": 13
       },
-      "uncertainty": "p2p_workflow_coordinator_falls_back_to_a_local_queue"
+      "uncertainty": "quarantined_requires_explicit_simulation_not_ordinary_runtime"
     },
     {
       "dynamic_uncertainty": false,
@@ -341,17 +341,17 @@
       "kind": "mock workers",
       "nominated_symbol": "MockWorker",
       "origin_taint": "mock",
-      "path": "ipfs_accelerate_py/ipfs_accelerate.py",
+      "path": "ipfs_accelerate_py/compatibility/simulation/legacy_mock_coordinator.py",
       "path_id": "mock-worker-accelerate",
       "present": true,
       "production_authority": false,
-      "reachability": "production_reachable",
+      "reachability": "compatibility_only",
       "source_span": {
-        "end_line": 141,
-        "path": "ipfs_accelerate_py/ipfs_accelerate.py",
-        "start_line": 141
+        "end_line": 37,
+        "path": "ipfs_accelerate_py/compatibility/simulation/legacy_mock_coordinator.py",
+        "start_line": 37
       },
-      "uncertainty": "production_constructor_substitutes_simulated_worker"
+      "uncertainty": "quarantined_simulation_namespace_not_ordinary_runtime"
     },
     {
       "dynamic_uncertainty": false,

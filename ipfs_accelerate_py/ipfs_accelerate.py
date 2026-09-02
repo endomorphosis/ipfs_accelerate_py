@@ -136,23 +136,17 @@ class ipfs_accelerate_py:
         #     self.install_depends = install_depends_py(resources, metadata)
         #     resources["install_depends"] = self.install_depends
 
-        # Create a mock worker if the module doesn't exist
-        self.worker = type(
-            "MockWorker",
-            (),
-            {
-                "init_worker": lambda *args, **kwargs: {},  # Return empty dictionary
-                "test_hardware": lambda *args, **kwargs: {
-                    "cuda": True,
-                    "openvino": True,
-                    "llama_cpp": False,
-                    "ipex": False,
-                    "qualcomm": False,
-                    "apple": False,
-                    "webnn": False,
-                },
-            },
-        )()
+        # PCPR-030: ordinary runtime cannot instantiate MockWorker.
+        # The quarantined mock coordinator lives in
+        # ipfs_accelerate_py.compatibility.simulation.legacy_mock_coordinator.
+        from .compatibility.simulation.legacy_mock_coordinator import (
+            load_ordinary_runtime_worker,
+        )
+
+        self.worker = load_ordinary_runtime_worker(
+            resources=self.resources,
+            metadata=self.metadata,
+        )
         self.resources["worker"] = self.worker
 
         # Create a simple mock for ipfs_multiformats with minimal functionality
