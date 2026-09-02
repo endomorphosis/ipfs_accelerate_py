@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 from collections.abc import Mapping
@@ -26,6 +27,65 @@ from types import MappingProxyType, ModuleType, SimpleNamespace
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def test_operator_scopes_exact_source_checkout_bootstrap_without_ambient_pythonpath(
+    tmp_path: Path,
+) -> None:
+    """Deferred operational import must resolve exactly and restore sys.path."""
+
+    script = (
+        REPO_ROOT
+        / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    )
+    probe = r'''
+import json, runpy, sys
+script, root = sys.argv[1:]
+before = list(sys.path)
+namespace = runpy.run_path(script, run_name="_sawm_operator_bootstrap_probe")
+after_import = list(sys.path)
+runtime = namespace["_configured_board_scheduler_runtime"]()
+print(json.dumps({
+    "import_path_unchanged": after_import == before,
+    "runtime_path_restored": list(sys.path) == before,
+    "runtime_origin": str(runtime.__file__),
+}, sort_keys=True))
+'''
+    environment = {
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PATH": os.environ.get("PATH", ""),
+        "PYTHONHASHSEED": "0",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+    }
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            probe,
+            str(script),
+            str(REPO_ROOT),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    observed = json.loads(completed.stdout)
+    assert observed["import_path_unchanged"] is True
+    assert observed["runtime_path_restored"] is True
+    assert Path(observed["runtime_origin"]).resolve() == (
+        REPO_ROOT
+        / "ipfs_accelerate_py/agent_supervisor/runtime/"
+        "configured_board_scheduler.py"
+    ).resolve()
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
     "failed_pre_authoritative_m62_float_bounds_successor_materialization",

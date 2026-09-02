@@ -1625,6 +1625,28 @@ def _load_script(relative: str, name: str):
     return module
 
 
+def _configured_board_scheduler_runtime() -> Any:
+    """Import the source-checkout scheduler without ambient path authority.
+
+    Plain execution of this nested operator script does not place the
+    repository root on ``sys.path``.  Add that exact root only for the deferred
+    operational import, then restore the caller's path byte-for-byte.  Module
+    import and ``--help`` therefore remain side-effect free.
+    """
+
+    prior_path = list(sys.path)
+    try:
+        root = str(REPO_ROOT)
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        from ipfs_accelerate_py.agent_supervisor.runtime import (
+            configured_board_scheduler,
+        )
+    finally:
+        sys.path[:] = prior_path
+    return configured_board_scheduler
+
+
 def _config(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -25997,9 +26019,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         real_launch = args.command == "launch"
         real_detached_launch = real_launch and not args.foreground
-        from ipfs_accelerate_py.agent_supervisor.runtime import (
-            configured_board_scheduler as scheduler_runtime,
-        )
+        scheduler_runtime = _configured_board_scheduler_runtime()
 
         scheduler_board = scheduler_runtime.load_configured_board(
             config_path,
