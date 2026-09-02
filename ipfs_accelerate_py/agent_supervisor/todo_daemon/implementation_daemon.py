@@ -90497,6 +90497,89 @@ class DatabaseImplementationDaemon:
             return False
         return True
 
+    def _retained_recovery_historical_population_durable_current(
+        self,
+        admission: Mapping[str, Any],
+    ) -> bool:
+        """Verify an @4/@5 population without opening peer lane stores.
+
+        Split-store admissions are minted only by the controller while it owns
+        the central mutation fence and the managed-daemon launch lock.  Once
+        that controller has reconciled the closed population, each compact
+        admission (or its one-shot consumption) is durable in the canonical
+        task source.  An ordinary lane may therefore verify the other members
+        from those exact records.  The callers in the claim path separately
+        require the supplied admission's own admitted predecessor fence before
+        this population check and again immediately before consumption.
+
+        This deliberately applies only to the additive historical schemas.
+        The normalized @2/@3 paths retain their existing execution-store
+        population checks.  Missing tasks, mixed authority generations,
+        malformed records, or a non-local/stale supplied fence fail closed.
+        """
+
+        authority = _database_fenced_provider_historical_recovery_authority(
+            admission
+        )
+        if not (
+            authority is not None
+            and admission.get("schema") == authority["admission_schema"]
+            and database_fenced_provider_historical_retained_admission_valid(
+                admission
+            )
+        ):
+            return False
+        controller_receipt_id = str(
+            admission.get("controller_quiescence_receipt_id") or ""
+        )
+        try:
+            manifest = authority["manifest_builder"]()
+            pins = tuple(authority["pins"])
+            if not authority["manifest_validator"](manifest) or not pins:
+                return False
+            for occurrence in pins:
+                task = self.task_source.get(str(occurrence["task_cid"]))
+                if (
+                    task is None
+                    or str(getattr(task, "task_alias", "") or "")
+                    != str(occurrence["task_alias"])
+                ):
+                    return False
+                receipt = dict(
+                    getattr(task, "body", {}).get("completion_receipt") or {}
+                )
+                member_admission = receipt.get("retained_recovery_admission")
+                consumption = receipt.get("retained_recovery_consumption")
+                if not (
+                    isinstance(member_admission, Mapping)
+                    and member_admission.get("schema")
+                    == authority["admission_schema"]
+                    and database_fenced_provider_historical_retained_admission_valid(
+                        member_admission
+                    )
+                    and member_admission.get(
+                        "controller_quiescence_receipt_id"
+                    )
+                    == controller_receipt_id
+                ):
+                    return False
+                if consumption is None:
+                    if not self._retained_recovery_admission_is_current_for_task(
+                        task,
+                        member_admission,
+                        require_admitted_fence=False,
+                    ):
+                        return False
+                elif not self._retained_recovery_consumption_is_current(
+                    task,
+                    admission=member_admission,
+                    consumption=consumption,
+                ):
+                    return False
+        except Exception:
+            return False
+        return True
+
     def _retained_recovery_admission_population_admitted_current(
         self,
         admission: Mapping[str, Any],
@@ -90508,10 +90591,16 @@ class DatabaseImplementationDaemon:
             return False
         if authority["admission_schema"] in {
             DATABASE_FENCED_PROVIDER_RETAINED_ADMISSION_SCHEMA,
-            DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA,
         }:
             # Preserve the independently tested @2 aggregate barrier.
             return self._retained_recovery_aggregate_admitted_current()
+        if authority["admission_schema"] in {
+            DATABASE_FENCED_PROVIDER_HISTORICAL_RETAINED_ADMISSION_SCHEMA,
+            DATABASE_PCTDD005_HISTORICAL_SUCCESSOR_ADMISSION_SCHEMA,
+        }:
+            return self._retained_recovery_historical_population_durable_current(
+                admission
+            )
         try:
             manifest = authority["manifest_builder"]()
             if not authority["manifest_validator"](manifest):
