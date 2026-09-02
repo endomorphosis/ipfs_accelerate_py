@@ -99696,6 +99696,16 @@ class DatabaseImplementationDaemon:
                 or "attach.lock" in lowered
                 or "timed out acquiring duckdb process lock" in lowered
                 or "timed out acquiring duckdb thread lock" in lowered
+                or "typed quack authority binding is no longer live" in lowered
+                or "quack authority is not live" in lowered
+                or "could not connect to server" in lowered
+                or name
+                in {
+                    "TypedStateOwnerProtocolError",
+                    "TypedStateOwnerAuthorizationError",
+                    "TaskSourceIntegrityError",
+                    "QuackStateServerNotRunningError",
+                }
                 or (
                     name in {"TimeoutError", "InvalidInputException"}
                     and (

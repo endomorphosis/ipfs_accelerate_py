@@ -11192,6 +11192,41 @@ def test_wrapped_quack_attach_contention_still_defers(
         daemon.close()
 
 
+def test_stale_quack_authority_binding_defers_instead_of_killing_the_daemon(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskSourceIntegrityError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:stale-quack-binding-defer",
+        max_task_attempts=3,
+    )
+
+    def boom(*_args: object, **_kwargs: object) -> dict[str, object]:
+        try:
+            raise TaskSourceIntegrityError(
+                "typed database task source Quack authority is not live"
+            )
+        except TaskSourceIntegrityError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "typed Quack authority binding is no longer live"
+            ) from exc
+
+    try:
+        monkeypatch.setattr(daemon, "_run_once_impl", boom)
+        result = daemon.run_once()
+        assert result["reason"] == "quack_attach_contended"
+        assert result["attempt_consumed"] is False
+        assert result["provider_dispatched"] is False
+        assert result["deferred"] is True
+    finally:
+        daemon.close()
+
+
 def test_wrapped_uncertain_transaction_authority_error_is_not_attach_contention(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
