@@ -108,6 +108,9 @@ OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
 STATUS_FILENAME: Final = "quack-state-server.status.json"
 CONTROL_STOP_FILENAME: Final = "quack-state-server.stop"
+STALE_OWNER_RECOVERY_RECEIPT_FILENAME: Final = (
+    "quack-stale-owner-recovery-receipt.json"
+)
 PROVISIONAL_OWNER_MARKER_GENERATION: Final[int] = 1
 
 LOOPBACK_HOSTS: Final[frozenset[str]] = frozenset(
@@ -244,6 +247,43 @@ def _schema_fingerprint_digest(value: str) -> str:
         if raw.startswith(prefix) and len(raw) == len(prefix) + 32:
             return f"sha256:{raw[len(prefix):].hex()}"
     return ""
+
+
+def _validate_recovery_receipt_filename(value: str) -> str:
+    """Return one confined, portable recovery-receipt basename.
+
+    Recovery settles canonical database rows before publishing its receipt, so
+    a caller-controlled receipt path must be rejected before any recovery work
+    begins.  In particular, accepting a platform-specific separator here could
+    move the final publication outside ``state_dir`` on another host.
+    """
+
+    if (
+        not isinstance(value, str)
+        or not value
+        or value in {".", ".."}
+        or value in {STATUS_FILENAME, CONTROL_STOP_FILENAME}
+        or "/" in value
+        or "\\" in value
+        or any(not character.isprintable() for character in value)
+    ):
+        raise QuackStateServerControlError(
+            "stale-owner recovery receipt filename is not a confined basename"
+        )
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise QuackStateServerControlError(
+            "stale-owner recovery receipt filename is not a confined basename"
+        ) from exc
+    # The local control profile bounds names to 255 encoded bytes.  This keeps
+    # an otherwise valid-looking name from failing only after the canonical
+    # stop transaction has committed.
+    if len(encoded) > 255:
+        raise QuackStateServerControlError(
+            "stale-owner recovery receipt filename is not a confined basename"
+        )
+    return value
 
 
 def _is_loopback_host(host: str) -> bool:
@@ -2369,6 +2409,7 @@ def recover_stale_state_server(
     expected_database_uuid: str,
     liveness: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None,
     stopped_at: str | None = None,
+    receipt_filename: str = STALE_OWNER_RECOVERY_RECEIPT_FILENAME,
 ) -> dict[str, Any]:
     """Settle a process-dead owner's canonical stop bookkeeping exactly once.
 
@@ -2380,13 +2421,24 @@ def recover_stale_state_server(
     content-addressed recovery receipt last.
     """
 
+    receipt_basename = _validate_recovery_receipt_filename(receipt_filename)
     database = Path(database_path).resolve(strict=True)
     runtime = Path(state_dir).resolve(strict=True)
     marker_path = database.with_name(f".{database.name}.state-owner.json")
     lock_path = database.with_name(f".{database.name}.state-owner.lock")
-    status_path = runtime / "quack-state-server.status.json"
-    stop_path = runtime / "quack-state-server.stop"
-    receipt_path = runtime / "quack-stale-owner-recovery-receipt.json"
+    status_path = runtime / STATUS_FILENAME
+    stop_path = runtime / CONTROL_STOP_FILENAME
+    receipt_path = runtime / receipt_basename
+    if receipt_path in {
+        database,
+        marker_path,
+        lock_path,
+        status_path,
+        stop_path,
+    }:
+        raise QuackStateServerControlError(
+            "stale-owner recovery receipt filename is not a confined basename"
+        )
     try:
         database_stat = database.lstat()
     except OSError as exc:
