@@ -3495,7 +3495,7 @@ _M55_SUPERSESSION_REASON = (
 )
 _M55_CONTROL_RECORDED_AT = "2026-09-02T06:35:00Z"
 _M55_AUTHORITY_CID = (
-    "sha256:5c8e3217f2ed2bdcf935761e5aa2e5b04aaa0945ae8dbe166fb57293a5ba1938"
+    "sha256:fd5d70d8f5f82fe78b4880b2298c8efd1c7bdae2739d6a21933bbab6d24c0c3c"
 )
 _M55_AUTHORITY_SIZE = 30_271
 _M55_PRIOR_GENERATION = 39
@@ -94626,6 +94626,7 @@ def _expected_m55_live_ready_owner_missing_client_token_vault_restart_authority(
             "prior_projection_cid": _M55_PRIOR_PROJECTION_CID,
             "target_projection_cid": _M55_TARGET_PROJECTION_CID,
             "target_generation": _M55_TARGET_GENERATION,
+            "semantic_authority_digest": _M55_SEMANTIC_AUTHORITY_DIGEST,
             "apply_when_uri_ready_and_token_missing": True,
         }
     )

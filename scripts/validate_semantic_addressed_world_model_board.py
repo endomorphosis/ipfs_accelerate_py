@@ -114,7 +114,7 @@ _M53_TARGET_PROJECTION_CID = (
     "baguqeerayh3goxbqiclzj3lzaxzgmqlqaopjmcsbuhastfmtti2xyfd5qxwa"
 )
 _M55_AUTHORITY_CID = (
-    "sha256:5c8e3217f2ed2bdcf935761e5aa2e5b04aaa0945ae8dbe166fb57293a5ba1938"
+    "sha256:fd5d70d8f5f82fe78b4880b2298c8efd1c7bdae2739d6a21933bbab6d24c0c3c"
 )
 _M55_AUTHORITY_SIZE = 30_271
 _M55_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M55_FINAL_CONTROL_AUTHORITY_CID"
