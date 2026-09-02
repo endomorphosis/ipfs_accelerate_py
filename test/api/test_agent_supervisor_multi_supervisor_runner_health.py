@@ -805,6 +805,107 @@ def test_missing_status_restarts_only_after_startup_grace(tmp_path):
     assert expired["restart_supervisor"] is True
 
 
+def test_stale_lane_fence_failure_does_not_stop_other_lanes(
+    tmp_path, monkeypatch
+):
+    """One unfenceable stale lane must not interrupt the remaining live lanes."""
+
+    def _worker_source(*, stale: bool) -> str:
+        status_name = (
+            "stale_supervisor_status.json" if stale else "live_supervisor_status.json"
+        )
+        updated_at = (
+            "'2000-01-01T00:00:00+00:00'"
+            if stale
+            else "datetime.now(timezone.utc).isoformat()"
+        )
+        return "\n".join(
+            [
+                "import json",
+                "import os",
+                "import signal",
+                "import sys",
+                "import time",
+                "from datetime import datetime, timezone",
+                "from pathlib import Path",
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "Path('state').mkdir(exist_ok=True)",
+                "Path('state/task_state.json').write_text(",
+                "    json.dumps({'active_task_id': '', "
+                "'implementation_in_progress': False}),",
+                "    encoding='utf-8',",
+                ")",
+                f"Path('state/{status_name}').write_text(",
+                "    json.dumps({",
+                "        'status': 'running',",
+                f"        'updated_at': {updated_at},",
+                "        'supervisor_pid': os.getpid(),",
+                "        'current_status_path': 'state/task_state.json',",
+                "    }),",
+                "    encoding='utf-8',",
+                ")",
+                "while True:",
+                "    time.sleep(0.05)",
+            ]
+        ) + "\n"
+
+    (tmp_path / "stale.py").write_text(_worker_source(stale=True), encoding="utf-8")
+    (tmp_path / "live.py").write_text(_worker_source(stale=False), encoding="utf-8")
+    stale_track = parse_track_spec(
+        "S|stale.py|logs/{stamp}-s.log|state/stale_supervisor.pid|"
+        "state/stale_managed_daemon.pid",
+        stamp="RUN",
+    )
+    live_track = parse_track_spec(
+        "L|live.py|logs/{stamp}-l.log|state/live_supervisor.pid|"
+        "state/live_managed_daemon.pid",
+        stamp="RUN",
+    )
+    output: list[str] = []
+
+    def refuse_fence(process, *, grace_seconds):
+        del process, grace_seconds
+        return False, ()
+
+    monkeypatch.setattr(runner, "_terminate_managed_process", refuse_fence)
+
+    result = run_supervisor_tracks(
+        [stale_track, live_track],
+        repo_root=tmp_path,
+        common_args=[],
+        duration_seconds=0.8,
+        heartbeat_interval_seconds=0.05,
+        supervisor_status_stale_seconds=0.01,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        label="test runner",
+        output=output.append,
+    )
+
+    assert result["interrupted"] == ""
+    assert result["completed"] is True
+    assert not any(
+        "interrupted: could not fence stale S process tree" in line
+        for line in output
+    )
+    assert any(
+        "could not fence stale S process tree; leaving remaining lanes running"
+        in line
+        for line in output
+    )
+    stale_restart_indexes = [
+        index
+        for index, line in enumerate(output)
+        if "could not fence stale S process tree; leaving remaining lanes running"
+        in line
+    ]
+    assert stale_restart_indexes
+    assert any(
+        index > stale_restart_indexes[0] and "heartbeat L " in line
+        for index, line in enumerate(output)
+    )
+
+
 def test_multi_runner_still_restarts_stale_idle_supervisor(tmp_path):
     worker = tmp_path / "worker.py"
     worker.write_text(

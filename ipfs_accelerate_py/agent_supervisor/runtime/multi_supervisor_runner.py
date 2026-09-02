@@ -8710,9 +8710,18 @@ def run_supervisor_tracks(
                             grace_seconds=stop_grace_seconds,
                         )
                         if not fenced:
-                            raise SupervisorRunInterrupted(
-                                f"could not fence stale {track.name} process tree"
+                            # A single unfenceable lane must not tear down the
+                            # remaining live lanes: those processes still hold
+                            # the one-time Quack grant after handoff retirement.
+                            _emit(
+                                output,
+                                (
+                                    f"could not fence stale {track.name} "
+                                    "process tree; leaving remaining lanes "
+                                    "running"
+                                ),
                             )
+                            continue
                         try:
                             process.wait(timeout=max(0.1, stop_grace_seconds))
                         except subprocess.TimeoutExpired:
@@ -8988,9 +8997,14 @@ def run_supervisor_tracks(
                         grace_seconds=stop_grace_seconds,
                     )
                     if not fenced:
-                        raise SupervisorRunInterrupted(
-                            f"could not fence exited {track.name} descendants"
+                        _emit(
+                            output,
+                            (
+                                f"could not fence exited {track.name} "
+                                "descendants; leaving remaining lanes running"
+                            ),
                         )
+                        continue
                 processes[track.name] = start_managed_track(track)
             if shared_authority_terminals:
                 # This is a shared state-authority terminal, not a task/slice
