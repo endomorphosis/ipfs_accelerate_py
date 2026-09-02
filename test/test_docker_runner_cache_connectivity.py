@@ -83,7 +83,7 @@ class DockerRunnerCacheConnectivityTest:
             self.log(f"libp2p not installed: {e}", "ERROR")
             self.issues.append("libp2p not installed")
             self.recommendations.append(
-                "Install libp2p (upstream main): pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main'"
+                "Install libp2p (pinned commit): pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f'"
             )
 
         # Check cryptography

@@ -109,7 +109,7 @@ if python3 -c "import libp2p" 2>/dev/null; then
     print_success "libp2p installed (version ${LIBP2P_VERSION})"
 else
     print_error "libp2p not installed"
-    print_info "Run: pip install \"protobuf>=5.27.0\" \"pymultihash>=0.8.2\" \"dnspython>=2.2.1\" \"libp2p @ git+https://github.com/libp2p/py-libp2p.git@main\""
+    print_info "Run: pip install \"protobuf>=5.27.0\" \"pymultihash>=0.8.2\" \"dnspython>=2.2.1\" \"libp2p @ git+https://github.com/libp2p/py-libp2p.git@20d9527ff5a2e8368e77b964b340d0c7ded1a61f\""
 fi
 
 # Check pymultihash

@@ -34,5 +34,5 @@ aiofiles>=23.0.0
 # openvino>=2023.0.0
 
 # Optional IPFS integration
-git+https://github.com/endomorphosis/ipfs_kit_py.git@main
-git+https://github.com/endomorphosis/ipfs_datasets_py.git@main
+git+https://github.com/endomorphosis/ipfs_kit_py.git@a4fd25d944e6aaf25fb51e054a3f62bbcbea544d
+git+https://github.com/endomorphosis/ipfs_datasets_py.git@d54a6494f50b5982758f8a6d2aafe24ccc7523b8
