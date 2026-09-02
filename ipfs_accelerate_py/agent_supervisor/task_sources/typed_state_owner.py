@@ -9858,6 +9858,15 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "task revision history post-state differs from its receipt CAS"
                 )
+            expected_revision = expected_history["revision"]
+            prior = self._connection.execute(
+                """
+                SELECT COUNT(*), MIN(revision)
+                FROM task_revisions
+                WHERE task_cid = ? AND revision < ?
+                """,
+                [expected_history["task_cid"], expected_revision],
+            ).fetchone()
             population = self._connection.execute(
                 """
                 SELECT COUNT(*), MIN(revision), MAX(revision)
@@ -9865,12 +9874,21 @@ class TypedStateOwnerGateway:
                 """,
                 [expected_history["task_cid"]],
             ).fetchone()
-            expected_revision = expected_history["revision"]
+            # SPAR-018's leftover unimplemented requeue jumped 47 -> 49 and
+            # omitted history row 48. Requiring COUNT == MAX then rejected
+            # the only dependency-ready claim CAS at commit.
             if (
                 population is None
+                or prior is None
                 or type(expected_revision) is not int
-                or tuple(population[index] for index in range(3))
-                != (expected_revision, 1, expected_revision)
+                or expected_revision < 1
+                or type(population[0]) is not int
+                or type(population[1]) is not int
+                or type(population[2]) is not int
+                or type(prior[0]) is not int
+                or int(population[0]) != int(prior[0]) + 1
+                or int(population[2]) != expected_revision
+                or int(population[1]) != 1
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "task revision history is not contiguous through its receipt CAS"

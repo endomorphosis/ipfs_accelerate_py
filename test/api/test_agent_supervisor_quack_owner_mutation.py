@@ -376,6 +376,99 @@ def _typed_claim_receipt(
     }
 
 
+def test_typed_claim_cas_admits_ready_task_with_preexisting_history_gap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A leftover requeue gap must not starve the next home-shard claim.
+
+    SPAR-018 jumped 47 -> 49 and omitted history row 48. Commit used to
+    require COUNT(*) == new revision, so the only dependency-ready CAS
+    died with authorization_denied.
+    """
+
+    database = tmp_path / "control.duckdb"
+    _seed(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-history-gap-owner",
+        store_id="typed-history-gap-claim-v1",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:history-gap-claim",
+        allowed_command_operations=("task.status.cas.receipt",),
+    )
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        connection = server._connection  # noqa: SLF001
+        body_json = connection.execute(
+            "SELECT body_json FROM tasks WHERE task_cid = ?",
+            [ready.task_cid],
+        ).fetchone()[0]
+        recorded_at = connection.execute(
+            "SELECT recorded_at FROM task_revisions WHERE task_cid = ? "
+            "AND revision = 1",
+            [ready.task_cid],
+        ).fetchone()[0]
+        connection.execute(
+            """
+            INSERT INTO task_revisions (
+                task_cid, revision, status, body_json, recorded_at
+            ) VALUES (?, 3, 'todo', ?, ?)
+            """,
+            [ready.task_cid, body_json, recorded_at],
+        )
+        connection.execute(
+            """
+            UPDATE tasks SET revision = 3, status = 'todo', body_json = ?
+            WHERE task_cid = ?
+            """,
+            [body_json, ready.task_cid],
+        )
+        connection.commit()
+        gapped = source.get_task(ready.task_cid)
+        assert gapped is not None
+        assert (gapped.status, gapped.revision) == ("todo", 3)
+        history = connection.execute(
+            """
+            SELECT COUNT(*) AS n, MIN(revision) AS lo, MAX(revision) AS hi
+            FROM task_revisions WHERE task_cid = ?
+            """,
+            [ready.task_cid],
+        ).fetchone()
+        assert tuple(history[index] for index in range(3)) == (2, 1, 3)
+        claimed = source.compare_and_set_status(
+            gapped.task_cid,
+            gapped.revision,
+            "in_progress",
+            _typed_claim_receipt(
+                source,
+                lane="history-gap",
+                claimed_from_revision=gapped.revision,
+            ),
+        ).task
+        assert (claimed.status, claimed.revision) == ("in_progress", 4)
+        after = connection.execute(
+            """
+            SELECT COUNT(*) AS n, MIN(revision) AS lo, MAX(revision) AS hi
+            FROM task_revisions WHERE task_cid = ?
+            """,
+            [ready.task_cid],
+        ).fetchone()
+        assert tuple(after[index] for index in range(3)) == (3, 1, 4)
+    finally:
+        source.close()
+        server.stop()
+
+
 def _typed_owner_completion_state(connection: Any) -> dict[str, Any]:
     """Capture every durable surface a rejected completion could mutate."""
 
