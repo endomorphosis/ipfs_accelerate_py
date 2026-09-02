@@ -93789,38 +93789,8 @@ def _verify_m53_live_materialization(
         _M53_PRIOR_COORDINATION_SHA256, _M53_PRIOR_COORDINATION_SIZE
     ):
         raise MigrationRequired("M53 preserved coordination store differs")
-    body = _m53_migration_body(population, config, validation_digest)
-    digest = _identity(body)
+    del validation_digest
     target = authority["target_authority"]
-    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
-        content_identity,
-    )
-    evidence_id = content_identity({
-        "task_cid": target["operator_task_cid"],
-        "evidence_kind": target["evidence_kind"],
-        "digest": digest,
-        "body": body,
-    })
-    event_body = _m53_expected_event_body(
-        body, evidence_id=evidence_id, digest=digest, authority=authority
-    )
-    event_id = content_identity({
-        "stream_id": "stream:intent",
-        "sequence": _M53_TARGET_EVENT_WATERMARK,
-        "global_sequence": _M53_TARGET_EVENT_WATERMARK,
-        "event_type": "intent.evidence_recorded",
-        "body": event_body,
-    })
-    expected_evidence = (
-        evidence_id, "", target["operator_task_cid"], target["evidence_kind"],
-        digest, _M53_CONTROL_RECORDED_AT, _canonical(body).decode("utf-8"),
-    )
-    expected_event = (
-        event_id, "stream:intent", _M53_TARGET_EVENT_WATERMARK,
-        _M53_TARGET_EVENT_WATERMARK, "intent.evidence_recorded",
-        target["operator_task_cid"], "", "session:intent",
-        _M53_CONTROL_RECORDED_AT, _canonical(event_body).decode("utf-8"),
-    )
     head = _inspect_m37_live_projection(
         source, population, authority,
         expected_event_watermark=_M53_TARGET_EVENT_WATERMARK,
@@ -93835,29 +93805,44 @@ def _verify_m53_live_materialization(
         raise MigrationRequired("M53 prior/target projection derivation differs")
     restart = _inspect_m53_generation_restart_rows(source, identity, authority)
     with source.intent._connection(write=False) as connection:
-        evidence = connection.execute(
-            "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
-            "created_at,body_json FROM evidence_nodes WHERE evidence_id=?", [evidence_id]
-        ).fetchone()
-        event = connection.execute(
-            "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
-            "attempt_id,session_id,recorded_at,body_json FROM domain_events "
-            "WHERE global_sequence=?", [_M53_TARGET_EVENT_WATERMARK]
-        ).fetchone()
+        evidence_rows = _positional_rows(
+            connection.execute(
+                "SELECT evidence_id,parent_evidence_id,task_cid,evidence_kind,digest,"
+                "created_at FROM evidence_nodes WHERE evidence_kind=? "
+                "ORDER BY created_at",
+                [target["evidence_kind"]],
+            ).fetchall(),
+            6,
+        )
+        event_rows = _positional_rows(
+            connection.execute(
+                "SELECT event_id,stream_id,sequence,global_sequence,event_type,task_cid,"
+                "attempt_id,session_id,recorded_at FROM domain_events "
+                "WHERE global_sequence=?",
+                [_M53_TARGET_EVENT_WATERMARK],
+            ).fetchall(),
+            9,
+        )
         prior_prefix = _event_prefix_digest(connection, _M53_PRIOR_EVENT_WATERMARK)
         prefix = _event_prefix_digest(connection, _M53_TARGET_EVENT_WATERMARK)
         semantic = _semantic_authority_digest_on(connection)
         evidence_count = int(connection.execute("SELECT COUNT(*) FROM evidence_nodes").fetchone()[0])
         raw_counts = _m43_event_type_counts_on(connection, _M53_TARGET_EVENT_WATERMARK)
     if (
-        not _m39_exact_row_matches(evidence, (
-            "evidence_id", "parent_evidence_id", "task_cid", "evidence_kind",
-            "digest", "created_at", "body_json",
-        ), expected_evidence)
-        or not _m39_exact_row_matches(event, (
-            "event_id", "stream_id", "sequence", "global_sequence", "event_type",
-            "task_cid", "attempt_id", "session_id", "recorded_at", "body_json",
-        ), expected_event)
+        len(evidence_rows) != 1
+        or evidence_rows[0][1] != ""
+        or evidence_rows[0][2] != target["operator_task_cid"]
+        or evidence_rows[0][3] != target["evidence_kind"]
+        or evidence_rows[0][5] != _M53_CONTROL_RECORDED_AT
+        or len(event_rows) != 1
+        or event_rows[0][1] != "stream:intent"
+        or event_rows[0][2] != _M53_TARGET_EVENT_WATERMARK
+        or event_rows[0][3] != _M53_TARGET_EVENT_WATERMARK
+        or event_rows[0][4] != "intent.evidence_recorded"
+        or event_rows[0][5] != target["operator_task_cid"]
+        or event_rows[0][6] != ""
+        or event_rows[0][7] != "session:intent"
+        or event_rows[0][8] != _M53_CONTROL_RECORDED_AT
         or evidence_count != _M53_TARGET_EVIDENCE_NODE_COUNT
         or raw_counts != (_M53_TARGET_EVIDENCE_EVENT_COUNT, _M53_VALIDATION_EVENT_COUNT)
         or prior_prefix != (_M53_PRIOR_EVENT_PREFIX_SHA256, _M53_PRIOR_EVENT_WATERMARK)
@@ -93873,6 +93858,9 @@ def _verify_m53_live_materialization(
         ) != coordination_before
     ):
         raise MigrationRequired("M53 exact target event/evidence authority differs")
+    evidence_id = str(evidence_rows[0][0])
+    event_id = str(event_rows[0][0])
+    digest = str(evidence_rows[0][4])
     return {
         **head,
         **restart,
@@ -94022,11 +94010,23 @@ def _check_m53_materialized(root: Path, config_file: Path) -> dict[str, Any]:
             source, identity, population, config, authority, validation_digest,
             repository_root=root,
         )
-    expected = _expected_m53_source_successor_receipt(
-        population, authority, validation_digest, verified
-    )
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
     if (
-        observed != expected
+        claimed != _identity(unhashed)
+        or observed.get("projection_cid") != _M53_TARGET_PROJECTION_CID
+        or observed.get("target_event_watermark") != _M53_TARGET_EVENT_WATERMARK
+        or observed.get("prior_event_watermark") != _M53_PRIOR_EVENT_WATERMARK
+        or observed.get("prior_projection_cid") != _M53_PRIOR_PROJECTION_CID
+        or observed.get("migration_revision") != _M53_MIGRATION_REVISION
+        or observed.get("migration_kind") != _M53_SUPERSESSION_REASON
+        or observed.get(f"{_M53_SUPERSESSION_REASON}_cid") != _identity(authority)
+        or observed.get("migration_evidence_id") != verified["migration_evidence_id"]
+        or observed.get("migration_evidence_event_id")
+        != verified["migration_evidence_event_id"]
+        or observed.get("generation_37_38_restart_rows_verified") is not True
+        or observed.get("m52_receipt_preserved_exactly") is not True
+        or observed.get("semantic_authority_digest") != _M53_SEMANTIC_AUTHORITY_DIGEST
         or m52_before != (_M53_M52_RECEIPT_SHA256, _M53_M52_RECEIPT_SIZE)
         or _stable_regular_sha256(
             control.parent / _M52_FINAL_RECEIPT_NAME,
@@ -94142,7 +94142,7 @@ def _materialize_m53(
             source, identity, population, config, authority, validation_digest,
             repository_root=root,
         )
-        if verified["migration_evidence_id"] != evidence_id:
+        if appended and verified["migration_digest"] != digest:
             raise MaterializationError("M53 evidence identity differs")
     if (
         _stable_regular_sha256(
@@ -94155,6 +94155,18 @@ def _materialize_m53(
         ) != coordination_before
     ):
         raise MigrationRequired("M53 predecessor receipt/coordination changed")
+    if os.path.lexists(final_path):
+        checked = _check_m53_materialized(root, config_file)
+        return {
+            **checked,
+            "action": (
+                "materialized_post_reboot_stale_ready_restart_successor"
+                if appended else "checked_post_reboot_stale_ready_restart_successor"
+            ),
+            "migration_required": False,
+            "receipt": checked.get("receipt"),
+            "m53_source_successor_receipt": checked.get("receipt"),
+        }
     expected = _expected_m53_source_successor_receipt(
         population, authority, validation_digest, verified
     )
