@@ -636,6 +636,12 @@ def test_admission_accepts_only_cross_bound_historical_outer_authority(
         "count": 1,
         "rows": [terminal],
     }
+    inner["authority"]["control_schema_evidence"] = {
+        "state_schema_revision": "1",
+        "profile_id": "datasets-authoritative-operational-control-plane@1",
+        "schema_fingerprint": occurrence["owner_schema_fingerprint"],
+        "verified": True,
+    }
     controller = dict(
         database_portal_controller_quiescence_receipt(
             cleanup={
@@ -737,6 +743,55 @@ def test_admission_accepts_only_cross_bound_historical_outer_authority(
         admission
     )
     assert not database_fenced_provider_retained_admission_valid(admission)
+
+    legacy_inner = {
+        **inner,
+        "authority": {
+            **inner["authority"],
+            "control_schema_evidence": {
+                "state_schema_revision": (
+                    daemon_module.DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
+                ),
+                "profile_id": (
+                    "datasets-authoritative-operational-control-plane@1"
+                ),
+                "schema_fingerprint": "",
+                "verified": True,
+            },
+        },
+    }
+    legacy_historical = dict(
+        database_fenced_provider_historical_occurrence_authority(
+            inner_receipt=legacy_inner,
+            controller_quiescence_receipt=controller,
+            board_namespace=occurrence["board_namespace"],
+            owner_store_id=occurrence["owner_store_id"],
+            control_store_generation=occurrence[
+                "control_store_generation"
+            ],
+        )
+    )
+    legacy_outer = {
+        **outer,
+        "cross_store_context": {
+            **outer["cross_store_context"],
+            "historical_occurrence_authority": legacy_historical,
+        },
+    }
+    with pytest.raises(
+        DatabaseImplementationConflictError,
+        match="receipt bindings drifted",
+    ):
+        database_fenced_provider_historical_retained_admission(
+            occurrence=occurrence,
+            credit=credit,
+            inner_receipt=legacy_inner,
+            outer_receipt=legacy_outer,
+            expected_task_revision=occurrence["blocked_task_revision"],
+            expected_task_status=occurrence["blocked_task_status"],
+            historical_occurrence_authority=legacy_historical,
+            controller_quiescence_receipt=controller,
+        )
     consumption = dict(
         database_fenced_provider_historical_retained_consumption(
             admission=admission,

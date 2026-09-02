@@ -80810,6 +80810,23 @@ def _database_fenced_provider_retained_admission(
         if isinstance(inner_authority, Mapping)
         else None
     )
+    historical_control_schema_current = bool(
+        isinstance(inner_control_schema, Mapping)
+        and set(inner_control_schema)
+        == {
+            "state_schema_revision",
+            "profile_id",
+            "schema_fingerprint",
+            "verified",
+        }
+        and inner_control_schema.get("state_schema_revision")
+        == DATABASE_QUACK_CONTROL_SCHEMA_REVISION
+        and inner_control_schema.get("profile_id")
+        == DATASETS_AUTHORITATIVE_CONTROL_SCHEMA_PROFILE_ID
+        and inner_control_schema.get("verified") is True
+        and inner_control_schema.get("schema_fingerprint")
+        == pin["owner_schema_fingerprint"]
+    )
     observed_generation = owner_binding.get("generation")
     owner_binding_cid = _database_fenced_provider_retained_digest(
         dict(owner_binding)
@@ -80849,6 +80866,7 @@ def _database_fenced_provider_retained_admission(
         or inner_authority.get("control_store_id") != pin["owner_store_id"]
         or inner_authority.get("control_store_generation")
         != pin["control_store_generation"]
+        or (historical_mode and not historical_control_schema_current)
         or (
             isinstance(inner_control_schema, Mapping)
             and bool(inner_control_schema.get("schema_fingerprint"))
