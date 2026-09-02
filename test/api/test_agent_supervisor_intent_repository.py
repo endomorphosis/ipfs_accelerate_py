@@ -998,6 +998,110 @@ def test_stale_unstall_is_one_atomic_replayable_transition(
         assert repo.event_watermark() == watermark
 
 
+def test_stale_unstall_drops_leftover_validation_retry_seed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import datetime, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+    stale = "2026-08-25T00:00:00Z"
+    now = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        original_utc_iso = intent_repository._utc_iso
+        monkeypatch.setattr(intent_repository, "_utc_iso", lambda _moment=None: stale)
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=1,
+            new_status="in_progress",
+            receipt={
+                "operation": "database_portal_validation_retry",
+                "attempt_id": "attempt:one",
+                "validation_retry_seed": {"attempt_id": "attempt:prior"},
+                "validation_retry_source_attempt_id": "attempt:prior",
+            },
+        )
+        monkeypatch.setattr(intent_repository, "_utc_iso", original_utc_iso)
+
+        result = repo.unstall_stale_in_progress_tasks(
+            now=now,
+            stale_seconds=16_200,
+        )
+        assert [item["task_cid"] for item in result["unstalled"]] == [ids["task_a"]]
+        task = repo.get_task(ids["task_a"])
+        assert task is not None
+        stored_receipt = task["body"]["completion_receipt"]
+        assert stored_receipt["operation"] == "event_sourced_stale_in_progress_unstall"
+        assert "validation_retry_seed" not in stored_receipt
+        assert "validation_retry_source_attempt_id" not in stored_receipt
+        repo.assert_projection_matches_events()
+
+
+def test_owner_restart_sanitizes_retrying_leftover_validation_retry_seed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import datetime, timezone
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import intent_repository
+
+    stale = "2026-08-25T00:00:00Z"
+    now = datetime(2026, 8, 26, 12, 0, tzinfo=timezone.utc)
+    with _repo(tmp_path) as repo:
+        ids = _seed_graph(repo)
+        original_utc_iso = intent_repository._utc_iso
+        monkeypatch.setattr(intent_repository, "_utc_iso", lambda _moment=None: stale)
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=1,
+            new_status="in_progress",
+            receipt={
+                "operation": "database_portal_validation_retry",
+                "attempt_id": "attempt:one",
+                "validation_retry_seed": {"attempt_id": "attempt:prior"},
+                "validation_retry_source_attempt_id": "attempt:prior",
+            },
+        )
+        monkeypatch.setattr(intent_repository, "_utc_iso", original_utc_iso)
+        repo.cas_task_status(
+            task_cid=ids["task_a"],
+            expected_revision=2,
+            new_status="retrying",
+            receipt={
+                "operation": "event_sourced_stale_in_progress_unstall",
+                "status": "retrying",
+                "validation_retry_seed": {"attempt_id": "attempt:prior"},
+                "validation_retry_source_attempt_id": "attempt:prior",
+            },
+        )
+
+        result = repo.unstall_stale_in_progress_tasks(
+            now=now,
+            stale_seconds=16_200,
+            orphan_previous_generation=True,
+        )
+        assert result["unstalled"] == []
+        sanitized = result["sanitized_malformed_validation_retry_seeds"]
+        assert [item["task_cid"] for item in sanitized] == [ids["task_a"]]
+        task = repo.get_task(ids["task_a"])
+        assert task is not None
+        assert (task["status"], task["revision"]) == ("todo", 4)
+        stored_receipt = task["body"]["completion_receipt"]
+        assert (
+            stored_receipt["operation"]
+            == "event_sourced_malformed_validation_retry_seed_unstall"
+        )
+        assert "validation_retry_seed" not in stored_receipt
+        repo.assert_projection_matches_events()
+
+        duplicate = repo.unstall_stale_in_progress_tasks(
+            now=now,
+            stale_seconds=16_200,
+            orphan_previous_generation=True,
+        )
+        assert duplicate["sanitized_malformed_validation_retry_seeds"] == []
+
+
 def test_exact_legacy_projection_only_unstall_is_bounded_and_idempotent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

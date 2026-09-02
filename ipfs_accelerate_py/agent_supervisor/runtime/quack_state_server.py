@@ -5218,14 +5218,24 @@ class QuackStateServer:
         finally:
             repository.close()
         unstalled = result.get("unstalled") or []
-        if not unstalled:
+        sanitized = result.get("sanitized_malformed_validation_retry_seeds") or []
+        if not unstalled and not sanitized:
             return
         aliases = ",".join(
             str(item.get("task_alias") or item.get("task_cid") or "")
             for item in unstalled[:8]
             if isinstance(item, Mapping)
         )
-        self._log(f"board unstall gates={len(unstalled)} aliases={aliases}")
+        sanitized_aliases = ",".join(
+            str(item.get("task_alias") or item.get("task_cid") or "")
+            for item in sanitized[:8]
+            if isinstance(item, Mapping)
+        )
+        self._log(
+            f"board unstall gates={len(unstalled)} aliases={aliases} "
+            f"malformed_seed_unstalls={len(sanitized)} "
+            f"seed_aliases={sanitized_aliases}"
+        )
 
     def _read_meta(self, connection: Any) -> dict[str, str]:
         def get(key: str) -> str:

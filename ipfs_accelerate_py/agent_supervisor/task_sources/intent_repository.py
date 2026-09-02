@@ -150,6 +150,16 @@ _TASK_STATUSES: Final[frozenset[str]] = frozenset(
         "blocked",
     }
 )
+_VALIDATION_RETRY_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "database_portal_validation_retry",
+        "database_portal_validation_retry_recovery",
+    }
+)
+_LEFTOVER_VALIDATION_RETRY_SEED_KEYS: Final[tuple[str, ...]] = (
+    "validation_retry_seed",
+    "validation_retry_source_attempt_id",
+)
 _GOAL_OPEN_STATUSES: Final[frozenset[str]] = frozenset(
     {"open", "active", "reopened", "provisionally_complete", "analysis_inconclusive"}
 )
@@ -3676,6 +3686,11 @@ class IntentRepository:
                     if isinstance(previous_receipt, Mapping)
                     else {}
                 )
+                # Stale-unstall receipts are not validation-retry claims.
+                # Copying a leftover seed makes the next claim raise
+                # "malformed validation retry seed".
+                for key in _LEFTOVER_VALIDATION_RETRY_SEED_KEYS:
+                    recovery_receipt.pop(key, None)
                 recovery_receipt.update(
                     {
                         "schema": (
@@ -3756,13 +3771,150 @@ class IntentRepository:
                     "receipt_cid": recovery_receipt["receipt_cid"],
                 }
 
-            return apply_stale_in_progress_unstall(
+            result = apply_stale_in_progress_unstall(
                 connection,
                 now=now,
                 stale_seconds=stale_seconds,
                 canonical_transition=transition,
                 orphan_previous_generation=orphan_previous_generation,
             )
+            if orphan_previous_generation:
+                result = dict(result)
+                result["sanitized_malformed_validation_retry_seeds"] = (
+                    self._sanitize_malformed_validation_retry_seeds_on(
+                        connection
+                    )
+                )
+            return result
+
+    def _sanitize_malformed_validation_retry_seeds_on(
+        self,
+        connection: Any,
+    ) -> list[dict[str, Any]]:
+        """Drop leftover retry seeds that cannot survive a claim CAS.
+
+        Exclusive-owner restart copies the prior in_progress receipt onto a
+        stale-unstall receipt. A leftover ``validation_retry_seed`` then makes
+        ``claim_next`` raise ``malformed validation retry seed`` forever.
+        """
+
+        rows = connection.execute(
+            """
+            SELECT task_cid, task_alias, goal_cid, status, revision, body_json
+            FROM tasks WHERE status = 'retrying'
+            ORDER BY task_alias, task_cid
+            """
+        ).fetchall()
+        sanitized: list[dict[str, Any]] = []
+        for row in rows:
+            task_cid = str(row[0])
+            previous_revision = int(row[4])
+            body = _decode_json(row[5], noun="task body")
+            if not isinstance(body, dict):
+                body = {}
+            else:
+                body = dict(body)
+            previous_receipt = body.get("completion_receipt")
+            if not isinstance(previous_receipt, Mapping):
+                continue
+            if previous_receipt.get("validation_retry_seed") is None:
+                continue
+            if (
+                str(previous_receipt.get("operation") or "")
+                in _VALIDATION_RETRY_RECEIPT_OPERATIONS
+            ):
+                continue
+            revision = previous_revision + 1
+            recorded_at = _utc_iso()
+            recovery_receipt = dict(previous_receipt)
+            for key in _LEFTOVER_VALIDATION_RETRY_SEED_KEYS:
+                recovery_receipt.pop(key, None)
+            recovery_receipt.update(
+                {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "stale-task-recovery-receipt@1"
+                    ),
+                    "operation": (
+                        "event_sourced_malformed_validation_retry_seed_unstall"
+                    ),
+                    "reason": (
+                        "leftover_validation_retry_seed_after_stale_unstall"
+                    ),
+                    "task_cid": task_cid,
+                    "task_alias": str(row[1]),
+                    "previous_status": "retrying",
+                    "status": "todo",
+                    "previous_revision": previous_revision,
+                    "revision": revision,
+                    "owner_id": self.owner_id,
+                    "session_id": self.session_id,
+                    "recorded_at": recorded_at,
+                }
+            )
+            recovery_receipt["receipt_cid"] = content_identity(recovery_receipt)
+            body["completion_receipt"] = recovery_receipt
+            updated = connection.execute(
+                """
+                UPDATE tasks SET status = 'todo', revision = ?,
+                    updated_at = ?, body_json = ?
+                WHERE task_cid = ? AND revision = ? AND status = 'retrying'
+                RETURNING revision
+                """,
+                [
+                    revision,
+                    recorded_at,
+                    _canonical(body, noun="task body"),
+                    task_cid,
+                    previous_revision,
+                ],
+            ).fetchone()
+            if updated is None or int(updated[0]) != revision:
+                raise IntentRepositoryConflictError(
+                    "malformed-seed unstall lost its exact task revision CAS"
+                )
+            connection.execute(
+                """
+                INSERT INTO task_revisions (
+                    task_cid, revision, status, body_json, recorded_at
+                ) VALUES (?, ?, 'todo', ?, ?)
+                """,
+                [
+                    task_cid,
+                    revision,
+                    _canonical(body, noun="task revision body"),
+                    recorded_at,
+                ],
+            )
+            event = self._append_event(
+                connection,
+                event_type=IntentEventType.TASK_STATUS_CHANGED,
+                subject_id=task_cid,
+                task_cid=task_cid,
+                body={
+                    "task_cid": task_cid,
+                    "task_alias": str(row[1]),
+                    "goal_cid": str(row[2]),
+                    "previous_status": "retrying",
+                    "status": "todo",
+                    "revision": revision,
+                    "receipt": recovery_receipt,
+                    "recorded_at": recorded_at,
+                },
+            )
+            sanitized.append(
+                {
+                    "task_cid": task_cid,
+                    "task_alias": str(row[1]),
+                    "previous_revision": previous_revision,
+                    "revision": revision,
+                    "changed": True,
+                    "event_id": event.event_id,
+                    "event_global_sequence": event.global_sequence,
+                    "receipt_cid": recovery_receipt["receipt_cid"],
+                }
+            )
+        return sanitized
 
     # -- readiness / selection -----------------------------------------------
 
