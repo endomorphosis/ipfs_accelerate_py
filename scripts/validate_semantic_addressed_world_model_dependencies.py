@@ -239,9 +239,9 @@ _M56_SUCCESSOR_KEY = (
 )
 _M56_MIGRATION_REVISION = "SAWM-R2-M56"
 _M57_AUTHORITY_CID = (
-    "sha256:01fd96730543f4a41e8ab584791b59d799dcc6961de5b38bf35993ba18ee3509"
+    "sha256:356234667993c1b905561f236126e88bb540205a65719b99c7326bf9e04d2e89"
 )
-_M57_AUTHORITY_SIZE = 31_003
+_M57_AUTHORITY_SIZE = 44_406
 _M57_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M57_FINAL_CONTROL_AUTHORITY_CID"
 _M57_SUCCESSOR_KEY = (
     "post_m56_live_ready_owner_missing_client_token_vault_restart_successor_materialization"
@@ -3516,6 +3516,9 @@ def _m57_post_m56_live_ready_owner_missing_client_token_vault_restart_errors(
             ._expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_authority()
         )
         reference = dict(materializer._m57_authority_reference())
+        materializer._assert_m57_source_delta(
+            root, materializer.build_population(root), expected
+        )
         if (
             not all(presence)
             or scheduler.get(key) != reference
@@ -14928,6 +14931,9 @@ def _effective_nested_source_authorities(
                 ._expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_authority()
             )
             materializer._validated_m57_live_preflight_contract(authority)
+            materializer._assert_m57_source_delta(
+                REPO_ROOT, materializer.build_population(REPO_ROOT), authority
+            )
             reference = dict(materializer._m57_authority_reference())
         except Exception as exc:
             return effective, [
@@ -17218,6 +17224,9 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
                         ._expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_authority()
                     )
                     materializer._validated_m57_live_preflight_contract(expected)
+                    materializer._assert_m57_source_delta(
+                        root, materializer.build_population(root), expected
+                    )
                     reference = dict(materializer._m57_authority_reference())
                     if (
                         scheduled != reference

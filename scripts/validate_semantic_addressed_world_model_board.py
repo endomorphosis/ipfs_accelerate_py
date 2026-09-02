@@ -136,9 +136,9 @@ _M56_TARGET_PROJECTION_CID = (
     "baguqeerapoydtvtpy75iszsuwdulvft5zlt4frblsf3fwcd4jwyk2bbb4vva"
 )
 _M57_AUTHORITY_CID = (
-    "sha256:01fd96730543f4a41e8ab584791b59d799dcc6961de5b38bf35993ba18ee3509"
+    "sha256:356234667993c1b905561f236126e88bb540205a65719b99c7326bf9e04d2e89"
 )
-_M57_AUTHORITY_SIZE = 31_003
+_M57_AUTHORITY_SIZE = 44_406
 _M57_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M57_FINAL_CONTROL_AUTHORITY_CID"
 _M57_SUCCESSOR_KEY = (
     "post_m56_live_ready_owner_missing_client_token_vault_restart_successor_materialization"
@@ -5632,6 +5632,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
             reference = dict(materializer._m57_authority_reference())
             contract = materializer._validated_m57_live_preflight_contract(
                 expected
+            )
+            materializer._assert_m57_source_delta(
+                root, materializer.build_population(root), expected
             )
             m57_errors = module._m57_post_m56_live_ready_owner_missing_client_token_vault_restart_errors(
                 config, seal, migration, root=root

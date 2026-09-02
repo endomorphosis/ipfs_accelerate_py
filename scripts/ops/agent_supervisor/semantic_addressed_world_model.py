@@ -321,9 +321,9 @@ _M57_SUCCESSOR_KEY = (
 )
 _M57_MIGRATION_REVISION = "SAWM-R2-M57"
 _M57_AUTHORITY_CID = (
-    "sha256:01fd96730543f4a41e8ab584791b59d799dcc6961de5b38bf35993ba18ee3509"
+    "sha256:356234667993c1b905561f236126e88bb540205a65719b99c7326bf9e04d2e89"
 )
-_M57_AUTHORITY_SIZE = 31_003
+_M57_AUTHORITY_SIZE = 44_406
 _M57_STORE_ID = _M56_STORE_ID
 _M57_COORDINATION_STORE_ID = _M56_COORDINATION_STORE_ID
 _M57_PRIOR_GENERATION = 41
@@ -1660,6 +1660,9 @@ def _active_source_repair_materialization(
             reference = materializer._m57_authority_reference()
             contract = materializer._validated_m57_live_preflight_contract(
                 expected
+            )
+            materializer._assert_m57_source_delta(
+                REPO_ROOT, materializer.build_population(REPO_ROOT), expected
             )
         except Exception as exc:
             raise OperatorError(
@@ -8581,7 +8584,7 @@ def _verify_m57_live_head_task_projection(
     authority: Mapping[str, Any],
     expected_projection_cid: str,
 ) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
-    """Verify M57's live heads at event 327/generation 41."""
+    """Verify M57's live heads at event 327/generation 42."""
 
     materializer._validated_m57_live_preflight_contract(authority)
     head = materializer._inspect_m37_live_projection(

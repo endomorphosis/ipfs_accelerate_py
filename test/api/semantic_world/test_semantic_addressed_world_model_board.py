@@ -716,6 +716,88 @@ def _reidentify_extension_projection(pin: dict[str, object]) -> None:
     ).hexdigest()
 
 
+def test_m57_reconciled_stalled_wave_source_authority_is_exact() -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m57_reconciled_source_test",
+    )
+    authority = (
+        materializer
+        ._expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_authority()
+    )
+    chain = authority["source_chain"]
+    repair = authority["accepted_control_plane_repair"]
+
+    assert materializer._identity(authority) == materializer._M57_AUTHORITY_CID
+    assert len(materializer._canonical(authority)) == materializer._M57_AUTHORITY_SIZE
+    assert chain["m56_anchor"]["commit"] == (
+        "2a5d6be7617066d33088afdf8694b430e0d6c276"
+    )
+    assert [item["commit"] for item in chain["recovery_branch"]] == [
+        "bf6d9101031b9fdef387ef2a92222748a46e936b",
+        "7d2b482cbafd8de2768618c877f099fb84500c2b",
+        "5f8edfd035b66b23d69c6f89770b2e9114a9b84e",
+    ]
+    assert chain["parallel_lane_branch"]["commit"] == (
+        "2dbb5f93cfa71de408e7cb36a059e2216c23ae90"
+    )
+    assert chain["reconciliation_merge"]["parents"] == [
+        "5f8edfd035b66b23d69c6f89770b2e9114a9b84e",
+        "2dbb5f93cfa71de408e7cb36a059e2216c23ae90",
+    ]
+    assert chain["preserved_mode_only_overlay"]["paths"][".gitignore"] == {
+        "blob": "3b7c8308efcd8583abe28ef384fa6f799ba52fb6",
+        "parent_mode": "100755",
+        "mode": "100644",
+        "bytes_changed": False,
+    }
+    assert chain["historical_grok_snapshot"]["historical_only"] is True
+    assert chain["historical_grok_snapshot"]["runtime_mutation_authority"] is False
+    assert chain["accepted_branch_reconciliation_merge"]["parents"] == [
+        "d7484ecaeec689fef4a2111718bf0c81a0b630a8",
+        "865f0486adb1dca2ec3bcf0f032bd359aaa05e01",
+    ]
+    assert chain["final_control_parent"] == (
+        "e06d00c60ab3fda8af5bcff708fd692d09362fd7"
+    )
+    assert chain["repair_commit_count"] == 4
+    assert chain["source_reconciliation_merge_count"] == 2
+    assert authority["ordinary_source_changes"] == 0
+    assert repair["ordinary_program_implementation"] is False
+    assert repair["authority_weakened"] is False
+    assert authority["exact_changes"]["accepted_completion_changes"] == 0
+    materializer._validated_m57_live_preflight_contract(authority)
+    materializer._assert_m57_source_delta(
+        REPO_ROOT, materializer.build_population(REPO_ROOT), authority
+    )
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "replacement"),
+    (
+        ("source_chain", "repair_commit_count", 3),
+        ("source_chain", "final_control_parent", "0" * 40),
+        ("exact_changes", "accepted_completion_changes", 1),
+        ("preservation", "accepted_dirty_checkout_was_not_claimed_clean", False),
+    ),
+)
+def test_m57_reconciled_authority_rejects_tamper(
+    section: str, field: str, replacement: object
+) -> None:
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        f"sawm_materializer_m57_tamper_{section}_{field}_test",
+    )
+    authority = (
+        materializer
+        ._expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_authority()
+    )
+    tampered = copy.deepcopy(authority)
+    tampered[section][field] = replacement
+    with pytest.raises(materializer.MaterializationError):
+        materializer._validated_m57_live_preflight_contract(tampered)
+
+
 def test_static_board_gate_is_valid() -> None:
     validator = _load(
         "scripts/validate_semantic_addressed_world_model_board.py",

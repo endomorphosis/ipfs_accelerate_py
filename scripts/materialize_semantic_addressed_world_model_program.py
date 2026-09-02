@@ -3719,9 +3719,9 @@ _M57_SUPERSESSION_REASON = (
 )
 _M57_CONTROL_RECORDED_AT = "2026-09-02T08:22:00Z"
 _M57_AUTHORITY_CID = (
-    "sha256:01fd96730543f4a41e8ab584791b59d799dcc6961de5b38bf35993ba18ee3509"
+    "sha256:356234667993c1b905561f236126e88bb540205a65719b99c7326bf9e04d2e89"
 )
-_M57_AUTHORITY_SIZE = 31_003
+_M57_AUTHORITY_SIZE = 44_406
 _M57_PRIOR_GENERATION = 41
 _M57_TARGET_GENERATION = 42
 _M57_PRIOR_EVENT_WATERMARK = 326
@@ -3777,12 +3777,199 @@ _M57_M56_RECEIPT_CID = (
     "sha256:292b2018c01f1712062415198105a570e6f60ce45cac0911ed21414c0db3af09"
 )
 _M57_M56_FINAL_CONTROL_COMMIT = (
+    "2a5d6be7617066d33088afdf8694b430e0d6c276"
+)
+_M57_M56_FINAL_CONTROL_TREE = (
+    "016bd0e45ef37a0094811b3da7cd8fefbdfc1e69"
+)
+_M57_ABSENT_WORKTREE_REPAIR_COMMIT = (
+    "bf6d9101031b9fdef387ef2a92222748a46e936b"
+)
+_M57_ABSENT_WORKTREE_REPAIR_TREE = (
+    "ee157455084242ee18ee51187e8728921f61f1c8"
+)
+_M57_ABSENT_WORKTREE_REPAIR_DIFF_SHA256 = (
+    "7a6e7b78ed7a04c1f5238aa0f5ee8099f2184564ace1529edfde9d55711ea346"
+)
+_M57_RESTART_RECOVERY_COMMIT = (
+    "7d2b482cbafd8de2768618c877f099fb84500c2b"
+)
+_M57_RESTART_RECOVERY_TREE = (
+    "69b5908aee1619d43f510b89068f0cf83ef70b68"
+)
+_M57_RESTART_RECOVERY_DIFF_SHA256 = (
+    "ee121a496b90c5272c976c11ece333f10c118f02a5abc9f830bb005de7005b1c"
+)
+_M57_RESTART_RACE_REPAIR_COMMIT = (
+    "5f8edfd035b66b23d69c6f89770b2e9114a9b84e"
+)
+_M57_RESTART_RACE_REPAIR_TREE = (
+    "ef3b186999780476d11f668842597ce0ec64f088"
+)
+_M57_RESTART_RACE_REPAIR_DIFF_SHA256 = (
+    "76022e0a9e96d154456d80dd7d27625fc35ea86c3a01ab8ce7e1596d982d2f0c"
+)
+_M57_PARALLEL_LANE_REPAIR_COMMIT = (
     "2dbb5f93cfa71de408e7cb36a059e2216c23ae90"
+)
+_M57_PARALLEL_LANE_REPAIR_TREE = (
+    "bc73731dfe82564f814f33a3da6598deee48bdf9"
+)
+_M57_PARALLEL_LANE_REPAIR_DIFF_SHA256 = (
+    "c9dda64e4b887b6dccb5e51c10c48450154fc9163f42ddea1913e93e5715884f"
+)
+_M57_RECONCILIATION_COMMIT = (
+    "871bcf15f3f568b079763c4d0bfd8a38143dd184"
+)
+_M57_RECONCILIATION_TREE = (
+    "f7a48a161c3a4a7b997bf5dd89c51cc00d83bf7e"
+)
+_M57_RECONCILIATION_DIFF_SHA256 = (
+    "7d7523b3b7bcd94c323168f12cb08c2c226a4c6def843efd0c85ce13c999cd61"
+)
+_M57_OVERLAY_PRESERVATION_COMMIT = (
+    "47585fbe51288b8b6164077da7e207089533ef99"
+)
+_M57_OVERLAY_PRESERVATION_TREE = (
+    "dc930f40d9fc10c4f33241745e7697b6cddbe748"
+)
+_M57_OVERLAY_PRESERVATION_DIFF_SHA256 = (
+    "4ea475bb61b56b1cb257978cbc4418bf258744e8baeb7c1dbc134eadb48b995a"
+)
+_M57_INITIAL_CONTROL_COMMIT = (
+    "865f0486adb1dca2ec3bcf0f032bd359aaa05e01"
+)
+_M57_INITIAL_CONTROL_TREE = (
+    "dbd16cc7582ad9cf94e6eee39a37cc69b8e8f873"
+)
+_M57_INITIAL_CONTROL_DIFF_SHA256 = (
+    "8b4f13219d386c0115e4d80fb76b0fdccfb83ced2bc1785fdcd03e707556feb5"
+)
+_M57_GROK_DRAFT_SNAPSHOT_COMMIT = (
+    "0fece30abec7e29f14d524d5d597fc8ddf0f07df"
+)
+_M57_ACCEPTED_GROK_DRAFT_COMMIT = (
+    "d7484ecaeec689fef4a2111718bf0c81a0b630a8"
+)
+_M57_GROK_DRAFT_TREE = (
+    "c602b21a6049d53493e7a0ed9aa7749440429532"
+)
+_M57_GROK_DRAFT_BINARY_DIFF_SHA256 = (
+    "725ac695183691b490a1e234508c409e9a0f2f65108749370ac3f37565571b55"
+)
+_M57_ACCEPTED_RECONCILIATION_COMMIT = (
+    "e06d00c60ab3fda8af5bcff708fd692d09362fd7"
+)
+_M57_ACCEPTED_RECONCILIATION_TREE = (
+    "dbd16cc7582ad9cf94e6eee39a37cc69b8e8f873"
+)
+_M57_ACCEPTED_RECONCILIATION_DIFF_SHA256 = (
+    "46a471ef0aa5519420eb0a06057bec6836567e27a6767e838f5086226825fda6"
+)
+_M57_RECONCILED_SOURCE_BLOBS = MappingProxyType(
+    {
+        ".gitignore": "3b7c8308efcd8583abe28ef384fa6f799ba52fb6",
+        "requirements.txt": "abc367db3ab67b10bdf9e3d8b66a6cbcccdb10bd",
+        "ipfs_accelerate_py/agent_supervisor/runtime/"
+        "multi_supervisor_runner.py": (
+            "e7fd88dc6c01d68381914a43e302882833927c45"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": (
+            "9ee928a677f73aadf4e3a7789628c7fac1953a77"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+        "database_portal_bridge.py": (
+            "4561e669da39770f25e6b2e6f2dab40e40a60acf"
+        ),
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py": (
+            "d65bdad31e88078bec9d9d6f031d045934f2ff4a"
+        ),
+        "test/api/test_agent_supervisor_configured_board_scheduler.py": (
+            "e07ea393d17a315336372aa362254c3f6ac77db8"
+        ),
+        "test/api/test_agent_supervisor_database_portal_bridge.py": (
+            "16b6e0452d142cb120b5ced6e1742a7539ec3d37"
+        ),
+        "test/api/test_agent_supervisor_multi_supervisor_runner_health.py": (
+            "0230fb8bf6c3399051c3075002387a158173861d"
+        ),
+    }
+)
+_M57_ABSENT_WORKTREE_REPAIR_PATHS = (
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+    "test/api/test_agent_supervisor_database_portal_bridge.py",
+)
+_M57_RESTART_RECOVERY_PATHS = (
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py",
+    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+    "test/api/test_agent_supervisor_multi_supervisor_runner_health.py",
+)
+_M57_RESTART_RACE_REPAIR_PATHS = (
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+    "test/api/test_agent_supervisor_multi_supervisor_runner_health.py",
+)
+_M57_PARALLEL_LANE_REPAIR_PATHS = (
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "test/api/test_agent_supervisor_multi_supervisor_runner_health.py",
+)
+_M57_FINAL_CONTROL_PATHS = (
+    "config/agent_supervisor_semantic_addressed_world_model_scheduler.json",
+    "config/semantic_addressed_world_model_dependencies.seal.json",
+    "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md",
+    "docs/architecture/semantic_addressed_world_model_inventory/"
+    "prior_materialization_migration.json",
+    "scripts/materialize_semantic_addressed_world_model_program.py",
+    "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+    "scripts/validate_semantic_addressed_world_model_board.py",
+    "scripts/validate_semantic_addressed_world_model_dependencies.py",
+    "test/api/semantic_world/test_semantic_addressed_world_model_board.py",
+)
+_M57_HISTORICAL_CONTROL_BLOBS = MappingProxyType(
+    {
+        "config/agent_supervisor_semantic_addressed_world_model_scheduler.json": (
+            "139ef2896780325bc2373a1f8dca9f5952a51c11"
+        ),
+        "config/semantic_addressed_world_model_dependencies.seal.json": (
+            "fbc6fb24ccb5ed0e6bf02fc1afa940911f4c334c"
+        ),
+        "docs/architecture/SEMANTIC_ADDRESSED_WORLD_MODEL_PLAN.md": (
+            "6642c8e0642842777720ddbc91e5615ec51b95fb"
+        ),
+        "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json": (
+            "f78834ec16bafb2671e721c8cebafdbe0a906bc5"
+        ),
+        "scripts/materialize_semantic_addressed_world_model_program.py": (
+            "a7828c545eaac32b8e0521569f9cf4ebdb69032f"
+        ),
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py": (
+            "564a5b014106533220842fe6e5882a34277c698e"
+        ),
+        "scripts/validate_semantic_addressed_world_model_board.py": (
+            "a20653cb1e83ecfa6b2abc0ce53183ecf3408151"
+        ),
+        "scripts/validate_semantic_addressed_world_model_dependencies.py": (
+            "1b7fd17cf0934cc67911d67711deb3197efd8922"
+        ),
+        "test/api/semantic_world/test_semantic_addressed_world_model_board.py": (
+            "9a314dfe24582c37a4ecf79b2761a809ed858f79"
+        ),
+    }
 )
 _M57_OPERATOR_CONTROL_PATHS = frozenset(
     set(_M56_OPERATOR_CONTROL_PATHS)
     | {
+        ".gitignore",
+        "requirements.txt",
         "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py",
+        "test/api/test_agent_supervisor_configured_board_scheduler.py",
+        "test/api/test_agent_supervisor_database_portal_bridge.py",
         "test/api/test_agent_supervisor_multi_supervisor_runner_health.py",
     }
 )
@@ -95612,13 +95799,207 @@ def _expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_a
             "apply_when_uri_ready_and_token_missing": True,
         }
     )
+    authority["accepted_control_plane_repair"] = {
+        "schema": "sawm/bounded-control-plane-repair-set@1",
+        "defect": "stalled_parallel_wave_recovery_and_stale_fence_containment",
+        "repairs": [
+            {
+                "sequence": 1,
+                "kind": "absent_attempt_worktree_recovery",
+                "parent": _M57_M56_FINAL_CONTROL_COMMIT,
+                "commit": _M57_ABSENT_WORKTREE_REPAIR_COMMIT,
+                "tree": _M57_ABSENT_WORKTREE_REPAIR_TREE,
+                "binary_diff_sha256": _M57_ABSENT_WORKTREE_REPAIR_DIFF_SHA256,
+                "changed_paths": list(_M57_ABSENT_WORKTREE_REPAIR_PATHS),
+            },
+            {
+                "sequence": 2,
+                "kind": "bounded_multilane_restart_recovery",
+                "parent": _M57_ABSENT_WORKTREE_REPAIR_COMMIT,
+                "commit": _M57_RESTART_RECOVERY_COMMIT,
+                "tree": _M57_RESTART_RECOVERY_TREE,
+                "binary_diff_sha256": _M57_RESTART_RECOVERY_DIFF_SHA256,
+                "changed_paths": list(_M57_RESTART_RECOVERY_PATHS),
+            },
+            {
+                "sequence": 3,
+                "kind": "restart_race_window_closure",
+                "parent": _M57_RESTART_RECOVERY_COMMIT,
+                "commit": _M57_RESTART_RACE_REPAIR_COMMIT,
+                "tree": _M57_RESTART_RACE_REPAIR_TREE,
+                "binary_diff_sha256": _M57_RESTART_RACE_REPAIR_DIFF_SHA256,
+                "changed_paths": list(_M57_RESTART_RACE_REPAIR_PATHS),
+            },
+            {
+                "sequence": 4,
+                "kind": "parallel_lane_stale_fence_containment",
+                "parent": _M57_M56_FINAL_CONTROL_COMMIT,
+                "commit": _M57_PARALLEL_LANE_REPAIR_COMMIT,
+                "tree": _M57_PARALLEL_LANE_REPAIR_TREE,
+                "binary_diff_sha256": _M57_PARALLEL_LANE_REPAIR_DIFF_SHA256,
+                "changed_paths": list(_M57_PARALLEL_LANE_REPAIR_PATHS),
+            },
+        ],
+        "reconciliation": {
+            "commit": _M57_RECONCILIATION_COMMIT,
+            "parents": [
+                _M57_RESTART_RACE_REPAIR_COMMIT,
+                _M57_PARALLEL_LANE_REPAIR_COMMIT,
+            ],
+            "tree": _M57_RECONCILIATION_TREE,
+            "first_parent_diff_sha256": _M57_RECONCILIATION_DIFF_SHA256,
+            "second_parent_diff_sha256": (
+                _M57_ACCEPTED_RECONCILIATION_DIFF_SHA256
+            ),
+            "result_blobs": dict(_M57_RECONCILED_SOURCE_BLOBS),
+            "healthy_lanes_continue_after_single_lane_fence_failure": True,
+            "terminal_success_denied_when_any_required_fence_fails": True,
+        },
+        "ordinary_program_implementation": False,
+        "authority_weakened": False,
+        "receipts_rewritten": False,
+        "worker_self_approval": False,
+    }
     authority["source_chain"] = {
-        "m56_final_control_commit": _M57_M56_FINAL_CONTROL_COMMIT,
-        "final_control_parent": _M57_M56_FINAL_CONTROL_COMMIT,
-        "repair_commit_count": 0,
-        "final_control_commit_count": 1,
+        "schema": "sawm/reconciled-control-source-chain@1",
+        "m56_anchor": {
+            "commit": _M57_M56_FINAL_CONTROL_COMMIT,
+            "parent": _M56_M55_FINAL_CONTROL_COMMIT,
+            "tree": _M57_M56_FINAL_CONTROL_TREE,
+        },
+        "recovery_branch": [
+            {
+                "commit": _M57_ABSENT_WORKTREE_REPAIR_COMMIT,
+                "parent": _M57_M56_FINAL_CONTROL_COMMIT,
+                "tree": _M57_ABSENT_WORKTREE_REPAIR_TREE,
+                "binary_diff_sha256": _M57_ABSENT_WORKTREE_REPAIR_DIFF_SHA256,
+                "changed_paths": list(_M57_ABSENT_WORKTREE_REPAIR_PATHS),
+            },
+            {
+                "commit": _M57_RESTART_RECOVERY_COMMIT,
+                "parent": _M57_ABSENT_WORKTREE_REPAIR_COMMIT,
+                "tree": _M57_RESTART_RECOVERY_TREE,
+                "binary_diff_sha256": _M57_RESTART_RECOVERY_DIFF_SHA256,
+                "changed_paths": list(_M57_RESTART_RECOVERY_PATHS),
+            },
+            {
+                "commit": _M57_RESTART_RACE_REPAIR_COMMIT,
+                "parent": _M57_RESTART_RECOVERY_COMMIT,
+                "tree": _M57_RESTART_RACE_REPAIR_TREE,
+                "binary_diff_sha256": _M57_RESTART_RACE_REPAIR_DIFF_SHA256,
+                "changed_paths": list(_M57_RESTART_RACE_REPAIR_PATHS),
+            },
+        ],
+        "parallel_lane_branch": {
+            "commit": _M57_PARALLEL_LANE_REPAIR_COMMIT,
+            "parent": _M57_M56_FINAL_CONTROL_COMMIT,
+            "tree": _M57_PARALLEL_LANE_REPAIR_TREE,
+            "binary_diff_sha256": _M57_PARALLEL_LANE_REPAIR_DIFF_SHA256,
+            "changed_paths": list(_M57_PARALLEL_LANE_REPAIR_PATHS),
+        },
+        "reconciliation_merge": {
+            "commit": _M57_RECONCILIATION_COMMIT,
+            "parents": [
+                _M57_RESTART_RACE_REPAIR_COMMIT,
+                _M57_PARALLEL_LANE_REPAIR_COMMIT,
+            ],
+            "tree": _M57_RECONCILIATION_TREE,
+            "first_parent_diff_sha256": _M57_RECONCILIATION_DIFF_SHA256,
+            "second_parent_diff_sha256": (
+                _M57_ACCEPTED_RECONCILIATION_DIFF_SHA256
+            ),
+            "result_blobs": dict(_M57_RECONCILED_SOURCE_BLOBS),
+        },
+        "preserved_mode_only_overlay": {
+            "commit": _M57_OVERLAY_PRESERVATION_COMMIT,
+            "parent": _M57_RECONCILIATION_COMMIT,
+            "tree": _M57_OVERLAY_PRESERVATION_TREE,
+            "binary_diff_sha256": _M57_OVERLAY_PRESERVATION_DIFF_SHA256,
+            "paths": {
+                ".gitignore": {
+                    "blob": _M57_RECONCILED_SOURCE_BLOBS[".gitignore"],
+                    "parent_mode": "100755",
+                    "mode": "100644",
+                    "bytes_changed": False,
+                },
+                "requirements.txt": {
+                    "blob": _M57_RECONCILED_SOURCE_BLOBS["requirements.txt"],
+                    "parent_mode": "100755",
+                    "mode": "100644",
+                    "bytes_changed": False,
+                },
+            },
+            "observed_user_source_preserved": True,
+            "operator_origin_claimed": False,
+        },
+        "reconciled_control_draft": {
+            "commit": _M57_INITIAL_CONTROL_COMMIT,
+            "parent": _M57_OVERLAY_PRESERVATION_COMMIT,
+            "tree": _M57_INITIAL_CONTROL_TREE,
+            "binary_diff_sha256": _M57_INITIAL_CONTROL_DIFF_SHA256,
+            "changed_paths": list(_M57_FINAL_CONTROL_PATHS),
+            "blob_oids": dict(_M57_HISTORICAL_CONTROL_BLOBS),
+        },
+        "historical_grok_snapshot": {
+            "snapshot_commit": _M57_GROK_DRAFT_SNAPSHOT_COMMIT,
+            "accepted_commit": _M57_ACCEPTED_GROK_DRAFT_COMMIT,
+            "parent": _M57_PARALLEL_LANE_REPAIR_COMMIT,
+            "tree": _M57_GROK_DRAFT_TREE,
+            "binary_diff_sha256": _M57_GROK_DRAFT_BINARY_DIFF_SHA256,
+            "changed_paths": sorted(
+                set(_M57_FINAL_CONTROL_PATHS) | {".gitignore", "requirements.txt"}
+            ),
+            "control_blob_oids": dict(_M57_HISTORICAL_CONTROL_BLOBS),
+            "historical_only": True,
+            "runtime_mutation_authority": False,
+            "completion_authority": False,
+        },
+        "accepted_branch_reconciliation_merge": {
+            "commit": _M57_ACCEPTED_RECONCILIATION_COMMIT,
+            "parents": [
+                _M57_ACCEPTED_GROK_DRAFT_COMMIT,
+                _M57_INITIAL_CONTROL_COMMIT,
+            ],
+            "tree": _M57_ACCEPTED_RECONCILIATION_TREE,
+            "first_parent_diff_sha256": (
+                _M57_ACCEPTED_RECONCILIATION_DIFF_SHA256
+            ),
+            "second_parent_diff_sha256": hashlib.sha256(b"").hexdigest(),
+        },
+        "final_control_parent": _M57_ACCEPTED_RECONCILIATION_COMMIT,
+        "repair_commit_count": 4,
+        "source_reconciliation_merge_count": 2,
+        "mode_only_overlay_commit_count": 1,
+        "historical_control_draft_commit_count": 2,
+        "final_control_commit_count": 2,
         "current_commit_identity_embedded_in_authority": False,
     }
+    authority["exact_changes"].update(
+        {
+            "bounded_control_plane_repair_commit_count": 4,
+            "bounded_control_plane_repair_paths": 7,
+            "source_reconciliation_merge_count": 2,
+            "mode_only_overlay_changes": 2,
+            "historical_control_draft_commit_count": 2,
+            "ordinary_program_implementation_changes": 0,
+            "production_source_changes": 4,
+            "test_compatibility_source_changes": 3,
+            "operator_control_path_changes": len(_M57_FINAL_CONTROL_PATHS),
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+            "goal_revision_changes": 0,
+            "goal_status_changes": 0,
+            "implementation_provider_invocations": 0,
+            "provider_call_changes": 0,
+            "provider_response_changes": 0,
+            "effect_claim_changes": 0,
+            "merge_attempt_changes": 0,
+            "merge_base_changes": 0,
+            "merge_queue_entry_changes": 0,
+            "accepted_completion_changes": 0,
+            "worker_self_approval": False,
+        }
+    )
     authority["preservation"].update(
         {
             "m56_authority_preserved_exactly": True,
@@ -95628,6 +96009,14 @@ def _expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_a
             "sawm_008_in_progress_revision_23": True,
             "m53_receipt_preserved_exactly": True,
             "m56_receipt_preserved_exactly": True,
+            "accepted_dirty_checkout_was_not_claimed_clean": True,
+            "grok_draft_preserved_in_exact_commit_history": True,
+            "grok_draft_binary_diff_preserved_exactly": True,
+            "mode_only_overlay_bytes_preserved_exactly": True,
+            "failed_lane_attempts_and_typed_blockers_preserved": True,
+            "four_worktree_lanes_remain_independently_schedulable": True,
+            "shared_duckdb_authority_writes_remain_quack_serialized": True,
+            "no_task_completion_admitted_by_source_repair": True,
         }
     )
     return authority
@@ -95652,15 +96041,72 @@ def _validated_m57_live_preflight_contract(
 ) -> Mapping[str, Any]:
     expected = _expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_authority()
     contract = authority.get("live_preflight_contract")
+    repair = authority.get("accepted_control_plane_repair")
+    chain = authority.get("source_chain")
+    changes = authority.get("exact_changes")
+    preservation = authority.get("preservation")
     if (
-        _identity(authority) != _identity(expected)
-        or not isinstance(contract, Mapping)
+        dict(authority) != expected
+        or not all(
+            isinstance(item, Mapping)
+            for item in (contract, repair, chain, changes, preservation)
+        )
         or contract.get("migration_revision") != _M57_MIGRATION_REVISION
         or contract.get("target_generation") != _M57_TARGET_GENERATION
         or contract.get("target_event_watermark") != _M57_TARGET_EVENT_WATERMARK
         or contract.get("target_projection_cid") != _M57_TARGET_PROJECTION_CID
         or contract.get("m56_receipt_must_remain_present") is not True
         or contract.get("apply_when_uri_ready_and_token_missing") is not True
+        or repair.get("schema") != "sawm/bounded-control-plane-repair-set@1"
+        or repair.get("repairs")
+        != expected["accepted_control_plane_repair"]["repairs"]
+        or repair.get("reconciliation")
+        != expected["accepted_control_plane_repair"]["reconciliation"]
+        or repair.get("ordinary_program_implementation") is not False
+        or repair.get("authority_weakened") is not False
+        or repair.get("worker_self_approval") is not False
+        or chain.get("schema") != "sawm/reconciled-control-source-chain@1"
+        or chain.get("m56_anchor") != expected["source_chain"]["m56_anchor"]
+        or chain.get("recovery_branch")
+        != expected["source_chain"]["recovery_branch"]
+        or chain.get("parallel_lane_branch")
+        != expected["source_chain"]["parallel_lane_branch"]
+        or chain.get("reconciliation_merge")
+        != expected["source_chain"]["reconciliation_merge"]
+        or chain.get("preserved_mode_only_overlay")
+        != expected["source_chain"]["preserved_mode_only_overlay"]
+        or chain.get("reconciled_control_draft")
+        != expected["source_chain"]["reconciled_control_draft"]
+        or chain.get("historical_grok_snapshot")
+        != expected["source_chain"]["historical_grok_snapshot"]
+        or chain.get("accepted_branch_reconciliation_merge")
+        != expected["source_chain"]["accepted_branch_reconciliation_merge"]
+        or chain.get("final_control_parent")
+        != _M57_ACCEPTED_RECONCILIATION_COMMIT
+        or chain.get("repair_commit_count") != 4
+        or chain.get("source_reconciliation_merge_count") != 2
+        or chain.get("mode_only_overlay_commit_count") != 1
+        or chain.get("historical_control_draft_commit_count") != 2
+        or chain.get("final_control_commit_count") != 2
+        or chain.get("current_commit_identity_embedded_in_authority") is not False
+        or authority.get("ordinary_source_changes") != 0
+        or changes.get("bounded_control_plane_repair_commit_count") != 4
+        or changes.get("bounded_control_plane_repair_paths") != 7
+        or changes.get("source_reconciliation_merge_count") != 2
+        or changes.get("mode_only_overlay_changes") != 2
+        or changes.get("ordinary_program_implementation_changes") != 0
+        or changes.get("accepted_completion_changes") != 0
+        or changes.get("worker_self_approval") is not False
+        or preservation.get("accepted_dirty_checkout_was_not_claimed_clean")
+        is not True
+        or preservation.get("grok_draft_preserved_in_exact_commit_history")
+        is not True
+        or preservation.get("mode_only_overlay_bytes_preserved_exactly")
+        is not True
+        or preservation.get("no_task_completion_admitted_by_source_repair")
+        is not True
+        or authority.get("operator_control_paths")
+        != sorted(_M57_OPERATOR_CONTROL_PATHS)
     ):
         raise MaterializationError("M57 live-preflight contract differs")
     return MappingProxyType(
@@ -95678,6 +96124,231 @@ def _validated_m57_live_preflight_contract(
             "expected_task_heads": dict(_M57_EXPECTED_TASK_HEADS),
         }
     )
+
+
+def _m57_binary_diff_sha256(
+    root: Path, before: str, after: str, paths: Collection[str]
+) -> str:
+    result = subprocess.run(
+        [
+            "git",
+            "-c",
+            "core.attributesFile=/dev/null",
+            "-c",
+            "core.autocrlf=false",
+            "-c",
+            "diff.external=",
+            "diff",
+            "--binary",
+            "--no-ext-diff",
+            "--no-textconv",
+            before,
+            after,
+            "--",
+            *sorted(paths),
+        ],
+        cwd=root,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        timeout=20,
+    )
+    if result.returncode:
+        raise MaterializationError("M57 binary source diff is unavailable")
+    return hashlib.sha256(result.stdout).hexdigest()
+
+
+def _assert_m57_source_delta(
+    root: Path,
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> None:
+    """Require both repair branches, both merges, preserved dirt, and one seal."""
+
+    current = str(population["source_binding"]["head"])
+    chain = authority.get("source_chain")
+    identities = (
+        _M57_M56_FINAL_CONTROL_COMMIT,
+        _M57_M56_FINAL_CONTROL_TREE,
+        _M57_ABSENT_WORKTREE_REPAIR_COMMIT,
+        _M57_ABSENT_WORKTREE_REPAIR_TREE,
+        _M57_RESTART_RECOVERY_COMMIT,
+        _M57_RESTART_RECOVERY_TREE,
+        _M57_RESTART_RACE_REPAIR_COMMIT,
+        _M57_RESTART_RACE_REPAIR_TREE,
+        _M57_PARALLEL_LANE_REPAIR_COMMIT,
+        _M57_PARALLEL_LANE_REPAIR_TREE,
+        _M57_RECONCILIATION_COMMIT,
+        _M57_RECONCILIATION_TREE,
+        _M57_OVERLAY_PRESERVATION_COMMIT,
+        _M57_OVERLAY_PRESERVATION_TREE,
+        _M57_INITIAL_CONTROL_COMMIT,
+        _M57_INITIAL_CONTROL_TREE,
+        _M57_GROK_DRAFT_SNAPSHOT_COMMIT,
+        _M57_ACCEPTED_GROK_DRAFT_COMMIT,
+        _M57_GROK_DRAFT_TREE,
+        _M57_ACCEPTED_RECONCILIATION_COMMIT,
+        _M57_ACCEPTED_RECONCILIATION_TREE,
+        *tuple(_M57_RECONCILED_SOURCE_BLOBS.values()),
+        *tuple(_M57_HISTORICAL_CONTROL_BLOBS.values()),
+    )
+    expected_parents = {
+        _M57_M56_FINAL_CONTROL_COMMIT: [_M56_M55_FINAL_CONTROL_COMMIT],
+        _M57_ABSENT_WORKTREE_REPAIR_COMMIT: [_M57_M56_FINAL_CONTROL_COMMIT],
+        _M57_RESTART_RECOVERY_COMMIT: [_M57_ABSENT_WORKTREE_REPAIR_COMMIT],
+        _M57_RESTART_RACE_REPAIR_COMMIT: [_M57_RESTART_RECOVERY_COMMIT],
+        _M57_PARALLEL_LANE_REPAIR_COMMIT: [_M57_M56_FINAL_CONTROL_COMMIT],
+        _M57_RECONCILIATION_COMMIT: [
+            _M57_RESTART_RACE_REPAIR_COMMIT,
+            _M57_PARALLEL_LANE_REPAIR_COMMIT,
+        ],
+        _M57_OVERLAY_PRESERVATION_COMMIT: [_M57_RECONCILIATION_COMMIT],
+        _M57_INITIAL_CONTROL_COMMIT: [_M57_OVERLAY_PRESERVATION_COMMIT],
+        _M57_GROK_DRAFT_SNAPSHOT_COMMIT: [_M57_PARALLEL_LANE_REPAIR_COMMIT],
+        _M57_ACCEPTED_GROK_DRAFT_COMMIT: [_M57_PARALLEL_LANE_REPAIR_COMMIT],
+        _M57_ACCEPTED_RECONCILIATION_COMMIT: [
+            _M57_ACCEPTED_GROK_DRAFT_COMMIT,
+            _M57_INITIAL_CONTROL_COMMIT,
+        ],
+    }
+    expected_trees = {
+        _M57_M56_FINAL_CONTROL_COMMIT: _M57_M56_FINAL_CONTROL_TREE,
+        _M57_ABSENT_WORKTREE_REPAIR_COMMIT: _M57_ABSENT_WORKTREE_REPAIR_TREE,
+        _M57_RESTART_RECOVERY_COMMIT: _M57_RESTART_RECOVERY_TREE,
+        _M57_RESTART_RACE_REPAIR_COMMIT: _M57_RESTART_RACE_REPAIR_TREE,
+        _M57_PARALLEL_LANE_REPAIR_COMMIT: _M57_PARALLEL_LANE_REPAIR_TREE,
+        _M57_RECONCILIATION_COMMIT: _M57_RECONCILIATION_TREE,
+        _M57_OVERLAY_PRESERVATION_COMMIT: _M57_OVERLAY_PRESERVATION_TREE,
+        _M57_INITIAL_CONTROL_COMMIT: _M57_INITIAL_CONTROL_TREE,
+        _M57_GROK_DRAFT_SNAPSHOT_COMMIT: _M57_GROK_DRAFT_TREE,
+        _M57_ACCEPTED_GROK_DRAFT_COMMIT: _M57_GROK_DRAFT_TREE,
+        _M57_ACCEPTED_RECONCILIATION_COMMIT: _M57_ACCEPTED_RECONCILIATION_TREE,
+    }
+    expected_diffs = (
+        (
+            _M57_M56_FINAL_CONTROL_COMMIT,
+            _M57_ABSENT_WORKTREE_REPAIR_COMMIT,
+            _M57_ABSENT_WORKTREE_REPAIR_PATHS,
+            _M57_ABSENT_WORKTREE_REPAIR_DIFF_SHA256,
+        ),
+        (
+            _M57_ABSENT_WORKTREE_REPAIR_COMMIT,
+            _M57_RESTART_RECOVERY_COMMIT,
+            _M57_RESTART_RECOVERY_PATHS,
+            _M57_RESTART_RECOVERY_DIFF_SHA256,
+        ),
+        (
+            _M57_RESTART_RECOVERY_COMMIT,
+            _M57_RESTART_RACE_REPAIR_COMMIT,
+            _M57_RESTART_RACE_REPAIR_PATHS,
+            _M57_RESTART_RACE_REPAIR_DIFF_SHA256,
+        ),
+        (
+            _M57_M56_FINAL_CONTROL_COMMIT,
+            _M57_PARALLEL_LANE_REPAIR_COMMIT,
+            _M57_PARALLEL_LANE_REPAIR_PATHS,
+            _M57_PARALLEL_LANE_REPAIR_DIFF_SHA256,
+        ),
+        (
+            _M57_RESTART_RACE_REPAIR_COMMIT,
+            _M57_RECONCILIATION_COMMIT,
+            _M57_PARALLEL_LANE_REPAIR_PATHS,
+            _M57_RECONCILIATION_DIFF_SHA256,
+        ),
+        (
+            _M57_PARALLEL_LANE_REPAIR_COMMIT,
+            _M57_RECONCILIATION_COMMIT,
+            tuple(_M57_RECONCILED_SOURCE_BLOBS)[2:],
+            _M57_ACCEPTED_RECONCILIATION_DIFF_SHA256,
+        ),
+        (
+            _M57_RECONCILIATION_COMMIT,
+            _M57_OVERLAY_PRESERVATION_COMMIT,
+            (".gitignore", "requirements.txt"),
+            _M57_OVERLAY_PRESERVATION_DIFF_SHA256,
+        ),
+        (
+            _M57_OVERLAY_PRESERVATION_COMMIT,
+            _M57_INITIAL_CONTROL_COMMIT,
+            _M57_FINAL_CONTROL_PATHS,
+            _M57_INITIAL_CONTROL_DIFF_SHA256,
+        ),
+        (
+            _M57_PARALLEL_LANE_REPAIR_COMMIT,
+            _M57_GROK_DRAFT_SNAPSHOT_COMMIT,
+            tuple(_M57_FINAL_CONTROL_PATHS) + (".gitignore", "requirements.txt"),
+            _M57_GROK_DRAFT_BINARY_DIFF_SHA256,
+        ),
+        (
+            _M57_PARALLEL_LANE_REPAIR_COMMIT,
+            _M57_ACCEPTED_GROK_DRAFT_COMMIT,
+            tuple(_M57_FINAL_CONTROL_PATHS) + (".gitignore", "requirements.txt"),
+            _M57_GROK_DRAFT_BINARY_DIFF_SHA256,
+        ),
+        (
+            _M57_ACCEPTED_GROK_DRAFT_COMMIT,
+            _M57_ACCEPTED_RECONCILIATION_COMMIT,
+            tuple(_M57_RECONCILED_SOURCE_BLOBS)[2:],
+            _M57_ACCEPTED_RECONCILIATION_DIFF_SHA256,
+        ),
+    )
+    if (
+        not isinstance(chain, Mapping)
+        or any(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in identities)
+        or _M57_AUTHORITY_CID.endswith("PENDING_M57_FINAL_CONTROL_AUTHORITY_CID")
+        or chain.get("final_control_parent") != _M57_ACCEPTED_RECONCILIATION_COMMIT
+        or chain.get("current_commit_identity_embedded_in_authority") is not False
+        or current == _M57_ACCEPTED_RECONCILIATION_COMMIT
+        or _git(root, "rev-list", "--parents", "-n", "1", current).split()
+        != [current, _M57_ACCEPTED_RECONCILIATION_COMMIT]
+        or population["source_binding"].get("tree")
+        != _git(root, "rev-parse", f"{current}^{{tree}}")
+        or _m27_name_status(root, _M57_ACCEPTED_RECONCILIATION_COMMIT, current)
+        != {path: "M" for path in _M57_FINAL_CONTROL_PATHS}
+    ):
+        raise MaterializationError("M57 exact final-control source chain differs")
+    for commit, parents in expected_parents.items():
+        if _git(root, "rev-list", "--parents", "-n", "1", commit).split() != [
+            commit,
+            *parents,
+        ]:
+            raise MaterializationError(f"M57 commit parents differ: {commit}")
+    for commit, tree in expected_trees.items():
+        if _git(root, "rev-parse", f"{commit}^{{tree}}") != tree:
+            raise MaterializationError(f"M57 commit tree differs: {commit}")
+    for before, after, paths, digest in expected_diffs:
+        if (
+            _m27_name_status(root, before, after)
+            != {path: "M" for path in paths}
+            or _m57_binary_diff_sha256(root, before, after, paths) != digest
+        ):
+            raise MaterializationError(f"M57 source diff differs: {after}")
+    for commit in (
+        _M57_RECONCILIATION_COMMIT,
+        _M57_ACCEPTED_RECONCILIATION_COMMIT,
+    ):
+        for path, oid in _M57_RECONCILED_SOURCE_BLOBS.items():
+            if _git(root, "rev-parse", f"{commit}:{path}") != oid:
+                raise MaterializationError(f"M57 reconciled source blob differs: {path}")
+    for commit in (
+        _M57_INITIAL_CONTROL_COMMIT,
+        _M57_GROK_DRAFT_SNAPSHOT_COMMIT,
+        _M57_ACCEPTED_GROK_DRAFT_COMMIT,
+        _M57_ACCEPTED_RECONCILIATION_COMMIT,
+    ):
+        for path, oid in _M57_HISTORICAL_CONTROL_BLOBS.items():
+            if _git(root, "rev-parse", f"{commit}:{path}") != oid:
+                raise MaterializationError(f"M57 historical control blob differs: {path}")
+    for path in (".gitignore", "requirements.txt"):
+        oid = _M57_RECONCILED_SOURCE_BLOBS[path]
+        if (
+            _git(root, "ls-tree", _M57_RECONCILIATION_COMMIT, "--", path)
+            != f"100755 blob {oid}\t{path}"
+            or _git(root, "ls-tree", _M57_OVERLAY_PRESERVATION_COMMIT, "--", path)
+            != f"100644 blob {oid}\t{path}"
+        ):
+            raise MaterializationError(f"M57 preserved mode-only overlay differs: {path}")
+    _assert_m43_current_control_modes(root, current, _M57_OPERATOR_CONTROL_PATHS)
 
 
 def _m57_source_binding_authority(
@@ -95701,6 +96372,7 @@ def _m57_source_binding_authority(
     ):
         raise MaterializationError("M57 authority differs across protected controls")
     _validated_m57_live_preflight_contract(authority)
+    _assert_m57_source_delta(root, population, authority)
     return authority
 
 
