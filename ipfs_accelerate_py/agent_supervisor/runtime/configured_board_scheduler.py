@@ -5096,6 +5096,20 @@ def _coordinator_credential_ack_bytes(
     ).encode("utf-8") + b"\n"
 
 
+def _coordinator_credential_ready_timeout_seconds(
+    board: ConfiguredBoard,
+) -> float:
+    """Cover the sealed child's complete startup while retaining a floor."""
+
+    return max(
+        COORDINATOR_CREDENTIAL_READY_TIMEOUT_SECONDS,
+        _nonnegative_number(
+            board.payload.get("watchdog_startup_grace_seconds"),
+            field="watchdog_startup_grace_seconds",
+        ),
+    )
+
+
 def _rearm_detached_coordinator_token_handoff(
     board: ConfiguredBoard,
 ) -> dict[str, Any]:
@@ -5308,7 +5322,14 @@ def _wait_for_detached_coordinator_credential_ack(
         descriptor,
         select.POLLIN | select.POLLHUP | select.POLLERR | select.POLLNVAL,
     )
-    deadline = time.monotonic() + COORDINATOR_CREDENTIAL_READY_TIMEOUT_SECONDS
+    # The gated process re-loads the sealed board, runs the complete current-
+    # tree preflight, and constructs its live capsule before it can ACK.  Give
+    # that work the board's already-validated startup grace instead of treating
+    # the shorter pipe-I/O floor as the whole child-startup budget.
+    deadline = (
+        time.monotonic()
+        + _coordinator_credential_ready_timeout_seconds(board)
+    )
     payload = bytearray()
     while True:
         if process.poll() is not None:

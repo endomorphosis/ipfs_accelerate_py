@@ -3101,6 +3101,13 @@ def test_detached_credential_ack_wait_times_out_without_child_ack(
         tmp_path,
         (_task_block("TEST-A"),),
     )
+    board = replace(
+        board,
+        payload={
+            **board.payload,
+            "watchdog_startup_grace_seconds": 0.0,
+        },
+    )
     ready_reader, ready_writer = scheduler_module._create_coordinator_credential_pipe()
     monkeypatch.setattr(
         scheduler_module,
@@ -3121,6 +3128,97 @@ def test_detached_credential_ack_wait_times_out_without_child_ack(
     finally:
         os.close(ready_reader)
         os.close(ready_writer)
+
+
+def test_detached_credential_ack_budget_includes_sealed_startup_grace(
+    tmp_path: Path,
+) -> None:
+    _repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+
+    assert board.payload["watchdog_startup_grace_seconds"] == 300
+    assert scheduler_module._coordinator_credential_ready_timeout_seconds(
+        board
+    ) == 300
+
+    reduced = replace(
+        board,
+        payload={
+            **board.payload,
+            "watchdog_startup_grace_seconds": 0.0,
+        },
+    )
+    assert scheduler_module._coordinator_credential_ready_timeout_seconds(
+        reduced
+    ) == scheduler_module.COORDINATOR_CREDENTIAL_READY_TIMEOUT_SECONDS
+
+    extended = replace(
+        board,
+        payload={
+            **board.payload,
+            "watchdog_startup_grace_seconds": 600.0,
+        },
+    )
+    assert scheduler_module._coordinator_credential_ready_timeout_seconds(
+        extended
+    ) == 600.0
+
+
+def test_detached_credential_ack_accepts_ready_child_after_pipe_floor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _install_quack_snapshot_query_harness(tmp_path, monkeypatch)
+    board = replace(
+        harness.board,
+        payload={
+            **harness.board.payload,
+            "watchdog_startup_grace_seconds": 0.2,
+        },
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "COORDINATOR_CREDENTIAL_READY_TIMEOUT_SECONDS",
+        0.01,
+    )
+    ready_reader, ready_writer = scheduler_module._create_coordinator_credential_pipe()
+    nonce = "a" * 64
+    process = SimpleNamespace(pid=424242, poll=lambda: None)
+
+    def delayed_ack() -> None:
+        try:
+            time.sleep(0.05)
+            os.write(
+                ready_writer,
+                scheduler_module._coordinator_credential_ack_bytes(
+                    board,
+                    nonce=nonce,
+                    pid=process.pid,
+                    snapshot=harness.snapshot,
+                ),
+            )
+        finally:
+            os.close(ready_writer)
+
+    writer = threading.Thread(target=delayed_ack, daemon=True)
+    writer.start()
+    try:
+        observed = scheduler_module._wait_for_detached_coordinator_credential_ack(
+            board,
+            process=process,
+            descriptor=ready_reader,
+            identity=scheduler_module._coordinator_pipe_identity(ready_reader),
+            nonce=nonce,
+            expected_snapshot=harness.snapshot,
+        )
+    finally:
+        os.close(ready_reader)
+        writer.join(timeout=1.0)
+
+    assert observed == harness.snapshot
+    assert writer.is_alive() is False
 
 
 def test_detached_credential_ack_wait_rejects_substituted_pipe_descriptor(
