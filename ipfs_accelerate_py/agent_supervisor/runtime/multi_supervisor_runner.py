@@ -9,6 +9,7 @@ import json
 import math
 import os
 import re
+import secrets
 import shutil
 import signal
 import stat
@@ -16,12 +17,18 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import deque
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any, Callable, ClassVar, Mapping, MutableMapping, Protocol, Sequence
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - plan-bound recovery is Linux-only
+    fcntl = None  # type: ignore[assignment]
 
 # A datasets-authoritative configured-board process must not import repository
 # code before its complete dependency closure is available as one immutable
@@ -88,7 +95,12 @@ from ..merge.worktree_lifecycle import (
     owner_liveness,
 )
 from ..proof.formal_verification_contracts import content_identity
-from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
+from ..todo_daemon.core import (
+    pid_alive,
+    read_pid_file,
+    remove_runtime_marker,
+    write_json_atomic,
+)
 from .configured_board_extension_projection import (
     CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
     CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV,
@@ -145,6 +157,16 @@ CONFIGURED_BOARD_LIVE_SEAL_VERIFIERS = MappingProxyType(
     }
 )
 PLAN_BOUND_REPLAN_RETURN_CODE = 75
+DEFAULT_RESTART_ADMISSION_FAILURE_LIMIT = 3
+MAX_RESTART_ADMISSION_FAILURE_LIMIT = 32
+MAX_RESTART_FAILURE_RECEIPTS = 64
+DETACHED_ACTIVE_BINDING_TIMEOUT_SECONDS = 5.0
+MULTI_SUPERVISOR_TERMINAL_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.multi-supervisor-terminal@1"
+)
+MULTI_SUPERVISOR_ACTIVE_BINDING_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.multi-supervisor-active-binding@1"
+)
 SHARED_AUTHORITY_TERMINAL_STATUS = "shared_authority_terminal"
 SHARED_DATABASE_AUTHORITY_UNAVAILABLE_KIND = (
     "shared_database_authority_unavailable"
@@ -1716,6 +1738,10 @@ class _StableArtifactReadError(RuntimeError):
     """A coordination artifact was unsafe, malformed, or changed while read."""
 
 
+class _StableArtifactChangedError(_StableArtifactReadError):
+    """A structurally safe coordination artifact changed during observation."""
+
+
 def _read_stable_regular_bytes(
     path: Path,
     *,
@@ -1757,16 +1783,16 @@ def _read_stable_regular_bytes(
                 os.lstat(artifact)
             except FileNotFoundError:
                 return None, {"state": "absent", "path": str(artifact)}
-            raise _StableArtifactReadError(
+            raise _StableArtifactChangedError(
                 f"artifact appeared during absent read: {artifact}"
-            )
+            ) from None
         except OSError as exc:
             raise _StableArtifactReadError(
                 f"cannot prove absent artifact {artifact}: {exc}"
             ) from exc
         else:
             os.close(descriptor)
-            raise _StableArtifactReadError(
+            raise _StableArtifactChangedError(
                 f"artifact appeared during absent read: {artifact}"
             )
     except OSError as exc:
@@ -1803,8 +1829,18 @@ def _read_stable_regular_bytes(
     try:
         opened = os.fstat(descriptor)
         if identity(opened) != identity(before):
+            if (
+                (int(opened.st_dev), int(opened.st_ino))
+                != (int(before.st_dev), int(before.st_ino))
+                and stat.S_ISREG(opened.st_mode)
+                and int(opened.st_nlink) == 1
+            ):
+                raise _StableArtifactChangedError(
+                    f"coordination artifact was atomically replaced before "
+                    f"open: {artifact}"
+                )
             raise _StableArtifactReadError(
-                f"coordination artifact changed before open: {artifact}"
+                f"coordination artifact mutated before open: {artifact}"
             )
         chunks: list[bytes] = []
         remaining = int(max_bytes) + 1
@@ -1829,14 +1865,46 @@ def _read_stable_regular_bytes(
             f"coordination artifact disappeared during read: {artifact}"
         ) from exc
     if (
-        identity(opened) != identity(after_read)
-        or identity(opened) != identity(after_path)
-        or stat.S_ISLNK(after_path.st_mode)
+        stat.S_ISLNK(after_path.st_mode)
         or not stat.S_ISREG(after_path.st_mode)
         or int(after_path.st_nlink) != 1
     ):
         raise _StableArtifactReadError(
-            f"coordination artifact changed during read: {artifact}"
+            f"coordination artifact became structurally unsafe during read: "
+            f"{artifact}"
+        )
+    opened_inode = (int(opened.st_dev), int(opened.st_ino))
+    after_read_inode = (int(after_read.st_dev), int(after_read.st_ino))
+    after_path_inode = (int(after_path.st_dev), int(after_path.st_ino))
+    descriptor_content_stable = (
+        opened_inode == after_read_inode
+        and int(opened.st_mode) == int(after_read.st_mode)
+        and int(opened.st_uid) == int(after_read.st_uid)
+        and int(opened.st_gid) == int(after_read.st_gid)
+        and int(opened.st_size) == int(after_read.st_size)
+        and int(opened.st_mtime_ns) == int(after_read.st_mtime_ns)
+    )
+    atomic_unlink_observed = bool(
+        descriptor_content_stable
+        and int(opened.st_nlink) == 1
+        and int(after_read.st_nlink) == 0
+        and after_path_inode != opened_inode
+    )
+    stable_descriptor_replaced_at_path = bool(
+        identity(opened) == identity(after_read)
+        and after_path_inode != opened_inode
+    )
+    if atomic_unlink_observed or stable_descriptor_replaced_at_path:
+        raise _StableArtifactChangedError(
+            f"coordination artifact was atomically replaced during read: "
+            f"{artifact}"
+        )
+    if (
+        identity(opened) != identity(after_read)
+        or identity(opened) != identity(after_path)
+    ):
+        raise _StableArtifactReadError(
+            f"coordination artifact mutated during read: {artifact}"
         )
     evidence = {
         "state": "present",
@@ -3094,12 +3162,38 @@ class PlanBoundProcessBirthError(RuntimeError):
         pid: int,
         profile: LifecycleProfile,
         all_trees_fenced: bool,
+        cause_type: str = "",
     ) -> None:
         super().__init__(message)
         self.pid = int(pid)
         self.profile = profile
         self.profile_id = profile.profile_id
         self.all_trees_fenced = bool(all_trees_fenced)
+        self.cause_type = str(cause_type)
+
+
+class SupervisorTrackStartError(RuntimeError):
+    """A non-plan track was born but failed before launch publication."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        pid: int,
+        profile: LifecycleProfile,
+        all_trees_fenced: bool,
+        cause_type: str,
+    ) -> None:
+        super().__init__(message)
+        self.pid = int(pid)
+        self.profile = profile
+        self.profile_id = profile.profile_id
+        self.all_trees_fenced = bool(all_trees_fenced)
+        self.cause_type = str(cause_type)
+
+
+class SupervisorRunWindowExpired(RuntimeError):
+    """The finite runner window closed before a launch was admitted."""
 
 
 def utc_run_stamp() -> str:
@@ -3907,6 +4001,7 @@ def _remove_owned_pid_projection(pid_path: Path, expected_pid: int) -> bool:
             ):
                 return False
             pid_path.unlink()
+            _fsync_directory(pid_path.parent)
             return True
     except (_StableArtifactReadError, OSError, UnicodeError, ValueError):
         return False
@@ -3948,6 +4043,173 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+def _terminal_receipt_path(master_pid_path: Path) -> Path:
+    """Return the fixed current-generation terminal/active binding path."""
+
+    path = Path(master_pid_path)
+    return path.with_name(path.name + ".terminal.json")
+
+
+def _self_identifying_run_artifact_cid(payload: Mapping[str, Any]) -> str:
+    """Verify and return one active or terminal run-artifact identity."""
+
+    schema = payload.get("schema")
+    if schema == MULTI_SUPERVISOR_TERMINAL_RECEIPT_SCHEMA:
+        identity_field = "terminal_receipt_cid"
+    elif schema == MULTI_SUPERVISOR_ACTIVE_BINDING_SCHEMA:
+        identity_field = "active_binding_cid"
+    else:
+        raise ValueError("run artifact has an unsupported schema")
+    claimed = payload.get(identity_field)
+    if not isinstance(claimed, str) or not claimed:
+        raise ValueError("run artifact has no content identity")
+    identity_body = dict(payload)
+    identity_body.pop(identity_field, None)
+    if content_identity(identity_body) != claimed:
+        raise ValueError("run artifact content identity differs")
+    return claimed
+
+
+def _archive_prior_run_artifact_locked(
+    current_path: Path,
+    payload: Mapping[str, Any],
+) -> Path:
+    """Preserve one prior fixed-path artifact under its immutable CID."""
+
+    artifact_cid = _self_identifying_run_artifact_cid(payload)
+    archive_path = current_path.with_name(
+        f"{current_path.name}.{artifact_cid}.history.json"
+    )
+    archived, _evidence = _read_stable_regular_json(archive_path)
+    if archived is None:
+        write_json_atomic(
+            archive_path,
+            payload,
+            sync_directory=True,
+        )
+        archived, _evidence = _read_stable_regular_json(archive_path)
+    if archived != dict(payload):
+        raise ValueError("prior run-artifact archive differs")
+    if _self_identifying_run_artifact_cid(archived) != artifact_cid:
+        raise ValueError("prior run-artifact archive identity differs")
+    return archive_path
+
+
+def _activate_run_generation_binding(
+    master_pid_path: Path,
+    *,
+    label: str,
+    master_pid: int,
+    run_started_at_ns: int,
+) -> tuple[Path, str, Path | None]:
+    """Replace any prior terminal view with this exact live generation.
+
+    The prior self-identifying artifact is retained under an immutable
+    CID-bearing history name.  The fixed path is then atomically replaced by
+    a non-authoritative active binding before any managed child can start.
+    """
+
+    pid_path = Path(master_pid_path)
+    current_path = _terminal_receipt_path(pid_path)
+    archived_path: Path | None = None
+    with serialized_lock_update(pid_path):
+        pid_payload, pid_evidence = _read_stable_regular_bytes(
+            pid_path,
+            max_bytes=32,
+        )
+        if (
+            pid_payload != f"{int(master_pid)}\n".encode("ascii")
+            or pid_evidence.get("state") != "present"
+        ):
+            raise ValueError(
+                "active run binding requires the exact master PID projection"
+            )
+        prior, _prior_evidence = _read_stable_regular_json(current_path)
+        if prior is not None:
+            _self_identifying_run_artifact_cid(prior)
+            if (
+                prior.get("schema")
+                != MULTI_SUPERVISOR_TERMINAL_RECEIPT_SCHEMA
+                or prior.get("all_trees_fenced") is not True
+            ):
+                raise ValueError(
+                    "prior run generation has no fully fenced terminal proof"
+                )
+            archived_path = _archive_prior_run_artifact_locked(
+                current_path,
+                prior,
+            )
+        binding_body: dict[str, object] = {
+            "schema": MULTI_SUPERVISOR_ACTIVE_BINDING_SCHEMA,
+            "label": label,
+            "active": True,
+            "master_pid": int(master_pid),
+            "run_started_at_epoch_nanoseconds": int(run_started_at_ns),
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "task_completion_authority": False,
+        }
+        binding_cid = content_identity(binding_body)
+        binding = {
+            **binding_body,
+            "active_binding_cid": binding_cid,
+        }
+        write_json_atomic(
+            current_path,
+            binding,
+            sync_directory=True,
+        )
+        observed, _observed_evidence = _read_stable_regular_json(current_path)
+        if observed != binding:
+            raise ValueError("active run-generation binding differs")
+        if _self_identifying_run_artifact_cid(observed) != binding_cid:
+            raise ValueError("active run-generation binding identity differs")
+    return current_path, binding_cid, archived_path
+
+
+def _wait_for_detached_active_binding(
+    master_pid_path: Path,
+    process: subprocess.Popen[bytes],
+    *,
+    not_before_epoch_nanoseconds: int,
+    timeout_seconds: float = DETACHED_ACTIVE_BINDING_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """Require a detached child to acknowledge its exact live generation."""
+
+    deadline = time.monotonic() + max(0.1, float(timeout_seconds))
+    current_path = _terminal_receipt_path(master_pid_path)
+    last_schema = "absent"
+    while time.monotonic() < deadline:
+        try:
+            payload, _evidence = _read_stable_regular_json(current_path)
+        except _StableArtifactChangedError:
+            payload = None
+            last_schema = "changing"
+        if payload is not None:
+            last_schema = str(payload.get("schema") or "unknown")
+            started_at = payload.get("run_started_at_epoch_nanoseconds")
+            if (
+                payload.get("schema")
+                == MULTI_SUPERVISOR_ACTIVE_BINDING_SCHEMA
+                and payload.get("active") is True
+                and payload.get("master_pid") == int(process.pid)
+                and isinstance(started_at, int)
+                and not isinstance(started_at, bool)
+                and int(started_at) >= int(not_before_epoch_nanoseconds)
+            ):
+                _self_identifying_run_artifact_cid(payload)
+                return payload
+        if process.poll() is not None:
+            raise ValueError(
+                "detached runner exited before active-generation binding "
+                f"schema={last_schema}"
+            )
+        time.sleep(0.02)
+    raise ValueError(
+        "detached runner did not publish its active-generation binding "
+        f"within {float(timeout_seconds):g}s schema={last_schema}"
+    )
+
+
 def _pid_projection_quarantine_directory(pid_path: Path) -> Path:
     """Return a verified owner-only directory for stale PID evidence."""
 
@@ -3987,123 +4249,80 @@ def _pid_projection_quarantine_directory(pid_path: Path) -> Path:
     return quarantine
 
 
-def _ensure_owner_only_lane_state_directory(
-    lane_state_dir: Path,
-    *,
-    state_root: Path,
-) -> Path:
-    """Return one private direct-child lane directory.
+def _create_owner_only_plan_bound_state_root(state_root: Path) -> Path:
+    """Create or verify the private root required before lane recovery."""
 
-    Older configured-board generations created lane directories with mode
-    ``0775`` below an already private ``0700`` state root.  That historical
-    shape is safe to tighten in place because the private parent prevents a
-    second uid from reaching the lane while its mode is changed.  No other
-    pre-existing mode is inferred to be safe.
-    """
-
-    lane = Path(lane_state_dir)
     root = Path(state_root)
+    parent = root.parent
     if (
-        not lane.is_absolute()
-        or not root.is_absolute()
-        or Path(os.path.abspath(lane)) != lane
+        not root.is_absolute()
         or Path(os.path.abspath(root)) != root
-        or lane.parent != root
+        or root == parent
     ):
-        raise ValueError(
-            "plan-bound lane state directory is not an exact state-root child"
-        )
+        raise ValueError("plan-bound state root is not an absolute child")
     try:
-        root_stat = os.lstat(root)
+        parent_stat = os.lstat(parent)
     except OSError as exc:
-        raise ValueError("plan-bound state root cannot be inspected") from exc
+        raise ValueError(
+            "plan-bound state-root parent cannot be inspected"
+        ) from exc
+    parent_mode = stat.S_IMODE(parent_stat.st_mode)
     if (
-        stat.S_ISLNK(root_stat.st_mode)
-        or not stat.S_ISDIR(root_stat.st_mode)
-        or int(root_stat.st_uid) != os.geteuid()
-        or stat.S_IMODE(root_stat.st_mode) != 0o700
+        stat.S_ISLNK(parent_stat.st_mode)
+        or not stat.S_ISDIR(parent_stat.st_mode)
+        or int(parent_stat.st_uid) != os.geteuid()
+        or parent_mode & 0o002
     ):
-        raise ValueError("plan-bound state root is not owner-only")
-
+        raise ValueError("plan-bound state-root parent is unsafe")
     try:
-        os.mkdir(lane, 0o700)
-        _fsync_directory(root)
+        os.mkdir(root, 0o700)
+        _fsync_directory(parent)
     except FileExistsError:
         pass
     except OSError as exc:
-        raise ValueError(
-            "plan-bound lane state directory cannot be created"
-        ) from exc
+        raise ValueError("plan-bound state root cannot be created") from exc
     try:
-        observed = os.lstat(lane)
+        observed = os.lstat(root)
     except OSError as exc:
-        raise ValueError(
-            "plan-bound lane state directory cannot be inspected"
-        ) from exc
+        raise ValueError("plan-bound state root cannot be inspected") from exc
     if (
         stat.S_ISLNK(observed.st_mode)
         or not stat.S_ISDIR(observed.st_mode)
         or int(observed.st_uid) != os.geteuid()
+        or stat.S_IMODE(observed.st_mode) != 0o700
     ):
-        raise ValueError("plan-bound lane state directory is unsafe")
-    lane_mode = stat.S_IMODE(observed.st_mode)
-    if lane_mode == 0o700:
-        return lane
-    if lane_mode != 0o775:
-        raise ValueError(
-            "plan-bound lane state directory is neither owner-only nor "
-            "the exact safe legacy mode"
-        )
+        raise ValueError("plan-bound state root is not owner-only")
+    return root
 
-    flags = os.O_RDONLY
-    flags |= getattr(os, "O_CLOEXEC", 0)
-    flags |= getattr(os, "O_DIRECTORY", 0)
-    flags |= getattr(os, "O_NOFOLLOW", 0)
+
+def _require_pinned_plan_bound_path_identity(
+    *,
+    state_root: Path,
+    lane_name: str,
+    root_descriptor: int,
+    opened_root: os.stat_result,
+    opened_lane: os.stat_result,
+) -> None:
+    """Fail if canonical pathnames no longer name the pinned directories."""
+
     try:
-        descriptor = os.open(lane, flags)
+        current_root = os.lstat(state_root)
+        current_lane = os.stat(
+            lane_name,
+            dir_fd=root_descriptor,
+            follow_symlinks=False,
+        )
     except OSError as exc:
         raise ValueError(
-            "plan-bound legacy lane state directory cannot be opened safely"
-        ) from exc
-    try:
-        opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISDIR(opened.st_mode)
-            or int(opened.st_uid) != os.geteuid()
-            or stat.S_IMODE(opened.st_mode) != 0o775
-            or (int(opened.st_dev), int(opened.st_ino))
-            != (int(observed.st_dev), int(observed.st_ino))
-        ):
-            raise ValueError(
-                "plan-bound legacy lane state directory changed before repair"
-            )
-        os.fchmod(descriptor, 0o700)
-        os.fsync(descriptor)
-    except OSError as exc:
-        raise ValueError(
-            "plan-bound legacy lane state directory cannot be made owner-only"
-        ) from exc
-    finally:
-        os.close(descriptor)
-    try:
-        repaired = os.lstat(lane)
-    except OSError as exc:
-        raise ValueError(
-            "plan-bound lane state directory cannot be revalidated"
+            "plan-bound state path changed during recovery"
         ) from exc
     if (
-        stat.S_ISLNK(repaired.st_mode)
-        or not stat.S_ISDIR(repaired.st_mode)
-        or int(repaired.st_uid) != os.geteuid()
-        or stat.S_IMODE(repaired.st_mode) != 0o700
-        or (int(repaired.st_dev), int(repaired.st_ino))
-        != (int(observed.st_dev), int(observed.st_ino))
+        (int(current_root.st_dev), int(current_root.st_ino))
+        != (int(opened_root.st_dev), int(opened_root.st_ino))
+        or (int(current_lane.st_dev), int(current_lane.st_ino))
+        != (int(opened_lane.st_dev), int(opened_lane.st_ino))
     ):
-        raise ValueError(
-            "plan-bound lane state directory changed during owner-only repair"
-        )
-    _fsync_directory(root)
-    return lane
+        raise ValueError("plan-bound state path changed during recovery")
 
 
 def _recover_plan_bound_lane_pid_projection(
@@ -4114,30 +4333,168 @@ def _recover_plan_bound_lane_pid_projection(
     """Quarantine one provably dead lane PID before authority-store reads."""
 
     path = Path(pid_path)
-    lane = _ensure_owner_only_lane_state_directory(
-        path.parent,
-        state_root=state_root,
+    lane = path.parent
+    root = Path(state_root)
+    if (
+        not path.is_absolute()
+        or not root.is_absolute()
+        or Path(os.path.abspath(path)) != path
+        or Path(os.path.abspath(root)) != root
+        or lane.parent != root
+        or fcntl is None
+    ):
+        raise ValueError("plan-bound PID recovery lacks pinned directory support")
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory_only = getattr(os, "O_DIRECTORY", 0)
+    if not nofollow or not directory_only:
+        raise ValueError("plan-bound PID recovery lacks no-follow directory access")
+    directory_flags = (
+        os.O_RDONLY
+        | nofollow
+        | directory_only
+        | getattr(os, "O_CLOEXEC", 0)
     )
-    with serialized_lock_update(path):
-        # Revalidate after taking the adjacent update lock.  The helper only
-        # tightens the exact historical 0775 shape; substitutions and wider
-        # modes remain fail-closed.
-        _ensure_owner_only_lane_state_directory(
-            lane,
-            state_root=state_root,
-        )
+    root_descriptor = -1
+    lane_descriptor = -1
+    lock_descriptor = -1
+    locked = False
+    try:
+        root_descriptor = os.open(root, directory_flags)
+        opened_root = os.fstat(root_descriptor)
+        named_root = os.lstat(root)
+        if (
+            not stat.S_ISDIR(opened_root.st_mode)
+            or int(opened_root.st_uid) != os.geteuid()
+            or stat.S_IMODE(opened_root.st_mode) != 0o700
+        ):
+            raise ValueError("plan-bound state root is not owner-only")
+        if (int(opened_root.st_dev), int(opened_root.st_ino)) != (
+            int(named_root.st_dev),
+            int(named_root.st_ino),
+        ):
+            raise ValueError("plan-bound state root changed before recovery")
         try:
-            os.lstat(path)
+            os.mkdir(lane.name, 0o700, dir_fd=root_descriptor)
+            os.fsync(root_descriptor)
+        except FileExistsError:
+            pass
+        except OSError as exc:
+            raise ValueError(
+                "plan-bound lane state directory cannot be created"
+            ) from exc
+        lane_descriptor = os.open(
+            lane.name,
+            directory_flags,
+            dir_fd=root_descriptor,
+        )
+        opened_lane = os.fstat(lane_descriptor)
+        named_lane = os.stat(
+            lane.name,
+            dir_fd=root_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            not stat.S_ISDIR(opened_lane.st_mode)
+            or int(opened_lane.st_uid) != os.geteuid()
+            or (int(opened_lane.st_dev), int(opened_lane.st_ino))
+            != (int(named_lane.st_dev), int(named_lane.st_ino))
+        ):
+            raise ValueError("plan-bound lane changed before recovery")
+        lane_mode = stat.S_IMODE(opened_lane.st_mode)
+        if lane_mode not in {0o700, 0o775}:
+            raise ValueError(
+                "plan-bound lane state directory is neither owner-only nor "
+                "the exact safe legacy mode"
+            )
+        if lane_mode == 0o775:
+            try:
+                os.fchmod(lane_descriptor, 0o700)
+                os.fsync(lane_descriptor)
+                os.fsync(root_descriptor)
+            except OSError as exc:
+                raise ValueError(
+                    "plan-bound legacy lane state directory cannot be made "
+                    "owner-only"
+                ) from exc
+            repaired_lane = os.fstat(lane_descriptor)
+            current_lane = os.stat(
+                lane.name,
+                dir_fd=root_descriptor,
+                follow_symlinks=False,
+            )
+            if (
+                stat.S_IMODE(repaired_lane.st_mode) != 0o700
+                or (int(repaired_lane.st_dev), int(repaired_lane.st_ino))
+                != (int(current_lane.st_dev), int(current_lane.st_ino))
+            ):
+                raise ValueError(
+                    "plan-bound lane state directory changed during "
+                    "owner-only repair"
+                )
+            opened_lane = repaired_lane
+        lock_name = f".{path.name}.update.lock"
+        lock_descriptor = os.open(
+            lock_name,
+            os.O_CREAT
+            | os.O_RDWR
+            | nofollow
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+            dir_fd=lane_descriptor,
+        )
+        lock_identity = os.fstat(lock_descriptor)
+        if (
+            not stat.S_ISREG(lock_identity.st_mode)
+            or int(lock_identity.st_nlink) != 1
+            or int(lock_identity.st_uid) != os.geteuid()
+        ):
+            raise ValueError("plan-bound PID recovery lock is unsafe")
+        os.fchmod(lock_descriptor, 0o600)
+        fcntl.flock(lock_descriptor, fcntl.LOCK_EX)
+        locked = True
+        try:
+            os.stat(
+                path.name,
+                dir_fd=lane_descriptor,
+                follow_symlinks=False,
+            )
         except FileNotFoundError:
-            return None
+            result = None
         except OSError as exc:
             raise ValueError(
                 "cannot inspect plan-bound supervisor PID projection"
             ) from exc
-        return _quarantine_stale_owned_pid_projection_locked(
-            path,
-            artifact_label="plan-bound supervisor PID projection",
+        else:
+            result = _quarantine_plan_bound_pid_projection_at_locked(
+                path,
+                root_descriptor=root_descriptor,
+                lane_descriptor=lane_descriptor,
+                opened_root=opened_root,
+                opened_lane=opened_lane,
+                artifact_label="plan-bound supervisor PID projection",
+            )
+        _require_pinned_plan_bound_path_identity(
+            state_root=root,
+            lane_name=lane.name,
+            root_descriptor=root_descriptor,
+            opened_root=opened_root,
+            opened_lane=opened_lane,
         )
+        return result
+    except ValueError:
+        raise
+    except OSError as exc:
+        raise ValueError("plan-bound PID recovery directory changed") from exc
+    finally:
+        if locked and lock_descriptor >= 0:
+            fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+        for descriptor in (
+            lock_descriptor,
+            lane_descriptor,
+            root_descriptor,
+        ):
+            if descriptor >= 0:
+                os.close(descriptor)
 
 
 def _write_stale_pid_projection_receipt(
@@ -4239,6 +4596,296 @@ def _pid_projection_matches_evidence(
             or int(observed.st_ctime_ns) == int(evidence["ctime_ns"])
         )
     )
+
+
+def _quarantine_plan_bound_pid_projection_at_locked(
+    pid_path: Path,
+    *,
+    root_descriptor: int,
+    lane_descriptor: int,
+    opened_root: os.stat_result,
+    opened_lane: os.stat_result,
+    artifact_label: str,
+) -> Path:
+    """Quarantine one PID using only pinned plan-root directory handles."""
+
+    path = Path(pid_path)
+    leaf_name = path.name
+    if not leaf_name or leaf_name in {".", ".."}:
+        raise ValueError(f"{artifact_label} has an unsafe name")
+    leaf_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(leaf_name, leaf_flags, dir_fd=lane_descriptor)
+    except OSError as exc:
+        raise ValueError(f"cannot inspect {artifact_label}") from exc
+    try:
+        before = os.fstat(descriptor)
+        leaf_mode = stat.S_IMODE(before.st_mode)
+        if stat.S_ISLNK(before.st_mode):
+            raise ValueError(f"{artifact_label} is an unsafe symbolic link")
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError(f"{artifact_label} is an unsafe non-regular file")
+        if int(before.st_nlink) != 1:
+            raise ValueError(f"{artifact_label} is an unsafe hardlinked file")
+        if int(before.st_uid) != os.geteuid():
+            raise ValueError(f"{artifact_label} is an unsafe foreign-owned file")
+        if (
+            leaf_mode & 0o111
+            or leaf_mode & 0o002
+            or before.st_mode & (stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX)
+        ):
+            raise ValueError(f"{artifact_label} has unsafe permissions")
+        chunks: list[bytes] = []
+        remaining = 33
+        while remaining:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        payload = b"".join(chunks)
+        after = os.fstat(descriptor)
+        named = os.stat(
+            leaf_name,
+            dir_fd=lane_descriptor,
+            follow_symlinks=False,
+        )
+    except OSError as exc:
+        raise ValueError(f"cannot stably read {artifact_label}") from exc
+    finally:
+        os.close(descriptor)
+    evidence: dict[str, Any] = {
+        "content_sha256": "sha256:" + hashlib.sha256(payload).hexdigest(),
+        "size": int(before.st_size),
+        "device": int(before.st_dev),
+        "inode": int(before.st_ino),
+        "uid": int(before.st_uid),
+        "gid": int(before.st_gid),
+        "mode": int(before.st_mode),
+        "mtime_ns": int(before.st_mtime_ns),
+        "ctime_ns": int(before.st_ctime_ns),
+    }
+    if (
+        len(payload) > 32
+        or not _pid_projection_matches_evidence(after, evidence)
+        or not _pid_projection_matches_evidence(named, evidence)
+    ):
+        raise ValueError(f"cannot stably read {artifact_label}")
+    if not re.fullmatch(rb"[1-9][0-9]*\n", payload):
+        raise ValueError(f"{artifact_label} does not contain one exact PID")
+    recorded_pid = int(payload[:-1].decode("ascii"))
+    liveness = _pid_projection_liveness(recorded_pid)
+    if liveness is OwnerLiveness.ALIVE:
+        raise ValueError(f"{artifact_label} names a live process")
+    if liveness is not OwnerLiveness.DEAD:
+        raise ValueError(f"{artifact_label} liveness is unknown")
+
+    quarantine_name = "stale-pid-projections"
+    try:
+        os.mkdir(quarantine_name, 0o700, dir_fd=lane_descriptor)
+        os.fsync(lane_descriptor)
+    except FileExistsError:
+        pass
+    except OSError as exc:
+        raise ValueError("cannot create PID projection quarantine") from exc
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        quarantine_descriptor = os.open(
+            quarantine_name,
+            directory_flags,
+            dir_fd=lane_descriptor,
+        )
+    except OSError as exc:
+        raise ValueError("cannot inspect PID projection quarantine") from exc
+    quarantine_leaf = ""
+    quarantine_may_have_moved = False
+    try:
+        quarantine_identity = os.fstat(quarantine_descriptor)
+        named_quarantine = os.stat(
+            quarantine_name,
+            dir_fd=lane_descriptor,
+            follow_symlinks=False,
+        )
+        if (
+            not stat.S_ISDIR(quarantine_identity.st_mode)
+            or int(quarantine_identity.st_uid) != os.geteuid()
+            or stat.S_IMODE(quarantine_identity.st_mode) != 0o700
+            or (int(quarantine_identity.st_dev), int(quarantine_identity.st_ino))
+            != (int(named_quarantine.st_dev), int(named_quarantine.st_ino))
+        ):
+            raise ValueError("PID projection quarantine is not owner-only")
+        digest = str(evidence["content_sha256"]).removeprefix("sha256:")[:16]
+        reserve_flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        for _ in range(16):
+            candidate = (
+                f"{leaf_name}.dead-{recorded_pid}-{digest}."
+                f"{secrets.token_hex(8)}.pid"
+            )
+            try:
+                reserved = os.open(
+                    candidate,
+                    reserve_flags,
+                    0o600,
+                    dir_fd=quarantine_descriptor,
+                )
+            except FileExistsError:
+                continue
+            except OSError as exc:
+                raise ValueError(
+                    "cannot reserve stale PID quarantine path"
+                ) from exc
+            else:
+                os.close(reserved)
+                quarantine_leaf = candidate
+                break
+        if not quarantine_leaf:
+            raise ValueError("stale PID quarantine name bound exhausted")
+        before_replace = os.stat(
+            leaf_name,
+            dir_fd=lane_descriptor,
+            follow_symlinks=False,
+        )
+        if not _pid_projection_matches_evidence(before_replace, evidence):
+            raise ValueError("stale PID projection changed before quarantine")
+        # From this point onward an asynchronous ``BaseException`` can make
+        # the rename outcome unobservable to Python.  Preserve the reserved
+        # target (empty or moved) rather than risk deleting the only stale-PID
+        # evidence after ``os.replace`` committed in the kernel.
+        quarantine_may_have_moved = True
+        os.replace(
+            leaf_name,
+            quarantine_leaf,
+            src_dir_fd=lane_descriptor,
+            dst_dir_fd=quarantine_descriptor,
+        )
+        quarantined_identity = os.stat(
+            quarantine_leaf,
+            dir_fd=quarantine_descriptor,
+            follow_symlinks=False,
+        )
+        if not _pid_projection_matches_evidence(
+            quarantined_identity,
+            evidence,
+            allow_rename_ctime=True,
+        ):
+            try:
+                os.link(
+                    quarantine_leaf,
+                    leaf_name,
+                    src_dir_fd=quarantine_descriptor,
+                    dst_dir_fd=lane_descriptor,
+                    follow_symlinks=False,
+                )
+            except OSError:
+                pass
+            else:
+                os.unlink(quarantine_leaf, dir_fd=quarantine_descriptor)
+            raise ValueError("stale PID projection changed during quarantine")
+        os.fsync(lane_descriptor)
+        os.fsync(quarantine_descriptor)
+
+        quarantine_path = path.parent / quarantine_name / quarantine_leaf
+        body: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "stale-pid-projection-quarantine@1"
+            ),
+            "artifact_label": str(artifact_label),
+            "original_path": str(path),
+            "quarantine_path": str(quarantine_path),
+            "recorded_pid": int(recorded_pid),
+            "liveness": OwnerLiveness.DEAD.value,
+            "reason": "recorded_process_provably_dead",
+            "content_sha256": str(evidence["content_sha256"]),
+            "size": int(evidence["size"]),
+            "device": int(evidence["device"]),
+            "inode": int(evidence["inode"]),
+            "uid": int(evidence["uid"]),
+            "gid": int(evidence["gid"]),
+            "mode": stat.S_IMODE(int(evidence["mode"])),
+            "mtime_ns": int(evidence["mtime_ns"]),
+            "ctime_ns": int(evidence["ctime_ns"]),
+            "quarantined_at": datetime.now(timezone.utc).isoformat(),
+        }
+        body["receipt_id"] = content_identity(body)
+        receipt_payload = (
+            json.dumps(body, sort_keys=True, separators=(",", ":")) + "\n"
+        ).encode("utf-8")
+        receipt_leaf = quarantine_leaf + ".receipt.json"
+        try:
+            receipt_descriptor = os.open(
+                receipt_leaf,
+                reserve_flags,
+                0o600,
+                dir_fd=quarantine_descriptor,
+            )
+        except OSError as exc:
+            raise ValueError(
+                "cannot reserve stale PID quarantine receipt"
+            ) from exc
+        try:
+            remaining_receipt = memoryview(receipt_payload)
+            while remaining_receipt:
+                count = os.write(receipt_descriptor, remaining_receipt)
+                if count < 1:
+                    raise OSError("short stale PID quarantine receipt write")
+                remaining_receipt = remaining_receipt[count:]
+            os.fsync(receipt_descriptor)
+            written_receipt = os.fstat(receipt_descriptor)
+            named_receipt = os.stat(
+                receipt_leaf,
+                dir_fd=quarantine_descriptor,
+                follow_symlinks=False,
+            )
+            if (
+                not stat.S_ISREG(written_receipt.st_mode)
+                or int(written_receipt.st_nlink) != 1
+                or int(written_receipt.st_uid) != os.geteuid()
+                or stat.S_IMODE(written_receipt.st_mode) != 0o600
+                or int(written_receipt.st_size) != len(receipt_payload)
+                or (int(written_receipt.st_dev), int(written_receipt.st_ino))
+                != (int(named_receipt.st_dev), int(named_receipt.st_ino))
+            ):
+                raise OSError("stale PID quarantine receipt changed")
+        except OSError as exc:
+            raise ValueError(
+                "cannot publish stale PID quarantine receipt"
+            ) from exc
+        finally:
+            os.close(receipt_descriptor)
+        os.fsync(quarantine_descriptor)
+
+        _require_pinned_plan_bound_path_identity(
+            state_root=path.parent.parent,
+            lane_name=path.parent.name,
+            root_descriptor=root_descriptor,
+            opened_root=opened_root,
+            opened_lane=opened_lane,
+        )
+        return quarantine_path.with_name(receipt_leaf)
+    finally:
+        if quarantine_leaf and not quarantine_may_have_moved:
+            try:
+                os.unlink(quarantine_leaf, dir_fd=quarantine_descriptor)
+            except FileNotFoundError:
+                pass
+        os.close(quarantine_descriptor)
 
 
 def _quarantine_stale_owned_pid_projection_locked(
@@ -5159,16 +5806,40 @@ def supervisor_status_health_fields(
             **fields,
         }
 
-    try:
-        payload, status_evidence = _read_stable_regular_json(status_path)
-    except _StableArtifactReadError:
-        return awaiting_current_generation("unsafe")
+    status_read_failures = 0
+    while True:
+        try:
+            payload, status_evidence = _read_stable_regular_json(status_path)
+            break
+        except _StableArtifactChangedError:
+            status_read_failures += 1
+            # Supervisor status is published with atomic replacement.  A
+            # strict pathname/inode reader can therefore collide with one
+            # valid publication and must not turn that single observation
+            # race into process-kill authority.  Retry exactly once; a stable
+            # second failure retains the existing fail-closed health result.
+            if status_read_failures >= 2:
+                result = awaiting_current_generation("unsafe")
+                result["supervisor_status_read_failures"] = (
+                    status_read_failures
+                )
+                return result
+        except _StableArtifactReadError:
+            # Link, type, size, decoding, and schema hazards are not normal
+            # publication races.  They retain immediate fail-closed restart
+            # authority after the generation grace.
+            return awaiting_current_generation("unsafe")
+    read_retry_fields: dict[str, object] = {}
+    if status_read_failures:
+        read_retry_fields["supervisor_status_read_retries"] = (
+            status_read_failures
+        )
     if payload is None:
-        return awaiting_current_generation("missing")
+        return awaiting_current_generation("missing", **read_retry_fields)
     status_mtime = float(int(status_evidence.get("mtime_ns") or 0)) / 1e9
     updated_at = _parse_status_timestamp(payload.get("updated_at") or payload.get("heartbeat_at"))
     if updated_at is None:
-        return awaiting_current_generation("unknown")
+        return awaiting_current_generation("unknown", **read_retry_fields)
     if startup_started_at is not None:
         recorded_supervisor_pid = payload.get("supervisor_pid")
         expected_pid_is_bound = bool(
@@ -5197,6 +5868,7 @@ def supervisor_status_health_fields(
                 supervisor_status_age_seconds=round(age_seconds, 1),
                 supervisor_status_pid_mismatch=recorded_pid_mismatch,
                 supervisor_status_predates_process=status_predates_process,
+                **read_retry_fields,
             )
     age_seconds = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds())
     expected_store_generation = str(
@@ -5236,6 +5908,7 @@ def supervisor_status_health_fields(
                 "supervisor_terminal_fresh": True,
                 "restart_supervisor": False,
                 **terminal_projection,
+                **read_retry_fields,
             }
     pending_projection = _shared_authority_pending_projection(
         payload,
@@ -5264,6 +5937,7 @@ def supervisor_status_health_fields(
             "supervisor_status_path": str(status_path),
             "supervisor_status_age_seconds": round(age_seconds, 1),
             **(pending_projection if pending_process_bound else {}),
+            **read_retry_fields,
         }
 
     child_state_path = _relative_or_absolute_path(
@@ -5303,6 +5977,7 @@ def supervisor_status_health_fields(
         "supervisor_child_in_progress": implementation_in_progress,
         "restart_supervisor": not (active_child or child_log_live),
         **child_log_fields,
+        **read_retry_fields,
     }
 
 
@@ -5316,6 +5991,9 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
     age = fields.get("supervisor_status_age_seconds")
     if age is not None:
         parts.append(f"supervisor_status_age_seconds={age}")
+    read_retries = fields.get("supervisor_status_read_retries")
+    if read_retries:
+        parts.append(f"supervisor_status_read_retries={read_retries}")
     startup_remaining = fields.get(
         "supervisor_startup_grace_remaining_seconds"
     )
@@ -5663,6 +6341,7 @@ def start_track(
     configured_board_live_admission: (
         ConfiguredBoardLiveCapsuleAdmission | None
     ) = None,
+    birth_deadline_monotonic_seconds: float | None = None,
     output: OutputFn = _default_output,
 ) -> subprocess.Popen[bytes]:
     """Start one marker-bound supervisor tree and write its PID projection.
@@ -5672,6 +6351,21 @@ def start_track(
     returned process, never the PID projection.
     """
 
+    if birth_deadline_monotonic_seconds is None:
+        birth_deadline = None
+    elif (
+        isinstance(birth_deadline_monotonic_seconds, bool)
+        or not isinstance(birth_deadline_monotonic_seconds, (float, int))
+    ):
+        raise ValueError("birth deadline must be a monotonic timestamp")
+    else:
+        numeric_deadline = float(birth_deadline_monotonic_seconds)
+        if math.isnan(numeric_deadline) or numeric_deadline == -math.inf:
+            raise ValueError("birth deadline must be a monotonic timestamp")
+        # Infinite supervisor runs have no finite birth terminal.  Normalize
+        # their positive-infinite monitor deadline back to the same sentinel
+        # used by initial launches rather than misclassifying it as unsafe.
+        birth_deadline = None if numeric_deadline == math.inf else numeric_deadline
     live_seal_required = _configured_board_live_seal_required(
         common_args,
         (track,),
@@ -5921,6 +6615,7 @@ def start_track(
         # boundary.  Live, unknown, linked, foreign, or otherwise unsafe
         # projections remain fail-closed.  The later O_EXCL reservation repeats
         # the recovery under its update lock to close the check-to-create race.
+        _create_owner_only_plan_bound_state_root(state_dir.parent)
         _recover_plan_bound_lane_pid_projection(
             resolved.supervisor_pid_path,
             state_root=state_dir.parent,
@@ -6167,11 +6862,16 @@ def start_track(
             if name in positive_names
         }
         launch_environment["PATH"] = "/usr/bin:/bin"
+    process: subprocess.Popen[bytes] | None = None
     try:
         try:
             # This is a conservative lower bound for the child generation.
             # Capture it before Popen because a fast child may publish its
             # PID-bound status before Popen returns to the parent.
+            if birth_deadline is not None and time.monotonic() >= birth_deadline:
+                raise SupervisorRunWindowExpired(
+                    "run window closed before supervisor process birth"
+                )
             process_started_at_epoch_seconds = time.time()
             process = subprocess.Popen(
                 command,
@@ -6206,35 +6906,121 @@ def start_track(
                     )
                 ),
             )
-        except BaseException:
+            setattr(process, "_agent_supervisor_lifecycle_profile", profile)
+            if birth_deadline is not None and time.monotonic() >= birth_deadline:
+                raise SupervisorRunWindowExpired(
+                    "run window closed during supervisor process birth"
+                )
+        except BaseException as exc:
             if gate_read_fd is not None:
-                os.close(gate_read_fd)
+                try:
+                    os.close(gate_read_fd)
+                except OSError:
+                    pass
             if gate_write_fd is not None:
-                os.close(gate_write_fd)
+                try:
+                    os.close(gate_write_fd)
+                except OSError:
+                    pass
             if pid_reservation_fd is not None:
-                os.close(pid_reservation_fd)
+                try:
+                    os.close(pid_reservation_fd)
+                except OSError:
+                    pass
             if pid_reservation_identity is not None:
                 _discard_reserved_pid_projection(
                     resolved.supervisor_pid_path,
                     pid_reservation_identity,
                 )
+            if process is not None:
+                fenced, _member_pids = _terminate_managed_process(
+                    process,
+                    grace_seconds=2.0,
+                )
+                if isinstance(exc, SupervisorRunInterrupted) and fenced:
+                    raise
+                raise SupervisorTrackStartError(
+                    "supervisor launch setup failed after process birth",
+                    pid=int(process.pid),
+                    profile=profile,
+                    all_trees_fenced=fenced,
+                    cause_type=type(exc).__name__,
+                ) from exc
             raise
     finally:
-        out_handle.close()
-    if gate_read_fd is not None:
-        os.close(gate_read_fd)
-    # Popen is only an observation handle.  The immutable profile is what lets
-    # stop/restart rediscover children that have detached or been reparented.
-    setattr(process, "_agent_supervisor_lifecycle_profile", profile)
-    setattr(
-        process,
-        "_agent_supervisor_started_at_epoch_seconds",
-        process_started_at_epoch_seconds,
-    )
-    if plan_bound_dispatch:
-        if gate_write_fd is None:
-            raise AssertionError("plan-bound launch gate was not created")
         try:
+            out_handle.close()
+        except BaseException as exc:
+            if process is None:
+                raise
+            fenced, _member_pids = _terminate_managed_process(
+                process,
+                grace_seconds=2.0,
+            )
+            if isinstance(exc, SupervisorRunInterrupted) and fenced:
+                raise
+            raise SupervisorTrackStartError(
+                "supervisor log handoff failed after process birth",
+                pid=int(process.pid),
+                profile=profile,
+                all_trees_fenced=fenced,
+                cause_type=type(exc).__name__,
+            ) from exc
+    assert process is not None
+
+    def abort_started_process(exc: BaseException, message: str) -> None:
+        """Fence a born track before surfacing incomplete start publication."""
+
+        nonlocal gate_write_fd
+        if gate_write_fd is not None:
+            try:
+                os.close(gate_write_fd)
+            except OSError:
+                pass
+            gate_write_fd = None
+        try:
+            fenced, _member_pids = _terminate_managed_process(
+                process,
+                grace_seconds=2.0,
+            )
+        except Exception:  # noqa: BLE001 - preserve fail-closed proof state
+            fenced = False
+        if fenced:
+            _remove_stale_pid_marker_if_unchanged(
+                resolved.supervisor_pid_path,
+                int(process.pid),
+            )
+        if isinstance(exc, SupervisorRunInterrupted) and fenced:
+            raise exc
+        raise SupervisorTrackStartError(
+            message,
+            pid=int(process.pid),
+            profile=profile,
+            all_trees_fenced=fenced,
+            cause_type=type(exc).__name__,
+        ) from exc
+
+    try:
+        if gate_read_fd is not None:
+            os.close(gate_read_fd)
+            gate_read_fd = None
+        # Popen is only an observation handle.  The immutable profile is what
+        # lets stop/restart rediscover children that detached or reparented.
+        setattr(process, "_agent_supervisor_lifecycle_profile", profile)
+        setattr(
+            process,
+            "_agent_supervisor_started_at_epoch_seconds",
+            process_started_at_epoch_seconds,
+        )
+    except BaseException as exc:
+        abort_started_process(
+            exc,
+            "supervisor birth metadata publication failed",
+        )
+    if plan_bound_dispatch:
+        try:
+            if gate_write_fd is None:
+                raise AssertionError("plan-bound launch gate was not created")
             # Capture the exact process birth while the accepted-tree gate is
             # still blocking the requested supervisor command.
             process_identity = LinuxProcessAdapter()._identity(  # noqa: SLF001
@@ -6274,6 +7060,10 @@ def start_track(
             )
             os.close(pid_reservation_fd)
             pid_reservation_fd = None
+            if birth_deadline is not None and time.monotonic() >= birth_deadline:
+                raise SupervisorRunWindowExpired(
+                    "run window closed before plan-bound launch gate release"
+                )
             if os.write(
                 gate_write_fd, PLAN_BOUND_LAUNCH_GATE_SUCCESS
             ) != len(PLAN_BOUND_LAUNCH_GATE_SUCCESS):
@@ -6296,15 +7086,25 @@ def start_track(
                     resolved.supervisor_pid_path,
                     pid_reservation_identity,
                 )
+            if isinstance(exc, SupervisorRunInterrupted) and all_trees_fenced:
+                raise
             raise PlanBoundProcessBirthError(
                 "plan-bound process birth capture failed; launch remained gated",
                 pid=int(process.pid),
                 profile=profile,
                 all_trees_fenced=all_trees_fenced,
+                cause_type=type(exc).__name__,
             ) from exc
         finally:
             if gate_write_fd is not None:
-                os.close(gate_write_fd)
+                try:
+                    os.close(gate_write_fd)
+                except BaseException as exc:
+                    abort_started_process(
+                        exc,
+                        "plan-bound launch gate cleanup failed",
+                    )
+                gate_write_fd = None
     else:
         try:
             process_identity = LinuxProcessAdapter()._identity(  # noqa: SLF001
@@ -6319,27 +7119,40 @@ def start_track(
         ):
             # Legacy tracks retain their previous best-effort observability.
             process_identity = None
+        try:
+            setattr(
+                process,
+                "_agent_supervisor_process_identity",
+                process_identity,
+            )
+            resolved.supervisor_pid_path.write_text(
+                f"{process.pid}\n", encoding="utf-8"
+            )
+        except BaseException as exc:
+            abort_started_process(
+                exc,
+                "non-plan supervisor PID publication failed after process birth",
+            )
+    try:
+        # The status publication grace begins only after all parent-side launch
+        # gates and durable birth bookkeeping have completed.  Before this
+        # point a plan-bound child is deliberately unable to publish its
+        # current status.
+        process_started_at_monotonic_seconds = time.monotonic()
         setattr(
             process,
-            "_agent_supervisor_process_identity",
-            process_identity,
+            "_agent_supervisor_started_at_monotonic_seconds",
+            process_started_at_monotonic_seconds,
         )
-        resolved.supervisor_pid_path.write_text(
-            f"{process.pid}\n", encoding="utf-8"
+        _emit(
+            output,
+            f"started {resolved.name} supervisor pid={process.pid} script={resolved.script_path} log={resolved.log_path}",
         )
-    # The status publication grace begins only after all parent-side launch
-    # gates and durable birth bookkeeping have completed.  Before this point a
-    # plan-bound child is deliberately unable to publish its current status.
-    process_started_at_monotonic_seconds = time.monotonic()
-    setattr(
-        process,
-        "_agent_supervisor_started_at_monotonic_seconds",
-        process_started_at_monotonic_seconds,
-    )
-    _emit(
-        output,
-        f"started {resolved.name} supervisor pid={process.pid} script={resolved.script_path} log={resolved.log_path}",
-    )
+    except BaseException as exc:
+        abort_started_process(
+            exc,
+            "supervisor start publication failed after process birth",
+        )
     return process
 
 
@@ -7441,7 +8254,53 @@ def _terminate_managed_process(
     adapter = LinuxProcessAdapter()
     tree = adapter.snapshot(profile)
     if not tree.members:
-        return True, ()
+        # Immediately after Popen the child may not yet expose its inherited
+        # lifecycle environment in /proc.  An empty first snapshot is not
+        # proof of absence while the exact unreaped Popen child is live.
+        observation_deadline = time.monotonic() + min(
+            0.5,
+            max(0.1, grace_seconds),
+        )
+        while process.poll() is None and time.monotonic() < observation_deadline:
+            time.sleep(0.01)
+            tree = adapter.snapshot(profile)
+            if tree.members:
+                break
+        if not tree.members:
+            if process.poll() is not None:
+                return True, (int(process.pid),)
+            # The still-unreaped Popen handle proves this exact PID remains
+            # our child and has not been reused.  Fence that root, then prove
+            # no inherited-profile descendants survived before returning.
+            try:
+                process.terminate()
+            except OSError:
+                pass
+            try:
+                process.wait(timeout=max(0.1, grace_seconds))
+            except subprocess.TimeoutExpired:
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+                try:
+                    process.wait(timeout=max(0.1, grace_seconds))
+                except subprocess.TimeoutExpired:
+                    return False, (int(process.pid),)
+            residual = adapter.snapshot(profile)
+            if residual.members:
+                adapter.terminate(
+                    residual,
+                    grace_seconds=grace_seconds,
+                    deadline_ms=max(
+                        1,
+                        int(max(0.0, grace_seconds) * 1000) + 1_000,
+                    ),
+                )
+            return bool(
+                process.poll() is not None
+                and not adapter.snapshot(profile).members
+            ), (int(process.pid),)
     root_ids = {item.pid for item in tree.roots}
     process_member = next(
         (item for item in tree.members if item.pid == process.pid), None
@@ -7477,45 +8336,78 @@ def stop_tracks(
 
     stopped: list[int] = []
     removed_runtime_markers: list[str] = []
+    stop_failure_receipts: list[dict[str, object]] = []
     all_fenced = True
-    _emit(output, "stopping supervisor wrapper and managed daemons")
+
+    def safe_emit(message: str) -> None:
+        try:
+            _emit(output, message)
+        except Exception:
+            # Observability adapters cannot interrupt process fencing.
+            pass
+
+    safe_emit("stopping supervisor wrapper and managed daemons")
     for track in tracks:
         process = processes.get(track.name)
-        fenced, member_pids = _terminate_managed_process(
-            process,
-            grace_seconds=grace_seconds,
-        )
-        if fenced:
-            stopped.extend(member_pids)
-        elif process is not None:
-            all_fenced = False
-            _emit(
-                output,
-                f"could not verify complete shutdown for {track.name} pid={process.pid}",
+        try:
+            fenced, member_pids = _terminate_managed_process(
+                process,
+                grace_seconds=grace_seconds,
             )
-        if process is not None:
-            try:
-                process.wait(timeout=max(0.1, grace_seconds))
-            except subprocess.TimeoutExpired:
-                pass
-        if fenced and process is not None:
-            resolved = track.resolve(repo_root)
-            if _remove_stale_pid_marker_if_unchanged(
-                resolved.supervisor_pid_path,
-                process.pid,
-            ):
-                removed_runtime_markers.append(str(resolved.supervisor_pid_path))
-            daemon_pid = read_pid_file(resolved.daemon_pid_path)
-            if daemon_pid and _remove_stale_pid_marker_if_unchanged(
-                resolved.daemon_pid_path,
-                daemon_pid,
-            ):
-                removed_runtime_markers.append(str(resolved.daemon_pid_path))
+            if fenced:
+                stopped.extend(member_pids)
+            elif process is not None:
+                all_fenced = False
+                safe_emit(
+                    "could not verify complete shutdown for "
+                    f"{track.name} pid={process.pid}"
+                )
+            if process is not None:
+                try:
+                    process.wait(timeout=max(0.1, grace_seconds))
+                except subprocess.TimeoutExpired:
+                    pass
+            if fenced and process is not None:
+                resolved = track.resolve(repo_root)
+                if _remove_stale_pid_marker_if_unchanged(
+                    resolved.supervisor_pid_path,
+                    process.pid,
+                ):
+                    removed_runtime_markers.append(
+                        str(resolved.supervisor_pid_path)
+                    )
+                daemon_pid = read_pid_file(resolved.daemon_pid_path)
+                if daemon_pid and _remove_stale_pid_marker_if_unchanged(
+                    resolved.daemon_pid_path,
+                    daemon_pid,
+                ):
+                    removed_runtime_markers.append(
+                        str(resolved.daemon_pid_path)
+                    )
+        except Exception as exc:  # noqa: BLE001 - continue remaining fences
+            all_fenced = False
+            diagnostic = f"{type(exc).__name__}:{exc}"
+            stop_failure_receipts.append(
+                {
+                    "track": track.name,
+                    "process_pid": 0 if process is None else int(process.pid),
+                    "error_type": type(exc).__name__,
+                    "error_digest": "sha256:"
+                    + hashlib.sha256(diagnostic.encode("utf-8")).hexdigest(),
+                    "all_trees_fenced": False,
+                    "task_completion_authority": False,
+                }
+            )
+            safe_emit(
+                "could not complete shutdown transaction for "
+                f"{track.name} error_type={type(exc).__name__}"
+            )
     return {
         "stopped_pids": sorted(set(stopped)),
         "stopped_count": len(set(stopped)),
         "all_trees_fenced": all_fenced,
         "removed_runtime_markers": removed_runtime_markers,
+        "stop_failure_receipts": stop_failure_receipts,
     }
 
 
@@ -8182,6 +9074,107 @@ def _plan_bound_scope_drift_receipt(
     }
 
 
+def _current_plan_bound_child(
+    child: PlanBoundSupervisorChild,
+    *,
+    repo_root: Path,
+) -> PlanBoundSupervisorChild:
+    """Rehydrate the exact current reassigned lane from canonical authority."""
+
+    from ..control.plan_execution_store import ProductionParallelPlanAdapter
+    from ..task_sources.plan_revision_store import PlanRevisionStore
+
+    accepted_tree = _canonical_accepted_tree_root(
+        Path(child.accepted_tree_root)
+    )
+    if accepted_tree != repo_root.resolve():
+        raise ValueError("plan-bound child accepted tree differs from runner root")
+    store_path = _lexical_contained_path(
+        accepted_tree,
+        accepted_tree / Path(child.plan_revision_store_path),
+    )
+    current = ProductionParallelPlanAdapter(
+        PlanRevisionStore(store_path)
+    ).load_slice_reassignment(
+        revision_cid=child.revision_cid,
+        slice_id=child.slice_id,
+    )
+    if current is None:
+        if child.reassignment_cid:
+            raise ValueError(
+                "plan-bound child claims an absent reassignment authority"
+            )
+        return child
+    reassignment_cid, reassignment = current
+    if (
+        reassignment.revision_cid != child.revision_cid
+        or reassignment.plan_root_cid != child.plan_root_cid
+        or reassignment.slice_manifest_cid != child.slice_manifest_cid
+        or reassignment.slice_id != child.slice_id
+        or reassignment.task_ids != child.task_ids
+        or reassignment.task_cids != child.task_cids
+    ):
+        raise ValueError("plan-bound current reassignment is mixed")
+    if child.lane_id == reassignment.recipient_lane_id:
+        if child.reassignment_cid != reassignment_cid:
+            raise ValueError(
+                "plan-bound current owner has a foreign reassignment CID"
+            )
+
+    token = hashlib.sha256(
+        (
+            f"{child.revision_cid}:{child.slice_id}:"
+            f"{reassignment.generation}"
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    lane_id = f"recovery-{reassignment.generation}-{token}"
+    if reassignment.recipient_lane_id != lane_id:
+        raise ValueError(
+            "plan-bound reassignment recipient is not deterministically named"
+        )
+    steal_suffix = hashlib.sha256(
+        (
+            f"{child.slice_id}:{reassignment.generation}:{lane_id}"
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    state_parent = PurePosixPath(str(child.plan_revision_store_path)).parent
+    return replace(
+        child,
+        name=(
+            f"{lane_id}-steal-{reassignment.generation}-{steal_suffix}"
+        ),
+        state_dir=str(state_parent / lane_id),
+        state_prefix=(
+            f"recovery_{reassignment.generation}_{token}"
+            f"-steal-{reassignment.generation}-{steal_suffix}"
+        ),
+        lane_id=lane_id,
+        reassignment_cid=reassignment_cid,
+    )
+
+
+def _rehydrated_plan_bound_track(
+    original_track: SupervisorTrack,
+    *,
+    original_child: PlanBoundSupervisorChild,
+    current_child: PlanBoundSupervisorChild,
+) -> SupervisorTrack:
+    """Rebuild the exact canonical track while retaining its run stamp."""
+
+    log_name = Path(original_track.log_path).name
+    prefix = f"{original_child.state_prefix}_8h_run_"
+    if not log_name.startswith(prefix) or not log_name.endswith(".log"):
+        raise ValueError(
+            "plan-bound track log cannot preserve its invocation stamp"
+        )
+    stamp = log_name[len(prefix) : -len(".log")]
+    current_track = current_child.track(stamp=stamp)
+    return replace(
+        current_track,
+        database_program=original_track.database_program,
+    )
+
+
 def run_supervisor_tracks(
     tracks: Sequence[SupervisorTrack],
     *,
@@ -8202,6 +9195,9 @@ def run_supervisor_tracks(
     native_dependency_launch: AgentSupervisorNativeDependencyLaunch | None = None,
     require_configured_board_live_seal: str = "",
     require_configured_board_live_capsule: bool = False,
+    restart_admission_failure_limit: int = (
+        DEFAULT_RESTART_ADMISSION_FAILURE_LIMIT
+    ),
     configured_board_live_admission: (
         ConfiguredBoardLiveCapsuleAdmission | None
     ) = None,
@@ -8209,6 +9205,16 @@ def run_supervisor_tracks(
 ) -> dict[str, object]:
     """Run and supervise multiple tracks for the requested duration."""
 
+    if (
+        type(restart_admission_failure_limit) is not int
+        or restart_admission_failure_limit < 1
+        or restart_admission_failure_limit
+        > MAX_RESTART_ADMISSION_FAILURE_LIMIT
+    ):
+        raise ValueError(
+            "restart admission failure limit must be an integer from 1 to "
+            f"{MAX_RESTART_ADMISSION_FAILURE_LIMIT}"
+        )
     if supervisor_status_startup_grace_seconds is not None:
         supervisor_status_startup_grace_seconds = float(
             supervisor_status_startup_grace_seconds
@@ -8297,6 +9303,44 @@ def run_supervisor_tracks(
             "sealed accepted control plane is foreign to this runner profile"
         )
     resolved_repo_root = repo_root.resolve()
+    if plan_bound_children:
+        track_positions = {
+            track.name: index for index, track in enumerate(managed_tracks)
+        }
+        if len(track_positions) != len(managed_tracks):
+            raise ValueError("supervisor track names must be unique")
+        rehydrated_children: list[PlanBoundSupervisorChild] = []
+        for child in plan_bound_children:
+            if child.name not in track_positions:
+                raise ValueError(
+                    "every plan-bound child must own one launched track"
+                )
+            current_child = _current_plan_bound_child(
+                child,
+                repo_root=resolved_repo_root,
+            )
+            position = track_positions[child.name]
+            managed_tracks[position] = _rehydrated_plan_bound_track(
+                managed_tracks[position],
+                original_child=child,
+                current_child=current_child,
+            )
+            rehydrated_children.append(current_child)
+            if current_child != child:
+                _emit(
+                    output,
+                    (
+                        "rehydrated accepted plan-bound reassignment "
+                        f"slice={child.slice_id} from_lane={child.lane_id} "
+                        f"to_lane={current_child.lane_id} "
+                        f"reassignment_cid={current_child.reassignment_cid}"
+                    ),
+                )
+        plan_bound_children = tuple(rehydrated_children)
+        if len({track.name for track in managed_tracks}) != len(managed_tracks):
+            raise ValueError(
+                "rehydrated supervisor track names must remain unique"
+            )
     plan_children_by_name = {
         child.name: child for child in plan_bound_children
     }
@@ -8319,7 +9363,12 @@ def run_supervisor_tracks(
     }
     if len(lane_templates) != len(tuple(plan_bound_children)):
         raise ValueError("plan-bound child lane IDs must be unique within a wave")
+    run_started_at_ns = time.time_ns()
+    run_started_at = float(run_started_at_ns) / 1_000_000_000.0
     resolved_master_pid: Path | None = None
+    active_binding_path: Path | None = None
+    active_binding_cid = ""
+    archived_run_artifact_path: Path | None = None
     if master_pid_path is not None:
         resolved_master_pid = _resolve_path(resolved_repo_root, master_pid_path)
         resolved_master_pid.parent.mkdir(parents=True, exist_ok=True)
@@ -8364,10 +9413,59 @@ def run_supervisor_tracks(
                     raise
                 finally:
                     os.close(master_reservation.descriptor)
+        try:
+            (
+                active_binding_path,
+                active_binding_cid,
+                archived_run_artifact_path,
+            ) = _activate_run_generation_binding(
+                resolved_master_pid,
+                label=label,
+                master_pid=os.getpid(),
+                run_started_at_ns=run_started_at_ns,
+            )
+        except BaseException:
+            _remove_owned_pid_projection(resolved_master_pid, os.getpid())
+            raise
     processes: dict[str, subprocess.Popen[bytes]] = {}
+    teardown_signal_set = {signal.SIGTERM, signal.SIGINT}
+    teardown_transition = False
+    transition_signals: list[int] = []
+    post_outcome_signals: list[int] = []
+    terminal_outcome_frozen = False
+    prior_teardown_signal_mask: set[signal.Signals] | None = None
 
     def _handle_signal(signum: int, _frame: object) -> None:
+        nonlocal teardown_transition
+        if terminal_outcome_frozen:
+            post_outcome_signals.append(int(signum))
+            return
+        if not transition_signals:
+            transition_signals.append(int(signum))
+        # Mark the teardown transition before unwinding.  A second signal in
+        # the exception-to-finally gap is then recorded without raising from
+        # inside finalization and cannot bypass child fencing.
+        if teardown_transition:
+            return
+        teardown_transition = True
         raise SupervisorRunInterrupted(f"received signal {signum}")
+
+    def begin_teardown_signal_barrier() -> None:
+        """Enter teardown with TERM/INT blocked exactly once.
+
+        Every normal and exceptional exit calls this before control reaches
+        the ``finally`` suite.  The handler also flips ``teardown_transition``
+        before raising, closing the signal-delivery gap between an interrupt
+        and this barrier.
+        """
+
+        nonlocal teardown_transition, prior_teardown_signal_mask
+        teardown_transition = True
+        if prior_teardown_signal_mask is None:
+            prior_teardown_signal_mask = signal.pthread_sigmask(
+                signal.SIG_BLOCK,
+                teardown_signal_set,
+            )
 
     previous_term = signal.getsignal(signal.SIGTERM)
     previous_int = signal.getsignal(signal.SIGINT)
@@ -8375,6 +9473,8 @@ def run_supervisor_tracks(
     signal.signal(signal.SIGINT, _handle_signal)
     interrupted = ""
     blocked = ""
+    runtime_error_type = ""
+    runtime_error_digest = ""
     terminal_quiescent = False
     bounded_finished_tracks: set[str] = set()
     pending_failed_slices: list[
@@ -8388,58 +9488,355 @@ def run_supervisor_tracks(
     shared_authority_fenced_tracks: list[dict[str, Any]] = []
     shared_authority_fenced_track_names: set[str] = set()
     replan_required = False
-    run_started_at = time.time()
+    restart_admission_blocked = False
+    start_failure_all_trees_fenced = True
     process_started_at: dict[str, float] = {}
     process_started_monotonic: dict[str, float] = {}
+    restart_start_failures: dict[str, int] = {}
+    restart_failure_receipts: deque[dict[str, object]] = deque(
+        maxlen=MAX_RESTART_FAILURE_RECEIPTS
+    )
+    restart_failure_total = 0
+    restart_start_failure_limit = restart_admission_failure_limit
 
-    def start_managed_track(track: SupervisorTrack) -> subprocess.Popen[bytes]:
+    def start_managed_track(
+        track: SupervisorTrack,
+        *,
+        deadline: float | None = None,
+    ) -> subprocess.Popen[bytes]:
         """Start one track and retain the birth epoch for status fencing."""
 
-        process = start_track(
-            track,
-            repo_root=resolved_repo_root,
-            common_args=common_args,
-            python_executable=python_executable,
-            accepted_control_plane_pin=accepted_control_plane_pin,
-            accepted_control_plane_descriptor=(
-                accepted_control_plane_descriptor
-            ),
-            native_dependency_launch=native_dependency_launch,
-            configured_board_live_admission=(
-                configured_board_live_admission
-            ),
-            output=output,
-        )
-        started_at = getattr(
-            process,
-            "_agent_supervisor_started_at_epoch_seconds",
-            None,
-        )
-        started_monotonic = getattr(
-            process,
-            "_agent_supervisor_started_at_monotonic_seconds",
-            None,
-        )
+        # The installed SIGTERM/SIGINT handlers raise for orderly shutdown.
+        # Temporarily record those signals without raising from immediately
+        # before Popen through registry insertion.  Unlike a blocked mask,
+        # caught handlers reset to default across exec, so children remain
+        # normally terminable and cannot inherit an ignored TERM/INT state.
+        pending_signals: list[int] = []
+        prior_term_handler = signal.getsignal(signal.SIGTERM)
+        prior_int_handler = signal.getsignal(signal.SIGINT)
 
-        def exact_birth_time(value: object, fallback: float) -> float:
+        def defer_signal(signum: int, _frame: object) -> None:
+            if not pending_signals:
+                pending_signals.append(int(signum))
+
+        signal.signal(signal.SIGTERM, defer_signal)
+        signal.signal(signal.SIGINT, defer_signal)
+        launch_error: BaseException | None = None
+        launch_traceback: object | None = None
+        process: subprocess.Popen[bytes] | None = None
+        try:
+            try:
+                process = start_track(
+                    track,
+                    repo_root=resolved_repo_root,
+                    common_args=common_args,
+                    python_executable=python_executable,
+                    accepted_control_plane_pin=accepted_control_plane_pin,
+                    accepted_control_plane_descriptor=(
+                        accepted_control_plane_descriptor
+                    ),
+                    native_dependency_launch=native_dependency_launch,
+                    configured_board_live_admission=(
+                        configured_board_live_admission
+                    ),
+                    birth_deadline_monotonic_seconds=deadline,
+                    output=output,
+                )
+                started_at = getattr(
+                    process,
+                    "_agent_supervisor_started_at_epoch_seconds",
+                    None,
+                )
+                started_monotonic = getattr(
+                    process,
+                    "_agent_supervisor_started_at_monotonic_seconds",
+                    None,
+                )
+
+                def exact_birth_time(value: object, fallback: float) -> float:
+                    if (
+                        isinstance(value, (float, int))
+                        and not isinstance(value, bool)
+                        and math.isfinite(float(value))
+                        and float(value) > 0.0
+                    ):
+                        return float(value)
+                    return fallback
+
+                process_started_at[track.name] = exact_birth_time(
+                    started_at,
+                    time.time(),
+                )
+                process_started_monotonic[track.name] = exact_birth_time(
+                    started_monotonic,
+                    time.monotonic(),
+                )
+                processes[track.name] = process
+            except BaseException as exc:
+                launch_error = exc
+                launch_traceback = exc.__traceback__
+        finally:
+            try:
+                signal.signal(signal.SIGTERM, prior_term_handler)
+            finally:
+                signal.signal(signal.SIGINT, prior_int_handler)
+        if launch_error is not None:
+            # Never replace a typed post-birth fence failure with the deferred
+            # interruption.  Its all_trees_fenced bit must reach the caller.
             if (
-                isinstance(value, (float, int))
-                and not isinstance(value, bool)
-                and math.isfinite(float(value))
-                and float(value) > 0.0
+                pending_signals
+                and isinstance(
+                    launch_error,
+                    (
+                        ConfiguredBoardLiveCapsuleError,
+                        SupervisorRunWindowExpired,
+                    ),
+                )
             ):
-                return float(value)
-            return fallback
-
-        process_started_at[track.name] = exact_birth_time(
-            started_at,
-            time.time(),
-        )
-        process_started_monotonic[track.name] = exact_birth_time(
-            started_monotonic,
-            time.monotonic(),
-        )
+                raise SupervisorRunInterrupted(
+                    f"received signal {pending_signals[0]}"
+                )
+            raise launch_error.with_traceback(launch_traceback)  # type: ignore[arg-type]
+        if pending_signals:
+            raise SupervisorRunInterrupted(
+                f"received signal {pending_signals[0]}"
+            )
+        assert process is not None
         return process
+
+    def restart_managed_track(
+        track: SupervisorTrack,
+        *,
+        cause: str,
+        deadline: float | None = None,
+    ) -> tuple[subprocess.Popen[bytes] | None, bool, bool]:
+        """Retry one fenced track start without hiding a permanent blocker.
+
+        Returns the admitted process, if any, and whether the bounded failure
+        limit or finite run deadline was reached.  The deadline check is the
+        final operation before entering the launch transaction so recovery and
+        reassignment work cannot authorize a late child birth.  Error text is
+        never persisted because launch exceptions may contain provider or
+        environment details; the receipt retains only the exception class and
+        a digest of the full diagnostic.
+        """
+
+        nonlocal restart_failure_total, start_failure_all_trees_fenced
+        if deadline is not None and time.monotonic() >= deadline:
+            _emit(
+                output,
+                (
+                    "restart skipped at run-window terminal "
+                    f"track={track.name} cause={cause}"
+                ),
+            )
+            return None, False, True
+        def record_fenced_deadline(
+            exc: PlanBoundProcessBirthError | SupervisorTrackStartError,
+        ) -> bool:
+            """Record a late born-but-fenced process as a run terminal."""
+
+            nonlocal restart_failure_total, start_failure_all_trees_fenced
+            if (
+                exc.cause_type != "SupervisorRunWindowExpired"
+                or not exc.all_trees_fenced
+            ):
+                return False
+            start_failure_all_trees_fenced = (
+                start_failure_all_trees_fenced and exc.all_trees_fenced
+            )
+            restart_failure_total += 1
+            diagnostic = f"{exc.cause_type}:{exc}"
+            restart_failure_receipts.append(
+                {
+                    "track": track.name,
+                    "cause": cause,
+                    "failure_count": 1,
+                    "failure_limit": restart_start_failure_limit,
+                    "error_type": type(exc).__name__,
+                    "cause_type": exc.cause_type,
+                    "error_digest": "sha256:"
+                    + hashlib.sha256(diagnostic.encode("utf-8")).hexdigest(),
+                    "process_started": True,
+                    "process_pid": exc.pid,
+                    "all_trees_fenced": True,
+                    "deadline_reached": True,
+                    "task_completion_authority": False,
+                    "retry_authority": False,
+                    "operator_repair_required": False,
+                }
+            )
+            _emit(
+                output,
+                (
+                    "restart fenced at run-window terminal "
+                    f"track={track.name} cause={cause} pid={exc.pid}"
+                ),
+            )
+            return True
+
+        try:
+            process = start_managed_track(track, deadline=deadline)
+        except SupervisorRunInterrupted:
+            raise
+        except PlanBoundProcessBirthError as exc:
+            if record_fenced_deadline(exc):
+                return None, False, True
+            raise
+        except SupervisorRunWindowExpired:
+            return None, False, True
+        except ConfiguredBoardLiveCapsuleError as exc:
+            # Live-capsule/source admission is completed before Popen.  It is
+            # the only launch error eligible for automatic retry here; the
+            # retry therefore cannot overlap an unreturned child process.
+            failure_count = int(restart_start_failures.get(track.name, 0)) + 1
+            restart_start_failures[track.name] = failure_count
+            restart_failure_total += 1
+            diagnostic = f"{type(exc).__name__}:{exc}"
+            receipt: dict[str, object] = {
+                "track": track.name,
+                "cause": cause,
+                "failure_count": failure_count,
+                "failure_limit": restart_start_failure_limit,
+                "error_type": type(exc).__name__,
+                "error_digest": "sha256:"
+                + hashlib.sha256(diagnostic.encode("utf-8")).hexdigest(),
+                "process_started": False,
+                "all_trees_fenced": True,
+                "task_completion_authority": False,
+                "retry_authority": failure_count < restart_start_failure_limit,
+                "operator_repair_required": (
+                    failure_count >= restart_start_failure_limit
+                ),
+            }
+            restart_failure_receipts.append(receipt)
+            _emit(
+                output,
+                (
+                    f"restart admission deferred track={track.name} "
+                    f"cause={cause} failure_count={failure_count} "
+                    f"failure_limit={restart_start_failure_limit} "
+                    f"error_type={type(exc).__name__}"
+                ),
+            )
+            return None, failure_count >= restart_start_failure_limit, False
+        except SupervisorTrackStartError as exc:
+            if record_fenced_deadline(exc):
+                return None, False, True
+            start_failure_all_trees_fenced = (
+                start_failure_all_trees_fenced and exc.all_trees_fenced
+            )
+            restart_failure_total += 1
+            diagnostic = f"{exc.cause_type}:{exc}"
+            receipt = {
+                "track": track.name,
+                "cause": cause,
+                "failure_count": 1,
+                "failure_limit": restart_start_failure_limit,
+                "error_type": type(exc).__name__,
+                "cause_type": exc.cause_type,
+                "error_digest": "sha256:"
+                + hashlib.sha256(diagnostic.encode("utf-8")).hexdigest(),
+                "process_started": True,
+                "process_pid": exc.pid,
+                "all_trees_fenced": exc.all_trees_fenced,
+                "task_completion_authority": False,
+                "retry_authority": False,
+                "operator_repair_required": True,
+            }
+            restart_failure_receipts.append(receipt)
+            _emit(
+                output,
+                (
+                    f"restart admission terminal track={track.name} "
+                    f"cause={cause} error_type={type(exc).__name__} "
+                    f"all_trees_fenced={str(exc.all_trees_fenced).lower()}"
+                ),
+            )
+            return None, True, False
+        except Exception as exc:  # noqa: BLE001 - typed no-retry boundary
+            # start_track converts known post-Popen failures into the typed
+            # case above.  An unclassified exception receives neither a
+            # pre-spawn assumption nor retry authority because its process
+            # state cannot be proved at this boundary.
+            start_failure_all_trees_fenced = False
+            restart_failure_total += 1
+            diagnostic = f"{type(exc).__name__}:{exc}"
+            receipt = {
+                "track": track.name,
+                "cause": cause,
+                "failure_count": 1,
+                "failure_limit": restart_start_failure_limit,
+                "error_type": type(exc).__name__,
+                "error_digest": "sha256:"
+                + hashlib.sha256(diagnostic.encode("utf-8")).hexdigest(),
+                "process_started": "unknown",
+                "all_trees_fenced": False,
+                "task_completion_authority": False,
+                "retry_authority": False,
+                "operator_repair_required": True,
+            }
+            restart_failure_receipts.append(receipt)
+            _emit(
+                output,
+                (
+                    f"restart admission terminal track={track.name} "
+                    f"cause={cause} error_type={type(exc).__name__} "
+                    "process_started=unknown"
+                ),
+            )
+            return None, True, False
+        prior_failures = int(restart_start_failures.pop(track.name, 0))
+        if prior_failures:
+            _emit(
+                output,
+                (
+                    f"restart admission recovered track={track.name} "
+                    f"cause={cause} prior_failures={prior_failures}"
+                ),
+            )
+        return process, False, False
+
+    def admit_managed_track(
+        track: SupervisorTrack,
+        *,
+        cause: str,
+        deadline: float | None = None,
+    ) -> tuple[subprocess.Popen[bytes] | None, bool, bool]:
+        """Perform all safe pre-spawn retries within one admission boundary."""
+
+        while True:
+            started, exhausted, deadline_reached = restart_managed_track(
+                track,
+                cause=cause,
+                deadline=deadline,
+            )
+            if started is not None or exhausted or deadline_reached:
+                return started, exhausted, deadline_reached
+            sleep_for = min(max(0.01, heartbeat_interval_seconds), 1.0)
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.0:
+                    return None, False, True
+                sleep_for = min(sleep_for, remaining)
+            time.sleep(sleep_for)
+
+    def restart_admission_blocker(track: SupervisorTrack) -> str:
+        if (
+            int(restart_start_failures.get(track.name, 0))
+            >= restart_start_failure_limit
+        ):
+            return (
+                "supervisor restart admission failed after "
+                f"{restart_start_failure_limit} bounded attempts for track "
+                f"{track.name}; accepted source or runtime controls require "
+                "operator repair"
+            )
+        return (
+            "supervisor start reached a non-retryable typed terminal for "
+            f"track {track.name}; process-tree safety or runtime controls "
+            "require operator repair"
+        )
 
     def recovery_recipient(
         donor: PlanBoundSupervisorChild,
@@ -8479,11 +9876,20 @@ def run_supervisor_tracks(
             reassignment_cid=donor.reassignment_cid,
         )
 
-    def dispatch_pending_reassignments() -> None:
+    def dispatch_pending_reassignments(deadline: float) -> None:
         nonlocal blocked, reassignment_count, replan_required
+        nonlocal restart_admission_blocked
         while pending_failed_slices:
+            if time.monotonic() >= deadline:
+                blocked = (
+                    "plan-bound reassignment remained pending at the finite "
+                    "run-window terminal"
+                )
+                _emit(output, f"blocked: {blocked}")
+                return
             donor, donor_process = pending_failed_slices.pop(0)
             selected_recipient: PlanBoundSupervisorChild | None = None
+            accepted_reassignment: PlanBoundSupervisorChild | None = None
             try:
                 selected_recipient = recovery_recipient(donor)
                 adopted = reassign_fenced_plan_bound_child(
@@ -8492,15 +9898,36 @@ def run_supervisor_tracks(
                     donor_process=donor_process,
                     repo_root=resolved_repo_root,
                 )
+                accepted_reassignment = adopted
+                reassignment_count += 1
                 adopted_track = adopted.track()
                 if adopted_track.name in {track.name for track in managed_tracks}:
                     raise ValueError("reassigned track name is not unique")
                 managed_tracks.append(adopted_track)
                 plan_children_by_name[adopted.name] = adopted
-                processes[adopted_track.name] = start_managed_track(
-                    adopted_track
+                started, exhausted, deadline_reached = admit_managed_track(
+                    adopted_track,
+                    cause="plan_bound_reassignment",
+                    deadline=deadline,
                 )
-                reassignment_count += 1
+                if deadline_reached:
+                    blocker = (
+                        "accepted plan-bound reassignment reached the finite "
+                        "run-window terminal before child birth: "
+                        f"slice={donor.slice_id} lane={adopted.lane_id}"
+                    )
+                    reassignment_blockers.append(blocker)
+                    blocked = blocker
+                    _emit(output, f"plan-bound reassignment blocked: {blocker}")
+                    return
+                if started is None:
+                    assert exhausted
+                    blocked = restart_admission_blocker(adopted_track)
+                    restart_admission_blocked = True
+                    reassignment_blockers.append(blocked)
+                    _emit(output, f"blocked: {blocked}")
+                    return
+                processes[adopted_track.name] = started
                 _emit(
                     output,
                     (
@@ -8510,6 +9937,8 @@ def run_supervisor_tracks(
                         f"reassignment_cid={adopted.reassignment_cid}"
                     ),
                 )
+            except (SupervisorRunInterrupted, PlanBoundProcessBirthError):
+                raise
             except Exception as exc:  # noqa: BLE001 - typed fail-closed boundary
                 blocker = (
                     f"slice={donor.slice_id} donor_lane={donor.lane_id} "
@@ -8518,6 +9947,14 @@ def run_supervisor_tracks(
                 )
                 reassignment_blockers.append(blocker)
                 _emit(output, f"plan-bound reassignment blocked: {blocker}")
+                if accepted_reassignment is not None:
+                    blocked = (
+                        "accepted plan-bound reassignment could not start its "
+                        "adopted child; preserve the adopted owner for a "
+                        "bounded successor run"
+                    )
+                    _emit(output, f"blocked: {blocked}")
+                    return
                 try:
                     _publish_plan_bound_terminal_missing(
                         donor,
@@ -8553,9 +9990,24 @@ def run_supervisor_tracks(
     try:
         _emit(output, f"starting {label} duration_seconds={duration_seconds:g}")
         for track in managed_tracks:
-            processes[track.name] = start_managed_track(track)
+            started, exhausted, deadline_reached = admit_managed_track(
+                track,
+                cause="initial_supervisor",
+            )
+            assert deadline_reached is False
+            if started is not None:
+                processes[track.name] = started
+                continue
+            blocked = restart_admission_blocker(track)
+            restart_admission_blocked = True
+            _emit(output, f"blocked: {blocked}")
+            break
 
-        deadline = time.monotonic() + max(0.0, float(duration_seconds))
+        deadline = time.monotonic() + (
+            0.0
+            if restart_admission_blocked
+            else max(0.0, float(duration_seconds))
+        )
         while time.monotonic() < deadline:
             terminal_tracks: set[str] = set(bounded_finished_tracks)
             sleep_for = min(
@@ -8563,6 +10015,10 @@ def run_supervisor_tracks(
                 max(0.0, deadline - time.monotonic()),
             )
             time.sleep(sleep_for)
+            if time.monotonic() >= deadline:
+                # A finite run window never authorizes a fresh child birth at
+                # or after its deadline.  Teardown below owns existing trees.
+                break
             observations: list[tuple[Any, ...]] = []
             for track in tuple(managed_tracks):
                 if (
@@ -8717,7 +10173,41 @@ def run_supervisor_tracks(
                             process.wait(timeout=max(0.1, stop_grace_seconds))
                         except subprocess.TimeoutExpired:
                             pass
-                        processes[track.name] = start_managed_track(track)
+                        if time.monotonic() >= deadline:
+                            _emit(
+                                output,
+                                (
+                                    "restart skipped at run-window terminal "
+                                    f"track={track.name}"
+                                ),
+                            )
+                            continue
+                        (
+                            restarted,
+                            exhausted,
+                            deadline_reached,
+                        ) = (
+                            admit_managed_track(
+                                track,
+                                cause="stale_supervisor",
+                                deadline=deadline,
+                            )
+                            if "--plan-bound-dispatch" in track.extra_args
+                            else restart_managed_track(
+                                track,
+                                cause="stale_supervisor",
+                                deadline=deadline,
+                            )
+                        )
+                        if restarted is not None:
+                            processes[track.name] = restarted
+                        elif deadline_reached:
+                            continue
+                        elif exhausted:
+                            blocked = restart_admission_blocker(track)
+                            restart_admission_blocked = True
+                            _emit(output, f"blocked: {blocked}")
+                            break
                     elif exit_when_all_tracks_terminal:
                         task_fields = terminal_task_state_fields(
                             resolved,
@@ -8949,18 +10439,15 @@ def run_supervisor_tracks(
                                 reassignment_blockers.append(blocker)
                                 blocked = blocker
                     if recover_execution and not blocked:
-                        try:
-                            processes[track.name] = start_managed_track(track)
-                        except Exception as exc:  # noqa: BLE001
-                            blocker = (
-                                "cannot restart recoverable plan-bound handoff: "
-                                f"slice={getattr(plan_child, 'slice_id', '')} "
-                                f"lane={getattr(plan_child, 'lane_id', '')} "
-                                f"{type(exc).__name__}: {exc}"
+                        restarted, exhausted, deadline_reached = (
+                            admit_managed_track(
+                                track,
+                                cause="recoverable_plan_bound_handoff",
+                                deadline=deadline,
                             )
-                            reassignment_blockers.append(blocker)
-                            blocked = blocker
-                        else:
+                        )
+                        if restarted is not None:
+                            processes[track.name] = restarted
                             _emit(
                                 output,
                                 (
@@ -8970,6 +10457,23 @@ def run_supervisor_tracks(
                                 ),
                             )
                             continue
+                        if deadline_reached:
+                            blocker = (
+                                "recoverable plan-bound handoff reached the "
+                                "finite run-window terminal before child birth: "
+                                f"slice={getattr(plan_child, 'slice_id', '')} "
+                                f"lane={getattr(plan_child, 'lane_id', '')}"
+                            )
+                            reassignment_blockers.append(blocker)
+                            blocked = blocker
+                            _emit(output, f"blocked: {blocker}")
+                            continue
+                        assert exhausted
+                        blocked = restart_admission_blocker(track)
+                        restart_admission_blocked = True
+                        reassignment_blockers.append(blocked)
+                        _emit(output, f"blocked: {blocked}")
+                        continue
                     bounded_finished_tracks.add(track.name)
                     terminal_tracks.add(track.name)
                     _emit(
@@ -8991,7 +10495,31 @@ def run_supervisor_tracks(
                         raise SupervisorRunInterrupted(
                             f"could not fence exited {track.name} descendants"
                         )
-                processes[track.name] = start_managed_track(track)
+                if time.monotonic() >= deadline:
+                    _emit(
+                        output,
+                        (
+                            "restart skipped at run-window terminal "
+                            f"track={track.name}"
+                        ),
+                    )
+                    continue
+                restarted, exhausted, deadline_reached = restart_managed_track(
+                    track,
+                    cause="exited_supervisor",
+                    deadline=deadline,
+                )
+                if restarted is not None:
+                    processes[track.name] = restarted
+                elif deadline_reached:
+                    continue
+                elif exhausted:
+                    blocked = restart_admission_blocker(track)
+                    restart_admission_blocked = True
+                    _emit(output, f"blocked: {blocked}")
+                    break
+            if restart_admission_blocked:
+                break
             if shared_authority_terminals:
                 # This is a shared state-authority terminal, not a task/slice
                 # failure.  Do not restart lanes, reassign slices, fabricate
@@ -9019,7 +10547,11 @@ def run_supervisor_tracks(
                 # Authority is unavailable, so neither reassignment nor any
                 # normal exited-lane restart may proceed during this drain.
                 continue
-            dispatch_pending_reassignments()
+            if time.monotonic() >= deadline:
+                break
+            dispatch_pending_reassignments(deadline)
+            if blocked or restart_admission_blocked:
+                break
             if replan_required:
                 _emit(
                     output,
@@ -9050,6 +10582,14 @@ def run_supervisor_tracks(
                         "all supervisor tracks reached fresh terminal quiescence",
                     )
                 break
+        if restart_start_failures and not blocked:
+            pending_tracks = ",".join(sorted(restart_start_failures))
+            blocked = (
+                "supervisor restart admission remained pending at the "
+                "finite run-window terminal for tracks "
+                f"{pending_tracks}; retry or operator repair is required"
+            )
+            _emit(output, f"blocked: {blocked}")
         if shared_authority_terminals and not blocked:
             blocked = (
                 "shared database authority drain exceeded its finite run "
@@ -9075,9 +10615,16 @@ def run_supervisor_tracks(
             _emit(output, "completed after terminal board drain")
         elif shared_authority_terminals:
             _emit(output, "ended at typed shared-authority terminal")
+        elif blocked:
+            _emit(output, "ended at typed supervisor blocker")
         else:
             _emit(output, "completed requested run window")
+        begin_teardown_signal_barrier()
     except PlanBoundProcessBirthError as exc:
+        begin_teardown_signal_barrier()
+        start_failure_all_trees_fenced = (
+            start_failure_all_trees_fenced and exc.all_trees_fenced
+        )
         blocked = str(exc)
         _emit(
             output,
@@ -9088,23 +10635,255 @@ def run_supervisor_tracks(
             ),
         )
     except SupervisorRunInterrupted as exc:
+        begin_teardown_signal_barrier()
         interrupted = str(exc)
         _emit(output, f"interrupted: {interrupted}")
+    except Exception as exc:  # noqa: BLE001 - master runtime terminal
+        begin_teardown_signal_barrier()
+        runtime_error_type = type(exc).__name__
+        runtime_error_digest = "sha256:" + hashlib.sha256(
+            f"{type(exc).__name__}:{exc}".encode("utf-8")
+        ).hexdigest()
+        blocked = (
+            "multi-supervisor runtime reached a typed internal-error "
+            "terminal; operator repair is required"
+        )
+        _emit(
+            output,
+            f"blocked: {blocked} error_type={runtime_error_type}",
+        )
+    except BaseException as exc:
+        begin_teardown_signal_barrier()
+        runtime_error_type = type(exc).__name__
+        runtime_error_digest = "sha256:" + hashlib.sha256(
+            f"{type(exc).__name__}:{exc}".encode("utf-8")
+        ).hexdigest()
+        interrupted = f"runtime termination requested by {type(exc).__name__}"
+        _emit(output, f"interrupted: {interrupted}")
+        raise
     finally:
-        signal.signal(signal.SIGTERM, previous_term)
-        signal.signal(signal.SIGINT, previous_int)
-        stop_payload = stop_tracks(
-            managed_tracks,
-            processes,
-            repo_root=resolved_repo_root,
-            grace_seconds=stop_grace_seconds,
-            output=output,
+        # Idempotent for every path above, and a final fail-safe for an
+        # interpreter-level exit that entered this suite unexpectedly.
+        begin_teardown_signal_barrier()
+
+        def safe_teardown_emit(message: str) -> None:
+            try:
+                _emit(output, message)
+            except Exception:
+                pass
+
+        def consume_blocked_teardown_signals(
+            pending: set[signal.Signals],
+        ) -> None:
+            """Consume signals whose interruption is recorded in this run."""
+
+            for signum in sorted(pending, key=int):
+                # The pending snapshot is advisory in a multithreaded
+                # process: another eligible thread may consume the signal
+                # before this thread.  Never block finalization on that race.
+                signal.sigtimedwait({signum}, 0.0)
+
+        # Keep the combined run/teardown handler that was installed before
+        # any child was born.  Once ``teardown_transition`` is true it records
+        # TERM/INT without raising.  Replacing two process-wide handlers here
+        # would create a cross-thread delivery window between the two
+        # ``signal.signal`` calls even though this thread has blocked them.
+        try:
+            stop_payload = stop_tracks(
+                managed_tracks,
+                processes,
+                repo_root=resolved_repo_root,
+                grace_seconds=stop_grace_seconds,
+                output=output,
+            )
+        except Exception as exc:  # noqa: BLE001 - terminal evidence fallback
+            diagnostic = f"{type(exc).__name__}:{exc}"
+            stop_payload = {
+                "stopped_pids": [],
+                "stopped_count": 0,
+                "all_trees_fenced": False,
+                "removed_runtime_markers": [],
+                "stop_failure_receipts": [
+                    {
+                        "track": "__teardown__",
+                        "process_pid": 0,
+                        "error_type": type(exc).__name__,
+                        "error_digest": "sha256:"
+                        + hashlib.sha256(
+                            diagnostic.encode("utf-8")
+                        ).hexdigest(),
+                        "all_trees_fenced": False,
+                        "task_completion_authority": False,
+                    }
+                ],
+            }
+            safe_teardown_emit(
+                "teardown aggregation failed closed "
+                f"error_type={type(exc).__name__}"
+            )
+        pending_before_receipt = signal.sigpending().intersection(
+            teardown_signal_set
         )
-        master_pid_removed = bool(
-            resolved_master_pid is not None
-            and stop_payload["all_trees_fenced"]
-            and _remove_owned_pid_projection(resolved_master_pid, os.getpid())
+        if pending_before_receipt and not interrupted:
+            pending_signum = min(int(item) for item in pending_before_receipt)
+            interrupted = f"received signal {pending_signum}"
+        consume_blocked_teardown_signals(pending_before_receipt)
+        if transition_signals and not interrupted:
+            interrupted = f"received signal {transition_signals[0]}"
+        if transition_signals or pending_before_receipt:
+            safe_teardown_emit(
+                f"interrupted during teardown: {interrupted}"
+            )
+        final_all_trees_fenced = bool(
+            stop_payload["all_trees_fenced"]
+            and start_failure_all_trees_fenced
         )
+        if not final_all_trees_fenced and not interrupted:
+            blocked = blocked or (
+                "supervisor shutdown could not prove every process tree "
+                "fenced; operator repair is required"
+            )
+        # This STORE_FAST is the semantic outcome boundary.  A Python signal
+        # handler runs wholly before or after it: earlier deliveries are in
+        # ``interrupted`` below, while later deliveries are replayed under the
+        # restored caller disposition.  Freezing before payload construction
+        # permits exactly one terminal receipt write, so no provisional
+        # completed receipt can survive a failed interrupted rewrite.
+        terminal_outcome_frozen = True
+        interruption_snapshot = str(interrupted)
+        terminal_kind = (
+            "interrupted"
+            if interruption_snapshot
+            else "restart_admission_blocked"
+            if restart_admission_blocked
+            else "shared_authority_blocked"
+            if shared_authority_terminals
+            else "blocked"
+            if blocked
+            else "terminal_quiescent"
+            if terminal_quiescent
+            else "run_window_complete"
+        )
+        terminal_receipt_path: Path | None = None
+        terminal_receipt_cid = ""
+        terminal_receipt_written = False
+        terminal_payload: dict[str, object] = {}
+        if resolved_master_pid is not None:
+            terminal_receipt_path = _terminal_receipt_path(resolved_master_pid)
+            receipt_body: dict[str, object] = {
+                "schema": MULTI_SUPERVISOR_TERMINAL_RECEIPT_SCHEMA,
+                "label": label,
+                "terminal_kind": terminal_kind,
+                "completed": not interruption_snapshot and not blocked,
+                "interrupted": bool(interruption_snapshot),
+                "interrupted_digest": (
+                    "sha256:"
+                    + hashlib.sha256(
+                        interruption_snapshot.encode("utf-8")
+                    ).hexdigest()
+                    if interruption_snapshot
+                    else ""
+                ),
+                "blocked": bool(blocked),
+                "blocked_digest": (
+                    "sha256:"
+                    + hashlib.sha256(blocked.encode("utf-8")).hexdigest()
+                    if blocked
+                    else ""
+                ),
+                "runtime_error_type": runtime_error_type,
+                "runtime_error_digest": runtime_error_digest,
+                "all_trees_fenced": final_all_trees_fenced,
+                "master_pid": os.getpid(),
+                "run_started_at_epoch_nanoseconds": run_started_at_ns,
+                "active_binding_cid": active_binding_cid,
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+                "restart_failure_total": restart_failure_total,
+                "restart_failure_receipts": list(restart_failure_receipts),
+                "restart_failure_receipts_truncated": (
+                    restart_failure_total > len(restart_failure_receipts)
+                ),
+                "stop_failure_receipts": list(
+                    stop_payload.get("stop_failure_receipts", [])
+                ),
+                "terminal_commit_boundary": (
+                    "durable_terminal_receipt_before_master_marker_cleanup"
+                ),
+                "terminal_signal_boundary": (
+                    "outcome_frozen_under_term_int_barrier_before_publication"
+                ),
+                "post_commit_signal_policy": (
+                    "restore_caller_disposition_and_replay_post_outcome_signal"
+                ),
+                "task_completion_authority": False,
+            }
+            terminal_receipt_cid = content_identity(receipt_body)
+            terminal_payload = {
+                **receipt_body,
+                "terminal_receipt_cid": terminal_receipt_cid,
+            }
+            try:
+                write_json_atomic(
+                    terminal_receipt_path,
+                    terminal_payload,
+                    sync_directory=True,
+                )
+            except Exception as exc:  # noqa: BLE001 - terminal evidence gate
+                final_all_trees_fenced = False
+                terminal_kind = "terminal_receipt_unavailable"
+                blocked = blocked or (
+                    "multi-supervisor terminal receipt publication failed; "
+                    "operator repair is required"
+                )
+                safe_teardown_emit(
+                    (
+                        "blocked: terminal receipt publication failed "
+                        f"error_type={type(exc).__name__}"
+                    ),
+                )
+            else:
+                terminal_receipt_written = True
+        master_pid_removed = False
+        try:
+            # A successfully directory-fsynced terminal receipt is the
+            # explicit run commit point.  Every child fence attempt precedes
+            # it.  Master-marker removal is post-commit bookkeeping; signals
+            # received by Python during that bookkeeping are retained for the
+            # restored caller disposition and do not retroactively mutate the
+            # committed run outcome.
+            master_pid_removed = bool(
+                resolved_master_pid is not None
+                and final_all_trees_fenced
+                and terminal_receipt_written
+                and _remove_owned_pid_projection(
+                    resolved_master_pid,
+                    os.getpid(),
+                )
+            )
+        finally:
+            replay_after_restore: set[int] = set()
+            try:
+                signal.signal(signal.SIGTERM, previous_term)
+                signal.signal(signal.SIGINT, previous_int)
+                pending_after_commit = signal.sigpending().intersection(
+                    teardown_signal_set
+                )
+                # A process-directed signal can be delivered through another
+                # thread and consumed by Python's temporary handler even
+                # while this thread blocks it.  Replay only those consumed
+                # signals; already-pending signals will be handled according
+                # to the caller's restored mask and disposition.
+                replay_after_restore = set(post_outcome_signals).difference(
+                    int(item) for item in pending_after_commit
+                )
+            finally:
+                assert prior_teardown_signal_mask is not None
+                signal.pthread_sigmask(
+                    signal.SIG_SETMASK,
+                    prior_teardown_signal_mask,
+                )
+            for signum in sorted(replay_after_restore):
+                os.kill(os.getpid(), signum)
     return {
         "completed": not interrupted and not blocked,
         "interrupted": interrupted,
@@ -9114,14 +10893,34 @@ def run_supervisor_tracks(
         "reassignment_blockers": reassignment_blockers,
         "unreassigned_failed_slice_count": len(pending_failed_slices),
         "stopped_count": stop_payload["stopped_count"],
-        "all_trees_fenced": stop_payload["all_trees_fenced"],
+        "all_trees_fenced": final_all_trees_fenced,
         "removed_runtime_markers": stop_payload["removed_runtime_markers"],
         "master_pid_removed": master_pid_removed,
         "terminal_quiescent": terminal_quiescent,
         "replan_required": replan_required,
+        "terminal_kind": terminal_kind,
+        "terminal_receipt_path": (
+            "" if terminal_receipt_path is None else str(terminal_receipt_path)
+        ),
+        "terminal_receipt_cid": terminal_receipt_cid,
+        "terminal_receipt_written": terminal_receipt_written,
+        "active_binding_path": (
+            "" if active_binding_path is None else str(active_binding_path)
+        ),
+        "active_binding_cid": active_binding_cid,
+        "archived_run_artifact_path": (
+            ""
+            if archived_run_artifact_path is None
+            else str(archived_run_artifact_path)
+        ),
         "scope_drift_receipts": scope_drift_receipts,
         "shared_authority_terminals": shared_authority_terminals,
         "shared_authority_fenced_tracks": shared_authority_fenced_tracks,
+        "restart_failure_total": restart_failure_total,
+        "restart_failure_receipts": list(restart_failure_receipts),
+        "restart_failure_receipts_truncated": (
+            restart_failure_total > len(restart_failure_receipts)
+        ),
     }
 
 
@@ -9141,6 +10940,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--stop-grace-seconds", type=float, default=10.0)
+    parser.add_argument(
+        "--restart-admission-failure-limit",
+        type=int,
+        default=DEFAULT_RESTART_ADMISSION_FAILURE_LIMIT,
+        help=(
+            "Bound consecutive pre-spawn supervisor admission retries; this "
+            "is independent of each child supervisor's restart policy."
+        ),
+    )
     parser.add_argument("--stamp", default=utc_run_stamp())
     parser.add_argument("--master-dir", type=Path, default=Path("data/agent_supervisor"))
     parser.add_argument("--master-log", type=Path, default=None)
@@ -9329,6 +11137,13 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
 
     if args.require_configured_board_live_seal:
         raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
+    if bool(getattr(args, "plan_bound_wave", False)) or bool(
+        getattr(args, "implementation_plan_bound_track", ())
+    ):
+        raise ValueError(
+            "plan-bound waves require the configured coordinator and cannot "
+            "use the generic detached handoff"
+        )
 
     master_log, master_pid = _master_paths(args)
     master_log.parent.mkdir(parents=True, exist_ok=True)
@@ -9338,6 +11153,9 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
         artifact_label="detached runner master PID projection",
     )
     process: subprocess.Popen[bytes] | None = None
+    pid_published = False
+    launch_not_before_ns = 0
+    active_binding_ack: dict[str, Any] = {}
     try:
         # Everything after the exclusive reservation remains inside the
         # rollback region.  In particular, a malformed live-capsule handoff
@@ -9417,6 +11235,7 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
                     master_descriptor,
                     master_identity,
                 )
+                launch_not_before_ns = time.time_ns()
                 process = subprocess.Popen(
                     command,
                     cwd=args.repo_root,
@@ -9432,10 +11251,22 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
                     master_identity,
                     process.pid,
                 )
+                pid_published = True
         finally:
             out_handle.close()
+        assert process is not None
+        active_binding_ack = _wait_for_detached_active_binding(
+            master_pid,
+            process,
+            not_before_epoch_nanoseconds=launch_not_before_ns,
+        )
     except BaseException:
-        if process is not None and process.poll() is None:
+        if (
+            process is not None
+            and process.poll() is None
+            and int(process.pid) > 0
+            and int(process.pid) != os.getpid()
+        ):
             try:
                 os.killpg(process.pid, signal.SIGTERM)
                 process.wait(timeout=2.0)
@@ -9444,21 +11275,24 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
                     os.killpg(process.pid, signal.SIGKILL)
                 except OSError:
                     pass
-        _discard_reserved_pid_projection(master_pid, master_identity)
+        if not pid_published:
+            _discard_reserved_pid_projection(master_pid, master_identity)
         raise
     finally:
         os.close(master_descriptor)
     assert process is not None
-    # The child normally removes its own projection after fencing every
-    # track.  Cover the short-run race where it exits before this parent can
-    # publish the detached PID.
-    if process.poll() is not None or not pid_alive(process.pid):
-        _remove_stale_pid_marker_if_unchanged(master_pid, process.pid)
+    # The detached child alone owns terminal receipt publication and marker
+    # removal.  If it exits between those operations, preserve both artifacts
+    # for the next launch's exact stale-projection quarantine; the parent
+    # cannot prove that a visible receipt survived its directory fsync.
     return {
         "stamp": args.stamp,
         "master_pid": process.pid,
         "master_log": str(master_log),
         "master_pid_file": str(master_pid),
+        "active_binding_cid": str(
+            active_binding_ack.get("active_binding_cid") or ""
+        ),
     }
 
 
@@ -9939,6 +11773,9 @@ def main(argv: list[str] | None = None) -> int:
                 args.supervisor_status_startup_grace_seconds
             ),
             stop_grace_seconds=args.stop_grace_seconds,
+            restart_admission_failure_limit=(
+                args.restart_admission_failure_limit
+            ),
             python_executable=args.python_executable,
             master_pid_path=master_pid,
             label=args.label,
@@ -9968,7 +11805,11 @@ def main(argv: list[str] | None = None) -> int:
         or run_result.get("all_trees_fenced") is not True
     ):
         return 2
-    if run_result.get("shared_authority_terminals"):
+    if (
+        run_result.get("completed") is not True
+        or run_result.get("all_trees_fenced") is not True
+        or run_result.get("shared_authority_terminals")
+    ):
         return 2
     return 0
 

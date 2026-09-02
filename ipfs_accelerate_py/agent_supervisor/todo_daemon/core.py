@@ -14,6 +14,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -156,6 +157,46 @@ def write_json(path: Path, payload: Mapping[str, Any]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         json.dump(dict(payload), handle, indent=2, sort_keys=True)
         handle.write("\n")
+
+
+def write_json_atomic(
+    path: Path,
+    payload: Mapping[str, Any],
+    *,
+    sync_directory: bool = False,
+) -> None:
+    """Publish one JSON object with a same-directory atomic replacement."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_dir():
+        backup_path = unique_backup_path(path, "directory-backup")
+        path.rename(backup_path)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(dict(payload), handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+        if sync_directory:
+            directory_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+            directory_flags |= getattr(os, "O_DIRECTORY", 0)
+            directory_descriptor = os.open(path.parent, directory_flags)
+            try:
+                os.fsync(directory_descriptor)
+            finally:
+                os.close(directory_descriptor)
+    finally:
+        try:
+            temporary_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def parse_timestamp(value: Any) -> Optional[datetime]:
