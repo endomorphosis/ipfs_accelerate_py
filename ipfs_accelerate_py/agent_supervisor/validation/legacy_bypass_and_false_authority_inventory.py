@@ -452,11 +452,13 @@ PATH_CLASS_CATALOG: Final[tuple[PathClassRecipe, ...]] = (
             "timeout, cancellation, and resource admission evidence."
         ),
         relpaths=(
+            "ipfs_accelerate_py/compatibility/simulation/fabricated_endpoint_success.py",
             "ipfs_accelerate_py/ipfs_accelerate.py",
             "ipfs_accelerate_py/mcp/inference_tools.py",
             "ipfs_accelerate_py/mcp_server/tools/hardware_tools/native_hardware_tools.py",
         ),
         needles=(
+            "install_endpoint_handler",
             "_create_mock_handler",
             "_mock_inference",
             "_test_hardware_fallback",

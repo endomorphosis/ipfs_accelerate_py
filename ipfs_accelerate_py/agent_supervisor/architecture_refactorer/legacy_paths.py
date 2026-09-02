@@ -716,9 +716,9 @@ CURRENT_LEGACY_BINDINGS: tuple[LegacySourceBinding, ...] = (
         origin_taint=OriginTaint.MOCK,
         reachability=ReachabilityDisposition.PRODUCTION_REACHABLE,
         source_path="ipfs_accelerate_py/ipfs_accelerate.py",
-        start_line=785,
-        end_line=785,
-        uncertainty="production_endpoint_registration_falls_back_to_mock_handler",
+        start_line=774,
+        end_line=774,
+        uncertainty="ordinary_endpoint_registration_installs_typed_unavailable_handlers",
     ),
     LegacySourceBinding(
         path_id="mock-inference-mcp",
@@ -728,9 +728,9 @@ CURRENT_LEGACY_BINDINGS: tuple[LegacySourceBinding, ...] = (
         origin_taint=OriginTaint.MOCK,
         reachability=ReachabilityDisposition.PRODUCTION_REACHABLE,
         source_path="ipfs_accelerate_py/mcp/inference_tools.py",
-        start_line=109,
-        end_line=109,
-        uncertainty="mcp_inference_tools_return_mock_inference_results",
+        start_line=136,
+        end_line=136,
+        uncertainty="mcp_inference_tools_ordinary_path_is_typed_unavailable",
     ),
     LegacySourceBinding(
         path_id="mock-handler-legacy",
@@ -740,8 +740,8 @@ CURRENT_LEGACY_BINDINGS: tuple[LegacySourceBinding, ...] = (
         origin_taint=OriginTaint.MOCK,
         reachability=ReachabilityDisposition.COMPATIBILITY_ONLY,
         source_path="ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
-        start_line=327,
-        end_line=327,
+        start_line=331,
+        end_line=331,
         uncertainty="legacy_compatibility_surface_must_not_be_canonical_authority",
     ),
     LegacySourceBinding(
@@ -853,9 +853,9 @@ CURRENT_LEGACY_BINDINGS: tuple[LegacySourceBinding, ...] = (
             "ipfs_accelerate_py/mcp_server/tools/hardware_tools/"
             "native_hardware_tools.py"
         ),
-        start_line=50,
-        end_line=50,
-        uncertainty="fallback_returns_overall_passed_true_without_a_live_probe",
+        start_line=44,
+        end_line=44,
+        uncertainty="fallback_is_typed_unavailable_without_a_live_probe",
     ),
     LegacySourceBinding(
         path_id="provider-fallback-runner",

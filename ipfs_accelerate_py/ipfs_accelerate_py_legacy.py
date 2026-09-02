@@ -329,61 +329,20 @@ class ipfs_accelerate_py:
             self.template_system = None
 
     def _create_mock_handler(self, model, endpoint_type):
-        """
-        Create a mock handler for a model and endpoint type.
+        """PCPR-033: ordinary legacy registration is typed unavailable, not success."""
 
-        Args:
-            model (str): The model name.
-            endpoint_type (str): The endpoint type (cuda, openvino, etc.).
+        from ipfs_accelerate_py.compatibility.simulation.fabricated_endpoint_success import (
+            install_endpoint_handler,
+        )
 
-        Returns:
-            function: A mock handler function.
-        """
-
-        # Create a simple mock handler that returns a fixed result
-        async def mock_handler(input_text):
-            # For text-based models, return a simple response
-            if "bert" in model.lower() or "t5" in model.lower() or "gpt" in model.lower():
-                # For bert-like models, return an embedding
-                if "bert" in model.lower():
-                    # Create a mock embedding (fixed size vector)
-                    import numpy as np
-
-                    return np.random.rand(768)
-                # For text generation models, return generated text
-                else:
-                    return (
-                        f"Mock response from {model} using {endpoint_type} endpoint: {input_text}"
-                    )
-            # For vision models, return a class prediction
-            elif "vit" in model.lower() or "clip" in model.lower():
-                return {"label": "mock_class", "score": 0.95}
-            # For audio models, return a transcription
-            elif "whisper" in model.lower() or "wav2vec" in model.lower():
-                return {"text": "Mock transcription of audio input"}
-            # For multimodal models, return a description
-            elif "llava" in model.lower() or "blip" in model.lower():
-                return {"text": "Mock description of image: A mock image description"}
-            # Default response for other model types
-            else:
-                return {
-                    "status": "success",
-                    "model": model,
-                    "endpoint": endpoint_type,
-                    "response": "Mock response",
-                }
-
-        # Store the mock handler in resources
-        if "endpoint_handler" not in self.resources:
-            self.resources["endpoint_handler"] = {}
-        if model not in self.resources["endpoint_handler"]:
-            self.resources["endpoint_handler"][model] = {}
-
-        # Set the mock handler for this model and endpoint
-        self.resources["endpoint_handler"][model][endpoint_type] = mock_handler
-
-        # Return the mock handler
-        return mock_handler
+        metadata = self.metadata if isinstance(getattr(self, "metadata", None), dict) else {}
+        explicit = bool(metadata.get("explicit_simulation"))
+        return install_endpoint_handler(
+            self.resources,
+            model,
+            endpoint_type,
+            explicit_simulation=explicit,
+        )
 
     async def init_endpoints(
         self, models: List[str], resources: Dict[str, Any] = None
@@ -537,7 +496,7 @@ class ipfs_accelerate_py:
 
                             # Create handler for this endpoint
                             if endpoint_type:
-                                # Create mock handler (will be replaced with real implementation if available)
+                                # Ordinary path is typed unavailable, not fabricated success.
                                 self._create_mock_handler(model, endpoint_type)
                                 init_results["endpoint_handler"][model][endpoint_type] = (
                                     self.resources["endpoint_handler"][model][endpoint_type]
@@ -591,7 +550,7 @@ class ipfs_accelerate_py:
                 # Create handlers and tokenizers for default endpoints
                 for endpoint_info in default_endpoints:
                     endpoint_type = endpoint_info[1]
-                    # Create mock handler
+                    # Ordinary path is typed unavailable, not fabricated success.
                     self._create_mock_handler(model, endpoint_type)
                     init_results["endpoint_handler"][model][endpoint_type] = self.resources[
                         "endpoint_handler"
