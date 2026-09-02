@@ -7664,10 +7664,16 @@ class PortalImplementationSupervisor:
                                         )
                 except _DatabasePortalRetainedStartupBlocked as exc:
                     result = dict(exc.result)
-                    self._record_event(
-                        "database_portal_retained_startup_blocked",
-                        result,
-                    )
+                    try:
+                        self._record_event(
+                            "database_portal_retained_startup_blocked",
+                            result,
+                        )
+                    except OSError:
+                        logger.warning(
+                            "Could not persist retained startup blocker",
+                            exc_info=True,
+                        )
                 except Exception as exc:
                     result = {
                         "stuck": False,
