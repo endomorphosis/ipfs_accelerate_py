@@ -117,9 +117,26 @@ FENCED_TASK_AUTHORITY_POPULATION_GROUP_SCHEMA: Final[str] = (
 FENCED_TASK_AUTHORITY_CLAIM_BOUNDARY: Final[str] = (
     "coordinator_owner_assertion_of_exact_observed_task_authority_population"
 )
+FENCED_TASK_AUTHORITY_PRIVACY_BOUNDARY: Final[str] = (
+    "access_controlled_internal_integrity_commitment_not_public_evidence"
+)
+FENCED_TASK_AUTHORITY_NONCLAIMS: Final[tuple[str, ...]] = (
+    "hash_and_length_commitments_do_not_establish_confidentiality",
+    "receipt_must_not_be_published_or_logged",
+    "secret_bytes_are_not_admissible_in_authority_json",
+    "receipt_does_not_prove_provider_nonexecution_or_external_effect_absence",
+    "receipt_is_not_quack_owner_or_accepted_publication_authority",
+    "receipt_is_not_standalone_recovery_admission",
+)
 
 DEFAULT_LEASE_MS: Final[int] = 60_000
 DEFAULT_MAINTENANCE_SCOPE: Final[str] = "control-plane"
+MAX_FENCED_TASK_AUTHORITY_POPULATION_ROWS: Final[int] = 50_000
+MAX_FENCED_TASK_AUTHORITY_METADATA_ROWS: Final[int] = 10_000
+MAX_FENCED_TASK_AUTHORITY_FIELD_BYTES: Final[int] = 1 * 1024 * 1024
+MAX_FENCED_TASK_AUTHORITY_RECEIPT_BYTES: Final[int] = 16 * 1024 * 1024
+_FENCED_TASK_AUTHORITY_BIGINT_MIN: Final[int] = -(2**63)
+_FENCED_TASK_AUTHORITY_BIGINT_MAX: Final[int] = 2**63 - 1
 MAX_PAYLOAD_BYTES: Final[int] = 262_144
 MAX_DEPENDENCY_EVIDENCE: Final[int] = 32
 MAX_PREPARED_COMPLETION_QUERY: Final[int] = 1_000
@@ -1315,7 +1332,9 @@ _COORDINATION_REQUIRED_INDEXES: Final[frozenset[str]] = frozenset(
 # authority.  JSON payload columns are represented by an exact canonical-byte
 # commitment and length rather than copied into public evidence; this keeps
 # credentials/private callback material out of the receipt without omitting a
-# physical authority column from the projection.
+# physical authority column from the projection.  Hash and length commitments
+# are not confidentiality; the resulting receipt remains access-controlled
+# internal evidence and must never contain or be published alongside secrets.
 _FENCED_TASK_AUTHORITY_GROUP_SPECS: Final[
     tuple[tuple[str, str, str, str, tuple[str, ...]], ...]
 ] = (
@@ -1387,6 +1406,50 @@ _FENCED_TASK_AUTHORITY_GROUP_SPECS: Final[
     ),
 )
 
+_FENCED_TASK_AUTHORITY_NULLABLE_COLUMNS: Final[
+    frozenset[tuple[str, str]]
+] = frozenset(
+    {
+        ("task_claims", "released_at_ms"),
+        ("task_attempts", "finished_at_ms"),
+    }
+)
+
+_FENCED_TASK_AUTHORITY_ORDER_FIELDS: Final[
+    Mapping[str, tuple[str, ...]]
+] = MappingProxyType(
+    {
+        "coordination_tasks": ("task_cid",),
+        "task_dependencies": ("task_cid", "dependency_task_cid"),
+        "task_completions": ("task_cid",),
+        "fenced_leases": ("lease_id",),
+        "task_claims": ("claim_id",),
+        "task_attempts": ("attempt_id",),
+        "resource_claims": ("claim_id",),
+        "token_history": ("scope_key", "fencing_token", "fence_epoch"),
+        "lease_events": ("observed_at_ms", "event_id"),
+    }
+)
+
+_FENCED_TASK_AUTHORITY_UNIQUE_KEY_FIELDS: Final[
+    Mapping[str, tuple[tuple[str, ...], ...]]
+] = MappingProxyType(
+    {
+        "coordination_tasks": (("task_cid",),),
+        "task_dependencies": (("task_cid", "dependency_task_cid"),),
+        "task_completions": (("task_cid",),),
+        "fenced_leases": (("lease_id",),),
+        "task_claims": (("claim_id",),),
+        "task_attempts": (
+            ("attempt_id",),
+            ("task_cid", "attempt_number"),
+        ),
+        "resource_claims": (("claim_id",),),
+        "token_history": (("scope_key", "fencing_token", "fence_epoch"),),
+        "lease_events": (("event_id",),),
+    }
+)
+
 
 def _fenced_task_authority_query_profile() -> dict[str, Any]:
     """Return the immutable, provider-free task population query profile."""
@@ -1427,13 +1490,25 @@ def _fenced_population_json_commitment(
 ) -> dict[str, Any]:
     """Commit one reviewed JSON column without exposing its private values."""
 
+    if (
+        type(value) is not str
+        or len(value.encode("utf-8"))
+        > MAX_FENCED_TASK_AUTHORITY_FIELD_BYTES
+    ):
+        raise DatabaseCoordinationStaleFenceError(
+            f"{table}.{column} exceeds the receipt field bound"
+        )
     try:
-        decoded = json.loads(str(value))
+        decoded = json.loads(value)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise DatabaseCoordinationStaleFenceError(
             f"{table}.{column} is not valid canonical JSON"
         ) from exc
     encoded = canonical_json_bytes(decoded)
+    if len(encoded) > MAX_FENCED_TASK_AUTHORITY_FIELD_BYTES:
+        raise DatabaseCoordinationStaleFenceError(
+            f"{table}.{column} exceeds the receipt field bound"
+        )
     if encoded.decode("utf-8") != str(value):
         raise DatabaseCoordinationStaleFenceError(
             f"{table}.{column} is not canonical JSON"
@@ -1442,6 +1517,63 @@ def _fenced_population_json_commitment(
         "canonical_sha256": _sha256_hex(encoded),
         "canonical_byte_length": len(encoded),
     }
+
+
+def _fenced_population_preflight(
+    connection: Any,
+    *,
+    table: str,
+    columns_and_types: Sequence[tuple[str, str]],
+    where_sql: str,
+    parameters: Sequence[Any],
+    row_bound: int,
+    text_byte_bound: int,
+) -> tuple[int, int]:
+    """Bound rows and variable-width bytes before ``fetchall`` allocates them."""
+
+    text_columns = [
+        name for name, kind in columns_and_types if kind == "VARCHAR"
+    ]
+    maximums = [
+        f'COALESCE(MAX(OCTET_LENGTH(ENCODE("{name}"))), 0)'
+        for name in text_columns
+    ]
+    byte_terms = [
+        f'COALESCE(OCTET_LENGTH(ENCODE("{name}")), 0)'
+        for name in text_columns
+    ]
+    total = (
+        f"COALESCE(SUM({' + '.join(byte_terms)}), 0)"
+        if byte_terms
+        else "0"
+    )
+    observed = connection.execute(
+        f'SELECT COUNT(*), {", ".join([*maximums, total])} '
+        f'FROM "{table}" WHERE {where_sql}',
+        list(parameters),
+    ).fetchone()
+    if observed is None or len(observed) != 2 + len(text_columns):
+        raise DatabaseCoordinationConflictError(
+            f"{table} population preflight is unavailable"
+        )
+    values = tuple(observed[index] for index in range(len(observed)))
+    count = values[0]
+    text_bytes = values[-1]
+    if (
+        type(count) is not int
+        or not 0 <= count <= row_bound
+        or type(text_bytes) is not int
+        or not 0 <= text_bytes <= text_byte_bound
+        or any(
+            type(value) is not int
+            or not 0 <= value <= MAX_FENCED_TASK_AUTHORITY_FIELD_BYTES
+            for value in values[1:-1]
+        )
+    ):
+        raise DatabaseCoordinationConflictError(
+            f"{table} population exceeds its receipt preflight bound"
+        )
+    return count, text_bytes
 
 
 def _fenced_population_group(
@@ -1472,6 +1604,10 @@ def _fenced_population_group(
             elif value is None:
                 projected[column] = None
             elif kind == "VARCHAR" and type(value) is str:
+                if len(value.encode("utf-8")) > MAX_FENCED_TASK_AUTHORITY_FIELD_BYTES:
+                    raise DatabaseCoordinationStaleFenceError(
+                        f"{table}.{column} exceeds the receipt field bound"
+                    )
                 projected[column] = value
             elif kind == "BIGINT" and type(value) is int:
                 projected[column] = value
@@ -1494,15 +1630,258 @@ def _fenced_population_group(
     return group
 
 
+def _fenced_population_commitment_valid(value: Any) -> bool:
+    """Validate one closed canonical-JSON commitment."""
+
+    return bool(
+        isinstance(value, Mapping)
+        and set(value) == {"canonical_sha256", "canonical_byte_length"}
+        and re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(value.get("canonical_sha256") or ""),
+        )
+        and type(value.get("canonical_byte_length")) is int
+        and int(value["canonical_byte_length"]) > 0
+        and int(value["canonical_byte_length"])
+        <= MAX_FENCED_TASK_AUTHORITY_FIELD_BYTES
+    )
+
+
+def _fenced_population_text_valid(value: Any, *, required: bool = False) -> bool:
+    return bool(
+        type(value) is str
+        and (not required or bool(value))
+        and len(value.encode("utf-8")) <= MAX_FENCED_TASK_AUTHORITY_FIELD_BYTES
+    )
+
+
+def _fenced_population_metadata_rows_valid(value: Any) -> bool:
+    """Validate the complete ordered metadata commitment population."""
+
+    if (
+        type(value) is not list
+        or len(value) > MAX_FENCED_TASK_AUTHORITY_METADATA_ROWS
+    ):
+        return False
+    prior_key = ""
+    for row in value:
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != {"key", "value_sha256", "value_byte_length"}
+            or not _fenced_population_text_valid(
+                row.get("key"), required=True
+            )
+            or str(row["key"]) <= prior_key
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(row.get("value_sha256") or ""),
+            )
+            or type(row.get("value_byte_length")) is not int
+            or int(row["value_byte_length"]) < 0
+            or int(row["value_byte_length"])
+            > MAX_FENCED_TASK_AUTHORITY_FIELD_BYTES
+        ):
+            return False
+        prior_key = str(row["key"])
+    return True
+
+
+def _fenced_task_authority_group_rows_valid(
+    *,
+    group_name: str,
+    profile_group: Mapping[str, Any],
+    rows: Any,
+) -> bool:
+    """Validate exact row shapes, scalar types, and normative ordering."""
+
+    if type(rows) is not list:
+        return False
+    table = str(profile_group.get("table") or "")
+    columns_and_types = _COORDINATION_REQUIRED_COLUMNS.get(table)
+    if columns_and_types is None:
+        return False
+    columns = [name for name, _kind in columns_and_types]
+    json_columns = frozenset(profile_group.get("json_commitment_columns") or ())
+    for row in rows:
+        if not isinstance(row, Mapping) or set(row) != set(columns):
+            return False
+        for column, kind in columns_and_types:
+            item = row.get(column)
+            if column in json_columns:
+                if not _fenced_population_commitment_valid(item):
+                    return False
+            elif item is None:
+                if (table, column) not in _FENCED_TASK_AUTHORITY_NULLABLE_COLUMNS:
+                    return False
+            elif kind == "VARCHAR":
+                if not _fenced_population_text_valid(item):
+                    return False
+            elif kind == "BIGINT":
+                if (
+                    type(item) is not int
+                    or not _FENCED_TASK_AUTHORITY_BIGINT_MIN
+                    <= item
+                    <= _FENCED_TASK_AUTHORITY_BIGINT_MAX
+                ):
+                    return False
+            elif kind == "BOOLEAN":
+                if type(item) is not bool:
+                    return False
+            else:
+                return False
+    order_fields = _FENCED_TASK_AUTHORITY_ORDER_FIELDS.get(group_name)
+    unique_key_fields = _FENCED_TASK_AUTHORITY_UNIQUE_KEY_FIELDS.get(group_name)
+    if order_fields is None or unique_key_fields is None:
+        return False
+    order_keys = [tuple(row[field] for field in order_fields) for row in rows]
+    if not all(
+        previous < current
+        for previous, current in zip(order_keys, order_keys[1:])
+    ):
+        return False
+    # ORDER BY fields are not necessarily unique keys (for example an event
+    # timestamp may precede its primary key).  Close every declared SQL
+    # PRIMARY KEY / UNIQUE constraint separately so a self-rehashed row cannot
+    # keep the same database key while changing an ordering field.
+    return all(
+        len({tuple(row[field] for field in fields) for row in rows}) == len(rows)
+        for fields in unique_key_fields
+    )
+
+
+def _fenced_task_authority_population_semantics_valid(
+    groups: Mapping[str, Any],
+    subject: Mapping[str, Any],
+) -> bool:
+    """Bind every closed group to the exact task and authority tuple."""
+
+    task_cid = str(subject["task_cid"])
+    scope_key = exclusive_scope_key(
+        lease_kind=LeaseKind.TASK,
+        scope=task_cid,
+        task_cid=task_cid,
+    )
+    task_scoped_groups = {
+        "coordination_tasks",
+        "task_dependencies",
+        "task_completions",
+        "fenced_leases",
+        "task_claims",
+        "task_attempts",
+        "resource_claims",
+    }
+    for name in task_scoped_groups:
+        if any(
+            row.get("task_cid") != task_cid
+            for row in groups[name]["rows"]
+        ):
+            return False
+    if any(
+        row.get("scope_key") != scope_key
+        for row in groups["token_history"]["rows"]
+    ):
+        return False
+    task_lease_ids = {
+        str(row["lease_id"]) for row in groups["fenced_leases"]["rows"]
+    }
+    if any(
+        row.get("scope_key") != scope_key
+        and row.get("lease_id") not in task_lease_ids
+        for row in groups["lease_events"]["rows"]
+    ):
+        return False
+
+    task_rows = groups["coordination_tasks"]["rows"]
+    exact_claims = [
+        row
+        for row in groups["task_claims"]["rows"]
+        if row.get("claim_id") == subject["claim_id"]
+        and row.get("attempt_id") == subject["attempt_id"]
+        and row.get("lease_id") == subject["lease_id"]
+        and row.get("owner_session_id") == subject["owner_session_id"]
+        and row.get("fencing_token") == subject["fencing_token"]
+        and row.get("fence_epoch") == subject["fence_epoch"]
+    ]
+    exact_attempts = [
+        row
+        for row in groups["task_attempts"]["rows"]
+        if row.get("attempt_id") == subject["attempt_id"]
+        and row.get("owner_session_id") == subject["owner_session_id"]
+        and row.get("fencing_token") == subject["fencing_token"]
+        and row.get("fence_epoch") == subject["fence_epoch"]
+    ]
+    exact_leases = [
+        row
+        for row in groups["fenced_leases"]["rows"]
+        if row.get("lease_id") == subject["lease_id"]
+        and row.get("claim_id") == subject["claim_id"]
+        and row.get("attempt_id") == subject["attempt_id"]
+        and row.get("scope_key") == scope_key
+        and row.get("owner_session_id") == subject["owner_session_id"]
+        and row.get("fencing_token") == subject["fencing_token"]
+        and row.get("fence_epoch") == subject["fence_epoch"]
+    ]
+    if not (
+        len(task_rows) == 1
+        and task_rows[0].get("task_cid") == task_cid
+        and len(exact_claims) == 1
+        and len(exact_attempts) == 1
+        and len(exact_leases) == 1
+    ):
+        return False
+    claim = exact_claims[0]
+    attempt = exact_attempts[0]
+    lease = exact_leases[0]
+    attempt_number = attempt.get("attempt_number")
+    if (
+        claim.get("attempt_number") != attempt_number
+        or lease.get("attempt_number") != attempt_number
+        or lease.get("lease_kind") != LeaseKind.TASK.value
+        or lease.get("scope") != task_cid
+        or lease.get("mode") != LeaseMode.EXCLUSIVE.value
+        or claim.get("worktree_id") != lease.get("worktree_id")
+        or claim.get("idempotency_key") != lease.get("idempotency_key")
+        or claim.get("body_json") != lease.get("body_json")
+        or claim.get("claimed_at_ms") != lease.get("acquired_at_ms")
+        or claim.get("expires_at_ms") != lease.get("expires_at_ms")
+        or any(
+            lease.get(name) != ""
+            for name in (
+                "resource_kind",
+                "resource_id",
+                "repository_id",
+                "path",
+            )
+        )
+    ):
+        return False
+    return any(
+        row.get("scope_key") == scope_key
+        and row.get("fencing_token") == subject["fencing_token"]
+        and row.get("fence_epoch") == subject["fence_epoch"]
+        for row in groups["token_history"]["rows"]
+    )
+
+
 def fenced_task_authority_population_receipt_valid(value: Any) -> bool:
     """Validate the closed coordinator receipt without opening a database."""
 
     if not isinstance(value, Mapping):
         return False
     receipt = dict(value)
+    try:
+        if (
+            len(canonical_json_bytes(receipt))
+            > MAX_FENCED_TASK_AUTHORITY_RECEIPT_BYTES
+        ):
+            return False
+    except (TypeError, ValueError, UnicodeError):
+        return False
     expected_fields = {
         "schema",
         "claim_boundary",
+        "privacy_boundary",
+        "nonclaims",
         "transaction_boundary",
         "query_profile_id",
         "receipt_nonce",
@@ -1519,14 +1898,20 @@ def fenced_task_authority_population_receipt_valid(value: Any) -> bool:
         != FENCED_TASK_AUTHORITY_POPULATION_RECEIPT_SCHEMA
         or receipt.get("claim_boundary")
         != FENCED_TASK_AUTHORITY_CLAIM_BOUNDARY
+        or receipt.get("privacy_boundary")
+        != FENCED_TASK_AUTHORITY_PRIVACY_BOUNDARY
+        or receipt.get("nonclaims") != list(FENCED_TASK_AUTHORITY_NONCLAIMS)
         or receipt.get("transaction_boundary")
         != "single_coordination_store_read_transaction"
         or receipt.get("query_profile_id")
         != _fenced_task_authority_query_profile_id()
-        or type(receipt.get("receipt_nonce")) is not str
-        or not str(receipt.get("receipt_nonce") or "")
+        or not _fenced_population_text_valid(
+            receipt.get("receipt_nonce"), required=True
+        )
         or type(receipt.get("receipt_epoch")) is not int
-        or int(receipt["receipt_epoch"]) < 1
+        or not 1
+        <= int(receipt["receipt_epoch"])
+        <= _FENCED_TASK_AUTHORITY_BIGINT_MAX
     ):
         return False
     authority = receipt.get("authority")
@@ -1542,20 +1927,18 @@ def fenced_task_authority_population_receipt_valid(value: Any) -> bool:
             "coordination_target_locator",
             "metadata_rows",
             "catalog_root",
-            "complete_storage_projection_root",
         }
         or authority.get("interface") != DATABASE_COORDINATOR_INTERFACE
         or authority.get("schema") != DATABASE_COORDINATION_SCHEMA
         or authority.get("authority_mode") not in {"embedded", "quack"}
-        or type(authority.get("coordination_target_locator")) is not str
-        or not authority.get("coordination_target_locator")
-        or type(authority.get("metadata_rows")) is not list
-        or not re.fullmatch(
-            r"sha256:[0-9a-f]{64}", str(authority.get("catalog_root") or "")
+        or not _fenced_population_text_valid(
+            authority.get("coordination_target_locator"), required=True
+        )
+        or not _fenced_population_metadata_rows_valid(
+            authority.get("metadata_rows")
         )
         or not re.fullmatch(
-            r"sha256:[0-9a-f]{64}",
-            str(authority.get("complete_storage_projection_root") or ""),
+            r"sha256:[0-9a-f]{64}", str(authority.get("catalog_root") or "")
         )
         or not isinstance(subject, Mapping)
         or set(subject)
@@ -1569,7 +1952,9 @@ def fenced_task_authority_population_receipt_valid(value: Any) -> bool:
             "fence_epoch",
         }
         or any(
-            type(subject.get(name)) is not str or not subject.get(name)
+            not _fenced_population_text_valid(
+                subject.get(name), required=True
+            )
             for name in (
                 "task_cid",
                 "attempt_id",
@@ -1579,9 +1964,13 @@ def fenced_task_authority_population_receipt_valid(value: Any) -> bool:
             )
         )
         or type(subject.get("fencing_token")) is not int
-        or int(subject["fencing_token"]) < 0
+        or not 0
+        <= int(subject["fencing_token"])
+        <= _FENCED_TASK_AUTHORITY_BIGINT_MAX
         or type(subject.get("fence_epoch")) is not int
-        or int(subject["fence_epoch"]) < 0
+        or not 0
+        <= int(subject["fence_epoch"])
+        <= _FENCED_TASK_AUTHORITY_BIGINT_MAX
         or not isinstance(groups, Mapping)
     ):
         return False
@@ -1589,6 +1978,7 @@ def fenced_task_authority_population_receipt_valid(value: Any) -> bool:
     expected_groups = {str(item["name"]): item for item in profile["groups"]}
     if set(groups) != set(expected_groups):
         return False
+    total_rows = 0
     for name, profile_group in expected_groups.items():
         group = groups.get(name)
         if (
@@ -1603,10 +1993,20 @@ def fenced_task_authority_population_receipt_valid(value: Any) -> bool:
             or int(group["count"]) < 0
             or type(group.get("rows")) is not list
             or len(group["rows"]) != int(group["count"])
+            or not _fenced_task_authority_group_rows_valid(
+                group_name=name,
+                profile_group=profile_group,
+                rows=group["rows"],
+            )
             or group.get("rows_digest")
             != _sha256_hex(canonical_json_bytes(group["rows"]))
         ):
             return False
+        total_rows += int(group["count"])
+        if total_rows > MAX_FENCED_TASK_AUTHORITY_POPULATION_ROWS:
+            return False
+    if not _fenced_task_authority_population_semantics_valid(groups, subject):
+        return False
     expected_population_root = _sha256_hex(canonical_json_bytes(dict(groups)))
     if receipt.get("task_population_root") != expected_population_root:
         return False
@@ -6995,13 +7395,25 @@ class DatabaseCoordinator:
 
         _validate_coordination_authority(connection)
         catalog = _coordination_storage_catalog(connection)
-        storage = _coordination_storage_projection_from_connection(
+        remaining_text_bytes = MAX_FENCED_TASK_AUTHORITY_RECEIPT_BYTES
+        _metadata_count, metadata_text_bytes = _fenced_population_preflight(
             connection,
-            validate_authority=False,
+            table="coordination_metadata",
+            columns_and_types=(("key", "VARCHAR"), ("value", "VARCHAR")),
+            where_sql="TRUE",
+            parameters=(),
+            row_bound=MAX_FENCED_TASK_AUTHORITY_METADATA_ROWS,
+            text_byte_bound=remaining_text_bytes,
         )
+        remaining_text_bytes -= metadata_text_bytes
         metadata_raw = connection.execute(
-            "SELECT key, value FROM coordination_metadata ORDER BY key"
+            "SELECT key, value FROM coordination_metadata ORDER BY key "
+            f"LIMIT {MAX_FENCED_TASK_AUTHORITY_METADATA_ROWS + 1}"
         ).fetchall()
+        if len(metadata_raw) > MAX_FENCED_TASK_AUTHORITY_METADATA_ROWS:
+            raise DatabaseCoordinationConflictError(
+                "coordination metadata exceeds the receipt population bound"
+            )
         metadata_rows: list[dict[str, Any]] = []
         metadata_values: dict[str, str] = {}
         for row in metadata_raw:
@@ -7013,6 +7425,10 @@ class DatabaseCoordinator:
                 )
             metadata_values[key] = value
             encoded = value.encode("utf-8")
+            if len(encoded) > MAX_FENCED_TASK_AUTHORITY_FIELD_BYTES:
+                raise DatabaseCoordinationConflictError(
+                    "coordination metadata exceeds the receipt field bound"
+                )
             metadata_rows.append(
                 {
                     "key": key,
@@ -7034,6 +7450,7 @@ class DatabaseCoordinator:
             task_cid=task_cid,
         )
         groups: dict[str, Any] = {}
+        remaining_rows = MAX_FENCED_TASK_AUTHORITY_POPULATION_ROWS
         for group_name, table, where_sql, order_sql, json_columns in (
             _FENCED_TASK_AUTHORITY_GROUP_SPECS
         ):
@@ -7046,11 +7463,27 @@ class DatabaseCoordinator:
                 parameters = [scope_key, task_cid]
             else:
                 parameters = [task_cid]
+            _group_count, group_text_bytes = _fenced_population_preflight(
+                connection,
+                table=table,
+                columns_and_types=columns_and_types,
+                where_sql=where_sql,
+                parameters=parameters,
+                row_bound=remaining_rows,
+                text_byte_bound=remaining_text_bytes,
+            )
+            remaining_text_bytes -= group_text_bytes
             rows = connection.execute(
                 f'SELECT {columns_sql} FROM "{table}" '
-                f"WHERE {where_sql} ORDER BY {order_sql}",
+                f"WHERE {where_sql} ORDER BY {order_sql} "
+                f"LIMIT {remaining_rows + 1}",
                 parameters,
             ).fetchall()
+            if len(rows) > remaining_rows:
+                raise DatabaseCoordinationConflictError(
+                    "coordinator task population exceeds the receipt row bound"
+                )
+            remaining_rows -= len(rows)
             groups[group_name] = _fenced_population_group(
                 group_name=group_name,
                 table=table,
@@ -7106,6 +7539,8 @@ class DatabaseCoordinator:
         unsigned: dict[str, Any] = {
             "schema": FENCED_TASK_AUTHORITY_POPULATION_RECEIPT_SCHEMA,
             "claim_boundary": FENCED_TASK_AUTHORITY_CLAIM_BOUNDARY,
+            "privacy_boundary": FENCED_TASK_AUTHORITY_PRIVACY_BOUNDARY,
+            "nonclaims": list(FENCED_TASK_AUTHORITY_NONCLAIMS),
             "transaction_boundary": "single_coordination_store_read_transaction",
             "query_profile_id": _fenced_task_authority_query_profile_id(),
             "receipt_nonce": receipt_nonce,
@@ -7122,9 +7557,6 @@ class DatabaseCoordinator:
                 "coordination_target_locator": str(self._open_target),
                 "metadata_rows": metadata_rows,
                 "catalog_root": _sha256_hex(canonical_json_bytes(catalog)),
-                "complete_storage_projection_root": str(
-                    storage.get("projection_root") or ""
-                ),
             },
             "subject": {
                 "task_cid": task_cid,
@@ -7138,7 +7570,12 @@ class DatabaseCoordinator:
             "groups": groups,
             "task_population_root": _sha256_hex(canonical_json_bytes(groups)),
         }
-        unsigned["receipt_cid"] = _sha256_hex(canonical_json_bytes(unsigned))
+        unsigned_bytes = canonical_json_bytes(unsigned)
+        if len(unsigned_bytes) > MAX_FENCED_TASK_AUTHORITY_RECEIPT_BYTES:
+            raise DatabaseCoordinationConflictError(
+                "coordinator population receipt exceeds its byte bound"
+            )
+        unsigned["receipt_cid"] = _sha256_hex(unsigned_bytes)
         if not fenced_task_authority_population_receipt_valid(unsigned):
             raise DatabaseCoordinationConflictError(
                 "coordinator population receipt failed closed validation"
@@ -7190,7 +7627,7 @@ class DatabaseCoordinator:
                 )
                 connection.execute("COMMIT")
                 return receipt
-            except Exception:
+            except BaseException:
                 self._rollback_if_open(connection)
                 raise
 
@@ -7220,6 +7657,10 @@ class DatabaseCoordinator:
         if not callable(callback):
             raise DatabaseCoordinationConflictError(
                 "fenced population callback is unavailable"
+            )
+        if self._quack_transport:
+            raise DatabaseCoordinationConflictError(
+                "cross-store stable read is unavailable through Quack transport"
             )
         subject = {
             "task_cid": _text(task_cid, "task_cid"),
@@ -7265,7 +7706,7 @@ class DatabaseCoordinator:
                     )
                 connection.execute("COMMIT")
                 return MappingProxyType(dict(result))
-            except Exception:
+            except BaseException:
                 self._rollback_if_open(connection)
                 raise
             finally:

@@ -12,6 +12,8 @@ not duplicate provider/effect work.
 
 from __future__ import annotations
 
+import copy
+import fcntl
 import hashlib
 import json
 import threading
@@ -24,6 +26,9 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     database_portal_bridge as database_portal_bridge_module,
     implementation_daemon as daemon_module,
+)
+from ipfs_accelerate_py.agent_supervisor.merge import (
+    database_coordination as coordination_module,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     canonical_json,
@@ -390,6 +395,40 @@ def test_inner_population_receipt_fails_without_writer_flock_and_on_tamper(
                 daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
         finally:
             daemon._embedded_writer_lock_handle = writer_handle
+
+        assert writer_handle is not None
+        fcntl.flock(writer_handle.fileno(), fcntl.LOCK_UN)
+        try:
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="writer fence",
+            ):
+                daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+        finally:
+            fcntl.flock(
+                writer_handle.fileno(),
+                fcntl.LOCK_EX | fcntl.LOCK_NB,
+            )
+
+        replacement = daemon._embedded_writer_lock_path.open("r+b")
+        daemon._embedded_writer_lock_handle = replacement
+        try:
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="writer fence",
+            ):
+                daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+        finally:
+            replacement.close()
+            daemon._embedded_writer_lock_handle = writer_handle
+
+        writer_handle.close()
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="writer fence",
+        ):
+            daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+        daemon._embedded_writer_lock_handle = None
     finally:
         daemon.close()
 
@@ -402,6 +441,402 @@ def test_inner_population_receipt_fails_without_writer_flock_and_on_tamper(
     )
     tampered["groups"]["provider_invocations"]["count"] = 1
     assert not database_fenced_provider_inner_population_receipt_valid(tampered)
+
+    def rehash(candidate: dict[str, object]) -> dict[str, object]:
+        unsigned = copy.deepcopy(candidate)
+        unsigned.pop("receipt_cid", None)
+        unsigned["receipt_cid"] = "sha256:" + hashlib.sha256(
+            canonical_json(unsigned).encode("utf-8")
+        ).hexdigest()
+        return unsigned
+
+    subject_splice = copy.deepcopy(receipt)
+    subject_splice["subject"]["task_cid"] = "task:forged"
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(subject_splice)
+    )
+
+    deep_unknown = copy.deepcopy(receipt)
+    attempt_group = deep_unknown["groups"]["database_task_attempts"]
+    attempt_group["rows"][0]["unreviewed"] = True
+    attempt_group["rows_digest"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            attempt_group["rows"]
+        )
+    )
+    deep_unknown["execution_population_root"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            deep_unknown["groups"]
+        )
+    )
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(deep_unknown)
+    )
+
+    oversized = copy.deepcopy(receipt)
+    oversized_attempt_group = oversized["groups"]["database_task_attempts"]
+    oversized_attempt_group["rows"][0]["body_json"][
+        "canonical_byte_length"
+    ] = daemon_module.DATABASE_FENCED_PROVIDER_INNER_MAX_FIELD_BYTES + 1
+    oversized_attempt_group["rows_digest"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            oversized_attempt_group["rows"]
+        )
+    )
+    oversized["execution_population_root"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            oversized["groups"]
+        )
+    )
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(oversized)
+    )
+
+    zero_length = copy.deepcopy(receipt)
+    zero_group = zero_length["groups"]["database_task_attempts"]
+    zero_group["rows"][0]["body_json"]["canonical_byte_length"] = 0
+    zero_group["rows_digest"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            zero_group["rows"]
+        )
+    )
+    zero_length["execution_population_root"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            zero_length["groups"]
+        )
+    )
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(zero_length)
+    )
+
+    out_of_range = copy.deepcopy(receipt)
+    attempt_group = out_of_range["groups"]["database_task_attempts"]
+    attempt_group["rows"][0]["started_at_ms"] = 2**63
+    attempt_group["rows_digest"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            attempt_group["rows"]
+        )
+    )
+    out_of_range["execution_population_root"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            out_of_range["groups"]
+        )
+    )
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(out_of_range)
+    )
+
+    duplicate_inner = copy.deepcopy(receipt)
+    phase_group = duplicate_inner["groups"]["attempt_phases"]
+    assert phase_group["rows"]
+    phase_group["rows"].append(copy.deepcopy(phase_group["rows"][0]))
+    phase_group["count"] = len(phase_group["rows"])
+    phase_group["rows_digest"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            phase_group["rows"]
+        )
+    )
+    duplicate_inner["execution_population_root"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            duplicate_inner["groups"]
+        )
+    )
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(duplicate_inner)
+    )
+
+    same_primary_key = copy.deepcopy(receipt)
+    same_key_phase_group = same_primary_key["groups"]["attempt_phases"]
+    assert same_key_phase_group["rows"]
+    forged_phase = copy.deepcopy(same_key_phase_group["rows"][0])
+    forged_phase["committed_at_ms"] += 1
+    same_key_phase_group["rows"].append(forged_phase)
+    same_key_phase_group["rows"].sort(
+        key=lambda row: (row["committed_at_ms"], row["phase"])
+    )
+    same_key_phase_group["count"] = len(same_key_phase_group["rows"])
+    same_key_phase_group["rows_digest"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            same_key_phase_group["rows"]
+        )
+    )
+    same_primary_key["execution_population_root"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            same_primary_key["groups"]
+        )
+    )
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(same_primary_key)
+    )
+
+    cross_row_splice = copy.deepcopy(receipt)
+    spliced_phase_group = cross_row_splice["groups"]["attempt_phases"]
+    assert spliced_phase_group["rows"]
+    spliced_phase_group["rows"][0]["fencing_token"] += 100
+    spliced_phase_group["rows_digest"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            spliced_phase_group["rows"]
+        )
+    )
+    cross_row_splice["execution_population_root"] = (
+        DatabaseImplementationDaemon._database_canonical_digest(
+            cross_row_splice["groups"]
+        )
+    )
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(cross_row_splice)
+    )
+
+    duplicate_nested = copy.deepcopy(receipt)
+    nested_receipt = duplicate_nested["coordinator_receipt"]
+    nested_token_group = nested_receipt["groups"]["token_history"]
+    assert nested_token_group["rows"]
+    nested_token_group["rows"].append(
+        copy.deepcopy(nested_token_group["rows"][0])
+    )
+    nested_token_group["count"] = len(nested_token_group["rows"])
+    nested_token_group["rows_digest"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(nested_token_group["rows"])
+    )
+    nested_receipt["task_population_root"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(nested_receipt["groups"])
+    )
+    nested_unsigned = copy.deepcopy(nested_receipt)
+    nested_unsigned.pop("receipt_cid", None)
+    nested_receipt["receipt_cid"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(nested_unsigned)
+    )
+    duplicate_nested["coordinator_receipt_cid"] = nested_receipt["receipt_cid"]
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(duplicate_nested)
+    )
+
+    cross_splice = copy.deepcopy(receipt)
+    nested = cross_splice["coordinator_receipt"]
+    nested["receipt_nonce"] = "inner-receipt:different"
+    nested_unsigned = copy.deepcopy(nested)
+    nested_unsigned.pop("receipt_cid", None)
+    nested["receipt_cid"] = "sha256:" + hashlib.sha256(
+        coordination_module.canonical_json_bytes(nested_unsigned)
+    ).hexdigest()
+    cross_splice["coordinator_receipt_cid"] = nested["receipt_cid"]
+    assert not database_fenced_provider_inner_population_receipt_valid(
+        rehash(cross_splice)
+    )
+
+    assert receipt["privacy_boundary"] == (
+        daemon_module.DATABASE_FENCED_PROVIDER_INNER_PRIVACY_BOUNDARY
+    )
+    assert receipt["nonclaims"] == list(
+        daemon_module.DATABASE_FENCED_PROVIDER_INNER_NONCLAIMS
+    )
+
+
+def test_inner_population_receipt_requires_current_quiescent_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(tmp_path)
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        kwargs = {
+            "task_revision": task.revision,
+            "recovery_manifest_id": "sha256:" + "5" * 64,
+            "recovery_credit_id": "sha256:" + "6" * 64,
+            "receipt_nonce": "inner-receipt:quiescent",
+            "receipt_epoch": 1,
+        }
+        with daemon._lock:
+            daemon._active_external_callbacks = 1
+        try:
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="quiescent",
+            ):
+                daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+        finally:
+            with daemon._lock:
+                daemon._active_external_callbacks = 0
+
+        observed = daemon.process_birth
+        monkeypatch.setattr(
+            daemon_module,
+            "current_process_birth",
+            lambda: type(observed)(
+                pid=observed.pid + 1,
+                start_time_ticks=observed.start_time_ticks,
+                boot_id=observed.boot_id,
+                parent_pid=observed.parent_pid,
+            ),
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="quiescent",
+        ):
+            daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+    finally:
+        daemon.close()
+
+
+def test_inner_population_receipt_retains_lock_through_callback_return(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(tmp_path)
+    captured = threading.Event()
+    release = threading.Event()
+    mutation_done = threading.Event()
+    errors: list[BaseException] = []
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        kwargs = {
+            "task_revision": task.revision,
+            "recovery_manifest_id": "sha256:" + "7" * 64,
+            "recovery_credit_id": "sha256:" + "8" * 64,
+            "receipt_nonce": "inner-receipt:retained-lock",
+            "receipt_epoch": 1,
+        }
+        original = daemon._fenced_provider_execution_population_receipt
+
+        def delayed(*args: object, **call_kwargs: object) -> Mapping[str, object]:
+            result = original(*args, **call_kwargs)
+            captured.set()
+            if not release.wait(5):
+                raise AssertionError("receipt callback release timed out")
+            return result
+
+        monkeypatch.setattr(
+            daemon,
+            "_fenced_provider_execution_population_receipt",
+            delayed,
+        )
+
+        def issue() -> None:
+            try:
+                daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+            except BaseException as exc:
+                errors.append(exc)
+
+        def mutate() -> None:
+            with daemon._lock:
+                daemon._record_event(
+                    "receipt-race",
+                    attempt_id=attempt.attempt_id,
+                    task_cid=attempt.task_cid,
+                )
+                daemon._require_connection().commit()
+            mutation_done.set()
+
+        issuer = threading.Thread(target=issue)
+        issuer.start()
+        assert captured.wait(5)
+        writer = threading.Thread(target=mutate)
+        writer.start()
+        assert not mutation_done.wait(0.2)
+        release.set()
+        issuer.join(5)
+        writer.join(5)
+        assert not issuer.is_alive()
+        assert not writer.is_alive()
+        assert mutation_done.is_set()
+        assert errors == []
+    finally:
+        release.set()
+        daemon.close()
+
+
+def test_inner_population_receipt_lock_contention_fails_without_deadlock(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path)
+    errors: list[BaseException] = []
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        kwargs = {
+            "task_revision": task.revision,
+            "recovery_manifest_id": "sha256:" + "9" * 64,
+            "recovery_credit_id": "sha256:" + "a" * 64,
+            "receipt_nonce": "inner-receipt:contended",
+            "receipt_epoch": 1,
+        }
+
+        def issue() -> None:
+            try:
+                daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+            except BaseException as exc:
+                errors.append(exc)
+
+        daemon._lock.acquire()
+        try:
+            issuer = threading.Thread(target=issue)
+            issuer.start()
+            issuer.join(2)
+            assert not issuer.is_alive()
+        finally:
+            daemon._lock.release()
+        assert len(errors) == 1
+        assert isinstance(errors[0], DatabaseImplementationConflictError)
+        assert "contended" in str(errors[0])
+    finally:
+        daemon.close()
+
+
+def test_inner_population_receipt_cancellation_rolls_back_both_stores(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(tmp_path)
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        kwargs = {
+            "task_revision": task.revision,
+            "recovery_manifest_id": "sha256:" + "b" * 64,
+            "recovery_credit_id": "sha256:" + "c" * 64,
+            "receipt_nonce": "inner-receipt:cancelled",
+            "receipt_epoch": 1,
+        }
+        original = daemon_module._database_inner_population_preflight
+        calls = 0
+
+        def cancel_once(*args: object, **call_kwargs: object) -> tuple[int, int]:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise KeyboardInterrupt("cancelled inner transaction")
+            return original(*args, **call_kwargs)
+
+        monkeypatch.setattr(
+            daemon_module,
+            "_database_inner_population_preflight",
+            cancel_once,
+        )
+        with pytest.raises(KeyboardInterrupt, match="cancelled inner"):
+            daemon.fenced_provider_inner_population_receipt(attempt, **kwargs)
+        assert not daemon._require_connection().in_transaction
+        assert not daemon.coordinator._connection.in_transaction
+        receipt = daemon.fenced_provider_inner_population_receipt(
+            attempt,
+            **kwargs,
+        )
+        assert database_fenced_provider_inner_population_receipt_valid(receipt)
+    finally:
+        daemon.close()
 
 
 def test_process_birth_sidecar_allows_default_owner_clean_reopen(

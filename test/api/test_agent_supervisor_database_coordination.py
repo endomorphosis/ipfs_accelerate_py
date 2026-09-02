@@ -11,6 +11,7 @@ creation are one transaction.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 from pathlib import Path
 
@@ -230,6 +231,132 @@ def test_fenced_task_authority_population_receipt_rejects_tamper_and_unknowns(
     tampered["groups"]["task_claims"]["count"] = 2
     assert not fenced_task_authority_population_receipt_valid(tampered)
 
+    def rehash(candidate: dict[str, object]) -> dict[str, object]:
+        unsigned = copy.deepcopy(candidate)
+        unsigned.pop("receipt_cid", None)
+        unsigned["receipt_cid"] = coordination_module._sha256_hex(
+            coordination_module.canonical_json_bytes(unsigned)
+        )
+        return unsigned
+
+    subject_splice = copy.deepcopy(receipt)
+    subject_splice["subject"]["task_cid"] = "task:forged"
+    assert not fenced_task_authority_population_receipt_valid(
+        rehash(subject_splice)
+    )
+
+    deep_unknown = copy.deepcopy(receipt)
+    claim_group = deep_unknown["groups"]["task_claims"]
+    claim_group["rows"][0]["unreviewed"] = True
+    claim_group["rows_digest"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(claim_group["rows"])
+    )
+    deep_unknown["task_population_root"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(deep_unknown["groups"])
+    )
+    assert not fenced_task_authority_population_receipt_valid(
+        rehash(deep_unknown)
+    )
+
+    oversized = copy.deepcopy(receipt)
+    body_commitment = oversized["groups"]["task_claims"]["rows"][0][
+        "body_json"
+    ]
+    body_commitment["canonical_byte_length"] = (
+        coordination_module.MAX_FENCED_TASK_AUTHORITY_FIELD_BYTES + 1
+    )
+    oversized_group = oversized["groups"]["task_claims"]
+    oversized_group["rows_digest"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(oversized_group["rows"])
+    )
+    oversized["task_population_root"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(oversized["groups"])
+    )
+    assert not fenced_task_authority_population_receipt_valid(rehash(oversized))
+
+    zero_length = copy.deepcopy(receipt)
+    zero_group = zero_length["groups"]["task_claims"]
+    zero_group["rows"][0]["body_json"]["canonical_byte_length"] = 0
+    zero_group["rows_digest"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(zero_group["rows"])
+    )
+    zero_length["task_population_root"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(zero_length["groups"])
+    )
+    assert not fenced_task_authority_population_receipt_valid(
+        rehash(zero_length)
+    )
+
+    out_of_range = copy.deepcopy(receipt)
+    task_group = out_of_range["groups"]["coordination_tasks"]
+    task_group["rows"][0]["registered_at_ms"] = 2**63
+    task_group["rows_digest"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(task_group["rows"])
+    )
+    out_of_range["task_population_root"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(out_of_range["groups"])
+    )
+    assert not fenced_task_authority_population_receipt_valid(
+        rehash(out_of_range)
+    )
+
+    duplicate = copy.deepcopy(receipt)
+    token_group = duplicate["groups"]["token_history"]
+    assert token_group["rows"]
+    token_group["rows"].append(copy.deepcopy(token_group["rows"][0]))
+    token_group["count"] = len(token_group["rows"])
+    token_group["rows_digest"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(token_group["rows"])
+    )
+    duplicate["task_population_root"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(duplicate["groups"])
+    )
+    assert not fenced_task_authority_population_receipt_valid(rehash(duplicate))
+
+    same_primary_key = copy.deepcopy(receipt)
+    event_group = same_primary_key["groups"]["lease_events"]
+    assert event_group["rows"]
+    forged_event = copy.deepcopy(event_group["rows"][0])
+    forged_event["observed_at_ms"] += 1
+    event_group["rows"].append(forged_event)
+    event_group["rows"].sort(
+        key=lambda row: (row["observed_at_ms"], row["event_id"])
+    )
+    event_group["count"] = len(event_group["rows"])
+    event_group["rows_digest"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(event_group["rows"])
+    )
+    same_primary_key["task_population_root"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(same_primary_key["groups"])
+    )
+    assert not fenced_task_authority_population_receipt_valid(
+        rehash(same_primary_key)
+    )
+
+    cross_row_splice = copy.deepcopy(receipt)
+    claim_row = cross_row_splice["groups"]["task_claims"]["rows"][0]
+    lease_row = cross_row_splice["groups"]["fenced_leases"]["rows"][0]
+    claim_row["attempt_number"] += 100
+    lease_row["attempt_number"] += 100
+    for group_name in ("task_claims", "fenced_leases"):
+        group = cross_row_splice["groups"][group_name]
+        group["rows_digest"] = coordination_module._sha256_hex(
+            coordination_module.canonical_json_bytes(group["rows"])
+        )
+    cross_row_splice["task_population_root"] = coordination_module._sha256_hex(
+        coordination_module.canonical_json_bytes(cross_row_splice["groups"])
+    )
+    assert not fenced_task_authority_population_receipt_valid(
+        rehash(cross_row_splice)
+    )
+
+    assert receipt["privacy_boundary"] == (
+        coordination_module.FENCED_TASK_AUTHORITY_PRIVACY_BOUNDARY
+    )
+    assert receipt["nonclaims"] == list(
+        coordination_module.FENCED_TASK_AUTHORITY_NONCLAIMS
+    )
+
 
 def test_fenced_task_authority_cross_store_callback_blocks_reentry(
     tmp_path: Path,
@@ -270,7 +397,51 @@ def test_fenced_task_authority_cross_store_callback_blocks_reentry(
                 **kwargs,
                 callback=reenter,
             )
+
+        def cancel(_receipt: object) -> dict[str, object]:
+            raise KeyboardInterrupt("cancelled receipt capture")
+
+        with pytest.raises(KeyboardInterrupt, match="cancelled receipt"):
+            coordinator.execute_with_fenced_task_authority_population(
+                **kwargs,
+                callback=cancel,
+            )
+        assert not coordinator._connection.in_transaction
+        recovered = coordinator.execute_with_fenced_task_authority_population(
+            **kwargs,
+            callback=lambda receipt: {
+                "coordinator_receipt_cid": receipt["receipt_cid"]
+            },
+        )
+        assert recovered["coordinator_receipt_cid"]
     finally:
+        coordinator.close()
+
+
+def test_fenced_task_authority_cross_store_callback_rejects_quack_transport(
+    tmp_path: Path,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator._quack_transport = True
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match="unavailable through Quack",
+        ):
+            coordinator.execute_with_fenced_task_authority_population(
+                task_cid="task:not-read",
+                attempt_id="attempt:not-read",
+                claim_id="claim:not-read",
+                lease_id="lease:not-read",
+                owner_session_id="session:not-read",
+                fencing_token=1,
+                fence_epoch=1,
+                receipt_nonce="receipt:not-read",
+                receipt_epoch=1,
+                callback=lambda _receipt: {},
+            )
+    finally:
+        coordinator._quack_transport = False
         coordinator.close()
 
 
