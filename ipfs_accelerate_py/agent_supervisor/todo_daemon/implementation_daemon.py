@@ -94970,7 +94970,14 @@ class DatabaseImplementationDaemon:
                     excluded.add(task_cid)
                 continue
             if recovery_context is not None:
-                excluded.add(task_cid)
+                status = str(getattr(task, "status", "") or "").strip().lower()
+                # SPAR-018 was unstalled back to todo while an older crash
+                # window stayed open.  Fencing that leftover window starved
+                # the only dependency-ready task.  Ordinary implement
+                # statuses stay claimable; blocked crash-recovery candidates
+                # remain fail-closed.
+                if status not in {"todo", "ready", "open"}:
+                    excluded.add(task_cid)
         return excluded
 
     def _remember_control_claim_rejection(self, task: Any) -> None:
@@ -96185,6 +96192,7 @@ class DatabaseImplementationDaemon:
             try:
                 completion_recovery_fenced = bool(
                     task is not None
+                    and task_status not in {"todo", "ready", "open"}
                     and self._post_merge_completion_crash_recovery_context(
                         task,
                         require_current_blocked=False,

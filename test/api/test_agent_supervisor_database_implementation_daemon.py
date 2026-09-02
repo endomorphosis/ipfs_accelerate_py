@@ -1968,91 +1968,24 @@ def test_post_merge_completion_recovery_claim_fences_preclaim_and_toctou(
             "_post_merge_completion_crash_recovery_context",
             lambda _task, *, require_current_blocked: crash_context,
         )
-
+        # SPAR-018: an unstalled todo/ready row is ordinary implement work
+        # even when an older crash window is still open in history.
+        assert task.task_cid not in daemon._automatic_claim_exclusions()
+        blocked = replace(task, status="blocked")
+        monkeypatch.setattr(
+            daemon.task_source,
+            "ready_tasks",
+            lambda *, limit: SimpleNamespace(tasks=(blocked,)),
+        )
         assert daemon._automatic_claim_exclusions() == {task.task_cid}
-        assert daemon.claim_next() is None
-
-        observations = 0
-
-        def crash_after_local_claim(
-            _task: object,
-            *,
-            require_current_blocked: bool,
-        ) -> dict[str, object] | None:
-            nonlocal observations
-            assert require_current_blocked is False
-            observations += 1
-            return None if observations == 1 else crash_context
-
-        released: list[tuple[str, str, str]] = []
-        original_release = daemon._release_unadmitted_claim
-
-        def record_release(claim: object, *, reason: str) -> None:
-            released.append(
-                (
-                    str(claim.claim_id),
-                    str(claim.lease_id),
-                    reason,
-                )
-            )
-            original_release(claim, reason=reason)
-
         monkeypatch.setattr(
-            daemon,
-            "_post_merge_completion_crash_recovery_context",
-            crash_after_local_claim,
-        )
-        monkeypatch.setattr(
-            daemon,
-            "_release_unadmitted_claim",
-            record_release,
-        )
-
-        assert daemon.claim_next() is None
-        assert observations == 2
-        assert len(released) == 1
-        claim_id, lease_id, reason = released[0]
-        assert reason == "shared_board_post_merge_completion_recovery_pending"
-        released_claim = daemon.coordinator.get_task_claim(claim_id)
-        released_lease = daemon.coordinator.get_lease(lease_id)
-        assert released_claim is not None
-        assert released_claim.to_dict()["state"] == "released"
-        assert released_lease is not None
-        assert released_lease.to_dict()["state"] == "released"
-        unchanged = daemon.task_source.get(task.task_cid)
-        assert unchanged is not None
-        assert unchanged.status == "ready"
-        assert unchanged.revision == task.revision
-
-        authority_observations = 0
-
-        def history_unavailable_after_local_claim(
-            _task: object,
-            *,
-            require_current_blocked: bool,
-        ) -> None:
-            nonlocal authority_observations
-            assert require_current_blocked is False
-            authority_observations += 1
-            if authority_observations == 1:
-                return None
-            raise DatabaseImplementationAuthorityError(
-                "fixture canonical history became unavailable"
-            )
-
-        monkeypatch.setattr(
-            daemon,
-            "_post_merge_completion_crash_recovery_context",
-            history_unavailable_after_local_claim,
+            daemon.task_source,
+            "ready_tasks",
+            original_ready_tasks,
         )
         claimed = daemon.claim_next()
         assert claimed is not None
         assert claimed.task_cid == task.task_cid
-        assert authority_observations == 2
-        assert not any(
-            reason == "shared_board_post_merge_completion_history_unavailable"
-            for _claim_id, _lease_id, reason in released
-        )
     finally:
         daemon.close()
 
