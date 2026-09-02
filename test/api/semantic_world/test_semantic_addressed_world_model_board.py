@@ -757,8 +757,14 @@ def test_m57_reconciled_stalled_wave_source_authority_is_exact() -> None:
         "d7484ecaeec689fef4a2111718bf0c81a0b630a8",
         "865f0486adb1dca2ec3bcf0f032bd359aaa05e01",
     ]
+    assert chain["initial_final_control"]["commit"] == (
+        "e26c9ee76014724d29cc9a37839d1f43ce3c0cff"
+    )
+    assert chain["initial_final_control"]["pre_authoritative_validation_result"] == (
+        "rejected"
+    )
     assert chain["final_control_parent"] == (
-        "e06d00c60ab3fda8af5bcff708fd692d09362fd7"
+        "e26c9ee76014724d29cc9a37839d1f43ce3c0cff"
     )
     assert chain["repair_commit_count"] == 4
     assert chain["source_reconciliation_merge_count"] == 2

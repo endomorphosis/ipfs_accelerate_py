@@ -3719,9 +3719,9 @@ _M57_SUPERSESSION_REASON = (
 )
 _M57_CONTROL_RECORDED_AT = "2026-09-02T08:22:00Z"
 _M57_AUTHORITY_CID = (
-    "sha256:356234667993c1b905561f236126e88bb540205a65719b99c7326bf9e04d2e89"
+    "sha256:ca402f78a63e84a937f1f62ea97ebbccc67264bb2c47c4aaaac3473ec9fb9590"
 )
-_M57_AUTHORITY_SIZE = 44_406
+_M57_AUTHORITY_SIZE = 45_580
 _M57_PRIOR_GENERATION = 41
 _M57_TARGET_GENERATION = 42
 _M57_PRIOR_EVENT_WATERMARK = 326
@@ -3865,6 +3865,15 @@ _M57_ACCEPTED_RECONCILIATION_TREE = (
 )
 _M57_ACCEPTED_RECONCILIATION_DIFF_SHA256 = (
     "46a471ef0aa5519420eb0a06057bec6836567e27a6767e838f5086226825fda6"
+)
+_M57_INITIAL_FINAL_CONTROL_COMMIT = (
+    "e26c9ee76014724d29cc9a37839d1f43ce3c0cff"
+)
+_M57_INITIAL_FINAL_CONTROL_TREE = (
+    "bff21aac3a1dc179afb88a45ff9786b6743ba8ab"
+)
+_M57_INITIAL_FINAL_CONTROL_DIFF_SHA256 = (
+    "c422c3548bf4e12a8529f027732b28f6a80c113cba56c13be1ced732f467d83d"
 )
 _M57_RECONCILED_SOURCE_BLOBS = MappingProxyType(
     {
@@ -95966,11 +95975,23 @@ def _expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_a
             ),
             "second_parent_diff_sha256": hashlib.sha256(b"").hexdigest(),
         },
-        "final_control_parent": _M57_ACCEPTED_RECONCILIATION_COMMIT,
+        "initial_final_control": {
+            "commit": _M57_INITIAL_FINAL_CONTROL_COMMIT,
+            "parent": _M57_ACCEPTED_RECONCILIATION_COMMIT,
+            "tree": _M57_INITIAL_FINAL_CONTROL_TREE,
+            "binary_diff_sha256": _M57_INITIAL_FINAL_CONTROL_DIFF_SHA256,
+            "changed_paths": list(_M57_FINAL_CONTROL_PATHS),
+            "pre_authoritative_validation_result": "rejected",
+            "database_mutations": 0,
+            "task_status_changes": 0,
+            "accepted_completion_changes": 0,
+        },
+        "final_control_parent": _M57_INITIAL_FINAL_CONTROL_COMMIT,
         "repair_commit_count": 4,
         "source_reconciliation_merge_count": 2,
         "mode_only_overlay_commit_count": 1,
         "historical_control_draft_commit_count": 2,
+        "pre_authoritative_final_control_count": 1,
         "final_control_commit_count": 2,
         "current_commit_identity_embedded_in_authority": False,
     }
@@ -95981,6 +96002,7 @@ def _expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_a
             "source_reconciliation_merge_count": 2,
             "mode_only_overlay_changes": 2,
             "historical_control_draft_commit_count": 2,
+            "pre_authoritative_final_control_correction_count": 1,
             "ordinary_program_implementation_changes": 0,
             "production_source_changes": 4,
             "test_compatibility_source_changes": 3,
@@ -96017,6 +96039,7 @@ def _expected_m57_post_m56_live_ready_owner_missing_client_token_vault_restart_a
             "four_worktree_lanes_remain_independently_schedulable": True,
             "shared_duckdb_authority_writes_remain_quack_serialized": True,
             "no_task_completion_admitted_by_source_repair": True,
+            "rejected_initial_final_control_preserved": True,
         }
     )
     return authority
@@ -96081,12 +96104,15 @@ def _validated_m57_live_preflight_contract(
         != expected["source_chain"]["historical_grok_snapshot"]
         or chain.get("accepted_branch_reconciliation_merge")
         != expected["source_chain"]["accepted_branch_reconciliation_merge"]
+        or chain.get("initial_final_control")
+        != expected["source_chain"]["initial_final_control"]
         or chain.get("final_control_parent")
-        != _M57_ACCEPTED_RECONCILIATION_COMMIT
+        != _M57_INITIAL_FINAL_CONTROL_COMMIT
         or chain.get("repair_commit_count") != 4
         or chain.get("source_reconciliation_merge_count") != 2
         or chain.get("mode_only_overlay_commit_count") != 1
         or chain.get("historical_control_draft_commit_count") != 2
+        or chain.get("pre_authoritative_final_control_count") != 1
         or chain.get("final_control_commit_count") != 2
         or chain.get("current_commit_identity_embedded_in_authority") is not False
         or authority.get("ordinary_source_changes") != 0
@@ -96095,6 +96121,7 @@ def _validated_m57_live_preflight_contract(
         or changes.get("source_reconciliation_merge_count") != 2
         or changes.get("mode_only_overlay_changes") != 2
         or changes.get("ordinary_program_implementation_changes") != 0
+        or changes.get("pre_authoritative_final_control_correction_count") != 1
         or changes.get("accepted_completion_changes") != 0
         or changes.get("worker_self_approval") is not False
         or preservation.get("accepted_dirty_checkout_was_not_claimed_clean")
@@ -96189,6 +96216,8 @@ def _assert_m57_source_delta(
         _M57_GROK_DRAFT_TREE,
         _M57_ACCEPTED_RECONCILIATION_COMMIT,
         _M57_ACCEPTED_RECONCILIATION_TREE,
+        _M57_INITIAL_FINAL_CONTROL_COMMIT,
+        _M57_INITIAL_FINAL_CONTROL_TREE,
         *tuple(_M57_RECONCILED_SOURCE_BLOBS.values()),
         *tuple(_M57_HISTORICAL_CONTROL_BLOBS.values()),
     )
@@ -96210,6 +96239,9 @@ def _assert_m57_source_delta(
             _M57_ACCEPTED_GROK_DRAFT_COMMIT,
             _M57_INITIAL_CONTROL_COMMIT,
         ],
+        _M57_INITIAL_FINAL_CONTROL_COMMIT: [
+            _M57_ACCEPTED_RECONCILIATION_COMMIT
+        ],
     }
     expected_trees = {
         _M57_M56_FINAL_CONTROL_COMMIT: _M57_M56_FINAL_CONTROL_TREE,
@@ -96223,6 +96255,7 @@ def _assert_m57_source_delta(
         _M57_GROK_DRAFT_SNAPSHOT_COMMIT: _M57_GROK_DRAFT_TREE,
         _M57_ACCEPTED_GROK_DRAFT_COMMIT: _M57_GROK_DRAFT_TREE,
         _M57_ACCEPTED_RECONCILIATION_COMMIT: _M57_ACCEPTED_RECONCILIATION_TREE,
+        _M57_INITIAL_FINAL_CONTROL_COMMIT: _M57_INITIAL_FINAL_CONTROL_TREE,
     }
     expected_diffs = (
         (
@@ -96291,19 +96324,25 @@ def _assert_m57_source_delta(
             tuple(_M57_RECONCILED_SOURCE_BLOBS)[2:],
             _M57_ACCEPTED_RECONCILIATION_DIFF_SHA256,
         ),
+        (
+            _M57_ACCEPTED_RECONCILIATION_COMMIT,
+            _M57_INITIAL_FINAL_CONTROL_COMMIT,
+            _M57_FINAL_CONTROL_PATHS,
+            _M57_INITIAL_FINAL_CONTROL_DIFF_SHA256,
+        ),
     )
     if (
         not isinstance(chain, Mapping)
         or any(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in identities)
         or _M57_AUTHORITY_CID.endswith("PENDING_M57_FINAL_CONTROL_AUTHORITY_CID")
-        or chain.get("final_control_parent") != _M57_ACCEPTED_RECONCILIATION_COMMIT
+        or chain.get("final_control_parent") != _M57_INITIAL_FINAL_CONTROL_COMMIT
         or chain.get("current_commit_identity_embedded_in_authority") is not False
-        or current == _M57_ACCEPTED_RECONCILIATION_COMMIT
+        or current == _M57_INITIAL_FINAL_CONTROL_COMMIT
         or _git(root, "rev-list", "--parents", "-n", "1", current).split()
-        != [current, _M57_ACCEPTED_RECONCILIATION_COMMIT]
+        != [current, _M57_INITIAL_FINAL_CONTROL_COMMIT]
         or population["source_binding"].get("tree")
         != _git(root, "rev-parse", f"{current}^{{tree}}")
-        or _m27_name_status(root, _M57_ACCEPTED_RECONCILIATION_COMMIT, current)
+        or _m27_name_status(root, _M57_INITIAL_FINAL_CONTROL_COMMIT, current)
         != {path: "M" for path in _M57_FINAL_CONTROL_PATHS}
     ):
         raise MaterializationError("M57 exact final-control source chain differs")

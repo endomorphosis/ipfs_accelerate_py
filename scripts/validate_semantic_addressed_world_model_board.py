@@ -136,9 +136,9 @@ _M56_TARGET_PROJECTION_CID = (
     "baguqeerapoydtvtpy75iszsuwdulvft5zlt4frblsf3fwcd4jwyk2bbb4vva"
 )
 _M57_AUTHORITY_CID = (
-    "sha256:356234667993c1b905561f236126e88bb540205a65719b99c7326bf9e04d2e89"
+    "sha256:ca402f78a63e84a937f1f62ea97ebbccc67264bb2c47c4aaaac3473ec9fb9590"
 )
-_M57_AUTHORITY_SIZE = 44_406
+_M57_AUTHORITY_SIZE = 45_580
 _M57_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M57_FINAL_CONTROL_AUTHORITY_CID"
 _M57_SUCCESSOR_KEY = (
     "post_m56_live_ready_owner_missing_client_token_vault_restart_successor_materialization"
@@ -5415,7 +5415,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "41"
+        "42"
+        if m57_selected
+        else "41"
         if m56_selected
         else "40"
         if m55_selected
@@ -5512,6 +5514,8 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
     )
     active_port = (
         24070
+        if m57_selected
+        else 24070
         if m56_selected
         else 24070
         if m55_selected
