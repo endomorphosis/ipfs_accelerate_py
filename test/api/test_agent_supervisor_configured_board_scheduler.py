@@ -52,6 +52,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime import (
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     multi_supervisor_runner as multi_runner_module,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    quack_state_server as quack_server_module,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
     ConfiguredBoardError,
     configured_board_launch_plan,
@@ -1453,6 +1456,7 @@ def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
     log_dir = board.path(board.runtime_paths["logs"])
     state_dir.mkdir(parents=True)
     log_dir.mkdir(parents=True)
+    os.chmod(state_dir, 0o700)
     pid_path = state_dir / "configured-board-master.pid"
     outside = tmp_path / "outside-pid-target"
     outside.write_text(f"{os.getpid()}\n", encoding="utf-8")
@@ -1510,15 +1514,25 @@ def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
     descriptor, identity = scheduler_module._reserve_coordinator_pid_projection(
         pid_path
     )
+    reservation = scheduler_module._CoordinatorPIDReservation(
+        path=pid_path,
+        descriptor=descriptor,
+        identity=identity,
+        directory_identity=(
+            int(pid_path.parent.stat().st_dev),
+            int(pid_path.parent.stat().st_ino),
+            int(pid_path.parent.stat().st_uid),
+            stat.S_IMODE(pid_path.parent.stat().st_mode),
+        ),
+        state="claimed",
+    )
     try:
         scheduler_module._publish_reserved_coordinator_pid(
-            pid_path,
-            descriptor,
-            identity,
+            reservation,
             os.getpid(),
         )
     finally:
-        os.close(descriptor)
+        scheduler_module._close_coordinator_pid_reservation(reservation)
     os.chmod(pid_path, 0o644)
     assert scheduler_module._remove_owned_coordinator_pid(board) is False
     os.chmod(pid_path, 0o600)
@@ -1577,7 +1591,17 @@ def test_detached_coordinator_quarantines_dead_owned_legacy_pid_projection(
         assert receipt["receipt_id"].startswith("baguqeera")
     finally:
         os.close(descriptor)
-        scheduler_module._remove_reserved_coordinator_pid(pid_path, identity)
+        directory = os.lstat(pid_path.parent)
+        scheduler_module._remove_reserved_coordinator_pid(
+            pid_path,
+            identity,
+            (
+                int(directory.st_dev),
+                int(directory.st_ino),
+                int(directory.st_uid),
+                stat.S_IMODE(directory.st_mode),
+            ),
+        )
 
 
 @pytest.mark.parametrize(
@@ -1925,9 +1949,14 @@ def test_claimed_coordinator_handoff_validation_failure_rolls_back(
         os.fstat(reservation.descriptor)
 
 
+@pytest.mark.parametrize(
+    "failure_type",
+    (ConfiguredBoardError, KeyboardInterrupt),
+)
 def test_detached_main_reserves_before_native_seal_and_rolls_back(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[BaseException],
 ) -> None:
     repo, config_path, seeded = _seed_v3_task_repo(
         tmp_path,
@@ -1985,7 +2014,7 @@ def test_detached_main_reserves_before_native_seal_and_rolls_back(
         assert pid_path.is_file()
         assert pid_path.stat().st_size == 0
         assert stat.S_IMODE(pid_path.stat().st_mode) == 0o600
-        raise ConfiguredBoardError("synthetic native seal failure")
+        raise failure_type("synthetic native seal failure")
 
     monkeypatch.setattr(
         scheduler_module,
@@ -2003,18 +2032,20 @@ def test_detached_main_reserves_before_native_seal_and_rolls_back(
         fail_native_seal,
     )
 
-    result = scheduler_module.main(
-        (
-            "--repo-root",
-            str(repo),
-            "--config",
-            str(config_path),
-            "launch",
-            "--implement",
-        )
+    argv = (
+        "--repo-root",
+        str(repo),
+        "--config",
+        str(config_path),
+        "launch",
+        "--implement",
     )
+    if failure_type is KeyboardInterrupt:
+        with pytest.raises(KeyboardInterrupt, match="synthetic native seal"):
+            scheduler_module.main(argv)
+    else:
+        assert scheduler_module.main(argv) == 2
 
-    assert result == 2
     assert events == ["dependency_snapshot", "pid_reserve", "native_seal"]
     assert not (
         board.path(board.runtime_paths["state"])
@@ -2060,9 +2091,7 @@ def test_detached_main_claims_supplied_reservation_once_and_preserves_publish(
         assert supplied.state == "claimed"
         launches.append("launch")
         scheduler_module._publish_reserved_coordinator_pid(
-            supplied.path,
-            supplied.descriptor,
-            supplied.identity,
+            supplied,
             os.getpid(),
         )
         scheduler_module._mark_coordinator_pid_reservation_published(
@@ -2161,6 +2190,1261 @@ def test_detached_main_rejects_supplied_reservation_substitution_without_spawn(
     reservation.path = original_path
     scheduler_module._discard_coordinator_pid_reservation(reservation)
     assert not original_path.exists()
+
+
+def _detached_coordinator_gate_snapshot() -> dict[str, Any]:
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-task-source-snapshot@1"
+        ),
+        "source_schema": (
+            "ipfs_accelerate_py/agent-supervisor/database-task-source@1"
+        ),
+        "schema_version": 1,
+        "plan_root_cid": "baguqeera-test-plan-root",
+        "repository_tree_id": "a" * 40,
+        "projection_cid": "baguqeera-test-projection",
+        "formal_plan_id": "test-formal-plan",
+        "source_identity": "sha256:" + "b" * 64,
+        "revision": 7,
+        "event_cursor": 11,
+        "goal_count": 1,
+        "task_count": 2,
+        "dependency_count": 1,
+        "terminal": False,
+        "objective_count": 1,
+        "plan_count": 1,
+    }
+
+
+def _begin_test_token_handoff(
+    state_dir: Path,
+    *,
+    token: str = "test-only-quack-token",
+    secret_handle: str = "env://TEST_ONLY_QUACK_TOKEN",
+    present: bool = True,
+) -> Any:
+    state_dir.mkdir(mode=0o700, parents=True)
+    if present:
+        token_path = state_dir / quack_server_module._token_handoff_filename(
+            secret_handle
+        )
+        token_path.write_text(token, encoding="ascii")
+        token_path.chmod(0o600)
+    return quack_server_module.begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=secret_handle,
+        expected_token=token,
+    )
+
+
+def _install_detached_coordinator_gate_harness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    ack_mode: str = "valid",
+    commit_mode: str = "success",
+    release_failure: bool = False,
+    release_after_write_failure: bool = False,
+    release_exception_type: type[BaseException] = OSError,
+    popen_failure: bool = False,
+    publish_failure: bool = False,
+    mark_failure: bool = False,
+    termination_proven: bool = True,
+) -> SimpleNamespace:
+    """Install a fake process around the real parent-side credential gate."""
+
+    repo, _config_path, seeded = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    token = "test-only-quack-token"
+    secret_handle = "env://TEST_ONLY_QUACK_TOKEN"
+    program = scheduler_module.DatabaseProgramConfig(
+        authority_mode=scheduler_module.AUTHORITY_MODE_QUACK,
+        task_source_kind="duckdb",
+        endpoint_secret_handle=secret_handle,
+        quack_endpoint="quack:127.0.0.1:45123",
+        store_id="test-store",
+        store_generation="7",
+        schema_revision="1",
+        failover_policy="fail_closed",
+    )
+    board = replace(
+        seeded,
+        payload={
+            **seeded.payload,
+            "quack_owner": {"state_dir": "state/quack-owner"},
+        },
+        database_program=program,
+    )
+    module_path = (
+        repo
+        / "ipfs_accelerate_py/agent_supervisor/runtime/"
+        "configured_board_scheduler.py"
+    )
+    monkeypatch.setattr(scheduler_module, "__file__", str(module_path))
+    monkeypatch.setattr(
+        scheduler_module,
+        "_git_identity",
+        lambda _root: ("a" * 40, "b" * 40),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_tracked_head_snapshot",
+        lambda **_kwargs: (b"tracked", "sha256:tracked"),
+    )
+
+    capsule_parent = tmp_path / "synthetic-coordinator-capsule"
+    extension_home = capsule_parent / "extension-home"
+    (extension_home / ".duckdb/extensions").mkdir(parents=True)
+
+    def materialize(_board):
+        descriptor = os.open(os.devnull, os.O_RDONLY | os.O_CLOEXEC)
+        return (
+            SimpleNamespace(capsule_root=str(capsule_parent / "capsule")),
+            SimpleNamespace(descriptor=descriptor),
+            capsule_parent,
+        )
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_materialize_plan_bound_control_plane",
+        materialize,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_configured_board_extension_set_projection",
+        lambda *_args, **_kwargs: (object(), (), {}),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "project_configured_board_extension_set_home",
+        lambda *_args, **_kwargs: extension_home,
+    )
+    environment = {
+        "TEST_ONLY_QUACK_TOKEN": token,
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN": token,
+    }
+    monkeypatch.setattr(
+        scheduler_module,
+        "_sealed_coordinator_environment",
+        lambda *_args, **_kwargs: dict(environment),
+    )
+
+    snapshot = _detached_coordinator_gate_snapshot()
+    accepted = scheduler_module._AcceptedCoordinatorCredentialHandoff(
+        secret_handle=secret_handle,
+        credential_sha256=(
+            "sha256:" + hashlib.sha256(token.encode("utf-8")).hexdigest()
+        ),
+        mutation_binding={"server_id": "test-server"},
+        task_snapshot=snapshot,
+        commit_receipt={
+            "schema": "ipfs_accelerate_py/quack-token-handoff-retirement@1",
+            "retired": True,
+            "already_absent": False,
+            "secret_handle": secret_handle,
+        },
+        authority_binding={
+            "schema": (
+                "ipfs_accelerate_py/"
+                "quack-token-handoff-authority-binding@1"
+            ),
+            "state_dir": str(repo / "state/quack-owner"),
+            "secret_handle": secret_handle,
+            "credential_sha256": (
+                "sha256:" + hashlib.sha256(token.encode("utf-8")).hexdigest()
+            ),
+        },
+    )
+    events: list[str] = []
+    captured: dict[str, Any] = {}
+    released = threading.Event()
+    child_finished = threading.Event()
+    terminated = threading.Event()
+    aborted = threading.Event()
+
+    class CredentialHandoff:
+        state = "begun"
+        secret_handle = accepted.secret_handle
+        credential_sha256 = accepted.credential_sha256
+
+        @property
+        def expected_commit_receipt(self) -> dict[str, object]:
+            return dict(accepted.commit_receipt)
+
+        def commit(self) -> object:
+            events.append("commit")
+            assert reservation.state == "published"
+            assert reservation.path.read_bytes() == b"424242\n"
+            assert not released.is_set()
+            if commit_mode == "exception":
+                raise RuntimeError("synthetic commit failure")
+            receipt = {
+                "schema": (
+                    "ipfs_accelerate_py/quack-token-handoff-retirement@1"
+                ),
+                "retired": True,
+                "already_absent": False,
+                "secret_handle": self.secret_handle,
+            }
+            if commit_mode == "noop":
+                return receipt
+            self.state = "committed"
+            if commit_mode == "committed_exception":
+                raise RuntimeError("synthetic post-commit return failure")
+            if commit_mode == "forged_receipt":
+                receipt["secret_handle"] = "env://FORGED_TOKEN"
+            return receipt
+
+        def close_without_rollback(self, *, reason: str) -> object:
+            events.append("terminal_close")
+            assert reason == "child_liveness_unproven"
+            self.state = "closed"
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/"
+                    "quack-token-handoff-retirement-closed@1"
+                ),
+                "closed": True,
+                "terminal": True,
+                "reason": reason,
+                "completion_authority": False,
+                "task_authority": False,
+                "secret_handle": self.secret_handle,
+                "credential_sha256": self.credential_sha256,
+            }
+
+    handoff = CredentialHandoff()
+    monkeypatch.setattr(
+        scheduler_module,
+        "_require_concrete_coordinator_credential_handoff",
+        lambda candidate: (
+            candidate
+            if candidate is handoff
+            else pytest.fail("credential handoff provenance changed")
+        ),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_accept_coordinator_credential_handoff",
+        lambda observed_board, observed_handoff, observed_environment: (
+            accepted
+            if observed_board is board
+            and observed_handoff is handoff
+            and observed_environment == environment
+            else pytest.fail("credential handoff inputs changed")
+        ),
+    )
+
+    def coordinator_argv(_board, **kwargs):
+        captured.update(
+            ready_descriptor=kwargs["credential_ready_descriptor"],
+            start_descriptor=kwargs["credential_start_descriptor"],
+            nonce=kwargs["credential_nonce"],
+        )
+        return ["synthetic-configured-board-child"]
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_plan_bound_coordinator_module_argv",
+        coordinator_argv,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "build_sealed_control_plane_module_command",
+        lambda **kwargs: list(kwargs["argv"]),
+    )
+
+    class FakeProcess:
+        pid = 424242
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+        @staticmethod
+        def wait(*_args, **_kwargs) -> int:
+            return 0
+
+    process = FakeProcess()
+
+    def popen(command, **kwargs):
+        events.append("popen")
+        if popen_failure:
+            raise OSError("synthetic Popen failure")
+        assert command == ["synthetic-configured-board-child"]
+        assert kwargs["start_new_session"] is True
+        assert kwargs["env"] == environment
+        assert token not in repr(command)
+        assert captured["ready_descriptor"] in kwargs["pass_fds"]
+        assert captured["start_descriptor"] in kwargs["pass_fds"]
+        ready_writer = os.dup(captured["ready_descriptor"])
+        start_reader = os.dup(captured["start_descriptor"])
+
+        def child() -> None:
+            try:
+                acknowledgement = (
+                    scheduler_module._coordinator_credential_ack_bytes(
+                        board,
+                        nonce=captured["nonce"],
+                        pid=process.pid,
+                        snapshot=snapshot,
+                    )
+                    if ack_mode == "valid"
+                    else b'{"schema":"malformed-test-ack"}\n'
+                )
+                os.write(ready_writer, acknowledgement)
+            finally:
+                os.close(ready_writer)
+            try:
+                release = os.read(start_reader, 2)
+                if release == b"\x01":
+                    released.set()
+                elif release == b"\x00":
+                    aborted.set()
+            finally:
+                os.close(start_reader)
+                child_finished.set()
+
+        thread = threading.Thread(target=child, daemon=True)
+        captured["child_thread"] = thread
+        thread.start()
+        return process
+
+    monkeypatch.setattr(scheduler_module.subprocess, "Popen", popen)
+    def terminate(observed):
+        if observed is not process:
+            pytest.fail("unexpected process object during fencing")
+        events.append("terminate")
+        terminated.set()
+        return termination_proven
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_terminate_detached_coordinator",
+        terminate,
+    )
+
+    original_wait = scheduler_module._wait_for_detached_coordinator_credential_ack
+    original_publish = scheduler_module._publish_reserved_coordinator_pid
+    original_mark = scheduler_module._mark_coordinator_pid_reservation_published
+    original_release = scheduler_module._release_detached_coordinator_credential_gate
+
+    def wait_for_ack(*args, **kwargs):
+        result = original_wait(*args, **kwargs)
+        events.append("ack")
+        return result
+
+    def publish(observed_reservation, pid):
+        assert observed_reservation.path.read_bytes() == b""
+        if publish_failure:
+            events.append("pid_publish_failure")
+            raise ConfiguredBoardError("synthetic PID publish failure")
+        original_publish(observed_reservation, pid)
+        assert observed_reservation.path.read_bytes() == b"424242\n"
+        events.append("pid_write")
+
+    def mark(observed_reservation, *, pid):
+        assert observed_reservation.path.read_bytes() == b"424242\n"
+        assert observed_reservation.state == "claimed"
+        if mark_failure:
+            events.append("pid_mark_failure")
+            raise ConfiguredBoardError("synthetic PID mark failure")
+        original_mark(observed_reservation, pid=pid)
+        assert observed_reservation.state == "published"
+        events.append("pid_mark")
+
+    def release(descriptor):
+        events.append("release")
+        if release_failure:
+            raise release_exception_type("synthetic release failure")
+        original_release(descriptor)
+        if release_after_write_failure:
+            raise release_exception_type("synthetic post-write release failure")
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_wait_for_detached_coordinator_credential_ack",
+        wait_for_ack,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_publish_reserved_coordinator_pid",
+        publish,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_mark_coordinator_pid_reservation_published",
+        mark,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_release_detached_coordinator_credential_gate",
+        release,
+    )
+
+    reservation = scheduler_module._reserve_detached_coordinator_pid(board)
+    native_launch = SimpleNamespace(pass_fds=())
+
+    def launch() -> dict[str, Any]:
+        return scheduler_module._launch_detached_plan_bound_coordinator(
+            board,
+            implement=True,
+            duration_seconds=1.0,
+            native_dependency_launch=native_launch,
+            dependency_seal_snapshot=object(),
+            coordinator_pid_reservation=reservation,
+            coordinator_credential_handoff=handoff,
+        )
+
+    return SimpleNamespace(
+        launch=launch,
+        board=board,
+        handoff=handoff,
+        reservation=reservation,
+        snapshot=snapshot,
+        events=events,
+        captured=captured,
+        released=released,
+        child_finished=child_finished,
+        terminated=terminated,
+        aborted=aborted,
+    )
+
+
+def test_detached_credential_gate_orders_ack_pid_commit_and_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _install_detached_coordinator_gate_harness(tmp_path, monkeypatch)
+
+    report = harness.launch()
+    harness.captured["child_thread"].join(timeout=1.0)
+
+    assert harness.events == [
+        "popen",
+        "ack",
+        "pid_write",
+        "pid_mark",
+        "commit",
+        "release",
+    ]
+    assert harness.released.is_set()
+    assert harness.child_finished.is_set()
+    assert harness.terminated.is_set() is False
+    assert harness.reservation.state == "published"
+    assert harness.reservation.descriptor_closed is True
+    assert report["coordinator_pid"] == 424242
+    assert report["coordinator_credential_handoff_committed"] is True
+    assert report["coordinator_quack_snapshot"] == harness.snapshot
+
+
+def test_detached_credential_gate_rejects_malformed_ack_before_pid_or_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _install_detached_coordinator_gate_harness(
+        tmp_path,
+        monkeypatch,
+        ack_mode="malformed",
+    )
+
+    with pytest.raises(ConfiguredBoardError, match="ACK differs"):
+        harness.launch()
+    harness.captured["child_thread"].join(timeout=1.0)
+
+    assert harness.events == ["popen", "terminate"]
+    assert harness.terminated.is_set()
+    assert harness.released.is_set() is False
+    assert harness.reservation.state == "discarded"
+    assert harness.reservation.descriptor_closed is True
+    assert not harness.reservation.path.exists()
+
+
+def test_detached_precommit_failure_retains_pid_and_token_when_exit_unproven(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _install_detached_coordinator_gate_harness(
+        tmp_path,
+        monkeypatch,
+        ack_mode="malformed",
+        termination_proven=False,
+    )
+
+    with pytest.raises(
+        scheduler_module._CoordinatorTerminationUnprovenError,
+        match="exit could not be proven",
+    ):
+        harness.launch()
+    harness.captured["child_thread"].join(timeout=1.0)
+
+    assert harness.events == ["popen", "terminate", "terminal_close"]
+    assert harness.handoff.state == "closed"
+    assert harness.aborted.is_set()
+    assert harness.released.is_set() is False
+    assert harness.reservation.state == "claimed"
+    assert harness.reservation.descriptor_closed is True
+    assert harness.reservation.path.exists()
+    assert harness.reservation.path.read_bytes() == b""
+
+
+@pytest.mark.parametrize(
+    ("failure_point", "message", "expected_events", "terminated"),
+    (
+        ("popen", "synthetic Popen failure", ["popen"], False),
+        (
+            "publish",
+            "synthetic PID publish failure",
+            ["popen", "ack", "pid_publish_failure", "terminate"],
+            True,
+        ),
+        (
+            "mark",
+            "synthetic PID mark failure",
+            ["popen", "ack", "pid_write", "pid_mark_failure", "terminate"],
+            True,
+        ),
+    ),
+)
+def test_detached_credential_gate_rolls_back_spawn_pid_publish_or_mark_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+    message: str,
+    expected_events: list[str],
+    terminated: bool,
+) -> None:
+    harness = _install_detached_coordinator_gate_harness(
+        tmp_path,
+        monkeypatch,
+        **{f"{failure_point}_failure": True},
+    )
+
+    with pytest.raises((ConfiguredBoardError, OSError), match=message):
+        harness.launch()
+    child_thread = harness.captured.get("child_thread")
+    if child_thread is not None:
+        child_thread.join(timeout=1.0)
+
+    assert harness.events == expected_events
+    assert harness.terminated.is_set() is terminated
+    assert harness.released.is_set() is False
+    assert harness.reservation.state == "discarded"
+    assert harness.reservation.descriptor_closed is True
+    assert not harness.reservation.path.exists()
+    assert harness.handoff.state == "begun"
+
+
+@pytest.mark.parametrize(
+    ("commit_mode", "message"),
+    (
+        ("exception", "handoff commit failed"),
+        ("noop", "handoff commit differed"),
+    ),
+)
+def test_detached_credential_gate_fences_only_precommit_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    commit_mode: str,
+    message: str,
+) -> None:
+    harness = _install_detached_coordinator_gate_harness(
+        tmp_path,
+        monkeypatch,
+        commit_mode=commit_mode,
+    )
+
+    with pytest.raises(ConfiguredBoardError, match=message):
+        harness.launch()
+    harness.captured["child_thread"].join(timeout=1.0)
+
+    assert harness.events == [
+        "popen",
+        "ack",
+        "pid_write",
+        "pid_mark",
+        "commit",
+        "terminate",
+    ]
+    assert harness.terminated.is_set()
+    assert harness.released.is_set() is False
+    assert harness.reservation.state == "discarded"
+    assert not harness.reservation.path.exists()
+
+
+@pytest.mark.parametrize("commit_mode", ("forged_receipt", "committed_exception"))
+def test_detached_credential_gate_recovers_terminal_commit_return_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    commit_mode: str,
+) -> None:
+    harness = _install_detached_coordinator_gate_harness(
+        tmp_path,
+        monkeypatch,
+        commit_mode=commit_mode,
+    )
+
+    report = harness.launch()
+    harness.captured["child_thread"].join(timeout=1.0)
+
+    assert harness.handoff.state == "committed"
+    assert harness.events == [
+        "popen",
+        "ack",
+        "pid_write",
+        "pid_mark",
+        "commit",
+        "release",
+    ]
+    assert harness.terminated.is_set() is False
+    assert harness.released.is_set()
+    assert report["coordinator_credential_handoff_committed"] is True
+    assert report["coordinator_credential_commit_recovered"] is True
+
+
+@pytest.mark.parametrize(
+    ("release_failure", "release_after_write_failure", "released"),
+    ((True, False, False), (False, True, True)),
+)
+def test_detached_credential_gate_release_failure_preserves_postcommit_child(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    release_failure: bool,
+    release_after_write_failure: bool,
+    released: bool,
+) -> None:
+    harness = _install_detached_coordinator_gate_harness(
+        tmp_path,
+        monkeypatch,
+        release_failure=release_failure,
+        release_after_write_failure=release_after_write_failure,
+    )
+
+    with pytest.raises(ConfiguredBoardError, match="operator recovery is required"):
+        harness.launch()
+    harness.captured["child_thread"].join(timeout=1.0)
+
+    assert harness.handoff.state == "committed"
+    assert harness.events == [
+        "popen",
+        "ack",
+        "pid_write",
+        "pid_mark",
+        "commit",
+        "release",
+    ]
+    assert harness.terminated.is_set() is False
+    assert harness.released.is_set() is released
+    assert harness.reservation.state == "published"
+    assert harness.reservation.path.read_bytes() == b"424242\n"
+
+
+def test_postcommit_base_exception_never_fences_child_or_removes_pid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _install_detached_coordinator_gate_harness(
+        tmp_path,
+        monkeypatch,
+        release_after_write_failure=True,
+        release_exception_type=KeyboardInterrupt,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="post-write release failure"):
+        harness.launch()
+    harness.captured["child_thread"].join(timeout=1.0)
+
+    assert harness.handoff.state == "committed"
+    assert harness.released.is_set()
+    assert harness.terminated.is_set() is False
+    assert harness.reservation.state == "published"
+    assert harness.reservation.path.read_bytes() == b"424242\n"
+
+
+def test_detached_credential_ack_wait_times_out_without_child_ack(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    ready_reader, ready_writer = scheduler_module._create_coordinator_credential_pipe()
+    monkeypatch.setattr(
+        scheduler_module,
+        "COORDINATOR_CREDENTIAL_READY_TIMEOUT_SECONDS",
+        0.01,
+    )
+    process = SimpleNamespace(pid=424242, poll=lambda: None)
+    try:
+        with pytest.raises(ConfiguredBoardError, match="readiness timed out"):
+            scheduler_module._wait_for_detached_coordinator_credential_ack(
+                board,
+                process=process,
+                descriptor=ready_reader,
+                identity=scheduler_module._coordinator_pipe_identity(ready_reader),
+                nonce="a" * 64,
+                expected_snapshot=_detached_coordinator_gate_snapshot(),
+            )
+    finally:
+        os.close(ready_reader)
+        os.close(ready_writer)
+
+
+def test_detached_credential_ack_wait_rejects_substituted_pipe_descriptor(
+    tmp_path: Path,
+) -> None:
+    _repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    expected_reader, expected_writer = (
+        scheduler_module._create_coordinator_credential_pipe()
+    )
+    substitute_reader, substitute_writer = (
+        scheduler_module._create_coordinator_credential_pipe()
+    )
+    process = SimpleNamespace(pid=424242, poll=lambda: None)
+    try:
+        with pytest.raises(ConfiguredBoardError, match="identity differ"):
+            scheduler_module._wait_for_detached_coordinator_credential_ack(
+                board,
+                process=process,
+                descriptor=substitute_reader,
+                identity=scheduler_module._coordinator_pipe_identity(
+                    expected_reader
+                ),
+                nonce="a" * 64,
+                expected_snapshot=_detached_coordinator_gate_snapshot(),
+            )
+    finally:
+        for descriptor in (
+            expected_reader,
+            expected_writer,
+            substitute_reader,
+            substitute_writer,
+        ):
+            os.close(descriptor)
+
+
+def test_coordinator_handoff_requires_concrete_qss_provenance_and_present_file(
+    tmp_path: Path,
+) -> None:
+    transaction = _begin_test_token_handoff(tmp_path / "handoff")
+
+    class StructuralForgery:
+        state = "begun"
+        secret_handle = transaction.secret_handle
+        credential_sha256 = transaction.credential_sha256
+        expected_commit_receipt = transaction.expected_commit_receipt
+
+        @staticmethod
+        def commit() -> dict[str, object]:
+            return dict(transaction.expected_commit_receipt)
+
+    try:
+        assert (
+            scheduler_module._require_concrete_coordinator_credential_handoff(
+                transaction
+            )
+            is transaction
+        )
+        with pytest.raises(ConfiguredBoardError, match="concrete QSS provenance"):
+            scheduler_module._require_concrete_coordinator_credential_handoff(
+                StructuralForgery()
+            )
+    finally:
+        transaction.rollback()
+
+    absent = _begin_test_token_handoff(
+        tmp_path / "absent-handoff",
+        present=False,
+    )
+    try:
+        with pytest.raises(ConfiguredBoardError, match="receipt differs"):
+            scheduler_module._validate_coordinator_credential_commit_receipt(
+                absent.expected_commit_receipt,
+                secret_handle=absent.secret_handle,
+            )
+    finally:
+        absent.rollback()
+
+
+def test_main_rejects_handoff_for_nonconsuming_plan_bound_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    reservation = scheduler_module._reserve_detached_coordinator_pid(board)
+    transaction = _begin_test_token_handoff(tmp_path / "handoff")
+    monkeypatch.setattr(
+        scheduler_module,
+        "load_configured_board",
+        lambda *_args, **_kwargs: board,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "main",
+        lambda _argv: pytest.fail("nonconsuming handoff dispatched a child"),
+    )
+    try:
+        assert scheduler_module.main(
+            (
+                "--repo-root",
+                str(repo),
+                "--config",
+                str(config_path),
+                "launch",
+                "--implement",
+            ),
+            coordinator_pid_reservation=reservation,
+            coordinator_credential_handoff=transaction,
+        ) == 2
+        assert "credential handoff has no consuming route" in capsys.readouterr().out
+        assert transaction.state == "begun"
+        assert reservation.state == "reserved"
+    finally:
+        transaction.rollback()
+        scheduler_module._discard_coordinator_pid_reservation(reservation)
+
+
+def test_main_rejects_real_foreground_sealed_quack_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, config_path, seeded = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    program = scheduler_module.DatabaseProgramConfig(
+        authority_mode=scheduler_module.AUTHORITY_MODE_QUACK,
+        task_source_kind="duckdb",
+        endpoint_secret_handle="env://TEST_ONLY_QUACK_TOKEN",
+        quack_endpoint="quack:127.0.0.1:45123",
+        store_id="test-store",
+        store_generation="7",
+        schema_revision="1",
+        failover_policy="fail_closed",
+    )
+    board = replace(
+        seeded,
+        board_namespace="semantic-addressed-world-model-v1",
+        live_capsule_control_paths=("config/scheduler.json",),
+        database_program=program,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "load_configured_board",
+        lambda *_args, **_kwargs: board,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_sealed_configured_control_plane_required",
+        lambda _board: True,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "main",
+        lambda _argv: pytest.fail("foreground Quack route dispatched a child"),
+    )
+
+    assert scheduler_module.main(
+        (
+            "--repo-root",
+            str(repo),
+            "--config",
+            str(config_path),
+            "launch",
+            "--implement",
+            "--foreground",
+        )
+    ) == 2
+    assert "lacks transactional credential gate" in capsys.readouterr().out
+
+
+def test_partial_coordinator_pid_publication_is_removed_on_rollback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    reservation = scheduler_module._reserve_detached_coordinator_pid(board)
+    scheduler_module._claim_coordinator_pid_reservation(board, reservation)
+    original_write = scheduler_module.os.write
+    writes = 0
+
+    def partial_then_fail(descriptor: int, payload: bytes) -> int:
+        nonlocal writes
+        if descriptor == reservation.descriptor:
+            return original_write(descriptor, payload)
+        writes += 1
+        if writes == 1:
+            return original_write(descriptor, payload[:1])
+        raise OSError("synthetic partial PID write failure")
+
+    monkeypatch.setattr(scheduler_module.os, "write", partial_then_fail)
+    with pytest.raises(ConfiguredBoardError, match="cannot publish"):
+        scheduler_module._publish_reserved_coordinator_pid(
+            reservation,
+            424242,
+        )
+    assert reservation.path.read_bytes() == b""
+    scheduler_module._discard_coordinator_pid_reservation(
+        reservation,
+        prepublished_pid=424242,
+        remove_published=True,
+    )
+    assert not reservation.path.exists()
+
+
+def test_pid_publication_recovers_atomic_replace_return_interruption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    reservation = scheduler_module._reserve_detached_coordinator_pid(board)
+    scheduler_module._claim_coordinator_pid_reservation(board, reservation)
+    original_identity = reservation.identity
+    original_replace = scheduler_module.os.replace
+
+    def replace_then_interrupt(*args, **kwargs):
+        original_replace(*args, **kwargs)
+        raise KeyboardInterrupt("interrupt after atomic PID replacement")
+
+    monkeypatch.setattr(scheduler_module.os, "replace", replace_then_interrupt)
+    with pytest.raises(KeyboardInterrupt, match="atomic PID replacement"):
+        scheduler_module._publish_reserved_coordinator_pid(
+            reservation,
+            424242,
+        )
+    assert reservation.identity != original_identity
+    assert reservation.path.read_bytes() == b"424242\n"
+    scheduler_module._discard_coordinator_pid_reservation(
+        reservation,
+        prepublished_pid=424242,
+        remove_published=True,
+    )
+    assert not reservation.path.exists()
+
+
+def test_owner_recovery_quarantines_empty_pid_before_second_reservation(
+    tmp_path: Path,
+) -> None:
+    _repo, _config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    first = scheduler_module._reserve_detached_coordinator_pid(board)
+    scheduler_module._claim_coordinator_pid_reservation(board, first)
+    token = "test-only-quack-token"
+    secret_handle = "env://TEST_ONLY_QUACK_TOKEN"
+    token_state = tmp_path / "owner-token-state"
+    retirement = _begin_test_token_handoff(
+        token_state,
+        token=token,
+        secret_handle=secret_handle,
+    )
+    retirement.close_without_rollback(reason="child_liveness_unproven")
+    scheduler_module._close_coordinator_pid_reservation(first)
+
+    receipt = quack_server_module.rearm_token_handoff_if_coordinator_absent(
+        state_dir=token_state,
+        secret_handle=secret_handle,
+        expected_token=token,
+        coordinator_pid_path=first.path,
+    )
+
+    assert receipt["rearmed"] is True
+    assert receipt["pid_quarantined"] is True
+    assert receipt["reason"] == "coordinator_pid_empty"
+    assert not first.path.exists()
+    second = scheduler_module._reserve_detached_coordinator_pid(board)
+    try:
+        assert second.path == first.path
+        assert second.state == "reserved"
+    finally:
+        scheduler_module._discard_coordinator_pid_reservation(second)
+
+
+@pytest.mark.parametrize(
+    ("gate_bytes", "error_type", "message", "rearm_expected"),
+    (
+        (b"", ConfiguredBoardError, "was not committed", True),
+        (
+            b"\x00",
+            scheduler_module._CoordinatorCredentialLaunchAborted,
+            "fail-closed by its parent",
+            False,
+        ),
+    ),
+    ids=("eof-rearms", "explicit-abort-stays-retired"),
+)
+def test_child_gate_failure_uses_fresh_error_and_explicit_abort_stays_retired(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    gate_bytes: bytes,
+    error_type: type[BaseException],
+    message: str,
+    rearm_expected: bool,
+) -> None:
+    _repo, _config_path, seeded = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    program = scheduler_module.DatabaseProgramConfig(
+        authority_mode=scheduler_module.AUTHORITY_MODE_QUACK,
+        task_source_kind="duckdb",
+        endpoint_secret_handle="env://TEST_ONLY_QUACK_TOKEN",
+        quack_endpoint="quack:127.0.0.1:45123",
+        store_id="test-store",
+        store_generation="7",
+        schema_revision="1",
+        failover_policy="fail_closed",
+    )
+    board = replace(seeded, database_program=program)
+    snapshot = _detached_coordinator_gate_snapshot()
+    monkeypatch.setattr(
+        scheduler_module,
+        "_detached_coordinator_quack_snapshot",
+        lambda *_args, **_kwargs: dict(snapshot),
+    )
+    rearmed: list[object] = []
+    monkeypatch.setattr(
+        scheduler_module,
+        "_rearm_detached_coordinator_token_handoff",
+        lambda observed: rearmed.append(observed) or {"rearmed": True},
+    )
+    ready_reader, ready_writer = scheduler_module._create_coordinator_credential_pipe()
+    start_reader, start_writer = scheduler_module._create_coordinator_credential_pipe()
+    os.set_inheritable(ready_writer, True)
+    os.set_inheritable(start_reader, True)
+    if gate_bytes:
+        os.write(start_writer, gate_bytes)
+    os.close(start_writer)
+    try:
+        with pytest.raises(error_type, match=message) as raised:
+            scheduler_module._run_detached_coordinator_child_credential_gate(
+                board,
+                ready_descriptor=ready_writer,
+                ready_identity_text=scheduler_module._coordinator_pipe_identity_text(
+                    scheduler_module._coordinator_pipe_identity(ready_reader)
+                ),
+                start_descriptor=start_reader,
+                start_identity_text=scheduler_module._coordinator_pipe_identity_text(
+                    scheduler_module._coordinator_pipe_identity(start_reader)
+                ),
+                nonce="a" * 64,
+                snapshot_context_json=json.dumps(
+                    {
+                        "repository_tree_id": snapshot["repository_tree_id"],
+                        "plan_root_cid": snapshot["plan_root_cid"],
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            )
+        assert raised.value.__cause__ is not raised.value
+        assert rearmed == ([board] if rearm_expected else [])
+    finally:
+        os.close(ready_reader)
+
+
+@pytest.mark.parametrize("rearm_failure", (False, True))
+def test_authenticated_child_rearms_after_runtime_cleanup_and_removes_pid_last(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    rearm_failure: bool,
+) -> None:
+    repo, config_path, seeded = _seed_v3_task_repo(
+        tmp_path,
+        (_task_block("TEST-A"),),
+    )
+    program = scheduler_module.DatabaseProgramConfig(
+        authority_mode=scheduler_module.AUTHORITY_MODE_QUACK,
+        task_source_kind="duckdb",
+        endpoint_secret_handle="env://TEST_ONLY_QUACK_TOKEN",
+        quack_endpoint="quack:127.0.0.1:45123",
+        store_id="test-store",
+        store_generation="7",
+        schema_revision="1",
+        failover_policy="fail_closed",
+    )
+    board = replace(
+        seeded,
+        board_namespace="semantic-addressed-world-model-v1",
+        live_capsule_control_paths=("config/scheduler.json",),
+        database_program=program,
+    )
+    events: list[str] = []
+    capsule_parent = Path("/tmp") / (
+        f"asref-configured-control-plane-test-{os.getpid()}-{id(events)}"
+    )
+    pin = SimpleNamespace(
+        capsule_root=str(capsule_parent / "capsule"),
+        source_head="a" * 40,
+        source_tree="b" * 40,
+    )
+    native = SimpleNamespace(descriptor=SimpleNamespace(descriptor=12))
+    monkeypatch.setattr(
+        scheduler_module,
+        "load_configured_board",
+        lambda *_args, **_kwargs: board,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_sealed_configured_control_plane_required",
+        lambda _board: True,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "parse_accepted_control_plane_pin",
+        lambda _payload: pin,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "verify_agent_implementation_sealed_control_plane",
+        lambda *_args, **_kwargs: "/proc/self/fd/11",
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "parse_native_dependency_launch_json",
+        lambda _payload: native,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "verify_agent_supervisor_native_dependency_sealed_fd",
+        lambda *_args, **_kwargs: "/proc/self/fd/12",
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_configured_board_dependency_seal_snapshot",
+        lambda _board: object(),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_authenticate_configured_board_native_dependency_launch",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_git_identity",
+        lambda _root: (pin.source_head, pin.source_tree),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "preflight_configured_board",
+        lambda _board: {"valid": True, "errors": []},
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_build_live_capsule_admission",
+        lambda *_args, **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_launch_plan",
+        lambda *_args, **_kwargs: {
+            "argv": ["synthetic-runner"],
+            "environment": {},
+        },
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_detached_coordinator_child_credential_gate",
+        lambda *_args, **_kwargs: events.append("gate") or {},
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_apply_configured_board_environment",
+        lambda _plan: events.append("environment"),
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "main",
+        lambda _argv: events.append("runner") or 0,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_cleanup_plan_bound_control_plane",
+        lambda *_args, **_kwargs: events.append("capsule_cleanup"),
+    )
+
+    def rearm(_board):
+        events.append("rearm")
+        if rearm_failure:
+            raise ConfiguredBoardError("synthetic rearm failure")
+        return {"rearmed": True}
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_rearm_detached_coordinator_token_handoff",
+        rearm,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_remove_owned_coordinator_pid",
+        lambda *_args, **_kwargs: events.append("pid_remove") or True,
+    )
+    result = scheduler_module.main(
+        (
+            "--repo-root",
+            str(repo),
+            "--config",
+            str(config_path),
+            "--accepted-control-plane-pin-json",
+            "{}",
+            "--accepted-control-plane-fd",
+            "11",
+            "--accepted-control-plane-capsule-parent",
+            str(capsule_parent),
+            "--configured-board-live-native-launch-json",
+            "{}",
+            "--configured-board-live-native-fd",
+            "12",
+            "--coordinator-credential-ready-fd",
+            "13",
+            "--coordinator-credential-ready-pipe",
+            "1:1",
+            "--coordinator-credential-start-fd",
+            "14",
+            "--coordinator-credential-start-pipe",
+            "2:2",
+            "--coordinator-credential-nonce",
+            "a" * 64,
+            "--coordinator-credential-snapshot-context-json",
+            "{}",
+            "launch",
+            "--foreground",
+            "--implement",
+        )
+    )
+
+    assert result == (2 if rearm_failure else 0)
+    assert events == [
+        "gate",
+        "environment",
+        "runner",
+        "capsule_cleanup",
+        "rearm",
+        *([] if rearm_failure else ["pid_remove"]),
+    ]
+    if rearm_failure:
+        assert "terminal credential rearm failed" in capsys.readouterr().out
 
 
 def test_plan_bound_lane_dead_pid_is_quarantined_after_private_confinement(

@@ -104,6 +104,42 @@ DEFAULT_LOOPBACK_HOST: Final = "127.0.0.1"
 DEFAULT_STORE_ID: Final = "control.duckdb"
 DEFAULT_SECRET_HANDLE_PREFIX: Final = "handle:quack-token"
 TOKEN_FILENAME_SUFFIX: Final = ".quack-token"
+TOKEN_RETIREMENT_LOCK_SUFFIX: Final = ".retirement.lock"
+TOKEN_ROLLBACK_TEMP_PREFIX: Final = ".quack-token-rollback."
+TOKEN_COMPROMISE_MARKER_SUFFIX: Final = ".compromised.json"
+TOKEN_COMPROMISE_MARKER_SCHEMA: Final = (
+    "ipfs_accelerate_py/quack-token-handoff-compromise@1"
+)
+TOKEN_HANDOFF_RETIREMENT_SCHEMA: Final = (
+    "ipfs_accelerate_py/quack-token-handoff-retirement@1"
+)
+TOKEN_HANDOFF_CLOSED_SCHEMA: Final = (
+    "ipfs_accelerate_py/quack-token-handoff-retirement-closed@1"
+)
+TOKEN_HANDOFF_AUTHORITY_BINDING_SCHEMA: Final = (
+    "ipfs_accelerate_py/quack-token-handoff-authority-binding@1"
+)
+TOKEN_HANDOFF_REARM_SCHEMA: Final = (
+    "ipfs_accelerate_py/quack-token-handoff-rearm@1"
+)
+TOKEN_HANDOFF_REARM_PROBE_SCHEMA: Final = (
+    "ipfs_accelerate_py/quack-token-handoff-rearm-probe@1"
+)
+TOKEN_HANDOFF_REARM_PROBE_REASONS: Final = frozenset(
+    {
+        "retirement_lock_held",
+        "handoff_unsafe",
+        "handoff_already_present",
+        "coordinator_pid_absent",
+        "coordinator_pid_empty",
+        "coordinator_pid_dead",
+        "coordinator_pid_alive",
+        "coordinator_pid_unknown",
+        "coordinator_pid_malformed",
+        "coordinator_pid_unsafe",
+        "coordinator_pid_changed",
+    }
+)
 OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
 STATUS_FILENAME: Final = "quack-state-server.status.json"
@@ -189,6 +225,31 @@ class QuackStateServerReadyError(QuackStateServerError):
 
 class QuackStateServerTokenError(QuackStateServerError):
     """Token material would leak or cannot be stored safely."""
+
+
+class _TokenHandoffLockHeld(QuackStateServerTokenError):
+    """The per-handoff lock is held by an active retirement or rearm."""
+
+
+class QuackStateServerTokenCompromisedError(QuackStateServerTokenError):
+    """A token inode survived retirement under an unexpected hardlink.
+
+    ``receipt`` is deliberately secret-free.  The terminal transaction is
+    attached so callers can inspect its closed/wiped state, but it cannot be
+    committed or rolled back after compromise was detected.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        transaction: TokenHandoffRetirement | None,
+        receipt: Mapping[str, Any],
+    ) -> None:
+        super().__init__(message)
+        self.transaction = transaction
+        self.receipt = MappingProxyType(dict(receipt))
+        self.state = "compromised"
 
 
 class QuackStateServerControlError(QuackStateServerError):
@@ -1173,19 +1234,1660 @@ def _token_handoff_filename(secret_handle: str) -> str:
     return filename
 
 
-def retire_token_handoff(
+def _wipe_token_bytes(value: bytearray) -> None:
+    """Best-effort in-place wipe for the mutable credential copy we own."""
+
+    for index in range(len(value)):
+        value[index] = 0
+    value.clear()
+
+
+def _open_token_handoff_directory(
+    state_dir: Path | str,
+) -> tuple[Path, int, os.stat_result]:
+    """Open every lexical directory component without following symlinks."""
+
+    try:
+        expanded = Path(state_dir).expanduser()
+        directory = Path(os.path.abspath(os.fspath(expanded)))
+    except (OSError, TypeError, ValueError) as exc:
+        raise QuackStateServerTokenError(
+            "token handoff state directory is unavailable"
+        ) from exc
+    if not directory.is_absolute() or directory.anchor != os.sep:
+        raise QuackStateServerTokenError(
+            "token handoff state directory is not an absolute POSIX path"
+        )
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    descriptor = -1
+    try:
+        descriptor = os.open(os.sep, directory_flags)
+        for component in directory.parts[1:]:
+            if component in {"", ".", ".."}:
+                raise QuackStateServerTokenError(
+                    "token handoff state directory has an unsafe component"
+                )
+            before = os.stat(
+                component,
+                dir_fd=descriptor,
+                follow_symlinks=False,
+            )
+            if stat_module.S_ISLNK(before.st_mode):
+                raise QuackStateServerTokenError(
+                    "token handoff state directory contains a symbolic link"
+                )
+            if not stat_module.S_ISDIR(before.st_mode):
+                raise QuackStateServerTokenError(
+                    "token handoff state directory component is not a directory"
+                )
+            child = os.open(component, directory_flags, dir_fd=descriptor)
+            try:
+                opened = os.fstat(child)
+                current = os.stat(
+                    component,
+                    dir_fd=descriptor,
+                    follow_symlinks=False,
+                )
+                expected_identity = (int(before.st_dev), int(before.st_ino))
+                if (
+                    (int(opened.st_dev), int(opened.st_ino))
+                    != expected_identity
+                    or (int(current.st_dev), int(current.st_ino))
+                    != expected_identity
+                    or not stat_module.S_ISDIR(opened.st_mode)
+                    or not stat_module.S_ISDIR(current.st_mode)
+                ):
+                    raise QuackStateServerTokenError(
+                        "token handoff state directory changed while opening"
+                    )
+            except BaseException:
+                os.close(child)
+                raise
+            os.close(descriptor)
+            descriptor = child
+        final_stat = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISDIR(final_stat.st_mode)
+            or final_stat.st_uid != os.geteuid()
+            or stat_module.S_IMODE(final_stat.st_mode) & 0o022
+        ):
+            raise QuackStateServerTokenError(
+                "token handoff state directory is not owner-confined"
+            )
+        return directory, descriptor, final_stat
+    except QuackStateServerTokenError:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise
+    except OSError as exc:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise QuackStateServerTokenError(
+            "token handoff state directory could not be opened safely"
+        ) from exc
+
+
+def _acquire_token_handoff_lock(
+    *,
+    directory_fd: int,
+    filename: str,
+) -> tuple[int, str, tuple[int, int, int, int, int]]:
+    """Acquire one stable owner-only per-handoff lock without following links."""
+
+    lock_filename = filename + TOKEN_RETIREMENT_LOCK_SUFFIX
+    common_flags = (
+        os.O_RDWR
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    created = False
+    try:
+        try:
+            lock_fd = os.open(
+                lock_filename,
+                common_flags | os.O_CREAT | os.O_EXCL,
+                0o600,
+                dir_fd=directory_fd,
+            )
+            created = True
+        except FileExistsError:
+            lock_fd = os.open(
+                lock_filename,
+                common_flags,
+                dir_fd=directory_fd,
+            )
+    except OSError as exc:
+        raise QuackStateServerTokenError(
+            "token handoff retirement lock could not be opened safely"
+        ) from exc
+    try:
+        if created:
+            os.fchmod(lock_fd, 0o600)
+            os.fsync(lock_fd)
+            os.fsync(directory_fd)
+        opened = os.fstat(lock_fd)
+        observed = os.stat(
+            lock_filename,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if (
+            not stat_module.S_ISREG(opened.st_mode)
+            or not stat_module.S_ISREG(observed.st_mode)
+            or opened.st_uid != os.geteuid()
+            or observed.st_uid != os.geteuid()
+            or opened.st_nlink != 1
+            or observed.st_nlink != 1
+            or stat_module.S_IMODE(opened.st_mode) != 0o600
+            or stat_module.S_IMODE(observed.st_mode) != 0o600
+            or (int(opened.st_dev), int(opened.st_ino))
+            != (int(observed.st_dev), int(observed.st_ino))
+        ):
+            raise QuackStateServerTokenError(
+                "token handoff retirement lock identity or mode is invalid"
+            )
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise _TokenHandoffLockHeld(
+                "token handoff retirement is already locked"
+            ) from exc
+        locked = os.fstat(lock_fd)
+        current = os.stat(
+            lock_filename,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        identity = (
+            int(locked.st_dev),
+            int(locked.st_ino),
+            int(locked.st_uid),
+            stat_module.S_IMODE(locked.st_mode),
+            int(locked.st_ctime_ns),
+        )
+        if (
+            (int(current.st_dev), int(current.st_ino)) != identity[:2]
+            or current.st_uid != identity[2]
+            or stat_module.S_IMODE(current.st_mode) != identity[3]
+            or int(current.st_ctime_ns) != identity[4]
+            or locked.st_nlink != 1
+            or current.st_nlink != 1
+        ):
+            raise QuackStateServerTokenError(
+                "token handoff retirement lock changed during acquisition"
+            )
+        return lock_fd, lock_filename, identity
+    except BaseException:
+        os.close(lock_fd)
+        raise
+
+
+def _token_compromise_marker_filename(filename: str) -> str:
+    return filename + TOKEN_COMPROMISE_MARKER_SUFFIX
+
+
+def _token_compromise_receipt(
+    *,
+    secret_handle: str,
+    credential_sha256: str,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "schema": TOKEN_COMPROMISE_MARKER_SCHEMA,
+        "compromised": True,
+        "terminal": True,
+        "reason": str(reason),
+        "secret_handle": secret_handle,
+        "credential_sha256": credential_sha256,
+    }
+
+
+def _persist_token_compromise_marker(
+    *,
+    directory_fd: int,
+    filename: str,
+    secret_handle: str,
+    credential_sha256: str,
+    reason: str,
+) -> None:
+    """Durably mark credential-link compromise before releasing its flock."""
+
+    marker_name = _token_compromise_marker_filename(filename)
+    payload = (
+        json.dumps(
+            _token_compromise_receipt(
+                secret_handle=secret_handle,
+                credential_sha256=credential_sha256,
+                reason=reason,
+            ),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    descriptor = -1
+    try:
+        try:
+            descriptor = os.open(
+                marker_name,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+                0o600,
+                dir_fd=directory_fd,
+            )
+        except FileExistsError:
+            # Any extant marker path remains a fail-closed barrier.  Never
+            # replace it, even when malformed or attacker-created.
+            os.fsync(directory_fd)
+            return
+        os.fchmod(descriptor, 0o600)
+        written = 0
+        while written < len(payload):
+            count = os.write(descriptor, payload[written:])
+            if count <= 0:
+                raise OSError("short token compromise marker write")
+            written += count
+        os.fsync(descriptor)
+        opened = os.fstat(descriptor)
+        observed = os.stat(
+            marker_name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if (
+            not stat_module.S_ISREG(opened.st_mode)
+            or not stat_module.S_ISREG(observed.st_mode)
+            or opened.st_uid != os.geteuid()
+            or observed.st_uid != os.geteuid()
+            or opened.st_nlink != 1
+            or observed.st_nlink != 1
+            or stat_module.S_IMODE(opened.st_mode) != 0o600
+            or stat_module.S_IMODE(observed.st_mode) != 0o600
+            or (int(opened.st_dev), int(opened.st_ino))
+            != (int(observed.st_dev), int(observed.st_ino))
+            or opened.st_size != len(payload)
+            or observed.st_size != len(payload)
+        ):
+            raise QuackStateServerTokenError(
+                "token compromise marker could not be verified"
+            )
+        os.fsync(directory_fd)
+    except OSError as exc:
+        raise QuackStateServerTokenError(
+            "token compromise marker could not be persisted"
+        ) from exc
+    finally:
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def _require_no_token_compromise_marker(
+    *,
+    directory_fd: int,
+    filename: str,
+    secret_handle: str,
+    credential_sha256: str,
+) -> None:
+    try:
+        os.stat(
+            _token_compromise_marker_filename(filename),
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise QuackStateServerTokenError(
+            "token compromise marker cannot be inspected"
+        ) from exc
+    receipt = _token_compromise_receipt(
+        secret_handle=secret_handle,
+        credential_sha256=credential_sha256,
+        reason="durable_compromise_marker_exists",
+    )
+    raise QuackStateServerTokenCompromisedError(
+        "token handoff is blocked by a durable compromise marker",
+        transaction=None,
+        receipt=receipt,
+    )
+
+
+def _rollback_temp_name_is_exact(name: str) -> bool:
+    suffix = name.removeprefix(TOKEN_ROLLBACK_TEMP_PREFIX)
+    return (
+        name.startswith(TOKEN_ROLLBACK_TEMP_PREFIX)
+        and len(suffix) == 32
+        and all(character in "0123456789abcdef" for character in suffix)
+    )
+
+
+def _verify_exact_token_path(
+    *,
+    directory_fd: int,
+    filename: str,
+    expected_token: bytes | bytearray,
+    expected_link_count: int,
+    expected_identity: tuple[int, int] | None = None,
+) -> tuple[int, int]:
+    descriptor = os.open(
+        filename,
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0),
+        dir_fd=directory_fd,
+    )
+    observed_bytes = bytearray()
+    try:
+        opened = os.fstat(descriptor)
+        observed = os.stat(
+            filename,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        fingerprint = (
+            int(opened.st_dev),
+            int(opened.st_ino),
+            int(opened.st_uid),
+            stat_module.S_IMODE(opened.st_mode),
+            int(opened.st_nlink),
+            int(opened.st_size),
+            int(opened.st_ctime_ns),
+            int(opened.st_mtime_ns),
+        )
+        observed_fingerprint = (
+            int(observed.st_dev),
+            int(observed.st_ino),
+            int(observed.st_uid),
+            stat_module.S_IMODE(observed.st_mode),
+            int(observed.st_nlink),
+            int(observed.st_size),
+            int(observed.st_ctime_ns),
+            int(observed.st_mtime_ns),
+        )
+        identity = fingerprint[:2]
+        if (
+            not stat_module.S_ISREG(opened.st_mode)
+            or not stat_module.S_ISREG(observed.st_mode)
+            or fingerprint != observed_fingerprint
+            or fingerprint[2] != os.geteuid()
+            or fingerprint[3] != 0o600
+            or fingerprint[4] != expected_link_count
+            or fingerprint[5] != len(expected_token)
+            or (expected_identity is not None and identity != expected_identity)
+        ):
+            raise QuackStateServerTokenError(
+                "token handoff crash artifact identity is invalid"
+            )
+        while len(observed_bytes) <= len(expected_token):
+            chunk = os.read(
+                descriptor,
+                min(len(expected_token) + 1 - len(observed_bytes), 256),
+            )
+            if not chunk:
+                break
+            observed_bytes.extend(chunk)
+        post_opened = os.fstat(descriptor)
+        post_observed = os.stat(
+            filename,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        post_fingerprint = (
+            int(post_opened.st_dev),
+            int(post_opened.st_ino),
+            int(post_opened.st_uid),
+            stat_module.S_IMODE(post_opened.st_mode),
+            int(post_opened.st_nlink),
+            int(post_opened.st_size),
+            int(post_opened.st_ctime_ns),
+            int(post_opened.st_mtime_ns),
+        )
+        post_observed_fingerprint = (
+            int(post_observed.st_dev),
+            int(post_observed.st_ino),
+            int(post_observed.st_uid),
+            stat_module.S_IMODE(post_observed.st_mode),
+            int(post_observed.st_nlink),
+            int(post_observed.st_size),
+            int(post_observed.st_ctime_ns),
+            int(post_observed.st_mtime_ns),
+        )
+        if (
+            post_fingerprint != fingerprint
+            or post_observed_fingerprint != observed_fingerprint
+            or not secrets.compare_digest(observed_bytes, expected_token)
+        ):
+            raise QuackStateServerTokenError(
+                "token handoff crash artifact bytes are invalid"
+            )
+        return identity
+    finally:
+        _wipe_token_bytes(observed_bytes)
+        os.close(descriptor)
+
+
+def _recover_linked_rollback_temp(
+    *,
+    directory_fd: int,
+    filename: str,
+    secret_handle: str,
+    credential_sha256: str,
+    expected_token: bytes | bytearray,
+) -> bool:
+    """Heal only exact unique pre-link, linked, or disjoint temp artifacts."""
+
+    rollback_names = [
+        name
+        for name in os.listdir(directory_fd)
+        if name.startswith(TOKEN_ROLLBACK_TEMP_PREFIX)
+    ]
+    try:
+        canonical = os.stat(
+            filename,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        canonical = None
+    if canonical is None and not rollback_names:
+        return False
+    if canonical is not None and not rollback_names and canonical.st_nlink == 1:
+        return False
+    compromise_reason = "unexpected_rollback_temp_artifact"
+    try:
+        if len(rollback_names) != 1 or not _rollback_temp_name_is_exact(
+            rollback_names[0]
+        ):
+            raise QuackStateServerTokenError(
+                "rollback temp artifact set is not unique and exact"
+            )
+        temporary_name = rollback_names[0]
+        if canonical is None:
+            # Crash before publication: promote the unique complete temp with
+            # an atomic no-replace hardlink, then remove only that exact alias.
+            identity = _verify_exact_token_path(
+                directory_fd=directory_fd,
+                filename=temporary_name,
+                expected_token=expected_token,
+                expected_link_count=1,
+            )
+            os.link(
+                temporary_name,
+                filename,
+                src_dir_fd=directory_fd,
+                dst_dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+            _verify_exact_token_path(
+                directory_fd=directory_fd,
+                filename=filename,
+                expected_token=expected_token,
+                expected_link_count=2,
+                expected_identity=identity,
+            )
+            _verify_exact_token_path(
+                directory_fd=directory_fd,
+                filename=temporary_name,
+                expected_token=expected_token,
+                expected_link_count=2,
+                expected_identity=identity,
+            )
+            os.unlink(temporary_name, dir_fd=directory_fd)
+            os.fsync(directory_fd)
+            _verify_exact_token_path(
+                directory_fd=directory_fd,
+                filename=filename,
+                expected_token=expected_token,
+                expected_link_count=1,
+                expected_identity=identity,
+            )
+            return True
+        canonical_identity = (int(canonical.st_dev), int(canonical.st_ino))
+        if canonical.st_nlink == 2:
+            # Crash after publication: canonical and temp must be the only two
+            # names of one exact complete inode.
+            _verify_exact_token_path(
+                directory_fd=directory_fd,
+                filename=filename,
+                expected_token=expected_token,
+                expected_link_count=2,
+                expected_identity=canonical_identity,
+            )
+            _verify_exact_token_path(
+                directory_fd=directory_fd,
+                filename=temporary_name,
+                expected_token=expected_token,
+                expected_link_count=2,
+                expected_identity=canonical_identity,
+            )
+            os.unlink(temporary_name, dir_fd=directory_fd)
+            os.fsync(directory_fd)
+            _verify_exact_token_path(
+                directory_fd=directory_fd,
+                filename=filename,
+                expected_token=expected_token,
+                expected_link_count=1,
+                expected_identity=canonical_identity,
+            )
+            return True
+        if canonical.st_nlink == 1:
+            # Crash before publication left a disjoint exact temp while a
+            # normal exact canonical handoff was independently restored.
+            _verify_exact_token_path(
+                directory_fd=directory_fd,
+                filename=filename,
+                expected_token=expected_token,
+                expected_link_count=1,
+                expected_identity=canonical_identity,
+            )
+            temporary_identity = _verify_exact_token_path(
+                directory_fd=directory_fd,
+                filename=temporary_name,
+                expected_token=expected_token,
+                expected_link_count=1,
+            )
+            if temporary_identity == canonical_identity:
+                raise QuackStateServerTokenError(
+                    "disjoint rollback temp unexpectedly aliases canonical"
+                )
+            temporary_fd = os.open(
+                temporary_name,
+                os.O_WRONLY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+                dir_fd=directory_fd,
+            )
+            zeroes = bytearray(len(expected_token))
+            try:
+                opened = os.fstat(temporary_fd)
+                if (
+                    (int(opened.st_dev), int(opened.st_ino))
+                    != temporary_identity
+                    or opened.st_nlink != 1
+                ):
+                    raise QuackStateServerTokenError(
+                        "rollback temp changed before wipe"
+                    )
+                written = 0
+                while written < len(zeroes):
+                    count = os.write(temporary_fd, zeroes[written:])
+                    if count <= 0:
+                        raise OSError("short rollback temp wipe")
+                    written += count
+                os.fsync(temporary_fd)
+                current = os.stat(
+                    temporary_name,
+                    dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+                if (
+                    (int(current.st_dev), int(current.st_ino))
+                    != temporary_identity
+                    or current.st_nlink != 1
+                ):
+                    raise QuackStateServerTokenError(
+                        "rollback temp changed during wipe"
+                    )
+                os.unlink(temporary_name, dir_fd=directory_fd)
+                os.fsync(directory_fd)
+            finally:
+                _wipe_token_bytes(zeroes)
+                os.close(temporary_fd)
+            _verify_exact_token_path(
+                directory_fd=directory_fd,
+                filename=filename,
+                expected_token=expected_token,
+                expected_link_count=1,
+                expected_identity=canonical_identity,
+            )
+            return True
+        compromise_reason = "unexpected_canonical_credential_hardlink"
+        raise QuackStateServerTokenError(
+            "canonical credential has unexpected links"
+        )
+    except (OSError, QuackStateServerTokenError):
+        if canonical is not None and canonical.st_nlink != 1:
+            compromise_reason = "unexpected_canonical_credential_hardlink"
+    _persist_token_compromise_marker(
+        directory_fd=directory_fd,
+        filename=filename,
+        secret_handle=secret_handle,
+        credential_sha256=credential_sha256,
+        reason=compromise_reason,
+    )
+    raise QuackStateServerTokenCompromisedError(
+        "token handoff has an unsafe credential hardlink artifact",
+        transaction=None,
+        receipt=_token_compromise_receipt(
+            secret_handle=secret_handle,
+            credential_sha256=credential_sha256,
+            reason=compromise_reason,
+        ),
+    )
+
+
+_TOKEN_HANDOFF_CONSTRUCTION_AUTHORITY: Final = object()
+
+
+class TokenHandoffRetirement:
+    """Rollback-capable retirement of one exact token handoff.
+
+    Only :func:`begin_token_handoff_retirement` constructs this object.  It
+    retains an authenticated directory descriptor and the removed bytes until
+    commit or rollback.  Credential bytes are never exposed by ``repr`` or a
+    receipt.
+
+    This is deliberately a process-local transaction.  ``close()``, context
+    management, and finalization make ordinary exception/abandonment paths
+    rollback-safe, but an uncatchable process exit cannot run Python cleanup.
+    """
+
+    __slots__ = (
+        "_already_absent",
+        "_credential_sha256",
+        "_directory",
+        "_directory_fd",
+        "_directory_identity",
+        "_expected_commit_receipt",
+        "_filename",
+        "_lock_fd",
+        "_lock_filename",
+        "_lock_identity",
+        "_owner_pid",
+        "_receipt",
+        "_secret_handle",
+        "_state",
+        "_token_bytes",
+    )
+
+    def __init__(
+        self,
+        *,
+        _construction_authority: object,
+        directory: Path,
+        directory_fd: int,
+        directory_identity: tuple[int, int, int, int],
+        filename: str,
+        lock_fd: int,
+        lock_filename: str,
+        lock_identity: tuple[int, int, int, int, int],
+        secret_handle: str,
+        credential_sha256: str,
+        token_bytes: bytearray,
+        already_absent: bool,
+    ) -> None:
+        if _construction_authority is not _TOKEN_HANDOFF_CONSTRUCTION_AUTHORITY:
+            raise TypeError(
+                "TokenHandoffRetirement must be created by "
+                "begin_token_handoff_retirement"
+            )
+        self._directory = directory
+        self._directory_fd = int(directory_fd)
+        self._directory_identity = directory_identity
+        self._filename = filename
+        self._lock_fd = int(lock_fd)
+        self._lock_filename = lock_filename
+        self._lock_identity = lock_identity
+        self._owner_pid = os.getpid()
+        self._secret_handle = secret_handle
+        self._credential_sha256 = credential_sha256
+        self._token_bytes = token_bytes
+        self._already_absent = bool(already_absent)
+        self._expected_commit_receipt = MappingProxyType(
+            {
+                "schema": TOKEN_HANDOFF_RETIREMENT_SCHEMA,
+                "retired": True,
+                "already_absent": self._already_absent,
+                "secret_handle": self._secret_handle,
+            }
+        )
+        self._state = "begun"
+        self._receipt: Mapping[str, Any] | None = None
+
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}(secret_handle={self._secret_handle!r}, "
+            f"state={self._state!r}, already_absent={self._already_absent!r})"
+        )
+
+    @property
+    def state(self) -> str:
+        return self._state
+
+    @property
+    def secret_handle(self) -> str:
+        return self._secret_handle
+
+    @property
+    def credential_sha256(self) -> str:
+        """Return the non-secret digest binding the retired exact token."""
+
+        return self._credential_sha256
+
+    @property
+    def expected_commit_receipt(self) -> dict[str, Any]:
+        """Return a defensive copy of the exact secret-free commit receipt."""
+
+        if self._state not in {"begun", "committed"}:
+            raise QuackStateServerTokenError(
+                "token handoff retirement can no longer commit"
+            )
+        return dict(self._expected_commit_receipt)
+
+    def validate_active(
+        self,
+        *,
+        state_dir: Path | str,
+        secret_handle: str,
+        credential_sha256: str,
+    ) -> dict[str, Any]:
+        """Bind this active transaction to exact caller-sealed authority."""
+
+        self._require_owner_process()
+        if self._state != "begun":
+            raise QuackStateServerTokenError(
+                "token handoff retirement is not active"
+            )
+        if (
+            not isinstance(secret_handle, str)
+            or not secrets.compare_digest(secret_handle, self._secret_handle)
+            or not isinstance(credential_sha256, str)
+            or not secrets.compare_digest(
+                credential_sha256,
+                self._credential_sha256,
+            )
+        ):
+            raise QuackStateServerTokenError(
+                "token handoff active authority binding differs"
+            )
+        requested_path = Path(state_dir)
+        if (
+            not requested_path.is_absolute()
+            or Path(os.path.abspath(os.fspath(requested_path))) != requested_path
+        ):
+            raise QuackStateServerTokenError(
+                "token handoff active state directory is not canonical absolute"
+            )
+        requested_directory, requested_fd, requested_stat = (
+            _open_token_handoff_directory(state_dir)
+        )
+        try:
+            requested_identity = (
+                int(requested_stat.st_dev),
+                int(requested_stat.st_ino),
+                int(requested_stat.st_uid),
+                stat_module.S_IMODE(requested_stat.st_mode),
+            )
+            if (
+                requested_directory != self._directory
+                or requested_identity != self._directory_identity
+            ):
+                raise QuackStateServerTokenError(
+                    "token handoff active state directory differs"
+                )
+        finally:
+            os.close(requested_fd)
+        self._require_no_compromise_marker()
+        self._verify_directory()
+        self._verify_lock()
+        self._require_path_absent()
+        self._verify_lock()
+        self._verify_directory()
+        return {
+            "schema": TOKEN_HANDOFF_AUTHORITY_BINDING_SCHEMA,
+            "state_dir": str(self._directory),
+            "secret_handle": self._secret_handle,
+            "credential_sha256": self._credential_sha256,
+        }
+
+    def __enter__(self) -> TokenHandoffRetirement:
+        self._require_owner_process()
+        if self._state != "begun":
+            raise QuackStateServerTokenError(
+                "token handoff retirement context is no longer active"
+            )
+        return self
+
+    def __exit__(self, exc_type: Any, _exc: Any, _traceback: Any) -> bool:
+        try:
+            if self._state == "begun":
+                if exc_type is None:
+                    self.commit()
+                else:
+                    self.rollback()
+        except BaseException:
+            # A scope exit is terminal from the caller's perspective.  If its
+            # recovery attempt failed before reaching a typed terminal state,
+            # release the retained lock/descriptors and wipe the token rather
+            # than leaving cleanup dependent on a later garbage collection.
+            if self._state == "begun":
+                self._abandon()
+            raise
+        return False
+
+    def __del__(self) -> None:
+        """Best-effort rollback for a transaction abandoned by its caller."""
+
+        try:
+            if getattr(self, "_state", None) == "begun":
+                if getattr(self, "_owner_pid", -1) == os.getpid():
+                    try:
+                        self.rollback()
+                    except BaseException:
+                        if self._state == "begun":
+                            self._abandon()
+                else:
+                    # A fork child must not unlock or mutate its parent's
+                    # transaction.  It only closes its inherited descriptors.
+                    self._release_resources(unlock=False)
+                    self._state = "fork_discarded"
+            elif (
+                getattr(self, "_lock_fd", -1) >= 0
+                or getattr(self, "_directory_fd", -1) >= 0
+            ):
+                self._release_resources(
+                    unlock=getattr(self, "_owner_pid", -1) == os.getpid()
+                )
+        except BaseException:
+            # Destructors must never surface errors.  Descriptor fields are
+            # detached before close attempts and token wiping is still tried.
+            pass
+
+    def _require_owner_process(self) -> None:
+        if self._owner_pid != os.getpid():
+            raise QuackStateServerTokenError(
+                "token handoff retirement belongs to another process"
+            )
+
+    def _verify_directory(self) -> None:
+        if self._directory_fd < 0:
+            raise QuackStateServerTokenError(
+                "token handoff retirement directory is closed"
+            )
+        verification_fd = -1
+        try:
+            opened = os.fstat(self._directory_fd)
+            _path, verification_fd, observed = _open_token_handoff_directory(
+                self._directory
+            )
+        except (OSError, QuackStateServerTokenError) as exc:
+            raise QuackStateServerTokenError(
+                "token handoff state directory changed during retirement"
+            ) from exc
+        finally:
+            if verification_fd >= 0:
+                os.close(verification_fd)
+        opened_identity = (
+            int(opened.st_dev),
+            int(opened.st_ino),
+            int(opened.st_uid),
+            stat_module.S_IMODE(opened.st_mode),
+        )
+        if (
+            opened_identity != self._directory_identity
+            or (int(observed.st_dev), int(observed.st_ino))
+            != self._directory_identity[:2]
+            or not stat_module.S_ISDIR(opened.st_mode)
+            or not stat_module.S_ISDIR(observed.st_mode)
+            or int(observed.st_uid) != self._directory_identity[2]
+            or stat_module.S_IMODE(observed.st_mode)
+            != self._directory_identity[3]
+            or self._directory_identity[2] != os.geteuid()
+            or bool(self._directory_identity[3] & 0o022)
+        ):
+            raise QuackStateServerTokenError(
+                "token handoff state directory identity or confinement changed"
+            )
+
+    def _verify_lock(self) -> None:
+        if self._lock_fd < 0:
+            raise QuackStateServerTokenError(
+                "token handoff retirement lock is closed"
+            )
+        try:
+            opened = os.fstat(self._lock_fd)
+            observed = os.stat(
+                self._lock_filename,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+        except OSError as exc:
+            raise QuackStateServerTokenError(
+                "token handoff retirement lock changed"
+            ) from exc
+        identity = (
+            int(opened.st_dev),
+            int(opened.st_ino),
+            int(opened.st_uid),
+            stat_module.S_IMODE(opened.st_mode),
+            int(opened.st_ctime_ns),
+        )
+        if (
+            identity != self._lock_identity
+            or (int(observed.st_dev), int(observed.st_ino))
+            != self._lock_identity[:2]
+            or not stat_module.S_ISREG(opened.st_mode)
+            or not stat_module.S_ISREG(observed.st_mode)
+            or opened.st_nlink != 1
+            or observed.st_nlink != 1
+            or observed.st_uid != self._lock_identity[2]
+            or stat_module.S_IMODE(observed.st_mode)
+            != self._lock_identity[3]
+            or int(observed.st_ctime_ns) != self._lock_identity[4]
+        ):
+            raise QuackStateServerTokenError(
+                "token handoff retirement lock identity or mode changed"
+            )
+
+    def _require_path_absent(self) -> None:
+        try:
+            os.stat(
+                self._filename,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            raise QuackStateServerTokenError(
+                "token handoff pathname cannot be verified"
+            ) from exc
+        raise QuackStateServerTokenError(
+            "token handoff pathname was recreated during retirement"
+        )
+
+    def _require_no_compromise_marker(self) -> None:
+        _require_no_token_compromise_marker(
+            directory_fd=self._directory_fd,
+            filename=self._filename,
+            secret_handle=self._secret_handle,
+            credential_sha256=self._credential_sha256,
+        )
+
+    def _persist_compromise_marker(self, *, reason: str) -> None:
+        _persist_token_compromise_marker(
+            directory_fd=self._directory_fd,
+            filename=self._filename,
+            secret_handle=self._secret_handle,
+            credential_sha256=self._credential_sha256,
+            reason=reason,
+        )
+
+    def _release_resources(self, *, unlock: bool = True) -> None:
+        """Detach all owned resources, attempting every cleanup independently."""
+
+        lock_fd = getattr(self, "_lock_fd", -1)
+        directory_fd = getattr(self, "_directory_fd", -1)
+        # Detach first: a close error must not leave a stale integer that could
+        # later refer to an unrelated, reused descriptor.
+        self._lock_fd = -1
+        self._directory_fd = -1
+        if lock_fd >= 0:
+            if unlock:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                except OSError:
+                    # Closing the descriptor is the final kernel-level release.
+                    pass
+            try:
+                os.close(lock_fd)
+            except OSError:
+                pass
+        if directory_fd >= 0:
+            try:
+                os.close(directory_fd)
+            except OSError:
+                pass
+        _wipe_token_bytes(self._token_bytes)
+
+    def _finish(self, *, state: str, receipt: dict[str, Any]) -> dict[str, Any]:
+        # Freeze the exact result before exposing its terminal state.  Thus any
+        # exception after ``state`` changes remains recoverable via an
+        # idempotent operation/property rather than becoming ambiguous.
+        frozen_receipt = MappingProxyType(dict(receipt))
+        self._receipt = frozen_receipt
+        self._state = state
+        self._release_resources()
+        return dict(frozen_receipt)
+
+    def _abandon(self) -> None:
+        """Close retained resources after a failure without claiming recovery."""
+
+        self._state = "failed"
+        self._receipt = None
+        self._release_resources()
+
+    def _finish_compromised(
+        self,
+        *,
+        reason: str,
+        observed_link_count: int,
+    ) -> QuackStateServerTokenCompromisedError:
+        marker_error: BaseException | None = None
+        try:
+            _persist_token_compromise_marker(
+                directory_fd=self._directory_fd,
+                filename=self._filename,
+                secret_handle=self._secret_handle,
+                credential_sha256=self._credential_sha256,
+                reason=reason,
+            )
+        except BaseException as exc:
+            marker_error = exc
+        receipt = {
+            "schema": (
+                "ipfs_accelerate_py/"
+                "quack-token-handoff-retirement-compromised@1"
+            ),
+            "compromised": True,
+            "terminal": True,
+            "reason": str(reason),
+            "observed_link_count": int(observed_link_count),
+            "marker_persisted": marker_error is None,
+            "secret_handle": self._secret_handle,
+            "credential_sha256": self._credential_sha256,
+        }
+        self._finish(state="compromised", receipt=receipt)
+        error = QuackStateServerTokenCompromisedError(
+            "token handoff retirement detected surviving credential links",
+            transaction=self,
+            receipt=receipt,
+        )
+        if marker_error is not None:
+            error.__cause__ = marker_error
+        return error
+
+    def close(self) -> dict[str, Any] | None:
+        """Rollback an active transaction and release all retained resources."""
+
+        if self._state == "begun":
+            try:
+                return self.rollback()
+            except BaseException:
+                if self._state == "begun":
+                    self._abandon()
+                raise
+        if self._receipt is None:
+            return None
+        return dict(self._receipt)
+
+    def close_without_rollback(
+        self,
+        *,
+        reason: str = "child_liveness_unproven",
+    ) -> dict[str, Any]:
+        """Terminally close and wipe without republishing credential bytes."""
+
+        self._require_owner_process()
+        if self._state == "closed":
+            assert self._receipt is not None
+            if reason != "child_liveness_unproven":
+                raise QuackStateServerTokenError(
+                    "token handoff close reason is not allowed"
+                )
+            return dict(self._receipt)
+        if self._state != "begun":
+            raise QuackStateServerTokenError(
+                "token handoff retirement cannot close without rollback"
+            )
+        if reason != "child_liveness_unproven":
+            raise QuackStateServerTokenError(
+                "token handoff close reason is not allowed"
+            )
+        return self._finish(
+            state="closed",
+            receipt={
+                "schema": TOKEN_HANDOFF_CLOSED_SCHEMA,
+                "closed": True,
+                "terminal": True,
+                "reason": reason,
+                "completion_authority": False,
+                "task_authority": False,
+                "secret_handle": self._secret_handle,
+                "credential_sha256": self._credential_sha256,
+            },
+        )
+
+    def commit(self) -> dict[str, Any]:
+        """Make the retirement final while the exact pathname stays absent."""
+
+        self._require_owner_process()
+        if self._state == "committed":
+            assert self._receipt is not None
+            return dict(self._receipt)
+        if self._state != "begun":
+            raise QuackStateServerTokenError(
+                "token handoff retirement cannot commit after rollback"
+            )
+        self._require_no_compromise_marker()
+        self._verify_directory()
+        self._verify_lock()
+        self._require_path_absent()
+        self._verify_lock()
+        self._verify_directory()
+        return self._finish(
+            state="committed",
+            receipt=self.expected_commit_receipt,
+        )
+
+    def _unlink_temporary_token(
+        self,
+        *,
+        temporary_fd: int,
+        temporary_name: str,
+        temporary_identity: tuple[int, int],
+    ) -> int:
+        """Best-effort unlink of our exact temporary inode; return link count."""
+
+        try:
+            current = os.stat(
+                temporary_name,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError:
+            current = None
+        except OSError:
+            current = None
+        if current is not None and (
+            int(current.st_dev),
+            int(current.st_ino),
+        ) == temporary_identity:
+            try:
+                os.unlink(temporary_name, dir_fd=self._directory_fd)
+            except OSError:
+                pass
+        try:
+            os.fsync(self._directory_fd)
+        except OSError:
+            pass
+        try:
+            return int(os.fstat(temporary_fd).st_nlink)
+        except OSError:
+            return -1
+
+    def _canonical_token_identity_is(
+        self,
+        identity: tuple[int, int],
+    ) -> bool:
+        try:
+            observed = os.stat(
+                self._filename,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+        except OSError:
+            return False
+        return (
+            stat_module.S_ISREG(observed.st_mode)
+            and (int(observed.st_dev), int(observed.st_ino)) == identity
+        )
+
+    def _filename_is_expected_token(self) -> bool:
+        """Return whether the canonical path is our complete owner-only token."""
+
+        descriptor = -1
+        observed_bytes = bytearray()
+        try:
+            descriptor = os.open(
+                self._filename,
+                os.O_RDONLY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+                dir_fd=self._directory_fd,
+            )
+            opened = os.fstat(descriptor)
+            observed = os.stat(
+                self._filename,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+            if (
+                not stat_module.S_ISREG(opened.st_mode)
+                or not stat_module.S_ISREG(observed.st_mode)
+                or opened.st_uid != os.geteuid()
+                or observed.st_uid != os.geteuid()
+                or opened.st_nlink != 1
+                or observed.st_nlink != 1
+                or stat_module.S_IMODE(opened.st_mode) != 0o600
+                or stat_module.S_IMODE(observed.st_mode) != 0o600
+                or (int(opened.st_dev), int(opened.st_ino))
+                != (int(observed.st_dev), int(observed.st_ino))
+                or opened.st_size != len(self._token_bytes)
+                or observed.st_size != len(self._token_bytes)
+            ):
+                return False
+            while len(observed_bytes) <= len(self._token_bytes):
+                chunk = os.read(
+                    descriptor,
+                    min(len(self._token_bytes) + 1 - len(observed_bytes), 256),
+                )
+                if not chunk:
+                    break
+                observed_bytes.extend(chunk)
+            return secrets.compare_digest(observed_bytes, self._token_bytes)
+        except OSError:
+            return False
+        finally:
+            _wipe_token_bytes(observed_bytes)
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+
+    def _verify_restored_token(
+        self,
+        *,
+        expected_identity: tuple[int, int],
+    ) -> None:
+        """Reopen and verify the atomically published canonical handoff."""
+
+        verification_fd = os.open(
+            self._filename,
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=self._directory_fd,
+        )
+        verified_bytes = bytearray()
+        try:
+            opened = os.fstat(verification_fd)
+            observed = os.stat(
+                self._filename,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+            initial_fingerprint = (
+                int(opened.st_dev),
+                int(opened.st_ino),
+                int(opened.st_uid),
+                stat_module.S_IMODE(opened.st_mode),
+                int(opened.st_nlink),
+                int(opened.st_size),
+                int(opened.st_ctime_ns),
+                int(opened.st_mtime_ns),
+            )
+            observed_fingerprint = (
+                int(observed.st_dev),
+                int(observed.st_ino),
+                int(observed.st_uid),
+                stat_module.S_IMODE(observed.st_mode),
+                int(observed.st_nlink),
+                int(observed.st_size),
+                int(observed.st_ctime_ns),
+                int(observed.st_mtime_ns),
+            )
+            if opened.st_nlink != 1 or observed.st_nlink != 1:
+                self._persist_compromise_marker(
+                    reason="restored_credential_has_unexpected_hardlink"
+                )
+            if (
+                not stat_module.S_ISREG(opened.st_mode)
+                or not stat_module.S_ISREG(observed.st_mode)
+                or initial_fingerprint[:2] != expected_identity
+                or observed_fingerprint[:2] != expected_identity
+                or initial_fingerprint[2] != os.geteuid()
+                or observed_fingerprint[2] != os.geteuid()
+                or initial_fingerprint[3] != 0o600
+                or observed_fingerprint[3] != 0o600
+                or initial_fingerprint[4] != 1
+                or observed_fingerprint[4] != 1
+                or initial_fingerprint[5] != len(self._token_bytes)
+                or observed_fingerprint[5] != len(self._token_bytes)
+            ):
+                raise QuackStateServerTokenError(
+                    "restored token handoff final identity is invalid"
+                )
+            while len(verified_bytes) <= len(self._token_bytes):
+                chunk = os.read(
+                    verification_fd,
+                    min(len(self._token_bytes) + 1 - len(verified_bytes), 256),
+                )
+                if not chunk:
+                    break
+                verified_bytes.extend(chunk)
+            if not secrets.compare_digest(verified_bytes, self._token_bytes):
+                raise QuackStateServerTokenError(
+                    "restored token handoff bytes did not verify"
+                )
+            post_opened = os.fstat(verification_fd)
+            post_observed = os.stat(
+                self._filename,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+            post_opened_fingerprint = (
+                int(post_opened.st_dev),
+                int(post_opened.st_ino),
+                int(post_opened.st_uid),
+                stat_module.S_IMODE(post_opened.st_mode),
+                int(post_opened.st_nlink),
+                int(post_opened.st_size),
+                int(post_opened.st_ctime_ns),
+                int(post_opened.st_mtime_ns),
+            )
+            post_observed_fingerprint = (
+                int(post_observed.st_dev),
+                int(post_observed.st_ino),
+                int(post_observed.st_uid),
+                stat_module.S_IMODE(post_observed.st_mode),
+                int(post_observed.st_nlink),
+                int(post_observed.st_size),
+                int(post_observed.st_ctime_ns),
+                int(post_observed.st_mtime_ns),
+            )
+            if post_opened.st_nlink != 1 or post_observed.st_nlink != 1:
+                self._persist_compromise_marker(
+                    reason="restored_credential_has_unexpected_hardlink"
+                )
+            if (
+                post_opened_fingerprint != initial_fingerprint
+                or post_observed_fingerprint != observed_fingerprint
+            ):
+                raise QuackStateServerTokenError(
+                    "restored token handoff changed during final read"
+                )
+        finally:
+            _wipe_token_bytes(verified_bytes)
+            try:
+                os.close(verification_fd)
+            except OSError:
+                pass
+
+    def _restore_token_atomically(self) -> None:
+        """Publish fully written rollback bytes without exposing a partial path."""
+
+        temporary_name = TOKEN_ROLLBACK_TEMP_PREFIX + secrets.token_hex(16)
+        flags = (
+            os.O_RDWR
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        temporary_fd = -1
+        temporary_identity: tuple[int, int] | None = None
+        published = False
+        try:
+            temporary_fd = os.open(
+                temporary_name,
+                flags,
+                0o600,
+                dir_fd=self._directory_fd,
+            )
+            opened = os.fstat(temporary_fd)
+            temporary_identity = (int(opened.st_dev), int(opened.st_ino))
+            os.fchmod(temporary_fd, 0o600)
+            written = 0
+            view = memoryview(self._token_bytes)
+            try:
+                while written < len(view):
+                    count = os.write(temporary_fd, view[written:])
+                    if count <= 0:
+                        raise OSError("short token handoff rollback write")
+                    written += count
+            finally:
+                view.release()
+            os.fsync(temporary_fd)
+            opened = os.fstat(temporary_fd)
+            observed = os.stat(
+                temporary_name,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+            if opened.st_nlink != 1 or observed.st_nlink != 1:
+                self._persist_compromise_marker(
+                    reason="rollback_temporary_inode_has_surviving_hardlink"
+                )
+            if (
+                not stat_module.S_ISREG(opened.st_mode)
+                or not stat_module.S_ISREG(observed.st_mode)
+                or opened.st_uid != os.geteuid()
+                or observed.st_uid != os.geteuid()
+                or opened.st_nlink != 1
+                or observed.st_nlink != 1
+                or stat_module.S_IMODE(opened.st_mode) != 0o600
+                or stat_module.S_IMODE(observed.st_mode) != 0o600
+                or (int(opened.st_dev), int(opened.st_ino))
+                != temporary_identity
+                or (int(observed.st_dev), int(observed.st_ino))
+                != temporary_identity
+                or opened.st_size != len(self._token_bytes)
+                or observed.st_size != len(self._token_bytes)
+            ):
+                raise QuackStateServerTokenError(
+                    "rollback temporary token identity or mode is invalid"
+                )
+            os.lseek(temporary_fd, 0, os.SEEK_SET)
+            verified = bytearray()
+            try:
+                while len(verified) <= len(self._token_bytes):
+                    chunk = os.read(
+                        temporary_fd,
+                        min(len(self._token_bytes) + 1 - len(verified), 256),
+                    )
+                    if not chunk:
+                        break
+                    verified.extend(chunk)
+                if not secrets.compare_digest(verified, self._token_bytes):
+                    raise QuackStateServerTokenError(
+                        "rollback temporary token bytes did not verify"
+                    )
+            finally:
+                _wipe_token_bytes(verified)
+            post_read = os.fstat(temporary_fd)
+            post_path = os.stat(
+                temporary_name,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+            if post_read.st_nlink != 1 or post_path.st_nlink != 1:
+                self._persist_compromise_marker(
+                    reason="rollback_temporary_inode_has_surviving_hardlink"
+                )
+            if (
+                (int(post_read.st_dev), int(post_read.st_ino))
+                != temporary_identity
+                or (int(post_path.st_dev), int(post_path.st_ino))
+                != temporary_identity
+                or post_read.st_nlink != 1
+                or post_path.st_nlink != 1
+                or post_read.st_size != len(self._token_bytes)
+                or post_path.st_size != len(self._token_bytes)
+                or stat_module.S_IMODE(post_read.st_mode) != 0o600
+                or stat_module.S_IMODE(post_path.st_mode) != 0o600
+            ):
+                raise QuackStateServerTokenError(
+                    "rollback temporary token changed before publication"
+                )
+            # Persist the complete temporary inode before it can become the
+            # canonical handoff.  A crash before publication can therefore
+            # leave only a complete owner-only recovery artifact, never a
+            # partial canonical credential.
+            os.fsync(self._directory_fd)
+            self._verify_directory()
+            self._verify_lock()
+            self._require_path_absent()
+            os.link(
+                temporary_name,
+                self._filename,
+                src_dir_fd=self._directory_fd,
+                dst_dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+            published = True
+            linked = os.fstat(temporary_fd)
+            canonical = os.stat(
+                self._filename,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+            temporary_path = os.stat(
+                temporary_name,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+            if (
+                linked.st_nlink != 2
+                or canonical.st_nlink != 2
+                or temporary_path.st_nlink != 2
+            ):
+                self._persist_compromise_marker(
+                    reason="rollback_published_inode_has_surviving_hardlink"
+                )
+            if (
+                (int(linked.st_dev), int(linked.st_ino)) != temporary_identity
+                or (int(canonical.st_dev), int(canonical.st_ino))
+                != temporary_identity
+                or (int(temporary_path.st_dev), int(temporary_path.st_ino))
+                != temporary_identity
+                or linked.st_nlink != 2
+                or canonical.st_nlink != 2
+                or temporary_path.st_nlink != 2
+            ):
+                raise QuackStateServerTokenError(
+                    "rollback token inode gained an unexpected hardlink"
+                )
+            os.unlink(temporary_name, dir_fd=self._directory_fd)
+            remaining = os.fstat(temporary_fd)
+            canonical = os.stat(
+                self._filename,
+                dir_fd=self._directory_fd,
+                follow_symlinks=False,
+            )
+            if remaining.st_nlink != 1 or canonical.st_nlink != 1:
+                self._persist_compromise_marker(
+                    reason="rollback_published_inode_has_surviving_hardlink"
+                )
+            if (
+                (int(remaining.st_dev), int(remaining.st_ino))
+                != temporary_identity
+                or (int(canonical.st_dev), int(canonical.st_ino))
+                != temporary_identity
+                or remaining.st_nlink != 1
+                or canonical.st_nlink != 1
+            ):
+                raise QuackStateServerTokenError(
+                    "rollback token inode retained an unexpected hardlink"
+                )
+            os.fsync(self._directory_fd)
+            self._verify_directory()
+            self._verify_lock()
+            self._verify_restored_token(expected_identity=temporary_identity)
+            self._verify_lock()
+            self._verify_directory()
+        except FileExistsError as exc:
+            raise QuackStateServerTokenError(
+                "token handoff pathname was recreated during retirement"
+            ) from exc
+        except (OSError, QuackStateServerTokenError) as exc:
+            if isinstance(exc, QuackStateServerTokenError):
+                raise
+            raise QuackStateServerTokenError(
+                "token handoff rollback could not restore exact bytes"
+            ) from exc
+        finally:
+            if temporary_fd >= 0 and temporary_identity is not None:
+                remaining_links = self._unlink_temporary_token(
+                    temporary_fd=temporary_fd,
+                    temporary_name=temporary_name,
+                    temporary_identity=temporary_identity,
+                )
+                canonical_is_exact = self._canonical_token_identity_is(
+                    temporary_identity
+                )
+                allowed_links = 1 if canonical_is_exact else 0
+                if remaining_links < 0 or remaining_links > allowed_links:
+                    compromise = self._finish_compromised(
+                        reason=(
+                            "rollback_published_inode_has_surviving_hardlink"
+                            if published
+                            else "rollback_temporary_inode_has_surviving_hardlink"
+                        ),
+                        observed_link_count=remaining_links,
+                    )
+                    try:
+                        os.close(temporary_fd)
+                    except OSError:
+                        pass
+                    raise compromise
+            if temporary_fd >= 0:
+                try:
+                    os.close(temporary_fd)
+                except OSError:
+                    pass
+
+    def rollback(self) -> dict[str, Any]:
+        """Restore exact removed bytes, or preserve a pre-existing absence."""
+
+        self._require_owner_process()
+        if self._state == "rolled_back":
+            assert self._receipt is not None
+            return dict(self._receipt)
+        if self._state != "begun":
+            raise QuackStateServerTokenError(
+                "committed token handoff retirement cannot be rolled back"
+            )
+        self._require_no_compromise_marker()
+        self._verify_directory()
+        self._verify_lock()
+        self._require_path_absent()
+        restored = False
+        if not self._already_absent:
+            try:
+                self._restore_token_atomically()
+            except QuackStateServerTokenCompromisedError:
+                raise
+            except BaseException:
+                # A failure after atomic publication may have restored the
+                # canonical path without establishing all durability checks.
+                # Do not report a rollback receipt, and do not let finalization
+                # mistake that indeterminate outcome for a retryable begin.
+                if self._state == "begun" and self._filename_is_expected_token():
+                    self._abandon()
+                raise
+            restored = True
+        else:
+            self._require_path_absent()
+            self._verify_lock()
+            self._verify_directory()
+        return self._finish(
+            state="rolled_back",
+            receipt={
+                "schema": (
+                    "ipfs_accelerate_py/"
+                    "quack-token-handoff-retirement-rollback@1"
+                ),
+                "rolled_back": True,
+                "restored": restored,
+                "already_absent": self._already_absent,
+                "secret_handle": self._secret_handle,
+            },
+        )
+
+def begin_token_handoff_retirement(
     *,
     state_dir: Path | str,
     secret_handle: str,
     expected_token: str,
-) -> dict[str, Any]:
-    """Atomically retire the provider-readable bootstrap token handoff.
+) -> TokenHandoffRetirement:
+    """Begin an exact retirement that stays rollback-capable until commit.
 
     The caller must first authenticate the live owner with ``expected_token``.
-    A missing handoff is an idempotent success because the authenticated
-    coordinator already holds the in-memory credential.  Any present file is
-    unlinked only after strict ownership, type, mode, link-count, and token
-    checks; malformed or mismatched files fail closed and remain untouched.
+    A missing handoff is a valid transaction that rollback will not recreate.
+    A present file is unlinked only after the pre-existing strict validation.
     """
 
     token = str(expected_token or "")
@@ -1197,36 +2899,43 @@ def retire_token_handoff(
         ) from exc
     if not 8 <= len(token_bytes) <= 1024 or token.strip() != token:
         raise QuackStateServerTokenError("expected token has an invalid shape")
+    credential_sha256 = "sha256:" + hashlib.sha256(token_bytes).hexdigest()
 
+    handle = str(secret_handle or "")
     filename = _token_handoff_filename(secret_handle)
-    try:
-        directory = Path(state_dir).expanduser().resolve(strict=True)
-    except OSError as exc:
-        raise QuackStateServerTokenError(
-            "token handoff state directory is unavailable"
-        ) from exc
-    directory_flags = (
-        os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
-        | getattr(os, "O_CLOEXEC", 0)
+    directory, directory_fd, directory_stat = _open_token_handoff_directory(
+        state_dir
     )
+    directory_owned = True
+    lock_fd = -1
+    lock_owned = False
+    observed = bytearray()
+    observed_transferred = False
     try:
-        directory_fd = os.open(directory, directory_flags)
-    except OSError as exc:
-        raise QuackStateServerTokenError(
-            "token handoff state directory could not be opened safely"
-        ) from exc
-    try:
-        directory_stat = os.fstat(directory_fd)
-        if (
-            not stat_module.S_ISDIR(directory_stat.st_mode)
-            or directory_stat.st_uid != os.geteuid()
-            or stat_module.S_IMODE(directory_stat.st_mode) & 0o022
-        ):
-            raise QuackStateServerTokenError(
-                "token handoff state directory is not owner-confined"
-            )
+        lock_fd, lock_filename, lock_identity = _acquire_token_handoff_lock(
+            directory_fd=directory_fd,
+            filename=filename,
+        )
+        lock_owned = True
+        _require_no_token_compromise_marker(
+            directory_fd=directory_fd,
+            filename=filename,
+            secret_handle=handle,
+            credential_sha256=credential_sha256,
+        )
+        _recover_linked_rollback_temp(
+            directory_fd=directory_fd,
+            filename=filename,
+            secret_handle=handle,
+            credential_sha256=credential_sha256,
+            expected_token=token_bytes,
+        )
+        directory_identity = (
+            int(directory_stat.st_dev),
+            int(directory_stat.st_ino),
+            int(directory_stat.st_uid),
+            stat_module.S_IMODE(directory_stat.st_mode),
+        )
         file_flags = (
             os.O_RDONLY
             | getattr(os, "O_NOFOLLOW", 0)
@@ -1235,70 +2944,918 @@ def retire_token_handoff(
         try:
             token_fd = os.open(filename, file_flags, dir_fd=directory_fd)
         except FileNotFoundError:
-            return {
-                "schema": "ipfs_accelerate_py/quack-token-handoff-retirement@1",
-                "retired": True,
-                "already_absent": True,
-                "secret_handle": secret_handle,
-            }
+            transaction = TokenHandoffRetirement(
+                _construction_authority=_TOKEN_HANDOFF_CONSTRUCTION_AUTHORITY,
+                directory=directory,
+                directory_fd=directory_fd,
+                directory_identity=directory_identity,
+                filename=filename,
+                lock_fd=lock_fd,
+                lock_filename=lock_filename,
+                lock_identity=lock_identity,
+                secret_handle=handle,
+                credential_sha256=credential_sha256,
+                token_bytes=observed,
+                already_absent=True,
+            )
+            directory_owned = False
+            lock_owned = False
+            observed_transferred = True
+            return transaction
         except OSError as exc:
             raise QuackStateServerTokenError(
                 "token handoff could not be opened safely"
             ) from exc
         try:
             opened = os.fstat(token_fd)
+            if opened.st_nlink != 1:
+                reason = "credential_hardlink_detected_before_retirement"
+                _persist_token_compromise_marker(
+                    directory_fd=directory_fd,
+                    filename=filename,
+                    secret_handle=handle,
+                    credential_sha256=credential_sha256,
+                    reason=reason,
+                )
+                raise QuackStateServerTokenCompromisedError(
+                    "token handoff credential has unexpected hardlinks",
+                    transaction=None,
+                    receipt=_token_compromise_receipt(
+                        secret_handle=handle,
+                        credential_sha256=credential_sha256,
+                        reason=reason,
+                    ),
+                )
             if (
                 not stat_module.S_ISREG(opened.st_mode)
                 or opened.st_uid != os.geteuid()
-                or opened.st_nlink != 1
                 or stat_module.S_IMODE(opened.st_mode) != 0o600
             ):
                 raise QuackStateServerTokenError(
                     "token handoff file ownership or mode is invalid"
                 )
-            observed = bytearray()
             while len(observed) <= 1024:
                 chunk = os.read(token_fd, min(1025 - len(observed), 256))
                 if not chunk:
                     break
                 observed.extend(chunk)
             if len(observed) > 1024 or not secrets.compare_digest(
-                bytes(observed), token_bytes
+                observed,
+                token_bytes,
             ):
                 raise QuackStateServerTokenError(
                     "token handoff does not match the authenticated owner"
                 )
-            current = os.stat(filename, dir_fd=directory_fd, follow_symlinks=False)
+            transaction = TokenHandoffRetirement(
+                _construction_authority=_TOKEN_HANDOFF_CONSTRUCTION_AUTHORITY,
+                directory=directory,
+                directory_fd=directory_fd,
+                directory_identity=directory_identity,
+                filename=filename,
+                lock_fd=lock_fd,
+                lock_filename=lock_filename,
+                lock_identity=lock_identity,
+                secret_handle=handle,
+                credential_sha256=credential_sha256,
+                token_bytes=observed,
+                already_absent=False,
+            )
+            # Revalidate every mutable file fact immediately before unlink.
+            transaction._verify_directory()
+            transaction._verify_lock()
+            opened_now = os.fstat(token_fd)
+            current = os.stat(
+                filename,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+            if opened_now.st_nlink != 1 or (
+                current.st_dev == opened.st_dev
+                and current.st_ino == opened.st_ino
+                and current.st_nlink != 1
+            ):
+                compromise = transaction._finish_compromised(
+                    reason="credential_hardlink_detected_during_retirement",
+                    observed_link_count=int(opened_now.st_nlink),
+                )
+                directory_owned = False
+                lock_owned = False
+                observed_transferred = True
+                raise compromise
             if (
                 current.st_dev != opened.st_dev
                 or current.st_ino != opened.st_ino
                 or current.st_mode != opened.st_mode
+                or current.st_uid != opened.st_uid
+                or current.st_nlink != 1
                 or current.st_size != opened.st_size
                 or current.st_mtime_ns != opened.st_mtime_ns
+                or current.st_ctime_ns != opened.st_ctime_ns
+                or opened_now.st_dev != opened.st_dev
+                or opened_now.st_ino != opened.st_ino
+                or opened_now.st_mode != opened.st_mode
+                or opened_now.st_uid != opened.st_uid
+                or opened_now.st_nlink != 1
+                or opened_now.st_size != opened.st_size
+                or opened_now.st_mtime_ns != opened.st_mtime_ns
+                or opened_now.st_ctime_ns != opened.st_ctime_ns
             ):
+                transaction._abandon()
+                directory_owned = False
+                lock_owned = False
+                observed_transferred = True
                 raise QuackStateServerTokenError(
                     "token handoff changed during retirement"
                 )
-            os.unlink(filename, dir_fd=directory_fd)
-            os.fsync(directory_fd)
+            try:
+                os.unlink(filename, dir_fd=directory_fd)
+            except OSError as exc:
+                transaction._abandon()
+                directory_owned = False
+                lock_owned = False
+                observed_transferred = True
+                raise QuackStateServerTokenError(
+                    "token handoff could not be unlinked safely"
+                ) from exc
+            try:
+                removed = os.fstat(token_fd)
+            except OSError as exc:
+                directory_owned = False
+                lock_owned = False
+                observed_transferred = True
+                try:
+                    transaction.rollback()
+                except QuackStateServerTokenCompromisedError:
+                    raise
+                except BaseException as rollback_exc:
+                    if transaction.state == "begun":
+                        transaction._abandon()
+                    raise QuackStateServerTokenError(
+                        "token handoff post-unlink verification and rollback failed"
+                    ) from rollback_exc
+                raise QuackStateServerTokenError(
+                    "token handoff post-unlink verification failed and was rolled back"
+                ) from exc
+            if (
+                removed.st_dev != opened.st_dev
+                or removed.st_ino != opened.st_ino
+            ):
+                transaction._abandon()
+                directory_owned = False
+                lock_owned = False
+                observed_transferred = True
+                raise QuackStateServerTokenError(
+                    "token handoff descriptor identity changed after unlink"
+                )
+            if removed.st_nlink != 0:
+                compromise = transaction._finish_compromised(
+                    reason="retired_inode_has_surviving_hardlink",
+                    observed_link_count=int(removed.st_nlink),
+                )
+                directory_owned = False
+                lock_owned = False
+                observed_transferred = True
+                raise compromise
+            try:
+                os.fsync(directory_fd)
+                transaction._require_path_absent()
+                transaction._verify_lock()
+                transaction._verify_directory()
+            except (OSError, QuackStateServerTokenError) as exc:
+                directory_owned = False
+                lock_owned = False
+                observed_transferred = True
+                try:
+                    transaction.rollback()
+                except QuackStateServerTokenCompromisedError:
+                    raise
+                except QuackStateServerTokenError as rollback_exc:
+                    if transaction.state == "begun":
+                        transaction._abandon()
+                    raise QuackStateServerTokenError(
+                        "token handoff retirement and rollback both failed"
+                    ) from rollback_exc
+                if isinstance(exc, QuackStateServerTokenError):
+                    raise
+                raise QuackStateServerTokenError(
+                    "token handoff could not be retired durably"
+                ) from exc
         finally:
             os.close(token_fd)
+        directory_owned = False
+        lock_owned = False
+        observed_transferred = True
+        return transaction
+    finally:
+        if not observed_transferred:
+            _wipe_token_bytes(observed)
+        if lock_owned:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            finally:
+                os.close(lock_fd)
+        if directory_owned:
+            os.close(directory_fd)
+
+
+def retire_token_handoff(
+    *,
+    state_dir: Path | str,
+    secret_handle: str,
+    expected_token: str,
+) -> dict[str, Any]:
+    """Retire a token handoff compatibly via begin followed by commit."""
+
+    transaction = begin_token_handoff_retirement(
+        state_dir=state_dir,
+        secret_handle=secret_handle,
+        expected_token=expected_token,
+    )
+    try:
+        return transaction.commit()
+    except BaseException:
+        if transaction.state == "begun":
+            try:
+                transaction.rollback()
+            except QuackStateServerTokenCompromisedError:
+                raise
+            except QuackStateServerTokenError:
+                if transaction.state == "begun":
+                    transaction._abandon()
+        raise
+
+
+def _begin_token_handoff_rearm(
+    *,
+    state_dir: Path | str,
+    secret_handle: str,
+    expected_token: str,
+) -> TokenHandoffRetirement:
+    """Acquire the retirement lock with caller-supplied rearm bytes retained."""
+
+    handle = str(secret_handle or "")
+    filename = _token_handoff_filename(secret_handle)
+    token = str(expected_token or "")
+    try:
+        token_bytes = bytearray(token, "ascii")
+    except UnicodeEncodeError as exc:
+        raise QuackStateServerTokenError(
+            "expected token is not an ASCII transport credential"
+        ) from exc
+    if not 8 <= len(token_bytes) <= 1024 or token.strip() != token:
+        _wipe_token_bytes(token_bytes)
+        raise QuackStateServerTokenError("expected token has an invalid shape")
+    credential_sha256 = "sha256:" + hashlib.sha256(token_bytes).hexdigest()
+    try:
+        directory, directory_fd, directory_stat = _open_token_handoff_directory(
+            state_dir
+        )
+    except BaseException:
+        _wipe_token_bytes(token_bytes)
+        raise
+    lock_fd = -1
+    try:
+        lock_fd, lock_filename, lock_identity = _acquire_token_handoff_lock(
+            directory_fd=directory_fd,
+            filename=filename,
+        )
+        _require_no_token_compromise_marker(
+            directory_fd=directory_fd,
+            filename=filename,
+            secret_handle=handle,
+            credential_sha256=credential_sha256,
+        )
+        _recover_linked_rollback_temp(
+            directory_fd=directory_fd,
+            filename=filename,
+            secret_handle=handle,
+            credential_sha256=credential_sha256,
+            expected_token=token_bytes,
+        )
+        return TokenHandoffRetirement(
+            _construction_authority=_TOKEN_HANDOFF_CONSTRUCTION_AUTHORITY,
+            directory=directory,
+            directory_fd=directory_fd,
+            directory_identity=(
+                int(directory_stat.st_dev),
+                int(directory_stat.st_ino),
+                int(directory_stat.st_uid),
+                stat_module.S_IMODE(directory_stat.st_mode),
+            ),
+            filename=filename,
+            lock_fd=lock_fd,
+            lock_filename=lock_filename,
+            lock_identity=lock_identity,
+            secret_handle=handle,
+            credential_sha256=credential_sha256,
+            token_bytes=token_bytes,
+            # Rearm is allowed to restore caller-authenticated bytes.  This
+            # internal guard is never returned as a retirement transaction.
+            already_absent=False,
+        )
+    except BaseException:
+        if lock_fd >= 0:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            finally:
+                os.close(lock_fd)
         try:
-            os.stat(filename, dir_fd=directory_fd, follow_symlinks=False)
+            os.close(directory_fd)
+        except OSError:
+            pass
+        _wipe_token_bytes(token_bytes)
+        raise
+
+
+def _token_handoff_rearm_receipt(
+    transaction: TokenHandoffRetirement,
+) -> dict[str, Any]:
+    return {
+        "schema": TOKEN_HANDOFF_REARM_SCHEMA,
+        "rearmed": True,
+        "secret_handle": transaction.secret_handle,
+        "credential_sha256": transaction.credential_sha256,
+    }
+
+
+def _verify_rearm_target(
+    transaction: TokenHandoffRetirement,
+) -> bool:
+    """Return true for an exact existing token, false for a stable absence."""
+
+    transaction._verify_directory()
+    transaction._verify_lock()
+    try:
+        observed = os.stat(
+            transaction._filename,
+            dir_fd=transaction._directory_fd,
+            follow_symlinks=False,
+        )
+    except FileNotFoundError:
+        transaction._verify_lock()
+        transaction._verify_directory()
+        return False
+    except OSError as exc:
+        raise QuackStateServerTokenError(
+            "token handoff rearm target cannot be inspected"
+        ) from exc
+    expected_identity = (int(observed.st_dev), int(observed.st_ino))
+    if observed.st_nlink != 1:
+        raise transaction._finish_compromised(
+            reason="credential_hardlink_detected_during_rearm",
+            observed_link_count=int(observed.st_nlink),
+        )
+    try:
+        transaction._verify_restored_token(
+            expected_identity=expected_identity,
+        )
+    except (OSError, QuackStateServerTokenError) as exc:
+        raise QuackStateServerTokenError(
+            "existing token handoff differs from exact rearm bytes"
+        ) from exc
+    transaction._verify_lock()
+    transaction._verify_directory()
+    return True
+
+
+def rearm_token_handoff(
+    *,
+    state_dir: Path | str,
+    secret_handle: str,
+    expected_token: str,
+) -> dict[str, Any]:
+    """Explicitly and atomically republish one exact coordinator credential.
+
+    An exact owner-only existing handoff is the only idempotent success.  Any
+    other existing object is left untouched and fails closed.  This operation
+    is deliberately explicit; :class:`TokenVault` never rearms automatically.
+    """
+
+    transaction = _begin_token_handoff_rearm(
+        state_dir=state_dir,
+        secret_handle=secret_handle,
+        expected_token=expected_token,
+    )
+    receipt = _token_handoff_rearm_receipt(transaction)
+    try:
+        if _verify_rearm_target(transaction):
+            return transaction._finish(state="rearmed", receipt=receipt)
+        transaction.rollback()
+        return dict(receipt)
+    except BaseException:
+        if transaction.state == "begun":
+            transaction._abandon()
+        raise
+
+
+def _coordinator_pid_projection_liveness(pid: int) -> OwnerLiveness:
+    """Classify a bare scheduler PID conservatively."""
+
+    return owner_liveness(
+        ProcessBirthIdentity(
+            pid=int(pid),
+            start_time_ticks=0,
+            boot_id="",
+            parent_pid=0,
+        )
+    )
+
+
+def _classify_coordinator_pid_projection(
+    coordinator_pid_path: Path | str,
+) -> str:
+    """Return absent/empty/dead/alive/unknown/malformed/unsafe."""
+
+    try:
+        path = Path(coordinator_pid_path)
+        if (
+            not path.is_absolute()
+            or Path(os.path.abspath(os.fspath(path))) != path
+            or path.name in {"", ".", ".."}
+        ):
+            return "unsafe"
+        _directory, directory_fd, _directory_stat = (
+            _open_token_handoff_directory(path.parent)
+        )
+    except (OSError, TypeError, ValueError, QuackStateServerTokenError):
+        return "unsafe"
+    descriptor = -1
+    observed_bytes = bytearray()
+    try:
+        try:
+            descriptor = os.open(
+                path.name,
+                os.O_RDONLY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+                dir_fd=directory_fd,
+            )
+        except FileNotFoundError:
+            return "absent"
+        except OSError:
+            return "unsafe"
+        opened = os.fstat(descriptor)
+        observed = os.stat(
+            path.name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        fingerprint = (
+            int(opened.st_dev),
+            int(opened.st_ino),
+            int(opened.st_uid),
+            stat_module.S_IMODE(opened.st_mode),
+            int(opened.st_nlink),
+            int(opened.st_size),
+            int(opened.st_ctime_ns),
+            int(opened.st_mtime_ns),
+        )
+        observed_fingerprint = (
+            int(observed.st_dev),
+            int(observed.st_ino),
+            int(observed.st_uid),
+            stat_module.S_IMODE(observed.st_mode),
+            int(observed.st_nlink),
+            int(observed.st_size),
+            int(observed.st_ctime_ns),
+            int(observed.st_mtime_ns),
+        )
+        if (
+            not stat_module.S_ISREG(opened.st_mode)
+            or not stat_module.S_ISREG(observed.st_mode)
+            or fingerprint != observed_fingerprint
+            or fingerprint[2] != os.geteuid()
+            or fingerprint[3] != 0o600
+            or fingerprint[4] != 1
+            or fingerprint[5] > 32
+        ):
+            return "unsafe"
+        while len(observed_bytes) <= 32:
+            chunk = os.read(descriptor, 33 - len(observed_bytes))
+            if not chunk:
+                break
+            observed_bytes.extend(chunk)
+        post_opened = os.fstat(descriptor)
+        post_observed = os.stat(
+            path.name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        post_fingerprint = (
+            int(post_opened.st_dev),
+            int(post_opened.st_ino),
+            int(post_opened.st_uid),
+            stat_module.S_IMODE(post_opened.st_mode),
+            int(post_opened.st_nlink),
+            int(post_opened.st_size),
+            int(post_opened.st_ctime_ns),
+            int(post_opened.st_mtime_ns),
+        )
+        post_observed_fingerprint = (
+            int(post_observed.st_dev),
+            int(post_observed.st_ino),
+            int(post_observed.st_uid),
+            stat_module.S_IMODE(post_observed.st_mode),
+            int(post_observed.st_nlink),
+            int(post_observed.st_size),
+            int(post_observed.st_ctime_ns),
+            int(post_observed.st_mtime_ns),
+        )
+        if (
+            post_fingerprint != fingerprint
+            or post_observed_fingerprint != observed_fingerprint
+        ):
+            return "unsafe"
+        if not observed_bytes:
+            return "empty"
+        try:
+            pid = int(observed_bytes.decode("ascii").removesuffix("\n"))
+        except (UnicodeDecodeError, ValueError):
+            return "malformed"
+        if pid <= 0 or observed_bytes != f"{pid}\n".encode("ascii"):
+            return "malformed"
+        liveness = _coordinator_pid_projection_liveness(pid)
+        if liveness is OwnerLiveness.ALIVE:
+            return "alive"
+        if liveness is OwnerLiveness.DEAD:
+            return "dead"
+        return "unknown"
+    except OSError:
+        return "unsafe"
+    finally:
+        _wipe_token_bytes(observed_bytes)
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        try:
+            os.close(directory_fd)
+        except OSError:
+            pass
+
+
+def _quarantine_coordinator_pid_projection(
+    coordinator_pid_path: Path | str,
+    *,
+    expected_state: str,
+) -> bool:
+    """Atomically move exact empty/dead PID evidence to a private sibling dir."""
+
+    if expected_state not in {"empty", "dead"}:
+        return False
+    if _classify_coordinator_pid_projection(coordinator_pid_path) != expected_state:
+        return False
+    path = Path(coordinator_pid_path)
+    try:
+        _directory, directory_fd, _directory_stat = (
+            _open_token_handoff_directory(path.parent)
+        )
+    except (OSError, QuackStateServerTokenError):
+        return False
+    descriptor = -1
+    quarantine_fd = -1
+    reservation_fd = -1
+    quarantine_name = ".quack-coordinator-pid-quarantine"
+    evidence_name = (
+        f"{path.name}.{expected_state}.{time.time_ns()}."
+        f"{secrets.token_hex(8)}"
+    )
+    payload = bytearray()
+    try:
+        descriptor = os.open(
+            path.name,
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=directory_fd,
+        )
+        opened = os.fstat(descriptor)
+        observed = os.stat(
+            path.name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        identity = (int(opened.st_dev), int(opened.st_ino))
+        fingerprint = (
+            *identity,
+            int(opened.st_uid),
+            stat_module.S_IMODE(opened.st_mode),
+            int(opened.st_nlink),
+            int(opened.st_size),
+            int(opened.st_ctime_ns),
+            int(opened.st_mtime_ns),
+        )
+        observed_fingerprint = (
+            int(observed.st_dev),
+            int(observed.st_ino),
+            int(observed.st_uid),
+            stat_module.S_IMODE(observed.st_mode),
+            int(observed.st_nlink),
+            int(observed.st_size),
+            int(observed.st_ctime_ns),
+            int(observed.st_mtime_ns),
+        )
+        if (
+            not stat_module.S_ISREG(opened.st_mode)
+            or not stat_module.S_ISREG(observed.st_mode)
+            or fingerprint != observed_fingerprint
+            or fingerprint[2] != os.geteuid()
+            or fingerprint[3] != 0o600
+            or fingerprint[4] != 1
+            or fingerprint[5] > 32
+        ):
+            return False
+        while len(payload) <= 32:
+            chunk = os.read(descriptor, 33 - len(payload))
+            if not chunk:
+                break
+            payload.extend(chunk)
+        if expected_state == "empty":
+            if payload:
+                return False
+        else:
+            try:
+                pid = int(payload.decode("ascii").removesuffix("\n"))
+            except (UnicodeDecodeError, ValueError):
+                return False
+            if (
+                pid <= 0
+                or payload != f"{pid}\n".encode("ascii")
+                or _coordinator_pid_projection_liveness(pid)
+                is not OwnerLiveness.DEAD
+            ):
+                return False
+        post_opened = os.fstat(descriptor)
+        post_observed = os.stat(
+            path.name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if (
+            (
+                int(post_opened.st_dev),
+                int(post_opened.st_ino),
+                int(post_opened.st_uid),
+                stat_module.S_IMODE(post_opened.st_mode),
+                int(post_opened.st_nlink),
+                int(post_opened.st_size),
+                int(post_opened.st_ctime_ns),
+                int(post_opened.st_mtime_ns),
+            )
+            != fingerprint
+            or (
+                int(post_observed.st_dev),
+                int(post_observed.st_ino),
+                int(post_observed.st_uid),
+                stat_module.S_IMODE(post_observed.st_mode),
+                int(post_observed.st_nlink),
+                int(post_observed.st_size),
+                int(post_observed.st_ctime_ns),
+                int(post_observed.st_mtime_ns),
+            )
+            != observed_fingerprint
+        ):
+            return False
+        try:
+            os.mkdir(quarantine_name, 0o700, dir_fd=directory_fd)
+            os.fsync(directory_fd)
+        except FileExistsError:
+            pass
+        quarantine_fd = os.open(
+            quarantine_name,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=directory_fd,
+        )
+        quarantine_opened = os.fstat(quarantine_fd)
+        quarantine_observed = os.stat(
+            quarantine_name,
+            dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
+        if (
+            not stat_module.S_ISDIR(quarantine_opened.st_mode)
+            or not stat_module.S_ISDIR(quarantine_observed.st_mode)
+            or quarantine_opened.st_uid != os.geteuid()
+            or quarantine_observed.st_uid != os.geteuid()
+            or stat_module.S_IMODE(quarantine_opened.st_mode) != 0o700
+            or stat_module.S_IMODE(quarantine_observed.st_mode) != 0o700
+            or (int(quarantine_opened.st_dev), int(quarantine_opened.st_ino))
+            != (int(quarantine_observed.st_dev), int(quarantine_observed.st_ino))
+        ):
+            return False
+        reservation_fd = os.open(
+            evidence_name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+            dir_fd=quarantine_fd,
+        )
+        reserved = os.fstat(reservation_fd)
+        reserved_path = os.stat(
+            evidence_name,
+            dir_fd=quarantine_fd,
+            follow_symlinks=False,
+        )
+        reserved_identity = (int(reserved.st_dev), int(reserved.st_ino))
+        if (
+            not stat_module.S_ISREG(reserved.st_mode)
+            or reserved.st_uid != os.geteuid()
+            or stat_module.S_IMODE(reserved.st_mode) != 0o600
+            or reserved.st_nlink != 1
+            or reserved.st_size != 0
+            or (int(reserved_path.st_dev), int(reserved_path.st_ino))
+            != reserved_identity
+        ):
+            return False
+        # Python has no portable renameat2(RENAME_NOREPLACE).  Reserve a
+        # cryptographically unique destination with O_EXCL, verify that exact
+        # slot, then atomically replace only our own empty inode.
+        os.rename(
+            path.name,
+            evidence_name,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=quarantine_fd,
+        )
+        os.fsync(directory_fd)
+        os.fsync(quarantine_fd)
+        final = os.stat(
+            evidence_name,
+            dir_fd=quarantine_fd,
+            follow_symlinks=False,
+        )
+        try:
+            os.stat(
+                path.name,
+                dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
         except FileNotFoundError:
             pass
         else:
-            raise QuackStateServerTokenError(
-                "token handoff remained visible after retirement"
-            )
-        return {
-            "schema": "ipfs_accelerate_py/quack-token-handoff-retirement@1",
-            "retired": True,
-            "already_absent": False,
-            "secret_handle": secret_handle,
-        }
+            return False
+        return (
+            (int(final.st_dev), int(final.st_ino)) == identity
+            and stat_module.S_ISREG(final.st_mode)
+            and final.st_uid == os.geteuid()
+            and stat_module.S_IMODE(final.st_mode) == 0o600
+            and final.st_nlink == 1
+        )
+    except OSError:
+        return False
     finally:
-        os.close(directory_fd)
+        _wipe_token_bytes(payload)
+        for owned_fd in (
+            descriptor,
+            reservation_fd,
+            quarantine_fd,
+            directory_fd,
+        ):
+            if owned_fd >= 0:
+                try:
+                    os.close(owned_fd)
+                except OSError:
+                    pass
+
+
+def _token_handoff_rearm_probe_receipt(
+    *,
+    secret_handle: str,
+    credential_sha256: str,
+    rearmed: bool,
+    pid_quarantined: bool,
+    reason: str,
+) -> dict[str, Any]:
+    if reason not in TOKEN_HANDOFF_REARM_PROBE_REASONS:
+        raise QuackStateServerTokenError(
+            "token handoff rearm probe reason is not allowed"
+        )
+    return {
+        "schema": TOKEN_HANDOFF_REARM_PROBE_SCHEMA,
+        "closed": True,
+        "rearmed": bool(rearmed),
+        "pid_quarantined": bool(pid_quarantined),
+        "recovery_admitted": bool(rearmed or pid_quarantined),
+        "completion_authority": False,
+        "task_authority": False,
+        "reason": str(reason),
+        "secret_handle": secret_handle,
+        "credential_sha256": credential_sha256,
+    }
+
+
+def rearm_token_handoff_if_coordinator_absent(
+    *,
+    state_dir: Path | str,
+    secret_handle: str,
+    expected_token: str,
+    coordinator_pid_path: Path | str,
+) -> dict[str, Any]:
+    """Conservatively repair a handoff after proven coordinator absence.
+
+    Exact empty/dead PID evidence is atomically moved into a private adjacent
+    quarantine and never discarded.  A live, unknown, malformed, unsafe, or
+    concurrently locked condition is a typed non-authoritative no-op.  The
+    probe closes the ordinary SIGKILL recovery gap only while the state owner
+    remains alive with the exact credential; simultaneous process loss still
+    requires external credential recovery.
+    """
+
+    try:
+        transaction = _begin_token_handoff_rearm(
+            state_dir=state_dir,
+            secret_handle=secret_handle,
+            expected_token=expected_token,
+        )
+    except _TokenHandoffLockHeld:
+        token = str(expected_token or "")
+        try:
+            encoded = token.encode("ascii")
+        except UnicodeEncodeError:
+            encoded = b""
+        return _token_handoff_rearm_probe_receipt(
+            secret_handle=str(secret_handle or ""),
+            credential_sha256="sha256:" + hashlib.sha256(encoded).hexdigest(),
+            rearmed=False,
+            pid_quarantined=False,
+            reason="retirement_lock_held",
+        )
+    handle = transaction.secret_handle
+    credential_sha256 = transaction.credential_sha256
+    try:
+        try:
+            already_present = _verify_rearm_target(transaction)
+        except QuackStateServerTokenError:
+            transaction._abandon()
+            return _token_handoff_rearm_probe_receipt(
+                secret_handle=handle,
+                credential_sha256=credential_sha256,
+                rearmed=False,
+                pid_quarantined=False,
+                reason="handoff_unsafe",
+            )
+        pid_state = _classify_coordinator_pid_projection(coordinator_pid_path)
+        if pid_state not in {"absent", "empty", "dead"}:
+            transaction._abandon()
+            return _token_handoff_rearm_probe_receipt(
+                secret_handle=handle,
+                credential_sha256=credential_sha256,
+                rearmed=False,
+                pid_quarantined=False,
+                reason=f"coordinator_pid_{pid_state}",
+            )
+        pid_quarantined = False
+        if pid_state in {"empty", "dead"}:
+            pid_quarantined = _quarantine_coordinator_pid_projection(
+                coordinator_pid_path,
+                expected_state=pid_state,
+            )
+            pid_confirmed = pid_quarantined
+        else:
+            pid_confirmed = (
+                _classify_coordinator_pid_projection(coordinator_pid_path)
+                == "absent"
+            )
+        if not pid_confirmed:
+            transaction._abandon()
+            return _token_handoff_rearm_probe_receipt(
+                secret_handle=handle,
+                credential_sha256=credential_sha256,
+                rearmed=False,
+                pid_quarantined=False,
+                reason="coordinator_pid_changed",
+            )
+        if already_present:
+            transaction._abandon()
+            return _token_handoff_rearm_probe_receipt(
+                secret_handle=handle,
+                credential_sha256=credential_sha256,
+                rearmed=False,
+                pid_quarantined=pid_quarantined,
+                reason=(
+                    f"coordinator_pid_{pid_state}"
+                    if pid_quarantined
+                    else "handoff_already_present"
+                ),
+            )
+        transaction.rollback()
+        return _token_handoff_rearm_probe_receipt(
+            secret_handle=handle,
+            credential_sha256=credential_sha256,
+            rearmed=True,
+            pid_quarantined=pid_quarantined,
+            reason=f"coordinator_pid_{pid_state}",
+        )
+    except BaseException:
+        if transaction.state == "begun":
+            transaction._abandon()
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -2922,17 +5479,22 @@ __all__ = (
     "QuackStateServerNotRunningError",
     "QuackStateServerOwnershipError",
     "QuackStateServerReadyError",
+    "QuackStateServerTokenCompromisedError",
     "QuackStateServerTokenError",
     "RemoteBindPolicy",
     "STATE_SERVER_IDENTITY_INTERFACE",
     "ServerLifecycle",
     "StateServerIdentity",
+    "TokenHandoffRetirement",
     "TokenVault",
     "assert_bind_admitted",
+    "begin_token_handoff_retirement",
     "build_server",
     "listen_uri",
     "provider_safe_environment",
     "reclaim_stale_owner_marker",
+    "rearm_token_handoff",
+    "rearm_token_handoff_if_coordinator_absent",
     "retire_token_handoff",
     "sanitize_for_export",
 )
