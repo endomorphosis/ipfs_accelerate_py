@@ -102445,6 +102445,7 @@ def _validated_m65_live_preflight_contract(
             "expected_task_heads": dict(_M65_EXPECTED_TASK_HEADS),
             "generation_restart_authorized": True,
             "bind_store_report_to_live_event_digest": True,
+            "events_334_337_must_be_preserved": True,
         }
     )
 

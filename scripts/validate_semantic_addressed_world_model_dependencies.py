@@ -3713,6 +3713,7 @@ def _m65_post_m64_stopped_owner_missing_client_token_vault_restart_errors(
             root, scheduler
         )
         stopped = expected.get("stopped_owner")
+        live_contract = expected.get("live_preflight_contract")
         if (
             not all(presence)
             or configured is not True
@@ -3733,7 +3734,9 @@ def _m65_post_m64_stopped_owner_missing_client_token_vault_restart_errors(
             or stopped.get("client_token_vault_absent") is not True
             or contract.get("generation_restart_authorized") is not True
             or contract.get("bind_store_report_to_live_event_digest") is not True
-            or contract.get("events_334_337_must_be_preserved") is not True
+            or not isinstance(live_contract, Mapping)
+            or live_contract.get("events_334_337_must_be_preserved") is not True
+            or live_contract.get("bind_store_report_to_live_event_digest") is not True
         ):
             errors.append("M65 stopped-owner token-vault restart authority differs")
     except Exception as exc:
@@ -15845,6 +15848,62 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m65_key = _M65_SUCCESSOR_KEY
+    m65_presence = (
+        m65_key in scheduler,
+        m65_key in migration,
+        f"{m65_key}_cid" in seal,
+    )
+    if any(m65_presence):
+        if not all(m65_presence):
+            return effective, ["active M65 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m65_nested_source_materializer",
+                REPO_ROOT
+                / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M65 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer
+                ._expected_m65_post_m64_stopped_owner_missing_client_token_vault_restart_authority()
+            )
+            materializer._validated_m65_live_preflight_contract(authority)
+            reference = dict(materializer._m65_authority_reference())
+        except Exception as exc:
+            return effective, [
+                f"active M65 nested-source authority unavailable: {exc}"
+            ]
+        if (
+            scheduler.get(m65_key) != reference
+            or migration.get(m65_key) != reference
+            or seal.get(f"{m65_key}_cid") != _M65_AUTHORITY_CID
+            or materializer._identity(authority) != _M65_AUTHORITY_CID
+            or len(materializer._canonical(authority)) != _M65_AUTHORITY_SIZE
+        ):
+            return effective, ["active M65 nested-source authority differs"]
+        for package, gitlink_key, tree_key in (
+            ("ipfs_datasets_py", "current_datasets_gitlink", "current_datasets_tree"),
+            ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree"),
+        ):
+            gitlink = str(authority.get(gitlink_key) or "")
+            tree = str(authority.get(tree_key) or "")
+            if (
+                package not in effective
+                or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+                or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            ):
+                return effective, ["active M65 nested-source identity is invalid"]
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
     m64_key = _M64_SUCCESSOR_KEY
     m64_presence = (
         m64_key in scheduler,
@@ -18336,6 +18395,12 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         origin = _git(root, "remote", "get-url", "origin")
         scheduler_probe = _load(root / "config/agent_supervisor_semantic_addressed_world_model_scheduler.json")
         migration_probe = _load(root / "docs/architecture/semantic_addressed_world_model_inventory/prior_materialization_migration.json")
+        m65_key = _M65_SUCCESSOR_KEY
+        m65_presence = (
+            m65_key in scheduler_probe,
+            m65_key in migration_probe,
+            f"{m65_key}_cid" in seal,
+        )
         m64_key = _M64_SUCCESSOR_KEY
         m64_presence = (
             m64_key in scheduler_probe,
@@ -18614,7 +18679,41 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         )
         m14_key = "stale_owner_restart_successor_materialization"
         m14_presence = (m14_key in scheduler_probe, m14_key in migration_probe, f"{m14_key}_cid" in seal)
-        if any(m64_presence):
+        if any(m65_presence):
+            scheduled = scheduler_probe.get(m65_key)
+            migrated = migration_probe.get(m65_key)
+            if not all(m65_presence) or scheduled != migrated:
+                unexpected = ["M65 authority is partial or differs across controls"]
+            else:
+                spec = importlib.util.spec_from_file_location(
+                    "sawm_m65_source_status_materializer",
+                    root
+                    / "scripts/materialize_semantic_addressed_world_model_program.py",
+                )
+                if spec is None or spec.loader is None:
+                    unexpected = ["M65 source materializer cannot be loaded"]
+                else:
+                    materializer = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(materializer)
+                    expected = (
+                        materializer
+                        ._expected_m65_post_m64_stopped_owner_missing_client_token_vault_restart_authority()
+                    )
+                    materializer._validated_m65_live_preflight_contract(expected)
+                    reference = dict(materializer._m65_authority_reference())
+                    if (
+                        scheduled != reference
+                        or seal.get(f"{m65_key}_cid") != _M65_AUTHORITY_CID
+                        or materializer._identity(expected) != _M65_AUTHORITY_CID
+                        or len(materializer._canonical(expected))
+                        != _M65_AUTHORITY_SIZE
+                    ):
+                        unexpected = [
+                            "M65 authority/CID differs across controls"
+                        ]
+                    else:
+                        unexpected = []
+        elif any(m64_presence):
             scheduled = scheduler_probe.get(m64_key)
             migrated = migration_probe.get(m64_key)
             if not all(m64_presence) or scheduled != migrated:
