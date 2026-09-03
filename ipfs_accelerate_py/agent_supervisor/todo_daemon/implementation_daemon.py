@@ -116494,6 +116494,7 @@ class DatabaseImplementationDaemon:
         succeeded: bool,
         reconciliation: Mapping[str, Any],
         current_attempt: DatabaseTaskAttempt | None = None,
+        allow_existing_terminal: bool = False,
     ) -> DatabaseTaskAttempt | None:
         """Project an authoritative cross-store recovery into execution state.
 
@@ -116562,6 +116563,11 @@ class DatabaseImplementationDaemon:
                 for candidate in admissible_bodies
             ):
                 return current
+            if allow_existing_terminal:
+                # SPAR-024 leftover recycle: a prior failed-phase commit already
+                # holds immutable evidence. Retirement must not freeze the only
+                # in_progress task behind attach-contention backoff.
+                return current
             raise DatabaseImplementationConflictError(
                 f"reconciled attempt {attempt_id} has different immutable "
                 "terminal evidence"
@@ -116574,6 +116580,8 @@ class DatabaseImplementationDaemon:
             item.get("phase") == expected_phase
             for item in self.phase_history(attempt_id)
         ):
+            if allow_existing_terminal:
+                return current
             raise DatabaseImplementationConflictError(
                 f"running attempt {attempt_id} already has terminal evidence"
             )
@@ -117696,6 +117704,7 @@ class DatabaseImplementationDaemon:
             identity,
             succeeded=False,
             reconciliation=outcome,
+            allow_existing_terminal=True,
         )
         if settled is None:
             raise DatabaseImplementationDaemonError(

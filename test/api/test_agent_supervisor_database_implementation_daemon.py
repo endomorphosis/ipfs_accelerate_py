@@ -4578,6 +4578,45 @@ def test_reconciled_terminal_evidence_is_immutable(
         daemon.close()
 
 
+def test_retire_stale_running_attempt_accepts_existing_failed_terminal(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path / "lane")
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        prepared = {
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "task_cid": attempt.task_cid,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "lease_id": attempt.lease_id,
+            "preparation_digest": "sha256:" + "4" * 64,
+        }
+        first = daemon._commit_reconciled_attempt_terminal(
+            prepared,
+            succeeded=False,
+            reconciliation={
+                "reason": "first-authoritative-reconciliation",
+                "evidence_digest": "sha256:" + "5" * 64,
+            },
+        )
+        assert first is not None
+        assert first.status == "failed"
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        settled = daemon._retire_stale_running_attempt(first, task)
+        assert settled is not None
+        assert settled.status == "failed"
+        assert settled.attempt_id == attempt.attempt_id
+    finally:
+        daemon.close()
+
+
 def test_consumed_failure_stale_task_contract_does_not_quarantine(
     tmp_path: Path,
 ) -> None:
