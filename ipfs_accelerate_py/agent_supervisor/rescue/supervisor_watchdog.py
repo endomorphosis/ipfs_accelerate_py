@@ -1402,6 +1402,11 @@ def check_lane_heartbeat(
         result["transition_id"] = str(status.get("transition_id") or "")
         result["generation"] = status.get("generation") or 0
         result["fencing_epoch"] = status.get("fencing_epoch")
+        if "last_exit_code" in status:
+            try:
+                result["last_exit_code"] = int(status["last_exit_code"])
+            except (TypeError, ValueError):
+                result["last_exit_code"] = status.get("last_exit_code")
         status_pid = status.get("pid")
         if status_pid not in (None, ""):
             try:
@@ -1972,11 +1977,16 @@ class SupervisorWatchdog:
                 and not terminal_process_conflict
                 and not (alive and heartbeat_stale)
             )
+            typed_fail_closed = heartbeat_check.get("last_exit_code") == 78
             needs_restart = (
                 not in_startup_grace
                 and not suppressed_state
+                and not typed_fail_closed
                 and (not alive or heartbeat_stale or inconsistent)
             )
+            if typed_fail_closed:
+                report["action"] = "typed_child_blocker"
+                report["reason"] = "typed_fail_closed_exit"
 
             if needs_restart:
                 unstall_result = self._watchdog_unstall(
