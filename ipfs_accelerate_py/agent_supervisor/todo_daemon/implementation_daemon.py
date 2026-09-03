@@ -69530,6 +69530,47 @@ class PortalImplementationDaemon:
             record
         )
         if observed_git_preimage.get("valid") is not True:
+            existing_quarantine = inspect_worktree_pool_quarantine(
+                worktree_root=self.worktree_root,
+                workspace_path=record.workspace_path,
+                expected_branch=record.branch,
+            )
+            existing_marker = existing_quarantine.get("marker")
+            if (
+                existing_quarantine.get("valid") is True
+                and isinstance(existing_marker, Mapping)
+                and existing_marker.get("lifecycle_record_id")
+                == record.record_id
+                and int(existing_marker.get("lifecycle_fence") or -1)
+                == int(record.fence)
+                and existing_marker.get("lifecycle_lease_id")
+                == record.lease_id
+                and existing_marker.get("task_id") == record.task_id
+                and existing_marker.get("canonical_task_cid")
+                == record.canonical_task_cid
+                and int(existing_marker.get("attempt") or -1)
+                == int(record.attempt)
+            ):
+                # SPAR-031: a prior successor already published the exact
+                # dead-owner quarantine. Settling dirties the implemented
+                # tree, so a fresh git preimage cannot be proven. Reuse the
+                # durable marker instead of fail-closing the task claim.
+                return {
+                    "quiescent": True,
+                    "reason": "portal_attempt_workspace_durably_quarantined",
+                    "denied_process_count": len(denied_pids),
+                    "quarantine": existing_quarantine,
+                    "idempotent": True,
+                    "git_preimage": observed_git_preimage,
+                }
+            if record.state is WorkspaceLifecycleState.SETTLING:
+                return {
+                    "quiescent": True,
+                    "reason": "settling_dead_owner_denied_cwd_non_occupant",
+                    "denied_process_count": len(denied_pids),
+                    "git_preimage": observed_git_preimage,
+                    "existing_quarantine": existing_quarantine,
+                }
             return {
                 **base,
                 "reason": "portal_attempt_git_preimage_unproven",
@@ -69662,7 +69703,14 @@ class PortalImplementationDaemon:
             float(self.worktree_lifecycle.clock())
             - float(record.updated_at),
         )
-        if age_seconds < INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS:
+        # Settling means the provider already returned. The inflight-log
+        # grace exists so a briefly invisible docker/restarted runner is
+        # not recovered mid-implementation. A dead settling leftover must
+        # not wait out that window while its home-shard ready set is fenced.
+        if (
+            age_seconds < INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS
+            and record.state is not WorkspaceLifecycleState.SETTLING
+        ):
             return {
                 "quiescent": False,
                 "reason": "task_attempt_claim_recent_activity_grace",
@@ -69791,6 +69839,28 @@ class PortalImplementationDaemon:
                     portal_attempt_scope is None
                     and cgroup_proof.get("reason")
                     == "generation_cgroup_identity_unavailable"
+                ):
+                    return (
+                        False,
+                        len(process_lines),
+                        observed_cwds,
+                        cgroup_proof,
+                    )
+                # SPAR-031: sibling portal scope can be proven from a stale
+                # implementation.lock while the leftover is already
+                # settling. Denied-cwd quarantine then fail-closes on a
+                # dirty implemented git preimage. Argv occupancy already
+                # scanned clean; do not keep the task-index fenced.
+                if (
+                    record.state is WorkspaceLifecycleState.SETTLING
+                    and cgroup_proof.get("reason")
+                    in {
+                        "portal_attempt_git_preimage_unproven",
+                        "portal_attempt_quarantine_preimage_changed",
+                        "portal_attempt_quarantine_guard_unavailable",
+                        "portal_attempt_quarantine_unproven",
+                        "generation_cgroup_identity_unavailable",
+                    }
                 ):
                     return (
                         False,

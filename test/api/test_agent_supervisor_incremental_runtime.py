@@ -2255,6 +2255,222 @@ def test_lane_parent_retires_dead_nested_portal_attempt_claim(
     assert daemon.worktree_lifecycle.load_workspace(workspace) is None
 
 
+def test_settling_dead_owner_retires_despite_dirty_git_preimage_and_yama(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    board = "semantic-preserving-autonomous-remodularization-v1"
+    target = "codex/semantic-preserving-autonomous-remodularization-v1"
+    _git(repo, "branch", target)
+    state_root = tmp_path / "state"
+    attempt_root = (
+        state_root / "lane-2" / "spar_lane_2_database_portal_attempts"
+    )
+    current_state_dir = attempt_root / ("a" * 24)
+    predecessor_state_dir = attempt_root / ("b" * 24)
+    current_state_dir.mkdir(parents=True)
+    predecessor_state_dir.mkdir(parents=True)
+    worktree_root = tmp_path / "worktrees"
+    workspace = worktree_root / "workspace_aaaaaaaaaaaa_bbbbbbbbbbbb"
+    worktree_root.mkdir(parents=True)
+    implementation_branch = (
+        "implementation/spar-031-settling-dead-owner-attempt-1"
+    )
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "-b",
+        implementation_branch,
+        str(workspace),
+        "HEAD",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=current_state_dir / "portal-task-state.json",
+        strategy_path=current_state_dir / "portal-strategy.json",
+        events_path=current_state_dir / "portal-events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c("raise SystemExit(7)"),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        board_namespace=board,
+        merge_target_branch=target,
+    )
+    task = PortalTask(
+        task_id="SPAR-031",
+        title="Retire a settling leftover after the provider already returned",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 91,
+        start_time_ticks=1,
+        boot_id="dead-settling-owner",
+        parent_pid=600,
+    )
+    predecessor = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=1,
+        lane_id="portal-attempt:lane-2",
+        workspace_path=workspace,
+        branch=implementation_branch,
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(predecessor_state_dir.resolve()),
+        owner=dead_owner,
+    )
+    predecessor = daemon.worktree_lifecycle.mark_active(
+        predecessor.workspace_path,
+        lease_id=predecessor.lease_id,
+        expected_fence=predecessor.fence,
+    )
+    predecessor = daemon.worktree_lifecycle.mark_settling(
+        predecessor.workspace_path,
+        lease_id=predecessor.lease_id,
+        expected_fence=predecessor.fence,
+    )
+    (workspace / "implemented.txt").write_text(
+        "provider already returned\n",
+        encoding="utf-8",
+    )
+    daemon.worktree_lifecycle.clock = lambda: (
+        predecessor.updated_at + 1.0
+    )
+    implementation_lock = {
+        "attempt": predecessor.attempt,
+        "board_namespace": daemon.board_namespace,
+        "canonical_task_cid": predecessor.canonical_task_cid,
+        "canonical_task_key": predecessor.canonical_task_cid,
+        "kind": "implementation",
+        "lease_id": "implementation-lease",
+        "owner_process_birth": dead_owner.to_dict(),
+        "owner_script": "implementation_daemon.py",
+        "pid": dead_owner.pid,
+        "repo_root": str(repo.resolve()),
+        "started_at": "2026-09-03T09:16:45+00:00",
+        "state_dir": str(predecessor_state_dir.resolve()),
+        "task_id": predecessor.task_id,
+    }
+    (predecessor_state_dir / "implementation.lock").write_text(
+        json.dumps(implementation_lock),
+        encoding="utf-8",
+    )
+    pool_root = worktree_root / ".pool-state"
+    pool_root.mkdir()
+    entry_id = "aaaaaaaaaaaa-bbbbbbbbbbbb"
+    pool_state = {
+        "base_commit": _git(repo, "rev-parse", "HEAD"),
+        "branch": predecessor.branch,
+        "cache_key": "cache-key",
+        "cold_setup_seconds": 1.0,
+        "created_at_epoch": 1.0,
+        "dependency_heads": {},
+        "dependency_paths": [],
+        "last_used_at_epoch": 1.0,
+        "lease_pid": dead_owner.pid,
+        "lease_token": entry_id,
+        "path": str(workspace.resolve()),
+        "repo_common_dir": str(daemon.worktree_pool.repo_common_dir),
+        "repo_root": str(repo.resolve()),
+        "schema": "agent-supervisor-worktree-pool-v1",
+        "state": "leased",
+        "use_count": 1,
+    }
+    (pool_root / f"{entry_id}.json").write_text(
+        json.dumps(pool_state),
+        encoding="utf-8",
+    )
+    (pool_root / f"{entry_id}.lock").write_text(
+        json.dumps({"pid": dead_owner.pid, "created_at_epoch": 1.0}),
+        encoding="utf-8",
+    )
+    proc_root = tmp_path / "proc"
+    denied_proc = proc_root / "500"
+    denied_proc.mkdir(parents=True)
+    (denied_proc / "cmdline").write_bytes(
+        b"/usr/bin/tmux\0long-lived-unrelated-process\0"
+    )
+    (denied_proc / "cwd").symlink_to(tmp_path)
+    daemon.worktree_lifecycle.proc_root = proc_root
+    real_readlink = os.readlink
+
+    def yama_denied_readlink(path: str | os.PathLike[str]) -> str:
+        candidate = Path(path)
+        if candidate == denied_proc / "cwd":
+            raise PermissionError("simulated Yama ptrace_scope denial")
+        return real_readlink(path)
+
+    monkeypatch.setattr(os, "readlink", yama_denied_readlink)
+
+    class _Docker:
+        returncode = 1
+        stdout = ""
+        stderr = "Cannot connect to the Docker daemon"
+
+    real_run = subprocess.run
+
+    def _run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if cmd and cmd[0] == "docker":
+            return _Docker()
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _run)
+
+    preparing_workspace = tmp_path / "preparing-workspace"
+    preparing_workspace.mkdir()
+    preparing = daemon.worktree_lifecycle.begin_preparing(
+        task_id="SPAR-039",
+        canonical_task_cid="baguqeera" + ("c" * 51),
+        attempt=1,
+        lane_id="portal-attempt:lane-2",
+        workspace_path=preparing_workspace,
+        branch="implementation/spar-039-preparing-dead-owner-attempt-1",
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(predecessor_state_dir.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 92,
+            start_time_ticks=2,
+            boot_id="dead-preparing-owner",
+        ),
+    )
+    daemon.worktree_lifecycle.clock = lambda: preparing.updated_at + 1.0
+    preparing_blocked = daemon._predecessor_worktree_dispatch_quiescence(
+        preparing
+    )
+    assert preparing_blocked["quiescent"] is False
+    assert preparing_blocked["reason"] == (
+        "task_attempt_claim_recent_activity_grace"
+    )
+    daemon.worktree_lifecycle.clock = lambda: predecessor.updated_at + 1.0
+
+    recovered = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+    assert recovered["finalized"] is True
+    assert recovered["custody_kind"] == "sibling_database_portal_attempt"
+    assert recovered["reason"] == (
+        "sibling_portal_attempt_dead_owner_superseded"
+    )
+    assert recovered["predecessor_owner_liveness"] == "dead"
+    quiescence = recovered["predecessor_dispatch_quiescence"]
+    assert quiescence["quiescent"] is True
+    assert quiescence["age_seconds"] < 180.0
+    assert daemon.worktree_lifecycle.load_workspace(workspace) is None
+    assert (workspace / "implemented.txt").read_text(
+        encoding="utf-8"
+    ) == "provider already returned\n"
+
+
 def test_sibling_portal_attempt_quiescence_scopes_denied_proc_cwds(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2408,8 +2624,10 @@ def test_sibling_portal_attempt_quiescence_scopes_denied_proc_cwds(
     pool_state["lease_pid"] = dead_owner.pid + 1
     pool_state_path.write_text(json.dumps(pool_state), encoding="utf-8")
     missing_pool = daemon._predecessor_worktree_dispatch_quiescence(record)
-    assert missing_pool["quiescent"] is False
-    assert missing_pool["reason"] == "portal_attempt_pool_proof_unavailable"
+    # Unprovable pool/lock falls through to occupancy. A Yama-denied
+    # unrelated cwd is not a runner, so the dead claim stays recoverable.
+    assert missing_pool["quiescent"] is True
+    assert missing_pool["reason"] == "task_attempt_claim_dispatch_quiescent"
     pool_state["lease_pid"] = dead_owner.pid
     pool_state_path.write_bytes(pool_state_bytes)
 
@@ -2418,8 +2636,8 @@ def test_sibling_portal_attempt_quiescence_scopes_denied_proc_cwds(
     attempt_lock_path.unlink()
     attempt_lock_path.symlink_to(real_attempt_lock)
     symlinked_lock = daemon._predecessor_worktree_dispatch_quiescence(record)
-    assert symlinked_lock["quiescent"] is False
-    assert symlinked_lock["reason"] == "portal_attempt_lock_proof_unavailable"
+    assert symlinked_lock["quiescent"] is True
+    assert symlinked_lock["reason"] == "task_attempt_claim_dispatch_quiescent"
     attempt_lock_path.unlink()
     attempt_lock_path.write_text(json.dumps(implementation_lock), encoding="utf-8")
 
@@ -2428,8 +2646,8 @@ def test_sibling_portal_attempt_quiescence_scopes_denied_proc_cwds(
     pool_state_path.unlink()
     pool_state_path.symlink_to(real_pool_state)
     symlinked_pool = daemon._predecessor_worktree_dispatch_quiescence(record)
-    assert symlinked_pool["quiescent"] is False
-    assert symlinked_pool["reason"] == "portal_attempt_pool_proof_unavailable"
+    assert symlinked_pool["quiescent"] is True
+    assert symlinked_pool["reason"] == "task_attempt_claim_dispatch_quiescent"
     pool_state_path.unlink()
     pool_state_path.write_bytes(pool_state_bytes)
 
