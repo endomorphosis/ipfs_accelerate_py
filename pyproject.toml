@@ -333,6 +333,18 @@ live-application = false
 live-client = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.objective-identity-parity]
+schema = "ipfs_accelerate_py/assurance/objective-identity-parity@1"
+interface = "AccelerateObjectiveIdentityParity@1"
+task-id = "PCPR-082"
+goal-id = "PCPR-G800"
+objective-kind = "declared_cross_client_objective_identity_parity"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
