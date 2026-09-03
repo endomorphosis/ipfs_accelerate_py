@@ -1960,6 +1960,18 @@ def test_m28_live_owner_admits_runtime_generated_generation_restart() -> None:
     assert materializer._m28_live_owner_identity_admitted(
         {**identity, "generation": 44}, runtime, restart
     ) is False
+    same_live = {
+        "live_owner": {
+            "same_owner_required": True,
+            "generation_restart_authorized": False,
+            "server_id": identity["server_id"],
+            "process_birth_id": identity["process_birth_id"],
+            "generation": 45,
+        }
+    }
+    assert materializer._m28_live_owner_identity_admitted(
+        identity, runtime, same_live
+    ) is True
 
 
 def test_committed_nested_gitlink_admits_clean_successor_checkout() -> None:

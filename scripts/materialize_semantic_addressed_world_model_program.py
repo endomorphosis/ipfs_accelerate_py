@@ -70287,10 +70287,16 @@ def _m28_live_owner_identity_admitted(
     """
 
     stopped = authority.get("stopped_owner")
+    live_owner = authority.get("live_owner")
     runtime_generated = (
         isinstance(stopped, Mapping)
         and stopped.get("target_identity_is_runtime_generated") is True
         and stopped.get("generation_restart_authorized") is True
+    )
+    same_live_owner = (
+        isinstance(live_owner, Mapping)
+        and live_owner.get("same_owner_required") is True
+        and live_owner.get("generation_restart_authorized") is not True
     )
     if (
         not isinstance(identity, Mapping)
@@ -70303,6 +70309,12 @@ def _m28_live_owner_identity_admitted(
         return False
     if runtime_generated:
         return True
+    if same_live_owner:
+        return (
+            identity.get("server_id") == live_owner.get("server_id")
+            and identity.get("process_birth_id")
+            == live_owner.get("process_birth_id")
+        )
     live_owner = authority.get("live_owner")
     if (
         isinstance(live_owner, Mapping)
