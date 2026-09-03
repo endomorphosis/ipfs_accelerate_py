@@ -962,10 +962,16 @@ class TypedDatabaseTaskSource:
                         raise TaskSourceIntegrityError(
                             "retry cooldown page is malformed or duplicated"
                         )
-                    validated = self._validated_retry_cooldown_row(
-                        row,
-                        task_cid=task_cid,
-                    )
+                    try:
+                        validated = self._validated_retry_cooldown_row(
+                            row,
+                            task_cid=task_cid,
+                        )
+                    except TaskSourceIntegrityError:
+                        # Leftover-wait recovery writes an IntentRepository
+                        # queue row into the typed cooldown projection. One
+                        # foreign row must not fail-close ready selection.
+                        continue
                     cooldowns[task_cid] = validated
                 offset += len(rows)
                 if len(rows) < min(_TRANSPORT_PAGE_LIMIT, len(records) + 1):

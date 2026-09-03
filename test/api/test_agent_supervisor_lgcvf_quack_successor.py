@@ -6180,6 +6180,70 @@ def test_typed_retry_writer_and_reader_share_one_closed_vocabulary() -> None:
         )
 
 
+def test_leftover_wait_queue_cooldown_does_not_fail_ready_projection() -> None:
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskRecord,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    task = TaskRecord(
+        task_cid="task:spar-024",
+        task_alias="SPAR-024",
+        goal_cid="goal:spar-024",
+        ordinal=24,
+        status="todo",
+        revision=3,
+        body={},
+        dependencies=(),
+    )
+    generation = SimpleNamespace(content_id="gen:stable", revision=1)
+    foreign_row = {
+        "task_cid": "task:spar-024",
+        "claim_cid": "claim:leftover-wait",
+        "resolution_cid": "sha256:" + ("a" * 64),
+        "claimant_did": "session:leftover-wait",
+        "logical_epoch": 1,
+        "fencing_token": 1,
+        "expires_at_ms": 0,
+        "attempt": 1,
+        "state": "released",
+        "started_at_ms": 1,
+        "release_reason": "leftover_wait_deferral_budget_cleared",
+        "retry_not_before_ms": 0,
+        "owner_session_id": "session:leftover-wait",
+        "fence_epoch": 1,
+        "revision": 1,
+        "extension_schema": "not-a-typed-retry-cooldown",
+        "extension_json": "{}",
+    }
+
+    class _Client:
+        def load_generation(self) -> SimpleNamespace:
+            return generation
+
+        def execute(
+            self, name: str, params: dict[str, object]
+        ) -> list[dict[str, object]]:
+            if name == "executor_retry_cooldown_page":
+                return [foreign_row]
+            return []
+
+    source = object.__new__(TypedDatabaseTaskSource)
+    source._client = _Client()
+    source._snapshot_material = lambda: ({}, ((task, {}),), 1)
+    source._repair_legacy_unstalled_records = lambda *_a, **_k: False
+
+    snapshot_row, records, revision, cooldowns = source._stable_ready_material()
+    assert snapshot_row == {}
+    assert revision == 1
+    assert records[0][0].task_alias == "SPAR-024"
+    assert dict(cooldowns) == {}
+
+
 def test_projection_plane_pins_all_writes_and_reopens_from_logical_paths(
     tmp_path: Path,
 ) -> None:
