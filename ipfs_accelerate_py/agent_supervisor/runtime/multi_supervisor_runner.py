@@ -9852,6 +9852,7 @@ def run_supervisor_tracks(
     process_started_at: dict[str, float] = {}
     process_started_monotonic: dict[str, float] = {}
     restart_start_failures: dict[str, int] = {}
+    isolated_restart_tracks: set[str] = set()
     restart_failure_receipts: deque[dict[str, object]] = deque(
         maxlen=MAX_RESTART_FAILURE_RECEIPTS
     )
@@ -10197,6 +10198,33 @@ def run_supervisor_tracks(
             "require operator repair"
         )
 
+    def remaining_live_tracks(excluded: str) -> bool:
+        for name, proc in processes.items():
+            if name == excluded or name in isolated_restart_tracks:
+                continue
+            if (
+                proc is not None
+                and proc.poll() is None
+                and pid_alive(proc.pid)
+            ):
+                return True
+        return False
+
+    def isolate_exhausted_restart(track: SupervisorTrack) -> bool:
+        """Return True when no live peer remains and the run must stop."""
+
+        isolated_restart_tracks.add(track.name)
+        if remaining_live_tracks(track.name):
+            _emit(
+                output,
+                (
+                    "isolated restart admission failure "
+                    f"track={track.name}; remaining live lanes continue"
+                ),
+            )
+            return False
+        return True
+
     def recovery_recipient(
         donor: PlanBoundSupervisorChild,
     ) -> PlanBoundSupervisorChild:
@@ -10384,6 +10412,7 @@ def run_supervisor_tracks(
                     track.name in bounded_finished_tracks
                     or track.name in shared_authority_terminal_tracks
                     or track.name in shared_authority_fenced_track_names
+                    or track.name in isolated_restart_tracks
                 ):
                     continue
                 process = processes.get(track.name)
@@ -10572,10 +10601,12 @@ def run_supervisor_tracks(
                         elif deadline_reached:
                             continue
                         elif exhausted:
-                            blocked = restart_admission_blocker(track)
-                            restart_admission_blocked = True
-                            _emit(output, f"blocked: {blocked}")
-                            break
+                            if isolate_exhausted_restart(track):
+                                blocked = restart_admission_blocker(track)
+                                restart_admission_blocked = True
+                                _emit(output, f"blocked: {blocked}")
+                                break
+                            continue
                     elif exit_when_all_tracks_terminal:
                         task_fields = terminal_task_state_fields(
                             resolved,
@@ -10887,10 +10918,12 @@ def run_supervisor_tracks(
                 elif deadline_reached:
                     continue
                 elif exhausted:
-                    blocked = restart_admission_blocker(track)
-                    restart_admission_blocked = True
-                    _emit(output, f"blocked: {blocked}")
-                    break
+                    if isolate_exhausted_restart(track):
+                        blocked = restart_admission_blocker(track)
+                        restart_admission_blocked = True
+                        _emit(output, f"blocked: {blocked}")
+                        break
+                    continue
             if restart_admission_blocked:
                 break
             if shared_authority_terminals:
