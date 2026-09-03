@@ -281,6 +281,21 @@ class StopSignalState:
 DEFAULT_SUPERVISOR_RUNNING_STATES = frozenset({"running", "starting", "recycling", "restarting"})
 
 
+def _rewind_inherited_pass_fds(pass_fds: Sequence[int]) -> None:
+    """Reset shared sealed-memfd offsets before a child inherits them.
+
+    Zipimport and extension loaders may consume the inherited file offset.
+    A later sibling or restart then fail-closes with exit 78. Seeking the
+    parent's copy back to zero makes the next spawn start at the payload.
+    """
+
+    for descriptor in pass_fds:
+        try:
+            os.lseek(int(descriptor), 0, os.SEEK_SET)
+        except (OSError, TypeError, ValueError):
+            continue
+
+
 def launch_process_child(
     command: Sequence[str],
     *,
@@ -315,6 +330,7 @@ def launch_process_child(
         # Preserve compatibility with injected/fake ``Popen`` callables and
         # non-POSIX launchers when no descriptor inheritance was requested.
         kwargs["pass_fds"] = normalized_pass_fds
+        _rewind_inherited_pass_fds(normalized_pass_fds)
     if text:
         kwargs["text"] = True
     return subprocess.Popen([str(part) for part in command], **kwargs)
@@ -729,6 +745,11 @@ def build_python_module_command(
     return tuple(command)
 
 
+TYPED_FAIL_CLOSED_EXIT_CODE = 78
+TYPED_CHILD_BLOCKER_STATUS = "typed_child_blocker"
+TYPED_FAIL_CLOSED_RECYCLE_REASON = "typed_fail_closed_exit"
+
+
 def child_exit_should_restart(
     *,
     exit_code: Optional[int],
@@ -750,6 +771,11 @@ def child_exit_should_restart(
     except (TypeError, ValueError):
         limit = 0
     if count >= limit:
+        return False
+    if int(exit_code) == TYPED_FAIL_CLOSED_EXIT_CODE:
+        # Sealed-capsule bootstrap maps uncaught failures to 78. Relaunching
+        # the same child command repeats that fail-closed exit instead of
+        # recovering the lane.
         return False
     if int(exit_code) == 0 and not restart_on_clean_exit:
         return False

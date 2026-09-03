@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -31,11 +32,16 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     SUPERVISED_CHILD_IDENTITY_PATH_ENV,
     SUPERVISED_CHILD_OWNER_SCOPE_ENV,
+    TYPED_CHILD_BLOCKER_STATUS,
+    TYPED_FAIL_CLOSED_EXIT_CODE,
+    TYPED_FAIL_CLOSED_RECYCLE_REASON,
+    RestartPolicy,
     SupervisedChild,
     SupervisedChildIdentity,
     SupervisedChildSpec,
     adopt_or_launch_supervised_child,
     adopt_supervised_child,
+    child_exit_should_restart,
     clear_child_pid_file,
     launch_supervised_child,
     terminate_supervised_child,
@@ -1198,3 +1204,65 @@ def test_adopted_process_numeric_signal_methods_are_disabled() -> None:
         process.terminate()
     with pytest.raises(RuntimeError, match="ownership fence"):
         process.kill()
+
+
+def test_child_exit_should_not_restart_typed_fail_closed_exit() -> None:
+    assert not child_exit_should_restart(
+        exit_code=TYPED_FAIL_CLOSED_EXIT_CODE,
+        restart_count=0,
+        restart_limit=5,
+        restart_on_clean_exit=True,
+    )
+
+
+def test_supervisor_loop_stops_on_typed_fail_closed_child_exit(tmp_path: Path) -> None:
+    """Exit 78 is sealed fail-closed; do not restart-loop the same child."""
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    child = tmp_path / "exit78.py"
+    child.write_text("raise SystemExit(78)\n", encoding="utf-8")
+    spec = ManagedDaemonSpec(
+        name="typed-fail-closed-daemon",
+        schema="test.typed-fail-closed-daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, str(child)),
+        status_path=state_dir / "daemon-status.json",
+        supervisor_status_path=state_dir / "supervisor-status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure-status.json",
+        ensure_check_path=state_dir / "ensure-check.json",
+        latest_log_path=state_dir / "latest.log",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, str(child)),
+            log_prefix="child",
+            restart_policy=RestartPolicy(
+                restart_backoff_seconds=0,
+                fast_restart_backoff_seconds=0,
+            ),
+            heartbeat_seconds=0.01,
+            poll_seconds=0.01,
+            max_restarts=5,
+        ),
+        sleep=lambda _seconds: None,
+    )
+
+    result = loop.run()
+
+    assert result.status == TYPED_CHILD_BLOCKER_STATUS
+    assert result.restart_count == 1
+    assert result.last_exit_code == TYPED_FAIL_CLOSED_EXIT_CODE
+    assert result.last_recycle_reason == TYPED_FAIL_CLOSED_RECYCLE_REASON
+    status = json.loads(
+        (state_dir / "supervisor-status.json").read_text(encoding="utf-8")
+    )
+    assert status["status"] == TYPED_CHILD_BLOCKER_STATUS
+    assert status["last_exit_code"] == TYPED_FAIL_CLOSED_EXIT_CODE
+    assert status["last_recycle_reason"] == TYPED_FAIL_CLOSED_RECYCLE_REASON

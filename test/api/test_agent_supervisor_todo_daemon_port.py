@@ -211,6 +211,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     RestartPolicy,
     SupervisedChild,
     SupervisedChildSpec,
+    TYPED_CHILD_BLOCKER_STATUS,
+    TYPED_FAIL_CLOSED_EXIT_CODE,
+    TYPED_FAIL_CLOSED_RECYCLE_REASON,
     background_supervisor_args,
     adopt_supervised_child,
     build_configured_implementation_supervisor_entrypoint,
@@ -2148,6 +2151,12 @@ def test_supervisor_runtime_child_exit_restart_policy() -> None:
         restart_count=0,
         restart_limit=3,
         stop_requested=True,
+    )
+    assert not child_exit_should_restart(
+        exit_code=TYPED_FAIL_CLOSED_EXIT_CODE,
+        restart_count=0,
+        restart_limit=5,
+        restart_on_clean_exit=True,
     )
 
 
@@ -10416,6 +10425,57 @@ def test_supervisor_loop_retries_child_launch_failures(tmp_path):
     assert status["status"] == "max_restarts_reached"
     assert status["last_recycle_reason"] == "launch_failed"
     assert status["last_exit_code"] == 127
+
+
+def test_supervisor_loop_stops_on_typed_fail_closed_child_exit(tmp_path):
+    """Exit 78 is sealed fail-closed; do not restart-loop the same child."""
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    child = tmp_path / "exit78.py"
+    child.write_text("raise SystemExit(78)\n", encoding="utf-8")
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, str(child)),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+        latest_log_path=state_dir / "latest.log",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, str(child)),
+            log_prefix="child",
+            restart_policy=RestartPolicy(
+                restart_backoff_seconds=0,
+                fast_restart_backoff_seconds=0,
+            ),
+            heartbeat_seconds=0.01,
+            poll_seconds=0.01,
+            max_restarts=5,
+        ),
+        sleep=lambda _seconds: None,
+    )
+
+    result = loop.run()
+
+    assert result.status == TYPED_CHILD_BLOCKER_STATUS
+    assert result.restart_count == 1
+    assert result.last_exit_code == TYPED_FAIL_CLOSED_EXIT_CODE
+    assert result.last_recycle_reason == TYPED_FAIL_CLOSED_RECYCLE_REASON
+    status = json.loads((state_dir / "supervisor_status.json").read_text(encoding="utf-8"))
+    assert status["status"] == TYPED_CHILD_BLOCKER_STATUS
+    assert status["last_exit_code"] == TYPED_FAIL_CLOSED_EXIT_CODE
+    assert status["last_recycle_reason"] == TYPED_FAIL_CLOSED_RECYCLE_REASON
 
 
 def test_supervisor_loop_publishes_cached_worker_status(tmp_path):

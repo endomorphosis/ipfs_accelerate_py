@@ -1289,12 +1289,23 @@ def open_duckdb_connection(
         _LOGGER.warning("%s; falling back to exclusive DuckDB file", message)
     else:
         _LOGGER.info("%s; falling back to exclusive DuckDB file", message)
-    return _open_file_duckdb_connection(
-        path,
-        timeout_seconds=timeout_seconds,
-        memory_limit=memory_limit,
-        threads=threads,
-    )
+    try:
+        return _open_file_duckdb_connection(
+            path,
+            timeout_seconds=timeout_seconds,
+            memory_limit=memory_limit,
+            threads=threads,
+        )
+    except Exception as fallback_exc:
+        _LOGGER.error(
+            "%s; file fallback also failed error_type=%s error=%s",
+            message,
+            type(fallback_exc).__name__,
+            fallback_exc,
+        )
+        raise DuckDBConnectionPolicyError(
+            message + f"; file fallback failed: {fallback_exc}"
+        ) from fallback_exc
 
 
 def initialize_duckdb_database(

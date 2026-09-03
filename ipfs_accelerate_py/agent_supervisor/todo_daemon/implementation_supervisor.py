@@ -185,7 +185,12 @@ REPO_ROOT = Path.cwd()
 
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor")
 
-RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {"child_exited", "launch_failed", "max_restarts_reached"}
+RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {
+    "child_exited",
+    "launch_failed",
+    "max_restarts_reached",
+    "typed_child_blocker",
+}
 CONTROL_PLANE_RELOAD_STATUS = "control_plane_reload_required"
 CONTROL_PLANE_SOURCE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.control_plane_source@1"

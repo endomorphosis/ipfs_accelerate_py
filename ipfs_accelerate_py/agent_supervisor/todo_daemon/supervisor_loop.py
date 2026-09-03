@@ -17,7 +17,11 @@ from .supervisor_runtime import (
     RestartPolicy,
     SupervisedChild,
     SupervisedChildSpec,
+    TYPED_CHILD_BLOCKER_STATUS,
+    TYPED_FAIL_CLOSED_EXIT_CODE,
+    TYPED_FAIL_CLOSED_RECYCLE_REASON,
     adopt_or_launch_supervised_child,
+    child_exit_should_restart,
     clear_child_pid_file,
     supervised_log_path,
     supervisor_run_id,
@@ -590,6 +594,23 @@ class SupervisorLoop:
                 break
             run_duration = self.monotonic() - child_started_at
             self.restart_count += 1
+            if self.last_exit_code == TYPED_FAIL_CLOSED_EXIT_CODE:
+                final_status = TYPED_CHILD_BLOCKER_STATUS
+                self.last_recycle_reason = TYPED_FAIL_CLOSED_RECYCLE_REASON
+                break
+            restart_limit = (
+                self.config.max_restarts
+                if self.config.max_restarts > 0
+                else 2**31 - 1
+            )
+            if not child_exit_should_restart(
+                exit_code=self.last_exit_code,
+                restart_count=self.restart_count,
+                restart_limit=restart_limit,
+                restart_on_clean_exit=True,
+            ):
+                final_status = "max_restarts_reached" if recycled else "child_exited"
+                break
             if self.config.max_restarts > 0 and self.restart_count >= self.config.max_restarts:
                 final_status = "max_restarts_reached" if recycled else "child_exited"
                 break
