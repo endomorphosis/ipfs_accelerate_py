@@ -186,6 +186,19 @@ live-storage = false
 live-execution = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.deterministic-first-route]
+schema = "ipfs_accelerate_py/assurance/deterministic-first-route@1"
+interface = "AccelerateDeterministicFirstRoute@1"
+task-id = "PCPR-063"
+goal-id = "PCPR-G700"
+objective-kind = "declared_deterministic_first_route"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-execution = false
+live-selected-tests = false
+live-prover = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
