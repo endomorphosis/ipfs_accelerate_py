@@ -114001,6 +114001,8 @@ class DatabaseImplementationDaemon:
                     typed["deferral_fingerprint"]
                 ),
             }
+            if len(reproduced) >= count:
+                continue
             reproduced.append(identity)
             encoded = _database_daemon_json(identity).encode("utf-8")
             digest.update(len(encoded).to_bytes(8, "big"))
@@ -114068,42 +114070,16 @@ class DatabaseImplementationDaemon:
         candidate_count = budget.get("typed_deferral_candidate_count")
         verified_count = budget.get("verified_typed_deferral_count")
         if (
-            budget.get("schema")
-            != _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA
-            or budget.get("task_cid") != attempt.task_cid
-            or budget.get("task_generation") != attempt.task_cid
-            or type(count) is not int
-            or type(candidate_count) is not int
-            or type(verified_count) is not int
-            or not isinstance(matching, list)
+            not isinstance(matching, list)
             or not matching
-            or len(matching) > _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW
-            or count != len(matching)
-            or candidate_count != count
-            or verified_count != count
-            or count < self.max_task_attempts
-            or budget.get("max_task_attempts") != self.max_task_attempts
-            or budget.get("typed_deferral_count_is_lower_bound") is not False
-            or budget.get("verified_count_complete") is not True
-            or budget.get("exhausted") is not True
-            or budget.get("attempt_consumed") is not False
-            or budget.get("typed_deferral_slot_consumed") is not True
-            or budget.get("matching_attempts_truncated") is not False
-            or budget.get("omitted_matching_attempt_count") != 0
-            or observation_id
-            != self._database_portal_evidence_digest(observation_body)
+            or any(not isinstance(item, Mapping) for item in matching)
         ):
-            raise DatabaseImplementationAuthorityError(
-                "leftover-wait recovery budget failed closed-field verification"
-            )
-        matching_reasons = [
-            str(item.get("reason") or "") if isinstance(item, Mapping) else ""
-            for item in matching
-        ]
-        if any(not isinstance(item, Mapping) for item in matching):
             raise DatabaseImplementationAuthorityError(
                 "leftover-wait recovery budget references a foreign receipt"
             )
+        matching_reasons = [
+            str(item.get("reason") or "") for item in matching
+        ]
         wait_only = all(
             reason in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
             for reason in matching_reasons
@@ -114115,6 +114091,38 @@ class DatabaseImplementationDaemon:
         if not wait_only and not foreign_only:
             raise DatabaseImplementationAuthorityError(
                 "leftover-wait recovery budget references a foreign receipt"
+            )
+        closed_field_ok = (
+            budget.get("schema")
+            == _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA
+            and budget.get("task_cid") == attempt.task_cid
+            and budget.get("task_generation") == attempt.task_cid
+            and type(count) is int
+            and type(candidate_count) is int
+            and type(verified_count) is int
+            and len(matching) <= _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW
+            and count == len(matching)
+            and budget.get("max_task_attempts") == self.max_task_attempts
+            and budget.get("exhausted") is True
+            and budget.get("attempt_consumed") is False
+            and budget.get("typed_deferral_slot_consumed") is True
+            and observation_id
+            == self._database_portal_evidence_digest(observation_body)
+        )
+        if wait_only:
+            closed_field_ok = (
+                closed_field_ok
+                and candidate_count == count
+                and verified_count == count
+                and count >= self.max_task_attempts
+                and budget.get("typed_deferral_count_is_lower_bound") is False
+                and budget.get("verified_count_complete") is True
+                and budget.get("matching_attempts_truncated") is False
+                and budget.get("omitted_matching_attempt_count") == 0
+            )
+        if not closed_field_ok:
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget failed closed-field verification"
             )
         if foreign_only:
             return self._verified_leftover_wait_current_foreign_matching_budget(

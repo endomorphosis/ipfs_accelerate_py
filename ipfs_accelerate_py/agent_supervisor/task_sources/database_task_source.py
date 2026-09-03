@@ -838,32 +838,51 @@ def _validated_leftover_wait_budget(
     current_fingerprint = budget.get("current_deferral_fingerprint")
     observation_id = budget.get("observation_id")
     matching_digest = budget.get("matching_attempts_digest")
-    if (
-        budget.get("schema") != _TYPED_DEFERRAL_BUDGET_SCHEMA
-        or budget.get("task_cid") != task_cid
-        or budget.get("task_generation") != task_cid
-        or any(type(value) is not int for value in count_values)
-        or any(value != len(matching) for value in count_values)
-        or type(max_task_attempts) is not int
-        or max_task_attempts <= 0
-        or len(matching) < max_task_attempts
-        or budget.get("typed_deferral_count_is_lower_bound") is not False
-        or budget.get("verified_count_complete") is not True
-        or budget.get("exhausted") is not True
-        or budget.get("attempt_consumed") is not False
-        or budget.get("typed_deferral_slot_consumed") is not True
-        or budget.get("matching_attempts_truncated") is not False
-        or type(omitted_count) is not int
-        or omitted_count != 0
-        or not isinstance(generation_fingerprint, str)
-        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(generation_fingerprint) is None
-        or not isinstance(current_fingerprint, str)
-        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(current_fingerprint) is None
-        or not isinstance(observation_id, str)
-        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(observation_id) is None
-        or not isinstance(matching_digest, str)
-        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(matching_digest) is None
-    ):
+    wait_only = all(
+        str(item["reason"]) in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+        for item in matching
+    )
+    foreign_only = all(
+        str(item["reason"]) not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+        for item in matching
+    )
+    closed_field_ok = (
+        budget.get("schema") == _TYPED_DEFERRAL_BUDGET_SCHEMA
+        and budget.get("task_cid") == task_cid
+        and budget.get("task_generation") == task_cid
+        and all(type(value) is int for value in count_values)
+        and count_values[1] == len(matching)
+        and type(max_task_attempts) is int
+        and max_task_attempts > 0
+        and budget.get("exhausted") is True
+        and budget.get("attempt_consumed") is False
+        and budget.get("typed_deferral_slot_consumed") is True
+        and type(omitted_count) is int
+        and omitted_count >= 0
+        and isinstance(generation_fingerprint, str)
+        and _TYPED_DEFERRAL_SHA256_RE.fullmatch(generation_fingerprint) is not None
+        and isinstance(current_fingerprint, str)
+        and _TYPED_DEFERRAL_SHA256_RE.fullmatch(current_fingerprint) is not None
+        and isinstance(observation_id, str)
+        and _TYPED_DEFERRAL_SHA256_RE.fullmatch(observation_id) is not None
+        and isinstance(matching_digest, str)
+        and _TYPED_DEFERRAL_SHA256_RE.fullmatch(matching_digest) is not None
+    )
+    if wait_only:
+        closed_field_ok = (
+            closed_field_ok
+            and all(value == len(matching) for value in count_values)
+            and len(matching) >= max_task_attempts
+            and budget.get("typed_deferral_count_is_lower_bound") is False
+            and budget.get("verified_count_complete") is True
+            and budget.get("matching_attempts_truncated") is False
+            and omitted_count == 0
+        )
+    if not wait_only and not foreign_only:
+        raise TypedDeferralRecoveryError(
+            "leftover-wait matching attempt is foreign or malformed"
+        )
+    if not closed_field_ok:
         raise TypedDeferralRecoveryError(
             "leftover-wait exhausted budget failed closed-field verification"
         )
