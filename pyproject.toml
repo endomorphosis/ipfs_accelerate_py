@@ -285,6 +285,18 @@ live-application = false
 live-restart = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.recovery-and-idempotency]
+schema = "ipfs_accelerate_py/assurance/recovery-and-idempotency@1"
+interface = "AccelerateRecoveryAndIdempotency@1"
+task-id = "PCPR-071"
+goal-id = "PCPR-G700"
+objective-kind = "declared_recovery_and_idempotency"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-recovery = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
