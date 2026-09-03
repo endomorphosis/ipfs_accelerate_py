@@ -1,0 +1,258 @@
+{
+  "applied": false,
+  "board_namespace": "proof-carrying-platform-qualification-and-release-v1",
+  "bounded_patch": {
+    "adds_protocol_operation": false,
+    "admitted_live": false,
+    "applied": true,
+    "authorized_path_prefixes": [
+      "external/ipfs_accelerate",
+      "external/ipfs_datasets",
+      "external/ipfs_kit",
+      "artifacts/proof_carrying_platform_qualification_and_release/receipts/PCPR-064.json"
+    ],
+    "closed_release_outcome": null,
+    "completed_through": "schema_type_and_static_checks",
+    "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+    "deferred": false,
+    "duckdb_or_quack_state_written": false,
+    "edits": [
+      {
+        "adds_protocol_operation": false,
+        "interface": "LogicProviderProtocolBoundedPatchPlan@1",
+        "kind": "additive_fail_closed_surface",
+        "path": "ipfs_datasets_py/logic/backends/protocol_v2.py",
+        "reason": "Add authorized-path PatchPlan admission without reminting LogicProviderProtocol@2 or adding a protocol operation.",
+        "remints_protocol": false,
+        "schema": "ipfs_datasets_py/logic-provider-bounded-patch-plan@1"
+      }
+    ],
+    "escalation_order": [
+      "exact receipt",
+      "AST and dependency analysis",
+      "schema, type, and static checks",
+      "selected tests",
+      "incremental prover",
+      "local small specialist",
+      "medium model",
+      "frontier model",
+      "human decision"
+    ],
+    "evidence_kind": "measured_hermetic",
+    "goal_id": "PCPR-G700",
+    "hermetic": true,
+    "idea": "Modify a typed formal-logic API while reusing unaffected proofs, selecting only impacted tests, rejecting stale-tree evidence, and producing a complete proof-carrying execution receipt.",
+    "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+    "interface": "PatchPlan@1",
+    "language": "Python",
+    "live": false,
+    "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+    "model_assertion_completes_work": false,
+    "next_authorized_stage": "selected_tests",
+    "next_task_id": "PCPR-065",
+    "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+    "objective_kind": "declared_bounded_patch",
+    "owner_interface": "AccelerateBoundedPatch@1",
+    "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+    "patch_cid": "baguqeeraphkktpgmcw2uusnbxlh7wfjblmhzb4oy3u55bbpdsvbt4xwvvb4q",
+    "paths_authorized": true,
+    "portfolio_id": "portfolio:pcpr-v1",
+    "portfolio_version": "proof-carrying-platform-0.1.0",
+    "produced": true,
+    "produced_by": "ipfs_accelerate_py",
+    "protocol_interface": "LogicProviderProtocol@2",
+    "protocol_patch_plan_interface": "LogicProviderProtocolBoundedPatchPlan@1",
+    "protocol_patch_plan_schema": "ipfs_datasets_py/logic-provider-bounded-patch-plan@1",
+    "protocol_patch_relpaths": [
+      "ipfs_datasets_py/logic/backends/protocol_v2.py",
+      "ipfs_datasets_py/assurance/logic_provider_protocol.py",
+      "ipfs_datasets_py/assurance/bounded_patch.py",
+      "tests/unit/test_pcpr_013_logic_provider_protocol.py",
+      "tests/unit/test_pcpr_014_semantic_apis.py"
+    ],
+    "release_claim": false,
+    "remints_protocol": false,
+    "reusable_unimpacted": [
+      "tests/unit/test_pcpr_017_solver_qualification.py",
+      "ipfs_datasets_py/assurance/solver_qualification.py"
+    ],
+    "route_cid": "baguqeerab6vsy7orm6wmxmqbzqh5f57dasnufhgngvh47gw7g3whrkr5smga",
+    "schema": "ipfs_accelerate_py/assurance/bounded-patch-plan@1",
+    "selected_tests": [
+      "tests/unit/test_pcpr_013_logic_provider_protocol.py",
+      "tests/unit/test_pcpr_014_semantic_apis.py"
+    ],
+    "selected_tests_task_id": "PCPR-065",
+    "task_id": "PCPR-064"
+  },
+  "closed_release_outcome": null,
+  "context_pack": {
+    "admitted_live": false,
+    "constructed": true,
+    "constructed_by": "ipfs_datasets_py",
+    "consumer": "ipfs_accelerate_py",
+    "current_root_published": true,
+    "evidence_kind": "measured",
+    "live": false,
+    "owner_interface": "DatasetsContextPack@1",
+    "owner_schema": "ipfs_datasets_py/datasets-context-pack@1",
+    "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+    "reminted": false,
+    "stored": true,
+    "stored_by": "ipfs_kit_py",
+    "task_id": "PCPR-061"
+  },
+  "contracts_frozen": false,
+  "document_cid": "baguqeerasfmlsetma3jfhrjzzxtaktlhkrwdr3eaqhdm3msyr7je5w6pu4na",
+  "duckdb_or_quack_state_written": false,
+  "evidence_kind": "measured",
+  "execution_invocation": {
+    "interface": "InvocationRequest@1",
+    "name": "ExecutionInvocation",
+    "owner_repository": "ipfs_accelerate_py",
+    "reminted": false,
+    "schema": "ipfs_accelerate_py/agent-supervisor/entrypoints/invocation-request@1"
+  },
+  "execution_receipt": {
+    "emitted": false,
+    "interface": "InvocationResult@1",
+    "live": false,
+    "name": "ExecutionReceipt",
+    "owner_repository": "ipfs_accelerate_py",
+    "reason": "A live ExecutionReceipt remains PCPR-072. This patch is hermetic.",
+    "schema": "ipfs_accelerate_py/agent-supervisor/entrypoints/invocation-result@1"
+  },
+  "goal_id": "PCPR-G700",
+  "hashes_invented": false,
+  "idea": "Modify a typed formal-logic API while reusing unaffected proofs, selecting only impacted tests, rejecting stale-tree evidence, and producing a complete proof-carrying execution receipt.",
+  "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+  "interface": "AccelerateBoundedPatch@1",
+  "language": "Python",
+  "live": false,
+  "live_application": {
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "No admitted Quack-fenced supervisor session was observed. Hermetic PatchPlan production is not live application.",
+    "status": "unavailable"
+  },
+  "live_prover": {
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "Sealed PATH has no incremental prover. Missing solvers stay typed unavailable.",
+    "status": "unavailable"
+  },
+  "live_selected_tests": {
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "Selected tests remain PCPR-065 and were not run.",
+    "status": "unavailable"
+  },
+  "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+  "materialization": {
+    "admitted": false,
+    "applied": false,
+    "duckdb_or_quack_state_written": false,
+    "evidence_kind": "unavailable",
+    "kind": "declared_patch_not_live",
+    "live": false
+  },
+  "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+  "objective_id": "PCPR-G700",
+  "objective_kind": "declared_bounded_patch",
+  "operator_blocking_task": {
+    "action": "Keep the hermetic PatchPlan. Do not write DuckDB or Quack state. Do not escalate to a model. PCPR-065 runs selected tests and proofs.",
+    "applied": false,
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "Hermetic bounded-patch production is not live supervisor application. Sealed validation has no admitted Quack-fenced session. Direct DuckDB writes are prohibited.",
+    "requires": "An admitted Quack-fenced state-owner session before the bounded PatchPlan is applied as live supervisor work against the stored ContextPack root",
+    "status": "typed_blocked",
+    "task_id": "pcpr-064-operator-live-bounded-patch"
+  },
+  "owner_repository": "ipfs_accelerate_py",
+  "pack_owner_interface": "DatasetsContextPack@1",
+  "pack_owner_repository": "ipfs_datasets_py",
+  "pack_owner_schema": "ipfs_datasets_py/datasets-context-pack@1",
+  "package_name": "ipfs_accelerate_py",
+  "package_version": "0.0.45",
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "program_id": "proof-carrying-platform-qualification-and-release-v1",
+  "release_claim": false,
+  "route": {
+    "completed_through": "schema_type_and_static_checks",
+    "evidence_kind": "measured_hermetic",
+    "executed": true,
+    "executed_by": "ipfs_accelerate_py",
+    "hermetic": true,
+    "live": false,
+    "model_assertion_completes_work": false,
+    "next_authorized_stage": "selected_tests",
+    "owner_interface": "AccelerateDeterministicFirstRoute@1",
+    "reminted": false,
+    "route_cid": "baguqeerab6vsy7orm6wmxmqbzqh5f57dasnufhgngvh47gw7g3whrkr5smga",
+    "task_id": "PCPR-063"
+  },
+  "schema": "ipfs_accelerate_py/assurance/declared-bounded-patch@1",
+  "selected_tests": {
+    "deferred": true,
+    "incomplete_selection_requires_full_validation": true,
+    "live": false,
+    "paths": [
+      "tests/unit/test_pcpr_013_logic_provider_protocol.py",
+      "tests/unit/test_pcpr_014_semantic_apis.py"
+    ],
+    "run": false,
+    "task_id": "PCPR-065"
+  },
+  "shared_contract": {
+    "interface": "SupervisorContextPack@1",
+    "name": "SupervisorContextPack",
+    "owner_interface": "DatasetsContextPack@1",
+    "owner_repository": "ipfs_datasets_py",
+    "owner_schema": "ipfs_datasets_py/datasets-context-pack@1",
+    "reminted": false,
+    "schema": "pcpr/shared-contracts/supervisor-context-pack@1"
+  },
+  "sibling_source_required": false,
+  "signatures_invented": false,
+  "source": {
+    "binding": "current_head_not_mutable_main",
+    "commit": {
+      "evidence_kind": "measured",
+      "field": "PCPR-064 receipt current_tree_binding",
+      "live": false,
+      "status": "observed_at_evaluation"
+    },
+    "kind": "git",
+    "mutable_main_reference": false,
+    "repository": "endomorphosis/ipfs_accelerate_py"
+  },
+  "source_date_epoch": "0",
+  "state_owner": {
+    "direct_duckdb_write_prohibited": true,
+    "direct_quack_write_prohibited": true,
+    "duckdb_cli": "unavailable",
+    "duckdb_module": "unavailable",
+    "duckdb_module_is_not_live_materialization": true,
+    "duckdb_or_quack_state_written": false,
+    "quack": "unavailable"
+  },
+  "storage": {
+    "bytes_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+    "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+    "current_root_published": true,
+    "deferred": false,
+    "evidence_kind": "measured_hermetic",
+    "live": false,
+    "reminted": false,
+    "stored": true,
+    "stored_by": "ipfs_kit_py",
+    "task_id": "PCPR-062"
+  },
+  "storage_owner_interface": "KitContextPackStorage@1",
+  "storage_owner_repository": "ipfs_kit_py",
+  "submitted_live": false,
+  "task_id": "PCPR-064",
+  "this_task_created_competing_authority": false
+}

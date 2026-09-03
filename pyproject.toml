@@ -199,6 +199,19 @@ live-selected-tests = false
 live-prover = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.bounded-patch]
+schema = "ipfs_accelerate_py/assurance/bounded-patch@1"
+interface = "AccelerateBoundedPatch@1"
+task-id = "PCPR-064"
+goal-id = "PCPR-G700"
+objective-kind = "declared_bounded_patch"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-selected-tests = false
+live-prover = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
