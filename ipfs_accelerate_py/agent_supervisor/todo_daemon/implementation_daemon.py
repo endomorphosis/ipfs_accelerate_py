@@ -69540,6 +69540,39 @@ class PortalImplementationDaemon:
             "scope_proof": dict(scope_proof),
         }
 
+    @staticmethod
+    def _command_line_is_external_worktree_observer(line: str) -> bool:
+        """True when argv only mentions a leftover path diagnostically.
+
+        SPAR watchers and Grok snapshot wrappers embed leftover workspace
+        paths in their own argv. Token-matching those lines would fence a
+        dead-owner claim for as long as the observer stays alive.
+        """
+
+        if not line:
+            return False
+        if "GROK_AGENT=1" in line and (
+            "snap=$(command cat <&3)" in line
+            or 'builtin eval -- "$snap"' in line
+        ):
+            return True
+        first = line.split(None, 1)[0]
+        return Path(first).name in {
+            "grep",
+            "rg",
+            "ag",
+            "find",
+            "cat",
+            "head",
+            "tail",
+            "less",
+            "more",
+            "awk",
+            "sed",
+            "stat",
+            "ls",
+        }
+
     def _predecessor_worktree_dispatch_quiescence(
         self,
         record: WorkspaceLifecycleRecord,
@@ -69597,6 +69630,7 @@ class PortalImplementationDaemon:
             )
             if any(
                 any(token and token in line for token in command_tokens)
+                and not self._command_line_is_external_worktree_observer(line)
                 for line in process_lines
             ):
                 return True, len(process_lines), 0, None
@@ -69625,9 +69659,14 @@ class PortalImplementationDaemon:
                 except OSError:
                     return None, len(process_lines), observed_cwds, None
                 command_line = " ".join(argv)
-                if any(
-                    token and token in command_line
-                    for token in command_tokens
+                if (
+                    any(
+                        token and token in command_line
+                        for token in command_tokens
+                    )
+                    and not self._command_line_is_external_worktree_observer(
+                        command_line
+                    )
                 ):
                     return True, len(process_lines), observed_cwds, None
                 try:

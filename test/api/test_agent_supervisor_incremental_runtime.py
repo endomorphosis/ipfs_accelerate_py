@@ -1900,6 +1900,133 @@ def test_dead_portal_sibling_recovers_when_implementation_lock_is_missing(
     assert predecessor.record_id
 
 
+def test_dead_portal_sibling_recovers_when_observer_cmdline_mentions_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    state_root = tmp_path / "state"
+    lane_root = state_root / "lane-2" / "spar_lane_2_database_portal_attempts"
+    current_state_dir = lane_root / ("a" * 24)
+    predecessor_state_dir = lane_root / ("b" * 24)
+    current_state_dir.mkdir(parents=True)
+    predecessor_state_dir.mkdir(parents=True)
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=current_state_dir / "portal-task-state.json",
+        strategy_path=current_state_dir / "portal-strategy.json",
+        events_path=current_state_dir / "portal-events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c("raise SystemExit(7)"),
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+    )
+    task = PortalTask(
+        task_id="SPAR-024",
+        title="Recover a dead portal sibling despite observer argv",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+    workspace = tmp_path / "preserved-worktree"
+    workspace.mkdir()
+    predecessor = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=1,
+        lane_id="portal-attempt:lane-2",
+        workspace_path=workspace,
+        branch="implementation/spar-024-dead-portal-sibling-attempt-1",
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(predecessor_state_dir.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 71,
+            start_time_ticks=1,
+            boot_id="dead-portal-observer-argv",
+        ),
+    )
+    daemon.worktree_lifecycle.clock = lambda: (
+        predecessor.updated_at + 181.0
+    )
+    observer_script = (
+        'snap=$(command cat <&3); builtin shopt -s extglob 2>/dev/null; '
+        'builtin eval -- "$snap"; builtin export GROK_AGENT=1; '
+        f"inspect {workspace} {predecessor.branch}"
+    )
+    observer_line = (
+        "/bin/bash -O extglob -c " + observer_script
+    )
+    proc_root = tmp_path / "proc"
+    observer_proc = proc_root / "3556183"
+    observer_proc.mkdir(parents=True)
+    (observer_proc / "cmdline").write_bytes(
+        b"/bin/bash\0-O\0extglob\0-c\0" + observer_script.encode()
+    )
+    (observer_proc / "cwd").symlink_to(tmp_path)
+    daemon.worktree_lifecycle.proc_root = proc_root
+    assert daemon._command_line_is_external_worktree_observer(observer_line)
+    assert not daemon._command_line_is_external_worktree_observer(
+        f"/usr/bin/worker --worktree {workspace}"
+    )
+
+    class _Docker:
+        returncode = 1
+        stdout = ""
+        stderr = "Cannot connect to the Docker daemon"
+
+    real_run = subprocess.run
+
+    def _run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if cmd and cmd[0] == "docker":
+            return _Docker()
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    recovered = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+    assert recovered["finalized"] is True
+    assert recovered["predecessor_owner_liveness"] == "dead"
+    assert recovered["predecessor_dispatch_quiescence"]["quiescent"] is True
+    assert daemon.worktree_lifecycle.load_workspace(workspace) is None
+
+    worker = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=1,
+        lane_id="portal-attempt:lane-2",
+        workspace_path=workspace,
+        branch="implementation/spar-024-dead-portal-sibling-attempt-1",
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(predecessor_state_dir.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 72,
+            start_time_ticks=2,
+            boot_id="dead-portal-worker-argv",
+        ),
+    )
+    daemon.worktree_lifecycle.clock = lambda: worker.updated_at + 181.0
+    (observer_proc / "cmdline").write_bytes(
+        b"/usr/bin/worker\0--worktree\0" + str(workspace).encode()
+    )
+    still_active = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+    assert still_active["finalized"] is False
+    assert still_active["reason"] == (
+        "task_attempt_claim_worktree_process_still_active"
+    )
+    assert daemon.worktree_lifecycle.load_workspace(workspace) == worker
+
+
 def test_same_lane_state_dir_retires_dead_predecessor_claim(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
