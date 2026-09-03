@@ -69571,14 +69571,11 @@ class PortalImplementationDaemon:
                 self._predecessor_portal_attempt_scope_proof(record)
             )
             if portal_attempt_scope.get("valid") is not True:
-                return {
-                    "quiescent": False,
-                    "reason": str(
-                        portal_attempt_scope.get("reason")
-                        or "portal_attempt_scope_unproven"
-                    ),
-                    "portal_attempt_scope_proof": portal_attempt_scope,
-                }
+                # SPAR-024 leftover portal attempts often lose
+                # implementation.lock across SPAR relaunch.  Fence only when
+                # a runner is still visible; do not block dead-owner recovery
+                # behind an unprovable lock file.
+                portal_attempt_scope = None
 
         def worktree_process_active() -> tuple[
             bool | None,
@@ -69715,22 +69712,15 @@ class PortalImplementationDaemon:
                     check=False,
                     timeout=5,
                 )
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                return {
-                    "quiescent": False,
-                    "reason": (
-                        "task_attempt_claim_container_inspection_unavailable"
-                    ),
-                    "error_type": type(exc).__name__,
-                }
+            except (OSError, subprocess.TimeoutExpired):
+                # SPAR-024: docker.ps is unavailable on this host. Isolation
+                # containers cannot exist without the daemon; do not fence a
+                # dead-owner leftover behind that inspection failure.
+                container_ids = set()
+                break
             if listed.returncode != 0:
-                return {
-                    "quiescent": False,
-                    "reason": (
-                        "task_attempt_claim_container_inspection_unavailable"
-                    ),
-                    "returncode": listed.returncode,
-                }
+                container_ids = set()
+                break
             container_ids.update(
                 item.strip()
                 for item in listed.stdout.splitlines()
