@@ -6696,6 +6696,11 @@ class MigrationRequired(MaterializationError):
 
 
 def _canonical(value: Any) -> bytes:
+    # M61: normalize an outer immutable Mapping (including mappingproxy) to a
+    # closed plain dict at this identity boundary so successor preflight cannot
+    # stall on TypeError. Nested JSON-serializable values are unchanged.
+    if isinstance(value, Mapping) and type(value) is not dict:
+        value = dict(value)
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
@@ -102413,7 +102418,7 @@ def _validated_m65_live_preflight_contract(
     expected = _expected_m65_post_m64_stopped_owner_missing_client_token_vault_restart_authority()
     contract = authority.get("live_preflight_contract")
     if (
-        _identity(authority) != _identity(expected)
+        _identity(dict(authority)) != _identity(dict(expected))
         or not isinstance(contract, Mapping)
         or contract.get("migration_revision") != _M65_MIGRATION_REVISION
         or contract.get("target_generation") != _M65_TARGET_GENERATION

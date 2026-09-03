@@ -1920,6 +1920,26 @@ def test_m61_mappingproxy_identity_normalization_authority_is_exact() -> None:
     assert authority["exact_changes"]["accepted_completion_changes"] == 0
 
 
+def test_m65_live_preflight_contract_accepts_mappingproxy_authority() -> None:
+    """Outer mappingproxy must hash at the identity boundary, not TypeError."""
+
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m65_mappingproxy_test",
+    )
+    expected = (
+        materializer
+        ._expected_m65_post_m64_stopped_owner_missing_client_token_vault_restart_authority()
+    )
+    proxied = MappingProxyType(dict(expected))
+    contract = materializer._validated_m65_live_preflight_contract(proxied)
+    assert materializer._identity(proxied) == materializer._M65_AUTHORITY_CID
+    assert materializer._identity(proxied) == materializer._identity(dict(expected))
+    assert contract["target_generation"] == 45
+    assert contract["generation_restart_authorized"] is True
+    assert contract["bind_store_report_to_live_event_digest"] is True
+
+
 def test_m61_materialization_preserves_m60_and_publishes_receipt_last() -> None:
     materializer = _load(
         "scripts/materialize_semantic_addressed_world_model_program.py",
