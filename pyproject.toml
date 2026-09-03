@@ -116,6 +116,20 @@ live-signed-tag = false
 live-artifact-signature = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.portfolio-compatibility-lock]
+schema = "ipfs_accelerate_py/assurance/portfolio-compatibility-lock@1"
+interface = "AcceleratePortfolioCompatibilityLock@1"
+task-id = "PCPR-056"
+goal-id = "PCPR-G600"
+lock-kind = "declared_portfolio_compatibility_lock"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+supported-combination-id = "pcpr.v1.python312.accelerate-datasets-kit.shared-contracts-v1"
+hashes-invented = false
+signatures-invented = false
+live-signed-lock = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 

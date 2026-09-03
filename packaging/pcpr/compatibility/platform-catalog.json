@@ -1,0 +1,65 @@
+{
+  "catalog_cid": "baguqeerabv42ymqrw64r3i6p7slz4obojydalbnep4s7a4fdaga65zzbxj7a",
+  "closed_release_outcome": null,
+  "components": {
+    "ipfs_accelerate_py": {
+      "evidence_kind": "measured",
+      "hashes_invented": false,
+      "intended_tag_name": "ipfs_accelerate_py-v0.0.45",
+      "live": false,
+      "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+      "lock_kind": "declared_portfolio_compatibility_lock",
+      "lock_path": "packaging/pcpr/compatibility/cpython312/release.lock.json",
+      "package_name": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "signatures_invented": false,
+      "signed": false,
+      "status": "observed"
+    },
+    "ipfs_datasets_py": {
+      "binding": {
+        "binding_cid": "baguqeerake3frh23hk6xuemdbctuoatsqdiif4rcem2yrt2jztdsl2d4m4ea",
+        "evidence_kind": "measured",
+        "live": false,
+        "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+        "lock_kind": "declared_portfolio_compatibility_lock_binding",
+        "package_name": "ipfs_datasets_py",
+        "package_version": "0.2.0",
+        "path": "../ipfs_datasets/packaging/pcpr/compatibility/cpython312/release.binding.json",
+        "sha256": "4f51682db407e32cc8a8f33a625537319bb891e4737385b127c626407332bc9b",
+        "signed": false,
+        "status": "observed"
+      }
+    },
+    "ipfs_kit_py": {
+      "binding": {
+        "binding_cid": "baguqeerakf2o47akp3uueomiy67aqvlppjjudpk7sbmlzndghxcpt76wupdq",
+        "evidence_kind": "measured",
+        "live": false,
+        "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+        "lock_kind": "declared_portfolio_compatibility_lock_binding",
+        "package_name": "ipfs_kit_py",
+        "package_version": "0.3.0",
+        "path": "../ipfs_kit/packaging/pcpr/compatibility/cpython312/release.binding.json",
+        "sha256": "6113e1219f0acc1f51435a34e4f00b174ff3d28419dcb5a76e6673055de2a57d",
+        "signed": false,
+        "status": "observed"
+      }
+    }
+  },
+  "evidence_kind": "measured",
+  "goal_id": "PCPR-G600",
+  "hashes_invented": false,
+  "interface": "PlatformPortfolioCompatibilityLock@1",
+  "live_signed_lock": false,
+  "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+  "lock_kind": "declared_portfolio_compatibility_lock",
+  "mutable_main_reference": false,
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "release_claim": false,
+  "schema": "ipfs_accelerate_py/assurance/platform-portfolio-compatibility-lock-catalog@1",
+  "sibling_source_required": false,
+  "signatures_invented": false,
+  "task_id": "PCPR-056"
+}
