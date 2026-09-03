@@ -309,6 +309,18 @@ live-application = false
 live-chain = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.python-external-client]
+schema = "ipfs_accelerate_py/assurance/python-external-client@1"
+interface = "AcceleratePythonExternalClient@1"
+task-id = "PCPR-080"
+goal-id = "PCPR-G800"
+objective-kind = "declared_python_external_client_demonstration"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
