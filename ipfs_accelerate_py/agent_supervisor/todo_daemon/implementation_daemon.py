@@ -114228,40 +114228,38 @@ class DatabaseImplementationDaemon:
             if isinstance(task_body, Mapping)
             else None
         )
-        expected_fields = {
-            "operation",
-            "attempt_id",
-            "attempt_number",
-            "claim_id",
-            "lease_id",
-            "owner_session_id",
-            "fencing_token",
-            "fence_epoch",
-            "execution_phase",
-            "execution_revision",
-            "execution_finished_at_ms",
-            "reason",
-            "retryable",
-            "attempt_consumed",
-            "typed_deferral_slot_consumed",
-            "retry_budget",
-            "prior_queue_entry_preserved_inactive",
-            "coordination",
-            "control_expected_status",
-            "control_expected_revision",
-        }
+        expected_fields = set(
+            _DATABASE_PORTAL_TYPED_DEFERRAL_EXHAUSTED_RECEIPT_FIELDS
+        )
+        allowed_extra = (
+            _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            | _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+        )
         task_revision = getattr(task, "revision", None)
         coordination = (
             receipt.get("coordination")
             if isinstance(receipt, Mapping)
             else None
         )
+        carried_route = (
+            set(receipt) & _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            if isinstance(receipt, Mapping)
+            else set()
+        )
+        extra_fields = (
+            set(receipt) - expected_fields
+            if isinstance(receipt, Mapping)
+            else set()
+        )
         if (
             str(getattr(task, "status", "") or "").strip().lower()
             != "blocked"
             or type(task_revision) is not int
             or not isinstance(receipt, Mapping)
-            or set(receipt) != expected_fields
+            or expected_fields - set(receipt)
+            or extra_fields - allowed_extra
+            or carried_route
+            not in (set(), _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS)
             or receipt.get("operation")
             != "database_portal_typed_deferral_budget_exhausted"
             or receipt.get("reason")
@@ -115265,7 +115263,18 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
-        if set(receipt) != expected_fields:
+        allowed_extra = (
+            _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+            | _DATABASE_PORTAL_TERMINAL_FAILURE_TRANSFER_FIELDS
+        )
+        carried_route = set(receipt) & _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS
+        extra_fields = set(receipt) - expected_fields
+        if (
+            expected_fields - set(receipt)
+            or extra_fields - allowed_extra
+            or carried_route
+            not in (set(), _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS)
+        ):
             raise DatabaseImplementationAuthorityError(
                 "leftover-wait deferral-budget recovery control receipt has "
                 "unknown or missing fields"

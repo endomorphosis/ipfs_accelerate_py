@@ -233,6 +233,23 @@ _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS = frozenset(
         "control_expected_revision",
     }
 )
+_TYPED_DEFERRAL_BLOCK_RECEIPT_OPTIONAL_FIELDS = frozenset(
+    {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+        "virgin_task_transfer_request",
+        "virgin_task_transfer",
+        "virgin_task_transfer_claim_cursor",
+    }
+)
+_TYPED_DEFERRAL_BLOCK_RECEIPT_ROUTE_FIELDS = frozenset(
+    {
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+    }
+)
 _TYPED_DEFERRAL_BUDGET_FIELDS = frozenset(
     {
         "schema",
@@ -934,8 +951,15 @@ def _validated_leftover_wait_blocked_context(
     )
     revision = _positive_integer(task_revision, noun="leftover-wait task revision")
     coordination = blocked_receipt.get("coordination")
+    extra_fields = set(blocked_receipt) - _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS
+    carried_route = (
+        set(blocked_receipt) & _TYPED_DEFERRAL_BLOCK_RECEIPT_ROUTE_FIELDS
+    )
     if (
-        set(blocked_receipt) != _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS
+        _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS - set(blocked_receipt)
+        or extra_fields - _TYPED_DEFERRAL_BLOCK_RECEIPT_OPTIONAL_FIELDS
+        or carried_route
+        not in (set(), _TYPED_DEFERRAL_BLOCK_RECEIPT_ROUTE_FIELDS)
         or blocked_receipt.get("operation")
         != TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
         or blocked_receipt.get("reason")
