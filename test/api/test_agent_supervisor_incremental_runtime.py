@@ -2197,7 +2197,22 @@ def test_lane_parent_retires_dead_nested_portal_attempt_claim(
         b"/bin/bash\0-O\0extglob\0-c\0" + observer_script.encode()
     )
     (observer_proc / "cwd").symlink_to(tmp_path)
+    denied_proc = proc_root / "500"
+    denied_proc.mkdir(parents=True)
+    (denied_proc / "cmdline").write_bytes(
+        b"/usr/bin/tmux\0long-lived-unrelated-process\0"
+    )
+    (denied_proc / "cwd").symlink_to(tmp_path)
     daemon.worktree_lifecycle.proc_root = proc_root
+    real_readlink = os.readlink
+
+    def yama_denied_readlink(path: str | os.PathLike[str]) -> str:
+        candidate = Path(path)
+        if candidate == denied_proc / "cwd":
+            raise PermissionError("simulated Yama ptrace_scope denial")
+        return real_readlink(path)
+
+    monkeypatch.setattr(os, "readlink", yama_denied_readlink)
 
     class _Docker:
         returncode = 1

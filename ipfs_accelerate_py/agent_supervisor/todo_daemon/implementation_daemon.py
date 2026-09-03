@@ -69776,15 +69776,30 @@ class PortalImplementationDaemon:
                     if portal_attempt_scope is not None
                     else self._predecessor_generation_cgroup_quiescence(record)
                 )
-                if cgroup_proof.get("quiescent") is not True:
+                if cgroup_proof.get("quiescent") is True:
                     return (
-                        None,
+                        False,
+                        len(process_lines),
+                        observed_cwds,
+                        cgroup_proof,
+                    )
+                # SPAR lane state dirs are not run-vN. Yama can deny cwd for
+                # unrelated same-uid processes after argv occupancy was
+                # already scanned. Do not fail-close a dead leftover behind
+                # that missing generation identity.
+                if (
+                    portal_attempt_scope is None
+                    and cgroup_proof.get("reason")
+                    == "generation_cgroup_identity_unavailable"
+                ):
+                    return (
+                        False,
                         len(process_lines),
                         observed_cwds,
                         cgroup_proof,
                     )
                 return (
-                    False,
+                    None,
                     len(process_lines),
                     observed_cwds,
                     cgroup_proof,
