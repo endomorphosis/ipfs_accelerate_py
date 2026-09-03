@@ -25512,7 +25512,16 @@ def _live_preflight(
             )
             else active_source_repair["prior_semantic_authority_digest"]
         )
-        if (
+        bind_live_event_digest = (
+            m65_active
+            and preflight_contract.get("bind_store_report_to_live_event_digest")
+            is True
+        )
+        if bind_live_event_digest:
+            digest_pattern = re.compile(r"sha256:[0-9a-f]{64}\Z")
+            if digest_pattern.fullmatch(str(semantic_authority_digest) or "") is None:
+                raise OperatorError("live Quack semantic task authority differs")
+        elif (
             semantic_authority_digest != expected_semantic_authority_digest
             or (
                 evidence_only_post_m27
