@@ -10442,6 +10442,52 @@ def _require_m48_source_successor_marker(
     return MappingProxyType(dict(observed))
 
 
+def _verify_m66_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M66's live heads at event 340/generation 45."""
+
+    materializer._validated_m66_live_preflight_contract(authority)
+    head = materializer._inspect_m37_live_projection(
+        source, population, authority,
+        expected_event_watermark=_M66_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if (
+        head.get("event_watermark") != _M66_TARGET_EVENT_WATERMARK
+        or expected_projection_cid != _M66_TARGET_PROJECTION_CID
+    ):
+        raise materializer.MigrationRequired("M66 live head projection differs")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    heads = authority.get("expected_task_heads")
+    if not isinstance(heads, Mapping):
+        raise materializer.MigrationRequired("M66 expected task heads are missing")
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        expected_head = heads.get(alias)
+        if (
+            observed is None
+            or not isinstance(expected_head, Mapping)
+            or observed.status != expected_head.get("status")
+            or int(observed.revision) != int(expected_head.get("revision") or 0)
+        ):
+            raise materializer.MigrationRequired(f"M66 task head differs: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
+
+
 def _verify_m65_live_head_task_projection(
     source: Any,
     population: Mapping[str, Any],
@@ -22607,6 +22653,18 @@ def _normalized_live_preflight_contract(
     """Resolve one closed preflight view without shape-dependent aliases."""
 
     revision = str(active_source_repair.get("migration_revision") or "")
+    if revision == _M66_MIGRATION_REVISION:
+        try:
+            return materializer._validated_m66_live_preflight_contract(
+                active_source_repair
+            )
+        except (
+            materializer.MigrationRequired,
+            materializer.MaterializationError,
+        ) as exc:
+            raise OperatorError(
+                f"M66 normalized preflight contract differs: {exc}"
+            ) from exc
     if revision == _M65_MIGRATION_REVISION:
         try:
             return materializer._validated_m65_live_preflight_contract(
@@ -25162,7 +25220,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if _M65_SUCCESSOR_KEY in config:
+            if _M66_SUCCESSOR_KEY in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m66_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif _M65_SUCCESSOR_KEY in config:
                 statuses, _revisions, _receipts = (
                     _verify_m65_live_head_task_projection(
                         live,
