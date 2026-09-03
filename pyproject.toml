@@ -261,6 +261,18 @@ live-application = false
 live-reuse = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.stale-rejection]
+schema = "ipfs_accelerate_py/assurance/stale-rejection-and-plan-delta@1"
+interface = "AccelerateStaleRejectionAndPlanDelta@1"
+task-id = "PCPR-069"
+goal-id = "PCPR-G700"
+objective-kind = "declared_stale_rejection_and_plan_delta"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-plan-delta = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 

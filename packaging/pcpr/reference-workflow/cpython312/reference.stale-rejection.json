@@ -1,0 +1,372 @@
+{
+  "applied": false,
+  "board_namespace": "proof-carrying-platform-qualification-and-release-v1",
+  "bounded_patch": {
+    "applied": true,
+    "deferred": false,
+    "evidence_kind": "measured_hermetic",
+    "hermetic": true,
+    "live": false,
+    "owner_interface": "AccelerateBoundedPatch@1",
+    "patch_cid": "baguqeeraphkktpgmcw2uusnbxlh7wfjblmhzb4oy3u55bbpdsvbt4xwvvb4q",
+    "produced": true,
+    "produced_by": "ipfs_accelerate_py",
+    "reminted": false,
+    "task_id": "PCPR-064"
+  },
+  "closed_release_outcome": null,
+  "context_pack": {
+    "admitted_live": false,
+    "constructed": true,
+    "constructed_by": "ipfs_datasets_py",
+    "consumer": "ipfs_accelerate_py",
+    "current_root_published": true,
+    "evidence_kind": "measured",
+    "live": false,
+    "owner_interface": "DatasetsContextPack@1",
+    "owner_schema": "ipfs_datasets_py/datasets-context-pack@1",
+    "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+    "rejected": true,
+    "reminted": false,
+    "stale": true,
+    "stored": true,
+    "stored_by": "ipfs_kit_py",
+    "task_id": "PCPR-061"
+  },
+  "contracts_frozen": false,
+  "document_cid": "baguqeerac3lirww2ec4g3ozf7wrm5wo4xbwiaszxeysrzdaqhfjhajioakga",
+  "duckdb_or_quack_state_written": false,
+  "evidence_kind": "measured",
+  "execution_invocation": {
+    "interface": "InvocationRequest@1",
+    "name": "ExecutionInvocation",
+    "owner_repository": "ipfs_accelerate_py",
+    "reminted": false,
+    "schema": "ipfs_accelerate_py/agent-supervisor/entrypoints/invocation-request@1"
+  },
+  "execution_receipt": {
+    "emitted": false,
+    "interface": "InvocationResult@1",
+    "live": false,
+    "name": "ExecutionReceipt",
+    "owner_repository": "ipfs_accelerate_py",
+    "reason": "A live ExecutionReceipt remains PCPR-072. This stale rejection and PlanDelta is hermetic.",
+    "schema": "ipfs_accelerate_py/agent-supervisor/entrypoints/invocation-result@1"
+  },
+  "goal_id": "PCPR-G700",
+  "hashes_invented": false,
+  "idea": "Modify a typed formal-logic API while reusing unaffected proofs, selecting only impacted tests, rejecting stale-tree evidence, and producing a complete proof-carrying execution receipt.",
+  "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+  "interface": "AccelerateStaleRejectionAndPlanDelta@1",
+  "language": "Python",
+  "live": false,
+  "live_application": {
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "No admitted Quack-fenced supervisor session was observed. Hermetic stale rejection and PlanDelta classification is not live application.",
+    "status": "unavailable"
+  },
+  "live_plan_delta": {
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "Live plan-revision-store apply remains typed unavailable. This task only demonstrates hermetic stale rejection and PlanDelta. Restart recovery remains PCPR-070.",
+    "status": "unavailable"
+  },
+  "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+  "materialization": {
+    "admitted": false,
+    "applied": false,
+    "duckdb_or_quack_state_written": false,
+    "evidence_kind": "unavailable",
+    "kind": "declared_stale_rejection_and_plan_delta_not_live",
+    "live": false
+  },
+  "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+  "objective_id": "PCPR-G700",
+  "objective_kind": "declared_stale_rejection_and_plan_delta",
+  "operator_blocking_task": {
+    "action": "Keep the hermetic stale rejection and PlanDelta. Do not write DuckDB or Quack state. Do not escalate to a model. Do not mutate started history. PCPR-070 restarts the authoritative state owner.",
+    "applied": false,
+    "evidence_kind": "unavailable",
+    "live": false,
+    "reason": "Hermetic stale rejection and PlanDelta classification is not live supervisor application or live plan-revision-store apply. Sealed validation has no admitted Quack-fenced session. Direct DuckDB writes are prohibited.",
+    "requires": "An admitted Quack-fenced state-owner session before stale rejection and PlanDelta are applied as live supervisor work against the stored ContextPack root",
+    "status": "typed_blocked",
+    "task_id": "pcpr-069-operator-live-stale-rejection-and-plan-delta"
+  },
+  "owner_repository": "ipfs_accelerate_py",
+  "pack_owner_interface": "DatasetsContextPack@1",
+  "pack_owner_repository": "ipfs_datasets_py",
+  "pack_owner_schema": "ipfs_datasets_py/datasets-context-pack@1",
+  "package_name": "ipfs_accelerate_py",
+  "package_version": "0.0.45",
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "program_id": "proof-carrying-platform-qualification-and-release-v1",
+  "release_claim": false,
+  "route": {
+    "completed_through": "schema_type_and_static_checks",
+    "evidence_kind": "measured_hermetic",
+    "executed": true,
+    "executed_by": "ipfs_accelerate_py",
+    "hermetic": true,
+    "live": false,
+    "model_assertion_completes_work": false,
+    "next_authorized_stage": "selected_tests",
+    "owner_interface": "AccelerateDeterministicFirstRoute@1",
+    "reminted": false,
+    "route_cid": "baguqeerab6vsy7orm6wmxmqbzqh5f57dasnufhgngvh47gw7g3whrkr5smga",
+    "task_id": "PCPR-063"
+  },
+  "schema": "ipfs_accelerate_py/assurance/declared-stale-rejection-and-plan-delta@1",
+  "selected_tests": {
+    "deferred": false,
+    "evidence_kind": "measured_hermetic",
+    "hermetic": true,
+    "live": false,
+    "owner_interface": "AccelerateSelectedTestsAndProofs@1",
+    "reminted": false,
+    "run": true,
+    "run_cid": "baguqeerazgo2lirhy7hrpa42j227gdpzmi3jl4jdajoz6jzqqx7td6fy7dpa",
+    "task_id": "PCPR-065"
+  },
+  "shared_contract": {
+    "interface": "SupervisorContextPack@1",
+    "name": "SupervisorContextPack",
+    "owner_interface": "DatasetsContextPack@1",
+    "owner_repository": "ipfs_datasets_py",
+    "owner_schema": "ipfs_datasets_py/datasets-context-pack@1",
+    "reminted": false,
+    "schema": "pcpr/shared-contracts/supervisor-context-pack@1"
+  },
+  "sibling_source_required": false,
+  "signatures_invented": false,
+  "source": {
+    "binding": "current_head_not_mutable_main",
+    "commit": {
+      "evidence_kind": "measured",
+      "field": "PCPR-069 receipt current_tree_binding",
+      "live": false,
+      "status": "observed_at_evaluation"
+    },
+    "kind": "git",
+    "mutable_main_reference": false,
+    "repository": "endomorphosis/ipfs_accelerate_py"
+  },
+  "source_date_epoch": "0",
+  "stale_rejection": {
+    "adds_protocol_operation": false,
+    "admitted_live": false,
+    "applied": true,
+    "authorized_path_prefixes": [
+      "external/ipfs_accelerate",
+      "external/ipfs_datasets",
+      "external/ipfs_kit",
+      "artifacts/proof_carrying_platform_qualification_and_release/receipts/PCPR-069.json"
+    ],
+    "base_plan_revision": 1,
+    "change_kind": "stale_rejection_and_plan_delta",
+    "closed_release_outcome": null,
+    "completed_through": "stale_rejection_and_plan_delta",
+    "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+    "deferred": false,
+    "delta_cid": "baguqeerahbxnuho3jdzkwaar6yx4ers7ns3p73mm3ghhgc5mhmn5r2fg3pga",
+    "documentation_interface": "LogicProviderProtocolRelevantInterface@1",
+    "documentation_schema": "ipfs_datasets_py/logic-provider-relevant-interface@1",
+    "duckdb_or_quack_state_written": false,
+    "eligible_reuse": [
+      "tests/unit/test_pcpr_017_solver_qualification.py",
+      "ipfs_datasets_py/assurance/solver_qualification.py"
+    ],
+    "eligible_reuse_preserved": true,
+    "epoch_incremented": true,
+    "escalation_order": [
+      "exact receipt",
+      "AST and dependency analysis",
+      "schema, type, and static checks",
+      "selected tests",
+      "incremental prover",
+      "local small specialist",
+      "medium model",
+      "frontier model",
+      "human decision"
+    ],
+    "evidence_kind": "measured_hermetic",
+    "goal_id": "PCPR-G700",
+    "hermetic": true,
+    "history_mutated": false,
+    "idea": "Modify a typed formal-logic API while reusing unaffected proofs, selecting only impacted tests, rejecting stale-tree evidence, and producing a complete proof-carrying execution receipt.",
+    "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+    "impacted_cone": [
+      "ipfs_datasets_py/logic/backends/protocol_v2.py",
+      "ipfs_datasets_py/logic/platform/relevant_interface.py",
+      "tests/unit/test_pcpr_013_logic_provider_protocol.py",
+      "tests/unit/test_pcpr_014_semantic_apis.py",
+      "DatasetsContextPack@1"
+    ],
+    "interface": "StaleRejectionPlanDelta@1",
+    "interface_cid": "baguqeera3k54j374af37kxdvkfgkjdfdofbdtg3x5vckpsceemy4lyklw3dq",
+    "items": [
+      {
+        "effect_class": "evidence_only",
+        "expected_target_lifecycle": "completed",
+        "item_key": "reject-stale-context-pack",
+        "operation": "attach_evidence",
+        "rationale": "Reject stale ContextPack evidence after the PCPR-068 relevant interface change. Completed history is retained.",
+        "target": "DatasetsContextPack@1"
+      },
+      {
+        "effect_class": "evidence_only",
+        "expected_target_lifecycle": "completed",
+        "item_key": "reject-stale-protocol-tests",
+        "operation": "attach_evidence",
+        "rationale": "Reject stale protocol-test evidence. Completed history is retained.",
+        "target": "tests/unit/test_pcpr_013_logic_provider_protocol.py"
+      },
+      {
+        "effect_class": "evidence_only",
+        "expected_target_lifecycle": "completed",
+        "item_key": "reject-stale-semantic-api-tests",
+        "operation": "attach_evidence",
+        "rationale": "Reject stale semantic-API test evidence. Completed history is retained.",
+        "target": "tests/unit/test_pcpr_014_semantic_apis.py"
+      },
+      {
+        "effect_class": "evidence_only",
+        "expected_target_lifecycle": "completed",
+        "item_key": "preserve-unaffected-solver-qualification",
+        "operation": "attach_evidence",
+        "rationale": "Unaffected solver-qualification completion is preserved and is not marked stale.",
+        "target": "tests/unit/test_pcpr_017_solver_qualification.py"
+      },
+      {
+        "effect_class": "deferred",
+        "expected_target_lifecycle": "unstarted",
+        "item_key": "refill-protocol-tests",
+        "operation": "add_task",
+        "rationale": "Bounded refill of impacted protocol tests. Not live supervisor materialization.",
+        "target": "pcpr-069-refill-protocol-tests"
+      },
+      {
+        "effect_class": "deferred",
+        "expected_target_lifecycle": "unstarted",
+        "item_key": "refill-semantic-api-tests",
+        "operation": "add_task",
+        "rationale": "Bounded refill of impacted semantic-API tests. Not live supervisor materialization.",
+        "target": "pcpr-069-refill-semantic-api-tests"
+      }
+    ],
+    "language": "Python",
+    "live": false,
+    "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+    "model_assertion_completes_work": false,
+    "next_authorized_stage": "restart_authoritative_state_owner",
+    "next_plan_revision": 2,
+    "next_task_id": "PCPR-070",
+    "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+    "objective_kind": "declared_stale_rejection_and_plan_delta",
+    "owner_interface": "AccelerateStaleRejectionAndPlanDelta@1",
+    "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+    "patch_cid": "baguqeeraphkktpgmcw2uusnbxlh7wfjblmhzb4oy3u55bbpdsvbt4xwvvb4q",
+    "paths_authorized": true,
+    "pcpr_066_change_cid": "baguqeeraowfymvuvscitvjkxn3sak6f4a2ctkfvflney26jen7gwyqplln6a",
+    "plan_delta_kind": "minimal_impacted_cone_refill",
+    "plan_delta_produced": true,
+    "plan_epoch": 2,
+    "portfolio_id": "portfolio:pcpr-v1",
+    "portfolio_version": "proof-carrying-platform-0.1.0",
+    "prerequisite_task_id": "PCPR-068",
+    "produced": true,
+    "produced_by": "ipfs_accelerate_py",
+    "protocol_interface": "LogicProviderProtocol@2",
+    "refill": {
+      "applied": false,
+      "automatic_frontier_refill": true,
+      "evidence_kind": "measured_hermetic",
+      "live": false,
+      "max_epochs": 20,
+      "max_tasks_per_refill": 12,
+      "max_total_tasks": 140,
+      "task_ids": [
+        "pcpr-069-refill-protocol-tests",
+        "pcpr-069-refill-semantic-api-tests"
+      ],
+      "tasks_added": 2,
+      "within_bounds": true
+    },
+    "release_claim": false,
+    "relevant_change_paths": [
+      "ipfs_datasets_py/logic/backends/protocol_v2.py",
+      "ipfs_datasets_py/logic/platform/relevant_interface.py"
+    ],
+    "relevant_change_task_id": "PCPR-068",
+    "relevant_interface_change": false,
+    "remints_protocol": false,
+    "reuse_cid": "baguqeera75dkjwczh6mehnwyqot25rbd2mazkgjuvb4lrvkdkuqo7vntieuq",
+    "route_cid": "baguqeerab6vsy7orm6wmxmqbzqh5f57dasnufhgngvh47gw7g3whrkr5smga",
+    "run_cid": "baguqeerazgo2lirhy7hrpa42j227gdpzmi3jl4jdajoz6jzqqx7td6fy7dpa",
+    "schema": "ipfs_accelerate_py/assurance/stale-rejection-plan-delta@1",
+    "semantic_frontier": [
+      "LogicProviderProtocol@2",
+      "DatasetsContextPack@1",
+      "tests/unit/test_pcpr_013_logic_provider_protocol.py",
+      "tests/unit/test_pcpr_014_semantic_apis.py",
+      "tests/unit/test_pcpr_017_solver_qualification.py",
+      "ipfs_datasets_py/assurance/solver_qualification.py"
+    ],
+    "stale_identities": [
+      "DatasetsContextPack@1",
+      "tests/unit/test_pcpr_013_logic_provider_protocol.py",
+      "tests/unit/test_pcpr_014_semantic_apis.py"
+    ],
+    "stale_rejected": true,
+    "stale_rejection": {
+      "applied": false,
+      "evidence_kind": "measured_hermetic",
+      "interface": "StaleIdentityRejection@1",
+      "live": false,
+      "preserved": [
+        "tests/unit/test_pcpr_017_solver_qualification.py",
+        "ipfs_datasets_py/assurance/solver_qualification.py"
+      ],
+      "rejected": [
+        "DatasetsContextPack@1",
+        "tests/unit/test_pcpr_013_logic_provider_protocol.py",
+        "tests/unit/test_pcpr_014_semantic_apis.py"
+      ],
+      "schema": "ipfs_accelerate_py/assurance/stale-identity-rejection@1",
+      "stale_rejected": true,
+      "task_id": "PCPR-069",
+      "unaffected_completion_preserved": true
+    },
+    "task_id": "PCPR-069",
+    "unaffected_completion_preserved": true,
+    "whole_plan_regeneration_required": false
+  },
+  "state_owner": {
+    "direct_duckdb_write_prohibited": true,
+    "direct_quack_write_prohibited": true,
+    "duckdb_cli": "unavailable",
+    "duckdb_module": "unavailable",
+    "duckdb_module_is_not_live_materialization": true,
+    "duckdb_or_quack_state_written": false,
+    "quack": "unavailable"
+  },
+  "storage": {
+    "bytes_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+    "current_root_cid": "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi",
+    "current_root_published": true,
+    "deferred": false,
+    "evidence_kind": "measured_hermetic",
+    "live": false,
+    "reminted": false,
+    "stored": true,
+    "stored_by": "ipfs_kit_py",
+    "task_id": "PCPR-062"
+  },
+  "storage_owner_interface": "KitContextPackStorage@1",
+  "storage_owner_repository": "ipfs_kit_py",
+  "submitted_live": false,
+  "task_id": "PCPR-069",
+  "this_task_created_competing_authority": false
+}
