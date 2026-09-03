@@ -2013,6 +2013,7 @@ def _active_source_repair_materialization(
             or contract.get("fenced_stop_authorized") is not True
             or contract.get("generation_46_mint_authorized") is not True
             or contract.get("same_live_owner_required") is not False
+            or contract.get("bind_store_report_to_live_event_digest") is not True
         ):
             raise OperatorError(
                 "active M68 listen-down fenced-stop restart authority differs"
@@ -10820,6 +10821,122 @@ def _require_m48_source_successor_marker(
     ):
         raise OperatorError("M48 exact source successor receipt differs")
     return MappingProxyType(dict(observed))
+
+
+def _verify_m68_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M68 heads at live event 341/generation 46 using the live projection."""
+
+    materializer._validated_m68_live_preflight_contract(authority)
+    head = materializer._inspect_m37_live_projection(
+        source, population, authority,
+        expected_event_watermark=_M68_TARGET_EVENT_WATERMARK,
+        expected_projection_cid=expected_projection_cid,
+    )
+    if head.get("event_watermark") != _M68_TARGET_EVENT_WATERMARK:
+        raise materializer.MigrationRequired("M68 live head projection differs")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    heads = authority.get("expected_task_heads")
+    if not isinstance(heads, Mapping):
+        raise materializer.MigrationRequired("M68 expected task heads are missing")
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        expected_head = heads.get(alias)
+        if (
+            observed is None
+            or not isinstance(expected_head, Mapping)
+            or observed.status != expected_head.get("status")
+            or int(observed.revision) != int(expected_head.get("revision") or 0)
+        ):
+            raise materializer.MigrationRequired(f"M68 task head differs: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
+
+
+def _verify_m68_live_head_task_projection(
+    source: Any,
+    population: Mapping[str, Any],
+    materializer: Any,
+    *,
+    authority: Mapping[str, Any],
+    expected_projection_cid: str,
+) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
+    """Verify M68's live heads at event 341/generation 46.
+
+    The sealed contract binds the store report to the live event digest, so a
+    generation-46 restart may keep watermark 341 while minting a new
+    projection CID. Frozen M67 baguqeera equality is not required then.
+    """
+
+    contract = materializer._validated_m68_live_preflight_contract(authority)
+    bind_live = contract.get("bind_store_report_to_live_event_digest") is True
+    snapshot = source.snapshot()
+    plan = source.get_plan(str(population["plan_root_cid"]))
+    live_projection_cid = str(getattr(snapshot, "projection_cid", "") or "")
+    if bind_live:
+        if (
+            snapshot.event_cursor != _M68_TARGET_EVENT_WATERMARK
+            or snapshot.task_count != 45
+            or snapshot.goal_count != 29
+            or snapshot.dependency_count != 136
+            or snapshot.plan_count != 1
+            or snapshot.plan_root_cid != str(population["plan_root_cid"])
+            or plan is None
+            or int(plan.get("revision") or 0)
+            != int(materializer._M68_TARGET_PLAN_REVISION)
+            or not live_projection_cid
+        ):
+            raise materializer.MigrationRequired("M68 live head projection differs")
+    else:
+        head = materializer._inspect_m37_live_projection(
+            source,
+            population,
+            authority,
+            expected_event_watermark=_M68_TARGET_EVENT_WATERMARK,
+            expected_projection_cid=expected_projection_cid,
+        )
+        if (
+            head.get("event_watermark") != _M68_TARGET_EVENT_WATERMARK
+            or expected_projection_cid != _M68_TARGET_PROJECTION_CID
+            or head.get("projection_cid") != expected_projection_cid
+        ):
+            raise materializer.MigrationRequired("M68 live head projection differs")
+    statuses: dict[str, str] = {}
+    revisions: dict[str, int] = {}
+    receipt_cids: dict[str, str] = {}
+    heads = authority.get("expected_task_heads")
+    if not isinstance(heads, Mapping):
+        raise materializer.MigrationRequired("M68 expected task heads are missing")
+    for expected in population["taskboard"]:
+        alias = str(expected["task_id"])
+        observed = source.get_task(str(expected["task_cid"]))
+        expected_head = heads.get(alias)
+        if (
+            observed is None
+            or not isinstance(expected_head, Mapping)
+            or observed.status != expected_head.get("status")
+            or int(observed.revision) != int(expected_head.get("revision") or 0)
+        ):
+            raise materializer.MigrationRequired(f"M68 task head differs: {alias}")
+        operational = observed.body.get("operational_validation_revision")
+        if alias != "SAWM-000" and isinstance(operational, Mapping):
+            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
+        statuses[alias] = str(observed.status)
+        revisions[alias] = int(observed.revision)
+    return statuses, revisions, receipt_cids
 
 
 def _verify_m66_live_head_task_projection(
@@ -25825,6 +25942,15 @@ def _live_preflight(
             )
         live_snapshot = live.snapshot().to_dict()
         if (
+            m68_active
+            and preflight_contract.get("bind_store_report_to_live_event_digest")
+            is True
+        ):
+            expected_event_cursor = int(live_snapshot["event_cursor"])
+            expected_projection_cid = str(live_snapshot["projection_cid"] or "")
+            if expected_event_cursor != _M68_TARGET_EVENT_WATERMARK:
+                raise OperatorError("M68 live event head is not 341")
+        if (
             live_snapshot["task_count"] != 45
             or live_snapshot["goal_count"] != 29
             or live_snapshot["dependency_count"] != 136
@@ -25838,7 +25964,17 @@ def _live_preflight(
         ):
             raise OperatorError("live Quack snapshot differs from the exact program root/counts")
         try:
-            if _M66_SUCCESSOR_KEY in config:
+            if _M68_SUCCESSOR_KEY in config:
+                statuses, _revisions, _receipts = (
+                    _verify_m68_live_head_task_projection(
+                        live,
+                        population,
+                        materializer,
+                        authority=active_source_repair,
+                        expected_projection_cid=expected_projection_cid,
+                    )
+                )
+            elif _M66_SUCCESSOR_KEY in config:
                 statuses, _revisions, _receipts = (
                     _verify_m66_live_head_task_projection(
                         live,
@@ -26406,7 +26542,7 @@ def _live_preflight(
             else active_source_repair["prior_semantic_authority_digest"]
         )
         bind_live_event_digest = (
-            (m66_active or m65_active)
+            (m68_active or m66_active or m65_active)
             and preflight_contract.get("bind_store_report_to_live_event_digest")
             is True
         )

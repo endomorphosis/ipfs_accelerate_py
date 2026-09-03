@@ -2069,6 +2069,54 @@ def test_m67_live_preflight_contract_accepts_mappingproxy_authority() -> None:
     assert expected["target_event_watermark"] == 341
 
 
+def test_operator_live_preflight_binds_m68_snapshot_before_m66_heads() -> None:
+    """M68 must bind the live projection and not reuse frozen M66 event-340 heads."""
+
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    m68_bind = operator_source.find(
+        "m68_active\n            and preflight_contract.get(\"bind_store_report_to_live_event_digest\")"
+    )
+    m68_verify = operator_source.find("_verify_m68_live_head_task_projection(")
+    m66_call = operator_source.find(
+        "elif _M66_SUCCESSOR_KEY in config:\n                statuses, _revisions, _receipts = (\n                    _verify_m66_live_head_task_projection("
+    )
+    digest = operator_source.find(
+        "(m68_active or m66_active or m65_active)"
+    )
+    assert m68_bind > 0
+    assert 0 < m68_verify < m66_call
+    assert digest > 0
+
+
+def test_operator_live_preflight_selects_m68_head_projection_before_m66() -> None:
+    """M68 must bind the live projection CID and verify M68 heads before M66."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m68_live_preflight_dispatch_test",
+    )
+    live_source = inspect.getsource(operator._live_preflight)
+    verify_source = inspect.getsource(operator._verify_m68_live_head_task_projection)
+    authority_source = inspect.getsource(
+        operator._active_source_repair_materialization
+    )
+    assert live_source.index("_verify_m68_live_head_task_projection") < (
+        live_source.index("_verify_m66_live_head_task_projection")
+    )
+    assert live_source.index("if _M68_SUCCESSOR_KEY in config:") < (
+        live_source.index("if _M66_SUCCESSOR_KEY in config:")
+    )
+    assert "bind_store_report_to_live_event_digest" in live_source
+    assert "m68_active or m67_active or m66_active or m65_active" in live_source
+    assert "bind_store_report_to_live_event_digest" in verify_source
+    assert "_M68_TARGET_EVENT_WATERMARK" in verify_source
+    assert "_validated_m68_live_preflight_contract" in verify_source
+    m68_block = authority_source.split("if m67_key in config:", 1)[0]
+    assert "bind_store_report_to_live_event_digest" in m68_block
+
+
 def test_operator_live_preflight_selects_m67_listen_down_before_m66() -> None:
     """Listen-down+missing-token must rearm M67 instead of fail-closing as M66."""
 
