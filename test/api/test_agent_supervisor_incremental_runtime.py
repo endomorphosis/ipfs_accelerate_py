@@ -2122,6 +2122,124 @@ def test_same_lane_state_dir_retires_dead_predecessor_claim(
     assert result.get("reason") != "worktree_lifecycle_claim_exists"
 
 
+def test_lane_parent_retires_dead_nested_portal_attempt_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    state_root = (
+        tmp_path
+        / "data"
+        / "agent_supervisor"
+        / "semantic_preserving_autonomous_remodularization_v1"
+        / "state"
+    )
+    lane_state_dir = state_root / "lane-2"
+    predecessor_state_dir = (
+        lane_state_dir
+        / "spar_lane_2_database_portal_attempts"
+        / ("b" * 24)
+    )
+    foreign_lane_state_dir = state_root / "lane-0"
+    predecessor_state_dir.mkdir(parents=True)
+    foreign_lane_state_dir.mkdir(parents=True)
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=lane_state_dir / "spar_lane_2_task_state.json",
+        strategy_path=lane_state_dir / "strategy.json",
+        events_path=lane_state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c("raise SystemExit(7)"),
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+    )
+    task = PortalTask(
+        task_id="SPAR-024",
+        title="Retire a leftover nested portal attempt from the lane daemon",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+    workspace = tmp_path / "preserved-worktree"
+    workspace.mkdir()
+    predecessor = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=1,
+        lane_id="portal-attempt:lane-2",
+        workspace_path=workspace,
+        branch="implementation/spar-024-nested-portal-attempt-1",
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(predecessor_state_dir.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 81,
+            start_time_ticks=1,
+            boot_id="dead-lane-parent-portal",
+        ),
+    )
+    daemon.worktree_lifecycle.clock = lambda: (
+        predecessor.updated_at + 181.0
+    )
+    observer_script = (
+        'snap=$(command cat <&3); builtin eval -- "$snap"; '
+        f'builtin export GROK_AGENT=1; inspect {workspace} {predecessor.branch}'
+    )
+    proc_root = tmp_path / "proc"
+    observer_proc = proc_root / "3556183"
+    observer_proc.mkdir(parents=True)
+    (observer_proc / "cmdline").write_bytes(
+        b"/bin/bash\0-O\0extglob\0-c\0" + observer_script.encode()
+    )
+    (observer_proc / "cwd").symlink_to(tmp_path)
+    daemon.worktree_lifecycle.proc_root = proc_root
+
+    class _Docker:
+        returncode = 1
+        stdout = ""
+        stderr = "Cannot connect to the Docker daemon"
+
+    real_run = subprocess.run
+
+    def _run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if cmd and cmd[0] == "docker":
+            return _Docker()
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _run)
+
+    exact_state_path = daemon.state_path
+    daemon.state_path = foreign_lane_state_dir / "spar_lane_0_task_state.json"
+    foreign = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+    assert foreign["finalized"] is False
+    assert foreign["reason"] == "task_attempt_claim_identity_mismatch"
+    assert foreign["mismatched_fields"] == ["state_dir_custody"]
+    assert daemon.worktree_lifecycle.load_workspace(workspace) == predecessor
+
+    daemon.state_path = exact_state_path
+    recovered = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+    assert recovered["finalized"] is True
+    assert recovered["custody_kind"] == "lane_parent_portal_attempt"
+    assert recovered["reason"] == (
+        "lane_parent_portal_attempt_dead_owner_superseded"
+    )
+    assert recovered["predecessor_owner_liveness"] == "dead"
+    assert recovered["portal_attempt_custody"]["current_lane"] == 2
+    assert recovered["portal_attempt_custody"]["source_lane"] == 2
+    assert daemon.worktree_lifecycle.load_workspace(workspace) is None
+
+
 def test_sibling_portal_attempt_quiescence_scopes_denied_proc_cwds(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

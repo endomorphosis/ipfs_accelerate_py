@@ -68816,6 +68816,12 @@ class PortalImplementationDaemon:
                 record.state_dir,
             )
         )
+        lane_parent_custody = (
+            self._state_dir_lane_parent_portal_attempt_custody_binding(
+                self.state_path.parent,
+                record.state_dir,
+            )
+        )
         try:
             current_state_dir = str(
                 self.state_path.parent.resolve(strict=False)
@@ -68836,6 +68842,7 @@ class PortalImplementationDaemon:
         predecessor_is_owned = bool(
             predecessor_is_older
             or portal_attempt_custody is not None
+            or lane_parent_custody is not None
             or same_lane_state_dir
         )
         mismatched_fields = [
@@ -68878,6 +68885,13 @@ class PortalImplementationDaemon:
                 {
                     "custody_kind": "sibling_database_portal_attempt",
                     "portal_attempt_custody": portal_attempt_custody,
+                }
+            )
+        elif lane_parent_custody is not None:
+            base.update(
+                {
+                    "custody_kind": "lane_parent_portal_attempt",
+                    "portal_attempt_custody": lane_parent_custody,
                 }
             )
         else:
@@ -68974,6 +68988,8 @@ class PortalImplementationDaemon:
 
         if portal_attempt_custody is not None:
             terminal_reason = "sibling_portal_attempt_dead_owner_superseded"
+        elif lane_parent_custody is not None:
+            terminal_reason = "lane_parent_portal_attempt_dead_owner_superseded"
         elif predecessor_is_older:
             terminal_reason = "successor_generation_dead_owner_superseded"
         else:
@@ -69091,6 +69107,67 @@ class PortalImplementationDaemon:
             **custody,
             "current_state_dir": str(current_resolved),
             "predecessor_state_dir": str(predecessor_resolved),
+        }
+
+    @staticmethod
+    def _state_dir_lane_parent_portal_attempt_custody_binding(
+        current_state_dir: str | Path,
+        predecessor_state_dir: str | Path,
+    ) -> dict[str, Any] | None:
+        """Prove a leftover Portal attempt sits under the current lane state dir.
+
+        SPAR lane daemons persist ``state/lane-N`` while nested Portal attempts
+        persist ``state/lane-N/<prefix>_lane_N_database_portal_attempts/<24hex>``.
+        Sibling-attempt custody cannot see that parent/child pair.
+        """
+
+        current_raw = Path(current_state_dir)
+        predecessor_raw = Path(predecessor_state_dir)
+        lane_match = re.fullmatch(r"lane-([0-9]+)", current_raw.name)
+        if (
+            not current_raw.is_absolute()
+            or not predecessor_raw.is_absolute()
+            or current_raw == predecessor_raw
+            or lane_match is None
+            or re.fullmatch(r"[0-9a-f]{24}", predecessor_raw.name) is None
+            or not current_raw.is_dir()
+            or not predecessor_raw.is_dir()
+            or current_raw.is_symlink()
+            or predecessor_raw.is_symlink()
+            or predecessor_raw.parent.is_symlink()
+        ):
+            return None
+        attempt_root = predecessor_raw.parent
+        attempt_match = re.fullmatch(
+            r"([a-z0-9_]+)_lane_([0-9]+)_database_portal_attempts",
+            attempt_root.name,
+        )
+        if (
+            attempt_match is None
+            or attempt_match.group(2) != lane_match.group(1)
+            or attempt_root.parent != current_raw
+            or not attempt_root.is_dir()
+        ):
+            return None
+        try:
+            current_resolved = current_raw.resolve(strict=True)
+            predecessor_resolved = predecessor_raw.resolve(strict=True)
+            attempt_resolved = attempt_root.resolve(strict=True)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if (
+            predecessor_resolved.parent != attempt_resolved
+            or attempt_resolved.parent != current_resolved
+        ):
+            return None
+        lane = int(lane_match.group(1))
+        return {
+            "current_lane": lane,
+            "source_lane": lane,
+            "current_state_dir": str(current_resolved),
+            "predecessor_state_dir": str(predecessor_resolved),
+            "portal_attempt_root": str(attempt_resolved),
+            "state_prefix": attempt_match.group(1),
         }
 
     @staticmethod
