@@ -1063,7 +1063,14 @@ def admit_leftover_wait_deferral_budget_recovery(
         )
     )
     recovery = _mapping(request, noun="leftover-wait recovery control receipt")
-    if set(recovery) != _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_FIELDS:
+    recovery_extra = set(recovery) - _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_FIELDS
+    recovery_route = set(recovery) & _TYPED_DEFERRAL_BLOCK_RECEIPT_ROUTE_FIELDS
+    if (
+        _LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_FIELDS - set(recovery)
+        or recovery_extra - _TYPED_DEFERRAL_BLOCK_RECEIPT_OPTIONAL_FIELDS
+        or recovery_route
+        not in (set(), _TYPED_DEFERRAL_BLOCK_RECEIPT_ROUTE_FIELDS)
+    ):
         raise TypedDeferralRecoveryError(
             "leftover-wait recovery control receipt has unknown or missing fields"
         )
