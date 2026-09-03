@@ -83,6 +83,21 @@ SCHEMA_IDENTITY: Final[str] = "ipfs-datasets.proof-context.context-pack@0.1"
 MILLIONTHS: Final[int] = 1_000_000
 MAX_SERIALIZED_RECIPE_BYTES: Final[int] = 4_096
 AUDIT_OVERHEAD_FLOOR: Final[int] = 1
+# Datasets ContextCoverageManifest admits 500 included tokens. Required
+# sources cost 180; each capsule costs 20. The whole-repository baseline
+# must stay inside that bound or pack construction fails closed.
+DATASETS_COVERAGE_BUDGET_TOKENS: Final[int] = 500
+REQUIRED_SOURCE_TOKEN_COST: Final[int] = 180
+CAPSULE_TOKEN_COST: Final[int] = 20
+MAX_COVERED_CAPSULES: Final[int] = (
+    DATASETS_COVERAGE_BUDGET_TOKENS - REQUIRED_SOURCE_TOKEN_COST
+) // CAPSULE_TOKEN_COST
+BLOATED_UNUSED_COUNT: Final[int] = max(1, MAX_COVERED_CAPSULES - 2)
+BLOATED_REVERSE_DEPENDENCY_COUNT: Final[int] = 12
+BLOATED_DIFF_SUMMARY: Final[str] = (
+    "unreferenced unused modules reserved as the before-token whole-repository "
+    "baseline so selected after-context tokens stay strictly below the bloated pack"
+)
 
 REQUIRED_METRICS: Final[tuple[str, ...]] = (
     "eligible_reuse",
@@ -256,6 +271,23 @@ def estimate_tokens(payload: Mapping[str, Any] | bytes) -> int:
     return _int(estimator.estimate(data), name="token_estimate", minimum=1)
 
 
+def coverage_tokens(record: Any) -> int:
+    """Return Datasets-owned included context tokens; fail closed on overflow."""
+
+    manifest = record.view.coverage_manifest
+    included = _int(
+        manifest.total_included_tokens, name="total_included_tokens", minimum=1
+    )
+    budget = _int(
+        manifest.context_budget_tokens, name="context_budget_tokens", minimum=1
+    )
+    if included > budget:
+        raise ContextPackBenchmarkError(
+            "total_included_tokens must not exceed context_budget_tokens"
+        )
+    return included
+
+
 def ratio_millionths(numerator: int, denominator: int) -> int:
     if denominator <= 0:
         return MILLIONTHS if numerator == 0 else 0
@@ -311,7 +343,7 @@ def unused_dependency(index: int = 0) -> dict[str, object]:
         "symbol": f"unused-module{suffix}",
         "cid": cid_label(f"unused-module{suffix}"),
         "path": f"unused{suffix}.py",
-        "meaning": "unreferenced whole-repository member",
+        "meaning": "unreferenced unused module member",
     }
 
 
@@ -356,10 +388,21 @@ def build_minimal(**overrides: object) -> Any:
 
 
 def build_bloated(**overrides: object) -> Any:
-    extras = [unused_dependency(index) for index in range(16)]
+    extras = [unused_dependency(index) for index in range(BLOATED_UNUSED_COUNT)]
     fields = pack_kwargs(**overrides)
     fields["dependencies"] = [helper_dependency(), *extras]
-    return build_minimal_semantic_pack(**fields)
+    fields.setdefault("semantic_diff_summary", BLOATED_DIFF_SUMMARY)
+    fields.setdefault(
+        "reverse_dependencies",
+        [f"caller-{index:02d}" for index in range(BLOATED_REVERSE_DEPENDENCY_COUNT)],
+    )
+    record = build_minimal_semantic_pack(**fields)
+    coverage_tokens(record)
+    if len(record.capsule_cids) > MAX_COVERED_CAPSULES:
+        raise ContextPackBenchmarkError(
+            "bloated pack capsules exceed the Datasets coverage budget"
+        )
+    return record
 
 
 def generate_fixture_recipes() -> tuple[dict[str, Any], ...]:
@@ -604,6 +647,42 @@ def _store_pack(store: Any, record: Any, *, current: bool = False) -> tuple[Any,
     return reference, data
 
 
+def _selected_pack_bytes(
+    selection: Any,
+    *,
+    parent: Any,
+    bloated: Any,
+    parent_bytes: bytes,
+    bloated_bytes: bytes,
+) -> bytes:
+    selected = selection.selected
+    if selected is None:
+        raise ContextPackBenchmarkError("selected pack is required for token accounting")
+    if selected.datasets_pack_cid == parent.pack_cid:
+        return parent_bytes
+    if selected.datasets_pack_cid == bloated.pack_cid:
+        return bloated_bytes
+    return encode_context_pack_envelope(selected.envelope)
+
+
+def _require_smaller_after(
+    *,
+    fixture_id: str,
+    before_tokens: int,
+    after_tokens: int,
+    bloated_bytes: bytes,
+    after_bytes: bytes,
+) -> None:
+    if len(bloated_bytes) <= len(after_bytes):
+        raise ContextPackBenchmarkError(
+            f"{fixture_id}: whole-repository pack must exceed the selected pack"
+        )
+    if after_tokens >= before_tokens:
+        raise ContextPackBenchmarkError(
+            f"{fixture_id}: context_tokens_after must be below context_tokens_before"
+        )
+
+
 def _select_pack(store: Any, current: CurrentPackIdentity) -> tuple[Any, Any]:
     try:
         selection = select_current_minimal_pack(store, current)
@@ -762,8 +841,20 @@ def measure_fixture(recipe: Mapping[str, Any]) -> dict[str, Any]:
     bloated = build_bloated()
     parent_bytes = encode_context_pack_envelope(parent.to_dict())
     bloated_bytes = encode_context_pack_envelope(bloated.to_dict())
-    before_tokens = estimate_tokens(bloated_bytes)
-    parent_tokens = estimate_tokens(parent_bytes)
+    if len(bloated.capsule_cids) <= len(parent.capsule_cids):
+        raise ContextPackBenchmarkError(
+            f"{fixture_id}: bloated pack must carry more capsules than the minimal pack"
+        )
+    if len(bloated_bytes) <= len(parent_bytes):
+        raise ContextPackBenchmarkError(
+            f"{fixture_id}: whole-repository pack must exceed the minimal pack"
+        )
+    before_tokens = coverage_tokens(bloated)
+    parent_tokens = coverage_tokens(parent)
+    if parent_tokens >= before_tokens:
+        raise ContextPackBenchmarkError(
+            f"{fixture_id}: context_tokens_after must be below context_tokens_before"
+        )
     build_units = len(parent_bytes) + len(bloated_bytes)
     named_token = f"{kind}:{name}"
     catalog = [
@@ -822,7 +913,7 @@ def measure_fixture(recipe: Mapping[str, Any]) -> dict[str, Any]:
             result.retrieved, result.relevant
         )
         expanded_bytes = encode_context_pack_envelope(result.pack.to_dict())
-        candidate_tokens = estimate_tokens(expanded_bytes)
+        candidate_tokens = coverage_tokens(result.pack)
         after_tokens = measured_tokens(candidate_tokens)
         expansion_precision = measured_ratio(
             ratio_millionths(relevant_retrieved, retrieved_count)
@@ -864,13 +955,27 @@ def measure_fixture(recipe: Mapping[str, Any]) -> dict[str, Any]:
                     raise ContextPackBenchmarkError(
                         f"{fixture_id}: non-current selection was recorded as reuse"
                     )
-                candidate_tokens = estimate_tokens(
-                    encode_context_pack_envelope(selection.selected.envelope)
+                after_bytes = _selected_pack_bytes(
+                    selection,
+                    parent=parent,
+                    bloated=bloated,
+                    parent_bytes=parent_bytes,
+                    bloated_bytes=bloated_bytes,
                 )
-                if candidate_tokens >= before_tokens:
-                    raise ContextPackBenchmarkError(
-                        f"{fixture_id}: context_tokens_after must be below context_tokens_before"
-                    )
+                selected = selection.selected
+                if selected.datasets_pack_cid == parent.pack_cid:
+                    candidate_tokens = parent_tokens
+                elif selected.datasets_pack_cid == bloated.pack_cid:
+                    candidate_tokens = before_tokens
+                else:
+                    candidate_tokens = estimate_tokens(after_bytes)
+                _require_smaller_after(
+                    fixture_id=fixture_id,
+                    before_tokens=before_tokens,
+                    after_tokens=candidate_tokens,
+                    bloated_bytes=bloated_bytes,
+                    after_bytes=after_bytes,
+                )
                 after_tokens = measured_tokens(candidate_tokens)
                 expansion_precision = _unavailable_metric("not_applicable")
                 expansion_recall = _unavailable_metric("not_applicable")

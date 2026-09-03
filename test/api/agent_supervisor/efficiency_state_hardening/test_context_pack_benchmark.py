@@ -273,6 +273,13 @@ def test_eligible_reuse_and_before_after_tokens_are_measured_per_fixture() -> No
         candidate_reuse["context_tokens_after"]["value"]
         < candidate_reuse["context_tokens_before"]["value"]
     )
+    assert (
+        candidate_reuse["context_tokens_before"]["value"]
+        <= BENCHMARK.DATASETS_COVERAGE_BUDGET_TOKENS
+    )
+    bloated = BENCHMARK.build_bloated()
+    assert BENCHMARK.coverage_tokens(bloated) <= BENCHMARK.DATASETS_COVERAGE_BUDGET_TOKENS
+    assert len(bloated.capsule_cids) <= BENCHMARK.MAX_COVERED_CAPSULES
 
     candidate_tokens = tokens["observations"]["candidate_optimized_supervisor"]["metrics"]
     direct_tokens = tokens["observations"]["direct_minimal_orchestration_baseline"][
