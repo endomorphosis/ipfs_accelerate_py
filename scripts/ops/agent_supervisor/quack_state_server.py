@@ -8,8 +8,8 @@ Cold import and ``--help`` start no process, open no database, and load no
 optional providers. Auth tokens are never accepted on argv; only opaque secret
 handles may be supplied.
 
-``start`` keeps the process alive until a fenced stop request is observed or
-SIGINT/SIGTERM arrives.
+``start`` keeps the process alive until a fenced stop request is observed,
+the listen socket dies, or SIGINT/SIGTERM arrives.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import signal
+import socket
 import sys
 import time
 from pathlib import Path
@@ -199,8 +200,34 @@ def _emit(payload: Mapping[str, Any] | Sequence[Any] | str, *, as_json: bool) ->
         sys.stdout.write("\n")
 
 
+def _listen_uri_reachable(uri: str, *, timeout_seconds: float = 0.2) -> bool:
+    """Return whether a loopback Quack listen URI still accepts TCP."""
+
+    text = str(uri or "").strip()
+    if not text.startswith("quack:"):
+        return False
+    rest = text.split(":", 1)[-1].lstrip("/")
+    if rest.lower().startswith("::1:"):
+        host, port_text = "::1", rest[4:]
+    else:
+        host, sep, port_text = rest.rpartition(":")
+        if not sep:
+            return False
+    try:
+        port = int(port_text)
+    except ValueError:
+        return False
+    if port < 1 or port > 65535:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=timeout_seconds):
+            return True
+    except OSError:
+        return False
+
+
 def _serve_until_stop(server: Any) -> dict[str, Any]:
-    """Block while the state-owner is ready; stop on control file or signal."""
+    """Block while the state-owner is ready; stop on control file, signal, or dead listen."""
 
     stop_requested = {"value": False}
 
@@ -212,11 +239,22 @@ def _serve_until_stop(server: Any) -> dict[str, Any]:
     previous_term = signal.signal(signal.SIGTERM, _handle_signal)
     try:
         control_path = server.stop_control_path()
+        identity = getattr(server, "_identity", None) or getattr(
+            server, "identity", None
+        )
+        listen = str(getattr(identity, "listen_uri", "") or "")
+        listen_lost = False
         while server.lifecycle.value == "ready" and not stop_requested["value"]:
             if control_path.is_file():
                 break
+            if listen and not _listen_uri_reachable(listen):
+                listen_lost = True
+                break
             time.sleep(0.25)
-        return server.stop()
+        result = server.stop()
+        if listen_lost and isinstance(result, dict):
+            result = {**result, "listen_lost": True}
+        return result
     finally:
         signal.signal(signal.SIGINT, previous_int)
         signal.signal(signal.SIGTERM, previous_term)

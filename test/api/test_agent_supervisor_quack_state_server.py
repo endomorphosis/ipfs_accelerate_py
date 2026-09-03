@@ -2159,6 +2159,38 @@ def test_graceful_stop_uses_fence_control_path(tmp_path: Path) -> None:
     assert result["stopped"] is True
 
 
+def test_serve_until_stop_fail_closes_when_listen_dies(tmp_path: Path) -> None:
+    """A ready owner whose listen port is gone must stop and release the store."""
+
+    import importlib.util
+    from types import SimpleNamespace
+
+    spec = importlib.util.spec_from_file_location(
+        "sawm_quack_ops_listen_lost_test", OPS_SCRIPT
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    class _Lifecycle:
+        value = "ready"
+
+    class _Server:
+        lifecycle = _Lifecycle()
+        _identity = SimpleNamespace(listen_uri="quack:127.0.0.1:1")
+
+        def stop_control_path(self) -> Path:
+            return tmp_path / "quack-state-server.stop"
+
+        def stop(self) -> dict[str, Any]:
+            self.lifecycle.value = "stopped"
+            return {"stopped": True}
+
+    result = module._serve_until_stop(_Server())
+    assert result["stopped"] is True
+    assert result["listen_lost"] is True
+
+
 def test_listen_uri_format() -> None:
     assert listen_uri("127.0.0.1", 4242) == "quack:127.0.0.1:4242"
 
