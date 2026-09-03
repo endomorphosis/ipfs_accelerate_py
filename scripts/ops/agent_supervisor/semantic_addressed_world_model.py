@@ -515,6 +515,28 @@ _M66_TARGET_QUACK_PORT = _M65_TARGET_QUACK_PORT
 _M66_LIVE_SERVER_ID = "server:29b75aea-d76d-4689-89c4-9dd37c01b25f"
 _M66_LIVE_PROCESS_BIRTH_ID = "birth:8b5074b97c6a3f34b1cc41644005079f"
 
+_M67_SUCCESSOR_KEY = (
+    "post_m66_same_owner_listen_down_missing_client_token_handoff_successor_materialization"
+)
+_M67_MIGRATION_REVISION = "SAWM-R2-M67"
+_M67_AUTHORITY_CID = (
+    "sha256:9c2a379289a30aff01253177d729a8cc797c5e969bd89935a69953e167087703"
+)
+_M67_AUTHORITY_SIZE = 19_176
+_M67_STORE_ID = _M66_STORE_ID
+_M67_COORDINATION_STORE_ID = _M66_COORDINATION_STORE_ID
+_M67_PRIOR_GENERATION = 45
+_M67_GENERATION = 45
+_M67_PRIOR_EVENT_WATERMARK = 341
+_M67_TARGET_EVENT_WATERMARK = 341
+_M67_PRIOR_PROJECTION_CID = (
+    "baguqeeranrmlntkf6fmerflzgv5hwqpsutl5f4jcjjfe7pcbkcim7scovjrq"
+)
+_M67_TARGET_PROJECTION_CID = _M67_PRIOR_PROJECTION_CID
+_M67_TARGET_QUACK_PORT = _M66_TARGET_QUACK_PORT
+_M67_LIVE_SERVER_ID = _M66_LIVE_SERVER_ID
+_M67_LIVE_PROCESS_BIRTH_ID = _M66_LIVE_PROCESS_BIRTH_ID
+
 _M50_SUCCESSOR_KEY = (
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
 )
@@ -1858,6 +1880,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m67_key = _M67_SUCCESSOR_KEY
     m66_key = _M66_SUCCESSOR_KEY
     m65_key = _M65_SUCCESSOR_KEY
     m64_key = _M64_SUCCESSOR_KEY
@@ -1917,6 +1940,71 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m67_key in config:
+        authority = config.get(m67_key)
+        try:
+            materializer = _materializer()
+            expected = (
+                materializer
+                ._expected_m67_post_m66_same_owner_listen_down_token_handoff_authority()
+            )
+            reference = materializer._m67_authority_reference()
+            contract = materializer._validated_m67_live_preflight_contract(
+                expected
+            )
+            configured = materializer._m67_successor_configured_on_any_surface(
+                REPO_ROOT, config
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "active M67 same-owner listen-down token-handoff authority "
+                "is unavailable"
+            ) from exc
+        runtime = expected.get("runtime_binding")
+        live_owner = expected.get("live_owner")
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        configured_cid = str(reference.get("authority_cid") or "")
+        digest_pattern = re.compile(r"sha256:[0-9a-f]{64}\Z")
+        if (
+            not configured
+            or not isinstance(authority, Mapping)
+            or dict(authority) != dict(reference)
+            or reference.get("migration_revision") != _M67_MIGRATION_REVISION
+            or configured_cid != _M67_AUTHORITY_CID
+            or configured_cid.endswith("PENDING_M67_FINAL_CONTROL_AUTHORITY_CID")
+            or digest_pattern.fullmatch(configured_cid) is None
+            or materializer._identity(expected) != _M67_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M67_AUTHORITY_SIZE
+            or expected.get("migration_revision") != _M67_MIGRATION_REVISION
+            or expected.get("migration_kind") != _M67_SUCCESSOR_KEY
+            or expected.get("authorized") is not True
+            or expected.get("authority") != "operator_control_plane"
+            or not all(
+                isinstance(item, Mapping)
+                for item in (runtime, live_owner, program, owner, contract)
+            )
+            or int(runtime.get("store_generation") or 0) != _M67_GENERATION
+            or int(live_owner.get("generation") or 0) != _M67_GENERATION
+            or live_owner.get("same_owner_required") is not True
+            or live_owner.get("generation_restart_authorized") is not False
+            or live_owner.get("token_handoff_rearm_authorized") is not True
+            or live_owner.get("generation_46_mint_authorized") is not False
+            or live_owner.get("listen_socket_present") is not False
+            or program.get("store_generation") != str(_M67_GENERATION)
+            or owner.get("store_id") != _M67_STORE_ID
+            or contract.get("target_generation") != _M67_GENERATION
+            or contract.get("same_live_owner_required") is not True
+            or contract.get("generation_restart_authorized") is not False
+            or contract.get("token_handoff_rearm_authorized") is not True
+            or contract.get("generation_46_mint_authorized") is not False
+            or contract.get("bind_store_report_to_live_event_digest") is not True
+            or contract.get("apply_when_listen_down_and_token_missing") is not True
+        ):
+            raise OperatorError(
+                "active M67 same-owner listen-down token-handoff authority differs"
+            )
+        return MappingProxyType(expected)
     if m66_key in config:
         authority = config.get(m66_key)
         try:
@@ -6410,6 +6498,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            _M67_SUCCESSOR_KEY,
             _M66_SUCCESSOR_KEY,
             _M65_SUCCESSOR_KEY,
             _M64_SUCCESSOR_KEY,
@@ -8821,6 +8910,167 @@ def _require_m18_final_pair_marker(
                 "M18 materializer check differs from its final pair marker"
             )
     return MappingProxyType(dict(observed))
+
+
+def _require_m67_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M67 authority and preserved M66 receipt; M67 receipt may follow."""
+
+    del checked
+    key = _M67_SUCCESSOR_KEY
+    if key not in config:
+        return MappingProxyType({})
+    expected = (
+        materializer
+        ._expected_m67_post_m66_same_owner_listen_down_token_handoff_authority()
+    )
+    reference = materializer._m67_authority_reference()
+    configured_cid = str(reference.get("authority_cid") or "")
+    if (
+        dict(authority) != expected
+        or config.get(key) != reference
+        or configured_cid != _M67_AUTHORITY_CID
+        or configured_cid.endswith("PENDING_M67_FINAL_CONTROL_AUTHORITY_CID")
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", configured_cid) is None
+        or materializer._identity(expected) != _M67_AUTHORITY_CID
+        or len(materializer._canonical(expected)) != _M67_AUTHORITY_SIZE
+        or expected.get("migration_revision") != _M67_MIGRATION_REVISION
+        or expected.get("migration_kind") != _M67_SUCCESSOR_KEY
+        or int(expected.get("target_generation") or 0) != _M67_GENERATION
+        or int(expected.get("target_event_watermark") or 0)
+        != _M67_TARGET_EVENT_WATERMARK
+    ):
+        raise OperatorError("M67 same-owner listen-down authority differs")
+    runtime = (REPO_ROOT / _M67_STORE_ID).resolve().parent
+    m66_path = runtime / materializer._M66_FINAL_RECEIPT_NAME
+    if not os.path.lexists(m66_path):
+        raise OperatorError("M67 preserved M66 receipt is unavailable")
+    final_path = runtime / materializer._M67_FINAL_RECEIPT_NAME
+    if not os.path.lexists(final_path):
+        return MappingProxyType({})
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            final_path, root=REPO_ROOT, noun="M67 source successor receipt"
+        )
+        checked_live = materializer._check_m67_materialized(REPO_ROOT, CONFIG_PATH)
+    except Exception as exc:
+        raise OperatorError(
+            "M67 receipt requires same-owner listen-down verification after receipt read"
+        ) from exc
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    reported = checked_live.get("m67_source_successor_receipt")
+    if not isinstance(reported, Mapping):
+        reported = checked_live.get("receipt")
+    if (
+        claimed != materializer._identity(unhashed)
+        or dict(reported or {}) != observed
+        or checked_live.get("valid") is not True
+        or observed.get("migration_revision") != _M67_MIGRATION_REVISION
+        or observed.get(f"{key}_cid") != _M67_AUTHORITY_CID
+        or observed.get("m66_receipt_preserved_exactly") is not True
+        or observed.get("same_live_owner_verified") is not True
+        or observed.get("generation_restart_authorized") is not False
+        or observed.get("token_handoff_rearm_authorized") is not True
+        or observed.get("generation_46_mint_authorized") is not False
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+    ):
+        raise OperatorError("M67 exact source successor receipt differs")
+    return MappingProxyType(dict(observed))
+
+
+def _rearm_m67_existing_client_token_handoff(
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Republish the live gen-45 credential into the one-time handoff.
+
+    The exact coordinator env credential is the only admitted source.  This
+    does not mint generation 46 and does not invent a new secret.
+    """
+
+    authority = _active_source_repair_materialization(config)
+    materializer = _materializer()
+    _require_m67_source_successor_marker(config, authority, materializer)
+    owner = config.get("quack_owner")
+    program = config.get("database_program")
+    if not isinstance(owner, Mapping) or not isinstance(program, Mapping):
+        raise OperatorError("M67 quack owner binding is unavailable")
+    state_dir = Path(str(owner.get("state_dir") or "")).resolve()
+    secret_handle = str(
+        owner.get("secret_handle") or program.get("endpoint_secret_handle") or ""
+    )
+    if state_dir.parent != (REPO_ROOT / _M67_STORE_ID).resolve().parent:
+        raise OperatorError("M67 token handoff state dir differs")
+    if secret_handle != "env://SAWM_QUACK_TOKEN":
+        raise OperatorError("M67 secret handle differs")
+    token = ""
+    runtime = (REPO_ROOT / _M67_STORE_ID).resolve().parent
+    for lane in range(4):
+        status_path = (
+            runtime
+            / "state"
+            / f"lane-{lane}"
+            / f"sawm_lane_{lane}_supervisor_status.json"
+        )
+        try:
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+            pid = int(payload.get("supervisor_pid") or 0)
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            continue
+        environ_path = Path(f"/proc/{pid}/environ")
+        cmdline_path = Path(f"/proc/{pid}/cmdline")
+        if pid <= 1 or not environ_path.exists() or not cmdline_path.exists():
+            continue
+        cmdline = cmdline_path.read_bytes().replace(b"\0", b" ").decode(
+            "utf-8", "replace"
+        )
+        if "semantic-addressed-world-model-r2" not in cmdline:
+            continue
+        for item in environ_path.read_bytes().split(b"\0"):
+            if not item or b"=" not in item:
+                continue
+            key, value = item.split(b"=", 1)
+            if key in {b"SAWM_QUACK_TOKEN", b"IPFS_ACCELERATE_AGENT_QUACK_TOKEN"}:
+                try:
+                    token = value.decode("ascii")
+                except UnicodeDecodeError as exc:
+                    raise OperatorError(
+                        "M67 existing coordinator credential is not ASCII"
+                    ) from exc
+                break
+        if token:
+            break
+    if not token:
+        raise OperatorError("M67 existing generation-45 credential is unavailable")
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        rearm_token_handoff,
+    )
+    try:
+        receipt = rearm_token_handoff(
+            state_dir=state_dir,
+            secret_handle=secret_handle,
+            expected_token=token,
+        )
+    finally:
+        token = ""
+    if not isinstance(receipt, Mapping) or receipt.get("rearmed") is not True:
+        raise OperatorError("M67 existing credential handoff rearm failed")
+    return {
+        "rearmed": True,
+        "secret_handle": secret_handle,
+        "credential_sha256": receipt.get("credential_sha256"),
+        "generation": _M67_GENERATION,
+        "server_id": _M67_LIVE_SERVER_ID,
+        "process_birth_id": _M67_LIVE_PROCESS_BIRTH_ID,
+        "generation_46_minted": False,
+    }
 
 
 def _require_m66_source_successor_marker(
@@ -16807,6 +17057,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if _M67_SUCCESSOR_KEY in config:
+        return _require_m67_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if _M66_SUCCESSOR_KEY in config:
         return _require_m66_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -19792,6 +20046,8 @@ def _stop_m55_live_owner_if_token_vault_missing(
 ) -> Mapping[str, Any] | None:
     """Stop the sealed live owner when launch retired its vault."""
 
+    if _M67_SUCCESSOR_KEY in config or _M66_SUCCESSOR_KEY in config:
+        return None
     if _M65_SUCCESSOR_KEY in config:
         expected_server = _M65_PRIOR_SERVER_ID
         expected_birth = _M65_PRIOR_PROCESS_BIRTH_ID
@@ -19870,6 +20126,25 @@ def _run_quack_start(
 ) -> int:
     """Validate and serve Quack under the exact protected native runtime."""
 
+    if _M67_SUCCESSOR_KEY in config:
+        _active_source_repair_materialization(config)
+        receipt = _rearm_m67_existing_client_token_handoff(config)
+        return _emit(
+            {
+                "valid": True,
+                "action": "rearmed_m67_same_owner_existing_credential_handoff",
+                "generation_restart_authorized": False,
+                "generation_46_minted": False,
+                "same_live_owner": True,
+                **receipt,
+            }
+        )
+    if _M66_SUCCESSOR_KEY in config:
+        _active_source_repair_materialization(config)
+        raise OperatorError(
+            "M66 does not authorize listen-down token-handoff rearm; "
+            "a separately sealed generation-45 same-owner M67 successor is required"
+        )
     if _M65_SUCCESSOR_KEY in config:
         _active_source_repair_materialization(config)
     elif _M64_SUCCESSOR_KEY in config:
@@ -27144,6 +27419,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_quack_start(config, config_path)
         if args.command == "quack-recover-stale":
             return _emit(_recover_stale_quack(config))
+        if args.command == "quack-stop" and _M67_SUCCESSOR_KEY in config:
+            _active_source_repair_materialization(config)
+            raise OperatorError(
+                "M67 does not authorize generation-45 Quack stop/restart; "
+                "the same-owner listen-down handoff must keep pid 2259319"
+            )
+        if args.command == "quack-stop" and _M66_SUCCESSOR_KEY in config:
+            _active_source_repair_materialization(config)
+            raise OperatorError(
+                "M66 does not authorize generation-45 Quack stop/restart; "
+                "the same live owner must be retained"
+            )
         if args.command == "quack-stop" and _M65_SUCCESSOR_KEY in config:
             _active_source_repair_materialization(config)
         elif args.command == "quack-stop" and _M64_SUCCESSOR_KEY in config:

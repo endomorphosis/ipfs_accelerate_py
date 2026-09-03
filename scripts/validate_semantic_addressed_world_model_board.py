@@ -245,6 +245,26 @@ _M65_PRIOR_PROJECTION_CID = (
 _M65_TARGET_PROJECTION_CID = (
     "baguqeeram4a4oq3kqikzyp6vm5cg2qlojmgp7cqplgew3n3x3lj6e7ehogda"
 )
+_M66_AUTHORITY_CID = (
+    "sha256:3db1716da422a27db4ffb6f07f924310314b8df932af21bdf0b9d901f2e544b2"
+)
+_M66_AUTHORITY_SIZE = 18_446
+_M66_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M66_FINAL_CONTROL_AUTHORITY_CID"
+_M66_SUCCESSOR_KEY = (
+    "post_m65_live_owner_capsule_denied_restart_source_checkout_successor_materialization"
+)
+_M66_TARGET_PROJECTION_CID = (
+    "baguqeeranrmlntkf6fmerflzgv5hwqpsutl5f4jcjjfe7pcbkcim7scovjrq"
+)
+_M67_AUTHORITY_CID = (
+    "sha256:9c2a379289a30aff01253177d729a8cc797c5e969bd89935a69953e167087703"
+)
+_M67_AUTHORITY_SIZE = 19_176
+_M67_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M67_FINAL_CONTROL_AUTHORITY_CID"
+_M67_SUCCESSOR_KEY = (
+    "post_m66_same_owner_listen_down_missing_client_token_handoff_successor_materialization"
+)
+_M67_TARGET_PROJECTION_CID = _M66_TARGET_PROJECTION_CID
 _M50_M49_RECEIPT_CID = (
     "sha256:d5bfeb6dd987b05c2407d93f66d73c6a70bcd2b4f17e8381a93a2bb265acae47"
 )
@@ -773,6 +793,42 @@ def _m63_migration_errors(
         )
     except Exception as exc:
         return [f"M63 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m67_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Validate M67's same-owner listen-down token-handoff rearm."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m67_post_m66_same_owner_listen_down_token_handoff_errors(
+                scheduler, seal, migration, root=REPO_ROOT
+            )
+        )
+    except Exception as exc:
+        return [f"M67 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m66_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Validate M66's same-owner gen-45 source-checkout retarget."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m66_post_m65_live_owner_capsule_denied_restart_source_checkout_errors(
+                scheduler, seal, migration, root=REPO_ROOT
+            )
+        )
+    except Exception as exc:
+        return [f"M66 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _m65_migration_errors(
@@ -1760,6 +1816,80 @@ def _active_successor_migration_errors(
     remains independently checked as immutable history.
     """
 
+    m67_key = _M67_SUCCESSOR_KEY
+    m67_presence = (
+        m67_key in scheduler,
+        m67_key in migration,
+        f"{m67_key}_cid" in seal,
+    )
+    if any(m67_presence):
+        errors = _m67_migration_errors(scheduler, seal, migration)
+        if not all(m67_presence):
+            errors.append("M67 successor authority is only partially declared")
+        if errors:
+            return errors
+        m66_key = _M66_SUCCESSOR_KEY
+        m66_presence = (
+            m66_key in scheduler,
+            m66_key in migration,
+            f"{m66_key}_cid" in seal,
+        )
+        if not all(m66_presence):
+            return [
+                "M67 successor does not preserve the immutable M66 controls"
+            ]
+        historical_scheduler = dict(scheduler)
+        historical_migration = dict(migration)
+        historical_seal = dict(seal)
+        historical_scheduler.pop(m67_key, None)
+        historical_migration.pop(m67_key, None)
+        historical_seal.pop(f"{m67_key}_cid", None)
+        errors.extend(
+            _active_successor_migration_errors(
+                historical_scheduler,
+                historical_seal,
+                historical_migration,
+                require_current_source=False,
+            )
+        )
+        return errors
+    m66_key = _M66_SUCCESSOR_KEY
+    m66_presence = (
+        m66_key in scheduler,
+        m66_key in migration,
+        f"{m66_key}_cid" in seal,
+    )
+    if any(m66_presence):
+        errors = _m66_migration_errors(scheduler, seal, migration)
+        if not all(m66_presence):
+            errors.append("M66 successor authority is only partially declared")
+        if errors:
+            return errors
+        m65_key = _M65_SUCCESSOR_KEY
+        m65_presence = (
+            m65_key in scheduler,
+            m65_key in migration,
+            f"{m65_key}_cid" in seal,
+        )
+        if not all(m65_presence):
+            return [
+                "M66 successor does not preserve the immutable M65 controls"
+            ]
+        historical_scheduler = dict(scheduler)
+        historical_migration = dict(migration)
+        historical_seal = dict(seal)
+        historical_scheduler.pop(m66_key, None)
+        historical_migration.pop(m66_key, None)
+        historical_seal.pop(f"{m66_key}_cid", None)
+        errors.extend(
+            _active_successor_migration_errors(
+                historical_scheduler,
+                historical_seal,
+                historical_migration,
+                require_current_source=False,
+            )
+        )
+        return errors
     m65_key = _M65_SUCCESSOR_KEY
     m65_presence = (
         m65_key in scheduler,
@@ -5431,8 +5561,20 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m67_key = _M67_SUCCESSOR_KEY
+    m67_selected = any((
+        m67_key in config,
+        m67_key in migration,
+        f"{m67_key}_cid" in seal,
+    ))
+    m66_key = _M66_SUCCESSOR_KEY
+    m66_selected = m67_selected or any((
+        m66_key in config,
+        m66_key in migration,
+        f"{m66_key}_cid" in seal,
+    ))
     m65_key = _M65_SUCCESSOR_KEY
-    m65_selected = any((
+    m65_selected = m66_selected or any((
         m65_key in config,
         m65_key in migration,
         f"{m65_key}_cid" in seal,
@@ -6329,7 +6471,98 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m65_selected:
+    if m67_selected:
+        successor = config.get(m67_key)
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m67_post_m66_same_owner_listen_down_token_handoff_authority()
+            )
+            reference = dict(materializer._m67_authority_reference())
+            contract = materializer._validated_m67_live_preflight_contract(expected)
+            configured = materializer._m67_successor_configured_on_any_surface(
+                root, config
+            )
+            m67_errors = list(
+                module._m67_post_m66_same_owner_listen_down_token_handoff_errors(
+                    config, seal, migration, root=root
+                )
+            )
+            live_owner = expected.get("live_owner")
+            if (
+                successor != reference
+                or migration.get(m67_key) != reference
+                or seal.get(f"{m67_key}_cid") != _M67_AUTHORITY_CID
+                or materializer._identity(expected) != _M67_AUTHORITY_CID
+                or len(materializer._canonical(expected)) != _M67_AUTHORITY_SIZE
+                or _M67_AUTHORITY_CID == _M67_UNSEALED_AUTHORITY_CID
+                or materializer._M67_AUTHORITY_CID != _M67_AUTHORITY_CID
+                or configured is not True
+                or expected.get("authorized") is not True
+                or expected.get("migration_revision") != "SAWM-R2-M67"
+                or expected.get("migration_kind") != m67_key
+                or expected.get("target_generation") != 45
+                or expected.get("target_event_watermark") != 341
+                or expected.get("target_projection_cid")
+                != _M67_TARGET_PROJECTION_CID
+                or not isinstance(live_owner, Mapping)
+                or live_owner.get("generation") != 45
+                or live_owner.get("listen_socket_present") is not False
+                or live_owner.get("token_handoff_rearm_authorized") is not True
+                or live_owner.get("generation_46_mint_authorized") is not False
+                or contract.get("target_generation") != 45
+                or contract.get("generation_restart_authorized") is not False
+                or contract.get("token_handoff_rearm_authorized") is not True
+                or contract.get("bind_store_report_to_live_event_digest") is not True
+                or m67_errors
+            ):
+                config_errors.append(
+                    "M67 same-owner listen-down token-handoff authority differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M67 same-owner listen-down token-handoff authority unavailable: "
+                f"{type(exc).__name__}: {exc}"
+            )
+    elif m66_selected:
+        successor = config.get(m66_key)
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m66_post_m65_live_owner_capsule_denied_restart_source_checkout_authority()
+            )
+            reference = dict(materializer._m66_authority_reference())
+            contract = materializer._validated_m66_live_preflight_contract(expected)
+            configured = materializer._m66_successor_configured_on_any_surface(
+                root, config
+            )
+            live_owner = expected.get("live_owner")
+            if (
+                successor != reference
+                or migration.get(m66_key) != reference
+                or seal.get(f"{m66_key}_cid") != _M66_AUTHORITY_CID
+                or materializer._identity(expected) != _M66_AUTHORITY_CID
+                or len(materializer._canonical(expected)) != _M66_AUTHORITY_SIZE
+                or _M66_AUTHORITY_CID == _M66_UNSEALED_AUTHORITY_CID
+                or configured is not True
+                or expected.get("migration_revision") != "SAWM-R2-M66"
+                or expected.get("target_generation") != 45
+                or expected.get("target_event_watermark") != 340
+                or not isinstance(live_owner, Mapping)
+                or live_owner.get("same_owner_required") is not True
+                or contract.get("generation_restart_authorized") is not False
+            ):
+                config_errors.append(
+                    "M66 live-owner capsule-denied source-checkout authority differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M66 live-owner capsule-denied source-checkout authority unavailable: "
+                f"{type(exc).__name__}: {exc}"
+            )
+    elif m65_selected:
         successor = config.get(m65_key)
         try:
             module, materializer = _m26_validation_modules(root)

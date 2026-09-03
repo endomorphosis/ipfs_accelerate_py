@@ -4994,6 +4994,78 @@ _M66_EXPECTED_TASK_HEADS = MappingProxyType(
     }
 )
 
+# M67 rearms the existing generation-45 credential into the one-time
+# client-token handoff while the same owner pid holds DuckDB locks with
+# no :24070 listen socket.  No generation 46.  No M50 reissue.
+_M67_MIGRATION_REVISION = "SAWM-R2-M67"
+_M67_SUPERSESSION_MODE = (
+    "same_owner_post_m66_listen_down_token_handoff_rearm_source_seal"
+)
+_M67_SUPERSESSION_REASON = (
+    "post_m66_same_owner_listen_down_missing_client_token_handoff_successor_materialization"
+)
+_M67_CONTROL_RECORDED_AT = "2026-09-03T07:12:00Z"
+_M67_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M67_FINAL_CONTROL_AUTHORITY_CID"
+_M67_AUTHORITY_CID = (
+    "sha256:9c2a379289a30aff01253177d729a8cc797c5e969bd89935a69953e167087703"
+)
+_M67_AUTHORITY_SIZE = 19_176
+_M67_PRIOR_GENERATION = _M66_TARGET_GENERATION
+_M67_TARGET_GENERATION = _M66_TARGET_GENERATION
+_M67_PRIOR_EVENT_WATERMARK = 341
+_M67_TARGET_EVENT_WATERMARK = 341
+_M67_TARGET_PLAN_REVISION = _M66_TARGET_PLAN_REVISION
+_M67_TARGET_QUACK_PORT = _M66_TARGET_QUACK_PORT
+_M67_PRIOR_PROJECTION_CID = (
+    "baguqeeranrmlntkf6fmerflzgv5hwqpsutl5f4jcjjfe7pcbkcim7scovjrq"
+)
+_M67_TARGET_PROJECTION_CID = _M67_PRIOR_PROJECTION_CID
+_M67_SEMANTIC_AUTHORITY_DIGEST = _M66_SEMANTIC_AUTHORITY_DIGEST
+_M67_PRIOR_EVIDENCE_NODE_COUNT = _M66_TARGET_EVIDENCE_NODE_COUNT
+_M67_TARGET_EVIDENCE_NODE_COUNT = _M66_TARGET_EVIDENCE_NODE_COUNT
+_M67_EVIDENCE_KIND = (
+    "operator_control_plane_post_m66_same_owner_listen_down_token_handoff_rearm"
+)
+_M67_STORE_ID = _M66_STORE_ID
+_M67_COORDINATION_STORE_ID = _M66_COORDINATION_STORE_ID
+_M67_RUNTIME_ROOT = _M66_RUNTIME_ROOT
+_M67_WORKTREE_ROOT = _M66_WORKTREE_ROOT
+_M67_DATABASE_UUID = _M66_DATABASE_UUID
+_M67_EXTENSION_FINGERPRINT = _M66_EXTENSION_FINGERPRINT
+_M67_DATASETS_GITLINK = _M66_DATASETS_GITLINK
+_M67_DATASETS_TREE = _M66_DATASETS_TREE
+_M67_KIT_GITLINK = _M66_KIT_GITLINK
+_M67_KIT_TREE = _M66_KIT_TREE
+_M67_LIVE_SERVER_ID = _M66_LIVE_SERVER_ID
+_M67_LIVE_PROCESS_BIRTH_ID = _M66_LIVE_PROCESS_BIRTH_ID
+_M67_LIVE_STARTED_AT = _M66_LIVE_STARTED_AT
+_M67_LIVE_STARTUP_EPOCH = _M66_LIVE_STARTUP_EPOCH
+_M67_LIVE_PROCESS_BIRTH = _M66_LIVE_PROCESS_BIRTH
+_M67_M66_AUTHORITY_CID = _M66_AUTHORITY_CID
+_M67_M66_AUTHORITY_SIZE = _M66_AUTHORITY_SIZE
+_M67_M66_RECEIPT_NAME = _M66_FINAL_RECEIPT_NAME
+_M67_M66_RECEIPT_SHA256 = (
+    "a919d646c66cba5adec72ebdabe58367688907beaf38801af3363ac321568a0e"
+)
+_M67_M66_RECEIPT_SIZE = 2_822
+_M67_M66_RECEIPT_CID = (
+    "sha256:28718780b8fd2757ec4f07272362cea0870703182a348e542a8a0df12ff0ef43"
+)
+_M67_M65_RECEIPT_NAME = _M66_M65_RECEIPT_NAME
+_M67_M65_RECEIPT_SHA256 = _M66_M65_RECEIPT_SHA256
+_M67_M65_RECEIPT_SIZE = _M66_M65_RECEIPT_SIZE
+_M67_OPERATOR_CONTROL_PATHS = frozenset(_M66_OPERATOR_CONTROL_PATHS)
+_M67_FINAL_RECEIPT_NAME = "m67-source-successor-receipt.json"
+_M67_CURRENT_BOOT_ID = _M66_CURRENT_BOOT_ID
+_M67_EXPECTED_TASK_HEADS = MappingProxyType(
+    {
+        **dict(_M66_EXPECTED_TASK_HEADS),
+        "SAWM-006": {"revision": 24, "status": "blocked"},
+        "SAWM-008": {"revision": 25, "status": "in_progress"},
+        "SAWM-013": {"revision": 4, "status": "blocked"},
+    }
+)
+
 
 
 # M41 preserves M40's complete control declaration and failed sealed-suite
@@ -35884,6 +35956,10 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m67_successor_configured_on_any_surface(root, config):
+        return _check_m67_materialized(root, config_file)
+    if _m66_successor_configured_on_any_surface(root, config):
+        return _check_m66_materialized(root, config_file)
     if _m65_successor_configured_on_any_surface(root, config):
         return _check_m65_materialized(root, config_file)
     if _m64_successor_configured_on_any_surface(root, config):
@@ -103002,6 +103078,540 @@ def _m66_successor_configured_on_any_surface(
     return _m66_successor_configured(config)
 
 
+def _expected_m67_post_m66_same_owner_listen_down_token_handoff_authority() -> dict[str, Any]:
+    """Return M67's same-owner listen-down token-handoff rearm authority."""
+
+    m66 = (
+        _expected_m66_post_m65_live_owner_capsule_denied_restart_source_checkout_authority()
+    )
+    if (
+        _identity(m66) != _M67_M66_AUTHORITY_CID
+        or len(_canonical(m66)) != _M67_M66_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M67 preserved M66 source authority differs")
+    authority = json.loads(_canonical(m66))
+    authority.update(
+        {
+            "schema": (
+                "sawm/post-m66-same-owner-listen-down-missing-client-token-"
+                "handoff-successor-materialization-authorization@1"
+            ),
+            "migration_revision": _M67_MIGRATION_REVISION,
+            "migration_kind": _M67_SUPERSESSION_REASON,
+            "supersession_mode": _M67_SUPERSESSION_MODE,
+            "control_recorded_at": _M67_CONTROL_RECORDED_AT,
+            "target_generation": _M67_TARGET_GENERATION,
+            "target_event_watermark": _M67_TARGET_EVENT_WATERMARK,
+            "target_projection_cid": _M67_TARGET_PROJECTION_CID,
+            "current_datasets_gitlink": _M67_DATASETS_GITLINK,
+            "current_datasets_tree": _M67_DATASETS_TREE,
+            "current_kit_gitlink": _M67_KIT_GITLINK,
+            "current_kit_tree": _M67_KIT_TREE,
+            "ordinary_source_changes": 1,
+        }
+    )
+    authority["expected_task_heads"] = dict(_M67_EXPECTED_TASK_HEADS)
+    authority["operator_control_paths"] = sorted(_M67_OPERATOR_CONTROL_PATHS)
+    authority["runtime_binding"]["store_generation"] = _M67_TARGET_GENERATION
+    authority["runtime_binding"]["prior_event_watermark"] = (
+        _M67_PRIOR_EVENT_WATERMARK
+    )
+    authority["runtime_binding"]["target_event_watermark"] = (
+        _M67_TARGET_EVENT_WATERMARK
+    )
+    authority["runtime_binding"]["server_id"] = _M67_LIVE_SERVER_ID
+    authority["runtime_binding"]["process_birth_id"] = _M67_LIVE_PROCESS_BIRTH_ID
+    authority["live_owner"] = {
+        "schema": "sawm/live-generation-45-owner-listen-down-after-m66@1",
+        "database_uuid": _M67_DATABASE_UUID,
+        "extension_fingerprint": _M67_EXTENSION_FINGERPRINT,
+        "generation": _M67_TARGET_GENERATION,
+        "generation_restart_authorized": False,
+        "listen_uri": f"quack:127.0.0.1:{_M67_TARGET_QUACK_PORT}",
+        "listen_socket_present": False,
+        "process_birth": dict(_M67_LIVE_PROCESS_BIRTH),
+        "process_birth_id": _M67_LIVE_PROCESS_BIRTH_ID,
+        "same_owner_required": True,
+        "server_id": _M67_LIVE_SERVER_ID,
+        "started_at": _M67_LIVE_STARTED_AT,
+        "startup_epoch": _M67_LIVE_STARTUP_EPOCH,
+        "status": "listen_down",
+        "status_file_lifecycle": "ready",
+        "store_id": _M67_STORE_ID,
+        "token_handoff_retired": True,
+        "client_token_vault_absent": True,
+        "token_handoff_rearm_authorized": True,
+        "generation_46_mint_authorized": False,
+        "current_boot_id": _M67_CURRENT_BOOT_ID,
+    }
+    authority["stopped_owner"] = {
+        "schema": "sawm/not-applicable-live-generation-45-owner-retained@1",
+        "generation": _M67_TARGET_GENERATION,
+        "status": "not_applicable",
+        "lifecycle": "listen_down",
+        "generation_restart_authorized": False,
+        "token_handoff_retired": True,
+        "client_token_vault_absent": True,
+        "same_live_owner_required": True,
+    }
+    authority["stopped_prestart_artifacts"] = {
+        "m66_receipt_sha256": _M67_M66_RECEIPT_SHA256,
+        "m66_receipt_size": _M67_M66_RECEIPT_SIZE,
+        "m66_receipt_present": True,
+        "m65_receipt_present": True,
+        "m64_receipt_present": True,
+        "m63_receipt_present": True,
+        "m67_receipt_absent": True,
+        "client_token_vault_absent": True,
+        "token_handoff_retired": True,
+    }
+    authority["target_authority"].update(
+        {
+            "event_watermark": _M67_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M67_TARGET_PROJECTION_CID,
+            "evidence_kind": _M67_EVIDENCE_KIND,
+            "generation": _M67_TARGET_GENERATION,
+        }
+    )
+    authority["live_preflight_contract"].update(
+        {
+            "migration_revision": _M67_MIGRATION_REVISION,
+            "successor_class": "post_m66_same_owner_listen_down_token_handoff_rearm",
+            "m66_authority_cid": _M67_M66_AUTHORITY_CID,
+            "m66_receipt_must_remain_present": True,
+            "m65_receipt_must_remain_present": True,
+            "m64_receipt_must_remain_present": True,
+            "m63_receipt_must_remain_present": True,
+            "prior_event_watermark": _M67_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M67_TARGET_EVENT_WATERMARK,
+            "prior_projection_cid": _M67_PRIOR_PROJECTION_CID,
+            "target_projection_cid": _M67_TARGET_PROJECTION_CID,
+            "target_generation": _M67_TARGET_GENERATION,
+            "same_live_owner_required": True,
+            "generation_restart_authorized": False,
+            "generation_46_mint_authorized": False,
+            "token_handoff_rearm_authorized": True,
+            "token_reissue_authorized": False,
+            "apply_when_listen_down_and_token_missing": True,
+            "apply_when_uri_ready_and_token_missing": False,
+            "apply_when_uri_ready_and_token_present": False,
+            "event_338_must_be_preserved": True,
+            "events_339_340_must_be_preserved": True,
+            "event_341_must_be_preserved": True,
+            "event_342_must_be_absent": True,
+            "bind_store_report_to_live_event_digest": True,
+        }
+    )
+    authority["source_chain"] = {
+        "m66_final_control_commit": (
+            "08bb9eecac8a56ce34e03798c9433269ce84d460"
+        ),
+        "final_control_parent": "08bb9eecac8a56ce34e03798c9433269ce84d460",
+        "repair_commit_count": 0,
+        "final_control_commit_count": 1,
+        "current_commit_identity_embedded_in_authority": False,
+    }
+    authority["exact_changes"].update(
+        {
+            "event_suffix_length": 0,
+            "evidence_node_changes": 0,
+            "evidence_event_changes": 0,
+            "owner_generation_changes": 0,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+        }
+    )
+    authority["preservation"].update(
+        {
+            "same_live_owner": True,
+            "same_store_generation": True,
+            "generation_restart": False,
+            "m66_authority_preserved_exactly": True,
+            "m66_receipt_preserved_exactly": True,
+            "m66_receipt_created_or_rewritten": False,
+            "m65_receipt_preserved_exactly": True,
+            "m64_receipt_preserved_exactly": True,
+            "m63_receipt_preserved_exactly": True,
+            "event_338_preserved_exactly": True,
+            "events_339_340_preserved_exactly": True,
+            "event_341_preserved_exactly": True,
+            "sawm_006_blocked_revision_24": True,
+            "sawm_008_in_progress_revision_25": True,
+            "sawm_013_blocked_revision_4": True,
+        }
+    )
+    return authority
+
+
+def _m67_authority_reference() -> dict[str, Any]:
+    authority = (
+        _expected_m67_post_m66_same_owner_listen_down_token_handoff_authority()
+    )
+    if (
+        not _M67_AUTHORITY_CID.endswith("PENDING_M67_FINAL_CONTROL_AUTHORITY_CID")
+        and _identity(authority) != _M67_AUTHORITY_CID
+    ):
+        raise MaterializationError("M67 source successor authority CID differs")
+    return {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": _M67_MIGRATION_REVISION,
+        "authority_cid": _M67_AUTHORITY_CID,
+    }
+
+
+def _validated_m67_live_preflight_contract(
+    authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    expected = (
+        _expected_m67_post_m66_same_owner_listen_down_token_handoff_authority()
+    )
+    contract = authority.get("live_preflight_contract")
+    if (
+        _identity(dict(authority)) != _identity(dict(expected))
+        or not isinstance(contract, Mapping)
+        or contract.get("migration_revision") != _M67_MIGRATION_REVISION
+        or contract.get("target_generation") != _M67_TARGET_GENERATION
+        or contract.get("target_event_watermark") != _M67_TARGET_EVENT_WATERMARK
+        or contract.get("target_projection_cid") != _M67_TARGET_PROJECTION_CID
+        or contract.get("prior_event_watermark") != _M67_PRIOR_EVENT_WATERMARK
+        or contract.get("prior_projection_cid") != _M67_PRIOR_PROJECTION_CID
+        or contract.get("m66_receipt_must_remain_present") is not True
+        or contract.get("m65_receipt_must_remain_present") is not True
+        or contract.get("generation_restart_authorized") is not False
+        or contract.get("same_live_owner_required") is not True
+        or contract.get("token_handoff_rearm_authorized") is not True
+        or contract.get("generation_46_mint_authorized") is not False
+        or contract.get("bind_store_report_to_live_event_digest") is not True
+        or contract.get("event_341_must_be_preserved") is not True
+        or contract.get("apply_when_listen_down_and_token_missing") is not True
+    ):
+        raise MaterializationError("M67 live-preflight contract differs")
+    return MappingProxyType(
+        {
+            "migration_revision": _M67_MIGRATION_REVISION,
+            "target_store_id": _M67_STORE_ID,
+            "database_uuid": _M67_DATABASE_UUID,
+            "target_generation": _M67_TARGET_GENERATION,
+            "target_event_watermark": _M67_TARGET_EVENT_WATERMARK,
+            "target_plan_revision": _M67_TARGET_PLAN_REVISION,
+            "target_projection_cid": _M67_TARGET_PROJECTION_CID,
+            "semantic_authority_digest": _M67_SEMANTIC_AUTHORITY_DIGEST,
+            "prior_event_watermark": _M67_PRIOR_EVENT_WATERMARK,
+            "prior_projection_cid": _M67_PRIOR_PROJECTION_CID,
+            "preserved_plan_anchor": {},
+            "expected_task_heads": dict(_M67_EXPECTED_TASK_HEADS),
+            "generation_restart_authorized": False,
+            "same_live_owner_required": True,
+            "token_handoff_rearm_authorized": True,
+            "generation_46_mint_authorized": False,
+            "bind_store_report_to_live_event_digest": True,
+            "event_341_must_be_preserved": True,
+            "apply_when_listen_down_and_token_missing": True,
+        }
+    )
+
+
+def _m67_successor_configured(config: Mapping[str, Any]) -> bool:
+    if _M67_SUPERSESSION_REASON not in config:
+        return False
+    if config.get(_M67_SUPERSESSION_REASON) != _m67_authority_reference():
+        raise MaterializationError("M67 successor authority reference differs")
+    return True
+
+
+def _m67_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    authority = (
+        _expected_m67_post_m66_same_owner_listen_down_token_handoff_authority()
+    )
+    reference = _m67_authority_reference()
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if not isinstance(inventory, Mapping):
+        raise MaterializationError("M67 migration inventory is invalid")
+    key = _M67_SUPERSESSION_REASON
+    if (
+        config.get(key) != reference
+        or inventory.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M67 authority differs across protected controls")
+    _validated_m67_live_preflight_contract(authority)
+    return authority
+
+
+def _m67_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    control = (root / _M67_STORE_ID).resolve()
+    coordination = (root / _M67_COORDINATION_STORE_ID).resolve()
+    return control, coordination
+
+
+def _expected_m67_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": (
+            "sawm/non-authoritative-post-m66-same-owner-listen-down-"
+            "token-handoff-rearm-receipt@1"
+        ),
+        "authoritative": False,
+        "completion_authority": False,
+        "launch_authority": False,
+        "deny_only_without_fresh_live_revalidation": True,
+        "fresh_live_revalidation_required_after_receipt_read": True,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M67_MIGRATION_REVISION,
+        "migration_kind": _M67_SUPERSESSION_REASON,
+        "supersession_mode": _M67_SUPERSESSION_MODE,
+        f"{_M67_SUPERSESSION_REASON}_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "source_chain": dict(authority["source_chain"]),
+        "validation_digest": validation_digest,
+        "database_path": _M67_STORE_ID,
+        "coordination_path": _M67_COORDINATION_STORE_ID,
+        "prior_generation": _M67_PRIOR_GENERATION,
+        "target_generation": _M67_TARGET_GENERATION,
+        "target_generation_owner": {
+            "server_id": verified.get("live_server_id") or _M67_LIVE_SERVER_ID,
+            "process_birth_id": verified.get("live_process_birth_id")
+            or _M67_LIVE_PROCESS_BIRTH_ID,
+            "started_at": verified.get("live_started_at") or _M67_LIVE_STARTED_AT,
+        },
+        "prior_event_watermark": _M67_PRIOR_EVENT_WATERMARK,
+        "target_event_watermark": _M67_TARGET_EVENT_WATERMARK,
+        "prior_projection_cid": _M67_PRIOR_PROJECTION_CID,
+        "projection_cid": _M67_TARGET_PROJECTION_CID,
+        "m66_receipt_preserved_exactly": True,
+        "m65_receipt_preserved_exactly": True,
+        "m64_receipt_preserved_exactly": True,
+        "m63_receipt_preserved_exactly": True,
+        "event_338_preserved_exactly": True,
+        "events_339_340_preserved_exactly": True,
+        "event_341_preserved_exactly": True,
+        "queried_and_mutated_through_live_quack_only": False,
+        "direct_authoritative_file_opened": False,
+        "same_live_owner_verified": True,
+        "listen_socket_present": False,
+        "generation_restart_authorized": False,
+        "token_handoff_rearm_authorized": True,
+        "generation_46_mint_authorized": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _observe_m67_same_owner_listen_down(root: Path) -> dict[str, str]:
+    """Verify pid+cmdline liveness without treating a closed socket as live."""
+
+    import socket
+
+    marker = (root / _M67_STORE_ID).resolve().parent / ".control.duckdb.state-owner.json"
+    status_path = (
+        (root / _M67_STORE_ID).resolve().parent
+        / "quack-owner"
+        / "quack-state-server.status.json"
+    )
+    observed, _ = _load_nofollow_json(
+        marker, root=root, noun="M67 state-owner marker"
+    )
+    status, _ = _load_nofollow_json(
+        status_path, root=root, noun="M67 quack status"
+    )
+    identity = status.get("identity") if isinstance(status, Mapping) else {}
+    birth = observed.get("process_birth") if isinstance(observed, Mapping) else {}
+    if not isinstance(birth, Mapping) or not isinstance(identity, Mapping):
+        raise MigrationRequired("M67 same-owner identity is unreadable")
+    pid = int(birth.get("pid") or 0)
+    cmdline_path = Path(f"/proc/{pid}/cmdline")
+    if pid <= 1 or not cmdline_path.exists():
+        raise MigrationRequired("M67 same-owner pid is not live")
+    cmdline = cmdline_path.read_bytes().replace(b"\0", b" ").decode("utf-8", "replace")
+    if "semantic_addressed_world_model.py" not in cmdline or "quack-start" not in cmdline:
+        raise MigrationRequired("M67 owner cmdline does not match SAWM quack-start")
+    if (
+        str(identity.get("server_id") or "") != _M67_LIVE_SERVER_ID
+        or str(identity.get("process_birth_id") or "") != _M67_LIVE_PROCESS_BIRTH_ID
+        or int(identity.get("generation") or 0) != _M67_TARGET_GENERATION
+    ):
+        raise MigrationRequired("M67 live generation-45 owner identity differs")
+    probe = socket.socket()
+    probe.settimeout(1.0)
+    try:
+        probe.connect(("127.0.0.1", int(_M67_TARGET_QUACK_PORT)))
+        listening = True
+    except OSError:
+        listening = False
+    finally:
+        probe.close()
+    if listening:
+        raise MigrationRequired("M67 does not apply while :24070 is listening")
+    return {
+        "live_server_id": str(identity.get("server_id") or ""),
+        "live_process_birth_id": str(identity.get("process_birth_id") or ""),
+        "live_started_at": str(identity.get("started_at") or ""),
+    }
+
+
+def _check_m67_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m67_source_binding_authority(root, population, config)
+    control, coordination = _m67_target_paths(root, config, authority)
+    final_path = control.parent / _M67_FINAL_RECEIPT_NAME
+    if not os.path.lexists(final_path):
+        raise MigrationRequired("M67 source successor receipt is missing")
+    observed, _ = _load_nofollow_json(
+        final_path, root=root, noun="M67 source successor receipt"
+    )
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        claimed != _identity(unhashed)
+        or observed.get("projection_cid") != _M67_TARGET_PROJECTION_CID
+        or observed.get("target_event_watermark") != _M67_TARGET_EVENT_WATERMARK
+        or observed.get("m66_receipt_preserved_exactly") is not True
+        or observed.get("same_live_owner_verified") is not True
+        or observed.get("generation_restart_authorized") is not False
+        or observed.get("token_handoff_rearm_authorized") is not True
+        or observed.get("generation_46_mint_authorized") is not False
+    ):
+        raise MigrationRequired("M67 source successor receipt chain differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_post_m66_same_owner_listen_down_token_handoff_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": observed.get("validation_digest"),
+        "prior_authority": authority,
+        "receipt": observed,
+        "m67_source_successor_receipt": observed,
+        "live_server_id": observed.get("target_generation_owner", {}).get(
+            "server_id"
+        ),
+        "live_process_birth_id": observed.get("target_generation_owner", {}).get(
+            "process_birth_id"
+        ),
+        "live_started_at": observed.get("target_generation_owner", {}).get(
+            "started_at"
+        ),
+    }
+
+
+def _materialize_m67(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m67_source_binding_authority(root, population, config)
+    control, _coordination = _m67_target_paths(root, config, authority)
+    final_path = control.parent / _M67_FINAL_RECEIPT_NAME
+    m66_path = control.parent / _M67_M66_RECEIPT_NAME
+    m65_path = control.parent / _M67_M65_RECEIPT_NAME
+    if not os.path.lexists(m66_path):
+        raise MigrationRequired("M67 requires the preserved M66 receipt")
+    if not os.path.lexists(m65_path):
+        raise MigrationRequired("M67 requires the preserved M65 receipt")
+    m66_before = _stable_regular_sha256(
+        m66_path, root=root, noun="M67 preserved M66 receipt", required_link_count=1
+    )
+    if m66_before != (_M67_M66_RECEIPT_SHA256, _M67_M66_RECEIPT_SIZE):
+        raise MigrationRequired("M67 preserved M66 receipt differs")
+    m65_before = _stable_regular_sha256(
+        m65_path, root=root, noun="M67 preserved M65 receipt", required_link_count=1
+    )
+    if m65_before != (_M67_M65_RECEIPT_SHA256, _M67_M65_RECEIPT_SIZE):
+        raise MigrationRequired("M67 preserved M65 receipt differs")
+    validation_digest = _m7_validation_digest(root, population)
+    verified = _observe_m67_same_owner_listen_down(root)
+    if os.path.lexists(final_path):
+        checked = _check_m67_materialized(root, config_file)
+        return {
+            **checked,
+            "action": "checked_post_m66_same_owner_listen_down_token_handoff_successor",
+            "migration_required": False,
+            "receipt": checked.get("receipt"),
+            "m67_source_successor_receipt": checked.get("receipt"),
+        }
+    expected = _expected_m67_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    _m52_write_receipt_last(
+        root, final_path, expected, noun="M67 source successor receipt"
+    )
+    checked = _check_m67_materialized(root, config_file)
+    return {
+        **checked,
+        "action": "materialized_post_m66_same_owner_listen_down_token_handoff_successor",
+        "migration_required": False,
+        "receipt": checked.get("receipt"),
+        "m67_source_successor_receipt": checked.get("receipt"),
+    }
+
+
+def _m67_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M67_SUPERSESSION_REASON
+    migration = _load_json(
+        root
+        / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if any(presence) and not all(presence):
+        raise MaterializationError(
+            "M67 successor authority is only partially declared"
+        )
+    if not any(presence):
+        return False
+    reference = _m67_authority_reference()
+    if (
+        config.get(key) != reference
+        or migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError(
+            "M67 successor authority differs across controls"
+        )
+    return _m67_successor_configured(config)
+
+
 def _validated_m65_live_preflight_contract(
     authority: Mapping[str, Any],
 ) -> Mapping[str, Any]:
@@ -110744,6 +111354,10 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m67_successor_configured_on_any_surface(root, config):
+        return _materialize_m67(root, config_file, config)
+    if _m66_successor_configured_on_any_surface(root, config):
+        return _materialize_m66(root, config_file, config)
     if _m65_successor_configured_on_any_surface(root, config):
         return _materialize_m65(root, config_file, config)
     if _m64_successor_configured_on_any_surface(root, config):
