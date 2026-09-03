@@ -212,6 +212,19 @@ live-selected-tests = false
 live-prover = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.selected-tests-and-proofs]
+schema = "ipfs_accelerate_py/assurance/selected-tests-and-proofs@1"
+interface = "AccelerateSelectedTestsAndProofs@1"
+task-id = "PCPR-065"
+goal-id = "PCPR-G700"
+objective-kind = "declared_selected_tests_and_proofs"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-selected-tests = false
+live-prover = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
