@@ -23,8 +23,8 @@
   ],
   "audit_overhead": {
     "includes_audit_in_net_effect": true,
-    "median_compute_units": 10808,
-    "total_compute_units": 170781,
+    "median_compute_units": 15127,
+    "total_compute_units": 244204,
     "unit": "compute_units"
   },
   "authority": false,
@@ -411,25 +411,25 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 7805
+          "value": 12124
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 6892
+          "value": 11211
         },
         "context_tokens_after": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 912
+          "value": 200
         },
         "context_tokens_before": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "accepted": false,
@@ -458,6 +458,7 @@
           "truth_state": "unavailable"
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -470,7 +471,7 @@
             "sensor_id": "aseh-035-context-pack-benchmark",
             "truth_state": "measured",
             "unit": "tokens",
-            "value": 0
+            "value": 280
           },
           "unit_prices": {
             "reason_code": "not_reported",
@@ -508,25 +509,25 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 7819
+          "value": 12138
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 6892
+          "value": 11211
         },
         "context_tokens_after": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 912
+          "value": 200
         },
         "context_tokens_before": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "accepted": false,
@@ -555,6 +556,7 @@
           "truth_state": "unavailable"
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -567,7 +569,7 @@
             "sensor_id": "aseh-035-context-pack-benchmark",
             "truth_state": "measured",
             "unit": "tokens",
-            "value": 0
+            "value": 280
           },
           "unit_prices": {
             "reason_code": "not_reported",
@@ -605,25 +607,25 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10723
+          "value": 15042
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10675
+          "value": 14994
         },
         "context_tokens_after": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 946
+          "value": 200
         },
         "context_tokens_before": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "accepted": false,
@@ -656,6 +658,7 @@
           "value": 1000000
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -668,7 +671,7 @@
             "sensor_id": "aseh-035-context-pack-benchmark",
             "truth_state": "measured",
             "unit": "tokens",
-            "value": 0
+            "value": 280
           },
           "unit_prices": {
             "reason_code": "not_reported",
@@ -708,25 +711,25 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10758
+          "value": 15077
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10710
+          "value": 15029
         },
         "context_tokens_after": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 955
+          "value": 200
         },
         "context_tokens_before": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "accepted": false,
@@ -759,6 +762,7 @@
           "value": 1000000
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -771,7 +775,7 @@
             "sensor_id": "aseh-035-context-pack-benchmark",
             "truth_state": "measured",
             "unit": "tokens",
-            "value": 0
+            "value": 280
           },
           "unit_prices": {
             "reason_code": "not_reported",
@@ -811,25 +815,25 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10808
+          "value": 15127
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10760
+          "value": 15079
         },
         "context_tokens_after": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 967
+          "value": 200
         },
         "context_tokens_before": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "accepted": false,
@@ -862,6 +866,7 @@
           "value": 1000000
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -874,7 +879,7 @@
             "sensor_id": "aseh-035-context-pack-benchmark",
             "truth_state": "measured",
             "unit": "tokens",
-            "value": 0
+            "value": 280
           },
           "unit_prices": {
             "reason_code": "not_reported",
@@ -914,25 +919,25 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10748
+          "value": 15067
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10700
+          "value": 15019
         },
         "context_tokens_after": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 952
+          "value": 200
         },
         "context_tokens_before": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "accepted": false,
@@ -965,6 +970,7 @@
           "value": 1000000
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -977,7 +983,7 @@
             "sensor_id": "aseh-035-context-pack-benchmark",
             "truth_state": "measured",
             "unit": "tokens",
-            "value": 0
+            "value": 280
           },
           "unit_prices": {
             "reason_code": "not_reported",
@@ -1017,25 +1023,25 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10916
+          "value": 15235
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10868
+          "value": 15187
         },
         "context_tokens_after": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 994
+          "value": 200
         },
         "context_tokens_before": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "accepted": false,
@@ -1068,6 +1074,7 @@
           "value": 1000000
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -1080,7 +1087,7 @@
             "sensor_id": "aseh-035-context-pack-benchmark",
             "truth_state": "measured",
             "unit": "tokens",
-            "value": 0
+            "value": 280
           },
           "unit_prices": {
             "reason_code": "not_reported",
@@ -1120,25 +1127,25 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10844
+          "value": 15163
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10796
+          "value": 15115
         },
         "context_tokens_after": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 976
+          "value": 200
         },
         "context_tokens_before": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "accepted": false,
@@ -1171,6 +1178,7 @@
           "value": 1000000
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -1183,7 +1191,7 @@
             "sensor_id": "aseh-035-context-pack-benchmark",
             "truth_state": "measured",
             "unit": "tokens",
-            "value": 0
+            "value": 280
           },
           "unit_prices": {
             "reason_code": "not_reported",
@@ -1223,13 +1231,13 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 6940
+          "value": 11259
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 6892
+          "value": 11211
         },
         "context_tokens_after": {
           "reason_code": "not_admitted",
@@ -1239,7 +1247,7 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "accepted": false,
@@ -1268,6 +1276,7 @@
           "truth_state": "unavailable"
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -1309,13 +1318,13 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 11310
+          "value": 15629
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10540
+          "value": 14859
         },
         "context_tokens_after": {
           "reason_code": "not_admitted",
@@ -1325,7 +1334,7 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "reason_code": "not_applicable",
@@ -1349,6 +1358,7 @@
           "truth_state": "unavailable"
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -1399,13 +1409,13 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 11288
+          "value": 15607
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10503
+          "value": 14822
         },
         "context_tokens_after": {
           "reason_code": "not_admitted",
@@ -1415,7 +1425,7 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "reason_code": "not_applicable",
@@ -1439,6 +1449,7 @@
           "truth_state": "unavailable"
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -1489,13 +1500,13 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 11316
+          "value": 15635
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10540
+          "value": 14859
         },
         "context_tokens_after": {
           "reason_code": "not_admitted",
@@ -1505,7 +1516,7 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "reason_code": "not_applicable",
@@ -1529,6 +1540,7 @@
           "truth_state": "unavailable"
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -1579,13 +1591,13 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 11298
+          "value": 15617
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10513
+          "value": 14832
         },
         "context_tokens_after": {
           "reason_code": "not_admitted",
@@ -1595,7 +1607,7 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "reason_code": "not_applicable",
@@ -1619,6 +1631,7 @@
           "truth_state": "unavailable"
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -1669,13 +1682,13 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 11319
+          "value": 15638
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10534
+          "value": 14853
         },
         "context_tokens_after": {
           "reason_code": "not_admitted",
@@ -1685,7 +1698,7 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "reason_code": "not_applicable",
@@ -1709,6 +1722,7 @@
           "truth_state": "unavailable"
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -1759,13 +1773,13 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 11300
+          "value": 15619
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 10509
+          "value": 14828
         },
         "context_tokens_after": {
           "reason_code": "not_admitted",
@@ -1775,7 +1789,7 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "reason_code": "not_applicable",
@@ -1799,6 +1813,7 @@
           "truth_state": "unavailable"
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -1849,13 +1864,13 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 7770
+          "value": 12089
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 6892
+          "value": 11211
         },
         "context_tokens_after": {
           "reason_code": "not_admitted",
@@ -1865,7 +1880,7 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "reason_code": "not_applicable",
@@ -1889,6 +1904,7 @@
           "truth_state": "unavailable"
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -1941,25 +1957,25 @@
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 7819
+          "value": 12138
         },
         "build_cost": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "compute_units",
-          "value": 6892
+          "value": 11211
         },
         "context_tokens_after": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 912
+          "value": 200
         },
         "context_tokens_before": {
           "sensor_id": "aseh-035-context-pack-benchmark",
           "truth_state": "measured",
           "unit": "tokens",
-          "value": 811
+          "value": 480
         },
         "critical_omission_detection": {
           "accepted": false,
@@ -1988,6 +2004,7 @@
           "truth_state": "unavailable"
         },
         "net_provider_cost_effect": {
+          "includes_audit_in_net_effect": true,
           "provider_reported_charge": {
             "reason_code": "not_reported",
             "truth_state": "unavailable"
@@ -2000,7 +2017,7 @@
             "sensor_id": "aseh-035-context-pack-benchmark",
             "truth_state": "measured",
             "unit": "tokens",
-            "value": 0
+            "value": 280
           },
           "unit_prices": {
             "reason_code": "not_reported",
@@ -2029,11 +2046,11 @@
     }
   ],
   "hermetic_sufficient_for_production_promotion": false,
-  "identity": "baguqeeramlbosvinhn66uulqa7cgkzgkpxgr6lwdniky4aa7bfq46knpzdtq",
+  "identity": "baguqeeracyriiwbhgkddx2q67bxscmxchkqc6zb42ovx7h6ymj6hudhvoxya",
   "interface": "AsehContextPackBenchmark@1",
   "live": false,
   "live_reuse_granted": false,
-  "manifest_cid": "baguqeeramlbosvinhn66uulqa7cgkzgkpxgr6lwdniky4aa7bfq46knpzdtq",
+  "manifest_cid": "baguqeeracyriiwbhgkddx2q67bxscmxchkqc6zb42ovx7h6ymj6hudhvoxya",
   "objective_id": "ASEH-G040",
   "objective_revision": "baguqeeraeizp2zwv4rh5jynxmlr6xhtlh67kxwxwkgdmk6xf5zekxzjxcgia",
   "policy_identity": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1",
@@ -2062,8 +2079,8 @@
   "statistics": {
     "audit_overhead": {
       "includes_audit_in_net_effect": true,
-      "median_compute_units": 10808,
-      "total_compute_units": 170781,
+      "median_compute_units": 15127,
+      "total_compute_units": 244204,
       "unit": "compute_units"
     },
     "critical_omission_detection": {
@@ -2088,6 +2105,7 @@
       "value": 1000000
     },
     "net_provider_cost_effect": {
+      "includes_audit_in_net_effect": true,
       "provider_reported_charge": {
         "reason_code": "not_reported",
         "truth_state": "unavailable"
@@ -2100,7 +2118,7 @@
         "sensor_id": "aseh-035-context-pack-benchmark",
         "truth_state": "measured",
         "unit": "tokens",
-        "value": 0
+        "value": 280
       },
       "unit_prices": {
         "reason_code": "not_reported",
