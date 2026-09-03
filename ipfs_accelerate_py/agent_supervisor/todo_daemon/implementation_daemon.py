@@ -109879,6 +109879,23 @@ class DatabaseImplementationDaemon:
                 or allow_blocked_recovery
             )
         )
+        leftover_wait_guarded_queue_status = None
+        leftover_wait_atomic_recovery = False
+        if leftover_wait_deferral_budget_recovery_evidence is not None:
+            leftover_wait_guarded_queue_status = getattr(
+                self.task_source,
+                "recover_leftover_wait_deferral_budget",
+                None,
+            )
+            if not callable(leftover_wait_guarded_queue_status):
+                leftover_wait_guarded_queue_status = getattr(
+                    self.task_source,
+                    "record_queue_backoff_and_cas_status",
+                    None,
+                )
+            leftover_wait_atomic_recovery = callable(
+                leftover_wait_guarded_queue_status
+            )
 
         def persist_retry_cooldown() -> Any:
             if callable(record_task_retry_cooldown):
@@ -109955,10 +109972,13 @@ class DatabaseImplementationDaemon:
         if (
             callable(record_task_retry_cooldown)
             and task_status == "blocked"
+            and not leftover_wait_atomic_recovery
         ):
             # The typed owner has no coordination-coupled transaction for this
             # blocked reopen. Reject before the independently committed queue
             # mutation so no failed recovery can leave a stale cooldown.
+            # Leftover-wait recovery is the closed exception: it has a
+            # dedicated owner command that admits queue+status together.
             raise DatabaseImplementationAuthorityError(
                 "typed blocked recovery is unavailable without "
                 "coordination-coupled owner authority"
@@ -110643,19 +110663,25 @@ class DatabaseImplementationDaemon:
         # queue-and-status CAS.  Keep its queue deadline, prior control
         # receipt, and retry status in one owner transaction for every retry
         # authority, including expanded blocked recoveries.  Typed Quack
-        # sources use ``record_task_retry_cooldown`` below.
-        guarded_queue_status = getattr(
-            self.task_source,
-            "record_queue_backoff_and_cas_status",
-            None,
-        )
+        # sources use ``record_task_retry_cooldown`` below except leftover-wait
+        # recovery, which has a dedicated owner command.
+        guarded_queue_status = leftover_wait_guarded_queue_status
+        if not callable(guarded_queue_status):
+            guarded_queue_status = getattr(
+                self.task_source,
+                "record_queue_backoff_and_cas_status",
+                None,
+            )
         if blocked_recovery and not callable(guarded_queue_status):
             raise DatabaseImplementationAuthorityError(
                 "blocked retry recovery requires atomic queue/status authority"
             )
         if (
             callable(guarded_queue_status)
-            and not callable(record_task_retry_cooldown)
+            and (
+                not callable(record_task_retry_cooldown)
+                or leftover_wait_atomic_recovery
+            )
         ):
             if task_status == "retrying":
                 control_operations = (
@@ -113879,12 +113905,135 @@ class DatabaseImplementationDaemon:
             outcomes.append(outcome)
         return outcomes
 
+    def _verified_leftover_wait_current_foreign_matching_budget(
+        self,
+        attempt: DatabaseTaskAttempt,
+        budget: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Replay leftover-wait current exhausted against non-wait matching."""
+
+        generation_fingerprint = budget.get("generation_fingerprint")
+        if not re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(generation_fingerprint or ""),
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget has no generation binding"
+            )
+        matching = budget.get("matching_attempts")
+        count = budget.get("typed_deferral_count")
+        if not isinstance(matching, list) or type(count) is not int:
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget failed closed-field verification"
+            )
+        fingerprint_marker = (
+            '%"generation_fingerprint":"'
+            + str(generation_fingerprint)
+            + '"%'
+        )
+        connection = self._require_connection()
+        rows = connection.execute(
+            """
+            SELECT candidate.attempt_id, candidate.claim_id,
+                   candidate.task_cid, candidate.task_alias,
+                   candidate.attempt_number, candidate.owner_session_id,
+                   candidate.fencing_token, candidate.fence_epoch,
+                   candidate.lease_id, candidate.committed_phase,
+                   candidate.status, candidate.started_at_ms,
+                   candidate.finished_at_ms, candidate.revision,
+                   candidate.body_json, phase.body_json
+            FROM database_task_attempts AS candidate
+            JOIN attempt_phases AS phase
+              ON phase.attempt_id = candidate.attempt_id
+             AND phase.phase = ?
+            WHERE candidate.task_cid = ?
+              AND candidate.status = 'failed'
+              AND phase.body_json LIKE ?
+            ORDER BY CASE WHEN candidate.attempt_id = ? THEN 0 ELSE 1 END,
+                     candidate.attempt_number DESC,
+                     candidate.started_at_ms DESC,
+                     candidate.attempt_id DESC
+            LIMIT ?
+            """,
+            [
+                ATTEMPT_PHASE_FAILED,
+                attempt.task_cid,
+                fingerprint_marker,
+                attempt.attempt_id,
+                _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW * 2 + 1,
+            ],
+        ).fetchall()
+        reproduced: list[dict[str, Any]] = []
+        digest = hashlib.sha256()
+        current_fingerprint = ""
+        current_is_leftover_wait = False
+        for row in rows:
+            candidate = self._attempt_from_row(row)
+            phase_body = _database_daemon_load_json(row[15])
+            typed = self._verified_typed_deferral_receipt(
+                candidate,
+                phase_body,
+            )
+            if (
+                typed is None
+                or typed.get("generation_fingerprint")
+                != generation_fingerprint
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "leftover-wait recovery budget references a foreign receipt"
+                )
+            reason_text = str(typed.get("reason") or "")
+            if candidate.attempt_id == attempt.attempt_id:
+                if reason_text not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS:
+                    raise DatabaseImplementationAuthorityError(
+                        "leftover-wait current foreign matching is not a wait"
+                    )
+                current_is_leftover_wait = True
+                current_fingerprint = str(typed["deferral_fingerprint"])
+                continue
+            if reason_text in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS:
+                continue
+            identity = {
+                "attempt_id": candidate.attempt_id,
+                "attempt_number": int(candidate.attempt_number),
+                "reason": reason_text,
+                "deferral_fingerprint": str(
+                    typed["deferral_fingerprint"]
+                ),
+            }
+            reproduced.append(identity)
+            encoded = _database_daemon_json(identity).encode("utf-8")
+            digest.update(len(encoded).to_bytes(8, "big"))
+            digest.update(encoded)
+        if (
+            not current_is_leftover_wait
+            or not current_fingerprint
+            or reproduced != matching
+            or len(reproduced) != count
+            or budget.get("current_deferral_fingerprint")
+            != current_fingerprint
+            or budget.get("matching_attempts_digest")
+            != "sha256:" + digest.hexdigest()
+            or any(
+                item.get("attempt_id") == attempt.attempt_id
+                for item in matching
+            )
+            or any(
+                item.get("deferral_fingerprint") == current_fingerprint
+                for item in matching
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget did not reproduce exactly"
+            )
+        return dict(budget)
+
     def _verified_leftover_wait_retry_budget(
         self,
         attempt: DatabaseTaskAttempt,
         raw: Any,
     ) -> dict[str, Any]:
-        """Replay an exact, complete legacy budget made solely from waits."""
+        """Replay an exact, complete leftover-wait or wait-current budget."""
 
         expected_fields = {
             "schema",
@@ -113946,6 +114095,31 @@ class DatabaseImplementationDaemon:
         ):
             raise DatabaseImplementationAuthorityError(
                 "leftover-wait recovery budget failed closed-field verification"
+            )
+        matching_reasons = [
+            str(item.get("reason") or "") if isinstance(item, Mapping) else ""
+            for item in matching
+        ]
+        if any(not isinstance(item, Mapping) for item in matching):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget references a foreign receipt"
+            )
+        wait_only = all(
+            reason in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+            for reason in matching_reasons
+        )
+        foreign_only = all(
+            reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS and reason
+            for reason in matching_reasons
+        )
+        if not wait_only and not foreign_only:
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget references a foreign receipt"
+            )
+        if foreign_only:
+            return self._verified_leftover_wait_current_foreign_matching_budget(
+                attempt,
+                budget,
             )
         generation_fingerprint = budget.get("generation_fingerprint")
         if not re.fullmatch(
@@ -115019,8 +115193,7 @@ class DatabaseImplementationDaemon:
             or not isinstance(reasons, list)
             or not reasons
             or any(
-                type(reason) is not str
-                or reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                type(reason) is not str or not reason
                 for reason in reasons
             )
             or reasons != sorted(set(reasons))
@@ -115347,14 +115520,50 @@ class DatabaseImplementationDaemon:
             if (
                 not isinstance(candidate_matching, list)
                 or not candidate_matching
-                or any(
-                    not isinstance(item, Mapping)
-                    or item.get("reason")
-                    not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
-                    for item in candidate_matching
-                )
+                or any(not isinstance(item, Mapping) for item in candidate_matching)
             ):
                 continue
+            matching_reasons = [
+                str(item.get("reason") or "") for item in candidate_matching
+            ]
+            wait_only = all(
+                reason in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                for reason in matching_reasons
+            )
+            foreign_only = all(
+                reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS and reason
+                for reason in matching_reasons
+            )
+            if not wait_only and not foreign_only:
+                continue
+            if foreign_only:
+                if any(
+                    item.get("attempt_id") == attempt.attempt_id
+                    for item in candidate_matching
+                ):
+                    continue
+                failed_phases = [
+                    phase
+                    for phase in self.phase_history(attempt.attempt_id)
+                    if phase.get("phase") == ATTEMPT_PHASE_FAILED
+                ]
+                current_body = (
+                    failed_phases[-1].get("body") if failed_phases else None
+                )
+                current_typed = (
+                    self._verified_typed_deferral_receipt(
+                        attempt,
+                        current_body,
+                    )
+                    if isinstance(current_body, Mapping)
+                    else None
+                )
+                if (
+                    current_typed is None
+                    or str(current_typed.get("reason") or "")
+                    not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                ):
+                    continue
             try:
                 budget = self._verified_blocked_leftover_wait_retry_budget(
                     attempt,

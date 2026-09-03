@@ -24,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
     QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+    QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET,
     QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
     QUACK_OWNER_COMMAND_RESPONSE_SCHEMA,
     DuckDBConnection,
@@ -614,6 +615,79 @@ def test_owner_generic_queue_status_rejects_leftover_wait_recovery(
                 QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
                 payload,
                 request_id="e" * 32,
+                store_id="data/control.duckdb",
+                store_generation="generation-1",
+            )
+
+        observed = repository.get_task("task:typed-owner-test")
+        assert observed is not None
+        assert observed["status"] == "blocked"
+        assert int(observed["revision"]) == int(blocked["revision"])
+        assert repository.get_queue_entry("task:typed-owner-test") is None
+        repository.close()
+    finally:
+        owner_connection.close()
+
+
+def test_owner_leftover_wait_recovery_command_rejects_incomplete_seed(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "control.duckdb"
+    _materialize_one_task(path)
+    owner_connection = open_duckdb_connection(path)
+    try:
+        repository = IntentRepository(
+            path,
+            bound_connection=owner_connection,
+            install_schema=False,
+            owner_id="owner:typed-test",
+            session_id="session:leftover-wait-dedicated",
+        )
+        task = repository.get_task("task:typed-owner-test")
+        assert task is not None
+        repository.cas_task_status(
+            task_cid="task:typed-owner-test",
+            expected_revision=int(task["revision"]),
+            new_status="in_progress",
+            receipt={"operation": "database_claim"},
+        )
+        claimed = repository.get_task("task:typed-owner-test")
+        assert claimed is not None
+        blocked_receipt = {
+            "operation": "database_portal_typed_deferral_budget_exhausted"
+        }
+        repository.cas_task_status(
+            task_cid="task:typed-owner-test",
+            expected_revision=int(claimed["revision"]),
+            new_status="blocked",
+            receipt=blocked_receipt,
+        )
+        blocked = repository.get_task("task:typed-owner-test")
+        assert blocked is not None
+        payload = {
+            "task_cid": "task:typed-owner-test",
+            "expected_revision": int(blocked["revision"]),
+            "expected_control_receipt": blocked_receipt,
+            "status": "retrying",
+            "receipt": {
+                "operation": (
+                    "database_portal_leftover_wait_"
+                    "deferral_budget_retry_recovery"
+                )
+            },
+            "delay_ms": 0,
+            "reason": "leftover_wait_deferral_budget_cleared",
+        }
+
+        with pytest.raises(
+            TaskSourceConflictError,
+            match="exhausted typed-deferral task remains blocked",
+        ):
+            execute_quack_owner_command(
+                repository,
+                QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET,
+                payload,
+                request_id="f" * 32,
                 store_id="data/control.duckdb",
                 store_generation="generation-1",
             )

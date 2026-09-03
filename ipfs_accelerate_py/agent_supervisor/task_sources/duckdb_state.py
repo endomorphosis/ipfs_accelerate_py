@@ -1975,6 +1975,9 @@ QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK = "rearm_blocked_task"
 QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET = (
     "recover_typed_deferral_budget"
 )
+QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET = (
+    "recover_leftover_wait_deferral_budget"
+)
 QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF = "record_queue_backoff"
 QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS = (
     "record_queue_backoff_and_cas_status"
@@ -1988,6 +1991,7 @@ QUACK_OWNER_COMMANDS = frozenset(
         QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
         QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
         QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
@@ -2030,6 +2034,25 @@ _QUACK_OWNER_COMMAND_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = 
         frozenset({"reason", "selection_penalty"}),
     ),
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS: (
+        frozenset(
+            {
+                "task_cid",
+                "expected_revision",
+                "expected_control_receipt",
+                "status",
+                "receipt",
+                "delay_ms",
+                "reason",
+            }
+        ),
+        frozenset(
+            {
+                "selection_penalty",
+                "exact_retry_not_before_ms",
+            }
+        ),
+    ),
+    QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET: (
         frozenset(
             {
                 "task_cid",

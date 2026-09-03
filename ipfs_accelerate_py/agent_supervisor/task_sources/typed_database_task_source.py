@@ -36,6 +36,8 @@ from .database_task_source import (
     TaskSourceConflictError,
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
+    _cas_result_from_dict,
+    _raise_typed_owner_error,
 )
 from .database_task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_MAX_QUERY_LIMIT,
@@ -2437,6 +2439,111 @@ class TypedDatabaseTaskSource:
                 ),
                 "transition_receipt": dict(transition_receipt),
                 "cas_result": cas_result,
+            }
+        )
+
+    def recover_leftover_wait_deferral_budget(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        status: str,
+        receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
+        _post_merge_recovery_admission: object | None = None,
+    ) -> Mapping[str, Any]:
+        """Atomically reopen one leftover-wait exhausted block on the owner."""
+
+        if _post_merge_recovery_admission is not None:
+            raise TaskSourceConflictError(
+                "process-local post-merge recovery admission cannot cross Quack"
+            )
+        if (
+            str(status or "").strip().lower() != "retrying"
+            or receipt.get("operation")
+            != "database_portal_leftover_wait_deferral_budget_retry_recovery"
+        ):
+            raise TaskSourceConflictError(
+                "leftover-wait recovery requires leftover-wait retrying receipt"
+            )
+        from .duckdb_state import (
+            QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET,
+            QuackOwnerCommandRemoteError,
+            submit_quack_owner_command,
+        )
+
+        try:
+            result = submit_quack_owner_command(
+                QUACK_OWNER_COMMAND_RECOVER_LEFTOVER_WAIT_DEFERRAL_BUDGET,
+                {
+                    "task_cid": task_cid,
+                    "expected_revision": expected_revision,
+                    "expected_control_receipt": dict(
+                        expected_control_receipt
+                    ),
+                    "status": status,
+                    "receipt": dict(receipt),
+                    "delay_ms": delay_ms,
+                    "reason": reason,
+                    "selection_penalty": selection_penalty,
+                    **(
+                        {
+                            "exact_retry_not_before_ms": (
+                                exact_retry_not_before_ms
+                            )
+                        }
+                        if exact_retry_not_before_ms is not None
+                        else {}
+                    ),
+                },
+            )
+        except QuackOwnerCommandRemoteError as exc:
+            _raise_typed_owner_error(exc)
+        if not isinstance(result, Mapping) or "cas_result" not in result:
+            raise TaskSourceIntegrityError(
+                "leftover-wait recovery owner response is malformed"
+            )
+        result_map = dict(result)
+        cas_payload = result_map.pop("cas_result")
+        if not isinstance(cas_payload, Mapping):
+            raise TaskSourceIntegrityError(
+                "leftover-wait recovery owner CAS response is malformed"
+            )
+        expected = {
+            "previous_status",
+            "queue_receipt",
+            "queue_reused",
+            "retry_not_before_ms",
+            "transition_receipt",
+        }
+        if set(result_map) != expected:
+            raise TaskSourceIntegrityError(
+                "leftover-wait recovery owner result fields are malformed"
+            )
+        queue_receipt = result_map.get("queue_receipt")
+        transition_receipt = result_map.get("transition_receipt")
+        if (
+            not isinstance(queue_receipt, Mapping)
+            or not isinstance(transition_receipt, Mapping)
+            or type(result_map.get("queue_reused")) is not bool
+            or type(result_map.get("retry_not_before_ms")) is not int
+            or int(result_map["retry_not_before_ms"]) < 0
+        ):
+            raise TaskSourceIntegrityError(
+                "leftover-wait recovery owner result values are malformed"
+            )
+        return MappingProxyType(
+            {
+                "previous_status": str(result_map["previous_status"]),
+                "queue_receipt": dict(queue_receipt),
+                "queue_reused": bool(result_map["queue_reused"]),
+                "retry_not_before_ms": int(result_map["retry_not_before_ms"]),
+                "transition_receipt": dict(transition_receipt),
+                "cas_result": _cas_result_from_dict(cas_payload),
             }
         )
 

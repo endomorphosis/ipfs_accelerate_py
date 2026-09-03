@@ -12650,6 +12650,179 @@ def test_leftover_wait_current_does_not_exhaust_against_capacity_history(
         daemon.close()
 
 
+def _foreign_matching_leftover_wait_current_budget(
+    daemon: DatabaseImplementationDaemon,
+    matching_attempts: list[DatabaseTaskAttempt],
+    current: DatabaseTaskAttempt,
+) -> dict[str, object]:
+    budget = _legacy_leftover_wait_budget(daemon, matching_attempts)
+    failed = [
+        item
+        for item in daemon.phase_history(current.attempt_id)
+        if item["phase"] == "failed"
+    ]
+    typed = daemon._verified_typed_deferral_receipt(
+        current,
+        failed[-1]["body"],
+    )
+    assert typed is not None
+    budget["current_deferral_fingerprint"] = typed["deferral_fingerprint"]
+    budget.pop("observation_id")
+    budget["observation_id"] = daemon._database_portal_evidence_digest(budget)
+    return budget
+
+
+def test_leftover_wait_current_foreign_matching_recovers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    observed_attempts: list[DatabaseTaskAttempt] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        observed_attempts.append(attempt)
+        raise DatabasePortalBridgeDeferred(
+            "worktree_lifecycle_claim_exists",
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:leftover-wait-current-foreign-matching",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        now["ms"] = 31_001
+        daemon.run_once()
+        now["ms"] = 61_002
+        daemon.run_once()
+        exact = [
+            item
+            for item in (
+                daemon.get_attempt(attempt.attempt_id)
+                for attempt in observed_attempts
+            )
+            if item is not None
+        ]
+        assert len(exact) == 3
+        latest = max(exact, key=lambda item: int(item.attempt_number))
+        earlier = [
+            item for item in exact if item.attempt_id != latest.attempt_id
+        ]
+        _rewrite_as_legacy_typed_deferrals(
+            daemon,
+            earlier,
+            ["provider_capacity_exhausted", "provider_capacity_exhausted"],
+        )
+        budget = _foreign_matching_leftover_wait_current_budget(
+            daemon,
+            earlier,
+            latest,
+        )
+        attempt, _budget = _block_with_legacy_leftover_wait_budget(
+            daemon,
+            exact,
+            budget_override=budget,
+        )
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        now["ms"] = 100_000
+        repaired = daemon.run_once()
+        recovery = repaired[
+            "leftover_wait_deferral_budget_recovery_reconciliations"
+        ]
+        assert len(recovery) == 1
+        assert recovery[0]["changed"] is True
+
+        rearmed = daemon.task_source.get(attempt.task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        receipt = rearmed.body["completion_receipt"]
+        seed = receipt["leftover_wait_deferral_budget_recovery_seed"]
+        assert seed["exhausting_reasons"] == ["provider_capacity_exhausted"]
+        daemon._verified_leftover_wait_deferral_budget_recovery_state(
+            attempt,
+            rearmed,
+        )
+    finally:
+        daemon.close()
+
+
+def test_leftover_wait_recovery_prefers_atomic_owner_path_over_cooldown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    reasons = [
+        "inflight_process",
+        "external_protected_checkout_recovery_required",
+    ]
+    observed_attempts: list[DatabaseTaskAttempt] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        observed_attempts.append(attempt)
+        raise DatabasePortalBridgeDeferred(
+            reasons[len(observed_attempts) - 1],
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:leftover-wait-atomic-not-cooldown",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        now["ms"] = 31_001
+        daemon.run_once()
+        attempts = [
+            daemon.get_attempt(item.attempt_id) for item in observed_attempts
+        ]
+        exact_attempts = [item for item in attempts if item is not None]
+        _rewrite_as_legacy_typed_deferrals(
+            daemon,
+            exact_attempts,
+            reasons,
+        )
+        attempt, _budget = _block_with_legacy_leftover_wait_budget(
+            daemon,
+            exact_attempts,
+        )
+
+        def boom(*_args: object, **_kwargs: object) -> object:
+            raise AssertionError(
+                "record_task_retry_cooldown must not run for leftover-wait recovery"
+            )
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "record_task_retry_cooldown",
+            boom,
+            raising=False,
+        )
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        now["ms"] = 100_000
+        repaired = daemon.run_once()
+        recovery = repaired[
+            "leftover_wait_deferral_budget_recovery_reconciliations"
+        ]
+        assert len(recovery) == 1
+        assert recovery[0]["changed"] is True
+        rearmed = daemon.task_source.get(attempt.task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+    finally:
+        daemon.close()
+
+
 @pytest.mark.parametrize("drift_surface", ("direct_seed", "reconciler_budget"))
 def test_leftover_wait_recovery_rejects_self_hashed_reason_drift(
     tmp_path: Path,
