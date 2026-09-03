@@ -4931,7 +4931,7 @@ _M66_SUPERSESSION_REASON = (
 _M66_CONTROL_RECORDED_AT = "2026-09-03T06:40:00Z"
 _M66_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M66_FINAL_CONTROL_AUTHORITY_CID"
 _M66_AUTHORITY_CID = (
-    "sha256:7289002c2b28491f8cf2695d328723d2a10d2cdedd4c11f630203f84051d51e7"
+    "sha256:3db1716da422a27db4ffb6f07f924310314b8df932af21bdf0b9d901f2e544b2"
 )
 _M66_AUTHORITY_SIZE = 18_446
 _M66_PRIOR_GENERATION = _M65_TARGET_GENERATION
@@ -70303,6 +70303,18 @@ def _m28_live_owner_identity_admitted(
         return False
     if runtime_generated:
         return True
+    live_owner = authority.get("live_owner")
+    if (
+        isinstance(live_owner, Mapping)
+        and live_owner.get("same_owner_required") is True
+        and live_owner.get("generation_restart_authorized") is False
+        and identity.get("server_id") == live_owner.get("server_id")
+        and identity.get("process_birth_id")
+        == live_owner.get("process_birth_id")
+        and int(identity.get("generation") or 0)
+        == int(live_owner.get("generation") or 0)
+    ):
+        return True
     if (
         "server_id" in runtime
         and identity.get("server_id") != runtime["server_id"]
@@ -102555,6 +102567,8 @@ def _expected_m66_post_m65_live_owner_capsule_denied_restart_source_checkout_aut
     authority["runtime_binding"]["target_event_watermark"] = (
         _M66_TARGET_EVENT_WATERMARK
     )
+    authority["runtime_binding"]["server_id"] = _M66_LIVE_SERVER_ID
+    authority["runtime_binding"]["process_birth_id"] = _M66_LIVE_PROCESS_BIRTH_ID
     authority["live_owner"] = {
         "schema": "sawm/live-generation-45-owner-after-m65-handoff@1",
         "database_uuid": _M66_DATABASE_UUID,
