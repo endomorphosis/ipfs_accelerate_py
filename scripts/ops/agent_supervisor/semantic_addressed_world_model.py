@@ -10831,49 +10831,6 @@ def _verify_m68_live_head_task_projection(
     authority: Mapping[str, Any],
     expected_projection_cid: str,
 ) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
-    """Verify M68 heads at live event 341/generation 46 using the live projection."""
-
-    materializer._validated_m68_live_preflight_contract(authority)
-    head = materializer._inspect_m37_live_projection(
-        source, population, authority,
-        expected_event_watermark=_M68_TARGET_EVENT_WATERMARK,
-        expected_projection_cid=expected_projection_cid,
-    )
-    if head.get("event_watermark") != _M68_TARGET_EVENT_WATERMARK:
-        raise materializer.MigrationRequired("M68 live head projection differs")
-    statuses: dict[str, str] = {}
-    revisions: dict[str, int] = {}
-    receipt_cids: dict[str, str] = {}
-    heads = authority.get("expected_task_heads")
-    if not isinstance(heads, Mapping):
-        raise materializer.MigrationRequired("M68 expected task heads are missing")
-    for expected in population["taskboard"]:
-        alias = str(expected["task_id"])
-        observed = source.get_task(str(expected["task_cid"]))
-        expected_head = heads.get(alias)
-        if (
-            observed is None
-            or not isinstance(expected_head, Mapping)
-            or observed.status != expected_head.get("status")
-            or int(observed.revision) != int(expected_head.get("revision") or 0)
-        ):
-            raise materializer.MigrationRequired(f"M68 task head differs: {alias}")
-        operational = observed.body.get("operational_validation_revision")
-        if alias != "SAWM-000" and isinstance(operational, Mapping):
-            receipt_cids[alias] = str(operational.get("receipt_cid") or "")
-        statuses[alias] = str(observed.status)
-        revisions[alias] = int(observed.revision)
-    return statuses, revisions, receipt_cids
-
-
-def _verify_m68_live_head_task_projection(
-    source: Any,
-    population: Mapping[str, Any],
-    materializer: Any,
-    *,
-    authority: Mapping[str, Any],
-    expected_projection_cid: str,
-) -> tuple[dict[str, str], dict[str, int], dict[str, str]]:
     """Verify M68's live heads at event 341/generation 46.
 
     The sealed contract binds the store report to the live event digest, so a
@@ -26542,7 +26499,7 @@ def _live_preflight(
             else active_source_repair["prior_semantic_authority_digest"]
         )
         bind_live_event_digest = (
-            (m68_active or m66_active or m65_active)
+            (m68_active or m67_active or m66_active or m65_active)
             and preflight_contract.get("bind_store_report_to_live_event_digest")
             is True
         )

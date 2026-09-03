@@ -2083,7 +2083,7 @@ def test_operator_live_preflight_binds_m68_snapshot_before_m66_heads() -> None:
         "elif _M66_SUCCESSOR_KEY in config:\n                statuses, _revisions, _receipts = (\n                    _verify_m66_live_head_task_projection("
     )
     digest = operator_source.find(
-        "(m68_active or m66_active or m65_active)"
+        "(m68_active or m67_active or m66_active or m65_active)"
     )
     assert m68_bind > 0
     assert 0 < m68_verify < m66_call
