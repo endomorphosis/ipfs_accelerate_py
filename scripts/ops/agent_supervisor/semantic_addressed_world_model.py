@@ -26829,43 +26829,45 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_quack_start(config, config_path)
         if args.command == "quack-recover-stale":
             return _emit(_recover_stale_quack(config))
-        if args.command == "quack-stop" and _M64_SUCCESSOR_KEY in config:
+        if args.command == "quack-stop" and _M65_SUCCESSOR_KEY in config:
+            _active_source_repair_materialization(config)
+        elif args.command == "quack-stop" and _M64_SUCCESSOR_KEY in config:
             _active_source_repair_materialization(config)
             raise OperatorError(
                 "M64 does not authorize generation-43 Quack stop/restart; "
                 "a separately sealed generation-44 successor is required"
             )
-        if args.command == "quack-stop" and _M63_SUCCESSOR_KEY in config:
+        elif args.command == "quack-stop" and _M63_SUCCESSOR_KEY in config:
             _active_source_repair_materialization(config)
             raise OperatorError(
                 "M63 does not authorize generation-43 Quack stop/restart; "
                 "a separately sealed generation-44 successor is required"
             )
-        if args.command == "quack-stop" and _M62_SUCCESSOR_KEY in config:
+        elif args.command == "quack-stop" and _M62_SUCCESSOR_KEY in config:
             _active_source_repair_materialization(config)
             raise OperatorError(
                 "M62 does not authorize generation-43 Quack stop/restart; "
                 "a separately sealed generation-44 successor is required"
             )
-        if args.command == "quack-stop" and _M61_SUCCESSOR_KEY in config:
+        elif args.command == "quack-stop" and _M61_SUCCESSOR_KEY in config:
             _active_source_repair_materialization(config)
             raise OperatorError(
                 "M61 does not authorize generation-43 Quack stop/restart; "
                 "a separately sealed generation-44 successor is required"
             )
-        if args.command == "quack-stop" and _M60_SUCCESSOR_KEY in config:
+        elif args.command == "quack-stop" and _M60_SUCCESSOR_KEY in config:
             _active_source_repair_materialization(config)
             raise OperatorError(
                 "M60 does not authorize generation-43 Quack stop/restart; "
                 "a separately sealed generation-44 successor is required"
             )
-        if args.command == "quack-stop" and _M59_SUCCESSOR_KEY in config:
+        elif args.command == "quack-stop" and _M59_SUCCESSOR_KEY in config:
             _active_source_repair_materialization(config)
             raise OperatorError(
                 "M59 does not authorize generation-43 Quack stop/restart; "
                 "a separately sealed generation-44 successor is required"
             )
-        if args.command == "quack-stop" and _M58_SUCCESSOR_KEY in config:
+        elif args.command == "quack-stop" and _M58_SUCCESSOR_KEY in config:
             materializer, authority = _validate_m58_pre_stop_authority(config)
             return _emit(_stop_m58_live_owner_exact(config, materializer, authority))
         if args.command in {"quack-status", "quack-ready", "quack-stop"}:
