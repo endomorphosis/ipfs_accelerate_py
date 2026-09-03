@@ -1230,6 +1230,43 @@ def test_guarded_leftover_wait_recovery_accepts_empty_coordination(
         ]
 
 
+def test_guarded_leftover_wait_recovery_admits_provider_capacity_exhausted(
+    tmp_path: Path,
+) -> None:
+    """Reproduce PCPR-057: quota waits must rearm, not stay blocked."""
+
+    with DatabaseTaskSource(tmp_path / "control.duckdb") as source:
+        blocked, budget = _block_leftover_wait_exhausted(
+            source,
+            reason="provider_capacity_exhausted",
+        )
+        request = _leftover_wait_recovery_request(blocked, budget)
+        blocked_receipt = dict(blocked.body["completion_receipt"])
+        assert budget["matching_attempts"][0]["reason"] == (
+            "provider_capacity_exhausted"
+        )
+
+        result = source.record_queue_backoff_and_cas_status(
+            task_cid=blocked.task_cid,
+            expected_revision=blocked.revision,
+            expected_control_receipt=blocked_receipt,
+            status="retrying",
+            receipt=request,
+            delay_ms=0,
+            reason=str(request["queue_reason"]),
+            exact_retry_not_before_ms=int(request["retry_not_before_ms"]),
+        )
+
+        assert result["cas_result"].changed is True
+        assert result["previous_status"] == "blocked"
+        observed = source.get_task(blocked.task_cid)
+        assert observed is not None and observed.status == "retrying"
+        seed = observed.body["completion_receipt"][
+            "leftover_wait_deferral_budget_recovery_seed"
+        ]
+        assert seed["exhausting_reasons"] == ["provider_capacity_exhausted"]
+
+
 def test_guarded_leftover_wait_recovery_leaves_no_queue_after_lost_cas(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

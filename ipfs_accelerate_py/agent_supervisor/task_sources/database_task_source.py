@@ -154,6 +154,11 @@ _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS: Final[frozenset[str]] = frozenset(
         "inflight_process",
         "external_protected_checkout_recovery_required",
         "portal_execution_incomplete",
+        # Provider quota/capacity is a live wait, not a task defect. Counting
+        # identical provider_capacity_exhausted deferrals toward
+        # max_task_attempts turns a 402/quota wait into a permanent board
+        # block (PCPR-057).
+        "provider_capacity_exhausted",
     }
 )
 

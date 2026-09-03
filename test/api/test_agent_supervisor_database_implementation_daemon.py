@@ -12868,6 +12868,125 @@ def test_run_once_rearms_portal_execution_incomplete_empty_coordination(
         daemon.close()
 
 
+def test_provider_capacity_exhausted_deferrals_do_not_consume_typed_budget(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    observed_reasons: list[str] = []
+    reasons = [
+        "provider_capacity_exhausted",
+        "provider_capacity_exhausted",
+        "provider_capacity_exhausted",
+    ]
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        reason = reasons[len(observed_reasons)]
+        observed_reasons.append(reason)
+        raise DatabasePortalBridgeDeferred(
+            reason,
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:provider-capacity-leftover-wait-budget",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        task_cid = str(first["claimed_task_cid"])
+        assert first["implementation_result"]["retry_budget_exhausted"] is False
+
+        for timestamp in (31_001, 61_002):
+            now["ms"] = timestamp
+            retried = daemon.run_once()
+            assert (
+                retried["implementation_result"]["retry_budget_exhausted"]
+                is False
+            )
+
+        task = daemon.task_source.get(task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert observed_reasons == reasons
+    finally:
+        daemon.close()
+
+
+def test_run_once_rearms_provider_capacity_exhausted_budget_exhaustion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    reasons = [
+        "provider_capacity_exhausted",
+        "provider_capacity_exhausted",
+    ]
+    observed_attempts: list[DatabaseTaskAttempt] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        observed_attempts.append(attempt)
+        raise DatabasePortalBridgeDeferred(
+            reasons[len(observed_attempts) - 1],
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:provider-capacity-leftover-wait-rearm",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        now["ms"] = 31_001
+        daemon.run_once()
+        attempts = [
+            daemon.get_attempt(item.attempt_id) for item in observed_attempts
+        ]
+        assert all(item is not None for item in attempts)
+        exact_attempts = [item for item in attempts if item is not None]
+        _rewrite_as_legacy_typed_deferrals(
+            daemon,
+            exact_attempts,
+            reasons,
+        )
+        attempt, budget = _block_with_legacy_leftover_wait_budget(
+            daemon,
+            exact_attempts,
+        )
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        now["ms"] = 100_000
+        repaired = daemon.run_once()
+        recovery = repaired[
+            "leftover_wait_deferral_budget_recovery_reconciliations"
+        ]
+        assert len(recovery) == 1
+        assert recovery[0]["changed"] is True
+
+        rearmed = daemon.task_source.get(attempt.task_cid)
+        assert rearmed is not None and rearmed.status == "retrying"
+        receipt = rearmed.body["completion_receipt"]
+        seed = receipt["leftover_wait_deferral_budget_recovery_seed"]
+        assert seed["blocked_retry_budget"] == budget
+        assert seed["exhausting_reasons"] == ["provider_capacity_exhausted"]
+        daemon._verified_leftover_wait_deferral_budget_recovery_state(
+            attempt,
+            rearmed,
+        )
+    finally:
+        daemon.close()
+
+
 def test_leftover_wait_budget_recovery_rejects_mixed_non_wait_reason(
     tmp_path: Path,
 ) -> None:

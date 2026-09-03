@@ -87703,6 +87703,9 @@ _DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_BUDGET_SCHEMA = (
 # ``portal_execution_incomplete`` is the same class: the inner portal never
 # dispatched a provider (resource-claim / incomplete projection) and a
 # leftover block must stay a wait, not a terminal budget exhaustion.
+# ``provider_capacity_exhausted`` is also a live wait: a 402/quota deferral
+# is not a task defect, and exhausting max_task_attempts on it permanently
+# blocked PCPR-057 while independent ready work sat idle.
 _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS = frozenset(
     {
         "worktree_lifecycle_claim_exists",
@@ -87711,6 +87714,7 @@ _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS = frozenset(
         "inflight_process",
         "external_protected_checkout_recovery_required",
         "portal_execution_incomplete",
+        "provider_capacity_exhausted",
     }
 )
 
