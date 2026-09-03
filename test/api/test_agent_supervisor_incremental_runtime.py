@@ -1813,6 +1813,101 @@ def test_sibling_portal_attempt_retires_only_exact_dead_same_lane_claim(
     assert daemon.worktree_lifecycle.load_workspace(workspace) is None
 
 
+def test_same_lane_state_dir_retires_dead_predecessor_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    state_dir = (
+        tmp_path
+        / "data"
+        / "agent_supervisor"
+        / "semantic_preserving_autonomous_remodularization_v1"
+        / "state"
+        / "lane-2"
+    )
+    state_dir.mkdir(parents=True)
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=state_dir / "spar_lane_2_task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c("raise SystemExit(7)"),
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+    )
+    task = PortalTask(
+        task_id="SPAR-024",
+        title="Retire a leftover same-lane lifecycle owner",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+    workspace = tmp_path / "preserved-worktree"
+    workspace.mkdir()
+    marker = workspace / "preserved.txt"
+    marker.write_text("preserve\n", encoding="utf-8")
+    predecessor = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=1,
+        lane_id="spar:lane-2",
+        workspace_path=workspace,
+        branch="implementation/spar-024-attempt-1-old",
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(state_dir.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 51,
+            start_time_ticks=1,
+            boot_id="dead-same-lane",
+        ),
+    )
+    foreign_state_dir = state_dir.parent / "lane-0"
+    foreign_state_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        daemon,
+        "_predecessor_worktree_dispatch_quiescence",
+        lambda _record: {
+            "quiescent": True,
+            "reason": "task_attempt_claim_dispatch_quiescent",
+        },
+    )
+
+    exact_state_path = daemon.state_path
+    daemon.state_path = foreign_state_dir / "spar_lane_0_task_state.json"
+    foreign = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+    assert foreign["finalized"] is False
+    assert foreign["reason"] == "task_attempt_claim_identity_mismatch"
+    assert foreign["mismatched_fields"] == ["state_dir_custody"]
+    assert daemon.worktree_lifecycle.load_workspace(workspace) == predecessor
+
+    daemon.state_path = exact_state_path
+    recovered = daemon._finalize_dead_predecessor_worktree_lifecycle_claim(
+        task=task,
+        attempt=1,
+    )
+
+    assert recovered["finalized"] is True
+    assert recovered["custody_kind"] == "same_lane_state_dir"
+    assert recovered["reason"] == "same_lane_dead_owner_superseded"
+    assert recovered["predecessor_owner_liveness"] == "dead"
+    assert marker.read_text(encoding="utf-8") == "preserve\n"
+    assert daemon.worktree_lifecycle.load_workspace(workspace) is None
+
+    result = daemon._run_implementation(task, PortalTaskState())
+    assert result.get("reason") != "worktree_lifecycle_claim_exists"
+
+
 def test_sibling_portal_attempt_quiescence_scopes_denied_proc_cwds(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -89,6 +89,7 @@ from .typed_state_owner import (
     TYPED_TASK_STATUS_VOCABULARY,
     TypedStateOwnerConnection,
     TypedStateOwnerError,
+    _leftover_wait_intent_queue_prior,
     _post_merge_retry_queue_receipt,
     _validated_database_strict_resume_rejection_receipt,
     _validated_legacy_unstall_claim_receipt,
@@ -797,7 +798,19 @@ class TypedDatabaseTaskSource:
             )
         if not rows:
             return None
-        return self._validated_retry_cooldown_row(rows[0], task_cid=task)
+        try:
+            return self._validated_retry_cooldown_row(rows[0], task_cid=task)
+        except TaskSourceIntegrityError:
+            leftover = _leftover_wait_intent_queue_prior(
+                rows[0],
+                task_cid=task,
+            )
+            if leftover is not None:
+                # Leftover-wait recovery occupies leases with an
+                # IntentRepository queue row. Typed persist/ready must treat
+                # that residue as no cooldown instead of fail-closing SPAR-024.
+                return None
+            raise
 
     @staticmethod
     def _legacy_unstall_claim_candidate(

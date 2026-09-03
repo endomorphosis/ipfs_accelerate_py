@@ -68816,8 +68816,27 @@ class PortalImplementationDaemon:
                 record.state_dir,
             )
         )
+        try:
+            current_state_dir = str(
+                self.state_path.parent.resolve(strict=False)
+            )
+        except (OSError, RuntimeError, ValueError):
+            current_state_dir = ""
+        try:
+            record_state_dir = str(
+                Path(record.state_dir).resolve(strict=False)
+            )
+        except (OSError, RuntimeError, ValueError):
+            record_state_dir = ""
+        same_lane_state_dir = bool(
+            current_state_dir
+            and record_state_dir
+            and current_state_dir == record_state_dir
+        )
         predecessor_is_owned = bool(
-            predecessor_is_older or portal_attempt_custody is not None
+            predecessor_is_older
+            or portal_attempt_custody is not None
+            or same_lane_state_dir
         )
         mismatched_fields = [
             field_name
@@ -68854,12 +68873,18 @@ class PortalImplementationDaemon:
                     "predecessor_generation": predecessor_generation[1],
                 }
             )
-        else:
-            assert portal_attempt_custody is not None
+        elif portal_attempt_custody is not None:
             base.update(
                 {
                     "custody_kind": "sibling_database_portal_attempt",
                     "portal_attempt_custody": portal_attempt_custody,
+                }
+            )
+        else:
+            assert same_lane_state_dir
+            base.update(
+                {
+                    "custody_kind": "same_lane_state_dir",
                 }
             )
 
@@ -68947,11 +68972,12 @@ class PortalImplementationDaemon:
                 ),
             }
 
-        terminal_reason = (
-            "sibling_portal_attempt_dead_owner_superseded"
-            if portal_attempt_custody is not None
-            else "successor_generation_dead_owner_superseded"
-        )
+        if portal_attempt_custody is not None:
+            terminal_reason = "sibling_portal_attempt_dead_owner_superseded"
+        elif predecessor_is_older:
+            terminal_reason = "successor_generation_dead_owner_superseded"
+        else:
+            terminal_reason = "same_lane_dead_owner_superseded"
         try:
             terminal = self.worktree_lifecycle.finalize_exact_dead_owner(
                 record.workspace_path,
@@ -121060,6 +121086,32 @@ class DatabaseImplementationDaemon:
             except DatabaseImplementationConflictError:
                 raise
             except Exception as fail_exc:
+                fail_text = str(fail_exc)
+                leftover_wait_cooldown_poison = bool(
+                    deferred
+                    and reason
+                    in {
+                        "worktree_lifecycle_claim_exists",
+                        "worktree_lifecycle_active_transition_failed",
+                        "worktree_lifecycle_transition_failed",
+                        "inflight_process",
+                        "external_protected_checkout_recovery_required",
+                    }
+                    and (
+                        "retry cooldown row is foreign" in fail_text
+                        or "retry cooldown prior queue state is malformed"
+                        in fail_text
+                    )
+                )
+                if leftover_wait_cooldown_poison:
+                    # SPAR-024: leftover-wait recovery left an IntentRepository
+                    # lease row. Persist of the leftover-wait deferral then
+                    # fail-closed and froze in_progress. Requeue so claim_next
+                    # can continue after same-lane dead-owner recovery.
+                    control = self.task_source.get(attempt.task_cid)
+                    if control is not None:
+                        self._retire_stale_running_attempt(attempt, control)
+                        self._requeue_unimplemented_control_task(control)
                 return {
                     "resumed": True,
                     "portal_retryable_failure": retryable,
@@ -121088,7 +121140,10 @@ class DatabaseImplementationDaemon:
                     ),
                     "backoff_seconds": backoff_seconds,
                     "reason": reason,
-                    "fail_error": str(fail_exc),
+                    "fail_error": fail_text,
+                    "leftover_wait_cooldown_requeued": (
+                        leftover_wait_cooldown_poison
+                    ),
                     "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
                     "task_alias": str(getattr(attempt, "task_alias", "") or ""),
                     "status": (

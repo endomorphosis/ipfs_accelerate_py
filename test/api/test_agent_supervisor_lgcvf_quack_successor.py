@@ -6244,6 +6244,56 @@ def test_leftover_wait_queue_cooldown_does_not_fail_ready_projection() -> None:
     assert dict(cooldowns) == {}
 
 
+def test_leftover_wait_queue_cooldown_does_not_fail_queue_entry() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    foreign_row = {
+        "task_cid": "task:spar-024",
+        "claim_cid": "claim:leftover-wait",
+        "resolution_cid": "sha256:" + ("a" * 64),
+        "claimant_did": "session:leftover-wait",
+        "logical_epoch": 1,
+        "fencing_token": 1,
+        "expires_at_ms": 0,
+        "attempt": 340,
+        "state": "released",
+        "started_at_ms": 1,
+        "release_reason": (
+            "database_portal_retry:attempt:dead:"
+            "leftover_wait_deferral_budget_cleared"
+        ),
+        "retry_not_before_ms": 0,
+        "owner_session_id": "session:leftover-wait",
+        "fence_epoch": 1,
+        "revision": 220,
+        "extension_schema": (
+            "ipfs_accelerate_py/agent-supervisor/intent-queue-entry@1"
+        ),
+        "extension_json": (
+            '{"consecutive_failures":340,"reason":'
+            '"database_portal_retry:attempt:dead:'
+            'leftover_wait_deferral_budget_cleared","selection_penalty":0}'
+        ),
+    }
+
+    class _Client:
+        def execute(
+            self, name: str, params: dict[str, object]
+        ) -> list[dict[str, object]]:
+            if name == "executor_retry_cooldown_by_task":
+                assert params == {"task_cid": "task:spar-024"}
+                return [foreign_row]
+            return []
+
+    source = object.__new__(TypedDatabaseTaskSource)
+    source._client = _Client()
+
+    assert source.get_queue_entry("task:spar-024") is None
+    assert source._retry_cooldown_row("task:spar-024") is None
+
+
 def test_projection_plane_pins_all_writes_and_reopens_from_logical_paths(
     tmp_path: Path,
 ) -> None:

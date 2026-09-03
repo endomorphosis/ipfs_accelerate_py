@@ -4242,6 +4242,88 @@ def _validated_stored_retry_cooldown(
     return {**values, "extension": extension_values}
 
 
+_LEFTOVER_WAIT_INTENT_QUEUE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/intent-queue-entry@1"
+)
+_LEFTOVER_WAIT_QUEUE_REASON_MARKER: Final[str] = (
+    "leftover_wait_deferral_budget_cleared"
+)
+
+
+def _leftover_wait_intent_queue_prior(
+    row: Any,
+    *,
+    task_cid: str,
+) -> dict[str, Any] | None:
+    """Return CAS identity for a leftover-wait IntentRepository lease row.
+
+    Leftover-wait recovery writes ``intent-queue-entry`` into ``leases``.
+    Typed cooldown reads must treat that row as absent instead of fail-
+    closing SPAR-024 persist and ready selection.
+    """
+
+    task = str(task_cid or "").strip()
+    if not task:
+        return None
+    if isinstance(row, Mapping):
+        try:
+            values = {name: row[name] for name in _RETRY_COOLDOWN_ROW_FIELDS}
+        except (KeyError, TypeError):
+            return None
+    elif isinstance(row, Sequence) and not isinstance(
+        row, (str, bytes, bytearray)
+    ):
+        if len(row) != len(_RETRY_COOLDOWN_ROW_FIELDS):
+            return None
+        values = dict(zip(_RETRY_COOLDOWN_ROW_FIELDS, row))  # noqa: B905
+    else:
+        return None
+    if (
+        str(values.get("task_cid") or "") != task
+        or str(values.get("extension_schema") or "")
+        != _LEFTOVER_WAIT_INTENT_QUEUE_SCHEMA
+        or str(values.get("state") or "") != "released"
+    ):
+        return None
+    integer_fields = (
+        "logical_epoch",
+        "fencing_token",
+        "expires_at_ms",
+        "attempt",
+        "started_at_ms",
+        "retry_not_before_ms",
+        "fence_epoch",
+        "revision",
+    )
+    if any(
+        isinstance(values[name], bool)
+        or not isinstance(values[name], int)
+        or values[name] < 0
+        for name in integer_fields
+    ):
+        return None
+    try:
+        extension = json.loads(str(values["extension_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(extension, Mapping):
+        return None
+    release_reason = str(values.get("release_reason") or "")
+    extension_reason = str(extension.get("reason") or "")
+    if (
+        _LEFTOVER_WAIT_QUEUE_REASON_MARKER not in release_reason
+        and _LEFTOVER_WAIT_QUEUE_REASON_MARKER not in extension_reason
+    ):
+        return None
+    return {
+        **values,
+        "extension": dict(extension),
+        "claim_id": values["claim_cid"],
+        "attempt_number": int(values["attempt"]),
+        "leftover_wait_intent_queue": True,
+    }
+
+
 _TRANSACTION_SQL: Final[Mapping[str, OwnerOperation]] = MappingProxyType(
     {
         "txn_load_generation": OwnerOperation(
