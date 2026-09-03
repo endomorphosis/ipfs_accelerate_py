@@ -6200,23 +6200,33 @@ def supervisor_status_health_fields(
         ),
         status_path=status_path,
     )
+    child_process_bound = bool(
+        child_log_fields.get("supervisor_child_log_process_bound")
+    )
     child_log_live = bool(
         child_log_fields.get("supervisor_child_log_fresh")
-        and child_log_fields.get("supervisor_child_log_process_bound")
+        and child_process_bound
     )
+    # Idle no_ready_tasks lanes keep a live supervisor and direct child
+    # daemon without growing logs or rewriting wrapper status.  That is
+    # waiting for the next board wave, not a stale wrapper to kill.
     return {
         "supervisor_status": (
             "stale_active"
             if active_child
             else "stale_child_log_live"
             if child_log_live
+            else "stale_process_live"
+            if child_process_bound
             else "stale"
         ),
         "supervisor_status_path": str(status_path),
         "supervisor_status_age_seconds": round(age_seconds, 1),
         "supervisor_active_task_id": active_task_id,
         "supervisor_child_in_progress": implementation_in_progress,
-        "restart_supervisor": not (active_child or child_log_live),
+        "restart_supervisor": not (
+            active_child or child_log_live or child_process_bound
+        ),
         **child_log_fields,
         **read_retry_fields,
     }

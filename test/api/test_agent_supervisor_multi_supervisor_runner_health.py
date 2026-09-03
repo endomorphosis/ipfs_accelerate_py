@@ -702,6 +702,44 @@ def test_stale_idle_supervisor_still_restarts_with_fallback_enabled(tmp_path):
     assert fields["restart_supervisor"] is True
 
 
+def test_stale_idle_supervisor_keeps_live_direct_child_daemon(tmp_path):
+    """no_ready_tasks lanes must not be recycled just because status aged out."""
+
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    child_log_path = state_dir / "example_implementation_daemon_run.log"
+    child_log_path.write_text("last idle selection pass\n", encoding="utf-8")
+    old = time.time() - 3600
+    os.utime(child_log_path, (old, old))
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        cwd=tmp_path,
+    )
+    try:
+        _write_stale_status(
+            tmp_path,
+            daemon_pid=child.pid,
+            log_path=child_log_path,
+        )
+
+        fields = supervisor_status_health_fields(
+            _track(tmp_path),
+            repo_root=tmp_path,
+            stale_seconds=60.0,
+            expected_supervisor_pid=os.getpid(),
+            supervisor_status_not_before_epoch_seconds=0.0,
+        )
+
+        assert fields["supervisor_status"] == "stale_process_live"
+        assert fields["supervisor_child_log_fresh"] is False
+        assert fields["supervisor_child_log_process_bound"] is True
+        assert fields["supervisor_child_log_daemon_pid"] == child.pid
+        assert fields["restart_supervisor"] is False
+    finally:
+        child.terminate()
+        child.wait(timeout=5)
+
+
 def test_prior_generation_status_waits_for_current_birth_during_grace(tmp_path):
     state_dir = tmp_path / "state"
     state_dir.mkdir()
