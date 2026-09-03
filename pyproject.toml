@@ -173,6 +173,19 @@ live-storage = false
 live-execution = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.context-pack-storage]
+schema = "ipfs_accelerate_py/assurance/context-pack-storage-binding@1"
+interface = "AccelerateContextPackStorageBinding@1"
+task-id = "PCPR-062"
+goal-id = "PCPR-G700"
+objective-kind = "declared_context_pack_root_binding"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-context-pack-admission = false
+live-storage = false
+live-execution = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 

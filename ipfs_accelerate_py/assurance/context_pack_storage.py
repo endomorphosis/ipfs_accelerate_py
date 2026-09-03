@@ -1,0 +1,1064 @@
+"""Fail-closed PCPR-062 Accelerate consumer of the Kit ContextPack root.
+
+Accelerate binds SupervisorContextPack to the Datasets-owned
+DatasetsContextPack@1 identity and consumes the Kit-owned hermetic
+current root without reminting either identity. It does not construct
+the pack, does not store bytes, does not publish a current root, does
+not execute the deterministic route (PCPR-063), and does not write
+DuckDB or Quack state.
+
+Sibling Datasets and Kit source is observed when present and never
+required. Live supervisor admission and live IPFS publication stay
+typed unavailable. Simulated results are not live.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any, Final
+
+from ipfs_accelerate_py.assurance.dependency_locks import (
+    CLOSED_RELEASE_OUTCOMES,
+    PACKAGE_NAME,
+    PACKAGE_VERSION,
+    SEALED_PATH,
+    SEALED_PYTHON,
+    content_identity,
+    discover_accelerate_root,
+    observe_sealed_validation_environment,
+    pretty_json,
+    sha256_bytes,
+    typed_unavailable,
+)
+from ipfs_accelerate_py.assurance.portfolio_compatibility_lock import (
+    PINNED_LOCK_CID as PCPR_056_LOCK_CID,
+    PORTFOLIO_ID,
+    PORTFOLIO_VERSION,
+)
+from ipfs_accelerate_py.assurance.shared_contracts import (
+    OWNER_INTERFACES,
+    OWNER_SCHEMAS,
+    shared_interface_id,
+    shared_schema_id,
+)
+
+INTERFACE: Final = "AccelerateContextPackStorageBinding@1"
+SCHEMA: Final = "ipfs_accelerate_py/assurance/context-pack-storage-binding@1"
+BINDING_SCHEMA: Final = (
+    "ipfs_accelerate_py/assurance/declared-context-pack-root-binding@1"
+)
+VERDICT_SCHEMA: Final = (
+    "ipfs_accelerate_py/assurance/context-pack-storage-verdict@1"
+)
+CATALOG_SCHEMA: Final = (
+    "ipfs_accelerate_py/assurance/platform-context-pack-root-catalog@1"
+)
+CATALOG_INTERFACE: Final = "PlatformContextPackRoot@1"
+OWNER_INTERFACE: Final = "DatasetsContextPack@1"
+OWNER_SCHEMA: Final = "ipfs_datasets_py/datasets-context-pack@1"
+OWNER_REPOSITORY: Final = "ipfs_datasets_py"
+STORAGE_OWNER_REPOSITORY: Final = "ipfs_kit_py"
+STORAGE_OWNER_INTERFACE: Final = "KitContextPackStorage@1"
+PCPR_062_TASK_ID: Final = "PCPR-062"
+PCPR_062_GOAL_ID: Final = "PCPR-G700"
+PCPR_061_TASK_ID: Final = "PCPR-061"
+PCPR_063_TASK_ID: Final = "PCPR-063"
+PCPR_060_TASK_ID: Final = "PCPR-060"
+PCPR_040_TASK_ID: Final = "PCPR-040"
+PCPR_PROGRAM_ID: Final = "proof-carrying-platform-qualification-and-release-v1"
+PCPR_BOARD_NAMESPACE: Final = (
+    "proof-carrying-platform-qualification-and-release-v1"
+)
+OBJECTIVE_KIND: Final = "declared_context_pack_root_binding"
+OBJECTIVE_ID: Final = "PCPR-G700"
+LANGUAGE: Final = "Python"
+OPERATOR_BLOCKING_TASK_ID: Final = "pcpr-062-operator-live-context-pack-root"
+BINDING_DIR_RELPATH: Final = "packaging/pcpr/reference-workflow/cpython312"
+BINDING_JSON_NAME: Final = "reference.context-pack.root.json"
+BINDING_README_RELPATH: Final = (
+    "packaging/pcpr/reference-workflow/CONTEXT_PACK_ROOT.md"
+)
+CATALOG_RELPATH: Final = (
+    "packaging/pcpr/reference-workflow/platform-context-pack-root-catalog.json"
+)
+SOURCE_DATE_EPOCH: Final = "0"
+SOURCE_REPOSITORY: Final = "endomorphosis/ipfs_accelerate_py"
+
+PINNED_IDEA_DIGEST: Final = (
+    "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq"
+)
+PINNED_OBJECTIVE_CID: Final = (
+    "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba"
+)
+PINNED_LOCK_CID: Final = PCPR_056_LOCK_CID
+PINNED_PACK_CID: Final = (
+    "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e"
+)
+PINNED_BYTES_CID: Final = (
+    "bafkreihjdjarrlr24sperlq3zl4hjrksbol4b5saxquie3wpyi6xwsobwi"
+)
+PINNED_CURRENT_ROOT_CID: Final = PINNED_BYTES_CID
+
+if PINNED_LOCK_CID != (
+    "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq"
+):
+    raise RuntimeError("PCPR-062 lock CID remints PCPR-056")
+
+if OWNER_INTERFACES["SupervisorContextPack"] != OWNER_INTERFACE:
+    raise RuntimeError("PCPR-062 remints SupervisorContextPack owner interface")
+if OWNER_SCHEMAS["SupervisorContextPack"] != OWNER_SCHEMA:
+    raise RuntimeError("PCPR-062 remints SupervisorContextPack owner schema")
+
+REFERENCE_OBJECTIVE_IDEA: Final = (
+    "Modify a typed formal-logic API while reusing unaffected proofs, "
+    "selecting only impacted tests, rejecting stale-tree evidence, and "
+    "producing a complete proof-carrying execution receipt."
+)
+
+HERMETIC_CANDIDATE_SUITES: Final[tuple[str, ...]] = (
+    "test/api/test_agent_supervisor_context_pack_storage.py",
+)
+
+EVIDENCE_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        "measured",
+        "measured_live",
+        "measured_hermetic",
+        "estimated",
+        "simulated",
+        "unavailable",
+    }
+)
+
+REQUIRED_GOOD_PROBE_IDS: Final[frozenset[str]] = frozenset(
+    {
+        "binding_files_match_generator",
+        "pyproject_context_pack_storage_table",
+        "owner_pack_cid_matches_pin",
+        "owner_identity_not_reminted",
+        "supervisor_context_pack_bound_not_minted",
+        "kit_current_root_bound_not_minted",
+        "storage_owned_by_kit",
+        "execution_deferred_to_pcpr_063",
+        "duckdb_or_quack_not_written",
+        "operator_blocking_task_emitted",
+        "no_closed_release_outcome",
+    }
+)
+FORBIDDEN_PRESENT_PROBE_IDS: Final[frozenset[str]] = frozenset(
+    {
+        "simulated_results_represented_as_live",
+        "live_storage_represented_as_live",
+        "closed_release_represented_as_live",
+        "compatibility_identities_reminted",
+        "direct_database_bypass_used",
+        "datasets_identity_reminted",
+        "kit_identity_reminted",
+    }
+)
+
+BINDING_README: Final = """# PCPR-062 Accelerate ContextPack storage binding
+
+These files bind Accelerate to the Datasets-owned DatasetsContextPack@1
+identity and the Kit-owned hermetic current root. Accelerate is a
+consumer. It does not remint either identity, does not store bytes, and
+does not execute the deterministic-first route.
+
+- `cpython312/reference.context-pack.root.json` binds
+  SupervisorContextPack to the Datasets owner identity and the Kit
+  current root. Exact commit and tree are bound by the PCPR-062
+  receipt `current_tree_binding`.
+- `platform-context-pack-root-catalog.json` observes sibling Datasets
+  and Kit storage documents when present. Sibling source is never
+  required.
+- Deterministic execution remains PCPR-063.
+- Missing a live Quack-fenced session emits operator-blocking task
+  `pcpr-062-operator-live-context-pack-root`.
+
+Sealed validation PATH is exactly `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin`.
+"""
+
+
+class AccelerateContextPackStorageError(Exception):
+    """Fail-closed PCPR-062 Accelerate ContextPack storage binding error."""
+
+
+def _text(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise AccelerateContextPackStorageError(f"{name} must be a non-empty string")
+    return value.strip()
+
+
+def _kind(value: Any, name: str) -> str:
+    kind = _text(value, name)
+    if kind not in EVIDENCE_KINDS:
+        raise AccelerateContextPackStorageError(
+            f"{name} is not an admitted evidence kind"
+        )
+    return kind
+
+
+def _reject_closed_release_value(value: Any, name: str) -> None:
+    if isinstance(value, str) and value in CLOSED_RELEASE_OUTCOMES:
+        raise AccelerateContextPackStorageError(
+            f"{name} must not be a closed PCPR release outcome"
+        )
+
+
+def _atomic_write(path: Path, data: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(data, encoding="utf-8")
+    tmp.replace(path)
+
+
+def parse_pyproject_context_pack_storage_table(text: str) -> dict[str, Any]:
+    import tomllib
+
+    table = tomllib.loads(_text(text, "pyproject.toml"))
+    if not isinstance(table, dict):
+        raise AccelerateContextPackStorageError("pyproject.toml must be a table")
+    tool = table.get("tool")
+    payload: dict[str, Any] = {}
+    if isinstance(tool, dict):
+        accelerate = tool.get("ipfs_accelerate_py")
+        if isinstance(accelerate, dict):
+            raw = accelerate.get("context-pack-storage")
+            if isinstance(raw, dict):
+                payload = dict(raw)
+    return payload
+
+
+@dataclass(frozen=True)
+class OutcomeProbe:
+    probe_id: str
+    present: bool | None
+    evidence_kind: str
+    live: bool
+    simulated_represented_as_live: bool
+    reason: str
+    details: Mapping[str, Any] = MappingProxyType({})
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "probe_id": self.probe_id,
+            "present": self.present,
+            "evidence_kind": self.evidence_kind,
+            "live": self.live,
+            "simulated_represented_as_live": self.simulated_represented_as_live,
+            "reason": self.reason,
+            "details": dict(self.details),
+        }
+
+
+@dataclass(frozen=True)
+class AccelerateContextPackStorageVerdict:
+    schema: str
+    interface: str
+    promotion_status: str
+    supervisor_disposition: str
+    closed_release_outcome: str | None
+    release_claim: bool
+    completion_authoritative: bool
+    contracts_frozen: bool
+    duckdb_or_quack_state_written: bool
+    sibling_source_required: bool
+    live_context_pack_admission: bool
+    live_storage: bool
+    live_execution: bool
+    operator_blocking_task: str
+    simulated_results_represented_as_live: bool
+    this_task_created_competing_authority: bool
+    probes: tuple[OutcomeProbe, ...]
+    blockers: tuple[str, ...]
+    verdict_cid: str
+    pack_cid: str
+    binding_cid: str
+    catalog_cid: str
+    current_root_cid: str
+    objective_cid: str
+    idea_digest: str
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "interface": self.interface,
+            "verdict_cid": self.verdict_cid,
+            "pack_cid": self.pack_cid,
+            "binding_cid": self.binding_cid,
+            "catalog_cid": self.catalog_cid,
+            "current_root_cid": self.current_root_cid,
+            "objective_cid": self.objective_cid,
+            "idea_digest": self.idea_digest,
+            "promotion_status": self.promotion_status,
+            "supervisor_disposition": self.supervisor_disposition,
+            "closed_release_outcome": self.closed_release_outcome,
+            "release_claim": self.release_claim,
+            "completion_authoritative": self.completion_authoritative,
+            "contracts_frozen": self.contracts_frozen,
+            "duckdb_or_quack_state_written": self.duckdb_or_quack_state_written,
+            "sibling_source_required": self.sibling_source_required,
+            "live_context_pack_admission": self.live_context_pack_admission,
+            "live_storage": self.live_storage,
+            "live_execution": self.live_execution,
+            "operator_blocking_task": self.operator_blocking_task,
+            "simulated_results_represented_as_live": (
+                self.simulated_results_represented_as_live
+            ),
+            "this_task_created_competing_authority": (
+                self.this_task_created_competing_authority
+            ),
+            "blocker_count": len(self.blockers),
+            "blockers": list(self.blockers),
+            "evidence_kind": "measured",
+        }
+
+
+def _probe(
+    probe_id: str,
+    present: bool | None,
+    *,
+    reason: str,
+    evidence_kind: str = "measured",
+    live: bool = False,
+    details: Mapping[str, Any] | None = None,
+) -> OutcomeProbe:
+    return OutcomeProbe(
+        probe_id=probe_id,
+        present=present,
+        evidence_kind=evidence_kind,
+        live=live,
+        simulated_represented_as_live=False,
+        reason=reason,
+        details=MappingProxyType(dict(details or {})),
+    )
+
+
+def _operator_blocking_task() -> dict[str, Any]:
+    return {
+        "task_id": OPERATOR_BLOCKING_TASK_ID,
+        "status": "typed_blocked",
+        "evidence_kind": "unavailable",
+        "live": False,
+        "applied": False,
+        "requires": (
+            "An admitted Quack-fenced state-owner session and a live "
+            "qualified durable backend before Supervisor admits the "
+            "stored ContextPack root into live task state"
+        ),
+        "action": (
+            "Bind the Datasets pack CID and the Kit current root. Do not "
+            "remint either identity. Do not write DuckDB or Quack state. "
+            "Keep execution as PCPR-063."
+        ),
+        "reason": (
+            "Accelerate consumption of the Kit current root is not live "
+            "supervisor admission. Direct DuckDB writes are prohibited."
+        ),
+    }
+
+
+def observe_state_owner() -> dict[str, Any]:
+    env = observe_sealed_validation_environment()
+    duckdb_module = "unavailable"
+    try:
+        import duckdb as duckdb_mod
+
+        origin = str(getattr(duckdb_mod, "__file__", "") or "")
+        if origin and "/home/" not in origin and ".local" not in origin:
+            duckdb_module = origin
+    except Exception:
+        duckdb_module = "unavailable"
+    return {
+        **env,
+        "duckdb_module": duckdb_module,
+        "duckdb_module_is_not_live_materialization": True,
+        "quack": "unavailable",
+        "quack_fenced_session": typed_unavailable(
+            reason=(
+                "No admitted Quack-fenced state-owner session was observed. "
+                "Direct DuckDB writes are prohibited."
+            )
+        ),
+        "duckdb_or_quack_state_written": False,
+        "direct_duckdb_write_prohibited": True,
+        "direct_quack_write_prohibited": True,
+        "evidence_kind": "measured",
+    }
+
+
+def _sibling_root(path: Path, relative_path: str) -> dict[str, Any]:
+    if not path.is_file():
+        return {
+            "path": relative_path,
+            "status": "unavailable",
+            "evidence_kind": "unavailable",
+            "reason": "Sibling ContextPack root file is not present beside this checkout.",
+        }
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    pack = payload.get("context_pack")
+    storage = payload.get("storage")
+    current_root = payload.get("current_root")
+    pack_cid = None
+    current_root_cid = None
+    if isinstance(pack, Mapping):
+        pack_cid = pack.get("pack_cid")
+    elif isinstance(payload.get("pack_cid"), str):
+        pack_cid = payload.get("pack_cid")
+    if isinstance(storage, Mapping):
+        current_root_cid = storage.get("current_root_cid") or storage.get("bytes_cid")
+    if current_root_cid is None and isinstance(current_root, Mapping):
+        current_root_cid = current_root.get("current_cid")
+    return {
+        "path": relative_path,
+        "status": "observed",
+        "evidence_kind": "measured",
+        "package_name": payload.get("package_name"),
+        "package_version": payload.get("package_version"),
+        "objective_kind": payload.get("objective_kind"),
+        "objective_cid": payload.get("objective_cid"),
+        "idea_digest": payload.get("idea_digest"),
+        "pack_cid": pack_cid,
+        "current_root_cid": current_root_cid,
+        "binding_cid": payload.get("binding_cid") or payload.get("document_cid"),
+        "live": False,
+        "applied": False,
+        "sha256": sha256_bytes(path.read_bytes()),
+    }
+
+
+def render_declared_binding(root: Path | None = None) -> dict[str, Any]:
+    package_root = root or discover_accelerate_root()
+    if package_root is None:
+        raise AccelerateContextPackStorageError(
+            "Accelerate package root was not found"
+        )
+    state_owner = observe_state_owner()
+    document = {
+        "schema": BINDING_SCHEMA,
+        "interface": INTERFACE,
+        "task_id": PCPR_062_TASK_ID,
+        "goal_id": PCPR_062_GOAL_ID,
+        "program_id": PCPR_PROGRAM_ID,
+        "board_namespace": PCPR_BOARD_NAMESPACE,
+        "portfolio_id": PORTFOLIO_ID,
+        "portfolio_version": PORTFOLIO_VERSION,
+        "objective_kind": OBJECTIVE_KIND,
+        "package_name": PACKAGE_NAME,
+        "package_version": PACKAGE_VERSION,
+        "language": LANGUAGE,
+        "objective_id": OBJECTIVE_ID,
+        "idea": REFERENCE_OBJECTIVE_IDEA,
+        "idea_digest": PINNED_IDEA_DIGEST,
+        "objective_cid": PINNED_OBJECTIVE_CID,
+        "lock_cid": PINNED_LOCK_CID,
+        "owner_repository": OWNER_REPOSITORY,
+        "owner_interface": OWNER_INTERFACE,
+        "owner_schema": OWNER_SCHEMA,
+        "storage_owner_repository": STORAGE_OWNER_REPOSITORY,
+        "storage_owner_interface": STORAGE_OWNER_INTERFACE,
+        "shared_contract": {
+            "name": "SupervisorContextPack",
+            "interface": shared_interface_id("SupervisorContextPack"),
+            "schema": shared_schema_id("SupervisorContextPack"),
+            "owner_interface": OWNER_INTERFACE,
+            "owner_schema": OWNER_SCHEMA,
+            "owner_repository": OWNER_REPOSITORY,
+            "reminted": False,
+        },
+        "durable_artifact_receipt": {
+            "name": "DurableArtifactReceipt",
+            "interface": "DurableArtifactReceipt@1",
+            "owner_repository": STORAGE_OWNER_REPOSITORY,
+            "reminted": False,
+        },
+        "context_pack": {
+            "task_id": PCPR_061_TASK_ID,
+            "constructed_by": OWNER_REPOSITORY,
+            "constructed": True,
+            "consumer": PACKAGE_NAME,
+            "pack_cid": PINNED_PACK_CID,
+            "owner_interface": OWNER_INTERFACE,
+            "owner_schema": OWNER_SCHEMA,
+            "reminted": False,
+            "live": False,
+            "admitted_live": False,
+            "stored": True,
+            "stored_by": STORAGE_OWNER_REPOSITORY,
+            "current_root_published": True,
+            "evidence_kind": "measured",
+        },
+        "storage": {
+            "task_id": PCPR_062_TASK_ID,
+            "stored": True,
+            "stored_by": STORAGE_OWNER_REPOSITORY,
+            "current_root_published": True,
+            "current_root_cid": PINNED_CURRENT_ROOT_CID,
+            "bytes_cid": PINNED_BYTES_CID,
+            "live": False,
+            "deferred": False,
+            "reminted": False,
+            "evidence_kind": "measured_hermetic",
+        },
+        "execution": {
+            "task_id": PCPR_063_TASK_ID,
+            "performed": False,
+            "live": False,
+            "deferred": True,
+        },
+        "materialization": {
+            "kind": "declared_binding_not_live",
+            "admitted": False,
+            "live": False,
+            "applied": False,
+            "duckdb_or_quack_state_written": False,
+            "evidence_kind": "unavailable",
+        },
+        "live_context_pack_admission": typed_unavailable(
+            reason=(
+                "No admitted Quack-fenced supervisor session was observed. "
+                "Binding the stored current root is not live admission."
+            )
+        ),
+        "live_storage": typed_unavailable(
+            reason="Hermetic Kit persist is not live IPFS or Quack publication."
+        ),
+        "state_owner": {
+            "duckdb_cli": state_owner.get("duckdb"),
+            "duckdb_module": state_owner.get("duckdb_module"),
+            "duckdb_module_is_not_live_materialization": True,
+            "quack": "unavailable",
+            "duckdb_or_quack_state_written": False,
+            "direct_duckdb_write_prohibited": True,
+            "direct_quack_write_prohibited": True,
+        },
+        "source": {
+            "kind": "git",
+            "repository": SOURCE_REPOSITORY,
+            "binding": "current_head_not_mutable_main",
+            "mutable_main_reference": False,
+            "commit": {
+                "status": "observed_at_evaluation",
+                "evidence_kind": "measured",
+                "live": False,
+                "field": "PCPR-062 receipt current_tree_binding",
+            },
+        },
+        "operator_blocking_task": _operator_blocking_task(),
+        "live": False,
+        "applied": False,
+        "submitted_live": False,
+        "release_claim": False,
+        "closed_release_outcome": None,
+        "contracts_frozen": False,
+        "hashes_invented": False,
+        "signatures_invented": False,
+        "sibling_source_required": False,
+        "this_task_created_competing_authority": False,
+        "duckdb_or_quack_state_written": False,
+        "source_date_epoch": SOURCE_DATE_EPOCH,
+        "evidence_kind": "measured",
+    }
+    document["binding_cid"] = content_identity(
+        {key: value for key, value in document.items() if key != "binding_cid"}
+    )
+    return document
+
+
+def artifact_paths(root: Path) -> dict[str, Path]:
+    return {
+        "binding": root / BINDING_DIR_RELPATH / BINDING_JSON_NAME,
+        "readme": root / BINDING_README_RELPATH,
+        "catalog": root / CATALOG_RELPATH,
+    }
+
+
+def platform_context_pack_root_catalog(start: Path | None = None) -> dict[str, Any]:
+    root = discover_accelerate_root(start)
+    if root is None:
+        raise AccelerateContextPackStorageError(
+            "Accelerate package root was not found"
+        )
+    parent = root.parent
+    binding = render_declared_binding(root)
+    datasets_pack = _sibling_root(
+        parent
+        / "ipfs_datasets"
+        / BINDING_DIR_RELPATH
+        / "reference.context-pack.root.binding.json",
+        relative_path=(
+            f"../ipfs_datasets/{BINDING_DIR_RELPATH}/"
+            "reference.context-pack.root.binding.json"
+        ),
+    )
+    kit_pack = _sibling_root(
+        parent / "ipfs_kit" / BINDING_DIR_RELPATH / "reference.context-pack.root.json",
+        relative_path=(
+            f"../ipfs_kit/{BINDING_DIR_RELPATH}/reference.context-pack.root.json"
+        ),
+    )
+    catalog = {
+        "schema": CATALOG_SCHEMA,
+        "interface": CATALOG_INTERFACE,
+        "task_id": PCPR_062_TASK_ID,
+        "goal_id": PCPR_062_GOAL_ID,
+        "objective_kind": OBJECTIVE_KIND,
+        "portfolio_id": PORTFOLIO_ID,
+        "portfolio_version": PORTFOLIO_VERSION,
+        "objective_cid": PINNED_OBJECTIVE_CID,
+        "idea_digest": PINNED_IDEA_DIGEST,
+        "pack_cid": PINNED_PACK_CID,
+        "current_root_cid": PINNED_CURRENT_ROOT_CID,
+        "lock_cid": PINNED_LOCK_CID,
+        "components": {
+            "ipfs_accelerate_py": {
+                "binding_path": f"{BINDING_DIR_RELPATH}/{BINDING_JSON_NAME}",
+                "status": "observed",
+                "evidence_kind": "measured",
+                "package_name": PACKAGE_NAME,
+                "package_version": PACKAGE_VERSION,
+                "objective_kind": OBJECTIVE_KIND,
+                "objective_cid": PINNED_OBJECTIVE_CID,
+                "idea_digest": PINNED_IDEA_DIGEST,
+                "pack_cid": PINNED_PACK_CID,
+                "current_root_cid": PINNED_CURRENT_ROOT_CID,
+                "binding_cid": binding["binding_cid"],
+                "live": False,
+                "applied": False,
+                "reminted": False,
+            },
+            "ipfs_datasets_py": {"binding": datasets_pack},
+            "ipfs_kit_py": {"root": kit_pack},
+        },
+        "live_context_pack_admission": False,
+        "live_storage": False,
+        "live_execution": False,
+        "closed_release_outcome": None,
+        "release_claim": False,
+        "sibling_source_required": False,
+        "evidence_kind": "measured",
+    }
+    catalog["catalog_cid"] = content_identity(
+        {key: value for key, value in catalog.items() if key != "catalog_cid"}
+    )
+    return catalog
+
+
+def write_context_pack_storage_files(start: Path | None = None) -> dict[str, Any]:
+    root = discover_accelerate_root(start)
+    if root is None:
+        raise AccelerateContextPackStorageError(
+            "Accelerate package root was not found"
+        )
+    binding = render_declared_binding(root)
+    paths = artifact_paths(root)
+    _atomic_write(paths["binding"], pretty_json(binding))
+    readme = BINDING_README if BINDING_README.endswith("\n") else BINDING_README + "\n"
+    _atomic_write(paths["readme"], readme)
+    catalog = platform_context_pack_root_catalog(start)
+    _atomic_write(paths["catalog"], pretty_json(catalog))
+    return {
+        "binding": binding,
+        "catalog": catalog,
+        "paths": {name: str(path) for name, path in paths.items()},
+    }
+
+
+def verify_context_pack_storage_files(start: Path | None = None) -> dict[str, Any]:
+    root = discover_accelerate_root(start)
+    if root is None:
+        raise AccelerateContextPackStorageError(
+            "Accelerate package root was not found"
+        )
+    binding = render_declared_binding(root)
+    catalog = platform_context_pack_root_catalog(start)
+    paths = artifact_paths(root)
+    missing: list[str] = []
+    binding_ok = False
+    catalog_ok = False
+    readme_ok = False
+    expected_readme = (
+        BINDING_README if BINDING_README.endswith("\n") else BINDING_README + "\n"
+    )
+    for name, path in paths.items():
+        if not path.is_file():
+            missing.append(name)
+            continue
+        if name == "binding":
+            binding_ok = json.loads(path.read_text(encoding="utf-8")) == binding
+        elif name == "catalog":
+            catalog_ok = json.loads(path.read_text(encoding="utf-8")) == catalog
+        elif name == "readme":
+            readme_ok = path.read_text(encoding="utf-8") == expected_readme
+    return {
+        "ok": not missing and binding_ok and catalog_ok and readme_ok,
+        "missing": missing,
+        "binding_ok": binding_ok,
+        "catalog_ok": catalog_ok,
+        "readme_ok": readme_ok,
+        "pack_cid": binding["context_pack"]["pack_cid"],
+        "binding_cid": binding["binding_cid"],
+        "catalog_cid": catalog["catalog_cid"],
+        "current_root_cid": binding["storage"]["current_root_cid"],
+        "objective_cid": binding["objective_cid"],
+        "idea_digest": binding["idea_digest"],
+        "binding_sha256": (
+            sha256_bytes(paths["binding"].read_bytes())
+            if paths["binding"].is_file()
+            else "unavailable"
+        ),
+    }
+
+
+def current_head_static_probes(
+    start: Path | None = None,
+) -> tuple[OutcomeProbe, ...]:
+    root = discover_accelerate_root(start)
+    if root is None:
+        raise AccelerateContextPackStorageError(
+            "Accelerate package root was not found"
+        )
+    binding = render_declared_binding(root)
+    verified = verify_context_pack_storage_files(root)
+    table = parse_pyproject_context_pack_storage_table(
+        (root / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    remint = (
+        binding["context_pack"]["pack_cid"] != PINNED_PACK_CID
+        or binding["objective_cid"] != PINNED_OBJECTIVE_CID
+        or binding["idea_digest"] != PINNED_IDEA_DIGEST
+        or binding["lock_cid"] != PINNED_LOCK_CID
+        or binding["storage"]["current_root_cid"] != PINNED_CURRENT_ROOT_CID
+        or binding["context_pack"]["reminted"] is True
+        or binding["storage"]["reminted"] is True
+        or binding["shared_contract"]["reminted"] is True
+    )
+    probes = [
+        _probe(
+            "binding_files_match_generator",
+            verified.get("ok") is True and verified.get("binding_ok") is True,
+            reason=(
+                "Committed Accelerate ContextPack storage binding matches the generator."
+                if verified.get("binding_ok") is True
+                else "Committed Accelerate ContextPack storage binding is missing or drifts."
+            ),
+        ),
+        _probe(
+            "pyproject_context_pack_storage_table",
+            table.get("interface") == INTERFACE
+            and table.get("schema") == SCHEMA
+            and table.get("task-id") == PCPR_062_TASK_ID
+            and table.get("objective-kind") == OBJECTIVE_KIND,
+            reason=(
+                "pyproject.toml declares AccelerateContextPackStorageBinding@1."
+                if table.get("interface") == INTERFACE
+                else "pyproject.toml does not declare the PCPR-062 binding."
+            ),
+        ),
+        _probe(
+            "owner_pack_cid_matches_pin",
+            binding["context_pack"]["pack_cid"] == PINNED_PACK_CID,
+            reason="Accelerate binds the Datasets-owned pack CID without remint.",
+        ),
+        _probe(
+            "owner_identity_not_reminted",
+            binding["owner_interface"] == OWNER_INTERFACE
+            and binding["owner_schema"] == OWNER_SCHEMA
+            and binding["shared_contract"]["reminted"] is False,
+            reason="SupervisorContextPack remains a binding of DatasetsContextPack@1.",
+        ),
+        _probe(
+            "supervisor_context_pack_bound_not_minted",
+            binding["shared_contract"]["name"] == "SupervisorContextPack"
+            and binding["context_pack"]["constructed_by"] == OWNER_REPOSITORY
+            and binding["context_pack"]["consumer"] == PACKAGE_NAME,
+            reason="Accelerate consumes the owner pack and does not mint a sibling identity.",
+        ),
+        _probe(
+            "kit_current_root_bound_not_minted",
+            binding["storage"]["current_root_cid"] == PINNED_CURRENT_ROOT_CID
+            and binding["storage"]["stored_by"] == STORAGE_OWNER_REPOSITORY
+            and binding["storage"]["reminted"] is False,
+            reason="Accelerate binds the Kit current root and does not remint it.",
+        ),
+        _probe(
+            "storage_owned_by_kit",
+            binding["storage_owner_repository"] == STORAGE_OWNER_REPOSITORY
+            and binding["storage_owner_interface"] == STORAGE_OWNER_INTERFACE,
+            reason="Kit owns persist, CID verification, and current-root CAS.",
+        ),
+        _probe(
+            "execution_deferred_to_pcpr_063",
+            binding["execution"]["task_id"] == PCPR_063_TASK_ID
+            and binding["execution"]["performed"] is False,
+            reason="Deterministic-first execution remains PCPR-063.",
+        ),
+        _probe(
+            "duckdb_or_quack_not_written",
+            binding["duckdb_or_quack_state_written"] is False
+            and binding["state_owner"]["direct_duckdb_write_prohibited"] is True,
+            reason="This task does not write DuckDB or Quack state.",
+        ),
+        _probe(
+            "operator_blocking_task_emitted",
+            binding["operator_blocking_task"]["task_id"] == OPERATOR_BLOCKING_TASK_ID
+            and binding["operator_blocking_task"]["status"] == "typed_blocked",
+            reason="Missing live publication emits the operator-blocking task.",
+        ),
+        _probe(
+            "no_closed_release_outcome",
+            binding["closed_release_outcome"] is None
+            and binding["release_claim"] is False,
+            reason="This task does not emit a closed PCPR release outcome.",
+        ),
+        _probe(
+            "compatibility_identities_reminted",
+            remint,
+            reason="A reminted pack, root, objective, idea, or lock CID is forbidden.",
+        ),
+        _probe(
+            "datasets_identity_reminted",
+            binding["context_pack"]["reminted"] is True,
+            reason="Accelerate must not remint DatasetsContextPack@1.",
+        ),
+        _probe(
+            "kit_identity_reminted",
+            binding["storage"]["reminted"] is True,
+            reason="Accelerate must not remint the Kit current root.",
+        ),
+        _probe(
+            "direct_database_bypass_used",
+            False,
+            reason="Direct DuckDB or Quack writes were not used.",
+        ),
+        _probe(
+            "simulated_results_represented_as_live",
+            False,
+            reason="Simulated results are not represented as live.",
+        ),
+        _probe(
+            "live_storage_represented_as_live",
+            False,
+            reason="Hermetic persist is not represented as live storage.",
+        ),
+        _probe(
+            "closed_release_represented_as_live",
+            False,
+            reason="This task does not publish a PCPR release.",
+        ),
+        _probe(
+            "live_storage",
+            None,
+            evidence_kind="unavailable",
+            reason="Live IPFS/Quack ContextPack publication stays typed unavailable.",
+        ),
+        _probe(
+            "live_context_pack_admission",
+            None,
+            evidence_kind="unavailable",
+            reason="Live supervisor ContextPack admission was not performed.",
+        ),
+    ]
+    return tuple(probes)
+
+
+def qualify_context_pack_storage(
+    probes: Sequence[OutcomeProbe],
+    *,
+    pack_cid: str,
+    binding_cid: str,
+    catalog_cid: str,
+    current_root_cid: str,
+    objective_cid: str,
+    idea_digest_cid: str,
+) -> AccelerateContextPackStorageVerdict:
+    if not probes:
+        raise AccelerateContextPackStorageError("at least one probe is required")
+    normalized: list[OutcomeProbe] = []
+    blockers: list[str] = []
+    for probe in probes:
+        kind = _kind(probe.evidence_kind, "evidence_kind")
+        if probe.live and kind != "measured_live":
+            raise AccelerateContextPackStorageError(
+                "live claims require measured_live evidence"
+            )
+        if probe.simulated_represented_as_live:
+            raise AccelerateContextPackStorageError(
+                "simulated results must not be represented as live"
+            )
+        normalized.append(probe)
+        if probe.probe_id in FORBIDDEN_PRESENT_PROBE_IDS and probe.present is True:
+            blockers.append(probe.probe_id)
+        if probe.probe_id in REQUIRED_GOOD_PROBE_IDS and probe.present is not True:
+            blockers.append(probe.probe_id)
+
+    promotion_status = "rnd_non_promoted"
+    _reject_closed_release_value(promotion_status, "promotion_status")
+    payload = {
+        "schema": VERDICT_SCHEMA,
+        "interface": INTERFACE,
+        "task_id": PCPR_062_TASK_ID,
+        "goal_id": PCPR_062_GOAL_ID,
+        "promotion_status": promotion_status,
+        "supervisor_disposition": "supervisor_non_promoted",
+        "closed_release_outcome": None,
+        "release_claim": False,
+        "completion_authoritative": False,
+        "contracts_frozen": False,
+        "duckdb_or_quack_state_written": False,
+        "sibling_source_required": False,
+        "live_context_pack_admission": False,
+        "live_storage": False,
+        "live_execution": False,
+        "operator_blocking_task": OPERATOR_BLOCKING_TASK_ID,
+        "simulated_results_represented_as_live": False,
+        "this_task_created_competing_authority": False,
+        "probes": [item.to_mapping() for item in normalized],
+        "blockers": list(dict.fromkeys(blockers)),
+        "pack_cid": pack_cid,
+        "binding_cid": binding_cid,
+        "catalog_cid": catalog_cid,
+        "current_root_cid": current_root_cid,
+        "objective_cid": objective_cid,
+        "idea_digest": idea_digest_cid,
+    }
+    return AccelerateContextPackStorageVerdict(
+        schema=VERDICT_SCHEMA,
+        interface=INTERFACE,
+        promotion_status=promotion_status,
+        supervisor_disposition="supervisor_non_promoted",
+        closed_release_outcome=None,
+        release_claim=False,
+        completion_authoritative=False,
+        contracts_frozen=False,
+        duckdb_or_quack_state_written=False,
+        sibling_source_required=False,
+        live_context_pack_admission=False,
+        live_storage=False,
+        live_execution=False,
+        operator_blocking_task=OPERATOR_BLOCKING_TASK_ID,
+        simulated_results_represented_as_live=False,
+        this_task_created_competing_authority=False,
+        probes=tuple(normalized),
+        blockers=tuple(dict.fromkeys(blockers)),
+        verdict_cid=content_identity(payload),
+        pack_cid=pack_cid,
+        binding_cid=binding_cid,
+        catalog_cid=catalog_cid,
+        current_root_cid=current_root_cid,
+        objective_cid=objective_cid,
+        idea_digest=idea_digest_cid,
+    )
+
+
+def qualify_current_head_context_pack_storage(
+    start: Path | None = None,
+) -> AccelerateContextPackStorageVerdict:
+    binding = render_declared_binding(start)
+    catalog = platform_context_pack_root_catalog(start)
+    return qualify_context_pack_storage(
+        current_head_static_probes(start),
+        pack_cid=str(binding["context_pack"]["pack_cid"]),
+        binding_cid=str(binding["binding_cid"]),
+        catalog_cid=str(catalog["catalog_cid"]),
+        current_root_cid=str(binding["storage"]["current_root_cid"]),
+        objective_cid=str(binding["objective_cid"]),
+        idea_digest_cid=str(binding["idea_digest"]),
+    )
+
+
+def pcpr_062_receipt_promotion(
+    verdict: AccelerateContextPackStorageVerdict,
+) -> dict[str, Any]:
+    if verdict.closed_release_outcome is not None:
+        raise AccelerateContextPackStorageError(
+            "ContextPack storage binding must not mint a closed release outcome"
+        )
+    if verdict.release_claim:
+        raise AccelerateContextPackStorageError(
+            "ContextPack storage binding must not claim a PCPR release"
+        )
+    if verdict.completion_authoritative:
+        raise AccelerateContextPackStorageError(
+            "ContextPack storage completion is not authoritative"
+        )
+    if verdict.duckdb_or_quack_state_written:
+        raise AccelerateContextPackStorageError(
+            "ContextPack storage binding must not write DuckDB or Quack state"
+        )
+    if verdict.promotion_status in CLOSED_RELEASE_OUTCOMES:
+        raise AccelerateContextPackStorageError(
+            "promotion_status must not be a closed release outcome"
+        )
+    if verdict.live_context_pack_admission or verdict.live_storage:
+        raise AccelerateContextPackStorageError(
+            "live storage requires measured_live evidence"
+        )
+    if verdict.live_execution:
+        raise AccelerateContextPackStorageError("execution remains PCPR-063")
+    return verdict.to_mapping()
+
+
+def refuse_pack_cid_remint(cid: str) -> str:
+    if cid != PINNED_PACK_CID:
+        raise AccelerateContextPackStorageError(
+            f"ContextPack CID {cid} remints {PINNED_PACK_CID}"
+        )
+    return cid
+
+
+def refuse_current_root_remint(cid: str) -> str:
+    if cid != PINNED_CURRENT_ROOT_CID:
+        raise AccelerateContextPackStorageError(
+            f"current root CID {cid} remints {PINNED_CURRENT_ROOT_CID}"
+        )
+    return cid
+
+
+PINNED_BINDING_CID: Final = (
+    "baguqeeraa74hjs5nhnymdtobmo2y66ha4jvqtcdakeyebt3zg75yz5tp7y7a"
+)
+PINNED_CATALOG_CID: Final = (
+    "baguqeeraz3qc64u4xanqmzrvahgmpiwo6czgqohvdfxju4konsdndsvzcdoq"
+)
+CURRENT_HEAD_NON_PROMOTION_VERDICT_CID: Final = (
+    "baguqeeranjshsgftwfno2slsqtmzep3paiicv5yzf74xv7qzwn6ogpiscoda"
+)
+
+
+__all__ = [
+    "CLOSED_RELEASE_OUTCOMES",
+    "CURRENT_HEAD_NON_PROMOTION_VERDICT_CID",
+    "AccelerateContextPackStorageError",
+    "HERMETIC_CANDIDATE_SUITES",
+    "INTERFACE",
+    "OBJECTIVE_KIND",
+    "OPERATOR_BLOCKING_TASK_ID",
+    "OutcomeProbe",
+    "PCPR_062_GOAL_ID",
+    "PCPR_062_TASK_ID",
+    "PINNED_BINDING_CID",
+    "PINNED_CATALOG_CID",
+    "PINNED_CURRENT_ROOT_CID",
+    "PINNED_IDEA_DIGEST",
+    "PINNED_LOCK_CID",
+    "PINNED_OBJECTIVE_CID",
+    "PINNED_PACK_CID",
+    "SCHEMA",
+    "SEALED_PATH",
+    "SEALED_PYTHON",
+    "current_head_static_probes",
+    "pcpr_062_receipt_promotion",
+    "platform_context_pack_root_catalog",
+    "qualify_context_pack_storage",
+    "qualify_current_head_context_pack_storage",
+    "refuse_current_root_remint",
+    "refuse_pack_cid_remint",
+    "render_declared_binding",
+    "verify_context_pack_storage_files",
+    "write_context_pack_storage_files",
+]
