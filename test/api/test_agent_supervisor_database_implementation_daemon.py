@@ -2777,6 +2777,44 @@ def test_persist_retry_on_todo_control_retires_instead_of_crashing(
         daemon.close()
 
 
+def test_exhausted_deferral_on_todo_control_skips_instead_of_crashing(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path / "lane")
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = SimpleNamespace(
+            attempt_id="attempt:exhausted-deferral",
+            task_cid="task:cid:001",
+            claim_id="claim:leftover",
+            lease_id="lease:leftover",
+            owner_session_id=daemon.owner_session_id,
+            attempt_number=1,
+            fencing_token=1,
+            fence_epoch=1,
+        )
+        daemon._latest_failed_attempts = lambda: (attempt,)  # type: ignore[method-assign]
+        daemon._terminal_retry_evidence = (  # type: ignore[method-assign]
+            lambda _attempt: {"typed_deferral_budget": {"exhausted": True}}
+        )
+        daemon._typed_deferral_supersession_reconciliation_observation = (  # type: ignore[method-assign]
+            lambda *_args, **_kwargs: None
+        )
+        daemon._fresh_failed_attempt_control_supersession = (  # type: ignore[method-assign]
+            lambda *_args, **_kwargs: None
+        )
+        daemon._foreign_generic_retry_reconciliation_observation = (  # type: ignore[method-assign]
+            lambda *_args, **_kwargs: None
+        )
+        outcomes = daemon.reconcile_terminal_retry_states()
+        assert outcomes == []
+        control = daemon.task_source.get("task:cid:001")
+        assert control is not None
+        assert str(control.status).lower() in {"todo", "ready"}
+    finally:
+        daemon.close()
+
+
 def test_landed_merge_defers_after_owner_fatal(tmp_path: Path) -> None:
     daemon = _open_daemon(tmp_path / "lane")
     try:

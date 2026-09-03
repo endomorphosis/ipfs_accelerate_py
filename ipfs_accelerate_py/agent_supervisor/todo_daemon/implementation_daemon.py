@@ -118953,7 +118953,10 @@ class DatabaseImplementationDaemon:
                 # task or crash the lane after another actor completes it.
                 if status in IMPLEMENTATION_TASK_TERMINAL_STATUSES:
                     continue
-                if status == "blocked":
+                if status in {"blocked", "todo", "ready"}:
+                    # SPAR-024: leftover exhausted deferral after recycle left
+                    # DuckDB control already unclaimed. Crashing here looped
+                    # lane-2 (~500 times) and starved the ready claim.
                     continue
                 if status not in {"in_progress", "retrying"}:
                     raise DatabaseImplementationConflictError(
