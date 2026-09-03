@@ -273,6 +273,18 @@ live-application = false
 live-plan-delta = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.state-owner-restart]
+schema = "ipfs_accelerate_py/assurance/authoritative-state-owner-restart@1"
+interface = "AccelerateAuthoritativeStateOwnerRestart@1"
+task-id = "PCPR-070"
+goal-id = "PCPR-G700"
+objective-kind = "declared_authoritative_state_owner_restart"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-restart = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
