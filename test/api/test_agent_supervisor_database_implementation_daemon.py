@@ -474,6 +474,7 @@ def _block_with_legacy_leftover_wait_budget(
     attempts: list[DatabaseTaskAttempt],
     *,
     budget_override: dict[str, object] | None = None,
+    coordination_override: dict[str, object] | None = None,
 ) -> tuple[DatabaseTaskAttempt, dict[str, object]]:
     latest = max(attempts, key=lambda item: int(item.attempt_number))
     budget = budget_override or _legacy_leftover_wait_budget(daemon, attempts)
@@ -503,11 +504,15 @@ def _block_with_legacy_leftover_wait_budget(
             "prior_queue_entry_preserved_inactive": (
                 daemon.task_source.get_queue_entry(latest.task_cid) is not None
             ),
-            "coordination": {
-                "attempt_id": latest.attempt_id,
-                "claim_id": latest.claim_id,
-                "attempt_number": int(latest.attempt_number),
-            },
+            "coordination": (
+                dict(coordination_override)
+                if coordination_override is not None
+                else {
+                    "attempt_id": latest.attempt_id,
+                    "claim_id": latest.claim_id,
+                    "attempt_number": int(latest.attempt_number),
+                }
+            ),
             "control_expected_status": "retrying",
             "control_expected_revision": int(task.revision),
         },
@@ -12728,6 +12733,7 @@ def test_leftover_wait_current_foreign_matching_recovers(
             daemon,
             exact,
             budget_override=budget,
+            coordination_override={},
         )
         assert daemon.task_source.get(attempt.task_cid).status == "blocked"
 

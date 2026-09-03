@@ -1007,7 +1007,7 @@ def _validated_leftover_wait_blocked_context(
             blocked_receipt.get(receipt_field),
             noun=f"leftover-wait exhausted {receipt_field}",
         )
-    if (
+    if coordination and (
         coordination.get("attempt_id") != blocked_receipt["attempt_id"]
         or coordination.get("claim_id") != blocked_receipt["claim_id"]
         or type(coordination.get("attempt_number")) is not int

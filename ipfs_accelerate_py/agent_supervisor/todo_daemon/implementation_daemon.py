@@ -114311,11 +114311,14 @@ class DatabaseImplementationDaemon:
             mismatch = "blocked control receipt prior_queue_entry_preserved_inactive is invalid"
         elif not isinstance(coordination, Mapping):
             mismatch = "blocked control receipt coordination is invalid"
-        elif coordination.get("attempt_id") != attempt.attempt_id:
+        elif coordination and coordination.get("attempt_id") != attempt.attempt_id:
             mismatch = "blocked control receipt coordination attempt_id is foreign"
-        elif coordination.get("claim_id") != attempt.claim_id:
+        elif coordination and coordination.get("claim_id") != attempt.claim_id:
             mismatch = "blocked control receipt coordination claim_id is foreign"
-        elif coordination.get("attempt_number") != int(attempt.attempt_number):
+        elif (
+            coordination
+            and coordination.get("attempt_number") != int(attempt.attempt_number)
+        ):
             mismatch = "blocked control receipt coordination attempt_number is foreign"
         elif receipt.get("control_expected_status") not in {
             "in_progress",
@@ -116205,7 +116208,14 @@ class DatabaseImplementationDaemon:
                     "prior_queue_entry_preserved_inactive": (
                         queue_entry is not None
                     ),
-                    "coordination": dict(coordination_evidence or {}),
+                    "coordination": dict(
+                        coordination_evidence
+                        or {
+                            "attempt_id": attempt.attempt_id,
+                            "claim_id": attempt.claim_id,
+                            "attempt_number": int(attempt.attempt_number),
+                        }
+                    ),
                     "control_expected_status": status,
                     "control_expected_revision": int(task.revision),
                 },
