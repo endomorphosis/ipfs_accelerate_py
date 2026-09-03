@@ -1,0 +1,135 @@
+{
+  "all_required_checks_must_pass": true,
+  "applied": false,
+  "board_namespace": "proof-carrying-platform-qualification-and-release-v1",
+  "catalog_contract_cid": "baguqeeraqpptps2gf55wmthv3sm5nzlxqqdjfyg2ggkbl5ovfzuvvvsxap4a",
+  "closed_decision_tasks": [
+    "PCPR-093",
+    "PCPR-094"
+  ],
+  "closed_release_outcome": null,
+  "compatibility_document_cid": "baguqeerafnibnbrsfaqvbxx444kqk3gi4sh244r7bl7usdxk2krg6njlquza",
+  "compatibility_lock_task": "PCPR-056",
+  "evidence_id": "pcpr/branch-and-release-gates@1",
+  "evidence_kind": "measured",
+  "freeze_task": "PCPR-002",
+  "gate_kind": "declared_release_gate",
+  "goal_id": "PCPR-G600",
+  "governance_gate_complete": false,
+  "hashes_invented": false,
+  "hermetic_pass_cannot_qualify_live": true,
+  "interface": "AccelerateBranchAndReleaseGates@1",
+  "live": false,
+  "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+  "mutable_main_is_not_release_identity": true,
+  "named_git_extras": [
+    "libp2p",
+    "mcp-p2p",
+    "ipfs-transformers",
+    "ipfs-model-manager"
+  ],
+  "named_git_extras_role": "source-checkout-development-and-integration",
+  "operator_blocking_task": {
+    "action": "Apply GitHub branch protection on default branch main, protect signed-tag patterns, and require the declared current-head and release status checks. Do not publish a release after a partial required-build failure.",
+    "applied": false,
+    "evidence_kind": "unavailable",
+    "governance_gate_complete": false,
+    "live": false,
+    "reason": "Sealed validation has no admitted GitHub admin identity. gh CLI and live branch-protection API stay typed unavailable. The declared policy is not live GitHub protection. This is the explicit operator-blocking task required when permissions do not allow applying governance.",
+    "requires": "repository-admin permission on endomorphosis/ipfs_accelerate_py, endomorphosis/ipfs_datasets_py, and endomorphosis/ipfs_kit_py",
+    "status": "typed_blocked",
+    "task_id": "pcpr-057-operator-github-governance"
+  },
+  "package_name": "ipfs_accelerate_py",
+  "package_version": "0.0.45",
+  "partial_required_build_failure_prohibits_release": true,
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "program_id": "proof-carrying-platform-qualification-and-release-v1",
+  "published": false,
+  "python_requires": ">=3.12",
+  "release_claim": false,
+  "release_gate_cid": "baguqeerajahrusqwd33fqbuw46zgqcsw4xsuswdqq6td7c3nyddeeg5qofca",
+  "repositories": {
+    "ipfs_accelerate_py": {
+      "default_branch": "main",
+      "github_repository": "endomorphosis/ipfs_accelerate_py",
+      "intended_tag_name": "ipfs_accelerate_py-v0.0.45",
+      "intended_tag_pattern": "ipfs_accelerate_py-v*",
+      "package_version": "0.0.45"
+    },
+    "ipfs_datasets_py": {
+      "default_branch": "main",
+      "github_repository": "endomorphosis/ipfs_datasets_py",
+      "intended_tag_name": "ipfs_datasets_py-v0.2.0",
+      "intended_tag_pattern": "ipfs_datasets_py-v*",
+      "package_version": "0.2.0"
+    },
+    "ipfs_kit_py": {
+      "default_branch": "main",
+      "github_repository": "endomorphosis/ipfs_kit_py",
+      "intended_tag_name": "ipfs_kit_py-v0.3.0",
+      "intended_tag_pattern": "ipfs_kit_py-v*",
+      "package_version": "0.3.0"
+    }
+  },
+  "required_check_count": 8,
+  "required_repositories": [
+    "ipfs_accelerate_py",
+    "ipfs_datasets_py",
+    "ipfs_kit_py"
+  ],
+  "required_status_checks": [
+    "pcpr.current-head-qualification",
+    "pcpr.hermetic-candidate-suites",
+    "pcpr.clean-package",
+    "pcpr.dependency-locks",
+    "pcpr.sbom-and-provenance",
+    "pcpr.signed-tags-and-artifacts",
+    "pcpr.portfolio-compatibility-lock",
+    "pcpr.branch-and-release-gates"
+  ],
+  "schema": "ipfs_accelerate_py/assurance/declared-release-gate@1",
+  "sibling_source_required": false,
+  "signatures_invented": false,
+  "signed_tags_task": "PCPR-055",
+  "signing": {
+    "evidence_kind": "unavailable",
+    "invented": false,
+    "live": false,
+    "reason": "A live GPG/SSH/cosign signer was not admitted. Signatures were not invented. This gate does not create git tags.",
+    "signed": false,
+    "status": "unavailable",
+    "tools": {
+      "cosign": "unavailable",
+      "gpg": "/usr/bin/gpg",
+      "gpg2": "unavailable",
+      "gpgsm": "/usr/bin/gpgsm",
+      "in_toto_sign": "unavailable",
+      "minisign": "unavailable",
+      "signify": "unavailable",
+      "signify_openbsd": "unavailable",
+      "slsa_generator": "unavailable",
+      "ssh_keygen": "/usr/bin/ssh-keygen"
+    }
+  },
+  "simulated_as_live_prohibits_release": true,
+  "source": {
+    "binding": "current_head_not_mutable_main",
+    "commit": {
+      "evidence_kind": "measured",
+      "field": "PCPR-057 receipt current_tree_binding",
+      "live": false,
+      "reason": "Exact commit and tree are bound by the task receipt because nested admission rewrites HEAD. This document does not pin origin/main.",
+      "status": "observed_at_evaluation"
+    },
+    "kind": "git",
+    "mutable_main_reference": false,
+    "origin_url": "https://github.com/endomorphosis/ipfs_accelerate_py",
+    "repository": "endomorphosis/ipfs_accelerate_py"
+  },
+  "source_date_epoch": "0",
+  "supported_combination_id": "pcpr.v1.python312.accelerate-datasets-kit.shared-contracts-v1",
+  "task_id": "PCPR-057",
+  "unpublished_artifact_is_not_a_release": true
+}

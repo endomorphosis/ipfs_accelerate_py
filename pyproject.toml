@@ -130,6 +130,23 @@ signatures-invented = false
 live-signed-lock = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.branch-and-release-gates]
+schema = "ipfs_accelerate_py/assurance/branch-and-release-gates@1"
+interface = "AccelerateBranchAndReleaseGates@1"
+task-id = "PCPR-057"
+goal-id = "PCPR-G600"
+policy-kind = "declared_branch_protection_policy"
+gate-kind = "declared_release_gate"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+default-branch = "main"
+intended-tag-pattern = "ipfs_accelerate_py-v*"
+partial-required-build-failure-prohibits-release = true
+live-branch-protection = false
+live-tag-protection = false
+governance-gate-complete = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 

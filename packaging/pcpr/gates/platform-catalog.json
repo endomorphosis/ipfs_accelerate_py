@@ -1,0 +1,73 @@
+{
+  "branch_policy_cid": "baguqeeram3uegwfx6c4i76eyj5nuzlgsqw6yl5vb5c6drkuyacn5l77ksnna",
+  "catalog_cid": "baguqeera4njyieak7aamyguuts53kpha7nzq4kpyl2yo54n4a7ljjg4ktngq",
+  "closed_release_outcome": null,
+  "components": {
+    "ipfs_accelerate_py": {
+      "applied": false,
+      "branch_policy_cid": "baguqeeram3uegwfx6c4i76eyj5nuzlgsqw6yl5vb5c6drkuyacn5l77ksnna",
+      "branch_policy_path": "packaging/pcpr/gates/cpython312/release.branch-protection.json",
+      "evidence_kind": "measured",
+      "gate_kind": "declared_release_gate",
+      "intended_tag_name": "ipfs_accelerate_py-v0.0.45",
+      "live": false,
+      "package_name": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "policy_kind": "declared_branch_protection_policy",
+      "release_gate_cid": "baguqeerajahrusqwd33fqbuw46zgqcsw4xsuswdqq6td7c3nyddeeg5qofca",
+      "release_gate_path": "packaging/pcpr/gates/cpython312/release.gate.json",
+      "status": "observed"
+    },
+    "ipfs_datasets_py": {
+      "binding": {
+        "applied": false,
+        "binding_cid": "baguqeeraqu6j5ywt6guavxdol2ab7hpix5rj4u74cvevv47dby34acpmzgpq",
+        "branch_policy_cid": "baguqeeram3uegwfx6c4i76eyj5nuzlgsqw6yl5vb5c6drkuyacn5l77ksnna",
+        "evidence_kind": "measured",
+        "gate_kind": "declared_release_gate_binding",
+        "live": false,
+        "package_name": "ipfs_datasets_py",
+        "package_version": "0.2.0",
+        "path": "../ipfs_datasets/packaging/pcpr/gates/cpython312/release.binding.json",
+        "policy_kind": "declared_branch_protection_policy_binding",
+        "release_gate_cid": "baguqeerajahrusqwd33fqbuw46zgqcsw4xsuswdqq6td7c3nyddeeg5qofca",
+        "sha256": "addbf19db883e114d71776ecd58aab68eb90a938adede82569e7ca3660b2b86f",
+        "status": "observed"
+      }
+    },
+    "ipfs_kit_py": {
+      "binding": {
+        "applied": false,
+        "binding_cid": "baguqeeraani35jkfs7fjac2jkruvdz542yxthb7agg462vcfrwtg35vzw4cq",
+        "branch_policy_cid": "baguqeeram3uegwfx6c4i76eyj5nuzlgsqw6yl5vb5c6drkuyacn5l77ksnna",
+        "evidence_kind": "measured",
+        "gate_kind": "declared_release_gate_binding",
+        "live": false,
+        "package_name": "ipfs_kit_py",
+        "package_version": "0.3.0",
+        "path": "../ipfs_kit/packaging/pcpr/gates/cpython312/release.binding.json",
+        "policy_kind": "declared_branch_protection_policy_binding",
+        "release_gate_cid": "baguqeerajahrusqwd33fqbuw46zgqcsw4xsuswdqq6td7c3nyddeeg5qofca",
+        "sha256": "e6c65d1f002bb9cba618d1b7c5f81c5c6410fef019c5a7484d8682157bbfef30",
+        "status": "observed"
+      }
+    }
+  },
+  "evidence_kind": "measured",
+  "gate_kind": "declared_release_gate",
+  "goal_id": "PCPR-G600",
+  "governance_gate_complete": false,
+  "interface": "PlatformBranchAndReleaseGates@1",
+  "live_branch_protection": false,
+  "live_tag_protection": false,
+  "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+  "mutable_main_reference": false,
+  "policy_kind": "declared_branch_protection_policy",
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "release_claim": false,
+  "release_gate_cid": "baguqeerajahrusqwd33fqbuw46zgqcsw4xsuswdqq6td7c3nyddeeg5qofca",
+  "schema": "ipfs_accelerate_py/assurance/platform-branch-and-release-gates-catalog@1",
+  "sibling_source_required": false,
+  "task_id": "PCPR-057"
+}
