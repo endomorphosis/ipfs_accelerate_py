@@ -2782,6 +2782,48 @@ def test_persist_retry_on_todo_control_retires_instead_of_crashing(
         daemon.close()
 
 
+def test_persist_retry_on_todo_control_ignores_stale_terminal_evidence(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(tmp_path / "lane")
+    try:
+        daemon.materialize_population(_population(1))
+
+        def fake_retire(attempt: object, task: object, **_kwargs: object) -> object:
+            raise DatabaseImplementationConflictError(
+                "reconciled attempt attempt:leftover has different immutable "
+                "terminal evidence"
+            )
+
+        daemon._retire_stale_running_attempt = fake_retire  # type: ignore[method-assign]
+        attempt = SimpleNamespace(
+            attempt_id="attempt:stale-terminal",
+            task_cid="task:cid:001",
+            claim_id="claim:leftover",
+            lease_id="lease:leftover",
+            owner_session_id=daemon.owner_session_id,
+            attempt_number=1,
+            fencing_token=1,
+            fence_epoch=1,
+            committed_phase="failed",
+            revision=2,
+            finished_at_ms=1,
+        )
+        outcome = daemon._persist_task_retry_state(
+            attempt,  # type: ignore[arg-type]
+            reason="worktree_lifecycle_claim_exists",
+            backoff_ms=30_000,
+            evidence_source="typed_portal_deferral",
+        )
+        assert outcome["reason"] == "control_already_unclaimed"
+        assert outcome["changed"] is False
+        control = daemon.task_source.get("task:cid:001")
+        assert control is not None
+        assert str(control.status).lower() in {"todo", "ready"}
+    finally:
+        daemon.close()
+
+
 def test_exhausted_deferral_on_todo_control_skips_instead_of_crashing(
     tmp_path: Path,
 ) -> None:

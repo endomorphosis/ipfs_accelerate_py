@@ -109854,8 +109854,13 @@ class DatabaseImplementationDaemon:
             # SPAR-024: recycle left a retryable local attempt while DuckDB
             # control was already todo/ready. Forcing that row to retrying
             # crashed lane-2 and starved the ready claim. Retire the leftover
-            # cursor instead.
-            self._retire_stale_running_attempt(attempt, task)
+            # cursor instead. A prior failed-phase commit can already hold
+            # immutable terminal evidence; that conflict must not freeze the
+            # only dependency-ready task.
+            try:
+                self._retire_stale_running_attempt(attempt, task)
+            except DatabaseImplementationConflictError:
+                pass
             return {
                 "task_cid": attempt.task_cid,
                 "attempt_id": attempt.attempt_id,
