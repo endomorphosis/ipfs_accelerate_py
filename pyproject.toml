@@ -160,6 +160,19 @@ live-materialization = false
 live-start = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.semantic-context-pack]
+schema = "ipfs_accelerate_py/assurance/semantic-context-pack-binding@1"
+interface = "AccelerateSemanticContextPackBinding@1"
+task-id = "PCPR-061"
+goal-id = "PCPR-G700"
+objective-kind = "declared_semantic_context_pack_binding"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-context-pack-admission = false
+live-storage = false
+live-execution = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 

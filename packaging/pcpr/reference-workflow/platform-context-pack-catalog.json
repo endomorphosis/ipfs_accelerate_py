@@ -1,0 +1,72 @@
+{
+  "catalog_cid": "baguqeerazpi4ztggkhyigjr6jpktppzwmwoxvytllqgmyqutfy6gvbrdj6za",
+  "closed_release_outcome": null,
+  "components": {
+    "ipfs_accelerate_py": {
+      "applied": false,
+      "binding_cid": "baguqeeraqus4od6vgxrlrgqjxp5k37jc6u22gwrnpyg2qmswiaxr2lva4wga",
+      "binding_path": "packaging/pcpr/reference-workflow/cpython312/reference.context-pack.json",
+      "evidence_kind": "measured",
+      "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+      "live": false,
+      "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+      "objective_kind": "declared_semantic_context_pack_binding",
+      "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+      "package_name": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "reminted": false,
+      "status": "observed"
+    },
+    "ipfs_datasets_py": {
+      "pack": {
+        "applied": false,
+        "evidence_kind": "measured",
+        "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+        "live": false,
+        "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+        "objective_kind": "declared_semantic_context_pack",
+        "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+        "pack_document_cid": "baguqeera5ykn6pm3xvty6taigxxjtnguutg7oznw4ez52jv676igcif4wkda",
+        "package_name": "ipfs_datasets_py",
+        "package_version": "0.2.0",
+        "path": "../ipfs_datasets/packaging/pcpr/reference-workflow/cpython312/reference.context-pack.json",
+        "sha256": "0d9d1da116ac1a5c9197a4e546ecc0d326e6330c22fa0291406ee178e12a64cf",
+        "status": "observed"
+      }
+    },
+    "ipfs_kit_py": {
+      "binding": {
+        "applied": false,
+        "evidence_kind": "measured",
+        "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+        "live": false,
+        "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+        "objective_kind": "declared_semantic_context_pack_binding",
+        "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+        "pack_document_cid": "baguqeeraetspt7iq3v7fbcyfk3bwmakpsolxrcjz4rlw3ij4aenlr2uk2cja",
+        "package_name": "ipfs_kit_py",
+        "package_version": "0.3.0",
+        "path": "../ipfs_kit/packaging/pcpr/reference-workflow/cpython312/reference.context-pack.binding.json",
+        "sha256": "35927a3bc00cc1b1cd7816a02b2cb779a907ff4233089c7fce0b75e1047bdc22",
+        "status": "observed"
+      }
+    }
+  },
+  "evidence_kind": "measured",
+  "goal_id": "PCPR-G700",
+  "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+  "interface": "PlatformSemanticContextPack@1",
+  "live_context_pack_admission": false,
+  "live_execution": false,
+  "live_storage": false,
+  "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+  "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+  "objective_kind": "declared_semantic_context_pack_binding",
+  "pack_cid": "bafkreih72d3nncekez43wmtlczq5mdtymzniluujypwybpgu3mtt7i4v2e",
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "release_claim": false,
+  "schema": "ipfs_accelerate_py/assurance/platform-semantic-context-pack-catalog@1",
+  "sibling_source_required": false,
+  "task_id": "PCPR-061"
+}
