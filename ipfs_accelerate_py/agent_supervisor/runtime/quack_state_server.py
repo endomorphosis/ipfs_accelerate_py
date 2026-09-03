@@ -7125,6 +7125,16 @@ def build_server(
     return server
 
 
+def admit_dead_exclusive_owner_recovery(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Admit rematerialize/relaunch only after exclusive owner death is proved."""
+
+    from .exclusive_owner_recovery import (
+        admit_dead_exclusive_owner_recovery as _admit,
+    )
+
+    return _admit(*args, **kwargs)
+
+
 __all__ = (
     "DEFAULT_LOOPBACK_HOST",
     "DEFAULT_STORE_ID",
@@ -7149,6 +7159,7 @@ __all__ = (
     "ServerLifecycle",
     "StateServerIdentity",
     "TokenVault",
+    "admit_dead_exclusive_owner_recovery",
     "assert_bind_admitted",
     "build_server",
     "listen_uri",
