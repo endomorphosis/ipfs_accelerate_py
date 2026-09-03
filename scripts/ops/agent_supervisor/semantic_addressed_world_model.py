@@ -18643,7 +18643,11 @@ def _validate_offline_quack_start(
 ) -> Mapping[str, Any]:
     """Revalidate committed controls and the exact store before native LOAD."""
 
-    if _M65_SUCCESSOR_KEY in config:
+    if _M68_SUCCESSOR_KEY in config:
+        _active_source_repair_materialization(config)
+    elif _M67_SUCCESSOR_KEY in config:
+        _active_source_repair_materialization(config)
+    elif _M65_SUCCESSOR_KEY in config:
         _active_source_repair_materialization(config)
     elif _M64_SUCCESSOR_KEY in config:
         _active_source_repair_materialization(config)
@@ -18695,7 +18699,27 @@ def _validate_offline_quack_start(
     materializer = _materializer()
     population = materializer.build_population(REPO_ROOT)
     materializer._assert_committed_clean_source(REPO_ROOT, population)
-    if _M65_SUCCESSOR_KEY in config:
+    if _M68_SUCCESSOR_KEY in config:
+        active_materialization = _active_source_repair_materialization(config)
+        try:
+            admitted = materializer._check_m68_materialized(REPO_ROOT, CONFIG_PATH)
+        except Exception as exc:
+            raise OperatorError(
+                "M68 listen-down fenced-stop restart is not admissible"
+            ) from exc
+        if admitted.get("valid") is not True:
+            raise OperatorError(
+                "M68 listen-down fenced-stop restart is not admissible"
+            )
+        return MappingProxyType(
+            {
+                "dependency_valid": True,
+                "board_valid": True,
+                "prior_authority": active_materialization,
+                "store": admitted,
+            }
+        )
+    elif _M65_SUCCESSOR_KEY in config:
         active_materialization = _active_source_repair_materialization(config)
         try:
             admitted = materializer._check_m65_prestart_admission(REPO_ROOT, config)
@@ -20267,6 +20291,39 @@ def _stop_m68_listen_down_owner(config: Mapping[str, Any]) -> Mapping[str, Any]:
     marker_path = runtime / ".control.duckdb.state-owner.json"
     status_path = runtime / "quack-owner" / "quack-state-server.status.json"
     stop_path = runtime / "quack-owner" / "quack-state-server.stop"
+    if not os.path.lexists(marker_path):
+        status, _ = materializer._load_nofollow_json(
+            status_path, root=REPO_ROOT, noun="M68 listen-down owner status"
+        )
+        identity = status.get("identity") if isinstance(status, Mapping) else {}
+        birth = (
+            identity.get("process_birth")
+            if isinstance(identity, Mapping)
+            else None
+        )
+        pid = int(birth.get("pid") or 0) if isinstance(birth, Mapping) else 0
+        if (
+            not isinstance(identity, Mapping)
+            or str(status.get("lifecycle") or "") != "stopped"
+            or str(identity.get("status") or "") != "stopped"
+            or str(identity.get("server_id") or "") != _M68_PRIOR_SERVER_ID
+            or str(identity.get("process_birth_id") or "")
+            != _M68_PRIOR_PROCESS_BIRTH_ID
+            or int(identity.get("generation") or 0) != _M68_PRIOR_GENERATION
+        ):
+            raise OperatorError("M68 listen-down owner identity differs")
+        if pid > 1 and Path(f"/proc/{pid}").exists():
+            raise OperatorError(
+                "M68 listen-down owner marker is missing while the pid is live"
+            )
+        return MappingProxyType(
+            {
+                "stopped": True,
+                "already": True,
+                "server_id": _M68_PRIOR_SERVER_ID,
+                "generation": _M68_PRIOR_GENERATION,
+            }
+        )
     marker, _ = materializer._load_nofollow_json(
         marker_path, root=REPO_ROOT, noun="M68 listen-down owner marker"
     )
