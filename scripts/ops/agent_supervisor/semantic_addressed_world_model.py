@@ -474,13 +474,13 @@ _M65_SUCCESSOR_KEY = (
 )
 _M65_MIGRATION_REVISION = "SAWM-R2-M65"
 _M65_AUTHORITY_CID = (
-    "sha256:bdb426ff33ec7065170c1a558829a8c6aed9f4e1f52b29617017992a3e9d5e71"
+    "sha256:0df7a85da3817f959b92f0306005bf4f7623e6267d951de441deaf0a8520f176"
 )
-_M65_AUTHORITY_SIZE = 18_221
+_M65_AUTHORITY_SIZE = 18_224
 _M65_STORE_ID = _M64_STORE_ID
 _M65_COORDINATION_STORE_ID = _M64_COORDINATION_STORE_ID
-_M65_PRIOR_GENERATION = 43
-_M65_GENERATION = 44
+_M65_PRIOR_GENERATION = 44
+_M65_GENERATION = 45
 _M65_PRIOR_EVENT_WATERMARK = 337
 _M65_TARGET_EVENT_WATERMARK = 338
 _M65_PRIOR_PROJECTION_CID = (
@@ -490,8 +490,8 @@ _M65_TARGET_PROJECTION_CID = (
     "baguqeeram4a4oq3kqikzyp6vm5cg2qlojmgp7cqplgew3n3x3lj6e7ehogda"
 )
 _M65_TARGET_QUACK_PORT = _M58_TARGET_QUACK_PORT
-_M65_PRIOR_SERVER_ID = "server:5ebecb98-3bfa-4642-a38f-d3bb132db191"
-_M65_PRIOR_PROCESS_BIRTH_ID = "birth:737fdaf247df1cd4db70caf5ca1120ce"
+_M65_PRIOR_SERVER_ID = "server:a469353f-9272-4e5a-b6cd-d9d66989a9d1"
+_M65_PRIOR_PROCESS_BIRTH_ID = "birth:8b5ab9c4ad74cd29e9449c11b275f03d"
 
 _M50_SUCCESSOR_KEY = (
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
@@ -8783,7 +8783,7 @@ def _require_m65_source_successor_marker(
         or checked_live.get("projection_cid") != _M65_TARGET_PROJECTION_CID
         or observed.get("migration_revision") != _M65_MIGRATION_REVISION
         or observed.get(f"{key}_cid") != _M65_AUTHORITY_CID
-        or observed.get("generation_43_44_restart_rows_verified") is not True
+        or observed.get("generation_44_45_restart_rows_verified") is not True
         or observed.get("m64_receipt_preserved_exactly") is not True
         or observed.get("events_334_337_preserved_exactly") is not True
         or observed.get("authoritative") is not False
@@ -16879,8 +16879,8 @@ def _recover_stale_quack(config: Mapping[str, Any]) -> Mapping[str, Any]:
     active = _active_source_repair_materialization(config)
     if active.get("migration_revision") == _M65_MIGRATION_REVISION:
         raise OperatorError(
-            "M65 binds a proved-dead generation-43 owner; use the sealed "
-            "generation-44 quack-start path instead of stale-owner recovery"
+            "M65 binds a proved-dead generation-44 owner; use the sealed "
+            "generation-45 quack-start path instead of stale-owner recovery"
         )
     if active.get("migration_revision") == _M64_MIGRATION_REVISION:
         raise OperatorError(
@@ -18106,12 +18106,12 @@ def _validate_offline_quack_start(
             admitted = materializer._check_m65_prestart_admission(REPO_ROOT, config)
         except Exception as exc:
             raise OperatorError(
-                "M65 stopped generation-43 restart is not admissible"
+                "M65 stopped generation-44 restart is not admissible"
             ) from exc
         if (
             admitted.get("valid") is not True
             or admitted.get("action")
-            != "admitted_stopped_generation_43_restart_to_generation_44"
+            != "admitted_stopped_generation_44_restart_to_generation_45"
             or admitted.get("prior_generation") != _M65_PRIOR_GENERATION
             or admitted.get("target_generation") != _M65_GENERATION
             or admitted.get("prior_event_watermark")
@@ -19589,7 +19589,7 @@ def _stop_m55_live_owner_if_token_vault_missing(
         expected_server = _M65_PRIOR_SERVER_ID
         expected_birth = _M65_PRIOR_PROCESS_BIRTH_ID
         expected_generation = _M65_PRIOR_GENERATION
-        noun = "M65 stopped generation-43"
+        noun = "M65 stopped generation-44"
     elif _M58_SUCCESSOR_KEY in config:
         materializer, authority = _validate_m58_pre_stop_authority(config)
         return _stop_m58_live_owner_exact(config, materializer, authority)
@@ -19815,7 +19815,7 @@ def _start_quack(
             or identity.listen_uri != expected_startup["expected_listen_uri"]
         ):
             noun = (
-                "M65 live generation-44"
+                "M65 live generation-45"
                 if _M65_SUCCESSOR_KEY in config
                 else "M58 live generation-43"
             )
@@ -23088,11 +23088,11 @@ def _live_preflight(
         if m65_active:
             if discovery.uri == expected_uri and not discovery.token:
                 raise OperatorError(
-                    "M65 stopped generation-43 owner is missing the client token "
+                    "M65 stopped generation-44 owner is missing the client token "
                     "vault; run the sealed quack-stop then quack-start admission"
                 )
             raise OperatorError(
-                "M65 exact live generation-44 owner is unavailable; run the "
+                "M65 exact live generation-45 owner is unavailable; run the "
                 "sealed offline quack-start admission first"
             )
         if m64_active:
@@ -23271,7 +23271,7 @@ def _live_preflight(
         or remote_identity.get("listen_uri") != expected_uri
     ):
         if m65_active:
-            raise OperatorError("M65 exact live generation-44 owner binding differs")
+            raise OperatorError("M65 exact live generation-45 owner binding differs")
         if m64_active:
             raise OperatorError(
                 "M64 exact live generation-43 owner binding differs; a separately "

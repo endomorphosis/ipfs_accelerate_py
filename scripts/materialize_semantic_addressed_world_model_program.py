@@ -4842,11 +4842,11 @@ _M65_SUPERSESSION_REASON = (
 )
 _M65_CONTROL_RECORDED_AT = "2026-09-03T03:20:00Z"
 _M65_AUTHORITY_CID = (
-    "sha256:bdb426ff33ec7065170c1a558829a8c6aed9f4e1f52b29617017992a3e9d5e71"
+    "sha256:0df7a85da3817f959b92f0306005bf4f7623e6267d951de441deaf0a8520f176"
 )
-_M65_AUTHORITY_SIZE = 18_221
-_M65_PRIOR_GENERATION = 43
-_M65_TARGET_GENERATION = 44
+_M65_AUTHORITY_SIZE = 18_224
+_M65_PRIOR_GENERATION = 44
+_M65_TARGET_GENERATION = 45
 _M65_PRIOR_EVENT_WATERMARK = 337
 _M65_TARGET_EVENT_WATERMARK = 338
 _M65_TARGET_PLAN_REVISION = _M64_TARGET_PLAN_REVISION
@@ -4876,15 +4876,15 @@ _M65_RUNTIME_ROOT = _M64_RUNTIME_ROOT
 _M65_WORKTREE_ROOT = _M64_WORKTREE_ROOT
 _M65_DATABASE_UUID = _M64_DATABASE_UUID
 _M65_EXTENSION_FINGERPRINT = _M64_EXTENSION_FINGERPRINT
-_M65_PRIOR_SERVER_ID = "server:5ebecb98-3bfa-4642-a38f-d3bb132db191"
-_M65_PRIOR_PROCESS_BIRTH_ID = "birth:737fdaf247df1cd4db70caf5ca1120ce"
-_M65_PRIOR_STARTED_AT = "2026-09-02T13:42:07Z"
+_M65_PRIOR_SERVER_ID = "server:a469353f-9272-4e5a-b6cd-d9d66989a9d1"
+_M65_PRIOR_PROCESS_BIRTH_ID = "birth:8b5ab9c4ad74cd29e9449c11b275f03d"
+_M65_PRIOR_STARTED_AT = "2026-09-03T03:42:40Z"
 _M65_PRIOR_PROCESS_BIRTH = MappingProxyType(
     {
         "boot_id": "34bca049-fa9b-4f7a-a1df-90e079073f8d",
-        "parent_pid": 95_978,
-        "pid": 853_541,
-        "start_time_ticks": 4_673_326,
+        "parent_pid": 1_989_524,
+        "pid": 1_989_537,
+        "start_time_ticks": 9_719_117,
     }
 )
 _M65_M64_AUTHORITY_CID = _M64_AUTHORITY_CID
@@ -102304,7 +102304,7 @@ def _expected_m65_post_m64_stopped_owner_missing_client_token_vault_restart_auth
         _M65_TARGET_EVENT_WATERMARK
     )
     authority["stopped_owner"] = {
-        "schema": "sawm/stopped-generation-43-owner-after-handoff-retirement@1",
+        "schema": "sawm/stopped-generation-44-owner-after-handoff-retirement@1",
         "generation": _M65_PRIOR_GENERATION,
         "status": "stopped",
         "lifecycle": "stopped",
@@ -102578,7 +102578,7 @@ def _m65_migration_body(
 def _check_m65_prestart_admission(
     root: Path, config: Mapping[str, Any]
 ) -> dict[str, Any]:
-    """Admit restart of a proved-dead generation-43 owner to generation 44."""
+    """Admit restart of a proved-dead generation-44 owner to generation 44."""
 
     population = build_population(root)
     _assert_committed_clean_source(root, population)
@@ -102628,7 +102628,7 @@ def _check_m65_prestart_admission(
         or status.get("lifecycle") not in {"ready", "stopped"}
         or identity.get("status") not in {"ready", "stopped"}
     ):
-        raise MigrationRequired("M65 generation-43 owner status differs")
+        raise MigrationRequired("M65 generation-44 owner status differs")
     from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
         OwnerLiveness,
         ProcessBirthIdentity,
@@ -102636,7 +102636,7 @@ def _check_m65_prestart_admission(
     )
     birth = ProcessBirthIdentity.from_dict(identity.get("process_birth"))
     if owner_liveness(birth) is not OwnerLiveness.DEAD:
-        raise MigrationRequired("M65 requires proved-dead generation-43 process birth")
+        raise MigrationRequired("M65 requires proved-dead generation-44 process birth")
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
         reclaim_stale_owner_marker,
     )
@@ -102649,7 +102649,7 @@ def _check_m65_prestart_admission(
         raise MigrationRequired("M65 stale owner marker could not be reclaimed")
     return {
         "valid": True,
-        "action": "admitted_stopped_generation_43_restart_to_generation_44",
+        "action": "admitted_stopped_generation_44_restart_to_generation_45",
         "database_path": str(control),
         "coordination_path": str(coordination),
         "prior_generation": _M65_PRIOR_GENERATION,
@@ -102687,7 +102687,7 @@ def _inspect_m65_generation_restart_rows(
         or int(identity.get("fence_epoch") or 0) != _M65_TARGET_GENERATION
         or int(identity.get("credential_generation") or 0) != _M65_TARGET_GENERATION
     ):
-        raise MigrationRequired("M65 live generation-44 identity differs")
+        raise MigrationRequired("M65 live generation-45 identity differs")
     with source.intent._connection(write=False) as connection:
         counts = {
             table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
@@ -102702,7 +102702,7 @@ def _inspect_m65_generation_restart_rows(
     if counts != {name: _M65_TARGET_GENERATION for name in counts}:
         raise MigrationRequired("M65 generation-bearing row counts differ")
     return {
-        "generation_43_44_restart_rows_verified": True,
+        "generation_44_45_restart_rows_verified": True,
         "prior_owner_generation": _M65_PRIOR_GENERATION,
         "live_owner_generation": _M65_TARGET_GENERATION,
         "live_server_id": server_id,
@@ -102867,7 +102867,7 @@ def _expected_m65_source_successor_receipt(
         "prior_event_prefix_sha256": _M65_PRIOR_EVENT_PREFIX_SHA256,
         "target_event_prefix_sha256": verified["target_event_prefix_sha256"],
         "semantic_authority_digest": verified["semantic_authority_digest"],
-        "generation_43_44_restart_rows_verified": True,
+        "generation_44_45_restart_rows_verified": True,
         "m64_receipt_preserved_exactly": True,
         "m63_receipt_preserved_exactly": True,
         "event_333_preserved_exactly": True,
@@ -102918,7 +102918,7 @@ def _check_m65_materialized(root: Path, config_file: Path) -> dict[str, Any]:
         claimed != _identity(unhashed)
         or observed.get("projection_cid") != _M65_TARGET_PROJECTION_CID
         or observed.get("target_event_watermark") != _M65_TARGET_EVENT_WATERMARK
-        or observed.get("generation_43_44_restart_rows_verified") is not True
+        or observed.get("generation_44_45_restart_rows_verified") is not True
         or observed.get("m64_receipt_preserved_exactly") is not True
         or observed.get("events_334_337_preserved_exactly") is not True
     ):

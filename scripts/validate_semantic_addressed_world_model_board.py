@@ -231,9 +231,9 @@ _M64_TARGET_PROJECTION_CID = (
     "baguqeera2snnowvc5ghzw6kzc3pczfkxewkvvgthuineie4tpqf3pdwcsq7q"
 )
 _M65_AUTHORITY_CID = (
-    "sha256:bdb426ff33ec7065170c1a558829a8c6aed9f4e1f52b29617017992a3e9d5e71"
+    "sha256:0df7a85da3817f959b92f0306005bf4f7623e6267d951de441deaf0a8520f176"
 )
-_M65_AUTHORITY_SIZE = 18_221
+_M65_AUTHORITY_SIZE = 18_224
 _M65_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M65_FINAL_CONTROL_AUTHORITY_CID"
 _M65_SUCCESSOR_KEY = (
     "post_m64_stopped_owner_missing_client_token_vault_restart_successor_materialization"
@@ -6103,7 +6103,7 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "44"
+        "45"
         if m65_selected
         else "43"
         if m64_selected
@@ -6361,18 +6361,18 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
                 or expected.get("authorized") is not True
                 or expected.get("migration_revision") != "SAWM-R2-M65"
                 or expected.get("migration_kind") != m65_key
-                or expected.get("target_generation") != 44
+                or expected.get("target_generation") != 45
                 or expected.get("target_event_watermark") != 338
                 or expected.get("target_projection_cid")
                 != _M65_TARGET_PROJECTION_CID
                 or not isinstance(stopped, Mapping)
-                or stopped.get("generation") != 43
+                or stopped.get("generation") != 44
                 or stopped.get("server_id")
-                != "server:5ebecb98-3bfa-4642-a38f-d3bb132db191"
+                != "server:a469353f-9272-4e5a-b6cd-d9d66989a9d1"
                 or stopped.get("process_birth_id")
-                != "birth:737fdaf247df1cd4db70caf5ca1120ce"
+                != "birth:8b5ab9c4ad74cd29e9449c11b275f03d"
                 or stopped.get("client_token_vault_absent") is not True
-                or contract.get("target_generation") != 44
+                or contract.get("target_generation") != 45
                 or contract.get("prior_event_watermark") != 337
                 or contract.get("target_event_watermark") != 338
                 or contract.get("generation_restart_authorized") is not True

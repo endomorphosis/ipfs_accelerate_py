@@ -1,8 +1,8 @@
 # Semantic-Addressed Neuro-Symbolic Program World Model
 
-Status: operator-owned R2 program control. M65 is the newest sealed successor: the generation-43 owner is stopped, port 24070 is down, and launch retired the client token vault. Events 334-337 are scheduler task-status changes after the accepted M64 event-333 receipt and must be preserved. M65 authorizes one generation-bearing restart that mints a new vault at generation 44 / event 338 / evidence node 67, then auto-materializes on launch. It does not admit SAWM-006+ completion, provider invocation, merge, effect, or worker self-approval. M64 remains immutable history. M54 remains deny-only and unselected.
+Status: operator-owned R2 program control. M65 is the newest sealed successor: the generation-44 owner is stopped after a failed token-vault restart, port 24070 is down, and the client token vault is absent. Events 334-337 are scheduler task-status changes after the accepted M64 event-333 receipt and must be preserved. M65 authorizes one generation-bearing restart that mints a new vault at generation 45 / event 338 / evidence node 67, then auto-materializes on launch. It does not admit SAWM-006+ completion, provider invocation, merge, effect, or worker self-approval. M64 remains immutable history. M54 remains deny-only and unselected.
 
-M65 source authority: `sha256:bdb426ff33ec7065170c1a558829a8c6aed9f4e1f52b29617017992a3e9d5e71` (one nine-control-file successor seal after accepted M64; the current control commit identity is deliberately not embedded).
+M65 source authority: `sha256:0df7a85da3817f959b92f0306005bf4f7623e6267d951de441deaf0a8520f176` (one nine-control-file successor seal after accepted M64; the current control commit identity is deliberately not embedded).
 
 M64 source authority: `sha256:ed8dc06b15554c3cd101c197d0654c77649fad67252a0564a63e63c61d0f9d5e` (one bounded two-file operator/test repair commit after accepted M63, followed by one nine-control-file M64 seal; the current control commit identity is deliberately not embedded).
 

@@ -348,16 +348,16 @@ _M64_TARGET_PROJECTION_CID = (
     "baguqeera2snnowvc5ghzw6kzc3pczfkxewkvvgthuineie4tpqf3pdwcsq7q"
 )
 _M65_AUTHORITY_CID = (
-    "sha256:bdb426ff33ec7065170c1a558829a8c6aed9f4e1f52b29617017992a3e9d5e71"
+    "sha256:0df7a85da3817f959b92f0306005bf4f7623e6267d951de441deaf0a8520f176"
 )
-_M65_AUTHORITY_SIZE = 18_221
+_M65_AUTHORITY_SIZE = 18_224
 _M65_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M65_FINAL_CONTROL_AUTHORITY_CID"
 _M65_SUCCESSOR_KEY = (
     "post_m64_stopped_owner_missing_client_token_vault_restart_successor_materialization"
 )
 _M65_MIGRATION_REVISION = "SAWM-R2-M65"
 _M65_CONTROL_RECORDED_AT = "2026-09-03T03:20:00Z"
-_M65_GENERATION = 44
+_M65_GENERATION = 45
 _M65_PRIOR_EVENT_WATERMARK = 337
 _M65_TARGET_EVENT_WATERMARK = 338
 _M65_PRIOR_PROJECTION_CID = (
@@ -3730,7 +3730,7 @@ def _m65_post_m64_stopped_owner_missing_client_token_vault_restart_errors(
             or expected.get("target_event_watermark") != _M65_TARGET_EVENT_WATERMARK
             or expected.get("target_projection_cid") != _M65_TARGET_PROJECTION_CID
             or not isinstance(stopped, Mapping)
-            or stopped.get("generation") != 43
+            or stopped.get("generation") != 44
             or stopped.get("client_token_vault_absent") is not True
             or contract.get("generation_restart_authorized") is not True
             or contract.get("bind_store_report_to_live_event_digest") is not True
