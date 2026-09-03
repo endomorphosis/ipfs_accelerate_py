@@ -297,6 +297,18 @@ live-application = false
 live-recovery = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.final-receipt-chain]
+schema = "ipfs_accelerate_py/assurance/final-receipt-chain@1"
+interface = "AccelerateFinalProofCarryingReceiptChain@1"
+task-id = "PCPR-072"
+goal-id = "PCPR-G700"
+objective-kind = "declared_final_proof_carrying_receipt_chain"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-chain = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
