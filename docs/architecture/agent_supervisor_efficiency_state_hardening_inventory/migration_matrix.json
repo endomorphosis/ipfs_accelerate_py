@@ -1,0 +1,882 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-authority-disposition@1",
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "task_id": "ASEH-060",
+  "objective_id": "ASEH-G070",
+  "plan_revision": "ASEH-PLAN-R1",
+  "authority": false,
+  "authority_requirement": "classification and enforcement only; no public deletion or policy promotion",
+  "public_deletion": false,
+  "policy_promotion": false,
+  "production_cutover": {
+    "deferred_to": ["ASEH-061"],
+    "note": "ASEH-060 selects and enforces one writable owner per mutable fact. Owner-paused staged integration remains ASEH-061."
+  },
+  "cid_profile": {
+    "algorithm": "cidv1_base32_sha2_256",
+    "producer": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts.content_identity",
+    "identity_field": "authority_fingerprint",
+    "forbidden_forms": [
+      "cidv0_multihash",
+      "uuid_literal",
+      "placeholder_identity",
+      "untyped_digest",
+      "sha1_digest"
+    ]
+  },
+  "vocabulary": {
+    "dispositions": ["canonical", "adapter", "deprecated", "fixture", "removed"],
+    "bypass_outcomes": ["fail_closed", "warn_then_fail"],
+    "required_fact_ids": [
+      "task_objective_state",
+      "routing",
+      "context",
+      "reuse",
+      "repair",
+      "merge",
+      "promotion",
+      "recovery",
+      "receipts"
+    ],
+    "required_owner_fields": [
+      "id",
+      "path",
+      "interface",
+      "disposition",
+      "writable",
+      "store",
+      "bypass",
+      "deletion_supported",
+      "evidence"
+    ],
+    "required_duplicate_fields": [
+      "id",
+      "path",
+      "interface",
+      "disposition",
+      "writable",
+      "bypass",
+      "replacement",
+      "deletion_supported",
+      "evidence"
+    ]
+  },
+  "authority_fingerprint": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/aseh-authority-disposition@1",
+    "task_id": "ASEH-060",
+    "owners": {
+      "task_objective_state": "TypedStateOwnerCommandGateway@1",
+      "routing": "ModelRouting@1",
+      "context": "ContextPackSelector@1",
+      "reuse": "ContextPackSelector@1",
+      "repair": "DeterministicDoctorSynthesizer@1",
+      "merge": "PatchAdmission@1",
+      "promotion": "PromotionAdmission@1",
+      "recovery": "SupervisorRecovery",
+      "receipts": "TypedStateOwnerCommandGateway@1"
+    }
+  },
+  "capability_bindings": {
+    "task_objective_state": {
+      "module": "ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner",
+      "symbol": "TYPED_STATE_OWNER_INTERFACE",
+      "expected": "TypedStateOwnerCommandGateway@1"
+    },
+    "routing": {
+      "module": "ipfs_accelerate_py.agent_supervisor.semantic_state.routing",
+      "symbol": "MODEL_ROUTING_INTERFACE",
+      "expected": "ModelRouting@1"
+    },
+    "context": {
+      "module": "ipfs_accelerate_py.agent_supervisor.semantic_state.context_pack_selector",
+      "symbol": "CONTEXT_PACK_SELECTOR_INTERFACE",
+      "expected": "ContextPackSelector@1"
+    },
+    "reuse": {
+      "module": "ipfs_accelerate_py.agent_supervisor.semantic_state.context_pack_selector",
+      "symbol": "CONTEXT_PACK_SELECTOR_INTERFACE",
+      "expected": "ContextPackSelector@1"
+    },
+    "repair": {
+      "module": "ipfs_accelerate_py.agent_supervisor.planning.deterministic_doctor_synthesis",
+      "symbol": "DETERMINISTIC_DOCTOR_SYNTHESIZER_INTERFACE",
+      "expected": "DeterministicDoctorSynthesizer@1"
+    },
+    "merge": {
+      "module": "ipfs_accelerate_py.agent_supervisor.merge.patch_admission",
+      "symbol": "PATCH_ADMISSION_SCHEMA",
+      "expected": "aseh/patch-admission@1"
+    },
+    "promotion": {
+      "module": "ipfs_accelerate_py.agent_supervisor.control.promotion_admission",
+      "symbol": "PROMOTION_ADMISSION_SCHEMA",
+      "expected": "ipfs_accelerate_py/agent-supervisor/promotion-admission@1"
+    },
+    "recovery": {
+      "module": "ipfs_accelerate_py.agent_supervisor.rescue.supervisor_recovery",
+      "symbol": "RECOVERY_CHECKPOINT_SCHEMA",
+      "expected": "ipfs_accelerate_py/agent-supervisor/recovery-checkpoint@1"
+    },
+    "receipts": {
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.efficiency_receipts",
+      "symbol": "TASK_EFFICIENCY_RECEIPT_INTERFACE",
+      "expected": "TaskEfficiencyReceipt@1"
+    }
+  },
+  "mutable_facts": [
+    {
+      "fact_id": "task_objective_state",
+      "title": "task and objective state",
+      "writable_owner_id": "TypedStateOwnerCommandGateway@1",
+      "canonical_owner": {
+        "id": "TypedStateOwnerCommandGateway@1",
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+        "host_path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "interface": "TypedStateOwnerCommandGateway@1",
+        "host_interface": "QuackStateServer@1",
+        "disposition": "canonical",
+        "writable": true,
+        "store": "exclusive loopback Quack owner over the DuckDB control store",
+        "bypass": "fail_closed",
+        "deletion_supported": false,
+        "evidence": "TypedStateOwnerGateway hosted by QuackStateServer is the sole production writer. Closed catalog, grant, CAS, fence, and idempotency checks fail closed."
+      },
+      "duplicates": [
+        {
+          "id": "IntentRepository@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+          "interface": "IntentRepository@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "Transactional substrate behind the typed owner. Live callers must enter through Quack; the repository cannot independently claim production write authority."
+        },
+        {
+          "id": "DatabaseTaskSource@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+          "interface": "DatabaseTaskSource@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "Operational facade that maps scheduler and daemon calls onto typed Quack owner commands."
+        },
+        {
+          "id": "TaskTransitionService@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/control/task_transition_service.py",
+          "interface": "TaskTransitionService@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "warn_then_fail",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "Candidate gateway over IntentRepository. Legacy and direct-write compatibility paths warn then fail closed. Production cutover remains ASEH-061."
+        },
+        {
+          "id": "QuackStateClient@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+          "interface": "QuackStateClient@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "Typed client adapter. Embedded mode cannot replace the configured live Quack authority without an admitted configuration."
+        },
+        {
+          "id": "DuckDBTaskSource",
+          "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py",
+          "interface": "DuckDBTaskSource",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "DatabaseTaskSource@1",
+          "deletion_supported": false,
+          "evidence": "Direct DuckDB projection retained only as a compatibility surface. DatabaseTaskSource is the cutover path. Public deletion is unsupported until ASEH-061 proves replacement and caller migration."
+        },
+        {
+          "id": "markdown_task_board",
+          "path": "docs/architecture/agent_supervisor_efficiency_state_hardening.todo.md",
+          "interface": "protected-markdown-board",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "IntentRepository@1",
+          "deletion_supported": false,
+          "evidence": "Protected bootstrap projection. Markdown status is an observation and cannot mutate materialized task or objective state."
+        },
+        {
+          "id": "ducklake_history_projection",
+          "path": "ipfs_accelerate_py/agent_supervisor/federation/ducklake_projection.py",
+          "interface": "DuckLakeProjection",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "Append-only rebuildable analytics/history projection. It cannot authorize claims, readiness, leases, completion, recovery, or terminalization."
+        },
+        {
+          "id": "objective_daemon_backlog",
+          "path": "ipfs_accelerate_py/agent_supervisor/objectives/objective_daemon.py",
+          "interface": "ObjectiveDaemon",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "DatabaseTaskSource@1",
+          "deletion_supported": false,
+          "evidence": "Backlog generation helper. It does not own live task or objective mutation."
+        },
+        {
+          "id": "transition_authority_fixture",
+          "path": "test/api/agent_supervisor/efficiency_state_hardening/test_transition_authority.py",
+          "interface": "pytest",
+          "disposition": "fixture",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "Focused regression for the candidate transition gateway. Tests are not production writers."
+        }
+      ]
+    },
+    {
+      "fact_id": "routing",
+      "title": "executor selection and provider or model routing",
+      "writable_owner_id": "ModelRouting@1",
+      "canonical_owner": {
+        "id": "ModelRouting@1",
+        "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/routing.py",
+        "interface": "ModelRouting@1",
+        "disposition": "canonical",
+        "writable": true,
+        "store": "deterministic-first receipt-to-human ladder decision",
+        "bypass": "fail_closed",
+        "deletion_supported": false,
+        "evidence": "Sole routing authority. Every decision traverses the nine-stage ladder in order. Provider availability cannot skip an earlier stage or become dispatch authority."
+      },
+      "duplicates": [
+        {
+          "id": "ModelRoutePlanner",
+          "path": "ipfs_accelerate_py/agent_supervisor/verification/model_route.py",
+          "interface": "ModelRoutePlanner",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ModelRouting@1",
+          "deletion_supported": false,
+          "evidence": "Projects verification facts onto the semantic_state.routing ladder. It must not mint a second router family."
+        },
+        {
+          "id": "DeterministicRoutingStages@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/deterministic_stages.py",
+          "interface": "DeterministicRoutingStages@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ModelRouting@1",
+          "deletion_supported": false,
+          "evidence": "Evaluator of identity-bound deterministic evidence. It is not task-mutation or dispatch authority."
+        },
+        {
+          "id": "UnresolvedQuestion@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/unresolved_question.py",
+          "interface": "UnresolvedQuestion@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ModelRouting@1",
+          "deletion_supported": false,
+          "evidence": "Admission record required before any model call. Validating a question neither dispatches a model nor authorizes the resulting decision."
+        },
+        {
+          "id": "ShadowRoutePolicy@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/autonomy/route_policy.py",
+          "interface": "ShadowRoutePolicy@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ModelRouting@1",
+          "deletion_supported": false,
+          "evidence": "Shadow-only constrained learner. It never production-explores and never produces a live routing effect."
+        },
+        {
+          "id": "RouteReceipt@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py",
+          "interface": "RouteReceipt@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ModelRouting@1",
+          "deletion_supported": false,
+          "evidence": "Closed route-receipt contract. Receipts report routing observations only and cannot dispatch, validate patches, or promote policy."
+        },
+        {
+          "id": "provider_fallback_runner",
+          "path": "ipfs_accelerate_py/agent_supervisor/provider_fallback_runner.py",
+          "interface": "ProviderFallbackRunner",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ModelRouting@1",
+          "deletion_supported": false,
+          "evidence": "Transitional provider execution helper. Capacity and availability observations cannot skip the deterministic-first ladder."
+        },
+        {
+          "id": "route_receipts_fixture",
+          "path": "test/api/agent_supervisor/efficiency_state_hardening/test_route_receipts.py",
+          "interface": "pytest",
+          "disposition": "fixture",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ModelRouting@1",
+          "deletion_supported": false,
+          "evidence": "Focused route-receipt regression. Tests cannot become dispatch authority."
+        }
+      ]
+    },
+    {
+      "fact_id": "context",
+      "title": "ContextPack freshness, selection, and executor context",
+      "writable_owner_id": "ContextPackSelector@1",
+      "canonical_owner": {
+        "id": "ContextPackSelector@1",
+        "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack_selector.py",
+        "interface": "ContextPackSelector@1",
+        "disposition": "canonical",
+        "writable": true,
+        "store": "Accelerate freshness admission and minimal-pack selection over Datasets identity and Kit bytes",
+        "bypass": "fail_closed",
+        "deletion_supported": false,
+        "evidence": "Accelerate admits freshness, selects the current minimal adequate pack, and records reuse or invalidation. It does not remint Datasets CIDs or treat Kit bytes as semantic proof."
+      },
+      "related_authorities": [
+        {
+          "id": "DatasetsContextPackAuthority",
+          "path": "ipfs_datasets_py/ipfs_datasets_py/proof_context/context_pack.py",
+          "interface": "ContextPack@1",
+          "owns": "semantic identity and minimal semantic ContextPack construction",
+          "must_not_own": "durable byte storage or supervisor execution"
+        },
+        {
+          "id": "KitContextPackStore",
+          "path": "ipfs_kit_py/ipfs_kit_py/proof_context/state_store.py",
+          "interface": "ContextPackStore",
+          "owns": "canonical bytes, CID verification, immutable blocks, and current-root CAS",
+          "must_not_own": "semantic correctness or proof or test reuse admission"
+        }
+      ],
+      "duplicates": [
+        {
+          "id": "ContextPackFreshnessAdmission@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack.py",
+          "interface": "ContextPackFreshnessAdmission@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ContextPackSelector@1",
+          "deletion_supported": false,
+          "evidence": "Freshness helpers and Datasets/Kit verification used by the selector. Not an independent pack-identity issuer."
+        },
+        {
+          "id": "ContextCompiler",
+          "path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+          "interface": "ContextCompiler",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ContextPackSelector@1",
+          "deletion_supported": false,
+          "evidence": "Token-budgeted compiler over ranked evidence. It does not mint Datasets semantic identities."
+        },
+        {
+          "id": "planner_doctor_context",
+          "path": "ipfs_accelerate_py/agent_supervisor/context/planner_doctor_context.py",
+          "interface": "PlannerDoctorContext",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ContextPackSelector@1",
+          "deletion_supported": false,
+          "evidence": "Program-specific context helper. It is not the ASEH ContextPack selection authority."
+        },
+        {
+          "id": "logic_repair_context",
+          "path": "ipfs_accelerate_py/agent_supervisor/context/logic_repair_context.py",
+          "interface": "LogicRepairContext",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ContextPackSelector@1",
+          "deletion_supported": false,
+          "evidence": "Program-specific repair context helper. It cannot independently admit a ContextPack."
+        },
+        {
+          "id": "context_pack_selector_fixture",
+          "path": "test/api/agent_supervisor/efficiency_state_hardening/test_context_pack_selector.py",
+          "interface": "pytest",
+          "disposition": "fixture",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ContextPackSelector@1",
+          "deletion_supported": false,
+          "evidence": "Focused freshness and selection regression using real Datasets and Kit CID paths."
+        }
+      ]
+    },
+    {
+      "fact_id": "reuse",
+      "title": "proof and test reuse admission for the current tree",
+      "writable_owner_id": "ContextPackSelector@1",
+      "canonical_owner": {
+        "id": "ContextPackSelector@1",
+        "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/context_pack_selector.py",
+        "interface": "ContextPackSelector@1",
+        "disposition": "canonical",
+        "writable": true,
+        "store": "current-tree pack reuse and invalidation records bound to exact freshness fields",
+        "bypass": "fail_closed",
+        "deletion_supported": false,
+        "evidence": "Accelerate records reuse or invalidation only after Datasets identity and Kit bytes verify and exact freshness matches. Stored proof bytes are not admitted reuse."
+      },
+      "duplicates": [
+        {
+          "id": "TestReuseEligibilityDecision@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/analysis/test_reuse_eligibility.py",
+          "interface": "TestReuseEligibilityDecision@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ContextPackSelector@1",
+          "deletion_supported": false,
+          "evidence": "Conservative eligibility classifier. It never emits SKIP and never authorizes reuse from heuristic similarity."
+        },
+        {
+          "id": "SemanticVerificationReceipt@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/receipts.py",
+          "interface": "SemanticVerificationReceipt@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ContextPackSelector@1",
+          "deletion_supported": false,
+          "evidence": "Verification receipts bind real CIDv1 identities. Stale, simulated, or mismatched receipts remain inspectable but never satisfy reuse admission."
+        },
+        {
+          "id": "KitContextPackStoreReuse",
+          "path": "ipfs_kit_py/ipfs_kit_py/proof_context/state_store.py",
+          "interface": "ContextPackStore",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ContextPackSelector@1",
+          "deletion_supported": false,
+          "evidence": "Durable byte storage proves stored bytes, not semantic correctness or current-tree reuse admission."
+        },
+        {
+          "id": "context_pack_benchmark_fixture",
+          "path": "test/api/agent_supervisor/efficiency_state_hardening/test_context_pack_benchmark.py",
+          "interface": "pytest",
+          "disposition": "fixture",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "ContextPackSelector@1",
+          "deletion_supported": false,
+          "evidence": "Hermetic pack-reuse benchmark observations. Benchmarks consume real capability reports and real CIDs."
+        }
+      ]
+    },
+    {
+      "fact_id": "repair",
+      "title": "bounded deterministic repair transforms",
+      "writable_owner_id": "DeterministicDoctorSynthesizer@1",
+      "canonical_owner": {
+        "id": "DeterministicDoctorSynthesizer@1",
+        "path": "ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_synthesis.py",
+        "interface": "DeterministicDoctorSynthesizer@1",
+        "disposition": "canonical",
+        "writable": true,
+        "store": "proof-admitted exact transform overlay identity; repository writes remain merge-gated",
+        "bypass": "fail_closed",
+        "deletion_supported": false,
+        "evidence": "Sole ASEH deterministic repair synthesizer. It materializes only a uniquely admitted closed operator, never grants overlay write authority, and never invokes a model."
+      },
+      "duplicates": [
+        {
+          "id": "DoctorRepairOperatorRegistry@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_transforms.py",
+          "interface": "DoctorRepairOperatorRegistry@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "DeterministicDoctorSynthesizer@1",
+          "deletion_supported": false,
+          "evidence": "Allowlisted transform registry consumed by the synthesizer. The registry never mutates the repository."
+        },
+        {
+          "id": "ProgramRepairSynthesizer@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/planning/program_repair_synthesis.py",
+          "interface": "ProgramRepairSynthesizer@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "DeterministicDoctorSynthesizer@1",
+          "deletion_supported": false,
+          "evidence": "Bounded CEGIS/e-graph synthesizer. Candidates remain proposal-only and have no write, semantic, or proof authority."
+        },
+        {
+          "id": "AutonomousRepairEngine",
+          "path": "ipfs_accelerate_py/agent_supervisor/autonomous_repair/engine.py",
+          "interface": "AutonomousRepairEngine",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "DeterministicDoctorSynthesizer@1",
+          "deletion_supported": false,
+          "evidence": "Separate autonomous-repair family outside ASEH scope. It cannot independently write supervisor task state or mark completion authoritative."
+        },
+        {
+          "id": "autonomy_repair_controller",
+          "path": "ipfs_accelerate_py/agent_supervisor/autonomy/repair_controller.py",
+          "interface": "RepairController",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "DeterministicDoctorSynthesizer@1",
+          "deletion_supported": false,
+          "evidence": "Autonomy-program repair controller. It is not the ASEH deterministic repair owner."
+        },
+        {
+          "id": "deterministic_synthesis_fixture",
+          "path": "test/api/agent_supervisor/efficiency_state_hardening/test_deterministic_synthesis.py",
+          "interface": "pytest",
+          "disposition": "fixture",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "DeterministicDoctorSynthesizer@1",
+          "deletion_supported": false,
+          "evidence": "Closed exact-transform grammar fixtures. Tests cannot apply overlays."
+        }
+      ]
+    },
+    {
+      "fact_id": "merge",
+      "title": "PatchPlan validation and merge admission",
+      "writable_owner_id": "PatchAdmission@1",
+      "canonical_owner": {
+        "id": "PatchAdmission@1",
+        "path": "ipfs_accelerate_py/agent_supervisor/merge/patch_admission.py",
+        "interface": "aseh/patch-admission@1",
+        "disposition": "canonical",
+        "writable": true,
+        "store": "fail-closed merge admission over PatchPlan@1 plus an independent current-tree validation receipt",
+        "bypass": "fail_closed",
+        "deletion_supported": false,
+        "evidence": "Sole ASEH merge-admission authority. Empty, secret, generated, stale, conflicting, self-validated, or failed-validation patches are rejected. Admission does not apply the patch."
+      },
+      "duplicates": [
+        {
+          "id": "PatchPlan@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/merge/patch_plan.py",
+          "interface": "aseh/patch-plan@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "PatchAdmission@1",
+          "deletion_supported": false,
+          "evidence": "Tamper-evident plan contract. A plan is not authorization to apply, validate, or merge."
+        },
+        {
+          "id": "implementation_daemon_merge",
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+          "interface": "PortalImplementationDaemon",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "PatchAdmission@1",
+          "deletion_supported": false,
+          "evidence": "Existing worktree-bound executor. Merge effects remain lease, fence, protected-path, and current-tree receipt gated and persist only through the typed owner."
+        },
+        {
+          "id": "merge_queue",
+          "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+          "interface": "MergeQueue",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "PatchAdmission@1",
+          "deletion_supported": false,
+          "evidence": "Durable deduplicating merge queue. Claiming a request is not merge admission."
+        },
+        {
+          "id": "llm_merge_resolver",
+          "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
+          "interface": "MergeResolver",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "PatchAdmission@1",
+          "deletion_supported": false,
+          "evidence": "LLM merge-conflict helper. Model output cannot authorize a merge."
+        },
+        {
+          "id": "federation_merge",
+          "path": "ipfs_accelerate_py/agent_supervisor/federation/merge.py",
+          "interface": "FederationMerge",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "PatchAdmission@1",
+          "deletion_supported": false,
+          "evidence": "Federation-family merge train. DuckLake never admits a merge. It is not the ASEH supervisor merge owner."
+        },
+        {
+          "id": "patch_plan_admission_fixture",
+          "path": "test/api/agent_supervisor/efficiency_state_hardening/test_patch_plan_admission.py",
+          "interface": "pytest",
+          "disposition": "fixture",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "PatchAdmission@1",
+          "deletion_supported": false,
+          "evidence": "Closed PatchPlan admission fixtures including self-validation and stale-plan rejection."
+        }
+      ]
+    },
+    {
+      "fact_id": "promotion",
+      "title": "promotion and non-promotion decisions",
+      "writable_owner_id": "PromotionAdmission@1",
+      "canonical_owner": {
+        "id": "PromotionAdmission@1",
+        "path": "ipfs_accelerate_py/agent_supervisor/control/promotion_admission.py",
+        "interface": "ipfs_accelerate_py/agent-supervisor/promotion-admission@1",
+        "disposition": "canonical",
+        "writable": true,
+        "store": "operator-authorized, CAS-protected promotion admission receipts",
+        "bypass": "fail_closed",
+        "deletion_supported": false,
+        "evidence": "Sole ASEH promotion-admission owner. It may keep or downgrade a comparison decision, never upgrades reject to promote, and never grants a model or candidate self-authorization. This task does not mutate the policy pointer."
+      },
+      "duplicates": [
+        {
+          "id": "PromotionPointer@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/merge/promotion_pointer.py",
+          "interface": "ipfs_accelerate_py/agent-supervisor/promotion-pointer@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "PromotionAdmission@1",
+          "deletion_supported": false,
+          "evidence": "Exclusive compare-and-swap pointer. Holding a checkpoint or run lease does not imply this key. ASEH-060 does not execute pointer mutation."
+        },
+        {
+          "id": "AutonomyPromotionController@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/autonomy/promotion.py",
+          "interface": "AutonomyPromotionController@1",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "PromotionAdmission@1",
+          "deletion_supported": false,
+          "evidence": "Autonomy-program policy-pointer CAS owner. It is not the ASEH promotion decision owner and cannot self-authorize ASEH policy."
+        },
+        {
+          "id": "live_cohort_admission",
+          "path": "ipfs_accelerate_py/agent_supervisor/control/live_cohort_admission.py",
+          "interface": "LiveCohortAdmission",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "PromotionAdmission@1",
+          "deletion_supported": false,
+          "evidence": "Shadow and canary cohort admission. Schema authority here cannot attest a live measurement or authorize promotion."
+        },
+        {
+          "id": "live_cohort_admission_fixture",
+          "path": "test/api/agent_supervisor/efficiency_state_hardening/test_live_cohort_admission.py",
+          "interface": "pytest",
+          "disposition": "fixture",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "PromotionAdmission@1",
+          "deletion_supported": false,
+          "evidence": "Closed cohort-disposition fixtures. Tests cannot promote policy."
+        }
+      ]
+    },
+    {
+      "fact_id": "recovery",
+      "title": "owner-loss, restart, and bounded crash recovery",
+      "writable_owner_id": "SupervisorRecovery",
+      "canonical_owner": {
+        "id": "SupervisorRecovery",
+        "path": "ipfs_accelerate_py/agent_supervisor/rescue/supervisor_recovery.py",
+        "interface": "ipfs_accelerate_py/agent-supervisor/recovery-checkpoint@1",
+        "disposition": "canonical",
+        "writable": true,
+        "store": "content-addressed recovery checkpoints, fencing, and immutable repair receipts over the existing typed owner",
+        "bypass": "fail_closed",
+        "deletion_supported": false,
+        "evidence": "Bounded owner-restart recovery. It reconstructs durable truth, advances the fence on takeover, and never rematerializes credentials or repairs the database directly."
+      },
+      "duplicates": [
+        {
+          "id": "typed_owner_recover",
+          "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+          "interface": "TypedStateOwnerCommandGateway@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "SupervisorRecovery",
+          "deletion_supported": false,
+          "evidence": "Owner recover command is the durable mutation substrate used by recovery. Recovery helpers cannot bypass the owner."
+        },
+        {
+          "id": "supervisor_runtime_repair",
+          "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+          "interface": "SupervisorRuntime",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "SupervisorRecovery",
+          "deletion_supported": false,
+          "evidence": "Process lifecycle repair. Explicitly not state-mutation authority."
+        },
+        {
+          "id": "federation_recovery",
+          "path": "ipfs_accelerate_py/agent_supervisor/federation/recovery.py",
+          "interface": "FederationRecovery",
+          "disposition": "deprecated",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "SupervisorRecovery",
+          "deletion_supported": false,
+          "evidence": "Federation-family crash recovery. Stale fences, DuckLake, and process-exit completion claims fail closed. It is not the ASEH owner-restart authority."
+        },
+        {
+          "id": "database_recovery",
+          "path": "ipfs_accelerate_py/agent_supervisor/rescue/database_recovery.py",
+          "interface": "DatabaseRecovery",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "SupervisorRecovery",
+          "deletion_supported": false,
+          "evidence": "Database recovery helper subordinate to the exclusive Quack owner."
+        },
+        {
+          "id": "owner_restart_recovery_fixture",
+          "path": "test/api/agent_supervisor/efficiency_state_hardening/test_owner_restart_recovery.py",
+          "interface": "pytest",
+          "disposition": "fixture",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "SupervisorRecovery",
+          "deletion_supported": false,
+          "evidence": "Owner-loss reconstruction fixtures. Tests cannot become the durable owner."
+        }
+      ]
+    },
+    {
+      "fact_id": "receipts",
+      "title": "validation, routing, efficiency, and merge receipts",
+      "writable_owner_id": "TypedStateOwnerCommandGateway@1",
+      "canonical_owner": {
+        "id": "TypedStateOwnerCommandGateway@1",
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+        "host_path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "interface": "TypedStateOwnerCommandGateway@1",
+        "disposition": "canonical",
+        "writable": true,
+        "store": "idempotency and domain receipts in the exclusive owner transaction",
+        "bypass": "fail_closed",
+        "deletion_supported": false,
+        "evidence": "Durable receipt rows share the owner's mutation transaction. Schema modules admit observations; they cannot independently persist a success receipt."
+      },
+      "duplicates": [
+        {
+          "id": "TaskEfficiencyReceipt@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/efficiency_receipts.py",
+          "interface": "TaskEfficiencyReceipt@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "Closed efficiency-receipt contract. Schema authority cannot attest a measurement or complete a task."
+        },
+        {
+          "id": "RouteReceipt@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/decision_receipts.py",
+          "interface": "RouteReceipt@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "Closed routing-decision receipt. Missing denominators stay unavailable and are never imputed as zero."
+        },
+        {
+          "id": "SemanticVerificationReceipt@1",
+          "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/receipts.py",
+          "interface": "SemanticVerificationReceipt@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "Verification receipts use real CIDv1 via cid_for_bytes. Simulated receipts never satisfy acceptance."
+        },
+        {
+          "id": "jsonl_event_log",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/event_log.py",
+          "interface": "JsonlEventLog",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "JSONL export helper. Deleting or tampering with an export has no authority effect."
+        },
+        {
+          "id": "database_event_log",
+          "path": "ipfs_accelerate_py/agent_supervisor/runtime/database_event_log.py",
+          "interface": "DatabaseEventLog@1",
+          "disposition": "adapter",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "DuckDB-backed event, audit, and cursor store reached through the exclusive owner. It is not an independent receipt writer."
+        },
+        {
+          "id": "efficiency_receipts_fixture",
+          "path": "test/api/agent_supervisor/efficiency_state_hardening/test_efficiency_receipts.py",
+          "interface": "pytest",
+          "disposition": "fixture",
+          "writable": false,
+          "bypass": "fail_closed",
+          "replacement": "TypedStateOwnerCommandGateway@1",
+          "deletion_supported": false,
+          "evidence": "Closed efficiency-receipt fixtures. Tests cannot persist production receipts."
+        }
+      ]
+    }
+  ],
+  "hard_failures": [
+    "two_writers",
+    "silent_legacy_fallback",
+    "pseudo_cid_or_mock_capability",
+    "unclassified_duplicate",
+    "unsupported_deletion"
+  ],
+  "nonclaims": [
+    "This matrix does not authorize production cutover, public API deletion, or policy promotion.",
+    "Compatibility adapters, fixtures, fallbacks, and Markdown or DuckLake observations cannot independently claim authority.",
+    "A raw test exit status is an observation until admitted by the canonical receipt path."
+  ]
+}
