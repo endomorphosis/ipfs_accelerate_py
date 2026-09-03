@@ -1920,6 +1920,48 @@ def test_m61_mappingproxy_identity_normalization_authority_is_exact() -> None:
     assert authority["exact_changes"]["accepted_completion_changes"] == 0
 
 
+def test_m28_live_owner_admits_runtime_generated_generation_restart() -> None:
+    """Sealed generation restart must bind the minted owner, not M64's pid."""
+
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m28_runtime_generated_owner_test",
+    )
+    runtime = {
+        "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb",
+        "database_uuid": "c6b5c6a1-eaaa-4c09-b401-6ee7998602b4",
+        "store_generation": 45,
+        "quack_endpoint": "quack:127.0.0.1:24070",
+        "server_id": "server:a469353f-9272-4e5a-b6cd-d9d66989a9d1",
+        "process_birth_id": "birth:8b5ab9c4ad74cd29e9449c11b275f03d",
+    }
+    identity = {
+        "status": "ready",
+        "store_id": runtime["store_id"],
+        "database_uuid": runtime["database_uuid"],
+        "generation": 45,
+        "listen_uri": runtime["quack_endpoint"],
+        "server_id": "server:29b75aea-d76d-4689-89c4-9dd37c01b25f",
+        "process_birth_id": "birth:8b5074b97c6a3f34b1cc41644005079f",
+    }
+    restart = {
+        "stopped_owner": {
+            "target_identity_is_runtime_generated": True,
+            "generation_restart_authorized": True,
+        }
+    }
+    same_owner = {"stopped_owner": {"generation_restart_authorized": False}}
+    assert materializer._m28_live_owner_identity_admitted(
+        identity, runtime, restart
+    ) is True
+    assert materializer._m28_live_owner_identity_admitted(
+        identity, runtime, same_owner
+    ) is False
+    assert materializer._m28_live_owner_identity_admitted(
+        {**identity, "generation": 44}, runtime, restart
+    ) is False
+
+
 def test_m65_live_preflight_contract_accepts_mappingproxy_authority() -> None:
     """Outer mappingproxy must hash at the identity boundary, not TypeError."""
 

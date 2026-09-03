@@ -70197,6 +70197,48 @@ def _inspect_m28_owner_restart(
     }
 
 
+def _m28_live_owner_identity_admitted(
+    identity: Any,
+    runtime: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> bool:
+    """Admit the live owner for same-owner or sealed generation-restart successors.
+
+    Generation-bearing restarts declare ``target_identity_is_runtime_generated``.
+    After quack-start mints that owner, bind by store, generation, and listen
+    URI instead of demanding the predecessor process identity copied from M64.
+    """
+
+    stopped = authority.get("stopped_owner")
+    runtime_generated = (
+        isinstance(stopped, Mapping)
+        and stopped.get("target_identity_is_runtime_generated") is True
+        and stopped.get("generation_restart_authorized") is True
+    )
+    if (
+        not isinstance(identity, Mapping)
+        or identity.get("status") != "ready"
+        or identity.get("store_id") != runtime["store_id"]
+        or identity.get("database_uuid") != runtime["database_uuid"]
+        or int(identity.get("generation") or 0) != runtime["store_generation"]
+        or identity.get("listen_uri") != runtime["quack_endpoint"]
+    ):
+        return False
+    if runtime_generated:
+        return True
+    if (
+        "server_id" in runtime
+        and identity.get("server_id") != runtime["server_id"]
+    ):
+        return False
+    if (
+        "process_birth_id" in runtime
+        and identity.get("process_birth_id") != runtime["process_birth_id"]
+    ):
+        return False
+    return True
+
+
 @contextmanager
 def _m28_live_source(
     root: Path,
@@ -70235,22 +70277,7 @@ def _m28_live_source(
         Path(discovery.status_path), root=root, noun="M28 live Quack status"
     )
     identity = status.get("identity")
-    if (
-        not isinstance(identity, Mapping)
-        or identity.get("status") != "ready"
-        or identity.get("store_id") != runtime["store_id"]
-        or identity.get("database_uuid") != runtime["database_uuid"]
-        or (
-            "server_id" in runtime
-            and identity.get("server_id") != runtime["server_id"]
-        )
-        or (
-            "process_birth_id" in runtime
-            and identity.get("process_birth_id") != runtime["process_birth_id"]
-        )
-        or int(identity.get("generation") or 0) != runtime["store_generation"]
-        or identity.get("listen_uri") != runtime["quack_endpoint"]
-    ):
+    if not _m28_live_owner_identity_admitted(identity, runtime, authority):
         raise MigrationRequired("M28 live Quack owner identity differs")
     mutation_binding = {
         "server_id": str(identity["server_id"]),
