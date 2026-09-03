@@ -2046,6 +2046,28 @@ def test_m67_live_preflight_contract_accepts_mappingproxy_authority() -> None:
     assert expected["target_event_watermark"] == 341
 
 
+def test_operator_live_preflight_selects_m67_listen_down_before_m66() -> None:
+    """Listen-down+missing-token must rearm M67 instead of fail-closing as M66."""
+
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    m67_flag = "m67_active = active_revision == _M67_MIGRATION_REVISION"
+    m66_flag = "m66_active = active_revision == _M66_MIGRATION_REVISION"
+    assert operator_source.find(m67_flag) < operator_source.find(m66_flag)
+    assert operator_source.find(
+        "if revision == _M67_MIGRATION_REVISION:"
+    ) < operator_source.find("if revision == _M66_MIGRATION_REVISION:")
+    rearm = operator_source.find("_rearm_m67_existing_client_token_handoff(config)")
+    m66_missing = operator_source.find(
+        "M66 live generation-45 owner is missing the client token"
+    )
+    m67_listen = operator_source.find(
+        "M67 live generation-45 owner listen is down after"
+    )
+    assert 0 < rearm < m67_listen < m66_missing
+
+
 def test_m65_live_preflight_contract_accepts_mappingproxy_authority() -> None:
     """Outer mappingproxy must hash at the identity boundary, not TypeError."""
 

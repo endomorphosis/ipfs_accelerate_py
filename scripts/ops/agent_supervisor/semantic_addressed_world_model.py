@@ -22928,6 +22928,18 @@ def _normalized_live_preflight_contract(
     """Resolve one closed preflight view without shape-dependent aliases."""
 
     revision = str(active_source_repair.get("migration_revision") or "")
+    if revision == _M67_MIGRATION_REVISION:
+        try:
+            return materializer._validated_m67_live_preflight_contract(
+                active_source_repair
+            )
+        except (
+            materializer.MigrationRequired,
+            materializer.MaterializationError,
+        ) as exc:
+            raise OperatorError(
+                f"M67 normalized preflight contract differs: {exc}"
+            ) from exc
     if revision == _M66_MIGRATION_REVISION:
         try:
             return materializer._validated_m66_live_preflight_contract(
@@ -23429,6 +23441,7 @@ def _live_preflight(
         }
     )
     active_revision = str(active_source_repair.get("migration_revision") or "")
+    m67_active = active_revision == _M67_MIGRATION_REVISION
     m66_active = active_revision == _M66_MIGRATION_REVISION
     m65_active = active_revision == _M65_MIGRATION_REVISION
     m64_active = active_revision == _M64_MIGRATION_REVISION
@@ -23479,6 +23492,7 @@ def _live_preflight(
     m18_active = active_revision == "SAWM-R2-M18"
     evidence_only_post_m27 = any(
         (
+            m67_active,
             m66_active,
             m65_active,
             m64_active,
@@ -23521,6 +23535,7 @@ def _live_preflight(
     )
     deferred_live_evidence_marker = any(
         (
+            m67_active,
             m66_active,
             m65_active,
             m64_active,
@@ -23582,6 +23597,15 @@ def _live_preflight(
     discovery = discover_live_quack_endpoint(store)
     expected_uri = str(config["database_program"]["quack_endpoint"])
     if not discovery.uri or discovery.uri != expected_uri or not discovery.token:
+        if m67_active:
+            _rearm_m67_existing_client_token_handoff(config)
+            discovery = discover_live_quack_endpoint(store)
+    if not discovery.uri or discovery.uri != expected_uri or not discovery.token:
+        if m67_active:
+            raise OperatorError(
+                "M67 live generation-45 owner listen is down after "
+                "same-owner credential rearm; do not mint generation 46"
+            )
         if m66_active:
             if discovery.uri == expected_uri and not discovery.token:
                 raise OperatorError(
@@ -23776,6 +23800,10 @@ def _live_preflight(
         or live_identity.get("listen_uri") != expected_uri
         or remote_identity.get("listen_uri") != expected_uri
     ):
+        if m67_active:
+            raise OperatorError(
+                "M67 exact live generation-45 owner binding differs"
+            )
         if m66_active:
             raise OperatorError(
                 "M66 exact live generation-45 owner binding differs"
