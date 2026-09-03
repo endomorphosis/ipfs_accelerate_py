@@ -11448,6 +11448,28 @@ def test_authorization_denied_claim_cas_is_attach_contention(
         daemon.close()
 
 
+def test_typed_blocked_recovery_unavailable_is_not_attach_contention(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:blocked-recovery-not-attach",
+    )
+    try:
+        exc = DatabaseImplementationAuthorityError(
+            "typed blocked recovery is unavailable without "
+            "coordination-coupled owner authority"
+        )
+        assert daemon._is_quack_attach_contention(exc) is False
+
+        def _raise() -> list[dict[str, object]]:
+            raise exc
+
+        assert daemon._run_reconciliation_step(_raise) == []
+    finally:
+        daemon.close()
+
+
 def test_claim_cas_authorization_denied_releases_unadmitted_claim_and_defers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

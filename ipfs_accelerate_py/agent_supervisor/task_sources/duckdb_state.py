@@ -1925,7 +1925,7 @@ _QUACK_ATTACH_CONTENTION_MARKERS = (
     "broken pipe",
     "timeout",
     "busy",
-    "locked",
+    " is locked",
     "contention",
 )
 

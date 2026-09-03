@@ -99768,6 +99768,17 @@ class DatabaseImplementationDaemon:
             detail = str(current)
             name = type(current).__name__
             lowered = detail.lower()
+            if "typed blocked recovery is unavailable without" in lowered:
+                current = (
+                    current.__cause__
+                    if current.__cause__ is not None
+                    else (
+                        current.__context__
+                        if not current.__suppress_context__
+                        else None
+                    )
+                )
+                continue
             if (
                 "authorization failed" in lowered
                 or "authorization_denied" in lowered
@@ -99966,7 +99977,17 @@ class DatabaseImplementationDaemon:
     ) -> list[dict[str, Any]]:
         """Run one reconciliation pass; attach failures idle the whole tick."""
 
-        return callback()
+        try:
+            return callback()
+        except DatabaseImplementationAuthorityError as exc:
+            if "typed blocked recovery is unavailable without" not in str(exc):
+                raise
+            logger.warning(
+                "typed blocked recovery skipped without coordination-coupled "
+                "owner authority: %s",
+                str(exc)[:512],
+            )
+            return []
 
     def reconcile_stale_in_progress_gates(self) -> list[dict[str, Any]]:
         """Retry leftover in_progress control tasks that freeze claim_next.
