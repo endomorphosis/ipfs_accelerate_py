@@ -114251,47 +114251,86 @@ class DatabaseImplementationDaemon:
             if isinstance(receipt, Mapping)
             else set()
         )
-        if (
-            str(getattr(task, "status", "") or "").strip().lower()
-            != "blocked"
-            or type(task_revision) is not int
-            or not isinstance(receipt, Mapping)
-            or expected_fields - set(receipt)
-            or extra_fields - allowed_extra
-            or carried_route
-            not in (set(), _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS)
-            or receipt.get("operation")
-            != "database_portal_typed_deferral_budget_exhausted"
-            or receipt.get("reason")
-            != "typed_portal_deferral_budget_exhausted"
-            or receipt.get("attempt_id") != attempt.attempt_id
-            or receipt.get("attempt_number") != int(attempt.attempt_number)
-            or receipt.get("claim_id") != attempt.claim_id
-            or receipt.get("lease_id") != attempt.lease_id
-            or receipt.get("owner_session_id") != attempt.owner_session_id
-            or receipt.get("fencing_token") != int(attempt.fencing_token)
-            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
-            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
-            or receipt.get("execution_revision") != int(attempt.revision)
-            or receipt.get("execution_finished_at_ms")
-            != attempt.finished_at_ms
-            or receipt.get("retryable") is not False
-            or receipt.get("attempt_consumed") is not False
-            or receipt.get("typed_deferral_slot_consumed") is not True
-            or not isinstance(
-                receipt.get("prior_queue_entry_preserved_inactive"), bool
+        mismatch = None
+        if str(getattr(task, "status", "") or "").strip().lower() != "blocked":
+            mismatch = "control status is not blocked"
+        elif type(task_revision) is not int:
+            mismatch = "task revision is not an int"
+        elif not isinstance(receipt, Mapping):
+            mismatch = "blocked control receipt is not a mapping"
+        elif expected_fields - set(receipt):
+            mismatch = (
+                "blocked control receipt missing "
+                + ",".join(sorted(expected_fields - set(receipt)))
             )
-            or not isinstance(coordination, Mapping)
-            or coordination.get("attempt_id") != attempt.attempt_id
-            or coordination.get("claim_id") != attempt.claim_id
-            or coordination.get("attempt_number")
-            != int(attempt.attempt_number)
-            or receipt.get("control_expected_status")
-            not in {"in_progress", "retrying"}
-            or receipt.get("control_expected_revision") != task_revision - 1
+        elif extra_fields - allowed_extra:
+            mismatch = (
+                "blocked control receipt has unknown fields "
+                + ",".join(sorted(extra_fields - allowed_extra))
+            )
+        elif carried_route not in (
+            set(),
+            _DATABASE_PORTAL_TERMINAL_FAILURE_ROUTE_FIELDS,
         ):
+            mismatch = "blocked control receipt has partial execution-route lineage"
+        elif receipt.get("operation") != (
+            "database_portal_typed_deferral_budget_exhausted"
+        ):
+            mismatch = "blocked control receipt operation is foreign"
+        elif receipt.get("reason") != "typed_portal_deferral_budget_exhausted":
+            mismatch = "blocked control receipt reason is foreign"
+        elif receipt.get("attempt_id") != attempt.attempt_id:
+            mismatch = "blocked control receipt attempt_id is foreign"
+        elif receipt.get("attempt_number") != int(attempt.attempt_number):
+            mismatch = "blocked control receipt attempt_number is foreign"
+        elif receipt.get("claim_id") != attempt.claim_id:
+            mismatch = "blocked control receipt claim_id is foreign"
+        elif receipt.get("lease_id") != attempt.lease_id:
+            mismatch = "blocked control receipt lease_id is foreign"
+        elif receipt.get("owner_session_id") != attempt.owner_session_id:
+            mismatch = "blocked control receipt owner_session_id is foreign"
+        elif receipt.get("fencing_token") != int(attempt.fencing_token):
+            mismatch = "blocked control receipt fencing_token is foreign"
+        elif receipt.get("fence_epoch") != int(attempt.fence_epoch):
+            mismatch = "blocked control receipt fence_epoch is foreign"
+        elif receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED:
+            mismatch = "blocked control receipt execution_phase is not failed"
+        elif receipt.get("execution_revision") != int(attempt.revision):
+            mismatch = "blocked control receipt execution_revision is foreign"
+        elif receipt.get("execution_finished_at_ms") != attempt.finished_at_ms:
+            mismatch = "blocked control receipt finished_at is foreign"
+        elif receipt.get("retryable") is not False:
+            mismatch = "blocked control receipt retryable is not false"
+        elif receipt.get("attempt_consumed") is not False:
+            mismatch = "blocked control receipt attempt_consumed is not false"
+        elif receipt.get("typed_deferral_slot_consumed") is not True:
+            mismatch = "blocked control receipt typed_deferral_slot_consumed is not true"
+        elif not isinstance(
+            receipt.get("prior_queue_entry_preserved_inactive"), bool
+        ):
+            mismatch = "blocked control receipt prior_queue_entry_preserved_inactive is invalid"
+        elif not isinstance(coordination, Mapping):
+            mismatch = "blocked control receipt coordination is invalid"
+        elif coordination.get("attempt_id") != attempt.attempt_id:
+            mismatch = "blocked control receipt coordination attempt_id is foreign"
+        elif coordination.get("claim_id") != attempt.claim_id:
+            mismatch = "blocked control receipt coordination claim_id is foreign"
+        elif coordination.get("attempt_number") != int(attempt.attempt_number):
+            mismatch = "blocked control receipt coordination attempt_number is foreign"
+        elif receipt.get("control_expected_status") not in {
+            "in_progress",
+            "retrying",
+        }:
+            mismatch = (
+                "blocked control receipt expected status is "
+                + repr(receipt.get("control_expected_status"))
+            )
+        elif receipt.get("control_expected_revision") != task_revision - 1:
+            mismatch = "blocked control receipt expected revision is stale"
+        if mismatch is not None:
             raise DatabaseImplementationAuthorityError(
-                "leftover-wait recovery does not match its blocked control receipt"
+                "leftover-wait recovery does not match its blocked control "
+                "receipt: " + mismatch
             )
         return self._verified_leftover_wait_retry_budget(
             attempt,
