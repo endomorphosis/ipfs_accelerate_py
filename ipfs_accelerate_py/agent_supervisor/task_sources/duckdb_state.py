@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import socket
 import sqlite3
 import threading
 import time
@@ -777,6 +778,12 @@ def _read_quack_client_token(
         identity = status.get("identity")
         if not handle and isinstance(identity, Mapping):
             handle = str(identity.get("secret_handle") or "").strip()
+    if handle.startswith("env://"):
+        name = handle[6:]
+        if name.isidentifier() and name.endswith("_QUACK_TOKEN"):
+            from_handle = str(os.environ.get(name, "") or "").strip()
+            if from_handle and _QUACK_TOKEN_RE.fullmatch(from_handle):
+                return from_handle
     if handle:
         safe = handle.replace(":", "_").replace("/", "_")
         vault = status_dir / f"{safe}.quack-token"
@@ -798,6 +805,32 @@ def _status_listen_uri(status: Mapping[str, Any]) -> str:
         if uri:
             return uri
     return quack_transport_uri(status.get("listen_uri") or "")
+
+
+def _quack_listen_reachable(uri: str, *, timeout_seconds: float = 0.2) -> bool:
+    """Return whether a loopback Quack listen URI still accepts TCP."""
+
+    text = quack_transport_uri(uri)
+    if not text:
+        return False
+    rest = text.split(":", 1)[-1].lstrip("/")
+    if rest.lower().startswith("::1:"):
+        host, port_text = "::1", rest[4:]
+    else:
+        host, sep, port_text = rest.rpartition(":")
+        if not sep:
+            return False
+    try:
+        port = int(port_text)
+    except ValueError:
+        return False
+    if port < 1 or port > 65535:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=timeout_seconds):
+            return True
+    except OSError:
+        return False
 
 
 def _status_database_path(status: Mapping[str, Any]) -> str:
@@ -841,6 +874,8 @@ def _reject_status(
         if isinstance(birth, Mapping) and type(birth.get("pid")) is int:
             if not _owner_process_alive(identity):
                 return "owner_process_not_alive"
+            if not _quack_listen_reachable(uri):
+                return "owner_listen_unavailable"
     del status_path
     return ""
 

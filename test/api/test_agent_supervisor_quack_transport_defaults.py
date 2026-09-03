@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBConnectionPolicyError,
+    _read_quack_client_token,
+    _reject_status,
     is_quack_transport_target,
     open_quack_transport_connection,
     quack_transport_uri,
@@ -98,3 +101,35 @@ def test_database_daemon_defaults_to_quack_and_refuses_file_open(tmp_path) -> No
             database_path=tmp_path / "control.duckdb",
             task_source_kind="duckdb",
         )
+
+
+def test_read_quack_client_token_resolves_env_secret_handle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", raising=False)
+    monkeypatch.setenv("SAWM_QUACK_TOKEN", "sawmtoken1")
+    token = _read_quack_client_token(
+        tmp_path, {"secret_handle": "env://SAWM_QUACK_TOKEN"}
+    )
+    assert token == "sawmtoken1"
+
+
+def test_reject_status_live_owner_without_listener(tmp_path: Path) -> None:
+    """A ready PID with a dead listen port is not a live Quack owner."""
+
+    database = tmp_path / "control.duckdb"
+    database.write_bytes(b"")
+    status = {
+        "lifecycle": "ready",
+        "database_path": str(database.resolve()),
+        "listen_uri": "quack:127.0.0.1:1",
+        "identity": {
+            "status": "ready",
+            "listen_uri": "quack:127.0.0.1:1",
+            "process_birth": {"pid": os.getpid()},
+        },
+    }
+    assert (
+        _reject_status(status, database.resolve(), tmp_path / "status.json")
+        == "owner_listen_unavailable"
+    )
