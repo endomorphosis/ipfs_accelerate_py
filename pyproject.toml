@@ -237,6 +237,18 @@ live-application = false
 live-reuse = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.safe-reuse]
+schema = "ipfs_accelerate_py/assurance/safe-reuse@1"
+interface = "AccelerateSafeReuse@1"
+task-id = "PCPR-067"
+goal-id = "PCPR-G700"
+objective-kind = "declared_safe_reuse"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-reuse = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
