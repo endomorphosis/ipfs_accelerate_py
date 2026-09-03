@@ -25788,7 +25788,7 @@ def _live_preflight(
             else active_source_repair["prior_semantic_authority_digest"]
         )
         bind_live_event_digest = (
-            m65_active
+            (m66_active or m65_active)
             and preflight_contract.get("bind_store_report_to_live_event_digest")
             is True
         )
