@@ -265,6 +265,15 @@ _M67_SUCCESSOR_KEY = (
     "post_m66_same_owner_listen_down_missing_client_token_handoff_successor_materialization"
 )
 _M67_TARGET_PROJECTION_CID = _M66_TARGET_PROJECTION_CID
+_M68_AUTHORITY_CID = (
+    "sha256:6fa11c7a85fd43a7b4ca7d1984a02298bb5f4dc4ee5231e007a6412947ae83b0"
+)
+_M68_AUTHORITY_SIZE = 19_559
+_M68_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M68_FINAL_CONTROL_AUTHORITY_CID"
+_M68_SUCCESSOR_KEY = (
+    "post_m67_listen_down_owner_fenced_stop_restart_successor_materialization"
+)
+_M68_TARGET_PROJECTION_CID = _M67_TARGET_PROJECTION_CID
 _M50_M49_RECEIPT_CID = (
     "sha256:d5bfeb6dd987b05c2407d93f66d73c6a70bcd2b4f17e8381a93a2bb265acae47"
 )
@@ -793,6 +802,24 @@ def _m63_migration_errors(
         )
     except Exception as exc:
         return [f"M63 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
+def _m68_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Validate M68's listen-down fenced-stop generation-46 restart."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m68_post_m67_listen_down_owner_fenced_stop_restart_errors(
+                scheduler, seal, migration, root=REPO_ROOT
+            )
+        )
+    except Exception as exc:
+        return [f"M68 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
 def _m67_migration_errors(
@@ -1816,6 +1843,43 @@ def _active_successor_migration_errors(
     remains independently checked as immutable history.
     """
 
+    m68_key = _M68_SUCCESSOR_KEY
+    m68_presence = (
+        m68_key in scheduler,
+        m68_key in migration,
+        f"{m68_key}_cid" in seal,
+    )
+    if any(m68_presence):
+        errors = _m68_migration_errors(scheduler, seal, migration)
+        if not all(m68_presence):
+            errors.append("M68 successor authority is only partially declared")
+        if errors:
+            return errors
+        m67_key = _M67_SUCCESSOR_KEY
+        m67_presence = (
+            m67_key in scheduler,
+            m67_key in migration,
+            f"{m67_key}_cid" in seal,
+        )
+        if not all(m67_presence):
+            return [
+                "M68 successor does not preserve the immutable M67 controls"
+            ]
+        historical_scheduler = dict(scheduler)
+        historical_migration = dict(migration)
+        historical_seal = dict(seal)
+        historical_scheduler.pop(m68_key, None)
+        historical_migration.pop(m68_key, None)
+        historical_seal.pop(f"{m68_key}_cid", None)
+        errors.extend(
+            _active_successor_migration_errors(
+                historical_scheduler,
+                historical_seal,
+                historical_migration,
+                require_current_source=False,
+            )
+        )
+        return errors
     m67_key = _M67_SUCCESSOR_KEY
     m67_presence = (
         m67_key in scheduler,
@@ -5561,8 +5625,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m68_key = _M68_SUCCESSOR_KEY
+    m68_selected = any((
+        m68_key in config,
+        m68_key in migration,
+        f"{m68_key}_cid" in seal,
+    ))
     m67_key = _M67_SUCCESSOR_KEY
-    m67_selected = any((
+    m67_selected = m68_selected or any((
         m67_key in config,
         m67_key in migration,
         f"{m67_key}_cid" in seal,
@@ -6245,7 +6315,9 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "45"
+        "46"
+        if m68_selected
+        else "45"
         if m65_selected
         else "43"
         if m64_selected
@@ -6471,7 +6543,42 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m67_selected:
+    if m68_selected:
+        successor = config.get(m68_key)
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m68_post_m67_listen_down_owner_fenced_stop_restart_authority()
+            )
+            reference = dict(materializer._m68_authority_reference())
+            contract = materializer._validated_m68_live_preflight_contract(expected)
+            configured = materializer._m68_successor_configured_on_any_surface(
+                root, config
+            )
+            stopped = expected.get("stopped_owner")
+            if (
+                successor != reference
+                or seal.get(f"{m68_key}_cid") != _M68_AUTHORITY_CID
+                or materializer._identity(expected) != _M68_AUTHORITY_CID
+                or len(materializer._canonical(expected)) != _M68_AUTHORITY_SIZE
+                or _M68_AUTHORITY_CID == _M68_UNSEALED_AUTHORITY_CID
+                or configured is not True
+                or expected.get("target_generation") != 46
+                or not isinstance(stopped, Mapping)
+                or stopped.get("generation") != 45
+                or contract.get("generation_restart_authorized") is not True
+                or contract.get("fenced_stop_authorized") is not True
+            ):
+                config_errors.append(
+                    "M68 listen-down fenced-stop restart authority differs"
+                )
+        except Exception as exc:
+            config_errors.append(
+                f"M68 listen-down fenced-stop restart authority unavailable: "
+                f"{type(exc).__name__}: {exc}"
+            )
+    elif m67_selected:
         successor = config.get(m67_key)
         try:
             module, materializer = _m26_validation_modules(root)

@@ -1,4 +1,5 @@
 {
+  "post_m67_listen_down_owner_fenced_stop_restart_successor_materialization": {"authority_cid":"sha256:6fa11c7a85fd43a7b4ca7d1984a02298bb5f4dc4ee5231e007a6412947ae83b0","migration_revision":"SAWM-R2-M68","schema":"sawm/operator-control-authority-reference@1"},
   "post_m66_same_owner_listen_down_missing_client_token_handoff_successor_materialization": {"authority_cid":"sha256:9c2a379289a30aff01253177d729a8cc797c5e969bd89935a69953e167087703","migration_revision":"SAWM-R2-M67","schema":"sawm/operator-control-authority-reference@1"},
   "post_m65_live_owner_capsule_denied_restart_source_checkout_successor_materialization": {"authority_cid":"sha256:3db1716da422a27db4ffb6f07f924310314b8df932af21bdf0b9d901f2e544b2","migration_revision":"SAWM-R2-M66","schema":"sawm/operator-control-authority-reference@1"},
   "post_m64_stopped_owner_missing_client_token_vault_restart_successor_materialization": {"authority_cid":"sha256:0df7a85da3817f959b92f0306005bf4f7623e6267d951de441deaf0a8520f176","migration_revision":"SAWM-R2-M65","schema":"sawm/operator-control-authority-reference@1"},

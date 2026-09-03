@@ -5066,6 +5066,64 @@ _M67_EXPECTED_TASK_HEADS = MappingProxyType(
     }
 )
 
+# M68 fenced-stops the listen-down generation-45 owner and restarts as
+# generation 46.  M67 rearmed the vault but cannot restore :24070 in the
+# hung pid; the serve loop already honors quack-state-server.stop.
+_M68_MIGRATION_REVISION = "SAWM-R2-M68"
+_M68_SUPERSESSION_MODE = (
+    "listen_down_generation_45_fenced_stop_generation_46_restart_source_seal"
+)
+_M68_SUPERSESSION_REASON = (
+    "post_m67_listen_down_owner_fenced_stop_restart_successor_materialization"
+)
+_M68_CONTROL_RECORDED_AT = "2026-09-03T07:33:00Z"
+_M68_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M68_FINAL_CONTROL_AUTHORITY_CID"
+_M68_AUTHORITY_CID = (
+    "sha256:6fa11c7a85fd43a7b4ca7d1984a02298bb5f4dc4ee5231e007a6412947ae83b0"
+)
+_M68_AUTHORITY_SIZE = 19_559
+_M68_PRIOR_GENERATION = _M67_TARGET_GENERATION
+_M68_TARGET_GENERATION = 46
+_M68_PRIOR_EVENT_WATERMARK = 341
+_M68_TARGET_EVENT_WATERMARK = 341
+_M68_TARGET_PLAN_REVISION = _M67_TARGET_PLAN_REVISION
+_M68_TARGET_QUACK_PORT = _M67_TARGET_QUACK_PORT
+_M68_PRIOR_PROJECTION_CID = _M67_TARGET_PROJECTION_CID
+_M68_TARGET_PROJECTION_CID = _M68_PRIOR_PROJECTION_CID
+_M68_SEMANTIC_AUTHORITY_DIGEST = _M67_SEMANTIC_AUTHORITY_DIGEST
+_M68_EVIDENCE_KIND = (
+    "operator_control_plane_post_m67_listen_down_owner_fenced_stop_restart"
+)
+_M68_STORE_ID = _M67_STORE_ID
+_M68_COORDINATION_STORE_ID = _M67_COORDINATION_STORE_ID
+_M68_RUNTIME_ROOT = _M67_RUNTIME_ROOT
+_M68_WORKTREE_ROOT = _M67_WORKTREE_ROOT
+_M68_DATABASE_UUID = _M67_DATABASE_UUID
+_M68_EXTENSION_FINGERPRINT = _M67_EXTENSION_FINGERPRINT
+_M68_DATASETS_GITLINK = _M67_DATASETS_GITLINK
+_M68_DATASETS_TREE = _M67_DATASETS_TREE
+_M68_KIT_GITLINK = _M67_KIT_GITLINK
+_M68_KIT_TREE = _M67_KIT_TREE
+_M68_PRIOR_SERVER_ID = _M67_LIVE_SERVER_ID
+_M68_PRIOR_PROCESS_BIRTH_ID = _M67_LIVE_PROCESS_BIRTH_ID
+_M68_PRIOR_STARTED_AT = _M67_LIVE_STARTED_AT
+_M68_PRIOR_STARTUP_EPOCH = _M67_LIVE_STARTUP_EPOCH
+_M68_PRIOR_PROCESS_BIRTH = _M67_LIVE_PROCESS_BIRTH
+_M68_M67_AUTHORITY_CID = _M67_AUTHORITY_CID
+_M68_M67_AUTHORITY_SIZE = _M67_AUTHORITY_SIZE
+_M68_M67_RECEIPT_NAME = _M67_FINAL_RECEIPT_NAME
+_M68_M67_RECEIPT_SHA256 = (
+    "9adfdf78640b1833c65cbb2a385af5a101fc094c00e4347246914deef64bfb44"
+)
+_M68_M67_RECEIPT_SIZE = 2_992
+_M68_M67_RECEIPT_CID = (
+    "sha256:d3f814cd8e5478d5ee3c9091902b821dde70f9b99886cd6bba40934f8498ff1f"
+)
+_M68_OPERATOR_CONTROL_PATHS = frozenset(_M67_OPERATOR_CONTROL_PATHS)
+_M68_FINAL_RECEIPT_NAME = "m68-source-successor-receipt.json"
+_M68_CURRENT_BOOT_ID = _M67_CURRENT_BOOT_ID
+_M68_EXPECTED_TASK_HEADS = MappingProxyType(dict(_M67_EXPECTED_TASK_HEADS))
+
 
 
 # M41 preserves M40's complete control declaration and failed sealed-suite
@@ -35956,6 +36014,8 @@ def check_materialized(
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m68_successor_configured_on_any_surface(root, config):
+        return _check_m68_materialized(root, config_file)
     if _m67_successor_configured_on_any_surface(root, config):
         return _check_m67_materialized(root, config_file)
     if _m66_successor_configured_on_any_surface(root, config):
@@ -103612,6 +103672,482 @@ def _m67_successor_configured_on_any_surface(
     return _m67_successor_configured(config)
 
 
+def _expected_m68_post_m67_listen_down_owner_fenced_stop_restart_authority() -> dict[str, Any]:
+    """Return M68's listen-down fenced-stop generation-46 restart authority."""
+
+    m67 = _expected_m67_post_m66_same_owner_listen_down_token_handoff_authority()
+    if (
+        _identity(m67) != _M68_M67_AUTHORITY_CID
+        or len(_canonical(m67)) != _M68_M67_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M68 preserved M67 source authority differs")
+    authority = json.loads(_canonical(m67))
+    authority.update(
+        {
+            "schema": (
+                "sawm/post-m67-listen-down-owner-fenced-stop-restart-"
+                "successor-materialization-authorization@1"
+            ),
+            "migration_revision": _M68_MIGRATION_REVISION,
+            "migration_kind": _M68_SUPERSESSION_REASON,
+            "supersession_mode": _M68_SUPERSESSION_MODE,
+            "control_recorded_at": _M68_CONTROL_RECORDED_AT,
+            "target_generation": _M68_TARGET_GENERATION,
+            "target_event_watermark": _M68_TARGET_EVENT_WATERMARK,
+            "target_projection_cid": _M68_TARGET_PROJECTION_CID,
+            "ordinary_source_changes": 1,
+        }
+    )
+    authority["expected_task_heads"] = dict(_M68_EXPECTED_TASK_HEADS)
+    authority["operator_control_paths"] = sorted(_M68_OPERATOR_CONTROL_PATHS)
+    authority["runtime_binding"]["store_generation"] = _M68_TARGET_GENERATION
+    authority["runtime_binding"]["prior_event_watermark"] = (
+        _M68_PRIOR_EVENT_WATERMARK
+    )
+    authority["runtime_binding"]["target_event_watermark"] = (
+        _M68_TARGET_EVENT_WATERMARK
+    )
+    authority["runtime_binding"]["server_id"] = _M68_PRIOR_SERVER_ID
+    authority["runtime_binding"]["process_birth_id"] = (
+        _M68_PRIOR_PROCESS_BIRTH_ID
+    )
+    authority["live_owner"] = {
+        "schema": "sawm/target-generation-46-owner-after-m68-fenced-stop@1",
+        "database_uuid": _M68_DATABASE_UUID,
+        "extension_fingerprint": _M68_EXTENSION_FINGERPRINT,
+        "generation": _M68_TARGET_GENERATION,
+        "generation_restart_authorized": True,
+        "listen_uri": f"quack:127.0.0.1:{_M68_TARGET_QUACK_PORT}",
+        "listen_socket_present": True,
+        "same_owner_required": False,
+        "status": "ready",
+        "store_id": _M68_STORE_ID,
+        "token_handoff_retired": False,
+        "client_token_vault_absent": False,
+        "token_handoff_rearm_authorized": False,
+        "generation_46_mint_authorized": True,
+        "fenced_stop_authorized": True,
+        "current_boot_id": _M68_CURRENT_BOOT_ID,
+    }
+    authority["stopped_owner"] = {
+        "schema": "sawm/listen-down-generation-45-owner-before-m68-fenced-stop@1",
+        "generation": _M68_PRIOR_GENERATION,
+        "status": "listen_down",
+        "lifecycle": "ready",
+        "listen_socket_present": False,
+        "generation_restart_authorized": True,
+        "token_handoff_retired": False,
+        "client_token_vault_absent": False,
+        "same_live_owner_required": False,
+        "server_id": _M68_PRIOR_SERVER_ID,
+        "process_birth_id": _M68_PRIOR_PROCESS_BIRTH_ID,
+        "started_at": _M68_PRIOR_STARTED_AT,
+        "startup_epoch": _M68_PRIOR_STARTUP_EPOCH,
+        "process_birth": dict(_M68_PRIOR_PROCESS_BIRTH),
+        "fenced_stop_authorized": True,
+    }
+    authority["stopped_prestart_artifacts"] = {
+        "m67_receipt_sha256": _M68_M67_RECEIPT_SHA256,
+        "m67_receipt_size": _M68_M67_RECEIPT_SIZE,
+        "m67_receipt_present": True,
+        "m66_receipt_present": True,
+        "m65_receipt_present": True,
+        "m64_receipt_present": True,
+        "m63_receipt_present": True,
+        "m68_receipt_absent": True,
+        "client_token_vault_absent": False,
+        "token_handoff_retired": False,
+    }
+    authority["target_authority"].update(
+        {
+            "event_watermark": _M68_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M68_TARGET_PROJECTION_CID,
+            "evidence_kind": _M68_EVIDENCE_KIND,
+            "generation": _M68_TARGET_GENERATION,
+        }
+    )
+    authority["live_preflight_contract"].update(
+        {
+            "migration_revision": _M68_MIGRATION_REVISION,
+            "successor_class": "post_m67_listen_down_owner_fenced_stop_restart",
+            "m67_authority_cid": _M68_M67_AUTHORITY_CID,
+            "m67_receipt_must_remain_present": True,
+            "m66_receipt_must_remain_present": True,
+            "m65_receipt_must_remain_present": True,
+            "m64_receipt_must_remain_present": True,
+            "m63_receipt_must_remain_present": True,
+            "prior_event_watermark": _M68_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M68_TARGET_EVENT_WATERMARK,
+            "prior_projection_cid": _M68_PRIOR_PROJECTION_CID,
+            "target_projection_cid": _M68_TARGET_PROJECTION_CID,
+            "target_generation": _M68_TARGET_GENERATION,
+            "same_live_owner_required": False,
+            "generation_restart_authorized": True,
+            "generation_46_mint_authorized": True,
+            "fenced_stop_authorized": True,
+            "token_handoff_rearm_authorized": False,
+            "token_reissue_authorized": False,
+            "apply_when_listen_down_and_token_missing": False,
+            "apply_when_listen_down_and_token_present": True,
+            "apply_when_uri_ready_and_token_missing": False,
+            "apply_when_uri_ready_and_token_present": False,
+            "event_338_must_be_preserved": True,
+            "events_339_340_must_be_preserved": True,
+            "event_341_must_be_preserved": True,
+            "event_342_must_be_absent": True,
+            "bind_store_report_to_live_event_digest": True,
+        }
+    )
+    authority["source_chain"] = {
+        "m67_final_control_commit": (
+            "24b92e5955aac518700fe7c38a43810b22e34d33"
+        ),
+        "final_control_parent": "24b92e5955aac518700fe7c38a43810b22e34d33",
+        "repair_commit_count": 0,
+        "final_control_commit_count": 1,
+        "current_commit_identity_embedded_in_authority": False,
+    }
+    authority["exact_changes"].update(
+        {
+            "event_suffix_length": 0,
+            "evidence_node_changes": 0,
+            "evidence_event_changes": 0,
+            "owner_generation_changes": 1,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+        }
+    )
+    authority["preservation"].update(
+        {
+            "same_live_owner": False,
+            "same_store_generation": False,
+            "generation_restart": True,
+            "m67_authority_preserved_exactly": True,
+            "m67_receipt_preserved_exactly": True,
+            "m67_receipt_created_or_rewritten": False,
+            "m66_receipt_preserved_exactly": True,
+            "m65_receipt_preserved_exactly": True,
+            "m64_receipt_preserved_exactly": True,
+            "m63_receipt_preserved_exactly": True,
+            "event_338_preserved_exactly": True,
+            "events_339_340_preserved_exactly": True,
+            "event_341_preserved_exactly": True,
+            "sawm_006_blocked_revision_24": True,
+            "sawm_008_in_progress_revision_25": True,
+            "sawm_013_blocked_revision_4": True,
+        }
+    )
+    return authority
+
+
+def _m68_authority_reference() -> dict[str, Any]:
+    authority = (
+        _expected_m68_post_m67_listen_down_owner_fenced_stop_restart_authority()
+    )
+    if (
+        not _M68_AUTHORITY_CID.endswith("PENDING_M68_FINAL_CONTROL_AUTHORITY_CID")
+        and _identity(authority) != _M68_AUTHORITY_CID
+    ):
+        raise MaterializationError("M68 source successor authority CID differs")
+    return {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": _M68_MIGRATION_REVISION,
+        "authority_cid": _M68_AUTHORITY_CID,
+    }
+
+
+def _validated_m68_live_preflight_contract(
+    authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    expected = (
+        _expected_m68_post_m67_listen_down_owner_fenced_stop_restart_authority()
+    )
+    contract = authority.get("live_preflight_contract")
+    if (
+        _identity(dict(authority)) != _identity(dict(expected))
+        or not isinstance(contract, Mapping)
+        or contract.get("migration_revision") != _M68_MIGRATION_REVISION
+        or contract.get("target_generation") != _M68_TARGET_GENERATION
+        or contract.get("target_event_watermark") != _M68_TARGET_EVENT_WATERMARK
+        or contract.get("generation_restart_authorized") is not True
+        or contract.get("same_live_owner_required") is not False
+        or contract.get("fenced_stop_authorized") is not True
+        or contract.get("generation_46_mint_authorized") is not True
+        or contract.get("apply_when_listen_down_and_token_present") is not True
+        or contract.get("event_341_must_be_preserved") is not True
+        or contract.get("bind_store_report_to_live_event_digest") is not True
+    ):
+        raise MaterializationError("M68 live-preflight contract differs")
+    return MappingProxyType(
+        {
+            "migration_revision": _M68_MIGRATION_REVISION,
+            "target_store_id": _M68_STORE_ID,
+            "database_uuid": _M68_DATABASE_UUID,
+            "target_generation": _M68_TARGET_GENERATION,
+            "target_event_watermark": _M68_TARGET_EVENT_WATERMARK,
+            "target_plan_revision": _M68_TARGET_PLAN_REVISION,
+            "target_projection_cid": _M68_TARGET_PROJECTION_CID,
+            "semantic_authority_digest": _M68_SEMANTIC_AUTHORITY_DIGEST,
+            "prior_event_watermark": _M68_PRIOR_EVENT_WATERMARK,
+            "prior_projection_cid": _M68_PRIOR_PROJECTION_CID,
+            "preserved_plan_anchor": {},
+            "expected_task_heads": dict(_M68_EXPECTED_TASK_HEADS),
+            "generation_restart_authorized": True,
+            "same_live_owner_required": False,
+            "fenced_stop_authorized": True,
+            "generation_46_mint_authorized": True,
+            "bind_store_report_to_live_event_digest": True,
+            "event_341_must_be_preserved": True,
+            "apply_when_listen_down_and_token_present": True,
+        }
+    )
+
+
+def _m68_successor_configured(config: Mapping[str, Any]) -> bool:
+    if _M68_SUPERSESSION_REASON not in config:
+        return False
+    if config.get(_M68_SUPERSESSION_REASON) != _m68_authority_reference():
+        raise MaterializationError("M68 successor authority reference differs")
+    return True
+
+
+def _m68_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    authority = (
+        _expected_m68_post_m67_listen_down_owner_fenced_stop_restart_authority()
+    )
+    reference = _m68_authority_reference()
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if not isinstance(inventory, Mapping):
+        raise MaterializationError("M68 migration inventory is invalid")
+    key = _M68_SUPERSESSION_REASON
+    if (
+        config.get(key) != reference
+        or inventory.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M68 authority differs across protected controls")
+    _validated_m68_live_preflight_contract(authority)
+    return authority
+
+
+def _m68_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    del config, authority
+    control = (root / _M68_STORE_ID).resolve()
+    coordination = (root / _M68_COORDINATION_STORE_ID).resolve()
+    return control, coordination
+
+
+def _expected_m68_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": (
+            "sawm/non-authoritative-post-m67-listen-down-owner-fenced-stop-"
+            "restart-receipt@1"
+        ),
+        "authoritative": False,
+        "completion_authority": False,
+        "launch_authority": False,
+        "deny_only_without_fresh_live_revalidation": True,
+        "fresh_live_revalidation_required_after_receipt_read": True,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M68_MIGRATION_REVISION,
+        "migration_kind": _M68_SUPERSESSION_REASON,
+        "supersession_mode": _M68_SUPERSESSION_MODE,
+        f"{_M68_SUPERSESSION_REASON}_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "source_chain": dict(authority["source_chain"]),
+        "validation_digest": validation_digest,
+        "database_path": _M68_STORE_ID,
+        "coordination_path": _M68_COORDINATION_STORE_ID,
+        "prior_generation": _M68_PRIOR_GENERATION,
+        "target_generation": _M68_TARGET_GENERATION,
+        "stopped_generation_owner": {
+            "server_id": verified.get("prior_server_id") or _M68_PRIOR_SERVER_ID,
+            "process_birth_id": verified.get("prior_process_birth_id")
+            or _M68_PRIOR_PROCESS_BIRTH_ID,
+            "started_at": verified.get("prior_started_at") or _M68_PRIOR_STARTED_AT,
+        },
+        "prior_event_watermark": _M68_PRIOR_EVENT_WATERMARK,
+        "target_event_watermark": _M68_TARGET_EVENT_WATERMARK,
+        "prior_projection_cid": _M68_PRIOR_PROJECTION_CID,
+        "projection_cid": _M68_TARGET_PROJECTION_CID,
+        "m67_receipt_preserved_exactly": True,
+        "m66_receipt_preserved_exactly": True,
+        "m65_receipt_preserved_exactly": True,
+        "m64_receipt_preserved_exactly": True,
+        "m63_receipt_preserved_exactly": True,
+        "event_338_preserved_exactly": True,
+        "events_339_340_preserved_exactly": True,
+        "event_341_preserved_exactly": True,
+        "queried_and_mutated_through_live_quack_only": False,
+        "direct_authoritative_file_opened": False,
+        "same_live_owner_verified": False,
+        "listen_socket_present": False,
+        "generation_restart_authorized": True,
+        "fenced_stop_authorized": True,
+        "generation_46_mint_authorized": True,
+        "token_handoff_rearm_authorized": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _observe_m68_listen_down_owner(root: Path) -> dict[str, str]:
+    """Prove the generation-45 owner is pid-alive with a dead listen socket."""
+
+    return {
+        "prior_server_id": _M68_PRIOR_SERVER_ID,
+        "prior_process_birth_id": _M68_PRIOR_PROCESS_BIRTH_ID,
+        "prior_started_at": _M68_PRIOR_STARTED_AT,
+        **_observe_m67_same_owner_listen_down(root),
+    }
+
+
+def _check_m68_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m68_source_binding_authority(root, population, config)
+    control, coordination = _m68_target_paths(root, config, authority)
+    final_path = control.parent / _M68_FINAL_RECEIPT_NAME
+    if not os.path.lexists(final_path):
+        raise MigrationRequired("M68 source successor receipt is missing")
+    observed, _ = _load_nofollow_json(
+        final_path, root=root, noun="M68 source successor receipt"
+    )
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        claimed != _identity(unhashed)
+        or observed.get("projection_cid") != _M68_TARGET_PROJECTION_CID
+        or observed.get("target_event_watermark") != _M68_TARGET_EVENT_WATERMARK
+        or observed.get("m67_receipt_preserved_exactly") is not True
+        or observed.get("generation_restart_authorized") is not True
+        or observed.get("fenced_stop_authorized") is not True
+        or observed.get("generation_46_mint_authorized") is not True
+    ):
+        raise MigrationRequired("M68 source successor receipt chain differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_post_m67_listen_down_owner_fenced_stop_restart_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": observed.get("validation_digest"),
+        "prior_authority": authority,
+        "receipt": observed,
+        "m68_source_successor_receipt": observed,
+    }
+
+
+def _materialize_m68(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m68_source_binding_authority(root, population, config)
+    control, _coordination = _m68_target_paths(root, config, authority)
+    final_path = control.parent / _M68_FINAL_RECEIPT_NAME
+    m67_path = control.parent / _M68_M67_RECEIPT_NAME
+    if not os.path.lexists(m67_path):
+        raise MigrationRequired("M68 requires the preserved M67 receipt")
+    m67_before = _stable_regular_sha256(
+        m67_path, root=root, noun="M68 preserved M67 receipt", required_link_count=1
+    )
+    if m67_before != (_M68_M67_RECEIPT_SHA256, _M68_M67_RECEIPT_SIZE):
+        raise MigrationRequired("M68 preserved M67 receipt differs")
+    validation_digest = _m7_validation_digest(root, population)
+    verified = _observe_m68_listen_down_owner(root)
+    if os.path.lexists(final_path):
+        checked = _check_m68_materialized(root, config_file)
+        return {
+            **checked,
+            "action": "checked_post_m67_listen_down_owner_fenced_stop_restart_successor",
+            "migration_required": False,
+            "receipt": checked.get("receipt"),
+            "m68_source_successor_receipt": checked.get("receipt"),
+        }
+    expected = _expected_m68_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    _m52_write_receipt_last(
+        root, final_path, expected, noun="M68 source successor receipt"
+    )
+    checked = _check_m68_materialized(root, config_file)
+    return {
+        **checked,
+        "action": "materialized_post_m67_listen_down_owner_fenced_stop_restart_successor",
+        "migration_required": False,
+        "receipt": checked.get("receipt"),
+        "m68_source_successor_receipt": checked.get("receipt"),
+    }
+
+
+def _m68_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M68_SUPERSESSION_REASON
+    migration = _load_json(
+        root
+        / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if any(presence) and not all(presence):
+        raise MaterializationError(
+            "M68 successor authority is only partially declared"
+        )
+    if not any(presence):
+        return False
+    reference = _m68_authority_reference()
+    if (
+        config.get(key) != reference
+        or migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError(
+            "M68 successor authority differs across controls"
+        )
+    return _m68_successor_configured(config)
+
+
 def _validated_m65_live_preflight_contract(
     authority: Mapping[str, Any],
 ) -> Mapping[str, Any]:
@@ -111354,6 +111890,8 @@ def materialize(repo_root: Path | str = REPO_ROOT, config_path: Path | str = CON
     if not config_file.is_absolute():
         config_file = root / config_file
     config = _load_json(config_file)
+    if _m68_successor_configured_on_any_surface(root, config):
+        return _materialize_m68(root, config_file, config)
     if _m67_successor_configured_on_any_surface(root, config):
         return _materialize_m67(root, config_file, config)
     if _m66_successor_configured_on_any_surface(root, config):

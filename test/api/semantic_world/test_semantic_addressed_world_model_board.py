@@ -2021,6 +2021,29 @@ def test_committed_nested_gitlink_admits_clean_successor_checkout() -> None:
     ) is True
 
 
+def test_m68_live_preflight_contract_accepts_mappingproxy_authority() -> None:
+    """M68 must authorize fenced stop and generation-46 restart."""
+
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m68_mappingproxy_test",
+    )
+    expected = (
+        materializer
+        ._expected_m68_post_m67_listen_down_owner_fenced_stop_restart_authority()
+    )
+    proxied = MappingProxyType(dict(expected))
+    contract = materializer._validated_m68_live_preflight_contract(proxied)
+    assert materializer._identity(proxied) == materializer._M68_AUTHORITY_CID
+    assert contract["target_generation"] == 46
+    assert contract["generation_restart_authorized"] is True
+    assert contract["fenced_stop_authorized"] is True
+    assert contract["generation_46_mint_authorized"] is True
+    assert contract["same_live_owner_required"] is False
+    assert expected["stopped_owner"]["generation"] == 45
+    assert expected["stopped_owner"]["listen_socket_present"] is False
+
+
 def test_m67_live_preflight_contract_accepts_mappingproxy_authority() -> None:
     """Outer mappingproxy must hash at the identity boundary, not TypeError."""
 
