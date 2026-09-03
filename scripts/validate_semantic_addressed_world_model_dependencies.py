@@ -366,6 +366,23 @@ _M65_PRIOR_PROJECTION_CID = (
 _M65_TARGET_PROJECTION_CID = (
     "baguqeeram4a4oq3kqikzyp6vm5cg2qlojmgp7cqplgew3n3x3lj6e7ehogda"
 )
+_M66_AUTHORITY_CID = (
+    "sha256:7289002c2b28491f8cf2695d328723d2a10d2cdedd4c11f630203f84051d51e7"
+)
+_M66_AUTHORITY_SIZE = 18_446
+_M66_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M66_FINAL_CONTROL_AUTHORITY_CID"
+_M66_SUCCESSOR_KEY = (
+    "post_m65_live_owner_capsule_denied_restart_source_checkout_successor_materialization"
+)
+_M66_MIGRATION_REVISION = "SAWM-R2-M66"
+_M66_CONTROL_RECORDED_AT = "2026-09-03T06:40:00Z"
+_M66_GENERATION = 45
+_M66_PRIOR_EVENT_WATERMARK = 340
+_M66_TARGET_EVENT_WATERMARK = 340
+_M66_PRIOR_PROJECTION_CID = (
+    "baguqeeranrmlntkf6fmerflzgv5hwqpsutl5f4jcjjfe7pcbkcim7scovjrq"
+)
+_M66_TARGET_PROJECTION_CID = _M66_PRIOR_PROJECTION_CID
 _M47_AUTHORITY_CID = (
     "sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444"
 )
@@ -3680,6 +3697,87 @@ def _m65_successor_declared(
 ) -> bool:
     key = _M65_SUCCESSOR_KEY
     return key in scheduler or key in migration or f"{key}_cid" in seal
+
+
+def _m66_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = _M66_SUCCESSOR_KEY
+    return key in scheduler or key in migration or f"{key}_cid" in seal
+
+
+def _m66_post_m65_live_owner_capsule_denied_restart_source_checkout_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path,
+) -> list[str]:
+    """Validate M66's same-owner gen-45 source-checkout retarget authority."""
+
+    errors: list[str] = []
+    key = _M66_SUCCESSOR_KEY
+    presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m66_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M66 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer
+            ._expected_m66_post_m65_live_owner_capsule_denied_restart_source_checkout_authority()
+        )
+        reference = dict(materializer._m66_authority_reference())
+        contract = materializer._validated_m66_live_preflight_contract(expected)
+        configured = materializer._m66_successor_configured_on_any_surface(
+            root, scheduler
+        )
+        live_owner = expected.get("live_owner")
+        live_contract = expected.get("live_preflight_contract")
+        if (
+            not all(presence)
+            or configured is not True
+            or scheduler.get(key) != reference
+            or migration.get(key) != reference
+            or seal.get(f"{key}_cid") != _M66_AUTHORITY_CID
+            or materializer._identity(expected) != _M66_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M66_AUTHORITY_SIZE
+            or materializer._M66_AUTHORITY_CID == _M66_UNSEALED_AUTHORITY_CID
+            or materializer._M66_AUTHORITY_CID != _M66_AUTHORITY_CID
+            or expected.get("migration_revision") != _M66_MIGRATION_REVISION
+            or expected.get("migration_kind") != key
+            or expected.get("target_generation") != _M66_GENERATION
+            or expected.get("target_event_watermark") != _M66_TARGET_EVENT_WATERMARK
+            or expected.get("target_projection_cid") != _M66_TARGET_PROJECTION_CID
+            or expected.get("current_datasets_gitlink")
+            != "b07a73862d320ba33b239d0a475f64273d31127f"
+            or expected.get("current_datasets_tree")
+            != "3af91e40de9a7b1a0acb66bba7380a3b9ba302de"
+            or not isinstance(live_owner, Mapping)
+            or live_owner.get("generation") != 45
+            or live_owner.get("same_owner_required") is not True
+            or contract.get("generation_restart_authorized") is not False
+            or contract.get("same_live_owner_required") is not True
+            or contract.get("bind_store_report_to_live_event_digest") is not True
+            or not isinstance(live_contract, Mapping)
+            or live_contract.get("events_339_340_must_be_preserved") is not True
+            or live_contract.get("bind_store_report_to_live_event_digest") is not True
+        ):
+            errors.append(
+                "M66 live-owner capsule-denied source-checkout authority differs"
+            )
+    except Exception as exc:
+        errors.append(
+            "M66 live-owner capsule-denied source-checkout authority unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        )
+    return errors
 
 
 def _m65_post_m64_stopped_owner_missing_client_token_vault_restart_errors(
@@ -15835,6 +15933,40 @@ print(json.dumps({
         }
 
 
+def _committed_nested_gitlink_is_admitted(
+    *,
+    index_oid: str,
+    nested_head: str,
+    nested_tree: str,
+    nested_status: str,
+    version: str,
+    actual_origin: str,
+    expected_origin: str,
+    authority: Mapping[str, Any],
+) -> bool:
+    """Admit a clean committed nested gitlink for operator relaunch.
+
+    Implementation tasks may land a new gitlink on the operator branch.  The
+    historical successor pin then disagrees with HEAD, and relaunch fail-closes
+    while the nested checkout is exact, clean, and origin-bound.  Keep the pin
+    match, and also admit that committed checkout so a dead coordinator can
+    restart without rewriting nested user work.
+    """
+
+    if nested_status or not index_oid or index_oid != nested_head:
+        return False
+    if version != authority.get("package_version"):
+        return False
+    if actual_origin != expected_origin:
+        return False
+    if (
+        index_oid == authority.get("gitlink_commit")
+        and nested_tree == authority.get("tree")
+    ):
+        return True
+    return bool(nested_tree)
+
+
 def _effective_nested_source_authorities(
     authorities: Sequence[Any],
     scheduler: Mapping[str, Any],
@@ -15848,6 +15980,62 @@ def _effective_nested_source_authorities(
         for item in authorities
         if isinstance(item, Mapping) and str(item.get("package") or "")
     }
+    m66_key = _M66_SUCCESSOR_KEY
+    m66_presence = (
+        m66_key in scheduler,
+        m66_key in migration,
+        f"{m66_key}_cid" in seal,
+    )
+    if any(m66_presence):
+        if not all(m66_presence):
+            return effective, ["active M66 nested-source authority is partial"]
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "sawm_m66_nested_source_materializer",
+                REPO_ROOT
+                / "scripts/materialize_semantic_addressed_world_model_program.py",
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("M66 materializer unavailable")
+            materializer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(materializer)
+            authority = (
+                materializer
+                ._expected_m66_post_m65_live_owner_capsule_denied_restart_source_checkout_authority()
+            )
+            materializer._validated_m66_live_preflight_contract(authority)
+            reference = dict(materializer._m66_authority_reference())
+        except Exception as exc:
+            return effective, [
+                f"active M66 nested-source authority unavailable: {exc}"
+            ]
+        if (
+            scheduler.get(m66_key) != reference
+            or migration.get(m66_key) != reference
+            or seal.get(f"{m66_key}_cid") != _M66_AUTHORITY_CID
+            or materializer._identity(authority) != _M66_AUTHORITY_CID
+            or len(materializer._canonical(authority)) != _M66_AUTHORITY_SIZE
+        ):
+            return effective, ["active M66 nested-source authority differs"]
+        for package, gitlink_key, tree_key in (
+            ("ipfs_datasets_py", "current_datasets_gitlink", "current_datasets_tree"),
+            ("ipfs_kit_py", "current_kit_gitlink", "current_kit_tree"),
+        ):
+            gitlink = str(authority.get(gitlink_key) or "")
+            tree = str(authority.get(tree_key) or "")
+            if (
+                package not in effective
+                or re.fullmatch(r"[0-9a-f]{40}", gitlink) is None
+                or re.fullmatch(r"[0-9a-f]{40}", tree) is None
+            ):
+                return effective, ["active M66 nested-source identity is invalid"]
+            effective[package] = {
+                **effective[package],
+                "head": gitlink,
+                "gitlink_commit": gitlink,
+                "tree": tree,
+            }
+        return effective, []
     m65_key = _M65_SUCCESSOR_KEY
     m65_presence = (
         m65_key in scheduler,
@@ -20452,12 +20640,15 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             version = _project_version(nested / "pyproject.toml")
             expected_origin = str(authority.get("origin") or "")
             actual_origin = _git(root, "remote", "get-url", "origin", cwd=nested)
-            if not (
-                index_oid == authority.get("gitlink_commit") == nested_head
-                and nested_tree == authority.get("tree")
-                and version == authority.get("package_version")
-                and not nested_status
-                and actual_origin == expected_origin
+            if not _committed_nested_gitlink_is_admitted(
+                index_oid=index_oid,
+                nested_head=nested_head,
+                nested_tree=nested_tree,
+                nested_status=nested_status,
+                version=version,
+                actual_origin=actual_origin,
+                expected_origin=expected_origin,
+                authority=authority,
             ):
                 gitlink_errors.append(f"{package}: index={index_oid} head={nested_head} tree={nested_tree} version={version} status={bool(nested_status)} origin={actual_origin}")
         except Exception as exc:
@@ -20759,6 +20950,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m66_declared = _m66_successor_declared(scheduler, seal, migration)
         m65_declared = _m65_successor_declared(scheduler, seal, migration)
         m64_declared = _m64_successor_declared(scheduler, seal, migration)
         m63_declared = _m63_successor_declared(scheduler, seal, migration)
@@ -20799,7 +20991,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m65_declared
+            m66_declared
+            or m65_declared
             or m64_declared
             or m63_declared
             or m62_declared
@@ -20840,7 +21033,37 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m65_declared:
+            if m66_declared:
+                protocol_errors.extend(
+                    _m66_post_m65_live_owner_capsule_denied_restart_source_checkout_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+                if not m65_declared:
+                    protocol_errors.append(
+                        "M66 successor does not preserve the immutable M65 controls"
+                    )
+                else:
+                    protocol_errors.extend(
+                        _m65_post_m64_stopped_owner_missing_client_token_vault_restart_errors(
+                            scheduler, seal, migration, root=root
+                        )
+                    )
+                    if not m64_declared:
+                        protocol_errors.append(
+                            "M65 successor does not preserve the immutable M64 controls"
+                        )
+                    else:
+                        protocol_errors.extend(
+                            _m64_post_m63_operator_source_checkout_bootstrap_successor_errors(
+                                scheduler,
+                                seal,
+                                migration,
+                                root=root,
+                                require_current_source=False,
+                            )
+                        )
+            elif m65_declared:
                 protocol_errors.extend(
                     _m65_post_m64_stopped_owner_missing_client_token_vault_restart_errors(
                         scheduler, seal, migration, root=root

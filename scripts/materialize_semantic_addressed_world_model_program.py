@@ -4917,6 +4917,83 @@ _M65_EXPECTED_TASK_HEADS = MappingProxyType(
     }
 )
 
+# M66 retargets accepted nested source and live capsule to the current
+# checkout while keeping the live generation-45 owner.  M65 launch cannot
+# admit HEAD after ordinary SAWM-006 / runner commits and the isolated
+# ipfs_datasets_py gitlink b07a73862.  No generation bump.
+_M66_MIGRATION_REVISION = "SAWM-R2-M66"
+_M66_SUPERSESSION_MODE = (
+    "same_owner_post_m65_live_capsule_source_checkout_retarget_source_seal"
+)
+_M66_SUPERSESSION_REASON = (
+    "post_m65_live_owner_capsule_denied_restart_source_checkout_successor_materialization"
+)
+_M66_CONTROL_RECORDED_AT = "2026-09-03T06:40:00Z"
+_M66_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M66_FINAL_CONTROL_AUTHORITY_CID"
+_M66_AUTHORITY_CID = (
+    "sha256:7289002c2b28491f8cf2695d328723d2a10d2cdedd4c11f630203f84051d51e7"
+)
+_M66_AUTHORITY_SIZE = 18_446
+_M66_PRIOR_GENERATION = _M65_TARGET_GENERATION
+_M66_TARGET_GENERATION = _M65_TARGET_GENERATION
+_M66_PRIOR_EVENT_WATERMARK = 340
+_M66_TARGET_EVENT_WATERMARK = 340
+_M66_TARGET_PLAN_REVISION = _M65_TARGET_PLAN_REVISION
+_M66_TARGET_QUACK_PORT = _M65_TARGET_QUACK_PORT
+_M66_PRIOR_PROJECTION_CID = (
+    "baguqeeranrmlntkf6fmerflzgv5hwqpsutl5f4jcjjfe7pcbkcim7scovjrq"
+)
+_M66_TARGET_PROJECTION_CID = _M66_PRIOR_PROJECTION_CID
+_M66_SEMANTIC_AUTHORITY_DIGEST = _M65_SEMANTIC_AUTHORITY_DIGEST
+_M66_PRIOR_EVIDENCE_NODE_COUNT = _M65_TARGET_EVIDENCE_NODE_COUNT
+_M66_TARGET_EVIDENCE_NODE_COUNT = _M65_TARGET_EVIDENCE_NODE_COUNT
+_M66_EVIDENCE_KIND = (
+    "operator_control_plane_post_m65_live_owner_capsule_denied_restart_source_checkout"
+)
+_M66_STORE_ID = _M65_STORE_ID
+_M66_COORDINATION_STORE_ID = _M65_COORDINATION_STORE_ID
+_M66_RUNTIME_ROOT = _M65_RUNTIME_ROOT
+_M66_WORKTREE_ROOT = _M65_WORKTREE_ROOT
+_M66_DATABASE_UUID = _M65_DATABASE_UUID
+_M66_EXTENSION_FINGERPRINT = _M65_EXTENSION_FINGERPRINT
+_M66_DATASETS_GITLINK = "b07a73862d320ba33b239d0a475f64273d31127f"
+_M66_DATASETS_TREE = "3af91e40de9a7b1a0acb66bba7380a3b9ba302de"
+_M66_KIT_GITLINK = "fc9248073e9f67ac59ca607c7736746907b08037"
+_M66_KIT_TREE = "b26e05db1b199e7e491b45b686a0845fabbabadb"
+_M66_LIVE_SERVER_ID = "server:29b75aea-d76d-4689-89c4-9dd37c01b25f"
+_M66_LIVE_PROCESS_BIRTH_ID = "birth:8b5074b97c6a3f34b1cc41644005079f"
+_M66_LIVE_STARTED_AT = "2026-09-03T03:49:36Z"
+_M66_LIVE_STARTUP_EPOCH = 1_788_407_376
+_M66_LIVE_PROCESS_BIRTH = MappingProxyType(
+    {
+        "boot_id": "34bca049-fa9b-4f7a-a1df-90e079073f8d",
+        "parent_pid": 2_259_296,
+        "pid": 2_259_319,
+        "start_time_ticks": 9_760_728,
+    }
+)
+_M66_M65_AUTHORITY_CID = _M65_AUTHORITY_CID
+_M66_M65_AUTHORITY_SIZE = _M65_AUTHORITY_SIZE
+_M66_M65_RECEIPT_NAME = _M65_FINAL_RECEIPT_NAME
+_M66_M65_RECEIPT_SHA256 = (
+    "2c95305b266d38c2ace53a30a8422fb161ce5fed91ff27b7f44f48799b120852"
+)
+_M66_M65_RECEIPT_SIZE = 3_345
+_M66_M65_RECEIPT_CID = (
+    "sha256:85837800147ee36bdaa7fd97f699f087e0aa44bf6d60cfbdcf1e977feb0f515a"
+)
+_M66_OPERATOR_CONTROL_PATHS = frozenset(_M65_OPERATOR_CONTROL_PATHS)
+_M66_FINAL_RECEIPT_NAME = "m66-source-successor-receipt.json"
+_M66_CURRENT_BOOT_ID = "34bca049-fa9b-4f7a-a1df-90e079073f8d"
+_M66_EXPECTED_TASK_HEADS = MappingProxyType(
+    {
+        **dict(_M65_EXPECTED_TASK_HEADS),
+        "SAWM-006": {"revision": 24, "status": "blocked"},
+        "SAWM-008": {"revision": 25, "status": "in_progress"},
+        "SAWM-013": {"revision": 3, "status": "in_progress"},
+    }
+)
+
 
 
 # M41 preserves M40's complete control declaration and failed sealed-suite
@@ -102437,6 +102514,466 @@ def _m65_authority_reference() -> dict[str, Any]:
         "migration_revision": _M65_MIGRATION_REVISION,
         "authority_cid": _M65_AUTHORITY_CID,
     }
+
+
+def _expected_m66_post_m65_live_owner_capsule_denied_restart_source_checkout_authority() -> dict[str, Any]:
+    """Return M66's same-owner gen-45 source-checkout retarget authority."""
+
+    m65 = _expected_m65_post_m64_stopped_owner_missing_client_token_vault_restart_authority()
+    if (
+        _identity(m65) != _M66_M65_AUTHORITY_CID
+        or len(_canonical(m65)) != _M66_M65_AUTHORITY_SIZE
+    ):
+        raise MaterializationError("M66 preserved M65 source authority differs")
+    authority = json.loads(_canonical(m65))
+    authority.update(
+        {
+            "schema": (
+                "sawm/post-m65-live-owner-capsule-denied-restart-source-checkout-"
+                "successor-materialization-authorization@1"
+            ),
+            "migration_revision": _M66_MIGRATION_REVISION,
+            "migration_kind": _M66_SUPERSESSION_REASON,
+            "supersession_mode": _M66_SUPERSESSION_MODE,
+            "control_recorded_at": _M66_CONTROL_RECORDED_AT,
+            "target_generation": _M66_TARGET_GENERATION,
+            "target_event_watermark": _M66_TARGET_EVENT_WATERMARK,
+            "target_projection_cid": _M66_TARGET_PROJECTION_CID,
+            "current_datasets_gitlink": _M66_DATASETS_GITLINK,
+            "current_datasets_tree": _M66_DATASETS_TREE,
+            "current_kit_gitlink": _M66_KIT_GITLINK,
+            "current_kit_tree": _M66_KIT_TREE,
+            "ordinary_source_changes": 1,
+        }
+    )
+    authority["expected_task_heads"] = dict(_M66_EXPECTED_TASK_HEADS)
+    authority["operator_control_paths"] = sorted(_M66_OPERATOR_CONTROL_PATHS)
+    authority["runtime_binding"]["store_generation"] = _M66_TARGET_GENERATION
+    authority["runtime_binding"]["prior_event_watermark"] = (
+        _M66_PRIOR_EVENT_WATERMARK
+    )
+    authority["runtime_binding"]["target_event_watermark"] = (
+        _M66_TARGET_EVENT_WATERMARK
+    )
+    authority["live_owner"] = {
+        "schema": "sawm/live-generation-45-owner-after-m65-handoff@1",
+        "database_uuid": _M66_DATABASE_UUID,
+        "extension_fingerprint": _M66_EXTENSION_FINGERPRINT,
+        "generation": _M66_TARGET_GENERATION,
+        "generation_restart_authorized": False,
+        "listen_uri": f"quack:127.0.0.1:{_M66_TARGET_QUACK_PORT}",
+        "process_birth": dict(_M66_LIVE_PROCESS_BIRTH),
+        "process_birth_id": _M66_LIVE_PROCESS_BIRTH_ID,
+        "same_owner_required": True,
+        "server_id": _M66_LIVE_SERVER_ID,
+        "started_at": _M66_LIVE_STARTED_AT,
+        "startup_epoch": _M66_LIVE_STARTUP_EPOCH,
+        "status": "ready",
+        "store_id": _M66_STORE_ID,
+        "token_handoff_retired": False,
+        "client_token_vault_absent": False,
+        "current_boot_id": _M66_CURRENT_BOOT_ID,
+    }
+    authority["stopped_owner"] = {
+        "schema": "sawm/not-applicable-live-generation-45-owner-retained@1",
+        "generation": _M66_TARGET_GENERATION,
+        "status": "not_applicable",
+        "lifecycle": "ready",
+        "generation_restart_authorized": False,
+        "token_handoff_retired": False,
+        "client_token_vault_absent": False,
+        "same_live_owner_required": True,
+    }
+    authority["stopped_prestart_artifacts"] = {
+        "m65_receipt_sha256": _M66_M65_RECEIPT_SHA256,
+        "m65_receipt_size": _M66_M65_RECEIPT_SIZE,
+        "m65_receipt_present": True,
+        "m64_receipt_present": True,
+        "m63_receipt_present": True,
+        "m66_receipt_absent": True,
+        "client_token_vault_absent": False,
+    }
+    authority["target_authority"].update(
+        {
+            "event_watermark": _M66_TARGET_EVENT_WATERMARK,
+            "projection_cid": _M66_TARGET_PROJECTION_CID,
+            "evidence_kind": _M66_EVIDENCE_KIND,
+            "generation": _M66_TARGET_GENERATION,
+        }
+    )
+    authority["live_preflight_contract"].update(
+        {
+            "migration_revision": _M66_MIGRATION_REVISION,
+            "successor_class": "post_m65_live_owner_capsule_denied_restart_source_checkout",
+            "m65_authority_cid": _M66_M65_AUTHORITY_CID,
+            "m65_receipt_must_remain_present": True,
+            "m64_receipt_must_remain_present": True,
+            "m63_receipt_must_remain_present": True,
+            "prior_event_watermark": _M66_PRIOR_EVENT_WATERMARK,
+            "target_event_watermark": _M66_TARGET_EVENT_WATERMARK,
+            "prior_projection_cid": _M66_PRIOR_PROJECTION_CID,
+            "target_projection_cid": _M66_TARGET_PROJECTION_CID,
+            "target_generation": _M66_TARGET_GENERATION,
+            "same_live_owner_required": True,
+            "generation_restart_authorized": False,
+            "apply_when_uri_ready_and_token_missing": False,
+            "apply_when_uri_ready_and_token_present": True,
+            "event_338_must_be_preserved": True,
+            "events_339_340_must_be_preserved": True,
+            "event_341_must_be_absent": True,
+            "bind_store_report_to_live_event_digest": True,
+        }
+    )
+    authority["source_chain"] = {
+        "m65_final_control_commit": (
+            "1e02bcb5ca0fb4c5e588c7d75feaa93f5148beee"
+        ),
+        "final_control_parent": "1e02bcb5ca0fb4c5e588c7d75feaa93f5148beee",
+        "repair_commit_count": 0,
+        "final_control_commit_count": 1,
+        "current_commit_identity_embedded_in_authority": False,
+    }
+    authority["exact_changes"].update(
+        {
+            "event_suffix_length": 0,
+            "evidence_node_changes": 0,
+            "evidence_event_changes": 0,
+            "owner_generation_changes": 0,
+            "task_revision_changes": 0,
+            "task_status_changes": 0,
+        }
+    )
+    authority["preservation"].update(
+        {
+            "same_live_owner": True,
+            "same_store_generation": True,
+            "generation_restart": False,
+            "m65_authority_preserved_exactly": True,
+            "m65_receipt_preserved_exactly": True,
+            "m65_receipt_created_or_rewritten": False,
+            "m64_receipt_preserved_exactly": True,
+            "m63_receipt_preserved_exactly": True,
+            "event_338_preserved_exactly": True,
+            "events_339_340_preserved_exactly": True,
+            "sawm_006_blocked_revision_24": True,
+            "sawm_008_in_progress_revision_25": True,
+            "sawm_013_in_progress_revision_3": True,
+        }
+    )
+    return authority
+
+
+def _m66_authority_reference() -> dict[str, Any]:
+    authority = (
+        _expected_m66_post_m65_live_owner_capsule_denied_restart_source_checkout_authority()
+    )
+    if (
+        not _M66_AUTHORITY_CID.endswith("PENDING_M66_FINAL_CONTROL_AUTHORITY_CID")
+        and _identity(authority) != _M66_AUTHORITY_CID
+    ):
+        raise MaterializationError("M66 source successor authority CID differs")
+    return {
+        "schema": "sawm/operator-control-authority-reference@1",
+        "migration_revision": _M66_MIGRATION_REVISION,
+        "authority_cid": _M66_AUTHORITY_CID,
+    }
+
+
+def _validated_m66_live_preflight_contract(
+    authority: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    expected = (
+        _expected_m66_post_m65_live_owner_capsule_denied_restart_source_checkout_authority()
+    )
+    contract = authority.get("live_preflight_contract")
+    if (
+        _identity(dict(authority)) != _identity(dict(expected))
+        or not isinstance(contract, Mapping)
+        or contract.get("migration_revision") != _M66_MIGRATION_REVISION
+        or contract.get("target_generation") != _M66_TARGET_GENERATION
+        or contract.get("target_event_watermark") != _M66_TARGET_EVENT_WATERMARK
+        or contract.get("target_projection_cid") != _M66_TARGET_PROJECTION_CID
+        or contract.get("prior_event_watermark") != _M66_PRIOR_EVENT_WATERMARK
+        or contract.get("prior_projection_cid") != _M66_PRIOR_PROJECTION_CID
+        or contract.get("m65_receipt_must_remain_present") is not True
+        or contract.get("m64_receipt_must_remain_present") is not True
+        or contract.get("generation_restart_authorized") is not False
+        or contract.get("same_live_owner_required") is not True
+        or contract.get("bind_store_report_to_live_event_digest") is not True
+        or contract.get("events_339_340_must_be_preserved") is not True
+    ):
+        raise MaterializationError("M66 live-preflight contract differs")
+    return MappingProxyType(
+        {
+            "migration_revision": _M66_MIGRATION_REVISION,
+            "target_store_id": _M66_STORE_ID,
+            "database_uuid": _M66_DATABASE_UUID,
+            "target_generation": _M66_TARGET_GENERATION,
+            "target_event_watermark": _M66_TARGET_EVENT_WATERMARK,
+            "target_plan_revision": _M66_TARGET_PLAN_REVISION,
+            "target_projection_cid": _M66_TARGET_PROJECTION_CID,
+            "semantic_authority_digest": _M66_SEMANTIC_AUTHORITY_DIGEST,
+            "prior_event_watermark": _M66_PRIOR_EVENT_WATERMARK,
+            "prior_projection_cid": _M66_PRIOR_PROJECTION_CID,
+            "preserved_plan_anchor": {},
+            "expected_task_heads": dict(_M66_EXPECTED_TASK_HEADS),
+            "generation_restart_authorized": False,
+            "same_live_owner_required": True,
+            "bind_store_report_to_live_event_digest": True,
+            "events_339_340_must_be_preserved": True,
+        }
+    )
+
+
+def _m66_successor_configured(config: Mapping[str, Any]) -> bool:
+    if _M66_SUPERSESSION_REASON not in config:
+        return False
+    if config.get(_M66_SUPERSESSION_REASON) != _m66_authority_reference():
+        raise MaterializationError("M66 successor authority reference differs")
+    return True
+
+
+def _m66_source_binding_authority(
+    root: Path,
+    population: Mapping[str, Any],
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    authority = (
+        _expected_m66_post_m65_live_owner_capsule_denied_restart_source_checkout_authority()
+    )
+    reference = _m66_authority_reference()
+    inventory = population.get("migration_inventory", {})
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    if not isinstance(inventory, Mapping):
+        raise MaterializationError("M66 migration inventory is invalid")
+    key = _M66_SUPERSESSION_REASON
+    if (
+        config.get(key) != reference
+        or inventory.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError("M66 authority differs across protected controls")
+    _validated_m66_live_preflight_contract(authority)
+    return authority
+
+
+def _m66_target_paths(
+    root: Path,
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    control = (root / _M66_STORE_ID).resolve()
+    coordination = (root / _M66_COORDINATION_STORE_ID).resolve()
+    return control, coordination
+
+
+def _expected_m66_source_successor_receipt(
+    population: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    validation_digest: str,
+    verified: Mapping[str, Any],
+) -> dict[str, Any]:
+    result = {
+        "schema": (
+            "sawm/non-authoritative-post-m65-live-owner-capsule-denied-"
+            "restart-source-checkout-receipt@1"
+        ),
+        "authoritative": False,
+        "completion_authority": False,
+        "launch_authority": False,
+        "deny_only_without_fresh_live_revalidation": True,
+        "fresh_live_revalidation_required_after_receipt_read": True,
+        "control_database_is_authority": True,
+        "receipt_is_final_pair_commit_marker": False,
+        "receipt_is_evidence_source_seal_marker": True,
+        "migration_revision": _M66_MIGRATION_REVISION,
+        "migration_kind": _M66_SUPERSESSION_REASON,
+        "supersession_mode": _M66_SUPERSESSION_MODE,
+        f"{_M66_SUPERSESSION_REASON}_cid": _identity(authority),
+        "program_definition_cid": population["program_definition_cid"],
+        "current_source_binding_cid": population["source_binding"][
+            "source_binding_cid"
+        ],
+        "source_chain": dict(authority["source_chain"]),
+        "validation_digest": validation_digest,
+        "database_path": _M66_STORE_ID,
+        "coordination_path": _M66_COORDINATION_STORE_ID,
+        "prior_generation": _M66_PRIOR_GENERATION,
+        "target_generation": _M66_TARGET_GENERATION,
+        "target_generation_owner": {
+            "server_id": verified.get("live_server_id") or _M66_LIVE_SERVER_ID,
+            "process_birth_id": verified.get("live_process_birth_id")
+            or _M66_LIVE_PROCESS_BIRTH_ID,
+            "started_at": verified.get("live_started_at") or _M66_LIVE_STARTED_AT,
+        },
+        "prior_event_watermark": _M66_PRIOR_EVENT_WATERMARK,
+        "target_event_watermark": _M66_TARGET_EVENT_WATERMARK,
+        "prior_projection_cid": _M66_PRIOR_PROJECTION_CID,
+        "projection_cid": _M66_TARGET_PROJECTION_CID,
+        "m65_receipt_preserved_exactly": True,
+        "m64_receipt_preserved_exactly": True,
+        "m63_receipt_preserved_exactly": True,
+        "event_338_preserved_exactly": True,
+        "events_339_340_preserved_exactly": True,
+        "queried_and_mutated_through_live_quack_only": True,
+        "direct_authoritative_file_opened": False,
+        "same_live_owner_verified": True,
+        "generation_restart_authorized": False,
+        "task_revision_changes": 0,
+        "task_status_changes": 0,
+        "goal_revision_changes": 0,
+        "goal_status_changes": 0,
+        "provider_call_changes": 0,
+        "provider_invocation_changes": 0,
+        "provider_response_changes": 0,
+        "effect_claim_changes": 0,
+        "merge_attempt_changes": 0,
+        "merge_base_changes": 0,
+        "merge_queue_entry_changes": 0,
+        "accepted_completion_changes": 0,
+        "worker_self_approval": False,
+    }
+    result["receipt_cid"] = _identity(result)
+    return result
+
+
+def _check_m66_materialized(root: Path, config_file: Path) -> dict[str, Any]:
+    config = _load_json(config_file)
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m66_source_binding_authority(root, population, config)
+    control, coordination = _m66_target_paths(root, config, authority)
+    final_path = control.parent / _M66_FINAL_RECEIPT_NAME
+    if not os.path.lexists(final_path):
+        raise MigrationRequired("M66 source successor receipt is missing")
+    observed, _ = _load_nofollow_json(
+        final_path, root=root, noun="M66 source successor receipt"
+    )
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    if (
+        claimed != _identity(unhashed)
+        or observed.get("projection_cid") != _M66_TARGET_PROJECTION_CID
+        or observed.get("target_event_watermark") != _M66_TARGET_EVENT_WATERMARK
+        or observed.get("m65_receipt_preserved_exactly") is not True
+        or observed.get("same_live_owner_verified") is not True
+    ):
+        raise MigrationRequired("M66 source successor receipt chain differs")
+    return {
+        "schema": SCHEMA,
+        "valid": True,
+        "action": "checked_post_m65_live_owner_capsule_denied_restart_source_checkout_successor",
+        "database_path": str(control),
+        "coordination_path": str(coordination),
+        "program_definition_cid": population["program_definition_cid"],
+        "validation_digest": observed.get("validation_digest"),
+        "prior_authority": authority,
+        "receipt": observed,
+        "m66_source_successor_receipt": observed,
+        "live_server_id": observed.get("target_generation_owner", {}).get(
+            "server_id"
+        ),
+        "live_process_birth_id": observed.get("target_generation_owner", {}).get(
+            "process_birth_id"
+        ),
+        "live_started_at": observed.get("target_generation_owner", {}).get(
+            "started_at"
+        ),
+    }
+
+
+def _materialize_m66(
+    root: Path, config_file: Path, config: Mapping[str, Any]
+) -> dict[str, Any]:
+    population = build_population(root)
+    _assert_committed_clean_source(root, population)
+    authority = _m66_source_binding_authority(root, population, config)
+    control, _coordination = _m66_target_paths(root, config, authority)
+    final_path = control.parent / _M66_FINAL_RECEIPT_NAME
+    m65_path = control.parent / _M66_M65_RECEIPT_NAME
+    if not os.path.lexists(m65_path):
+        raise MigrationRequired("M66 requires the preserved M65 receipt")
+    m65_before = _stable_regular_sha256(
+        m65_path, root=root, noun="M66 preserved M65 receipt", required_link_count=1
+    )
+    if m65_before != (_M66_M65_RECEIPT_SHA256, _M66_M65_RECEIPT_SIZE):
+        raise MigrationRequired("M66 preserved M65 receipt differs")
+    validation_digest = _m7_validation_digest(root, population)
+    with _m28_live_source(
+        root, control, config, population, authority,
+        owner_id="sawm-r2-m66-live-source-sealer",
+    ) as (source, identity):
+        snapshot = source.snapshot()
+        if snapshot.event_cursor != _M66_TARGET_EVENT_WATERMARK:
+            raise MigrationRequired("M66 live event head is not 340")
+        if snapshot.projection_cid != _M66_TARGET_PROJECTION_CID:
+            raise MigrationRequired("M66 live projection differs from sealed event 340")
+        verified = {
+            "live_server_id": str(identity.get("server_id") or ""),
+            "live_process_birth_id": str(identity.get("process_birth_id") or ""),
+            "live_started_at": str(identity.get("started_at") or ""),
+        }
+        if (
+            verified["live_server_id"] != _M66_LIVE_SERVER_ID
+            or verified["live_process_birth_id"] != _M66_LIVE_PROCESS_BIRTH_ID
+        ):
+            raise MigrationRequired("M66 live generation-45 owner identity differs")
+    if os.path.lexists(final_path):
+        checked = _check_m66_materialized(root, config_file)
+        return {
+            **checked,
+            "action": "checked_post_m65_live_owner_capsule_denied_restart_source_checkout_successor",
+            "migration_required": False,
+            "receipt": checked.get("receipt"),
+            "m66_source_successor_receipt": checked.get("receipt"),
+        }
+    expected = _expected_m66_source_successor_receipt(
+        population, authority, validation_digest, verified
+    )
+    _m52_write_receipt_last(
+        root, final_path, expected, noun="M66 source successor receipt"
+    )
+    checked = _check_m66_materialized(root, config_file)
+    return {
+        **checked,
+        "action": "materialized_post_m65_live_owner_capsule_denied_restart_source_checkout_successor",
+        "migration_required": False,
+        "receipt": checked.get("receipt"),
+        "m66_source_successor_receipt": checked.get("receipt"),
+    }
+
+
+def _m66_successor_configured_on_any_surface(
+    root: Path, config: Mapping[str, Any]
+) -> bool:
+    key = _M66_SUPERSESSION_REASON
+    migration = _load_json(
+        root
+        / "docs/architecture/semantic_addressed_world_model_inventory/"
+        "prior_materialization_migration.json"
+    )
+    seal = _load_json(
+        root / "config/semantic_addressed_world_model_dependencies.seal.json"
+    )
+    presence = (key in config, key in migration, f"{key}_cid" in seal)
+    if any(presence) and not all(presence):
+        raise MaterializationError(
+            "M66 successor authority is only partially declared"
+        )
+    if not any(presence):
+        return False
+    reference = _m66_authority_reference()
+    if (
+        config.get(key) != reference
+        or migration.get(key) != reference
+        or seal.get(f"{key}_cid") != reference["authority_cid"]
+    ):
+        raise MaterializationError(
+            "M66 successor authority differs across controls"
+        )
+    return _m66_successor_configured(config)
 
 
 def _validated_m65_live_preflight_contract(

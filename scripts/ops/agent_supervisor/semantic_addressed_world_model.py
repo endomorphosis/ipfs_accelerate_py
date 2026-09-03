@@ -493,6 +493,28 @@ _M65_TARGET_QUACK_PORT = _M58_TARGET_QUACK_PORT
 _M65_PRIOR_SERVER_ID = "server:a469353f-9272-4e5a-b6cd-d9d66989a9d1"
 _M65_PRIOR_PROCESS_BIRTH_ID = "birth:8b5ab9c4ad74cd29e9449c11b275f03d"
 
+_M66_SUCCESSOR_KEY = (
+    "post_m65_live_owner_capsule_denied_restart_source_checkout_successor_materialization"
+)
+_M66_MIGRATION_REVISION = "SAWM-R2-M66"
+_M66_AUTHORITY_CID = (
+    "sha256:7289002c2b28491f8cf2695d328723d2a10d2cdedd4c11f630203f84051d51e7"
+)
+_M66_AUTHORITY_SIZE = 18_446
+_M66_STORE_ID = _M65_STORE_ID
+_M66_COORDINATION_STORE_ID = _M65_COORDINATION_STORE_ID
+_M66_PRIOR_GENERATION = 45
+_M66_GENERATION = 45
+_M66_PRIOR_EVENT_WATERMARK = 340
+_M66_TARGET_EVENT_WATERMARK = 340
+_M66_PRIOR_PROJECTION_CID = (
+    "baguqeeranrmlntkf6fmerflzgv5hwqpsutl5f4jcjjfe7pcbkcim7scovjrq"
+)
+_M66_TARGET_PROJECTION_CID = _M66_PRIOR_PROJECTION_CID
+_M66_TARGET_QUACK_PORT = _M65_TARGET_QUACK_PORT
+_M66_LIVE_SERVER_ID = "server:29b75aea-d76d-4689-89c4-9dd37c01b25f"
+_M66_LIVE_PROCESS_BIRTH_ID = "birth:8b5074b97c6a3f34b1cc41644005079f"
+
 _M50_SUCCESSOR_KEY = (
     "post_m49_fenced_worktree_quarantine_recovery_successor_materialization"
 )
@@ -1836,6 +1858,7 @@ def _active_source_repair_materialization(
     malformed value fails closed rather than silently selecting older evidence.
     """
 
+    m66_key = _M66_SUCCESSOR_KEY
     m65_key = _M65_SUCCESSOR_KEY
     m64_key = _M64_SUCCESSOR_KEY
     m63_key = _M63_SUCCESSOR_KEY
@@ -1894,6 +1917,68 @@ def _active_source_repair_materialization(
     recovery_key = "live_recovery_successor_materialization"
     successor_key = "source_repair_successor_materialization"
     historical_key = "source_repair_materialization"
+    if m66_key in config:
+        authority = config.get(m66_key)
+        try:
+            materializer = _materializer()
+            expected = (
+                materializer
+                ._expected_m66_post_m65_live_owner_capsule_denied_restart_source_checkout_authority()
+            )
+            reference = materializer._m66_authority_reference()
+            contract = materializer._validated_m66_live_preflight_contract(
+                expected
+            )
+            configured = materializer._m66_successor_configured_on_any_surface(
+                REPO_ROOT, config
+            )
+        except Exception as exc:
+            raise OperatorError(
+                "active M66 live-owner capsule-denied source-checkout "
+                "authority is unavailable"
+            ) from exc
+        runtime = expected.get("runtime_binding")
+        live_owner = expected.get("live_owner")
+        program = config.get("database_program")
+        owner = config.get("quack_owner")
+        configured_cid = str(reference.get("authority_cid") or "")
+        digest_pattern = re.compile(r"sha256:[0-9a-f]{64}\Z")
+        if (
+            not configured
+            or not isinstance(authority, Mapping)
+            or dict(authority) != dict(reference)
+            or reference.get("migration_revision") != _M66_MIGRATION_REVISION
+            or configured_cid != _M66_AUTHORITY_CID
+            or configured_cid.endswith("PENDING_M66_FINAL_CONTROL_AUTHORITY_CID")
+            or digest_pattern.fullmatch(configured_cid) is None
+            or materializer._identity(expected) != _M66_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M66_AUTHORITY_SIZE
+            or expected.get("migration_revision") != _M66_MIGRATION_REVISION
+            or expected.get("migration_kind") != _M66_SUCCESSOR_KEY
+            or expected.get("authorized") is not True
+            or expected.get("authority") != "operator_control_plane"
+            or not all(
+                isinstance(item, Mapping)
+                for item in (runtime, live_owner, program, owner, contract)
+            )
+            or int(runtime.get("store_generation") or 0) != _M66_GENERATION
+            or int(live_owner.get("generation") or 0) != _M66_GENERATION
+            or live_owner.get("same_owner_required") is not True
+            or live_owner.get("generation_restart_authorized") is not False
+            or program.get("store_generation") != str(_M66_GENERATION)
+            or owner.get("store_id") != _M66_STORE_ID
+            or contract.get("target_generation") != _M66_GENERATION
+            or contract.get("same_live_owner_required") is not True
+            or contract.get("generation_restart_authorized") is not False
+            or contract.get("bind_store_report_to_live_event_digest") is not True
+            or expected.get("current_datasets_gitlink")
+            != "b07a73862d320ba33b239d0a475f64273d31127f"
+        ):
+            raise OperatorError(
+                "active M66 live-owner capsule-denied source-checkout "
+                "authority differs"
+            )
+        return MappingProxyType(expected)
     if m65_key in config:
         authority = config.get(m65_key)
         try:
@@ -6325,6 +6410,7 @@ def _successor_materialization_configured(config: Mapping[str, Any]) -> bool:
     return any(
         key in config
         for key in (
+            _M66_SUCCESSOR_KEY,
             _M65_SUCCESSOR_KEY,
             _M64_SUCCESSOR_KEY,
             _M63_SUCCESSOR_KEY,
@@ -8734,6 +8820,77 @@ def _require_m18_final_pair_marker(
             raise OperatorError(
                 "M18 materializer check differs from its final pair marker"
             )
+    return MappingProxyType(dict(observed))
+
+
+def _require_m66_source_successor_marker(
+    config: Mapping[str, Any],
+    authority: Mapping[str, Any],
+    materializer: Any,
+    *,
+    checked: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    """Require M66 authority and preserved M65 receipt; M66 receipt may follow."""
+
+    del checked
+    key = _M66_SUCCESSOR_KEY
+    if key not in config:
+        return MappingProxyType({})
+    expected = (
+        materializer
+        ._expected_m66_post_m65_live_owner_capsule_denied_restart_source_checkout_authority()
+    )
+    reference = materializer._m66_authority_reference()
+    configured_cid = str(reference.get("authority_cid") or "")
+    if (
+        dict(authority) != expected
+        or config.get(key) != reference
+        or configured_cid != _M66_AUTHORITY_CID
+        or configured_cid.endswith("PENDING_M66_FINAL_CONTROL_AUTHORITY_CID")
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", configured_cid) is None
+        or materializer._identity(expected) != _M66_AUTHORITY_CID
+        or len(materializer._canonical(expected)) != _M66_AUTHORITY_SIZE
+        or expected.get("migration_revision") != _M66_MIGRATION_REVISION
+        or expected.get("migration_kind") != _M66_SUCCESSOR_KEY
+        or int(expected.get("target_generation") or 0) != _M66_GENERATION
+        or int(expected.get("target_event_watermark") or 0)
+        != _M66_TARGET_EVENT_WATERMARK
+    ):
+        raise OperatorError("M66 live-owner source-checkout authority differs")
+    runtime = (REPO_ROOT / _M66_STORE_ID).resolve().parent
+    m65_path = runtime / materializer._M65_FINAL_RECEIPT_NAME
+    if not os.path.lexists(m65_path):
+        raise OperatorError("M66 preserved M65 receipt is unavailable")
+    final_path = runtime / materializer._M66_FINAL_RECEIPT_NAME
+    if not os.path.lexists(final_path):
+        return MappingProxyType({})
+    try:
+        observed, _ = materializer._load_nofollow_json(
+            final_path, root=REPO_ROOT, noun="M66 source successor receipt"
+        )
+        checked_live = materializer._check_m66_materialized(REPO_ROOT, CONFIG_PATH)
+    except Exception as exc:
+        raise OperatorError(
+            "M66 receipt requires fresh live verification after receipt read"
+        ) from exc
+    unhashed = dict(observed)
+    claimed = str(unhashed.pop("receipt_cid", ""))
+    reported = checked_live.get("m66_source_successor_receipt")
+    if not isinstance(reported, Mapping):
+        reported = checked_live.get("receipt")
+    if (
+        claimed != materializer._identity(unhashed)
+        or dict(reported or {}) != observed
+        or checked_live.get("valid") is not True
+        or observed.get("migration_revision") != _M66_MIGRATION_REVISION
+        or observed.get(f"{key}_cid") != _M66_AUTHORITY_CID
+        or observed.get("m65_receipt_preserved_exactly") is not True
+        or observed.get("same_live_owner_verified") is not True
+        or observed.get("authoritative") is not False
+        or observed.get("completion_authority") is not False
+        or observed.get("launch_authority") is not False
+    ):
+        raise OperatorError("M66 exact source successor receipt differs")
     return MappingProxyType(dict(observed))
 
 
@@ -16604,6 +16761,10 @@ def _require_active_final_pair_marker(
 ) -> Mapping[str, Any]:
     """Dispatch to the newest key-present pair marker contract."""
 
+    if _M66_SUCCESSOR_KEY in config:
+        return _require_m66_source_successor_marker(
+            config, authority, materializer, checked=checked
+        )
     if _M65_SUCCESSOR_KEY in config:
         return _require_m65_source_successor_marker(
             config, authority, materializer, checked=checked
@@ -22935,6 +23096,7 @@ def _live_preflight(
         }
     )
     active_revision = str(active_source_repair.get("migration_revision") or "")
+    m66_active = active_revision == _M66_MIGRATION_REVISION
     m65_active = active_revision == _M65_MIGRATION_REVISION
     m64_active = active_revision == _M64_MIGRATION_REVISION
     m63_active = active_revision == _M63_MIGRATION_REVISION
@@ -22984,6 +23146,7 @@ def _live_preflight(
     m18_active = active_revision == "SAWM-R2-M18"
     evidence_only_post_m27 = any(
         (
+            m66_active,
             m65_active,
             m64_active,
             m63_active,
@@ -23025,6 +23188,7 @@ def _live_preflight(
     )
     deferred_live_evidence_marker = any(
         (
+            m66_active,
             m65_active,
             m64_active,
             m63_active,
@@ -23085,6 +23249,15 @@ def _live_preflight(
     discovery = discover_live_quack_endpoint(store)
     expected_uri = str(config["database_program"]["quack_endpoint"])
     if not discovery.uri or discovery.uri != expected_uri or not discovery.token:
+        if m66_active:
+            if discovery.uri == expected_uri and not discovery.token:
+                raise OperatorError(
+                    "M66 live generation-45 owner is missing the client token "
+                    "vault; do not mint a successor vault without a seal"
+                )
+            raise OperatorError(
+                "M66 exact live generation-45 owner is unavailable"
+            )
         if m65_active:
             if discovery.uri == expected_uri and not discovery.token:
                 raise OperatorError(
@@ -23270,6 +23443,10 @@ def _live_preflight(
         or live_identity.get("listen_uri") != expected_uri
         or remote_identity.get("listen_uri") != expected_uri
     ):
+        if m66_active:
+            raise OperatorError(
+                "M66 exact live generation-45 owner binding differs"
+            )
         if m65_active:
             raise OperatorError("M65 exact live generation-45 owner binding differs")
         if m64_active:
@@ -23394,6 +23571,36 @@ def _live_preflight(
     # step.  If the live cursor is still the sealed prior watermark, append
     # and publish before the snapshot gate.  An unhandled newer key fails
     # closed inside materialize() instead of silently selecting history.
+    if m66_active:
+        try:
+            cursor = int(live.snapshot().event_cursor)
+            m65_path = (
+                REPO_ROOT / _M66_STORE_ID
+            ).resolve().parent / materializer._M65_FINAL_RECEIPT_NAME
+            if not os.path.lexists(m65_path):
+                raise OperatorError("M66 preserved M65 receipt is unavailable")
+            if cursor != _M66_TARGET_EVENT_WATERMARK:
+                raise OperatorError("M66 live event head is not 340")
+            if not materializer._m66_successor_configured_on_any_surface(
+                REPO_ROOT, config
+            ):
+                raise OperatorError("M66 successor authority is unavailable")
+            materializer._materialize_m66(REPO_ROOT, CONFIG_PATH, config)
+            live.close()
+            live = None
+            live = DatabaseTaskSource(
+                discovery.uri,
+                install_schema=False,
+                repository_tree_id=population["repository_tree_id"],
+                plan_root_cid=population["plan_root_cid"],
+                owner_id="sawm-r2-live-preflight",
+            )
+        except OperatorError:
+            raise
+        except Exception as exc:
+            raise OperatorError(
+                f"M66 automatic successor materialize failed: {exc}"
+            ) from exc
     if m65_active:
         try:
             cursor = int(live.snapshot().event_cursor)
@@ -25761,7 +25968,38 @@ def _live_preflight(
         "statuses": statuses,
         "coordination_projection_digest": live_snapshot["projection_cid"],
     }
-    if m65_active and final_pair_marker:
+    if m66_active and final_pair_marker:
+        store_report.update(
+            {
+                "coordination_path": str(
+                    (REPO_ROOT / _M66_COORDINATION_STORE_ID).resolve()
+                ),
+                "coordination_projection_digest": live_snapshot["projection_cid"],
+                "final_pair_commit_marker_verified": False,
+                "source_successor_receipt_cid": str(
+                    final_pair_marker["receipt_cid"]
+                ),
+                "source_successor_receipt_verified": True,
+                "source_successor_chain": dict(
+                    final_pair_marker.get("source_chain") or {}
+                ),
+                "m66_authority_cid": materializer._identity(
+                    receipt_authority
+                ),
+                "m65_receipt_preserved_exactly": (
+                    final_pair_marker.get("m65_receipt_preserved_exactly")
+                    is True
+                ),
+                "same_live_owner_verified": (
+                    final_pair_marker.get("same_live_owner_verified") is True
+                ),
+                "generation_restart_authorized": False,
+                "source_successor_receipt_completion_authority": False,
+                "source_successor_receipt_launch_authority": False,
+                "fresh_live_revalidation_performed_after_receipt_read": True,
+            }
+        )
+    elif m65_active and final_pair_marker:
         store_report.update(
             {
                 "coordination_path": str(

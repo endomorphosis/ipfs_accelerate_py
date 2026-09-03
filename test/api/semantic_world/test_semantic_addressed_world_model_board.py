@@ -1962,6 +1962,53 @@ def test_m28_live_owner_admits_runtime_generated_generation_restart() -> None:
     ) is False
 
 
+def test_committed_nested_gitlink_admits_clean_successor_checkout() -> None:
+    """Relaunch must not fail-close when HEAD gitlink moved and nested is clean."""
+
+    validator = _load(
+        "scripts/validate_semantic_addressed_world_model_dependencies.py",
+        "sawm_validator_committed_gitlink_test",
+    )
+    authority = {
+        "gitlink_commit": "b9f5b86199c03e427fd51fcea302479880421ff8",
+        "tree": "52c0c7be05a51956ba5aa2b6f85d38e03588f3b1",
+        "package_version": "0.2.0",
+        "origin": "/home/barberb/lift_coding/external/ipfs_datasets",
+    }
+    current = "b07a73862d320ba33b239d0a475f64273d31127f"
+    current_tree = "3af91e40de9a7b1a0acb66bba7380a3b9ba302de"
+    assert validator._committed_nested_gitlink_is_admitted(
+        index_oid=current,
+        nested_head=current,
+        nested_tree=current_tree,
+        nested_status="",
+        version="0.2.0",
+        actual_origin=authority["origin"],
+        expected_origin=authority["origin"],
+        authority=authority,
+    ) is True
+    assert validator._committed_nested_gitlink_is_admitted(
+        index_oid=current,
+        nested_head=current,
+        nested_tree=current_tree,
+        nested_status=" M file.py",
+        version="0.2.0",
+        actual_origin=authority["origin"],
+        expected_origin=authority["origin"],
+        authority=authority,
+    ) is False
+    assert validator._committed_nested_gitlink_is_admitted(
+        index_oid=str(authority["gitlink_commit"]),
+        nested_head=str(authority["gitlink_commit"]),
+        nested_tree=str(authority["tree"]),
+        nested_status="",
+        version="0.2.0",
+        actual_origin=authority["origin"],
+        expected_origin=authority["origin"],
+        authority=authority,
+    ) is True
+
+
 def test_m65_live_preflight_contract_accepts_mappingproxy_authority() -> None:
     """Outer mappingproxy must hash at the identity boundary, not TypeError."""
 
