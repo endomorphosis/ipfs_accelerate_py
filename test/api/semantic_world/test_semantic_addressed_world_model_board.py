@@ -151,6 +151,7 @@ print(json.dumps({
 
 
 _SUCCESSOR_CONTROL_KEYS_NEWEST_FIRST = (
+    "post_m64_stopped_owner_missing_client_token_vault_restart_successor_materialization",
     "post_m63_operator_source_checkout_bootstrap_successor_materialization",
     "failed_pre_authoritative_m62_float_bounds_successor_materialization",
     "post_m61_sealed_credential_ack_startup_grace_successor_materialization",
@@ -692,6 +693,52 @@ def test_historical_successor_controls_include_m61_before_m60() -> None:
     assert historical_migration is not None and m61_key not in historical_migration
     assert historical_seal is not None
     assert f"{m61_key}_cid" not in historical_seal
+
+
+def test_historical_successor_controls_include_m65_before_m64() -> None:
+    m65_key = "post_m64_stopped_owner_missing_client_token_vault_restart_successor_materialization"
+    m64_key = "post_m63_operator_source_checkout_bootstrap_successor_materialization"
+    scheduler = {m65_key: {"revision": "M65"}, m64_key: {"revision": "M64"}}
+    migration = copy.deepcopy(scheduler)
+    seal = {
+        f"{m65_key}_cid": "sha256:" + "f" * 64,
+        f"{m64_key}_cid": "sha256:" + "e" * 64,
+    }
+    current, _, _ = _historical_successor_controls_at(
+        m65_key, scheduler, migration, seal
+    )
+    assert m65_key in current
+    historical, historical_migration, historical_seal = (
+        _historical_successor_controls_at(m64_key, scheduler, migration, seal)
+    )
+    assert m65_key not in historical
+    assert historical_migration is not None and m65_key not in historical_migration
+    assert historical_seal is not None and f"{m65_key}_cid" not in historical_seal
+
+
+def test_materialize_and_launch_select_m65_before_m64_and_auto_append() -> None:
+    materialize_source = (
+        REPO_ROOT / "scripts/materialize_semantic_addressed_world_model_program.py"
+    ).read_text(encoding="utf-8")
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    m65_dispatch = "if _m65_successor_configured_on_any_surface(root, config):"
+    m64_dispatch = "if _m64_successor_configured_on_any_surface(root, config):"
+    assert materialize_source.find(m65_dispatch) < materialize_source.find(m64_dispatch)
+    assert materialize_source.find("def _materialize_m65(") < materialize_source.find(
+        "def materialize("
+    )
+    assert "def _check_m65_materialized(" in materialize_source
+    assert "M65 automatic successor materialize failed" in operator_source
+    assert operator_source.find("def _verify_m65_live_head_task_projection(") < (
+        operator_source.find("def _verify_m64_live_head_task_projection(")
+    )
+    assert operator_source.find(
+        "if _M65_SUCCESSOR_KEY in config:\n        return _require_m65_source_successor_marker"
+    ) < operator_source.find(
+        "if _M64_SUCCESSOR_KEY in config:\n        return _require_m64_source_successor_marker"
+    )
 
 
 def test_historical_successor_controls_include_m64_before_m63() -> None:

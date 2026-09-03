@@ -347,6 +347,25 @@ _M64_PRIOR_PROJECTION_CID = _M63_TARGET_PROJECTION_CID
 _M64_TARGET_PROJECTION_CID = (
     "baguqeera2snnowvc5ghzw6kzc3pczfkxewkvvgthuineie4tpqf3pdwcsq7q"
 )
+_M65_AUTHORITY_CID = (
+    "sha256:bdb426ff33ec7065170c1a558829a8c6aed9f4e1f52b29617017992a3e9d5e71"
+)
+_M65_AUTHORITY_SIZE = 18_221
+_M65_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M65_FINAL_CONTROL_AUTHORITY_CID"
+_M65_SUCCESSOR_KEY = (
+    "post_m64_stopped_owner_missing_client_token_vault_restart_successor_materialization"
+)
+_M65_MIGRATION_REVISION = "SAWM-R2-M65"
+_M65_CONTROL_RECORDED_AT = "2026-09-03T03:20:00Z"
+_M65_GENERATION = 44
+_M65_PRIOR_EVENT_WATERMARK = 337
+_M65_TARGET_EVENT_WATERMARK = 338
+_M65_PRIOR_PROJECTION_CID = (
+    "baguqeerabgkhascw6lwwm25wmbpotdmgnksk26elhvq2e2p5qwkhvy6tqfya"
+)
+_M65_TARGET_PROJECTION_CID = (
+    "baguqeeram4a4oq3kqikzyp6vm5cg2qlojmgp7cqplgew3n3x3lj6e7ehogda"
+)
 _M47_AUTHORITY_CID = (
     "sha256:73879d0dd4f622ea850a13ef1857dfdf06a79fab170904af62975d856d65e444"
 )
@@ -3654,12 +3673,84 @@ def _m64_successor_declared(
     return key in scheduler or key in migration or f"{key}_cid" in seal
 
 
+def _m65_successor_declared(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> bool:
+    key = _M65_SUCCESSOR_KEY
+    return key in scheduler or key in migration or f"{key}_cid" in seal
+
+
+def _m65_post_m64_stopped_owner_missing_client_token_vault_restart_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+    *,
+    root: Path,
+) -> list[str]:
+    """Validate M65's exact generation-44/event-338 restart authority."""
+
+    errors: list[str] = []
+    key = _M65_SUCCESSOR_KEY
+    presence = (key in scheduler, key in migration, f"{key}_cid" in seal)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "sawm_m65_dependency_materializer",
+            root / "scripts/materialize_semantic_addressed_world_model_program.py",
+        )
+        if spec is None or spec.loader is None:
+            raise RuntimeError("M65 materializer cannot be loaded")
+        materializer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(materializer)
+        expected = (
+            materializer
+            ._expected_m65_post_m64_stopped_owner_missing_client_token_vault_restart_authority()
+        )
+        reference = dict(materializer._m65_authority_reference())
+        contract = materializer._validated_m65_live_preflight_contract(expected)
+        configured = materializer._m65_successor_configured_on_any_surface(
+            root, scheduler
+        )
+        stopped = expected.get("stopped_owner")
+        if (
+            not all(presence)
+            or configured is not True
+            or scheduler.get(key) != reference
+            or migration.get(key) != reference
+            or seal.get(f"{key}_cid") != _M65_AUTHORITY_CID
+            or materializer._identity(expected) != _M65_AUTHORITY_CID
+            or len(materializer._canonical(expected)) != _M65_AUTHORITY_SIZE
+            or materializer._M65_AUTHORITY_CID == _M65_UNSEALED_AUTHORITY_CID
+            or materializer._M65_AUTHORITY_CID != _M65_AUTHORITY_CID
+            or expected.get("migration_revision") != _M65_MIGRATION_REVISION
+            or expected.get("migration_kind") != key
+            or expected.get("target_generation") != _M65_GENERATION
+            or expected.get("target_event_watermark") != _M65_TARGET_EVENT_WATERMARK
+            or expected.get("target_projection_cid") != _M65_TARGET_PROJECTION_CID
+            or not isinstance(stopped, Mapping)
+            or stopped.get("generation") != 43
+            or stopped.get("client_token_vault_absent") is not True
+            or contract.get("generation_restart_authorized") is not True
+            or contract.get("bind_store_report_to_live_event_digest") is not True
+            or contract.get("events_334_337_must_be_preserved") is not True
+        ):
+            errors.append("M65 stopped-owner token-vault restart authority differs")
+    except Exception as exc:
+        errors.append(
+            "M65 stopped-owner token-vault restart authority unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        )
+    return errors
+
+
 def _m64_post_m63_operator_source_checkout_bootstrap_successor_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
     migration: Mapping[str, Any],
     *,
     root: Path,
+    require_current_source: bool = True,
 ) -> list[str]:
     """Validate M64's exact event-332-to-333 source-bootstrap authority."""
 
@@ -3693,9 +3784,10 @@ def _m64_post_m63_operator_source_checkout_bootstrap_successor_errors(
         materializer._assert_m64_historical_m63_controls(
             scheduler, migration, seal
         )
-        materializer._assert_m64_source_delta(
-            root, materializer.build_population(root), expected
-        )
+        if require_current_source:
+            materializer._assert_m64_source_delta(
+                root, materializer.build_population(root), expected
+            )
         if (
             not all(presence)
             or configured is not True
@@ -20568,6 +20660,7 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         protocol_errors.extend(
             _m12_declared_output_retry_errors(scheduler, seal, migration)
         )
+        m65_declared = _m65_successor_declared(scheduler, seal, migration)
         m64_declared = _m64_successor_declared(scheduler, seal, migration)
         m63_declared = _m63_successor_declared(scheduler, seal, migration)
         m62_declared = _m62_successor_declared(scheduler, seal, migration)
@@ -20607,7 +20700,8 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
         m27_declared = _m27_successor_declared(scheduler, seal, migration)
         m26_declared = _m26_successor_declared(scheduler, seal, migration)
         if (
-            m64_declared
+            m65_declared
+            or m64_declared
             or m63_declared
             or m62_declared
             or m61_declared
@@ -20647,7 +20741,27 @@ def validate_dependencies(repo_root: Path | str = REPO_ROOT, *, cold_import: boo
             or m26_declared
             or _m25_successor_declared(scheduler, seal, migration)
         ):
-            if m64_declared:
+            if m65_declared:
+                protocol_errors.extend(
+                    _m65_post_m64_stopped_owner_missing_client_token_vault_restart_errors(
+                        scheduler, seal, migration, root=root
+                    )
+                )
+                if not m64_declared:
+                    protocol_errors.append(
+                        "M65 successor does not preserve the immutable M64 controls"
+                    )
+                else:
+                    protocol_errors.extend(
+                        _m64_post_m63_operator_source_checkout_bootstrap_successor_errors(
+                            scheduler,
+                            seal,
+                            migration,
+                            root=root,
+                            require_current_source=False,
+                        )
+                    )
+            elif m64_declared:
                 protocol_errors.extend(
                     _m64_post_m63_operator_source_checkout_bootstrap_successor_errors(
                         scheduler, seal, migration, root=root

@@ -230,6 +230,21 @@ _M64_PRIOR_PROJECTION_CID = _M63_TARGET_PROJECTION_CID
 _M64_TARGET_PROJECTION_CID = (
     "baguqeera2snnowvc5ghzw6kzc3pczfkxewkvvgthuineie4tpqf3pdwcsq7q"
 )
+_M65_AUTHORITY_CID = (
+    "sha256:bdb426ff33ec7065170c1a558829a8c6aed9f4e1f52b29617017992a3e9d5e71"
+)
+_M65_AUTHORITY_SIZE = 18_221
+_M65_UNSEALED_AUTHORITY_CID = "sha256:PENDING_M65_FINAL_CONTROL_AUTHORITY_CID"
+_M65_SUCCESSOR_KEY = (
+    "post_m64_stopped_owner_missing_client_token_vault_restart_successor_materialization"
+)
+_M65_CONTROL_RECORDED_AT = "2026-09-03T03:20:00Z"
+_M65_PRIOR_PROJECTION_CID = (
+    "baguqeerabgkhascw6lwwm25wmbpotdmgnksk26elhvq2e2p5qwkhvy6tqfya"
+)
+_M65_TARGET_PROJECTION_CID = (
+    "baguqeeram4a4oq3kqikzyp6vm5cg2qlojmgp7cqplgew3n3x3lj6e7ehogda"
+)
 _M50_M49_RECEIPT_CID = (
     "sha256:d5bfeb6dd987b05c2407d93f66d73c6a70bcd2b4f17e8381a93a2bb265acae47"
 )
@@ -760,10 +775,30 @@ def _m63_migration_errors(
         return [f"M63 migration validator unavailable: {type(exc).__name__}: {exc}"]
 
 
+def _m65_migration_errors(
+    scheduler: Mapping[str, Any],
+    seal: Mapping[str, Any],
+    migration: Mapping[str, Any],
+) -> list[str]:
+    """Validate M65's generation-44 event-337-to-338 vault restart."""
+
+    try:
+        module = _dependency_validator_module(REPO_ROOT)
+        return list(
+            module._m65_post_m64_stopped_owner_missing_client_token_vault_restart_errors(
+                scheduler, seal, migration, root=REPO_ROOT
+            )
+        )
+    except Exception as exc:
+        return [f"M65 migration validator unavailable: {type(exc).__name__}: {exc}"]
+
+
 def _m64_migration_errors(
     scheduler: Mapping[str, Any],
     seal: Mapping[str, Any],
     migration: Mapping[str, Any],
+    *,
+    require_current_source: bool = True,
 ) -> list[str]:
     """Validate M64's generation-43 event-332-to-333 bootstrap seal."""
 
@@ -771,7 +806,11 @@ def _m64_migration_errors(
         module = _dependency_validator_module(REPO_ROOT)
         return list(
             module._m64_post_m63_operator_source_checkout_bootstrap_successor_errors(
-                scheduler, seal, migration, root=REPO_ROOT
+                scheduler,
+                seal,
+                migration,
+                root=REPO_ROOT,
+                require_current_source=require_current_source,
             )
         )
     except Exception as exc:
@@ -1714,12 +1753,47 @@ def _active_successor_migration_errors(
 ) -> list[str]:
     """Select the newest declared successor without truthiness fallback.
 
-    Key presence selects M64 before every historical successor. Consequently
+    Key presence selects M65 before every historical successor. Consequently
     an empty, null,
     or otherwise malformed newest declaration is validated at that revision
     and cannot silently reactivate historical authority.  Every predecessor
     remains independently checked as immutable history.
     """
+
+    m65_key = _M65_SUCCESSOR_KEY
+    m65_presence = (
+        m65_key in scheduler,
+        m65_key in migration,
+        f"{m65_key}_cid" in seal,
+    )
+    if any(m65_presence):
+        errors = _m65_migration_errors(scheduler, seal, migration)
+        if not all(m65_presence):
+            errors.append("M65 successor authority is only partially declared")
+        if errors:
+            return errors
+        m64_key = _M64_SUCCESSOR_KEY
+        m64_presence = (
+            m64_key in scheduler,
+            m64_key in migration,
+            f"{m64_key}_cid" in seal,
+        )
+        if not all(m64_presence):
+            return [
+                "M65 successor does not preserve the immutable M64 controls"
+            ]
+        historical_scheduler = dict(scheduler)
+        historical_migration = dict(migration)
+        historical_seal = dict(seal)
+        historical_scheduler.pop(m65_key, None)
+        historical_migration.pop(m65_key, None)
+        historical_seal.pop(f"{m65_key}_cid", None)
+        return _active_successor_migration_errors(
+            historical_scheduler,
+            historical_seal,
+            historical_migration,
+            require_current_source=False,
+        )
 
     m64_key = _M64_SUCCESSOR_KEY
     m64_presence = (
@@ -1728,7 +1802,12 @@ def _active_successor_migration_errors(
         f"{m64_key}_cid" in seal,
     )
     if any(m64_presence):
-        errors = _m64_migration_errors(scheduler, seal, migration)
+        errors = _m64_migration_errors(
+            scheduler,
+            seal,
+            migration,
+            require_current_source=require_current_source,
+        )
         if not all(m64_presence):
             errors.append("M64 successor authority is only partially declared")
         if errors:
@@ -5352,8 +5431,14 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         config_errors.append("initial projection population mismatch")
     if projection.get("completed_task_ids") != ["SAWM-000"] or projection.get("ready_task_ids") != ["SAWM-001"]:
         config_errors.append("initial projection frontier mismatch")
+    m65_key = _M65_SUCCESSOR_KEY
+    m65_selected = any((
+        m65_key in config,
+        m65_key in migration,
+        f"{m65_key}_cid" in seal,
+    ))
     m64_key = _M64_SUCCESSOR_KEY
-    m64_selected = any((
+    m64_selected = m65_selected or any((
         m64_key in config,
         m64_key in migration,
         f"{m64_key}_cid" in seal,
@@ -6018,7 +6103,11 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         else "run-r2-m8"
     )
     active_generation = (
-        "43"
+        "44"
+        if m65_selected
+        else "43"
+        if m64_selected
+        else "43"
         if m60_selected
         else "43"
         if m59_selected
@@ -6240,7 +6329,72 @@ def validate_program(repo_root: Path | str = REPO_ROOT) -> dict[str, Any]:
         or program.get("store_id") != active_store
     ):
         config_errors.append("DuckDB + Quack authority binding mismatch")
-    if m64_selected:
+    if m65_selected:
+        successor = config.get(m65_key)
+        try:
+            module, materializer = _m26_validation_modules(root)
+            expected = (
+                materializer
+                ._expected_m65_post_m64_stopped_owner_missing_client_token_vault_restart_authority()
+            )
+            reference = dict(materializer._m65_authority_reference())
+            contract = materializer._validated_m65_live_preflight_contract(expected)
+            configured = materializer._m65_successor_configured_on_any_surface(
+                root, config
+            )
+            m65_errors = list(
+                module._m65_post_m64_stopped_owner_missing_client_token_vault_restart_errors(
+                    config, seal, migration, root=root
+                )
+            )
+            stopped = expected.get("stopped_owner")
+            preservation = expected.get("preservation")
+            if (
+                successor != reference
+                or migration.get(m65_key) != reference
+                or seal.get(f"{m65_key}_cid") != _M65_AUTHORITY_CID
+                or materializer._identity(expected) != _M65_AUTHORITY_CID
+                or len(materializer._canonical(expected)) != _M65_AUTHORITY_SIZE
+                or _M65_AUTHORITY_CID == _M65_UNSEALED_AUTHORITY_CID
+                or materializer._M65_AUTHORITY_CID != _M65_AUTHORITY_CID
+                or configured is not True
+                or expected.get("authorized") is not True
+                or expected.get("migration_revision") != "SAWM-R2-M65"
+                or expected.get("migration_kind") != m65_key
+                or expected.get("target_generation") != 44
+                or expected.get("target_event_watermark") != 338
+                or expected.get("target_projection_cid")
+                != _M65_TARGET_PROJECTION_CID
+                or not isinstance(stopped, Mapping)
+                or stopped.get("generation") != 43
+                or stopped.get("server_id")
+                != "server:5ebecb98-3bfa-4642-a38f-d3bb132db191"
+                or stopped.get("process_birth_id")
+                != "birth:737fdaf247df1cd4db70caf5ca1120ce"
+                or stopped.get("client_token_vault_absent") is not True
+                or contract.get("target_generation") != 44
+                or contract.get("prior_event_watermark") != 337
+                or contract.get("target_event_watermark") != 338
+                or contract.get("generation_restart_authorized") is not True
+                or contract.get("bind_store_report_to_live_event_digest") is not True
+                or contract.get("events_334_337_must_be_preserved") is not True
+                or not isinstance(preservation, Mapping)
+                or preservation.get("m64_receipt_preserved_exactly") is not True
+                or preservation.get("events_334_337_preserved_exactly") is not True
+            ):
+                m65_errors.append("M65 successor authority binding differs")
+            config_errors.extend(m65_errors)
+            m64_errors = list(
+                module._m64_post_m63_operator_source_checkout_bootstrap_successor_errors(
+                    config, seal, migration, root=root, require_current_source=False
+                )
+            )
+            config_errors.extend(m64_errors)
+        except Exception as exc:
+            config_errors.append(
+                f"M65 successor authority unavailable: {type(exc).__name__}: {exc}"
+            )
+    elif m64_selected:
         successor = config.get(m64_key)
         try:
             module, materializer = _m26_validation_modules(root)
