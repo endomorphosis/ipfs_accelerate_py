@@ -105268,6 +105268,10 @@ class DatabaseImplementationDaemon:
             return None
         if self.max_task_attempts <= 0:
             return None
+        current_is_leftover_wait = (
+            str(current.get("reason") or "")
+            in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+        )
 
         connection = self._require_connection()
         generation_fingerprint = str(current["generation_fingerprint"])
@@ -105471,7 +105475,10 @@ class DatabaseImplementationDaemon:
             "verified_typed_deferral_count": verified_count,
             "verified_count_complete": history_complete,
             "max_task_attempts": int(self.max_task_attempts),
-            "exhausted": verified_count >= self.max_task_attempts,
+            "exhausted": (
+                verified_count >= self.max_task_attempts
+                and not current_is_leftover_wait
+            ),
             "attempt_consumed": False,
             "typed_deferral_slot_consumed": True,
             "matching_attempts": matching,

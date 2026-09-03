@@ -12572,6 +12572,62 @@ def test_leftover_wait_budget_recovery_rejects_mixed_non_wait_reason(
         daemon.close()
 
 
+def test_leftover_wait_current_does_not_exhaust_against_capacity_history(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    observed_attempts: list[DatabaseTaskAttempt] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        observed_attempts.append(attempt)
+        raise DatabasePortalBridgeDeferred(
+            "worktree_lifecycle_claim_exists",
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:leftover-wait-current-capacity-history",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        now["ms"] = 31_001
+        daemon.run_once()
+        now["ms"] = 61_002
+        third = daemon.run_once()
+        exact = [
+            item
+            for item in (
+                daemon.get_attempt(attempt.attempt_id)
+                for attempt in observed_attempts
+            )
+            if item is not None
+        ]
+        assert len(exact) == 3
+        latest = max(exact, key=lambda item: int(item.attempt_number))
+        earlier = [
+            item for item in exact if item.attempt_id != latest.attempt_id
+        ]
+        _rewrite_as_legacy_typed_deferrals(
+            daemon,
+            earlier,
+            ["provider_capacity_exhausted", "provider_capacity_exhausted"],
+        )
+        budget = daemon._typed_deferral_budget_observation(latest)
+        assert budget is not None
+        assert budget["exhausted"] is False
+        assert budget["typed_deferral_count"] == 2
+        assert first["implementation_result"]["retry_budget_exhausted"] is False
+        assert third["implementation_result"]["retry_budget_exhausted"] is False
+    finally:
+        daemon.close()
+
+
 @pytest.mark.parametrize("drift_surface", ("direct_seed", "reconciler_budget"))
 def test_leftover_wait_recovery_rejects_self_hashed_reason_drift(
     tmp_path: Path,
