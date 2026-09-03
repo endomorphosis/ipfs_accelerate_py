@@ -1,0 +1,67 @@
+{
+  "catalog_cid": "baguqeera2nvt3yvomxdm2s2uacs5d2oi4sh4vvzalvxkl26d53cbjl4fy6pa",
+  "closed_release_outcome": null,
+  "components": {
+    "ipfs_accelerate_py": {
+      "applied": false,
+      "evidence_kind": "measured",
+      "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+      "live": false,
+      "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+      "objective_kind": "declared_reference_high_level_objective",
+      "objective_path": "packaging/pcpr/reference-workflow/cpython312/reference.objective.json",
+      "package_name": "ipfs_accelerate_py",
+      "package_version": "0.0.45",
+      "status": "observed"
+    },
+    "ipfs_datasets_py": {
+      "binding": {
+        "applied": false,
+        "binding_cid": "baguqeera3eu7bvbep4tq3j3f26ra6qtcgro26nu74yqsabe5meflruyq76eq",
+        "evidence_kind": "measured",
+        "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+        "live": false,
+        "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+        "objective_kind": "declared_reference_high_level_objective_binding",
+        "package_name": "ipfs_datasets_py",
+        "package_version": "0.2.0",
+        "path": "../ipfs_datasets/packaging/pcpr/reference-workflow/cpython312/reference.binding.json",
+        "sha256": "ed394da465397d204730448720266aae7d30c1e16ccb515be3caf7e9734e5214",
+        "status": "observed"
+      }
+    },
+    "ipfs_kit_py": {
+      "binding": {
+        "applied": false,
+        "binding_cid": "baguqeeraprqklhobfd33ybujo25xn3hck6tmdigxpo4so25cus4vvjnbxshq",
+        "evidence_kind": "measured",
+        "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+        "live": false,
+        "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+        "objective_kind": "declared_reference_high_level_objective_binding",
+        "package_name": "ipfs_kit_py",
+        "package_version": "0.3.0",
+        "path": "../ipfs_kit/packaging/pcpr/reference-workflow/cpython312/reference.binding.json",
+        "sha256": "ec929a6160ee97a398478c9024bd302c7d2f750e9121e305704ac7dbe891cb41",
+        "status": "observed"
+      }
+    }
+  },
+  "evidence_kind": "measured",
+  "goal_id": "PCPR-G700",
+  "idea_digest": "baguqeeracbayojdov4jmqiirx22pavrg6nabazcocru6y3scrdx5e54mw2zq",
+  "intent_cid": "baguqeeraa4tf7chcljsvpbljkswijpyq44aks2dq7zzjhos376f6rkjed3ra",
+  "interface": "PlatformReferenceHighLevelObjective@1",
+  "live_materialization": false,
+  "live_objective_submission": false,
+  "live_start": false,
+  "lock_cid": "baguqeerawsekbbbt5ccctjt4tydzeahfkahsatb6q5x7k6cy4inrii5lhqmq",
+  "objective_cid": "baguqeeraynsn7tjr3iaggnreylzxo3akaooqwp5bf5oheaa6eubth2zwqeba",
+  "objective_kind": "declared_reference_high_level_objective",
+  "portfolio_id": "portfolio:pcpr-v1",
+  "portfolio_version": "proof-carrying-platform-0.1.0",
+  "release_claim": false,
+  "schema": "ipfs_accelerate_py/assurance/platform-reference-objective-catalog@1",
+  "sibling_source_required": false,
+  "task_id": "PCPR-060"
+}
