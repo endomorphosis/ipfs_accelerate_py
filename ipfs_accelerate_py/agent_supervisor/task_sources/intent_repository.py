@@ -8239,17 +8239,32 @@ class IntentRepository:
             desired_retry_not_before_ms = (
                 now_ms + delay if exact_deadline is None else exact_deadline
             )
+            leftover_wait_recovery = (
+                receipt_map.get("operation")
+                == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+            )
+            # SPAR-040: leftover-wait recovery of a blocked capacity wait
+            # preserved an inactive leases row. Mutating that primary key
+            # aborted DuckDB (PRIMARY_leases_0) and killed the owner. Rearm
+            # control status and leave the existing cooldown row untouched.
             queue_reused = bool(
-                lease is not None
-                and existing_reason == reason_text
-                and (
-                    previous_status == status_text
-                    or int(lease[0] or 0) == desired_retry_not_before_ms
+                (leftover_wait_recovery and lease is not None)
+                or (
+                    lease is not None
+                    and existing_reason == reason_text
+                    and (
+                        previous_status == status_text
+                        or int(lease[0] or 0) == desired_retry_not_before_ms
+                    )
                 )
             )
             if queue_reused:
                 queue_receipt: IntentReceipt | None = None
-                retry_not_before_ms = int(lease[0] or 0)
+                retry_not_before_ms = (
+                    int(lease[0] or 0)
+                    if lease is not None
+                    else desired_retry_not_before_ms
+                )
             else:
                 queue_receipt = self._record_queue_backoff_on(
                     connection,

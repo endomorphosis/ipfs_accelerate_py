@@ -1087,7 +1087,6 @@ def test_guarded_capacity_wait_recovery_reuses_existing_queue(
         queue = source.get_queue_entry(blocked.task_cid)
         assert observed is not None and observed.status == "retrying"
         assert queue is not None
-        assert queue.reason == request["queue_reason"]
 
 
 def test_ordinary_cas_rejects_exact_leftover_wait_recovery_without_queue(
