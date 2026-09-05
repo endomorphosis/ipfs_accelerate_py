@@ -88990,6 +88990,15 @@ _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS = frozenset(
         "external_protected_checkout_recovery_required",
     }
 )
+# Provider-capacity deferrals already have dedicated backoff.  Counting a
+# live quota wait toward the anti-spin budget terminalizes the current
+# task (SPAR-040) and fences every successor.
+_PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS = frozenset(
+    {
+        "provider_capacity_exhausted",
+        "provider_capacity_backoff",
+    }
+)
 _DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-leftover-wait-deferral-budget-recovery@1"
@@ -105506,9 +105515,12 @@ class DatabaseImplementationDaemon:
             return None
         if self.max_task_attempts <= 0:
             return None
+        current_reason = str(current.get("reason") or "")
         current_is_leftover_wait = (
-            str(current.get("reason") or "")
-            in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+            current_reason in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+        )
+        current_is_provider_capacity = (
+            current_reason in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
         )
 
         connection = self._require_connection()
@@ -105716,6 +105728,7 @@ class DatabaseImplementationDaemon:
             "exhausted": (
                 verified_count >= self.max_task_attempts
                 and not current_is_leftover_wait
+                and not current_is_provider_capacity
             ),
             "attempt_consumed": False,
             "typed_deferral_slot_consumed": True,
@@ -114252,6 +114265,69 @@ class DatabaseImplementationDaemon:
             )
         return dict(budget)
 
+    def _verified_capacity_wait_retry_budget(
+        self,
+        attempt: DatabaseTaskAttempt,
+        budget: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Bind truncated provider-capacity current to capacity matching."""
+
+        matching = budget.get("matching_attempts")
+        if (
+            not isinstance(matching, list)
+            or not matching
+            or any(not isinstance(item, Mapping) for item in matching)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "capacity-wait recovery budget references a foreign receipt"
+            )
+        matching_reasons = [
+            str(item.get("reason") or "") for item in matching
+        ]
+        if not matching_reasons or any(
+            reason not in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+            for reason in matching_reasons
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "capacity-wait recovery budget references a foreign receipt"
+            )
+        failed_phases = [
+            phase
+            for phase in self.phase_history(attempt.attempt_id)
+            if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        current_body = failed_phases[-1].get("body") if failed_phases else None
+        typed = (
+            self._verified_typed_deferral_receipt(attempt, current_body)
+            if isinstance(current_body, Mapping)
+            else None
+        )
+        current_reason = str(typed.get("reason") or "") if typed else ""
+        current_fingerprint = (
+            str(typed.get("deferral_fingerprint") or "") if typed else ""
+        )
+        current_matches = [
+            item
+            for item in matching
+            if item.get("attempt_id") == attempt.attempt_id
+            and item.get("attempt_number") == int(attempt.attempt_number)
+        ]
+        if (
+            typed is None
+            or current_reason not in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+            or not current_fingerprint
+            or budget.get("current_deferral_fingerprint")
+            != current_fingerprint
+            or len(current_matches) != 1
+            or current_matches[0].get("reason") != current_reason
+            or current_matches[0].get("deferral_fingerprint")
+            != current_fingerprint
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "capacity-wait recovery budget did not reproduce exactly"
+            )
+        return dict(budget)
+
     def _verified_leftover_wait_retry_budget(
         self,
         attempt: DatabaseTaskAttempt,
@@ -114306,11 +114382,15 @@ class DatabaseImplementationDaemon:
             reason in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
             for reason in matching_reasons
         )
+        capacity_only = all(
+            reason in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+            for reason in matching_reasons
+        )
         foreign_only = all(
             reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS and reason
             for reason in matching_reasons
         )
-        if not wait_only and not foreign_only:
+        if not wait_only and not foreign_only and not capacity_only:
             raise DatabaseImplementationAuthorityError(
                 "leftover-wait recovery budget references a foreign receipt"
             )
@@ -114347,7 +114427,21 @@ class DatabaseImplementationDaemon:
                 "leftover-wait recovery budget failed closed-field verification"
             )
         if foreign_only:
+            current_in_matching = any(
+                item.get("attempt_id") == attempt.attempt_id
+                for item in matching
+            )
+            if capacity_only and current_in_matching:
+                return self._verified_capacity_wait_retry_budget(
+                    attempt,
+                    budget,
+                )
             return self._verified_leftover_wait_current_foreign_matching_budget(
+                attempt,
+                budget,
+            )
+        if capacity_only:
+            return self._verified_capacity_wait_retry_budget(
                 attempt,
                 budget,
             )
@@ -115811,40 +115905,47 @@ class DatabaseImplementationDaemon:
                 reason in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
                 for reason in matching_reasons
             )
+            capacity_only = all(
+                reason in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+                for reason in matching_reasons
+            )
             foreign_only = all(
                 reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS and reason
                 for reason in matching_reasons
             )
-            if not wait_only and not foreign_only:
+            if not wait_only and not foreign_only and not capacity_only:
                 continue
             if foreign_only:
-                if any(
+                current_in_matching = any(
                     item.get("attempt_id") == attempt.attempt_id
                     for item in candidate_matching
-                ):
-                    continue
-                failed_phases = [
-                    phase
-                    for phase in self.phase_history(attempt.attempt_id)
-                    if phase.get("phase") == ATTEMPT_PHASE_FAILED
-                ]
-                current_body = (
-                    failed_phases[-1].get("body") if failed_phases else None
                 )
-                current_typed = (
-                    self._verified_typed_deferral_receipt(
-                        attempt,
-                        current_body,
+                if current_in_matching:
+                    if not capacity_only:
+                        continue
+                else:
+                    failed_phases = [
+                        phase
+                        for phase in self.phase_history(attempt.attempt_id)
+                        if phase.get("phase") == ATTEMPT_PHASE_FAILED
+                    ]
+                    current_body = (
+                        failed_phases[-1].get("body") if failed_phases else None
                     )
-                    if isinstance(current_body, Mapping)
-                    else None
-                )
-                if (
-                    current_typed is None
-                    or str(current_typed.get("reason") or "")
-                    not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
-                ):
-                    continue
+                    current_typed = (
+                        self._verified_typed_deferral_receipt(
+                            attempt,
+                            current_body,
+                        )
+                        if isinstance(current_body, Mapping)
+                        else None
+                    )
+                    if (
+                        current_typed is None
+                        or str(current_typed.get("reason") or "")
+                        not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                    ):
+                        continue
             try:
                 budget = self._verified_blocked_leftover_wait_retry_budget(
                     attempt,

@@ -156,6 +156,12 @@ _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS: Final[frozenset[str]] = frozenset(
         "external_protected_checkout_recovery_required",
     }
 )
+_PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "provider_capacity_exhausted",
+        "provider_capacity_backoff",
+    }
+)
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW: Final[int] = 16
 _TYPED_DEFERRAL_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
 _TYPED_DEFERRAL_GIT_OBJECT_RE = re.compile(r"[0-9a-f]{40}")
@@ -842,6 +848,10 @@ def _validated_leftover_wait_budget(
         str(item["reason"]) in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
         for item in matching
     )
+    capacity_only = all(
+        str(item["reason"]) in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+        for item in matching
+    )
     foreign_only = all(
         str(item["reason"]) not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
         for item in matching
@@ -878,7 +888,7 @@ def _validated_leftover_wait_budget(
             and budget.get("matching_attempts_truncated") is False
             and omitted_count == 0
         )
-    if not wait_only and not foreign_only:
+    if not wait_only and not foreign_only and not capacity_only:
         raise TypedDeferralRecoveryError(
             "leftover-wait matching attempt is foreign or malformed"
         )
@@ -921,11 +931,15 @@ def _validated_leftover_wait_budget(
         str(item["reason"]) in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
         for item in matching
     )
+    capacity_only = all(
+        str(item["reason"]) in _PROVIDER_CAPACITY_TYPED_DEFERRAL_REASONS
+        for item in matching
+    )
     foreign_only = all(
         str(item["reason"]) not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
         for item in matching
     )
-    if wait_only:
+    if wait_only or (capacity_only and current):
         if (
             len(current) != 1
             or current[0]["deferral_fingerprint"] != current_fingerprint
