@@ -302,7 +302,15 @@ _MUTATION_SQL_TEMPLATES: Final[Mapping[str, str]] = MappingProxyType(
             "state, started_at_ms, release_reason, retry_not_before_ms, "
             "owner_session_id, fence_epoch, revision, extension_schema, "
             "extension_json) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (task_cid) DO UPDATE SET "
+            "attempt = leases.attempt + 1, "
+            "retry_not_before_ms = excluded.retry_not_before_ms, "
+            "release_reason = excluded.release_reason, "
+            "state = 'released', "
+            "extension_schema = excluded.extension_schema, "
+            "extension_json = excluded.extension_json, "
+            "revision = leases.revision + 1"
         ),
         QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE: (
             "UPDATE leases SET attempt = ?, retry_not_before_ms = ?, "

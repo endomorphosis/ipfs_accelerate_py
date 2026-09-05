@@ -1058,6 +1058,38 @@ def test_guarded_truncated_capacity_wait_recovery_updates_queue_and_status_atomi
         ]["exhausting_reasons"] == ["provider_capacity_exhausted"]
 
 
+def test_guarded_capacity_wait_recovery_reuses_existing_queue(
+    tmp_path: Path,
+) -> None:
+    with DatabaseTaskSource(tmp_path / "control.duckdb") as source:
+        blocked, budget = _block_capacity_exhausted(source, truncated=True)
+        source.record_queue_backoff(
+            task_cid=blocked.task_cid,
+            delay_ms=300_000,
+            reason="database_portal_retry:attempt:capacity-wait:provider_capacity_exhausted",
+        )
+        request = _leftover_wait_recovery_request(blocked, budget)
+        blocked_receipt = dict(blocked.body["completion_receipt"])
+
+        result = source.record_queue_backoff_and_cas_status(
+            task_cid=blocked.task_cid,
+            expected_revision=blocked.revision,
+            expected_control_receipt=blocked_receipt,
+            status="retrying",
+            receipt=request,
+            delay_ms=0,
+            reason=str(request["queue_reason"]),
+            exact_retry_not_before_ms=int(request["retry_not_before_ms"]),
+        )
+
+        assert result["cas_result"].changed is True
+        observed = source.get_task(blocked.task_cid)
+        queue = source.get_queue_entry(blocked.task_cid)
+        assert observed is not None and observed.status == "retrying"
+        assert queue is not None
+        assert queue.reason == request["queue_reason"]
+
+
 def test_ordinary_cas_rejects_exact_leftover_wait_recovery_without_queue(
     tmp_path: Path,
 ) -> None:

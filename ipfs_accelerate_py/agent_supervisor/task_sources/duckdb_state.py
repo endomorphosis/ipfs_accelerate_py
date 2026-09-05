@@ -1828,6 +1828,14 @@ _QUACK_OWNER_MUTATION_SQL_TO_TEMPLATE = {
             owner_session_id, fence_epoch, revision, extension_schema,
             extension_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (task_cid) DO UPDATE SET
+            attempt = leases.attempt + 1,
+            retry_not_before_ms = excluded.retry_not_before_ms,
+            release_reason = excluded.release_reason,
+            state = 'released',
+            extension_schema = excluded.extension_schema,
+            extension_json = excluded.extension_json,
+            revision = leases.revision + 1
         """
     ): QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
     _normalize_quack_mutation_sql(
