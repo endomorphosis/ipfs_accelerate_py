@@ -4616,19 +4616,25 @@ class QuackStateServer:
             )
             raise
         rebuilt = result.get("rebuilt") or []
-        if not rebuilt:
-            return
+        skipped = result.get("skipped") or []
         tables = ",".join(
             str(item.get("table") or "")
             for item in rebuilt
             if isinstance(item, Mapping)
-        )
+        ) or "none"
         rows = ",".join(
             str(item.get("rows") or 0)
             for item in rebuilt
             if isinstance(item, Mapping)
+        ) or "0"
+        skip = ",".join(
+            str(item.get("table") or "")
+            for item in skipped
+            if isinstance(item, Mapping)
+        ) or "none"
+        self._log(
+            f"art unique-index repair tables={tables} rows={rows} skipped={skip}"
         )
-        self._log(f"art unique-index repair tables={tables} rows={rows}")
 
     def _unstall_stale_board_gates(self, connection: Any) -> None:
         """Retry leftover in_progress gates before quack_serve occupies the writer."""

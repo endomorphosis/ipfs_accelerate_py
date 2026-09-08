@@ -61,7 +61,6 @@ from .duckdb_state import (
     quack_owner_mutation_write_lock_path,
     quack_session_is_live,
     quack_transport_uri,
-    repair_art_unique_indexes,
     unstall_stale_in_progress_tasks as apply_stale_in_progress_unstall,
 )
 
@@ -8148,16 +8147,6 @@ class IntentRepository:
         )
         now_ms = int(self._clock_ms())
         now = _utc_iso()
-        leftover_wait_recovery = (
-            receipt_map.get("operation")
-            == "database_portal_leftover_wait_deferral_budget_retry_recovery"
-        )
-        if leftover_wait_recovery:
-            # Unclean shutdown corrupts DuckDB ART unique indexes on tasks.
-            # Rebuild from the heap before leftover-wait CAS UPDATE, otherwise
-            # the owner FatalException-poisons and SPAR-040 stays blocked.
-            with self._connection(write=True) as connection:
-                repair_art_unique_indexes(connection)
 
         with self._connection(write=True) as connection:
             rows = connection.execute(
@@ -8249,6 +8238,10 @@ class IntentRepository:
                     )
             desired_retry_not_before_ms = (
                 now_ms + delay if exact_deadline is None else exact_deadline
+            )
+            leftover_wait_recovery = (
+                receipt_map.get("operation")
+                == "database_portal_leftover_wait_deferral_budget_retry_recovery"
             )
             # SPAR-040: leftover-wait recovery of a blocked capacity wait
             # preserved an inactive leases row. Mutating that primary key
