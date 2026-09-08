@@ -4104,6 +4104,32 @@ def _archive_prior_run_artifact_locked(
     return archive_path
 
 
+def _prior_active_binding_pid_is_dead(master_pid: object) -> bool:
+    """True only when a recorded active-binding PID is proven absent.
+
+    Live, privileged, malformed, or unclassifiable PIDs stay blocking so a
+    still-running predecessor cannot be replaced.  SIGKILL of the previous
+    coordinator leaves an active binding with no fenced terminal; that dead
+    PID is the only admitted stale-active recovery.
+    """
+
+    if isinstance(master_pid, bool):
+        return False
+    try:
+        pid = int(master_pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 1:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
 def _activate_run_generation_binding(
     master_pid_path: Path,
     *,
@@ -4136,10 +4162,18 @@ def _activate_run_generation_binding(
         prior, _prior_evidence = _read_stable_regular_json(current_path)
         if prior is not None:
             _self_identifying_run_artifact_cid(prior)
+            stale_active = (
+                prior.get("schema") == MULTI_SUPERVISOR_ACTIVE_BINDING_SCHEMA
+                and prior.get("active") is True
+                and _prior_active_binding_pid_is_dead(prior.get("master_pid"))
+            )
             if (
-                prior.get("schema")
-                != MULTI_SUPERVISOR_TERMINAL_RECEIPT_SCHEMA
-                or prior.get("all_trees_fenced") is not True
+                not stale_active
+                and (
+                    prior.get("schema")
+                    != MULTI_SUPERVISOR_TERMINAL_RECEIPT_SCHEMA
+                    or prior.get("all_trees_fenced") is not True
+                )
             ):
                 raise ValueError(
                     "prior run generation has no fully fenced terminal proof"

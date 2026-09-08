@@ -1977,7 +1977,7 @@ def test_new_run_archives_prior_terminal_and_publishes_active_generation(
     assert terminal["active_binding_cid"] == active_cid
 
 
-@pytest.mark.parametrize("prior_kind", ["active", "unfenced_terminal"])
+@pytest.mark.parametrize("prior_kind", ["live_active", "unfenced_terminal"])
 def test_new_run_rejects_prior_generation_without_fenced_terminal_proof(
     tmp_path,
     monkeypatch,
@@ -1988,12 +1988,12 @@ def test_new_run_rejects_prior_generation_without_fenced_terminal_proof(
     (tmp_path / "worker.py").write_text("pass\n", encoding="utf-8")
     master_pid = state_dir / "master.pid"
     current_path = runner._terminal_receipt_path(master_pid)
-    if prior_kind == "active":
+    if prior_kind == "live_active":
         prior_body = {
             "schema": runner.MULTI_SUPERVISOR_ACTIVE_BINDING_SCHEMA,
             "label": "prior",
             "active": True,
-            "master_pid": 123456,
+            "master_pid": os.getpid(),
             "run_started_at_epoch_nanoseconds": 1,
             "task_completion_authority": False,
         }
@@ -2042,6 +2042,67 @@ def test_new_run_rejects_prior_generation_without_fenced_terminal_proof(
     assert starts == 0
     assert json.loads(current_path.read_text(encoding="utf-8")) == prior
     assert not master_pid.exists()
+
+
+def test_new_run_archives_stale_dead_pid_active_binding(
+    tmp_path,
+    monkeypatch,
+):
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    (tmp_path / "worker.py").write_text("pass\n", encoding="utf-8")
+    master_pid = state_dir / "master.pid"
+    current_path = runner._terminal_receipt_path(master_pid)
+    prior_body = {
+        "schema": runner.MULTI_SUPERVISOR_ACTIVE_BINDING_SCHEMA,
+        "label": "prior",
+        "active": True,
+        "master_pid": 123456,
+        "run_started_at_epoch_nanoseconds": 1,
+        "task_completion_authority": False,
+    }
+    prior = {
+        **prior_body,
+        "active_binding_cid": runner.content_identity(prior_body),
+    }
+    current_path.write_text(
+        json.dumps(prior, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    observed_active: dict[str, object] = {}
+
+    def inspect_active_then_reject(*_args, **_kwargs):
+        observed_active.update(
+            json.loads(current_path.read_text(encoding="utf-8"))
+        )
+        raise runner.ConfiguredBoardLiveCapsuleError(
+            "simulated bounded initial admission failure"
+        )
+
+    monkeypatch.setattr(runner, "start_track", inspect_active_then_reject)
+    result = run_supervisor_tracks(
+        [_track(tmp_path)],
+        repo_root=tmp_path,
+        common_args=[],
+        duration_seconds=0.1,
+        heartbeat_interval_seconds=0.01,
+        stop_grace_seconds=0.1,
+        restart_admission_failure_limit=1,
+        master_pid_path=master_pid,
+        label="current",
+        output=lambda _line: None,
+    )
+
+    assert observed_active["schema"] == (
+        runner.MULTI_SUPERVISOR_ACTIVE_BINDING_SCHEMA
+    )
+    assert observed_active["master_pid"] == os.getpid()
+    assert observed_active["task_completion_authority"] is False
+    archive_path = Path(str(result["archived_run_artifact_path"]))
+    assert json.loads(archive_path.read_text(encoding="utf-8")) == prior
+    terminal = json.loads(current_path.read_text(encoding="utf-8"))
+    assert terminal["schema"] == runner.MULTI_SUPERVISOR_TERMINAL_RECEIPT_SCHEMA
+    assert result["all_trees_fenced"] is True
 
 
 def test_terminal_post_replace_failure_preserves_master_marker(
