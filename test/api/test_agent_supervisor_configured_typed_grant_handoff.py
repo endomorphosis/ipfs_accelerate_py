@@ -27731,6 +27731,49 @@ def test_aseh_r30_foreign_git_lock_times_out_without_claiming_it(
     assert aseh_operator._ASEH_CANDIDATE_GIT_GUARD is None
 
 
+def test_aseh_r30_git_guard_reclaims_empty_unheld_index_lock_after_reboot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*arguments: str) -> str:
+        completed = subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
+        return completed.stdout.strip()
+
+    git("init", "--quiet", "--initial-branch=aseh")
+    git("config", "user.name", "ASEH Test")
+    git("config", "user.email", "aseh@example.invalid")
+    tracked = repository / "tracked.txt"
+    tracked.write_text("sealed\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "--quiet", "-m", "sealed candidate")
+    candidate_head = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+    index_lock = Path(git("rev-parse", "--git-path", "index.lock"))
+    if not index_lock.is_absolute():
+        index_lock = repository / index_lock
+    index_lock.write_bytes(b"")
+
+    monkeypatch.setattr(aseh_operator, "ROOT", repository)
+    with aseh_operator._prepared_candidate_git_guard(
+        candidate_head=candidate_head,
+        candidate_tree=candidate_tree,
+    ) as guard:
+        assert guard.candidate_head == candidate_head
+        assert guard.candidate_tree == candidate_tree
+    assert aseh_operator._ASEH_CANDIDATE_GIT_GUARD is None
+
+
 @pytest.mark.parametrize("entry_kind", ["regular", "dangling_symlink", "fifo"])
 def test_aseh_r30_preexisting_attempt_denies_revision_retry(
     entry_kind: str,

@@ -20,6 +20,8 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_mutation_lease_state,
     checkout_mutation_lock_path,
     checkout_repository_id,
+    git_lock_inode_is_open,
+    reclaim_unheld_empty_git_lock_files,
     release_checkout_mutation_lease,
     remove_inactive_checkout_mutation_lock,
     serialized_lock_update,
@@ -672,3 +674,42 @@ def test_acquisition_timeout_budget_includes_stale_cleanup_guard(
     assert elapsed < 0.2
     assert json.loads(lock_path.read_text(encoding="utf-8")) == stale
     assert _pending_files(lock_path) == []
+
+
+def test_reclaim_unheld_empty_git_lock_files_after_reboot(tmp_path: Path) -> None:
+    git_dir = tmp_path / "git"
+    git_dir.mkdir()
+    index_lock = git_dir / "index.lock"
+    head_lock = git_dir / "HEAD.lock"
+    index_lock.write_bytes(b"")
+    head_lock.write_bytes(b"")
+    foreign = git_dir / "packed-refs.lock"
+    foreign.write_bytes(b"foreign-lock")
+
+    result = reclaim_unheld_empty_git_lock_files((index_lock, head_lock, foreign))
+
+    assert sorted(Path(path).name for path in result["removed"]) == [
+        "HEAD.lock",
+        "index.lock",
+    ]
+    assert not index_lock.exists()
+    assert not head_lock.exists()
+    assert foreign.read_bytes() == b"foreign-lock"
+    skipped = {Path(item["path"]).name: item["reason"] for item in result["skipped"]}
+    assert skipped["packed-refs.lock"] == "nonempty"
+
+
+def test_reclaim_unheld_empty_git_lock_files_keeps_open_holder(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / "index.lock"
+    handle = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        os.ftruncate(handle, 0)
+        assert git_lock_inode_is_open(lock_path) is True
+        result = reclaim_unheld_empty_git_lock_files((lock_path,))
+        assert result["removed"] == []
+        assert result["skipped"][0]["reason"] == "held"
+        assert lock_path.exists()
+    finally:
+        os.close(handle)

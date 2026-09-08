@@ -24554,6 +24554,13 @@ def _prepared_candidate_git_guard(
         str(path.parent): _git_guard_directory_identity(path.parent)
         for path in (head_lock, branch_lock, index_lock, packed_lock)
     }
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        reclaim_unheld_empty_git_lock_files,
+    )
+
+    # SIGTERM/reboot leaves 0-byte git-guard lock files with no holder.
+    # Wait only for live/non-empty contention after reclaiming those.
+    reclaim_unheld_empty_git_lock_files((head_lock, branch_lock, index_lock))
     contention_deadline = time.monotonic() + 10.0
     while any(
         os.path.lexists(path)
