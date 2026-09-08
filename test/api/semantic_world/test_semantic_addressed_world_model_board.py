@@ -2050,6 +2050,24 @@ def test_m69_live_preflight_contract_accepts_mappingproxy_authority() -> None:
     }
 
 
+def test_operator_m69_refuses_to_stop_live_generation_47_owner() -> None:
+    """Master-down recovery must not quack-stop a listening generation-47 owner."""
+
+    operator_source = (
+        REPO_ROOT / "scripts/ops/agent_supervisor/semantic_addressed_world_model.py"
+    ).read_text(encoding="utf-8")
+    stop_m69 = operator_source.find(
+        'if args.command == "quack-stop" and _M69_SUCCESSOR_KEY in config:'
+    )
+    refuse = operator_source.find(
+        "M69 does not authorize generation-47 Quack stop"
+    )
+    stop_m68 = operator_source.find(
+        'if args.command == "quack-stop" and _M68_SUCCESSOR_KEY in config:'
+    )
+    assert 0 < stop_m69 < refuse < stop_m68
+
+
 def test_m68_live_preflight_contract_accepts_mappingproxy_authority() -> None:
     """M68 must authorize fenced stop and generation-46 restart."""
 

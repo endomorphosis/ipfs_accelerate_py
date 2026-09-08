@@ -28274,6 +28274,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _emit(_recover_stale_quack(config))
         if args.command == "quack-stop" and _M69_SUCCESSOR_KEY in config:
             _active_source_repair_materialization(config)
+            raise OperatorError(
+                "M69 does not authorize generation-47 Quack stop; "
+                "the live ready owner must be retained"
+            )
         elif args.command == "quack-stop" and _M68_SUCCESSOR_KEY in config:
             _active_source_repair_materialization(config)
             return _emit(dict(_stop_m68_listen_down_owner(config)))
