@@ -2021,6 +2021,35 @@ def test_committed_nested_gitlink_admits_clean_successor_checkout() -> None:
     ) is True
 
 
+def test_m69_live_preflight_contract_accepts_mappingproxy_authority() -> None:
+    """M69 must authorize stopped gen-46 vault restart to generation 47."""
+
+    materializer = _load(
+        "scripts/materialize_semantic_addressed_world_model_program.py",
+        "sawm_materializer_m69_mappingproxy_test",
+    )
+    expected = (
+        materializer
+        ._expected_m69_post_m68_stopped_owner_missing_client_token_vault_restart_authority()
+    )
+    proxied = MappingProxyType(dict(expected))
+    contract = materializer._validated_m69_live_preflight_contract(proxied)
+    assert materializer._identity(proxied) == materializer._M69_AUTHORITY_CID
+    assert contract["target_generation"] == 47
+    assert contract["target_event_watermark"] == 342
+    assert contract["generation_restart_authorized"] is True
+    assert contract["generation_47_mint_authorized"] is True
+    assert contract["same_live_owner_required"] is False
+    assert contract["bind_store_report_to_live_event_digest"] is True
+    assert contract["token_reissue_authorized"] is False
+    assert expected["stopped_owner"]["generation"] == 46
+    assert expected["stopped_owner"]["client_token_vault_absent"] is True
+    assert expected["expected_task_heads"]["SAWM-008"] == {
+        "revision": 26,
+        "status": "blocked",
+    }
+
+
 def test_m68_live_preflight_contract_accepts_mappingproxy_authority() -> None:
     """M68 must authorize fenced stop and generation-46 restart."""
 
@@ -2083,11 +2112,30 @@ def test_operator_live_preflight_binds_m68_snapshot_before_m66_heads() -> None:
         "elif _M66_SUCCESSOR_KEY in config:\n                statuses, _revisions, _receipts = (\n                    _verify_m66_live_head_task_projection("
     )
     digest = operator_source.find(
-        "(m68_active or m67_active or m66_active or m65_active)"
+        "(m69_active or m68_active or m67_active or m66_active or m65_active)"
     )
     assert m68_bind > 0
     assert 0 < m68_verify < m66_call
     assert digest > 0
+
+
+def test_operator_admits_process_dead_generation_46_owner_already_stopped() -> None:
+    """M68 must treat a process-dead gen-46 owner as already stopped, not gen-45."""
+
+    operator = _load(
+        "scripts/ops/agent_supervisor/semantic_addressed_world_model.py",
+        "sawm_operator_m68_process_dead_gen46_test",
+    )
+    stop_source = inspect.getsource(operator._stop_m68_listen_down_owner)
+    recover_source = inspect.getsource(operator._recover_stale_quack)
+    start_source = inspect.getsource(operator._run_quack_start)
+    assert "_M68_GENERATION" in stop_source
+    assert "process_dead" in stop_source
+    assert "_m68_published_owner_is_process_dead" in recover_source
+    assert "_recover_stale_quack(config)" in start_source
+    assert start_source.index("_m68_published_owner_is_process_dead") < (
+        start_source.index("_stop_m68_listen_down_owner")
+    )
 
 
 def test_operator_live_preflight_selects_m68_head_projection_before_m66() -> None:
@@ -2102,14 +2150,20 @@ def test_operator_live_preflight_selects_m68_head_projection_before_m66() -> Non
     authority_source = inspect.getsource(
         operator._active_source_repair_materialization
     )
+    assert live_source.index("_verify_m69_live_head_task_projection") < (
+        live_source.index("_verify_m68_live_head_task_projection")
+    )
     assert live_source.index("_verify_m68_live_head_task_projection") < (
         live_source.index("_verify_m66_live_head_task_projection")
     )
-    assert live_source.index("if _M68_SUCCESSOR_KEY in config:") < (
-        live_source.index("if _M66_SUCCESSOR_KEY in config:")
+    assert live_source.index("_M69_SUCCESSOR_KEY in config:") < (
+        live_source.index("_M68_SUCCESSOR_KEY in config:")
+    )
+    assert live_source.index("_M68_SUCCESSOR_KEY in config:") < (
+        live_source.index("_M66_SUCCESSOR_KEY in config:")
     )
     assert "bind_store_report_to_live_event_digest" in live_source
-    assert "m68_active or m67_active or m66_active or m65_active" in live_source
+    assert "m69_active or m68_active or m67_active or m66_active or m65_active" in live_source
     assert "bind_store_report_to_live_event_digest" in verify_source
     assert "_M68_TARGET_EVENT_WATERMARK" in verify_source
     assert "_validated_m68_live_preflight_contract" in verify_source

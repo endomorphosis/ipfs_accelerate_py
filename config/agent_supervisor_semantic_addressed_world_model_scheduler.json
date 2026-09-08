@@ -1,4 +1,5 @@
 {
+  "post_m68_stopped_owner_missing_client_token_vault_restart_successor_materialization": {"authority_cid":"sha256:8123f23a73059764286dc69c9edfbf230b7623b2d7c324a603c983c181d94a9a","migration_revision":"SAWM-R2-M69","schema":"sawm/operator-control-authority-reference@1"},
   "post_m67_listen_down_owner_fenced_stop_restart_successor_materialization": {"authority_cid":"sha256:6fa11c7a85fd43a7b4ca7d1984a02298bb5f4dc4ee5231e007a6412947ae83b0","migration_revision":"SAWM-R2-M68","schema":"sawm/operator-control-authority-reference@1"},
   "post_m66_same_owner_listen_down_missing_client_token_handoff_successor_materialization": {"authority_cid":"sha256:9c2a379289a30aff01253177d729a8cc797c5e969bd89935a69953e167087703","migration_revision":"SAWM-R2-M67","schema":"sawm/operator-control-authority-reference@1"},
   "post_m65_live_owner_capsule_denied_restart_source_checkout_successor_materialization": {"authority_cid":"sha256:3db1716da422a27db4ffb6f07f924310314b8df932af21bdf0b9d901f2e544b2","migration_revision":"SAWM-R2-M66","schema":"sawm/operator-control-authority-reference@1"},
@@ -245,7 +246,7 @@
     "endpoint_secret_handle": "env://SAWM_QUACK_TOKEN",
     "quack_endpoint": "quack:127.0.0.1:24070",
     "store_id": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/control.duckdb",
-    "store_generation": "46",
+    "store_generation": "47",
     "schema_revision": "datasets-authoritative-operational-v1",
     "event_store_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/events",
     "runtime_registry_path": "data/agent_supervisor/semantic_addressed_world_model/run-r2-m27/registry",
