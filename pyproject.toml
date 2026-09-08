@@ -345,6 +345,18 @@ live-application = false
 live-client = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.authority-bypass]
+schema = "ipfs_accelerate_py/assurance/authority-bypass@1"
+interface = "AccelerateAuthorityBypass@1"
+task-id = "PCPR-083"
+goal-id = "PCPR-G800"
+objective-kind = "declared_external_client_authority_bypass_proof"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
