@@ -120,6 +120,7 @@ from ..task_sources.duckdb_state import (
     quack_owner_mutation_content_id,
     quack_owner_mutation_inbox_path,
     quack_owner_mutation_mac,
+    repair_art_unique_indexes,
     unstall_stale_in_progress_tasks,
     validate_quack_owner_command,
     validate_quack_owner_command_request,
@@ -4603,6 +4604,32 @@ class QuackStateServer:
                 self._read_replica_observation["live"] = False
             raise
 
+    def _repair_art_unique_indexes(self, connection: Any) -> None:
+        """Rebuild ART unique indexes after unclean shutdown / reboot."""
+
+        try:
+            result = repair_art_unique_indexes(connection)
+        except Exception as exc:
+            self._log(
+                "art unique-index repair failed: "
+                f"{type(exc).__name__}: {str(exc)[:300]}"
+            )
+            raise
+        rebuilt = result.get("rebuilt") or []
+        if not rebuilt:
+            return
+        tables = ",".join(
+            str(item.get("table") or "")
+            for item in rebuilt
+            if isinstance(item, Mapping)
+        )
+        rows = ",".join(
+            str(item.get("rows") or 0)
+            for item in rebuilt
+            if isinstance(item, Mapping)
+        )
+        self._log(f"art unique-index repair tables={tables} rows={rows}")
+
     def _unstall_stale_board_gates(self, connection: Any) -> None:
         """Retry leftover in_progress gates before quack_serve occupies the writer."""
 
@@ -6481,6 +6508,7 @@ class QuackStateServer:
                 # Quack and therefore keeps external access disabled for its
                 # entire lifetime.
                 self._publish_identity_rows(connection, identity, capability)
+                self._repair_art_unique_indexes(connection)
                 self._unstall_stale_board_gates(connection)
                 # A supervisor must never be able to reuse the HTTP Quack
                 # credential to obtain a generic SQL surface.  Only the owner

@@ -17,12 +17,14 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnectionPolicyError,
     QuackTransportContentionError,
     _qualify_quack_statement,
+    is_art_unique_index_corruption,
     is_quack_transport_target,
     open_quack_transport_connection,
     persist_quack_attach_token_vault,
     quack_attach_lock_path,
     quack_token_vault_path,
     quack_transport_uri,
+    repair_art_unique_indexes,
     reset_quack_transport_cache,
     resolve_quack_attach_token,
     unstall_stale_in_progress_tasks,
@@ -1022,6 +1024,177 @@ def test_unstall_drops_status_indexes_that_fatal_status_updates(tmp_path) -> Non
     }
     assert "tasks_status_idx" in names
     assert "tasks_goal_idx" in names
+
+
+def test_is_art_unique_index_corruption_matches_delete_miss() -> None:
+    class FatalException(Exception):
+        pass
+
+    assert is_art_unique_index_corruption(
+        FatalException("Failed to delete all rows from index. Only deleted 0 out of 1 rows")
+    )
+    assert is_art_unique_index_corruption(
+        RuntimeError("INTERNAL Error: RemoveFromIndexes on tasks_task_cid_pkey")
+    )
+    assert not is_art_unique_index_corruption(ValueError("constraint failed"))
+
+
+def test_repair_art_unique_indexes_preserves_rows_and_allows_status_update(
+    tmp_path,
+) -> None:
+    import duckdb
+
+    connection = duckdb.connect(str(tmp_path / "control.duckdb"))
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL UNIQUE,
+            goal_cid VARCHAR NOT NULL,
+            ordinal BIGINT NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL,
+            body_json VARCHAR NOT NULL DEFAULT '{}'
+        )
+        """
+    )
+    connection.execute("CREATE INDEX tasks_goal_idx ON tasks(goal_cid, status)")
+    connection.execute("CREATE INDEX tasks_status_idx ON tasks(status, ordinal)")
+    connection.execute(
+        """
+        CREATE TABLE leases (
+            task_cid VARCHAR PRIMARY KEY,
+            claim_cid VARCHAR NOT NULL,
+            state VARCHAR NOT NULL,
+            attempt BIGINT NOT NULL,
+            release_reason VARCHAR,
+            retry_not_before_ms BIGINT NOT NULL DEFAULT 0
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE VIEW ready_task_context_v1 AS
+        SELECT t.task_cid, t.task_alias, l.state AS lease_state
+        FROM tasks AS t
+        LEFT JOIN leases AS l ON l.task_cid = t.task_cid
+        WHERE t.status IN ('ready', 'open', 'todo', 'pending')
+        """
+    )
+    connection.execute(
+        """
+        CREATE VIEW diagnostic_lease_surface_v1 AS
+        SELECT task_cid, state, attempt FROM leases
+        """
+    )
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            "baguqeerax6x37yslus4fq3gpn5isstasqa7nqhgckms7d4jwxuhrt33gvihq",
+            "SPAR-040",
+            "goal:root",
+            40,
+            "blocked",
+            1347,
+            "2026-09-08T00:00:00Z",
+            '{"completion_receipt":{"operation":"database_portal_typed_deferral_budget_exhausted"}}',
+        ],
+    )
+    connection.execute(
+        "INSERT INTO leases VALUES (?, ?, ?, ?, ?, ?)",
+        ["baguqeerax6x37yslus4fq3gpn5isstasqa7nqhgckms7d4jwxuhrt33gvihq", "claim:040", "released", 148, "worktree_lifecycle_claim_exists", 0],
+    )
+    result = repair_art_unique_indexes(connection)
+    rebuilt = {item["table"]: item["rows"] for item in result["rebuilt"]}
+    assert rebuilt == {"tasks": 1, "leases": 1}
+    assert "ready_task_context_v1" in result["views"]
+    assert "diagnostic_lease_surface_v1" in result["views"]
+    assert any("tasks_status_idx" in sql for sql in result["indexes"])
+    row = connection.execute(
+        "SELECT task_alias, status, revision FROM tasks WHERE task_alias = 'SPAR-040'"
+    ).fetchone()
+    assert tuple(row) == ("SPAR-040", "blocked", 1347)
+    connection.execute(
+        "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
+        "WHERE task_cid = ? AND revision = ?",
+        [
+            "retrying",
+            1348,
+            "2026-09-08T00:00:01Z",
+            "baguqeerax6x37yslus4fq3gpn5isstasqa7nqhgckms7d4jwxuhrt33gvihq",
+            1347,
+        ],
+    )
+    updated = connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_alias = 'SPAR-040'"
+    ).fetchone()
+    assert tuple(updated) == ("retrying", 1348)
+    with pytest.raises(Exception, match="UNIQUE|unique|Constraint"):
+        connection.execute(
+            "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            ["cid-other", "SPAR-040", "goal:root", 41, "todo", 1, "2026-09-08T00:00:00Z", "{}"],
+        )
+    names = {
+        str(_row[0])
+        for _row in connection.execute(
+            "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'tasks'"
+        ).fetchall()
+    }
+    assert "tasks_status_idx" in names
+    assert "tasks_goal_idx" in names
+    assert connection.execute("SELECT COUNT(*) FROM ready_task_context_v1").fetchone()[0] == 0
+    assert connection.execute(
+        "SELECT attempt FROM diagnostic_lease_surface_v1"
+    ).fetchone()[0] == 148
+    leftovers = connection.execute(
+        "SELECT table_name FROM duckdb_tables() WHERE table_name LIKE '%__art_new'"
+    ).fetchall()
+    assert leftovers == []
+
+
+def test_repair_art_unique_indexes_recovers_incomplete_table_swap(tmp_path) -> None:
+    import duckdb
+
+    connection = duckdb.connect(str(tmp_path / "control.duckdb"))
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL UNIQUE,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO tasks VALUES ('cid-040', 'SPAR-040', 'blocked', 1347)"
+    )
+    connection.execute(
+        """
+        CREATE TABLE tasks__art_new (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL UNIQUE,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO tasks__art_new VALUES ('cid-040', 'SPAR-040', 'blocked', 1347)"
+    )
+    connection.execute("DROP TABLE tasks")
+    result = repair_art_unique_indexes(connection, tables=("tasks",))
+    assert result["rebuilt"][0]["table"] == "tasks"
+    assert result["rebuilt"][0]["rows"] == 1
+    row = connection.execute(
+        "SELECT task_alias, status, revision FROM tasks"
+    ).fetchone()
+    assert tuple(row) == ("SPAR-040", "blocked", 1347)
+    leftovers = connection.execute(
+        "SELECT table_name FROM duckdb_tables() WHERE table_name = 'tasks__art_new'"
+    ).fetchall()
+    assert leftovers == []
 
 
 def test_apply_owner_command_payload_unstalls_without_client_sql(tmp_path) -> None:
