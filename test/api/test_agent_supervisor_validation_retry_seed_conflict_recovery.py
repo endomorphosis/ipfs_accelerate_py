@@ -599,6 +599,33 @@ def test_run_once_rearms_provider_capacity_budget_exhaustion(
         daemon.close()
 
 
+def test_leftover_wait_defers_after_owner_fatal(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    daemon = _open_daemon(tmp_path)
+    try:
+        cid = "task:cid:leftover-wait-fatal"
+        daemon._record_leftover_wait_owner_fatal(cid)
+        attempt = SimpleNamespace(attempt_id="attempt:1", task_cid=cid)
+        task = SimpleNamespace(status="blocked", task_cid=cid, body={})
+        daemon._latest_failed_attempts = lambda: (attempt,)  # type: ignore[method-assign]
+        daemon.task_source.get = lambda _cid: task  # type: ignore[method-assign]
+        outcomes = daemon.reconcile_blocked_leftover_wait_deferral_budget_recoveries()
+        assert outcomes
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["reason"] == (
+            "leftover_wait_recovery_deferred_after_owner_fatal"
+        )
+        daemon._leftover_wait_owner_fatals.clear()
+        daemon._load_leftover_wait_owner_fatals()
+        outcomes = daemon.reconcile_blocked_leftover_wait_deferral_budget_recoveries()
+        assert outcomes[0]["reason"] == (
+            "leftover_wait_recovery_deferred_after_owner_fatal"
+        )
+    finally:
+        daemon.close()
+
+
 def _pooled_worktree_recovery_receipt(
     daemon: DatabaseImplementationDaemon,
     attempt: DatabaseTaskAttempt,

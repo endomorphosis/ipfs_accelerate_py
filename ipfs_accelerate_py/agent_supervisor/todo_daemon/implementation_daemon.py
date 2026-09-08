@@ -88868,6 +88868,8 @@ _LANDED_MERGE_REPAIR_STATUSES = frozenset(
 )
 _LANDED_MERGE_OWNER_FATAL_BACKOFF_SECONDS = 600.0
 _LANDED_MERGE_OWNER_FATAL_STATE_NAME = "landed-merge-owner-fatals.json"
+_LEFTOVER_WAIT_OWNER_FATAL_BACKOFF_SECONDS = 600.0
+_LEFTOVER_WAIT_OWNER_FATAL_STATE_NAME = "leftover-wait-owner-fatals.json"
 _OWNER_REPAIR_STATUS_OPERATIONS = frozenset(
     {
         "database_landed_merge_repair",
@@ -90836,6 +90838,8 @@ class DatabaseImplementationDaemon:
         self._quack_attach_blocked_until = 0.0
         self._landed_merge_owner_fatals: dict[str, float] = {}
         self._load_landed_merge_owner_fatals()
+        self._leftover_wait_owner_fatals: dict[str, float] = {}
+        self._load_leftover_wait_owner_fatals()
         self._idle_recovery_prefix: dict[str, Any] | None = None
         self._consecutive_embedded_sidecar_reopens = 0
         # Renew long-running provider/effect/validation calls well before the
@@ -115860,6 +115864,28 @@ class DatabaseImplementationDaemon:
                 continue
             if status != "blocked":
                 continue
+            last_fatal = self._leftover_wait_owner_fatals.get(attempt.task_cid)
+            if (
+                last_fatal is not None
+                and (time.time() - last_fatal)
+                < _LEFTOVER_WAIT_OWNER_FATAL_BACKOFF_SECONDS
+            ):
+                # SPAR-040 leftover-wait rearm FatalException-poisoned the
+                # exclusive writer every idle tick (unique-index delete miss)
+                # and then killed SPAR. Persist the backoff so a restart does
+                # not immediately re-poison the owner.
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": (
+                            "leftover_wait_recovery_deferred_after_owner_fatal"
+                        ),
+                    }
+                )
+                continue
             if self._automatic_claim_forbidden(task):
                 outcomes.append(
                     {
@@ -115962,6 +115988,14 @@ class DatabaseImplementationDaemon:
                     recovery_evidence=evidence,
                 )
             except Exception as exc:
+                reason = f"{type(exc).__name__}: {exc}"
+                if (
+                    type(exc).__name__ == "FatalException"
+                    or "FatalException" in reason
+                    or "Failed to delete all rows from index" in reason
+                    or _is_duckdb_uncertain_transaction_unusable(exc)
+                ):
+                    self._record_leftover_wait_owner_fatal(attempt.task_cid)
                 logger.warning(
                     "leftover-wait deferral-budget recovery not admitted "
                     "for %s: %s: %s",
@@ -121709,6 +121743,61 @@ class DatabaseImplementationDaemon:
             payload = {
                 name: when
                 for name, when in self._landed_merge_owner_fatals.items()
+                if isinstance(when, (int, float))
+                and not isinstance(when, bool)
+                and math.isfinite(float(when))
+            }
+            path.write_text(
+                json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                encoding="utf-8",
+            )
+        except OSError:
+            return
+
+    def _leftover_wait_owner_fatal_path(self) -> Path | None:
+        path = getattr(self, "execution_path", None)
+        if path is None:
+            return None
+        return Path(path).with_name(_LEFTOVER_WAIT_OWNER_FATAL_STATE_NAME)
+
+    def _load_leftover_wait_owner_fatals(self) -> None:
+        path = self._leftover_wait_owner_fatal_path()
+        if path is None or not path.is_file():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return
+        if not isinstance(payload, Mapping):
+            return
+        loaded: dict[str, float] = {}
+        for raw_cid, raw_when in payload.items():
+            task_cid = str(raw_cid or "")
+            if not task_cid or isinstance(raw_when, bool):
+                continue
+            try:
+                recorded_at = float(raw_when)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(recorded_at) or recorded_at <= 0:
+                continue
+            loaded[task_cid] = recorded_at
+        self._leftover_wait_owner_fatals.update(loaded)
+
+    def _record_leftover_wait_owner_fatal(self, task_cid: str) -> None:
+        cid = str(task_cid or "")
+        if not cid:
+            return
+        recorded_at = time.time()
+        self._leftover_wait_owner_fatals[cid] = recorded_at
+        path = self._leftover_wait_owner_fatal_path()
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = {
+                name: when
+                for name, when in self._leftover_wait_owner_fatals.items()
                 if isinstance(when, (int, float))
                 and not isinstance(when, bool)
                 and math.isfinite(float(when))
