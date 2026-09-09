@@ -407,3 +407,38 @@ def test_native_receipt_retry_preserves_new_stuck_decision(board, monkeypatch, r
     assert result["health"] == "stalled"
     assert result["details"]["native_status_attempts"] == 2
     assert result["complete"] is False
+
+
+@pytest.mark.parametrize("log_age,provider_parent,log_lane,expected", [
+    (5, 61, 0, True),
+    (1201, 61, 0, False),
+    (-5, 61, 0, False),
+    (5, 999, 0, False),
+    (5, 61, 1, False),
+])
+def test_database_portal_log_requires_recent_output_and_same_lane_provider(
+    tmp_path, monkeypatch, log_age, provider_parent, log_lane, expected
+):
+    lanes = [{"state_dir": str(tmp_path / f"lane-{i}"),
+              "daemon": {"pid": 61 + i}} for i in range(2)]
+    log = (Path(lanes[log_lane]["state_dir"])
+           / f"board_lane_{log_lane}_database_portal_attempts/attempt-binding"
+           / "implementation-logs/task-attempt-1.log")
+    log.parent.mkdir(parents=True)
+    log.write_text("provider tool output")
+    probe.os.utime(log, (10000 - log_age, 10000 - log_age))
+    identities = {
+        61: {"pid": 61, "parent_pid": 1, "argv": ["python3", "daemon"]},
+        62: {"pid": 62, "parent_pid": 1, "argv": ["python3", "daemon"]},
+        70: {"pid": 70, "parent_pid": provider_parent, "argv": ["python3", "wrapper"]},
+        71: {"pid": 71, "parent_pid": 70, "argv": ["grok"]},
+    }
+    original_iterdir = Path.iterdir
+    def iterdir(path):
+        if path == Path("/proc"):
+            return iter(Path(f"/proc/{pid}") for pid in identities)
+        return original_iterdir(path)
+    monkeypatch.setattr(Path, "iterdir", iterdir)
+    monkeypatch.setattr(probe, "process_identity", lambda pid: identities.get(int(pid), {}))
+    result = probe._provider_busy(lanes, {}, now=10000)
+    assert [item["pid"] for item in result] == ([71] if expected else [])

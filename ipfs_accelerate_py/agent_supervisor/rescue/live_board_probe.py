@@ -309,7 +309,13 @@ def _provider_busy(lanes: list[dict[str, Any]], board: Mapping[str, Any], now: f
     limit = float(board.get("provider_log_stall_seconds", 1200))
     for index, lane in enumerate(lanes):
         lane_dir = Path(lane["state_dir"])
-        for pattern in ("implementation-logs/*attempt-*.log", "implementation-logs/**/*.log"):
+        # Database-backed Portal attempts keep output below a binding directory,
+        # rather than directly under the lane. Keep discovery at that known depth.
+        for pattern in (
+            "implementation-logs/*attempt-*.log",
+            "implementation-logs/**/*.log",
+            "*_database_portal_attempts/*/implementation-logs/*attempt-*.log",
+        ):
             if any(0 <= now - path.stat().st_mtime <= limit for path in lane_dir.glob(pattern) if path.is_file()):
                 recent_lanes.add(index)
                 break
