@@ -60,6 +60,40 @@ def test_local_live_attempt_is_not_an_orphan(lanes):
     assert owner.task_source.get(attempt.task_cid).revision == task.revision
 
 
+@pytest.mark.parametrize("operation", ["database_claim", "database_attempt_admitted"])
+def test_legacy_recovery_rejects_typed_claim_without_typed_transport(lanes, operation, monkeypatch):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as module
+
+    owner, _observer, attempt, clock = lanes
+    attempt = owner.commit_phase(attempt, "context")
+    attempt = owner.commit_phase(attempt, "failed", body={"reason": "test failure"})
+    clock["ms"] = 7000
+    owner._reconcile_failed_attempt_coordination(attempt)
+    task = owner.task_source.get(attempt.task_cid)
+    assert owner._stale_control_claim_is_recoverable(task)
+    assert not callable(getattr(owner.task_source, "claim_process_attestation", None))
+    receipt = dict(task.body["completion_receipt"])
+    receipt.update(
+        operation=operation,
+        claim_phase_schema=(
+            module.TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            if operation == "database_claim"
+            else module.TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        ),
+        claim_process_attestation={"present": True},
+    )
+    typed_task = replace(task, body={**task.body, "completion_receipt": receipt})
+    assert not owner._stale_control_claim_is_recoverable(typed_task)
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, "_task_source", SimpleNamespace(claim_process_attestation=lambda: None))
+        assert owner._shared_claim_binding_for_this_owner(typed_task) is not None
+    after = owner.task_source.get(attempt.task_cid)
+    assert (after.status, after.revision, after.body) == (task.status, task.revision, task.body)
+
+
 def test_local_failure_still_requires_expired_exact_coordination(lanes):
     owner, observer, attempt, clock = lanes
     attempt = owner.commit_phase(attempt, "context")

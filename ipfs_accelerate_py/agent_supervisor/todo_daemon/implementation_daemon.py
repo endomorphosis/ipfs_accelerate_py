@@ -94121,8 +94121,10 @@ class DatabaseImplementationDaemon:
             if operation == "database_claim"
             else TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
         )
+        # A recognized typed receipt cannot qualify a legacy transport.
         if (
             (typed_claim_source and phase_schema != expected_phase_schema)
+            or (phase_schema and not typed_claim_source)
             or (phase_schema and phase_schema != expected_phase_schema)
             or (
                 typed_claim_source
