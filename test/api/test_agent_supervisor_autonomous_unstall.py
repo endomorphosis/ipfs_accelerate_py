@@ -969,6 +969,80 @@ def test_watchdog_does_not_restart_when_owner_process_dead(
     assert lane_report["reason"] == "published_ready_owner_pid_dead"
 
 
+def test_watchdog_reads_owner_status_from_quack_owner_state_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Configured-board manifests may bind the owner via quack_owner.state_dir."""
+
+    state_dir = tmp_path / "lane-state"
+    state_dir.mkdir()
+    (state_dir / "lane_1_status.json").write_text(
+        json.dumps(
+            {
+                "state": "running",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    owner_dir = tmp_path / "quack-owner"
+    owner_dir.mkdir()
+    (owner_dir / "quack-state-server.status.json").write_text(
+        json.dumps(
+            {
+                "lifecycle": "ready",
+                "identity": {
+                    "generation": 48,
+                    "status": "ready",
+                    "process_birth": {"pid": 3_767_145},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "lanes.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "tree_id": "tree-1",
+                "quack_owner": {"state_dir": str(owner_dir)},
+                "autonomous_unstall_policy": {
+                    "enabled": True,
+                    "cooldown_ms": 0,
+                },
+                "lanes": [
+                    {
+                        "bundle_key": "lane-1",
+                        "state_dir": str(state_dir),
+                        "state_prefix": "lane_1",
+                    }
+                ],
+                "started": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    restart_calls = 0
+
+    def restart(_lane: dict[str, Any]) -> dict[str, Any]:
+        nonlocal restart_calls
+        restart_calls += 1
+        return {"restarted": True, "new_pid": 123}
+
+    monkeypatch.setattr(watchdog_module, "pid_alive", lambda _pid: False)
+    report = SupervisorWatchdog(
+        manifest_path=manifest_path,
+        repo_root=tmp_path,
+        lifecycle_restart=restart,
+    )._check_cycle()
+
+    lane_report = report["reports"][0]
+    assert restart_calls == 0
+    assert lane_report["action"] == "owner_process_dead"
+    assert lane_report["reason"] == "published_ready_owner_pid_dead"
+
+
 def _learning_binding(**overrides: object) -> LearningCheckpointBinding:
     payload = {
         "architecture_id": "arch:v1",
