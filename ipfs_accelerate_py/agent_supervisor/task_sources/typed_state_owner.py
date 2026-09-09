@@ -360,6 +360,12 @@ STATUS_BOOTSTRAP_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset(
         COMPLETION_PROGRESS_SNAPSHOT_OPERATION,
     }
 )
+DATABASE_STATUS_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset({
+    "whoami_metadata", "load_store_generation", "executor_control_snapshot",
+    "executor_task_projection_page", "executor_task_projection_by_identity",
+    "executor_retry_cooldown_page", "executor_retry_cooldown_by_task",
+    COMPLETION_PROGRESS_SNAPSHOT_OPERATION,
+})
 _STATUS_BOOTSTRAP_ENTITY_SCOPE_NAMES: Final[tuple[str, ...]] = (
     "supervisor_id",
     "subscription_id",
@@ -1049,7 +1055,7 @@ class OwnerClientGrant:
             )
         object.__setattr__(self, "entity_scopes", tuple(sorted(scopes)))
         authority_profile = str(self.authority_profile or "").strip()
-        if authority_profile not in {"", "dedicated_store_status_portfolio"}:
+        if authority_profile not in {"", "dedicated_store_status_portfolio", "dedicated_database_status"}:
             raise TypedStateOwnerAuthorizationError(
                 "owner grant authority profile is invalid"
             )
@@ -5012,6 +5018,7 @@ class TypedStateOwnerGateway:
         self._status_bootstrap_token_digest: bytes | None = None
         self._status_bootstrap_uid = -1
         self._status_bootstrap_scope: dict[str, str] = {}
+        self._database_status_binding: dict[str, Any] = {}
         self._event_wait_handler: Any | None = None
         self._event_wait_cancel_handler: Any | None = None
         self._event_wait_clear_handler: Any | None = None
@@ -5186,6 +5193,112 @@ class TypedStateOwnerGateway:
             "consumer_id": str(row[4] or "").strip(),
         }
 
+    def _resolve_database_status_scope(self) -> dict[str, str]:
+        """Verify the exact sealed non-federated task population at the owner."""
+        binding = self._database_status_binding
+        rows = self._connection.execute(
+            "SELECT task_cid, plan_cid, identity_json, body_json FROM tasks ORDER BY task_cid LIMIT 513"
+        ).fetchall()
+        if not rows or len(rows) > 512:
+            raise TypedStateOwnerAuthorizationError(
+                "database status population is outside its bound"
+            )
+        cids = []
+        for row in rows:
+            cid, plan, encoded, body_encoded = (
+                (
+                    row["task_cid"],
+                    row["plan_cid"],
+                    row["identity_json"],
+                    row["body_json"],
+                )
+                if isinstance(row, Mapping)
+                else row
+            )
+            try:
+                identity = json.loads(encoded)
+                body = json.loads(body_encoded)
+            except (TypeError, ValueError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "database status task identity is malformed"
+                ) from exc
+            if (
+                str(plan) != binding.get("plan_root_cid")
+                or not isinstance(identity, dict)
+                or not isinstance(body, dict)
+                or body.get("board_namespace") != binding.get("board_namespace")
+                or identity.get("repository_tree_id")
+                != binding.get("repository_tree_id")
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "database status source binding changed"
+                )
+            cids.append(str(cid))
+        if cids != binding.get("task_cids"):
+            raise TypedStateOwnerAuthorizationError(
+                "database status task population changed"
+            )
+        return {"database_scope_cid": content_identity(binding)}
+
+    def bind_database_status_scope(
+        self,
+        *,
+        board_namespace: str,
+        plan_root_cid: str,
+        repository_tree_id: str,
+        task_cids: Sequence[str],
+    ) -> None:
+        """Admit read-only status for an explicitly sealed DatabaseTaskSource.
+
+        This creates no federation, lifecycle, task, receipt, or grant records.
+        The launcher supplies immutable board inputs; the exclusive owner checks
+        every persisted task identity and rechecks before each status read.
+        """
+        values = (board_namespace, plan_root_cid, repository_tree_id)
+        if any(not isinstance(v, str) or not v.strip() or len(v) > 256 for v in values):
+            raise TypedStateOwnerAuthorizationError(
+                "database status identity is invalid"
+            )
+        if (
+            isinstance(task_cids, (str, bytes))
+            or not isinstance(task_cids, Sequence)
+            or any(
+                not isinstance(cid, str) or not cid.strip() or len(cid) > 256
+                for cid in task_cids
+            )
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "database status task identity is invalid"
+            )
+        cids = sorted(task_cids)
+        if not 1 <= len(cids) <= 512 or len(set(cids)) != len(cids):
+            raise TypedStateOwnerAuthorizationError(
+                "database status task population is invalid"
+            )
+        binding = dict(
+            board_namespace=board_namespace,
+            plan_root_cid=plan_root_cid,
+            repository_tree_id=repository_tree_id,
+            task_cids=cids,
+        )
+        with self._transaction_lock:
+            with self._grants_lock:
+                if (
+                    self._status_bootstrap_token_digest is None
+                    or self._status_bootstrap_scope
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "database status scope cannot be rebound"
+                    )
+                self._database_status_binding = binding
+            try:
+                scope = self._resolve_database_status_scope()
+            except BaseException:
+                self._database_status_binding = {}
+                raise
+            with self._grants_lock:
+                self._status_bootstrap_scope = scope
+
     def bind_status_bootstrap_scope(self) -> None:
         """Monotonically bind status reads to one admitted federation slice."""
 
@@ -5196,9 +5309,7 @@ class TypedStateOwnerGateway:
         with self._transaction_lock:
             scope = self._resolve_status_bootstrap_scope()
         if any(not value or len(value) > 256 for value in scope.values()):
-            raise TypedStateOwnerAuthorizationError(
-                "status bootstrap scope is invalid"
-            )
+            raise TypedStateOwnerAuthorizationError("status bootstrap scope is invalid")
         with self._grants_lock:
             if self._status_bootstrap_token_digest is None:
                 raise TypedStateOwnerAuthorizationError(
@@ -5230,7 +5341,8 @@ class TypedStateOwnerGateway:
         # connection-serving path records sessions under the transaction lock
         # and later retires grants under _grants_lock.
         with self._transaction_lock:
-            live_scope = self._resolve_status_bootstrap_scope()
+            live_scope = (self._resolve_database_status_scope() if self._database_status_binding
+                          else self._resolve_status_bootstrap_scope())
         if live_scope != scope:
             raise TypedStateOwnerAuthorizationError(
                 "status bootstrap dedicated-store authority changed"
@@ -5239,15 +5351,17 @@ class TypedStateOwnerGateway:
             grant_id=f"owner-grant:status:{uuid.uuid4()}",
             client_id=STATUS_BOOTSTRAP_CLIENT_ID,
             process_birth_id=process_birth_id,
-            allowed_operations=STATUS_BOOTSTRAP_ALLOWED_OPERATIONS,
+            allowed_operations=(DATABASE_STATUS_ALLOWED_OPERATIONS if self._database_status_binding
+                                else STATUS_BOOTSTRAP_ALLOWED_OPERATIONS),
             allowed_command_operations=frozenset(),
-            tenant_id=scope["tenant_id"],
-            federation_id=scope["federation_id"],
+            tenant_id=scope.get("tenant_id", ""),
+            federation_id=scope.get("federation_id", ""),
             entity_scopes=tuple(
                 (name, scope[name])
-                for name in _STATUS_BOOTSTRAP_ENTITY_SCOPE_NAMES
+                for name in _STATUS_BOOTSTRAP_ENTITY_SCOPE_NAMES if name in scope
             ),
-            authority_profile="dedicated_store_status_portfolio",
+            authority_profile=("dedicated_database_status" if self._database_status_binding
+                               else "dedicated_store_status_portfolio"),
             peer_pid=peer_pid,
             peer_uid=peer_uid,
             peer_start_time_ticks=peer_start,
@@ -5781,10 +5895,13 @@ class TypedStateOwnerGateway:
         scopes = dict(grant.entity_scopes)
         if (
             grant.client_id != STATUS_BOOTSTRAP_CLIENT_ID
-            or grant.authority_profile != "dedicated_store_status_portfolio"
-            or not grant.tenant_id
-            or not grant.federation_id
-            or any(not scopes.get(name) for name in _STATUS_BOOTSTRAP_ENTITY_SCOPE_NAMES)
+            or not (
+                grant.authority_profile == "dedicated_database_status"
+                and bool(self._database_status_binding)
+                or grant.authority_profile == "dedicated_store_status_portfolio"
+                and grant.tenant_id and grant.federation_id
+                and all(scopes.get(name) for name in _STATUS_BOOTSTRAP_ENTITY_SCOPE_NAMES)
+            )
         ):
             raise TypedStateOwnerAuthorizationError(
                 "completion progress requires the dedicated status portfolio"
@@ -5818,6 +5935,10 @@ class TypedStateOwnerGateway:
         transaction_started = False
         try:
             self._require_active_grant(grant, peer_identity=peer_identity)
+            if grant.authority_profile == "dedicated_database_status":
+                self._resolve_database_status_scope()
+                if request["task_cids"] != self._database_status_binding["task_cids"]:
+                    raise TypedStateOwnerAuthorizationError("database completion requires the entire sealed population")
             self._connection.execute("BEGIN TRANSACTION")
             transaction_started = True
             row = self._connection.execute(
@@ -6173,6 +6294,8 @@ class TypedStateOwnerGateway:
                                     grant,
                                     peer_identity=peer_identity,
                                 )
+                                if grant.authority_profile == "dedicated_database_status":
+                                    self._resolve_database_status_scope()
                                 result = self._execute(operation, parameters)
                         response = result
                     elif action == COMPLETION_PROGRESS_SNAPSHOT_OPERATION:
