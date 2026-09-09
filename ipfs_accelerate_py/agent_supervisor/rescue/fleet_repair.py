@@ -196,6 +196,14 @@ Preserve the existing semantic truth owner and exact cross-instance claims,
 leases, fences and receipt bindings. Do not silently fall back to independent
 mutable local files when a production Quack owner is unavailable. Explicit
 offline maintenance still requires the existing stopped-owner qualification.
+Existing legacy MergeQueue/DatabaseMergeQueue factories still call
+open_duckdb_connection with Quack preferred and file fallback permitted. Treat
+that as unfinished native migration: provision/admit the queue's real Quack
+owner and qualify its state/source transition before requiring the transport.
+Do not merely flip a global flag or describe DatabaseProgramConfig defaults as
+proof that every existing queue has migrated. External QuackLake catalog export
+also requires its actual endpoint/configuration; native aggregation alone is
+not a connected external catalog.
 
 THIS JOB: board {board['id']}; board checkout {board['cwd']}; board config
 {board.get('config', '')}; watchdog configuration {config.get('_config_path', '')}.

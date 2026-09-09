@@ -100,6 +100,22 @@ and durable observational history in the control owner; it does not claim that
 a QuackLake catalog is deployed or connected, or that DuckLake archival export
 is already running. History availability is never a scheduling prerequisite.
 
+Native source reads have independent polling deadlines. A slow or unavailable
+source does not delay publishing completed reads or polling healthy sources
+again. At most one read per source is in flight; oldest due sources share a
+bounded worker pool. `--source-workers` controls that pool (default 16, range
+1–256). Results from removed or changed inventory bindings are discarded, and
+reader errors become typed unavailable observations. Native receipt deadlines
+remain enforced when reading the current view. Only successful control writes
+refresh the observer's progress deadline.
+
+These defaults do not automatically migrate legacy merge queues. In particular,
+`MergeQueue` and `DatabaseMergeQueue` still have callers using
+`open_duckdb_connection` with Quack preferred and file fallback allowed. Migrate
+those existing queues through their native stopped-owner/source-requalification
+controls, with a real Quack owner and qualified data transfer. Setting a global
+require-Quack flag without provisioning that authority would strand the queue.
+
 Dedicated-owner health monitoring uses `runtime.quack_fleet_health`. Its native
 read-only probe must complete an authenticated typed generation query within
 five seconds and match the still-live published process birth and database
