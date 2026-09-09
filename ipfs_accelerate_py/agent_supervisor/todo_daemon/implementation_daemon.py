@@ -91822,7 +91822,7 @@ class DatabaseImplementationDaemon:
             post_commit_candidate_recovery_fn
         )
         self._merge_queue: Any = None
-        self._pending_merge_consume_fn: Callable[[], Mapping[str, Any] | None] | None = None
+        self._pending_merge_train_consume_fn: Callable[[], Mapping[str, Any] | None] | None = None
         self._merge_repo_root: Path | None = None
         self._merge_target_branch = ""
         self._merge_portal_attempt_root: Path | None = None
@@ -94247,7 +94247,7 @@ class DatabaseImplementationDaemon:
             self._merge_target_branch = branch
             self._merge_portal_attempt_root = configured_attempt_root
             self._merge_worktree_submodule_paths = configured_submodule_paths
-            self._pending_merge_consume_fn = pending_merge_consume_fn
+            self._pending_merge_train_consume_fn = pending_merge_consume_fn
 
     def _settle_invalid_metadata_portal_quarantines(self) -> dict[str, Any]:
         """Settle leftover invalid-metadata portal quarantines before DuckDB work."""
@@ -94393,7 +94393,7 @@ class DatabaseImplementationDaemon:
             "ipfs_accelerate_py/agent-supervisor/"
             "database-pending-merge-train-consume@1"
         )
-        consume = getattr(self, "_pending_merge_consume_fn", None)
+        consume = getattr(self, "_pending_merge_train_consume_fn", None)
         if not callable(consume):
             return {
                 "schema": schema,
@@ -102241,6 +102241,7 @@ class DatabaseImplementationDaemon:
         merge_quarantine_settlement: Mapping[str, Any] | None = None,
         post_merge_recovery: Mapping[str, Any] | None = None,
         pending_merge_consume: Mapping[str, Any] | None = None,
+        pending_merge_train_consume: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Keep the process alive when Quack ATTACH is contended.
 
@@ -102262,6 +102263,7 @@ class DatabaseImplementationDaemon:
             + int((merge_quarantine_settlement or {}).get("write_count") or 0)
             + int((post_merge_recovery or {}).get("write_count") or 0)
             + int((pending_merge_consume or {}).get("write_count") or 0)
+            + int((pending_merge_train_consume or {}).get("write_count") or 0)
         )
         result: dict[str, Any] = {
             "unchanged": (
@@ -102301,6 +102303,8 @@ class DatabaseImplementationDaemon:
             result["post_merge_recovery"] = dict(post_merge_recovery)
         if pending_merge_consume is not None:
             result["pending_merge_consume"] = dict(pending_merge_consume)
+        if pending_merge_train_consume is not None:
+            result["pending_merge_train_consume"] = dict(pending_merge_train_consume)
         return result
 
     @staticmethod
@@ -125672,9 +125676,11 @@ class DatabaseImplementationDaemon:
                             or 0
                         )
                         + int(
-                            (prefix.get("pending_merge_consume") or {}).get(
-                                "write_count"
-                            )
+                            (prefix.get("pending_merge_consume") or {}).get("write_count")
+                            or 0
+                        )
+                        + int(
+                            (prefix.get("pending_merge_train_consume") or {}).get("write_count")
                             or 0
                         ),
                     ),
@@ -125712,6 +125718,8 @@ class DatabaseImplementationDaemon:
                     result["pending_merge_consume"] = dict(
                         prefix["pending_merge_consume"]
                     )
+                if prefix.get("pending_merge_train_consume") is not None:
+                    result["pending_merge_train_consume"] = dict(prefix["pending_merge_train_consume"])
                 return result
             if self._is_quack_attach_contention(exc):
                 prefix = self._idle_recovery_prefix or {}
@@ -125723,6 +125731,7 @@ class DatabaseImplementationDaemon:
                     ),
                     post_merge_recovery=prefix.get("post_merge_recovery"),
                     pending_merge_consume=prefix.get("pending_merge_consume"),
+                    pending_merge_train_consume=prefix.get("pending_merge_train_consume"),
                 )
             raise
         finally:
@@ -125742,13 +125751,13 @@ class DatabaseImplementationDaemon:
         )
         pending_merge_consume = self._consume_pending_same_board_merges()
         post_merge_recovery_reconciliation = self._run_post_merge_recovery()
-        pending_merge_consume = self._consume_bound_pending_merge_train()
+        pending_merge_train_consume = self._consume_bound_pending_merge_train()
         self._idle_recovery_prefix = {
             "output_rearm": output_rearm,
             "merge_quarantine_settlement": merge_quarantine_settlement,
             "pending_merge_consume": pending_merge_consume,
             "post_merge_recovery": post_merge_recovery_reconciliation,
-            "pending_merge_consume": pending_merge_consume,
+            "pending_merge_train_consume": pending_merge_train_consume,
         }
         completion_reconciliations = self._run_reconciliation_step(
             self.reconcile_prepared_task_completions
@@ -125803,7 +125812,7 @@ class DatabaseImplementationDaemon:
             + int(merge_quarantine_settlement.get("write_count") or 0)
             + int(pending_merge_consume.get("write_count") or 0)
             + int(post_merge_recovery_reconciliation.get("write_count") or 0)
-            + int(pending_merge_consume.get("write_count") or 0)
+            + int(pending_merge_train_consume.get("write_count") or 0)
             + self._reconciliation_outcome_count(completion_reconciliations)
             + self._reconciliation_outcome_count(
                 expired_attempt_reconciliations
@@ -125887,6 +125896,7 @@ class DatabaseImplementationDaemon:
                 "post_merge_recovery_reconciliation": (
                     post_merge_recovery_reconciliation
                 ),
+                "pending_merge_train_consume": pending_merge_train_consume,
                 "declared_output_rearm": output_rearm,
                 "control_plane_error": {
                     "error_type": type(exc).__name__,
@@ -125986,7 +125996,7 @@ class DatabaseImplementationDaemon:
                     "merge_quarantine_settlement": merge_quarantine_settlement,
                     "pending_merge_consume": pending_merge_consume,
                     "post_merge_recovery": post_merge_recovery_reconciliation,
-                    "pending_merge_consume": pending_merge_consume,
+                    "pending_merge_train_consume": pending_merge_train_consume,
                     "dead_claim_reservation_recoveries": (
                         dead_claim_reservation_recoveries
                     ),
@@ -126045,7 +126055,7 @@ class DatabaseImplementationDaemon:
                 "merge_quarantine_settlement": merge_quarantine_settlement,
                 "pending_merge_consume": pending_merge_consume,
                 "post_merge_recovery": post_merge_recovery_reconciliation,
-                "pending_merge_consume": pending_merge_consume,
+                "pending_merge_train_consume": pending_merge_train_consume,
                 "dead_claim_reservation_recoveries": (
                     dead_claim_reservation_recoveries
                 ),
@@ -126094,7 +126104,7 @@ class DatabaseImplementationDaemon:
             "merge_quarantine_settlement": merge_quarantine_settlement,
             "pending_merge_consume": pending_merge_consume,
             "post_merge_recovery": post_merge_recovery_reconciliation,
-            "pending_merge_consume": pending_merge_consume,
+            "pending_merge_train_consume": pending_merge_train_consume,
             "dead_claim_reservation_recoveries": (
                 dead_claim_reservation_recoveries
             ),

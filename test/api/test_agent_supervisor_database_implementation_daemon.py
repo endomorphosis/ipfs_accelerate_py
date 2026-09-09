@@ -16578,7 +16578,7 @@ def test_repair_stale_git_index_lock_removes_inactive_lock(tmp_path: Path) -> No
 
 def test_database_lane_consumes_pending_merge_train() -> None:
     daemon = SimpleNamespace(
-        _pending_merge_consume_fn=lambda: {
+        _pending_merge_train_consume_fn=lambda: {
             "status": "merged",
             "merged": True,
             "request_id": "req-1",
@@ -16596,7 +16596,7 @@ def test_database_lane_consumes_pending_merge_train() -> None:
 
 
 def test_database_lane_pending_merge_consume_unbound() -> None:
-    daemon = SimpleNamespace(_pending_merge_consume_fn=None)
+    daemon = SimpleNamespace(_pending_merge_train_consume_fn=None)
     result = DatabaseImplementationDaemon._consume_bound_pending_merge_train(
         daemon
     )
