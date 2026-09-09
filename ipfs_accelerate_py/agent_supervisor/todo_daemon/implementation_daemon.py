@@ -88855,6 +88855,9 @@ DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON = (
 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON = (
     "Portal completion lacks one exact evaluated baseline"
 )
+DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON = (
+    "Portal completion source canonical task key mismatches"
+)
 DATABASE_PORTAL_PENDING_MERGE_CLAIM_MISMATCH_REASON = (
     "Portal pending-merge result does not match the database claim"
 )
@@ -100649,7 +100652,10 @@ class DatabaseImplementationDaemon:
             return reason
         if (
             reason
-            == DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+            in {
+                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+            }
         ):
             return reason
         return ""
@@ -102385,6 +102391,7 @@ class DatabaseImplementationDaemon:
             not in {
                 DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
                 DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON,
             }
@@ -102519,6 +102526,7 @@ class DatabaseImplementationDaemon:
             in {
                 DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
             }
             and terminal_receipt.get("retryable") is False
@@ -103843,6 +103851,7 @@ class DatabaseImplementationDaemon:
                 not in {
                     DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                     DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                    DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                     DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
                 }
                 or set(recovery_receipt) != expected_recovery_fields
@@ -104571,6 +104580,7 @@ class DatabaseImplementationDaemon:
         allowed = {
             DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
             DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+            DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
             DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
         }
         try:
@@ -104641,7 +104651,7 @@ class DatabaseImplementationDaemon:
         attempt: DatabaseTaskAttempt,
         task: Any | None = None,
     ) -> bool:
-        """Recognize only the exact callback-era evaluated-baseline terminal."""
+        """Recognize closed callback-source terminals, never generic merge recovery."""
 
         if self._post_merge_completion_recovery_was_consumed(attempt):
             return False
@@ -104653,7 +104663,10 @@ class DatabaseImplementationDaemon:
             phase_reason = ""
         if (
             phase_reason
-            == DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+            in {
+                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+            }
         ):
             return True
         current = task if task is not None else self.task_source.get(
@@ -104670,7 +104683,10 @@ class DatabaseImplementationDaemon:
             and receipt.get("operation") == "database_portal_terminal_failure"
             and receipt.get("attempt_id") == attempt.attempt_id
             and self._canonical_portal_failure_reason(receipt.get("reason"))
-            == DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+            in {
+                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+            }
         )
 
     def _build_post_merge_completion_recovery_seed(
@@ -116046,9 +116062,12 @@ class DatabaseImplementationDaemon:
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON
                 if generation_retry
                 else (
-                    DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+                    phase_reason
                     if phase_reason
-                    == DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+                    in {
+                        DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                        DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+                    }
                     else DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON
                 )
             )
@@ -117445,11 +117464,26 @@ class DatabaseImplementationDaemon:
             in {
                 DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                 DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                 DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON,
                 DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON,
             }
             else None
         )
+
+        def verify_completion_key_terminal_history() -> None:
+            if completion_terminal_reason != DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON:
+                return
+            if (completion_recovery_seed is None
+                    or qualification_kind != "callback_integration"
+                    or self._post_merge_completion_terminal_receipt_from_history(
+                        attempt=source_attempt, seed=completion_recovery_seed)
+                    != control_receipt):
+                raise DatabaseImplementationAuthorityError(
+                    "completion-key recovery lost its exact terminal history"
+                )
+
+        verify_completion_key_terminal_history()
 
         crash_portable_coordination_authority = bool(
             crash_source_admitted
@@ -117651,6 +117685,7 @@ class DatabaseImplementationDaemon:
         def project_recovery(
             post_merge_queue_admission: object | None = None,
         ) -> Mapping[str, Any]:
+            verify_completion_key_terminal_history()
             guarded_arguments: dict[str, Any] = {
                 "task_cid": task_cid,
                 "expected_revision": int(task.revision),
@@ -121314,7 +121349,10 @@ class DatabaseImplementationDaemon:
         if (
             phase_reason
             and phase_reason
-            != DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON
+            not in {
+                DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
+            }
         ):
             return True
         current = task if task is not None else self.task_source.get(
@@ -121334,6 +121372,7 @@ class DatabaseImplementationDaemon:
                 not in {
                     "",
                     DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                    DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                 }
             )
         ):
@@ -122519,6 +122558,7 @@ class DatabaseImplementationDaemon:
                 missing_completion_handshake = reason in {
                     DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                     DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                    DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                 }
                 pending_merge_claim_mismatch = (
                     self._canonical_portal_failure_reason(reason)
@@ -122627,6 +122667,7 @@ class DatabaseImplementationDaemon:
                     in {
                         DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                         DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
+                        DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                     }
                     and operation
                     in {

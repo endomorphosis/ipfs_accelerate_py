@@ -62,6 +62,13 @@ result. That later result supplies completion evidence through the ordinary
 verifier. Auxiliary events never acquire an inferred identity or become
 completion receipts, and nonempty mismatched keys remain errors.
 
+A terminal receiver key mismatch can enter only retained callback
+reconciliation. It must reproduce the exact original terminal revision and
+claim history before and inside the native retry transaction. The handoff
+carries the original queue, binding, candidate, and target qualification in
+a fenced completion-recovery seed; it does not redispatch provider work or
+accept a task solely because files have landed.
+
 Changed or dirty candidate worktrees, unknown or live process identities,
 stale revision history, foreign lanes, and missing candidate evidence retain
 the quarantine. A clean-baseline/no-effect classification alone is not
