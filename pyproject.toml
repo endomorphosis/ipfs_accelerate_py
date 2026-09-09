@@ -369,6 +369,18 @@ live-application = false
 live-client = false
 release-claim = false
 
+[tool.ipfs_accelerate_py.trusted-computing-base]
+schema = "ipfs_accelerate_py/assurance/trusted-computing-base@1"
+interface = "AccelerateTrustedComputingBase@1"
+task-id = "PCPR-091"
+goal-id = "PCPR-G900"
+objective-kind = "declared_objective_to_release_trusted_computing_base"
+portfolio-id = "portfolio:pcpr-v1"
+portfolio-version = "proof-carrying-platform-0.1.0"
+live-application = false
+live-client = false
+release-claim = false
+
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
 
