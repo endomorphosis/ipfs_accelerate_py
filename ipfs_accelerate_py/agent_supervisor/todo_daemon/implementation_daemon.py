@@ -92644,6 +92644,18 @@ class DatabaseImplementationDaemon:
         )[:2048]
         coordination = receipt.get("coordination")
         queue_receipt = receipt.get("queue_receipt")
+        if (completion_seed is not None
+                and completion_seed.get("schema") == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+                and completion_seed.get("terminal_reason") == DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON):
+            from .retained_callback_suffix import verified_seed_predecessor
+
+            if not verified_seed_predecessor(
+                    self.task_source.task_revision_history_projection(attempt.task_cid),
+                    task_cid=attempt.task_cid, task_alias=attempt.task_alias,
+                    seed=completion_seed, predecessor=receipt):
+                raise DatabaseImplementationAuthorityError(
+                    "retained callback seed lost its closed original-to-control suffix"
+                )
         historical_terminal_receipt = (
             self._post_merge_completion_terminal_receipt_from_history(
                 attempt=attempt,
@@ -101508,6 +101520,13 @@ class DatabaseImplementationDaemon:
         raw: Mapping[str, Any],
         context: Mapping[str, Any],
     ) -> bool:
+        if context.get("receiver_suffix") is True:
+            attempt = context["source_attempt"]
+            return (raw.get("task_cid") == attempt.task_cid
+                    and raw.get("task_alias") == attempt.task_alias
+                    and all(raw.get("source_" + key) == getattr(attempt, key)
+                            for key in ("attempt_id", "claim_id", "lease_id",
+                                        "fencing_token", "fence_epoch")))
         seed = context.get("source_seed")
         return bool(
             isinstance(seed, Mapping)
@@ -103500,6 +103519,125 @@ class DatabaseImplementationDaemon:
             "retry_not_before_ms": retry_not_before_ms,
         }
 
+    def _retained_callback_suffix_context(self, task: Any) -> dict[str, Any] | None:
+        """Reproduce all physical no-provider successors before source reuse."""
+        from .retained_callback_suffix import (
+            GUARD_REASON,
+            IDENTITY,
+            PREFLIGHT_REASON,
+            SOURCE_REASON,
+            verified_suffix,
+        )
+
+        if getattr(
+            task, "status", None
+        ) != "blocked" or self._automatic_claim_forbidden(task):
+            return None
+        history = self.task_source.task_revision_history_projection(task.task_cid)
+        context = verified_suffix(
+            history,
+            task_cid=task.task_cid,
+            task_alias=task.task_alias,
+            control_revision=task.revision,
+        )
+        if context is None or history["revisions"][-1] != {
+            "revision": task.revision,
+            "status": task.status,
+            "body": task.body,
+        }:
+            return None
+        attempts = []
+        for name, reason in (
+            ("source_receipt", SOURCE_REASON),
+            ("middle_receipt", PREFLIGHT_REASON),
+            ("current_receipt", GUARD_REASON),
+        ):
+            receipt = context[name]
+            attempt = self.get_attempt(receipt["attempt_id"])
+            if (
+                attempt is None
+                or attempt.task_cid != task.task_cid
+                or attempt.task_alias != task.task_alias
+                or attempt.status != "failed"
+                or attempt.committed_phase != "failed"
+                or attempt.revision != receipt["execution_revision"]
+                or attempt.finished_at_ms != receipt["execution_finished_at_ms"]
+                or any(getattr(attempt, k) != receipt[k] for k in IDENTITY)
+            ):
+                return None
+            phases = sorted(
+                self.phase_history(attempt.attempt_id), key=lambda x: x["revision"]
+            )
+            if (
+                len(phases) != 3
+                or [x.get("phase") for x in phases] != ["claimed", "context", "failed"]
+                or [x.get("revision") for x in phases] != [1, 2, 3]
+                or any(
+                    x.get("fencing_token") != attempt.fencing_token
+                    or x.get("fence_epoch") != attempt.fence_epoch
+                    for x in phases
+                )
+                or phases[-1].get("committed_at_ms") != attempt.finished_at_ms
+                or phases[0].get("body") != {}
+                or phases[1].get("body") != {"resumed": True}
+                or phases[-1].get("body", {}).get("reason") != reason
+            ):
+                return None
+            failed = phases[-1]["body"]
+            if name == "middle_receipt":
+                if self._verified_typed_deferral_receipt(attempt, failed) is None:
+                    return None
+            elif failed != {
+                "attempt_consumed": "unknown",
+                "backoff_seconds": 0,
+                "deferred": False,
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+                "provider_dispatched": "unknown",
+                "reason": reason,
+                "typed_deferral_slot_consumed": "unknown",
+            }:
+                return None
+            # The final reserved guard is raised before projection/provider setup.
+            # No provider phase or effect phase may have been committed in either
+            # successor; the original completion is still independently validated.
+            attempts.append(attempt)
+        source, _middle, current = attempts
+        if (
+            not self._local_attempt_is_exact_latest(current)
+            or any(a.task_cid == task.task_cid for a in self.list_running_attempts())
+            or self._failed_attempt_coordination_successor(current) is not None
+            or self.coordinator.get_prepared_task_completion(task.task_cid) is not None
+        ):
+            return None
+        persisted = context["current_receipt"].get("coordination")
+        if not self._terminal_coordination_reproduces_read_only(
+            current, persisted=persisted or None, require_expired=not bool(persisted)
+        ):
+            return None
+        source_coordination = dict(
+            history["revisions"][context["source_task_revision"]]["body"][
+                "completion_receipt"
+            ]["coordination"]
+        )
+        if (
+            source_coordination.get("attempt_id") != source.attempt_id
+            or source_coordination.get("claim_id") != source.claim_id
+            or source_coordination.get("attempt_number") != source.attempt_number
+            or source_coordination.get("claim_state") != "expired"
+            or source_coordination.get("lease_state") != "expired"
+            or source_coordination.get("superseded_by_newer_fence") is not False
+        ):
+            return None
+        return {
+            **context,
+            "receiver_suffix": True,
+            "source_attempt": source,
+            "current_attempt": current,
+            "source_coordination": source_coordination,
+            "portable_coordination_authority": False,
+        }
+
     def _post_merge_completion_crash_recovery_context(
         self,
         task: Any,
@@ -103512,6 +103650,14 @@ class DatabaseImplementationDaemon:
         independently reopened by the Portal bridge.  In particular, task
         history alone never grants a retry CAS.
         """
+
+        candidate_body = getattr(task, "body", None)
+        candidate_receipt = (candidate_body.get("completion_receipt")
+                             if isinstance(candidate_body, Mapping) else None)
+        if (require_current_blocked and isinstance(candidate_receipt, Mapping)
+                and candidate_receipt.get("reason")
+                == "retained callback recovery requires exact source seed before dispatch"):
+            return self._retained_callback_suffix_context(task)
 
         task_cid = str(getattr(task, "task_cid", "") or "")
         task_alias = str(getattr(task, "task_alias", "") or "")
@@ -116013,8 +116159,11 @@ class DatabaseImplementationDaemon:
             )
             if (
                 not isinstance(receipt, Mapping)
-                or receipt.get("operation")
-                != "database_portal_typed_deferral_budget_exhausted"
+                or not (receipt.get("operation")
+                        == "database_portal_typed_deferral_budget_exhausted"
+                        or (receipt.get("operation") == "database_portal_terminal_failure"
+                            and receipt.get("reason") ==
+                            "retained callback recovery requires exact source seed before dispatch"))
             ):
                 continue
             crash_context = (
@@ -117328,10 +117477,14 @@ class DatabaseImplementationDaemon:
                 raw,
                 crash_context,
             )
-            and crash_requalification_matches
-            and self._post_merge_completion_target_advanced(
-                crash_context["source_seed"],
-                expected_target_commit=qualified_target_commit,
+            and (
+                (crash_context.get("receiver_suffix") is True
+                 and qualification_kind == "callback_integration"
+                 and qualification_receipt.get("current_target_commit") == qualified_target_commit)
+                or (crash_requalification_matches
+                    and self._post_merge_completion_target_advanced(
+                        crash_context["source_seed"],
+                        expected_target_commit=qualified_target_commit))
             )
         )
         if (
@@ -117431,7 +117584,10 @@ class DatabaseImplementationDaemon:
             )
         )
         completion_terminal_reason = (
-            str(crash_context["source_seed"]["terminal_reason"])
+            str(crash_context["source_receipt"]["reason"])
+            if crash_source_admitted and crash_context is not None
+            and crash_context.get("receiver_suffix") is True
+            else str(crash_context["source_seed"]["terminal_reason"])
             if crash_source_admitted and crash_context is not None
             else DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
             if unknown_callback_source_admitted
@@ -117478,10 +117634,21 @@ class DatabaseImplementationDaemon:
                     or qualification_kind != "callback_integration"
                     or self._post_merge_completion_terminal_receipt_from_history(
                         attempt=source_attempt, seed=completion_recovery_seed)
-                    != control_receipt):
+                    != (crash_context["source_receipt"]
+                        if crash_source_admitted and crash_context is not None
+                        and crash_context.get("receiver_suffix") is True
+                        else control_receipt)):
                 raise DatabaseImplementationAuthorityError(
                     "completion-key recovery lost its exact terminal history"
                 )
+            if (crash_source_admitted and crash_context is not None
+                    and crash_context.get("receiver_suffix") is True):
+                current_task = self.task_source.get(task_cid)
+                refreshed = self._retained_callback_suffix_context(current_task)
+                if refreshed is None or refreshed["context_id"] != crash_context["context_id"]:
+                    raise DatabaseImplementationAuthorityError(
+                        "retained callback suffix changed before atomic recovery"
+                    )
 
         verify_completion_key_terminal_history()
 

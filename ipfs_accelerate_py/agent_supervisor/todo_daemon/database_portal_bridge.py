@@ -28002,9 +28002,14 @@ class DatabasePortalExecutionBridge:
                 return None
             if admission_attestation != claim_raw["claim_process_attestation"]:
                 return None
-            if seed.get("schema") == (
-                DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
-            ):
+            from .retained_callback_suffix import verified_seed_predecessor
+
+            retained_suffix = verified_seed_predecessor(
+                history, task_cid=str(attempt.task_cid), task_alias=str(attempt.task_alias),
+                seed=seed, predecessor=predecessor_receipt,
+            )
+            if (seed.get("schema") == DATABASE_POST_MERGE_COMPLETION_RECOVERY_SEED_SCHEMA_V2
+                    and not retained_suffix):
                 recovery_evidence = predecessor_receipt.get(
                     "post_merge_completion_claim_verification_recovery"
                 )
