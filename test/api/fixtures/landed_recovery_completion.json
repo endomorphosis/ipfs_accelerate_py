@@ -1,0 +1,121 @@
+{
+  "admitted_control_receipt_cid": "baguqeerazmyxqmto3mupddu7z3pcweenkn7bgvomomntd56jir4xrbj4fpfq",
+  "admitted_task_revision": 3,
+  "attempt_id": "attempt:2bdb3f1c42584d53802438ba279fa890",
+  "attempt_number": 1,
+  "claim_id": "claim:eed287489c4b4349a56dd8267359ef30",
+  "evidence_digest": "sha256:c67f5bfdb4062debfa694a9df1924aead2e55c5fba7769db0537d1287ee7d532",
+  "fence_epoch": 1,
+  "fencing_token": 1,
+  "historic_claim_process_birth_id": "birth:572988a345f705c8ec8a3b3b54253c2b",
+  "historic_process_liveness": "dead",
+  "landed_output_proof": {
+    "attempt_id": "attempt:2bdb3f1c42584d53802438ba279fa890",
+    "candidate_lineage": {
+      "attempt_id": "attempt:2bdb3f1c42584d53802438ba279fa890",
+      "attempt_number": 1,
+      "base_commit": "3668b8857a9aa7b1a3c847be12725b5cd057d2e7",
+      "base_tree": "456e09b51d6a07a3a5873436df24054768195320",
+      "candidate_commit": "66a59092a43816d72b80dedbe526f6ed607fd175",
+      "candidate_parent": "eb25aef51e210cd52832dd48ec7fdbc47c69648e",
+      "candidate_tree": "af6e4ceb66f6d4703999fdd92ca341bf0405ff0e",
+      "changed_paths": [
+        "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-082.json",
+        "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-082.json",
+        "ipfs_datasets_py/logic/software_verification/counterexamples/explanation.py",
+        "tests/doep/test_doep_082_add_counterexample_and_unsat_core_refinement.py"
+      ],
+      "commit_message_sha256": "sha256:9251bcd6f59ea5ba3c5e3f01538da69061b335d6d43806909d93b1493095a37a",
+      "current_repository_commit": "66a59092a43816d72b80dedbe526f6ed607fd175",
+      "current_repository_tree": "af6e4ceb66f6d4703999fdd92ca341bf0405ff0e",
+      "repository": "external/ipfs_datasets",
+      "schema": "ipfs_accelerate_py/agent-supervisor/database-landed-candidate-lineage@1",
+      "task_alias": "DOEP-082"
+    },
+    "landed_output_checks": [
+      {
+        "mode": "100644",
+        "object_id": "572ee82dc087882ef85981d81b1fc1b7f521bfe9",
+        "object_type": "blob",
+        "path": "ipfs_datasets_py/logic/software_verification/counterexamples/explanation.py",
+        "repository": "external/ipfs_datasets",
+        "repository_ref": "66a59092a43816d72b80dedbe526f6ed607fd175",
+        "tracked_path": "ipfs_datasets_py/logic/software_verification/counterexamples/explanation.py"
+      },
+      {
+        "mode": "100644",
+        "object_id": "c1e1af6261870e24652e51713a58d28a3aa6c397",
+        "object_type": "blob",
+        "path": "tests/doep/test_doep_082_add_counterexample_and_unsat_core_refinement.py",
+        "repository": "external/ipfs_datasets",
+        "repository_ref": "66a59092a43816d72b80dedbe526f6ed607fd175",
+        "tracked_path": "tests/doep/test_doep_082_add_counterexample_and_unsat_core_refinement.py"
+      },
+      {
+        "mode": "100644",
+        "object_id": "858851cd28ca30ff7e918382aab02925b5814087",
+        "object_type": "blob",
+        "path": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-082.json",
+        "repository": "external/ipfs_datasets",
+        "repository_ref": "66a59092a43816d72b80dedbe526f6ed607fd175",
+        "tracked_path": "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-082.json"
+      },
+      {
+        "mode": "100644",
+        "object_id": "90898db0f563dee70d6f87d4903f1e172863f5af",
+        "object_type": "blob",
+        "path": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-082.json",
+        "repository": "external/ipfs_datasets",
+        "repository_ref": "66a59092a43816d72b80dedbe526f6ed607fd175",
+        "tracked_path": "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-082.json"
+      }
+    ],
+    "landed_outputs": [
+      "ipfs_datasets_py/logic/software_verification/counterexamples/explanation.py",
+      "tests/doep/test_doep_082_add_counterexample_and_unsat_core_refinement.py",
+      "artifacts/agent_supervisor_direct_objective_event_driven_planning/outputs/DOEP-082.json",
+      "artifacts/agent_supervisor_direct_objective_event_driven_planning/receipts/DOEP-082.json"
+    ],
+    "merge_target_commit": "47b9c26291ff866bdc8406cc91bb216c7c2c1fb6",
+    "merge_target_ref": "HEAD",
+    "operation": "database_landed_merge_repair",
+    "schema": "ipfs_accelerate_py/agent-supervisor/database-landed-merge-repair@3",
+    "task_alias": "DOEP-082",
+    "task_cid": "sha256:0a527074471981146fcf6d795d5c8f1981e382a0281b9739aa0adb82e41f6656",
+    "validation_receipt": {
+      "commands": [
+        {
+          "argv": [
+            "python3",
+            "-m",
+            "pytest",
+            "tests/doep/test_doep_082_add_counterexample_and_unsat_core_refinement.py",
+            "-q"
+          ],
+          "output_bytes": 1096,
+          "output_sha256": "sha256:1c3327081c5716dee6b083411ccf0470ca646003e31d873e1e1123ea4790eee3",
+          "returncode": 0
+        }
+      ],
+      "merge_target_commit": "47b9c26291ff866bdc8406cc91bb216c7c2c1fb6",
+      "outcome": "passed",
+      "receipt_id": "baguqeerazntrjhhhb5i5q24me7b3e2uxefvrgo6fwsy7sfd6v2sjl2c4pmhq",
+      "repository": "external/ipfs_datasets",
+      "repository_ref": "66a59092a43816d72b80dedbe526f6ed607fd175",
+      "schema": "ipfs_accelerate_py/agent-supervisor/database-landed-current-tree-validation@1",
+      "task_alias": "DOEP-082",
+      "task_cid": "sha256:0a527074471981146fcf6d795d5c8f1981e382a0281b9739aa0adb82e41f6656"
+    }
+  },
+  "lease_id": "lease:ef94aeb41d354b8db05d6ead85456266",
+  "operation": "database_complete",
+  "owner_session_id": "doep-v1-executor:shard:2-of-4:track:0a58e0060323",
+  "recovery_operation": "database_legacy_orphan_landed_complete",
+  "recovery_reason": "legacy_orphan_declared_outputs_landed",
+  "schema": "ipfs_accelerate_py/agent-supervisor/typed-database-legacy-orphan-landed-completion@1",
+  "source_control_receipt_cid": "baguqeerazmyxqmto3mupddu7z3pcweenkn7bgvomomntd56jir4xrbj4fpfq",
+  "source_status": "in_progress",
+  "source_task_revision": 3,
+  "task_alias": "DOEP-082",
+  "task_cid": "sha256:0a527074471981146fcf6d795d5c8f1981e382a0281b9739aa0adb82e41f6656"
+}

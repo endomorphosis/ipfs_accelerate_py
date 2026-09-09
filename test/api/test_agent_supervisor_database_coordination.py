@@ -3641,3 +3641,210 @@ def test_same_owner_reacquire_is_idempotent_without_idempotency_key(
         assert second.fencing_token == first.fencing_token
     finally:
         coordinator.close()
+
+
+def _landed_recovery_control_task(prepared):
+    # Owner-produced receipt shape from a landed recovery that stranded PREPARED.
+    import hashlib
+    import json
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
+        canonical_json_bytes,
+    )
+
+    receipt = json.loads(
+        (Path(__file__).parent / "fixtures/landed_recovery_completion.json").read_text()
+    )
+    for name in (
+        "task_cid",
+        "claim_id",
+        "attempt_id",
+        "attempt_number",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+    ):
+        receipt[name] = prepared[name]
+    receipt["source_task_revision"] = receipt["admitted_task_revision"] = prepared[
+        "control_expected_revision"
+    ]
+    proof = receipt["landed_output_proof"]
+    proof["task_cid"] = receipt["task_cid"]
+    proof["attempt_id"] = receipt["attempt_id"]
+    proof["candidate_lineage"]["attempt_id"] = receipt["attempt_id"]
+    proof["candidate_lineage"]["attempt_number"] = receipt["attempt_number"]
+    receipt["evidence_digest"] = (
+        "sha256:" + hashlib.sha256(canonical_json_bytes(proof)).hexdigest()
+    )
+    return {
+        "task_cid": prepared["task_cid"],
+        "task_alias": receipt["task_alias"],
+        "revision": prepared["control_expected_revision"] + 1,
+        "status": "completed",
+        "body": {"completion_receipt": receipt},
+    }
+
+
+def test_expired_preparation_settles_owner_landed_completion(tmp_path):
+    import copy
+
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:landed", task_id="LANDED")
+        claim = coordinator.claim_task(
+            task_cid="task:landed", owner_session_id="session:old"
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim, control_expected_revision=3, evidence_digest="sha256:original"
+        )
+        task = _landed_recovery_control_task(prepared)
+        original = copy.deepcopy(task)
+        # Neither a live completion nor a still-live recovery may use this path.
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.complete_task_claim(claim, control_completion_receipt=task)
+        with pytest.raises(DatabaseCoordinationExpiredError):
+            coordinator.recover_prepared_task_completion(
+                claim.task_cid, control_completion_receipt=task
+            )
+        clock.advance(10_000)
+        result = coordinator.recover_prepared_task_completion(
+            claim.task_cid, control_completion_receipt=task
+        )
+        assert result["recovered"] is True
+        assert coordinator.get_task_claim(claim.claim_id).state is LeaseState.COMPLETED
+        assert (
+            coordinator.get_task_attempt(claim.attempt_id).status
+            is AttemptStatus.SUCCEEDED
+        )
+        promoted = coordinator.get_prepared_task_completion(claim.task_cid)
+        assert promoted["evidence_digest"] == prepared["evidence_digest"]
+        assert promoted["preparation_digest"] == prepared["preparation_digest"]
+        assert (
+            promoted["control_completion"]["recovery_evidence_digest"]
+            == task["body"]["completion_receipt"]["evidence_digest"]
+        )
+        assert task == original
+        assert coordinator.list_unsettled_task_completions() == []
+        coordinator.reconcile_promoted_task_completion(
+            claim.task_cid, control_completion_receipt=task
+        )
+    finally:
+        coordinator.close()
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "schema",
+        "operation",
+        "recovery_operation",
+        "recovery_reason",
+        "task_cid",
+        "claim_id",
+        "attempt_id",
+        "attempt_number",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "source_status",
+        "source_task_revision",
+        "admitted_task_revision",
+        "source_control_receipt_cid",
+        "historic_process_liveness",
+        "historic_claim_process_birth_id",
+        "task_alias",
+        "evidence_digest",
+        "landed_output_proof",
+    ],
+)
+def test_landed_completion_recovery_rejects_receipt_drift(tmp_path, field):
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:landed", task_id="LANDED")
+        claim = coordinator.claim_task(
+            task_cid="task:landed", owner_session_id="session:old"
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim, control_expected_revision=3, evidence_digest="sha256:original"
+        )
+        task = _landed_recovery_control_task(prepared)
+        task["body"]["completion_receipt"][field] = "drift"
+        clock.advance(10_000)
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.recover_prepared_task_completion(
+                claim.task_cid, control_completion_receipt=task
+            )
+        assert (
+            coordinator.get_prepared_task_completion(claim.task_cid)["status"]
+            == "prepared"
+        )
+        assert (
+            coordinator.get_task_attempt(claim.attempt_id).status
+            is not AttemptStatus.SUCCEEDED
+        )
+    finally:
+        coordinator.close()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "revision",
+        "extra_receipt",
+        "proof_attempt",
+        "proof_outcome",
+        "guard",
+        "bool_fence",
+    ],
+)
+def test_landed_recovery_preserves_revision_proof_and_guard(tmp_path, mutation):
+    import hashlib
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
+        canonical_json_bytes,
+    )
+
+    coordinator, clock = _open(tmp_path, default_lease_ms=10_000)
+    try:
+        coordinator.register_task(task_cid="task:landed", task_id="LANDED")
+        claim = coordinator.claim_task(
+            task_cid="task:landed", owner_session_id="session:old"
+        )
+        prepared = coordinator.prepare_task_completion(
+            claim,
+            control_expected_revision=3,
+            evidence_digest="sha256:original",
+            body={"requires_cross_store_fence_guard": True}
+            if mutation == "guard"
+            else {},
+        )
+        task = _landed_recovery_control_task(prepared)
+        receipt = task["body"]["completion_receipt"]
+        if mutation == "revision":
+            task["revision"] += 1
+        if mutation == "extra_receipt":
+            receipt["unknown"] = True
+        if mutation == "bool_fence":
+            receipt["fencing_token"] = True
+        if mutation.startswith("proof_"):
+            proof = receipt["landed_output_proof"]
+            if mutation == "proof_attempt":
+                proof["candidate_lineage"]["attempt_id"] = "foreign"
+            else:
+                proof["validation_receipt"]["outcome"] = "failed"
+            receipt["evidence_digest"] = (
+                "sha256:" + hashlib.sha256(canonical_json_bytes(proof)).hexdigest()
+            )
+        clock.advance(10_000)
+        with pytest.raises(DatabaseCoordinationNotReadyError if mutation == "guard" else DatabaseCoordinationStaleFenceError):
+            coordinator.recover_prepared_task_completion(
+                claim.task_cid, control_completion_receipt=task
+            )
+        assert (
+            coordinator.get_prepared_task_completion(claim.task_cid)["status"]
+            == "prepared"
+        )
+    finally:
+        coordinator.close()
