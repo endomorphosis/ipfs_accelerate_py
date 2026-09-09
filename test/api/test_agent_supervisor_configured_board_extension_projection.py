@@ -118,6 +118,123 @@ def _exact_set(tmp_path: Path):
     return sources, pins, set_pin, home
 
 
+@pytest.fixture
+def image_cache():
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_extension_cache import (
+        ConfiguredBoardExtensionImageCache,
+    )
+    cache = ConfiguredBoardExtensionImageCache(maximum=1)
+    try:
+        yield cache
+    finally:
+        cache._process_exit()
+
+
+def test_image_cache_reuses_exact_inode_after_each_client_closes(tmp_path, image_cache):
+    _sources, _pins, pin, home = _exact_set(tmp_path)
+    try:
+        identities = []
+        for _ in range(12):
+            lease = image_cache.borrow(pin, home)
+            with lease.load_guard():
+                paths = lease.install_paths
+                identities.append(tuple((str(p), p.stat().st_ino) for p in paths.values()))
+            lease.close()
+            lease.close()
+            with pytest.raises(ConfiguredBoardExtensionProjectionError, match="closed"):
+                lease.load_guard().__enter__()
+        assert all(identity == identities[0] for identity in identities)
+        image_cache.close()
+        assert all(not Path(p).exists() for p, _inode in identities[0])
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_image_cache_rechecks_regular_source_before_reuse(tmp_path, image_cache):
+    _sources, pins, pin, home = _exact_set(tmp_path)
+    lease = image_cache.borrow(pin, home)
+    lease.close()
+    path = home / pins["quack"].relative_directory / pins["quack"].extension_filename
+    try:
+        path.chmod(0o600)
+        path.write_bytes(b"changed source")
+        path.chmod(0o400)
+        with pytest.raises(ConfiguredBoardExtensionProjectionError):
+            image_cache.borrow(pin, home)
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_image_cache_rechecks_cached_image_custody(tmp_path, image_cache):
+    _sources, _pins, pin, home = _exact_set(tmp_path)
+    lease = image_cache.borrow(pin, home)
+    path = lease.install_paths["quack"]
+    lease.close()
+    try:
+        path.parent.chmod(0o700)
+        path.unlink()
+        path.symlink_to("/proc/self/fd/2147483647")
+        path.parent.chmod(0o500)
+        with pytest.raises(ConfiguredBoardExtensionProjectionError):
+            image_cache.borrow(pin, home)
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_image_cache_never_evicts_and_reloads_pinned_images(tmp_path, image_cache):
+    _sources, pins, pin, home = _exact_set(tmp_path)
+    other = build_configured_board_extension_set_pin(
+        pins, versions={"httpfs": "new-version", "quack": "quack-version"},
+    )
+    try:
+        lease = image_cache.borrow(pin, home)
+        with pytest.raises(ConfiguredBoardExtensionProjectionError, match="remain open"):
+            image_cache.close()
+        lease.close()
+        with pytest.raises(ConfiguredBoardExtensionProjectionError, match="bound exceeded"):
+            image_cache.borrow(other, home)
+        image_cache.borrow(pin, home).close()
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_image_cache_rejects_inherited_process_without_removing_parent_paths(
+    tmp_path, image_cache, monkeypatch,
+):
+    _sources, _pins, pin, home = _exact_set(tmp_path)
+    lease = image_cache.borrow(pin, home)
+    directory = lease.extension_directory
+    lease.close()
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(image_cache, "_pid", -1)
+            with pytest.raises(ConfiguredBoardExtensionProjectionError, match="exec after fork"):
+                image_cache.borrow(pin, home)
+            image_cache._process_exit()
+            assert directory.is_dir()
+    finally:
+        _restore_tree_permissions(home)
+
+
+def test_image_cache_serializes_concurrent_borrows(tmp_path, image_cache):
+    from concurrent.futures import ThreadPoolExecutor
+    _sources, _pins, pin, home = _exact_set(tmp_path)
+    def borrow():
+        lease = image_cache.borrow(pin, home)
+        try:
+            with lease.load_guard():
+                return str(lease.extension_directory)
+        finally:
+            lease.close()
+    try:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            paths = list(executor.map(lambda _: borrow(), range(12)))
+        assert len(set(paths)) == 1
+        assert image_cache._borrowers == 0
+    finally:
+        _restore_tree_permissions(home)
+
+
 def test_pin_is_path_independent_deterministic_and_round_trips(
     tmp_path: Path,
 ) -> None:
@@ -430,11 +547,15 @@ def test_sealed_set_uses_exact_memfds_and_detects_load_path_tamper(
     assert not sealed.parent.exists()
 
 
-def test_quack_client_loads_only_the_exact_locked_set_and_releases_it(
+def test_quack_clients_close_independently_and_reuse_exact_locked_images(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    image_cache,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state
+    from ipfs_accelerate_py.agent_supervisor.runtime import configured_board_extension_cache
+
+    monkeypatch.setattr(configured_board_extension_cache, "_TRANSPORT_EXTENSION_IMAGES", image_cache)
 
     _sources, _pins, set_pin, home = _exact_set(tmp_path)
     observed: dict[str, object] = {"loads": []}
@@ -520,7 +641,18 @@ def test_quack_client_loads_only_the_exact_locked_set_and_releases_it(
         sealed_parent = sealed_directory.parents[2]
         assert sealed_parent.name.startswith("configured-board-sealed-extensions-")
         assert observed["loads"] == ["LOAD httpfs", "LOAD quack"]
+        first_connection = observed["connection"]
         wrapped.close()
+        assert first_connection.closed
+        assert sealed_parent.is_dir()
+        second = duckdb_state.open_quack_transport_connection("quack:127.0.0.1:45123")
+        try:
+            assert observed["connection"] is not first_connection
+            assert Path(observed["config"]["extension_directory"]) == sealed_directory
+        finally:
+            second.close()
+        assert observed["connection"].closed
+        image_cache.close()
         assert not sealed_parent.exists()
     finally:
         _restore_tree_permissions(home)

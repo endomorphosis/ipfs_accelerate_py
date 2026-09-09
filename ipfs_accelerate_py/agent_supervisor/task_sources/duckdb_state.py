@@ -22,13 +22,15 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from ..runtime.configured_board_extension_cache import (
+    ConfiguredBoardExtensionImageLease,
+    borrow_configured_board_extension_set_home,
+)
 from ..runtime.configured_board_extension_projection import (
     CONFIGURED_BOARD_EXTENSION_DIRECTORY_ENV,
     CONFIGURED_BOARD_EXTENSION_SET_PIN_ENV,
     ConfiguredBoardExtensionProjectionError,
-    ConfiguredBoardSealedExtensionSet,
     parse_configured_board_extension_set_pin_json,
-    seal_configured_board_extension_set_home,
 )
 from .quack_owner_mutation import (
     QUACK_OWNER_MUTATION_MAX_STEPS,
@@ -412,7 +414,7 @@ class DuckDBConnection:
         self._quack_mutation_inbox = None
         self._quack_pending_mutations: list[dict[str, Any]] = []
         self._quack_uri = ""
-        self._quack_extension_seal: ConfiguredBoardSealedExtensionSet | None = None
+        self._quack_extension_seal: ConfiguredBoardExtensionImageLease | None = None
         self._lock_context = exclusive_file_lock(
             self.path.with_name(f".{self.path.name}.lock"),
             timeout_seconds=timeout_seconds,
@@ -1083,7 +1085,7 @@ def open_quack_transport_connection(
     # independently authenticated exact httpfs+Quack set pin. The regular
     # projection is source evidence; executable bytes are copied into sealed
     # memfds and exposed only through suffix-preserving private load links.
-    sealed_extensions: ConfiguredBoardSealedExtensionSet | None = None
+    sealed_extensions: ConfiguredBoardExtensionImageLease | None = None
     connection_config = {
         "autoinstall_known_extensions": "false",
         "autoload_known_extensions": "false",
@@ -1114,7 +1116,7 @@ def open_quack_transport_connection(
             set_pin = parse_configured_board_extension_set_pin_json(
                 raw_extension_set_pin
             )
-            sealed_extensions = seal_configured_board_extension_set_home(
+            sealed_extensions = borrow_configured_board_extension_set_home(
                 set_pin,
                 source_home,
             )
