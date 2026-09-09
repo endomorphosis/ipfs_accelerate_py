@@ -92489,6 +92489,23 @@ class DatabaseImplementationDaemon:
                 cursor = str(page.next_cursor or "")
                 if not cursor:
                     break
+            ready_page = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            if (
+                int(ready_page.revision) != int(before.revision)
+                or ready_page.next_cursor
+                or (
+                    len(ready_page.tasks) == TASK_SOURCE_QUERY_LIMIT
+                    and len(tasks) > TASK_SOURCE_QUERY_LIMIT
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "task-state compatibility ready scan changed or exceeded its bound"
+                )
+            _, ready_cids = self._validated_authoritative_task_projection(
+                tasks=tuple(tasks),
+                ready_tasks=tuple(ready_page.tasks),
+                expected_count=int(before.task_count),
+            )
             after = self.task_source.snapshot()
             if (
                 int(after.revision) != int(before.revision)
@@ -92515,7 +92532,8 @@ class DatabaseImplementationDaemon:
                     completed_task_ids.append(task_id)
                 elif status == "blocked":
                     blocked_task_ids.append(task_id)
-                elif status == "todo":
+                # Pending status alone does not establish dependency readiness.
+                if str(task.task_cid) in ready_cids:
                     ready_task_ids.append(task_id)
 
             active_task_id = str(pass_result.get("active_task_id") or "").strip()

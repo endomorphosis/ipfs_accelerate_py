@@ -19600,3 +19600,61 @@ def test_descendant_requalification_recovery_replays_one_queue_write(
         assert daemon.reconcile_terminal_portal_failures() == []
     finally:
         daemon.close()
+
+
+def test_compatibility_projection_uses_canonical_dependency_readiness(tmp_path: Path) -> None:
+    daemon = _open_daemon(tmp_path, session="session:dependency-projection")
+    try:
+        population = _population(2)
+        population["tasks"][1]["dependencies"] = ["task:cid:001"]
+        daemon.materialize_population(population)
+        projection = daemon.materialize_task_state_compatibility_projection(
+            state_path=tmp_path / "projection.json", pass_result={},
+        )
+        assert projection["projection_complete"] is True
+        assert projection["task_statuses"]["DQP-T002"] == "todo"
+        assert projection["ready_task_ids"] == ["DQP-T001"]
+        assert projection["ready_count"] == projection["eligible_ready_count"] == 1
+        daemon.run_once()
+        projection = daemon.materialize_task_state_compatibility_projection(
+            state_path=tmp_path / "projection.json", pass_result={},
+        )
+        assert projection["ready_task_ids"] == ["DQP-T002"]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize("failure", ["unavailable", "revision", "cursor", "foreign"])
+def test_compatibility_projection_rejects_unbound_ready_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str,
+) -> None:
+    daemon = _open_daemon(tmp_path, session="session:ready-projection-error")
+    state_path = tmp_path / "projection.json"
+    try:
+        daemon.materialize_population(_population(1))
+        daemon.run_once()
+        idle_pass = daemon.run_once()
+        assert daemon.materialize_task_state_compatibility_projection(
+            state_path=state_path, pass_result=idle_pass,
+        )["projection_complete"] is True
+        original = daemon.task_source.ready_tasks
+
+        def broken_ready(**kwargs: Any) -> Any:
+            page = original(**kwargs)
+            if failure == "unavailable":
+                raise RuntimeError("ready query unavailable")
+            if failure == "revision":
+                return replace(page, revision=page.revision + 1)
+            if failure == "cursor":
+                return replace(page, next_cursor="more")
+            return replace(page, tasks=(SimpleNamespace(task_cid="foreign"),))
+
+        monkeypatch.setattr(daemon.task_source, "ready_tasks", broken_ready)
+        failed = daemon.materialize_task_state_compatibility_projection(
+            state_path=state_path, pass_result=idle_pass,
+        )
+        assert failed["projection_complete"] is False
+        assert failed["implementation_in_progress"] is True
+        assert json.loads(state_path.read_text())["projection_complete"] is False
+    finally:
+        daemon.close()
