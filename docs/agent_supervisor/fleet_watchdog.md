@@ -199,3 +199,11 @@ Legacy owner projections that can reuse a cached task snapshot are diagnostic,
 even when their transport label says authenticated Quack. They may request a
 completion review, but publication still requires an independent admitted live
 snapshot and the board's actual acceptance gate.
+
+Dedicated database status admission also exposes `completion.closeout.snapshot`.
+`completion_closeout_snapshot(task_cids)` binds the entire sealed population to
+one owner generation/birth and one transaction containing completion receipts,
+tasks, goals, dependencies, unreleased claims, unsettled merges, task blocks, and
+local proof obligations. Missing relations and populations over 512 rows remain
+explicit unknown/truncated observations. This endpoint does not evaluate sealed
+goal contracts, verify external semantic obligations, or authorize completion.

@@ -305,6 +305,7 @@ DATABASE_STATUS_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset({
     "executor_task_projection_page", "executor_task_projection_by_identity",
     "executor_retry_cooldown_page", "executor_retry_cooldown_by_task",
     COMPLETION_PROGRESS_SNAPSHOT_OPERATION,
+    "completion.closeout.snapshot",
 })
 _STATUS_BOOTSTRAP_ENTITY_SCOPE_NAMES: Final[tuple[str, ...]] = (
     "supervisor_id",
@@ -340,7 +341,7 @@ _EVENT_WAIT_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     }
 )
 _STATUS_SESSION_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
-    {COMPLETION_PROGRESS_SNAPSHOT_OPERATION}
+    {COMPLETION_PROGRESS_SNAPSHOT_OPERATION, "completion.closeout.snapshot"}
 )
 _ISSUABLE_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
@@ -4685,6 +4686,7 @@ class TypedStateOwnerGateway:
         *,
         grant: OwnerClientGrant,
         peer_identity: tuple[int, int, int],
+        include_closeout: bool = False,
     ) -> Mapping[str, Any]:
         """Read generation, task states, and receipts in one owner transaction."""
 
@@ -4793,6 +4795,9 @@ class TypedStateOwnerGateway:
                 snapshot,
                 request=request,
             )
+            if include_closeout:
+                from .closeout_snapshot import capture_closeout_facts, seal_closeout_snapshot
+                validated = seal_closeout_snapshot(validated, capture_closeout_facts(self._connection))
             self._connection.execute("COMMIT")
             transaction_started = False
             return validated
@@ -5180,7 +5185,7 @@ class TypedStateOwnerGateway:
                                     self._resolve_database_status_scope()
                                 result = self._execute(operation, parameters)
                         response = result
-                    elif action == COMPLETION_PROGRESS_SNAPSHOT_OPERATION:
+                    elif action in {COMPLETION_PROGRESS_SNAPSHOT_OPERATION, "completion.closeout.snapshot"}:
                         self._reject_unknown(
                             request,
                             {"schema", "action", "request_id", "snapshot_request"},
@@ -5202,6 +5207,7 @@ class TypedStateOwnerGateway:
                             request.get("snapshot_request"),
                             grant=grant,
                             peer_identity=peer_identity,
+                            include_closeout=action == "completion.closeout.snapshot",
                         )
                         response = {"ok": True, "result": dict(snapshot)}
                     elif action == "wait_events":
@@ -10437,6 +10443,15 @@ class TypedStateOwnerConnection:
 
         operations = self.grant.get("allowed_operations") or ()
         return COMPLETION_PROGRESS_SNAPSHOT_OPERATION in operations
+
+    def completion_closeout_snapshot(self, task_cids: Sequence[str]) -> Mapping[str, Any]:
+        """Observe sealed tasks, goals and remaining claims in one owner transaction."""
+        from .closeout_snapshot import OPERATION, validate_closeout_snapshot
+        if self._active or OPERATION not in (self.grant.get("allowed_operations") or ()):
+            raise TypedStateOwnerAuthorizationError("closeout snapshot is outside the client grant")
+        request = completion_progress_request(self.identity, task_cids)
+        result = self._request(OPERATION, snapshot_request=dict(request)).get("result")
+        return validate_closeout_snapshot(result, request=request)
 
     def completion_progress_snapshot(
         self,
