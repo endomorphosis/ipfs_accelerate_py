@@ -21,6 +21,7 @@ from typing import Any, Iterable, Mapping
 
 LEDGER_SCHEMA = "ipfs_accelerate_py/agent-supervisor/pytest-item-ledger@1"
 SKIP_REASON = "pytest-item-ledger reuse"
+WORKSPACE_LEDGER_NAME = ".aseh-pytest-item-ledger.jsonl"
 _TASK_BRANCH_RE = re.compile(
     r"^implementation/([a-z][a-z0-9]*-\d+)",
     re.IGNORECASE,
@@ -118,6 +119,8 @@ def dirty_source_paths(workspace: Path) -> tuple[str, ...]:
             continue
         if raw.startswith(".pytest_cache/") or "/.pytest_cache/" in raw:
             continue
+        if raw == WORKSPACE_LEDGER_NAME or raw.endswith("/" + WORKSPACE_LEDGER_NAME):
+            continue
         paths.append(raw)
     return tuple(dict.fromkeys(paths))
 
@@ -137,8 +140,11 @@ def _records_path(dest: Path) -> Path:
     return dest / "items.jsonl"
 
 
-def load_records(dest: Path) -> dict[str, dict[str, Any]]:
-    path = _records_path(dest)
+def workspace_records_path(workspace: Path) -> Path:
+    return Path(workspace) / WORKSPACE_LEDGER_NAME
+
+
+def _load_jsonl(path: Path) -> dict[str, dict[str, Any]]:
     if not path.is_file():
         return {}
     try:
@@ -165,6 +171,31 @@ def load_records(dest: Path) -> dict[str, dict[str, Any]]:
     return records
 
 
+def load_records(
+    dest: Path,
+    workspace: Path | None = None,
+) -> dict[str, dict[str, Any]]:
+    records = _load_jsonl(_records_path(dest))
+    if workspace is not None:
+        records.update(_load_jsonl(workspace_records_path(workspace)))
+    return records
+
+
+def _append_jsonl(path: Path, line: str) -> bool:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+        fd = os.open(path, flags, 0o644)
+        try:
+            os.write(fd, line.encode("utf-8"))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        return True
+    except OSError:
+        return False
+
+
 def record_item(
     dest: Path,
     *,
@@ -175,8 +206,8 @@ def record_item(
     workspace_fingerprint_value: str,
     command_sha256: str,
     task_id: str,
+    workspace: Path | None = None,
 ) -> None:
-    dest.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema": LEDGER_SCHEMA,
         "task_id": task_id,
@@ -188,14 +219,9 @@ def record_item(
         "command_sha256": command_sha256,
     }
     line = json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n"
-    path = _records_path(dest)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
-    fd = os.open(path, flags, 0o644)
-    try:
-        os.write(fd, line.encode("utf-8"))
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+    _append_jsonl(_records_path(dest), line)
+    if workspace is not None:
+        _append_jsonl(workspace_records_path(workspace), line)
 
 
 def reusable_nodeids(
