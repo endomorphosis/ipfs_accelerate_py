@@ -4815,6 +4815,56 @@ def test_bridge_defers_paired_supervisor_external_checkout_recovery(
     assert portal.closed is True
 
 
+def test_bridge_restarts_after_paired_checkout_deferral_without_terminal_receipt(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    class WaitingPortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            calls.append("waiting")
+            return {
+                "blocked": True,
+                "reason": "external_protected_checkout_recovery_required",
+                "protected_checkout_recovery": {
+                    "protected_recovery_owner": "implementation_supervisor",
+                },
+            }
+
+    class RecoveredPortal(_CompletingPortal):
+        def run_once(self) -> dict[str, object]:
+            calls.append("recovered")
+            return super().run_once()
+
+    def open_bridge(
+        portal_type: type[_CompletingPortal],
+    ) -> DatabasePortalExecutionBridge:
+        return DatabasePortalExecutionBridge(
+            task_source=_TaskSource(_record()),
+            attempt_root=tmp_path / "attempts",
+            portal_factory=lambda paths, alias: portal_type(paths, alias),
+            max_passes=1,
+        )
+
+    attempt = _attempt()
+    # Reconstruct the bridge each time, retaining the exact attempt directory.
+    # Waiting must remain a typed deferral after restart, allowing the same
+    # bound attempt to finish once the paired supervisor has recovered.
+    for _ in range(2):
+        bridge = open_bridge(WaitingPortal)
+        with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+            bridge.run_provider(attempt)
+        assert caught.value.provider_dispatched is False
+        assert caught.value.attempt_consumed is False
+
+    recovered = open_bridge(RecoveredPortal)
+    receipt = recovered.run_provider(attempt)
+    assert receipt["accepted"] is True
+    assert receipt["attempt_id"] == attempt.attempt_id
+    assert receipt["task_cid"] == attempt.task_cid
+    assert calls == ["waiting", "waiting", "recovered"]
+
+
 def test_bridge_defers_foreign_external_checkout_recovery_fence(
     tmp_path: Path,
 ) -> None:
