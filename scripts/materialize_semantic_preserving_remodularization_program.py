@@ -2046,6 +2046,14 @@ def _start_state_owner(config_path: Path) -> tuple[Any, dict[str, Path], Any, An
             task_cids=bootstrap["database_task_source_receipt"]["task_cids"],
             closeout_profile=_native_closeout_profile(board, current_config, bootstrap),
         )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import IntentRepositoryIntegrityError
+        try:
+            repairs = server.recover_legacy_completion_projections()
+            if repairs:
+                print("native completion projection recovery: " + json.dumps(repairs), flush=True)
+        except IntentRepositoryIntegrityError as exc:
+            print("native completion projection recovery deferred: " + str(exc), flush=True)
+
     except BaseException:
         server.stop()
         raise

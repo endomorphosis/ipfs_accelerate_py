@@ -5591,6 +5591,24 @@ class TypedStateOwnerGateway:
             )
         return {"database_scope_cid": content_identity(binding)}
 
+    def recover_legacy_completion_projections(self) -> list[dict[str, Any]]:
+        """Launcher-only repair; status grants remain strictly read-only."""
+        from .completion_projection_repair import recover_on_owner
+        with self._transaction_lock:
+            if not self._database_status_binding or self._database_closeout_profile is None:
+                raise TypedStateOwnerAuthorizationError("completion repair requires sealed launcher scope")
+            self._resolve_database_status_scope()
+            self._connection.execute("BEGIN TRANSACTION")
+            try:
+                result = recover_on_owner(self._connection,
+                    owner_identity=self.identity,
+                    task_cids=self._database_status_binding["task_cids"])
+                self._connection.execute("COMMIT")
+                return result
+            except BaseException:
+                self._connection.execute("ROLLBACK")
+                raise
+
     def bind_database_status_scope(
         self,
         *,

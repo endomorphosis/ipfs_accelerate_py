@@ -280,3 +280,20 @@ Task completion CAS and admitted-event replay preserve inherited unknown-callbac
 reopen budgets on the task body without adding telemetry to a sealed completion
 receipt. Historical mismatches remain rejected by exact receipt equality until
 a separately admitted repair or event-projection recovery handles them.
+
+The sealed SPAR launcher also asks the native owner to recover legacy completion
+receipt projections before launching lanes. This narrowly repairs the old
+inherited retry-counter bug: the current task and its revision must equal the
+known legacy projection of the original content-verified completion event and
+predecessor revision. The original completion receipt must independently verify.
+The correction keeps its status, revision, completion receipt and historical
+rows; it moves inherited retry telemetry to the task body and records an explicit
+`intent.completion_projection_repaired` event in the same transaction. Event
+replay admits either the exact preimage or the already corrected body.
+
+This is a launcher-only owner operation, unavailable to status grants or worker
+RPCs. It requires the bootstrap-bound task scope, current native owner birth and
+generation, complete native populations, and settled claims/effects/runtime
+records under the existing owner lock. Busy or unrecognized states defer repair;
+nonmatching bodies are reported without mutation. No offline store is opened and
+no semantic acceptance, task completion, or goal acceptance is issued.
