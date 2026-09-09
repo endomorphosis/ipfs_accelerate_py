@@ -1,5 +1,11 @@
 """Production Python facade: ``Supervisor.open()`` and typed run handles (ASE3-009).
 
+DOEP-013 extends the same carrier as the direct-objective Python client: thin
+adapters for ``submit_objective`` and ``admit_authority`` that reuse the
+canonical intent and authority services. Callers never supply authoritative
+policy, and this module does not create a second planner, objective store,
+auth subsystem, or DuckDB writer.
+
 Cold import of ``entrypoints`` does not load this module. Transports must share
 the same composition CID. There is no simulated completion path.
 """
@@ -10,7 +16,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Final, Iterator, Mapping
 
 from ipfs_accelerate_py.agent_supervisor.core.multiformats_identity import (
     cid_for_dag_json,
@@ -23,6 +29,14 @@ from .service_factory import (
     ProductionServiceCompositionManifest,
     ServiceCompositionError,
     resolve_production_composition,
+)
+
+
+CANONICAL_PYTHON_CLIENT: Final = "Supervisor@1"
+CANONICAL_PYTHON_CLIENT_ENTRYPOINT: Final = "submit_objective"
+CANONICAL_PYTHON_CLIENT_AUTHORITY_ENTRYPOINT: Final = "admit_authority"
+CANONICAL_PYTHON_CLIENT_MODULE: Final = (
+    "ipfs_accelerate_py.agent_supervisor.entrypoints.facade"
 )
 
 
@@ -44,6 +58,35 @@ class SupervisorAmbiguityError(SupervisorError):
 
 class SupervisorUnavailableError(SupervisorError):
     """A required production backend is unavailable."""
+
+
+def submit_objective(intent: Any, **overrides: Any) -> Any:
+    """Python-client adapter for canonical objective submission (DOEP-012/013).
+
+    Delegates to :func:`intent_service.submit_objective` without inventing a
+    parallel objective subsystem. The returned receipt is evidence only.
+    """
+
+    from .intent_service import submit_objective as _submit_objective
+
+    return _submit_objective(intent, **overrides)
+
+
+def admit_authority(
+    request: Any = None,
+    *,
+    store: Any = None,
+    **values: Any,
+) -> Any:
+    """Python-client adapter for canonical authority admission (DOEP-016/013).
+
+    Delegates to :func:`authority_resolver.admit_authority` without inventing a
+    parallel auth subsystem, DuckDB writer, or second UCAN implementation.
+    """
+
+    from .authority_resolver import admit_authority as _admit_authority
+
+    return _admit_authority(request, store=store, **values)
 
 
 @dataclass(frozen=True)
@@ -404,6 +447,22 @@ class Supervisor:
             },
         )
 
+    def submit_objective(self, intent: Any, **overrides: Any) -> Any:
+        """Instance adapter for :func:`submit_objective`."""
+
+        return submit_objective(intent, **overrides)
+
+    def admit_authority(
+        self,
+        request: Any = None,
+        *,
+        store: Any = None,
+        **values: Any,
+    ) -> Any:
+        """Instance adapter for :func:`admit_authority`."""
+
+        return admit_authority(request, store=store, **values)
+
     def _require_run(self, run_id: str) -> SupervisorRun:
         if run_id not in self._runs:
             raise SupervisorAmbiguityError(
@@ -445,6 +504,10 @@ def _short_digest(text: str) -> str:
 
 
 __all__ = [
+    "CANONICAL_PYTHON_CLIENT",
+    "CANONICAL_PYTHON_CLIENT_AUTHORITY_ENTRYPOINT",
+    "CANONICAL_PYTHON_CLIENT_ENTRYPOINT",
+    "CANONICAL_PYTHON_CLIENT_MODULE",
     "Supervisor",
     "SupervisorAmbiguityError",
     "SupervisorConfigurationError",
@@ -452,4 +515,6 @@ __all__ = [
     "SupervisorObservation",
     "SupervisorRun",
     "SupervisorUnavailableError",
+    "admit_authority",
+    "submit_objective",
 ]
