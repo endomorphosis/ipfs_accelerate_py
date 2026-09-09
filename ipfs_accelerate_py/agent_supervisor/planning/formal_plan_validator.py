@@ -54,6 +54,8 @@ from ..proof.formal_verification_provider import CancellationToken
 
 
 FORMAL_PLAN_VALIDATOR_VERSION: Final = 1
+CANONICAL_PLAN_VALIDATOR: Final = "FormalPlanValidator@1"
+CANONICAL_PLAN_COMPLETENESS_WITNESS: Final = "PlanCompletenessWitness@1"
 FORMAL_PLAN_VALIDATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-validation@1"
 )
@@ -63,6 +65,9 @@ FORMAL_PLAN_VALIDATION_BOUNDS_SCHEMA: Final = (
 FORMAL_PLAN_FINDING_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/formal-plan-finding@1"
 FORMAL_PLAN_COUNTERMODEL_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/formal-plan-countermodel@1"
+)
+FORMAL_PLAN_COMPLETENESS_WITNESS_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/formal-plan-completeness-witness@1"
 )
 
 
@@ -618,6 +623,163 @@ class PlanCheckEvidence:
 
 
 @dataclass(frozen=True)
+class PlanCompletenessWitness:
+    """Identity-bearing record of what one bounded plan check covered.
+
+    This is plan-check evidence only: it enumerates included references and
+    names omissions when the search is truncated or incomplete.  It never
+    attests execution, admission, or generated-code correctness.
+    """
+
+    plan_id: str
+    bounds_id: str
+    formula_ids: tuple[str, ...] = ()
+    assumption_ids: tuple[str, ...] = ()
+    checks_performed: tuple[PlanCheckKind, ...] = ()
+    included_reference_ids: tuple[str, ...] = ()
+    omitted_reference_ids: tuple[str, ...] = ()
+    truncated_dimensions: tuple[str, ...] = ()
+    complete: bool = True
+    truncated: bool = False
+    status: PlanValidationStatus | str = PlanValidationStatus.INCONCLUSIVE
+    outcome: PlanValidationOutcome | str = PlanValidationOutcome.INCONCLUSIVE
+    plan_check_only: bool = True
+
+    def __post_init__(self) -> None:
+        plan_id = str(self.plan_id or "").strip()
+        bounds_id = str(self.bounds_id or "").strip()
+        if not plan_id:
+            raise ValueError("plan_id is required")
+        if not bounds_id:
+            raise ValueError("bounds_id is required")
+        object.__setattr__(self, "plan_id", plan_id)
+        object.__setattr__(self, "bounds_id", bounds_id)
+        object.__setattr__(self, "status", PlanValidationStatus(self.status))
+        object.__setattr__(self, "outcome", PlanValidationOutcome(self.outcome))
+        if not isinstance(self.complete, bool):
+            raise ValueError("complete must be a boolean")
+        if not isinstance(self.truncated, bool):
+            raise ValueError("truncated must be a boolean")
+        if not isinstance(self.plan_check_only, bool):
+            raise ValueError("plan_check_only must be a boolean")
+        if not self.plan_check_only:
+            raise ValueError("plan completeness witnesses are plan-check only")
+        object.__setattr__(
+            self,
+            "formula_ids",
+            tuple(sorted({str(item).strip() for item in self.formula_ids if str(item).strip()})),
+        )
+        object.__setattr__(
+            self,
+            "assumption_ids",
+            tuple(
+                sorted({str(item).strip() for item in self.assumption_ids if str(item).strip()})
+            ),
+        )
+        object.__setattr__(
+            self,
+            "checks_performed",
+            tuple(
+                sorted(
+                    {PlanCheckKind(item) for item in self.checks_performed},
+                    key=lambda item: item.value,
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "included_reference_ids",
+            tuple(
+                sorted(
+                    {
+                        str(item).strip()
+                        for item in self.included_reference_ids
+                        if str(item).strip()
+                    }
+                )
+            ),
+        )
+        omitted = tuple(
+            sorted(
+                {str(item).strip() for item in self.omitted_reference_ids if str(item).strip()}
+            )
+        )
+        object.__setattr__(self, "omitted_reference_ids", omitted)
+        object.__setattr__(
+            self,
+            "truncated_dimensions",
+            tuple(
+                sorted(
+                    {
+                        str(item).strip()
+                        for item in self.truncated_dimensions
+                        if str(item).strip()
+                    }
+                )
+            ),
+        )
+        if self.complete and (self.truncated or omitted):
+            raise ValueError("a complete plan witness cannot be truncated or omit references")
+        if omitted and not self.truncated:
+            raise ValueError("omitted references require a truncated plan completeness witness")
+        if self.truncated and not omitted:
+            raise ValueError("a truncated plan completeness witness must name omitted references")
+        if not self.complete and not self.truncated:
+            raise ValueError("an incomplete plan witness must be marked truncated")
+
+    @property
+    def witness_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    @property
+    def content_id(self) -> str:
+        return self.witness_id
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": FORMAL_PLAN_COMPLETENESS_WITNESS_SCHEMA,
+            "carrier": CANONICAL_PLAN_COMPLETENESS_WITNESS,
+            "plan_id": self.plan_id,
+            "bounds_id": self.bounds_id,
+            "formula_ids": list(self.formula_ids),
+            "assumption_ids": list(self.assumption_ids),
+            "checks_performed": [item.value for item in self.checks_performed],
+            "included_reference_ids": list(self.included_reference_ids),
+            "omitted_reference_ids": list(self.omitted_reference_ids),
+            "truncated_dimensions": list(self.truncated_dimensions),
+            "complete": self.complete,
+            "truncated": self.truncated,
+            "status": self.status.value,
+            "outcome": self.outcome.value,
+            "plan_check_only": self.plan_check_only,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "PlanCompletenessWitness":
+        if not isinstance(payload, Mapping):
+            raise ValueError("plan completeness witness must be an object")
+        result = cls(
+            plan_id=str(payload.get("plan_id") or ""),
+            bounds_id=str(payload.get("bounds_id") or ""),
+            formula_ids=tuple(payload.get("formula_ids") or ()),
+            assumption_ids=tuple(payload.get("assumption_ids") or ()),
+            checks_performed=tuple(payload.get("checks_performed") or ()),
+            included_reference_ids=tuple(payload.get("included_reference_ids") or ()),
+            omitted_reference_ids=tuple(payload.get("omitted_reference_ids") or ()),
+            truncated_dimensions=tuple(payload.get("truncated_dimensions") or ()),
+            complete=payload.get("complete", False),
+            truncated=payload.get("truncated", True),
+            status=payload.get("status", PlanValidationStatus.INCONCLUSIVE),
+            outcome=payload.get("outcome", PlanValidationOutcome.INCONCLUSIVE),
+            plan_check_only=payload.get("plan_check_only", True),
+        )
+        claimed = payload.get("witness_id") or payload.get("content_id")
+        if claimed and claimed != result.witness_id:
+            raise ValueError("plan completeness witness identity does not match payload")
+        return result
+
+
+@dataclass(frozen=True)
 class PlanValidationResult:
     status: PlanValidationStatus
     outcome: PlanValidationOutcome
@@ -630,6 +792,7 @@ class PlanValidationResult:
     evidence: tuple[PlanCheckEvidence, ...] = ()
     consistency_level: PlanConsistencyLevel = PlanConsistencyLevel.INCONCLUSIVE
     checks_performed: tuple[PlanCheckKind, ...] = ()
+    completeness_witness: PlanCompletenessWitness | None = None
     validator_version: int = FORMAL_PLAN_VALIDATOR_VERSION
 
     def __post_init__(self) -> None:
@@ -681,6 +844,10 @@ class PlanValidationResult:
                 )
             ),
         )
+        witness = self.completeness_witness
+        if witness is not None and not isinstance(witness, PlanCompletenessWitness):
+            witness = PlanCompletenessWitness.from_dict(witness)
+            object.__setattr__(self, "completeness_witness", witness)
         if self.outcome is PlanValidationOutcome.COUNTERMODEL and self.countermodel is None:
             raise ValueError("countermodel outcomes require a countermodel")
         if self.status is PlanValidationStatus.CONSISTENT and self.findings:
@@ -762,6 +929,14 @@ class PlanValidationResult:
             "consistency_level": self.consistency_level.value,
             "plan_check_only": self.plan_check_only,
             "checks_performed": [item.value for item in self.checks_performed],
+            "completeness_witness": (
+                {
+                    **self.completeness_witness.to_dict(),
+                    "witness_id": self.completeness_witness.witness_id,
+                }
+                if self.completeness_witness is not None
+                else None
+            ),
         }
 
     def to_json(self) -> str:
@@ -774,28 +949,52 @@ class PlanValidationResult:
     def from_dict(cls, payload: Mapping[str, Any]) -> "PlanValidationResult":
         bounds = payload.get("bounds") or {}
         countermodel = payload.get("countermodel")
+        applied_bounds = (
+            bounds
+            if isinstance(bounds, AppliedValidationBounds)
+            else AppliedValidationBounds.from_dict(bounds)
+        )
+        assumptions = tuple(
+            item
+            if isinstance(item, PlanValidationAssumption)
+            else PlanValidationAssumption.from_dict(item)
+            for item in (payload.get("assumptions") or ())
+        )
+        formula_ids = tuple(payload.get("formula_ids") or ())
+        findings = tuple(
+            item
+            if isinstance(item, PlanValidationFinding)
+            else PlanValidationFinding.from_dict(item)
+            for item in (payload.get("findings") or ())
+        )
+        checks_performed = tuple(payload.get("checks_performed") or ())
+        status = payload.get("status", PlanValidationStatus.ERROR)
+        outcome = payload.get("outcome", PlanValidationOutcome.ERROR)
+        plan_id = str(payload.get("plan_id") or "")
+        witness_payload = payload.get("completeness_witness")
+        if witness_payload is None:
+            completeness_witness = _reconstruct_plan_completeness_witness(
+                plan_id=plan_id,
+                bounds=applied_bounds,
+                formula_ids=formula_ids,
+                assumptions=assumptions,
+                checks_performed=checks_performed,
+                status=status,
+                outcome=outcome,
+                findings=findings,
+            )
+        elif isinstance(witness_payload, PlanCompletenessWitness):
+            completeness_witness = witness_payload
+        else:
+            completeness_witness = PlanCompletenessWitness.from_dict(witness_payload)
         result = cls(
-            status=payload.get("status", PlanValidationStatus.ERROR),
-            outcome=payload.get("outcome", PlanValidationOutcome.ERROR),
-            plan_id=str(payload.get("plan_id") or ""),
-            bounds=(
-                bounds
-                if isinstance(bounds, AppliedValidationBounds)
-                else AppliedValidationBounds.from_dict(bounds)
-            ),
-            assumptions=tuple(
-                item
-                if isinstance(item, PlanValidationAssumption)
-                else PlanValidationAssumption.from_dict(item)
-                for item in (payload.get("assumptions") or ())
-            ),
-            formula_ids=tuple(payload.get("formula_ids") or ()),
-            findings=tuple(
-                item
-                if isinstance(item, PlanValidationFinding)
-                else PlanValidationFinding.from_dict(item)
-                for item in (payload.get("findings") or ())
-            ),
+            status=status,
+            outcome=outcome,
+            plan_id=plan_id,
+            bounds=applied_bounds,
+            assumptions=assumptions,
+            formula_ids=formula_ids,
+            findings=findings,
             countermodel=(
                 countermodel
                 if isinstance(countermodel, PlanCountermodel)
@@ -808,12 +1007,15 @@ class PlanValidationResult:
                 for item in (payload.get("evidence") or ())
             ),
             consistency_level=payload.get("consistency_level", PlanConsistencyLevel.INCONCLUSIVE),
-            checks_performed=tuple(payload.get("checks_performed") or ()),
+            checks_performed=checks_performed,
+            completeness_witness=completeness_witness,
             validator_version=payload.get("validator_version", FORMAL_PLAN_VALIDATOR_VERSION),
         )
         claimed = payload.get("validation_id") or payload.get("result_id")
         if claimed and claimed != result.validation_id:
-            raise ValueError("formal-plan validation identity does not match payload")
+            # Legacy payloads omit the witness; reconstructing it shifts identity.
+            if witness_payload is not None:
+                raise ValueError("formal-plan validation identity does not match payload")
         return result
 
     @classmethod
@@ -2561,7 +2763,10 @@ class FormalPlanValidator:
             tuple(truncated),
         )
         formula_ids = tuple(sorted(formulas))
+        assumption_tuple = tuple(unique_assumptions.values())
         assumption_ids = tuple(sorted(unique_assumptions))
+        check_tuple = tuple(checks)
+        finding_tuple = tuple(findings)
         consistency = PlanConsistencyLevel.INCONCLUSIVE
         if outcome in {
             PlanValidationOutcome.COUNTERMODEL,
@@ -2590,18 +2795,30 @@ class FormalPlanValidator:
                 ):
                     consistency = PlanConsistencyLevel.KERNEL_VERIFIED
                     break
+        completeness_witness = build_plan_completeness_witness(
+            plan=plan,
+            plan_id=plan.plan_id,
+            bounds=applied,
+            formula_ids=formula_ids,
+            assumption_ids=assumption_ids,
+            checks_performed=check_tuple,
+            status=status,
+            outcome=outcome,
+            findings=finding_tuple,
+        )
         return PlanValidationResult(
             status=status,
             outcome=outcome,
             plan_id=plan.plan_id,
             bounds=applied,
-            assumptions=tuple(unique_assumptions.values()),
+            assumptions=assumption_tuple,
             formula_ids=formula_ids,
-            findings=tuple(findings),
+            findings=finding_tuple,
             countermodel=countermodel,
             evidence=evidence,
             consistency_level=consistency,
-            checks_performed=tuple(checks),
+            checks_performed=check_tuple,
+            completeness_witness=completeness_witness,
         )
 
 
@@ -2631,6 +2848,173 @@ def validate_formal_plan(
 
 
 check_formal_plan = validate_formal_plan
+
+
+def plan_completeness_witness(result: PlanValidationResult) -> PlanCompletenessWitness:
+    """Return the completeness witness attached to a validation result."""
+
+    if not isinstance(result, PlanValidationResult):
+        raise TypeError("result must be a PlanValidationResult")
+    if result.completeness_witness is None:
+        return build_plan_completeness_witness(
+            plan=None,
+            plan_id=result.plan_id,
+            bounds=result.bounds,
+            formula_ids=result.formula_ids,
+            assumption_ids=result.assumption_ids,
+            checks_performed=result.checks_performed,
+            status=result.status,
+            outcome=result.outcome,
+            findings=result.findings,
+        )
+    return result.completeness_witness
+
+
+def _plan_included_reference_ids(
+    plan: FormalWorkPlan | None,
+    formula_ids: Iterable[str],
+) -> tuple[str, ...]:
+    references: set[str] = {str(item).strip() for item in formula_ids if str(item).strip()}
+    if plan is None:
+        return tuple(sorted(references))
+    references.update(item.actor_id for item in plan.actors)
+    references.update(item.goal_id for item in plan.goals)
+    references.update(item.subgoal_id for item in plan.subgoals)
+    references.update(item.task_id for item in plan.tasks)
+    references.update(item.event_id for item in plan.events)
+    references.update(item.fluent_id for item in plan.fluents)
+    references.update(item.norm_id for item in plan.norms)
+    references.update(item.requirement_id for item in plan.evidence_requirements)
+    references.update(item.constraint_id for item in plan.temporal_constraints)
+    references.update(str(item).strip() for item in plan.source_ids if str(item).strip())
+    references.update(str(item).strip() for item in plan.abstraction_ids if str(item).strip())
+    if plan.repository_tree_id:
+        references.add(plan.repository_tree_id)
+    references.add(plan.plan_id)
+    return tuple(sorted(item for item in references if item))
+
+
+def _omitted_reference_ids_for_witness(
+    *,
+    status: PlanValidationStatus,
+    outcome: PlanValidationOutcome,
+    truncated_dimensions: Iterable[str],
+    findings: Iterable[PlanValidationFinding],
+    complete: bool,
+) -> tuple[str, ...]:
+    omitted: set[str] = {
+        str(item).strip() for item in truncated_dimensions if str(item).strip()
+    }
+    if complete:
+        return ()
+    if outcome is PlanValidationOutcome.TIMEOUT or status is PlanValidationStatus.TIMED_OUT:
+        omitted.add("timeout")
+    if outcome is PlanValidationOutcome.CANCELLED or status is PlanValidationStatus.CANCELLED:
+        omitted.add("cancellation")
+    if outcome is PlanValidationOutcome.INCOMPLETE_SEARCH or status is PlanValidationStatus.INCOMPLETE:
+        if "trace_steps" not in omitted:
+            omitted.add("search_nodes")
+    if (
+        outcome is PlanValidationOutcome.RESOURCE_EXHAUSTED
+        or status is PlanValidationStatus.RESOURCE_EXHAUSTED
+    ):
+        for finding in findings:
+            dimension = finding.details.get("dimension")
+            if dimension:
+                omitted.add(str(dimension))
+        if not omitted:
+            omitted.add("domain")
+    if status in {
+        PlanValidationStatus.ERROR,
+        PlanValidationStatus.UNAVAILABLE,
+        PlanValidationStatus.INCONCLUSIVE,
+    }:
+        omitted.add(f"status:{status.value}")
+    if not omitted:
+        omitted.add(f"outcome:{outcome.value}")
+    return tuple(sorted(omitted))
+
+
+def build_plan_completeness_witness(
+    *,
+    plan: FormalWorkPlan | None,
+    plan_id: str,
+    bounds: AppliedValidationBounds,
+    formula_ids: Iterable[str],
+    assumption_ids: Iterable[str],
+    checks_performed: Iterable[PlanCheckKind | str],
+    status: PlanValidationStatus | str,
+    outcome: PlanValidationOutcome | str,
+    findings: Iterable[PlanValidationFinding] = (),
+) -> PlanCompletenessWitness:
+    """Build the plan-check completeness witness for one validation outcome."""
+
+    status_value = PlanValidationStatus(status)
+    outcome_value = PlanValidationOutcome(outcome)
+    truncated_dimensions = tuple(bounds.truncated_dimensions)
+    finished_statuses = {
+        PlanValidationStatus.CONSISTENT,
+        PlanValidationStatus.INCONSISTENT,
+        PlanValidationStatus.VIOLATED,
+        PlanValidationStatus.UNSUPPORTED,
+    }
+    finished_outcomes = {
+        PlanValidationOutcome.CONSISTENT,
+        PlanValidationOutcome.CONTRADICTION,
+        PlanValidationOutcome.COUNTERMODEL,
+        PlanValidationOutcome.UNSUPPORTED_OPERATOR,
+    }
+    complete = (
+        status_value in finished_statuses
+        and outcome_value in finished_outcomes
+        and not truncated_dimensions
+    )
+    omitted = _omitted_reference_ids_for_witness(
+        status=status_value,
+        outcome=outcome_value,
+        truncated_dimensions=truncated_dimensions,
+        findings=tuple(findings),
+        complete=complete,
+    )
+    return PlanCompletenessWitness(
+        plan_id=plan_id,
+        bounds_id=bounds.bounds_id,
+        formula_ids=tuple(formula_ids),
+        assumption_ids=tuple(assumption_ids),
+        checks_performed=tuple(checks_performed),
+        included_reference_ids=_plan_included_reference_ids(plan, formula_ids),
+        omitted_reference_ids=omitted,
+        truncated_dimensions=truncated_dimensions,
+        complete=complete,
+        truncated=not complete,
+        status=status_value,
+        outcome=outcome_value,
+        plan_check_only=True,
+    )
+
+
+def _reconstruct_plan_completeness_witness(
+    *,
+    plan_id: str,
+    bounds: AppliedValidationBounds,
+    formula_ids: Iterable[str],
+    assumptions: Iterable[PlanValidationAssumption],
+    checks_performed: Iterable[PlanCheckKind | str],
+    status: PlanValidationStatus | str,
+    outcome: PlanValidationOutcome | str,
+    findings: Iterable[PlanValidationFinding] = (),
+) -> PlanCompletenessWitness:
+    return build_plan_completeness_witness(
+        plan=None,
+        plan_id=plan_id,
+        bounds=bounds,
+        formula_ids=formula_ids,
+        assumption_ids=tuple(item.assumption_id for item in assumptions),
+        checks_performed=checks_performed,
+        status=status,
+        outcome=outcome,
+        findings=findings,
+    )
 
 
 def _canonical_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -3170,10 +3554,13 @@ def _evidence_records(
 __all__ = [
     "AppliedValidationBounds",
     "BoundedFormalPlanValidator",
+    "CANONICAL_PLAN_COMPLETENESS_WITNESS",
+    "CANONICAL_PLAN_VALIDATOR",
     "CancellationToken",
     "Countermodel",
     "CountermodelState",
     "FindingDisposition",
+    "FORMAL_PLAN_COMPLETENESS_WITNESS_SCHEMA",
     "FORMAL_PLAN_COUNTERMODEL_SCHEMA",
     "FORMAL_PLAN_FINDING_SCHEMA",
     "FORMAL_PLAN_VALIDATION_BOUNDS_SCHEMA",
@@ -3185,6 +3572,7 @@ __all__ = [
     "PlanAssumption",
     "PlanCheckEvidence",
     "PlanCheckKind",
+    "PlanCompletenessWitness",
     "PlanConsistencyLevel",
     "PlanCountermodel",
     "PlanFindingCode",
@@ -3201,6 +3589,8 @@ __all__ = [
     "ValidationOutcome",
     "ValidationResult",
     "ValidationStatus",
+    "build_plan_completeness_witness",
     "check_formal_plan",
+    "plan_completeness_witness",
     "validate_formal_plan",
 ]
