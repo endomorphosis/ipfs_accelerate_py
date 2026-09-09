@@ -29,8 +29,8 @@ python3 -m ipfs_accelerate_py.agent_supervisor.rescue.verification_deferral_reco
 
 Inventory mode discovers `lane-*/*_database_execution.duckdb` sidecars. Other
 filename conventions use the individual-path arguments shown by `--help`.
-Omitting `--apply` leaves canonical status unchanged; snapshot qualification and
-its evidence may still be recorded.
+Omitting `--apply` is read-only. A still-active snapshot requires explicit
+`--apply` before its native reconciliation or any recovery evidence is written.
 
 A systemd `ExecStartPre` hook can run inventory mode before the native owner
 starts. Prefix the command with `-` so inapplicable recovery does not prevent

@@ -110,7 +110,8 @@ def verify_blocked(task: Any, execution: Any) -> tuple[dict[str, Any], list[dict
 
 
 def qualify_snapshot(*, repo: Path, runtime: Path, attempt_root: Path,
-                     task: Any, attempts: list[dict[str, Any]], config: Mapping[str, Any]) -> dict[str, Any]:
+                     task: Any, attempts: list[dict[str, Any]], config: Mapping[str, Any],
+                     apply: bool = False) -> dict[str, Any]:
     for row in attempts[1:]:
         key = hashlib.sha256(row["attempt_id"].encode()).hexdigest()[:24]
         root = attempt_root / key
@@ -146,6 +147,14 @@ def qualify_snapshot(*, repo: Path, runtime: Path, attempt_root: Path,
         require(protected and all(isinstance(p, str) and not Path(p).is_absolute()
                 and ".." not in Path(p).parts for p in protected), "protected population is invalid")
         for checkout in (repo, workspace):
+            tracked = subprocess.run(["git", "-C", str(checkout), "ls-files", "-z",
+                "--error-unmatch", "--", *protected], capture_output=True, timeout=30)
+            require(tracked.returncode == 0 and set(tracked.stdout.decode().split("\0")) - {""}
+                == set(protected), "protected path is untracked or absent from the index")
+            status = subprocess.run(["git", "-C", str(checkout), "status", "--porcelain=v1",
+                "--untracked-files=all", "--ignored=matching", "--", *protected],
+                capture_output=True, timeout=30)
+            require(status.returncode == 0 and not status.stdout, "protected path has local changes")
             validation = subprocess.run(["git", "-C", str(checkout), "diff", "--quiet",
                 baseline, "--", *protected], capture_output=True, timeout=30)
             require(validation.returncode == 0, "protected content changed after reconciliation")
@@ -158,6 +167,7 @@ def qualify_snapshot(*, repo: Path, runtime: Path, attempt_root: Path,
         require(not (root / "implementation-protected-path-incident.json").exists(),
                 "protected mutation incident still requires qualification")
         if active_path.exists():
+            require(apply, "snapshot reconciliation requires --apply")
             active = json.loads(active_path.read_text())
             require(active.get("task_id") == task.task_alias
                     and active.get("attempt") == terminal.get("attempt")
@@ -192,11 +202,21 @@ def qualify_snapshot(*, repo: Path, runtime: Path, attempt_root: Path,
             "candidate_path": terminal.get("worktree_path", ""),
             "completion_authority": False, "provider_dispatched": False}
         proof["receipt_id"] = digest(proof)
-        temporary = marker.with_suffix(".tmp")
-        temporary.write_text(json.dumps(proof, indent=2) + "\n")
-        temporary.replace(marker)
+        if apply:
+            temporary = marker.with_suffix(".tmp")
+            temporary.write_text(json.dumps(proof, indent=2) + "\n")
+            temporary.replace(marker)
         return proof
     raise VerificationDeferralRecoveryError("no terminal verification-deferred snapshot qualifies")
+
+
+def recovery_receipt(receipt: Mapping[str, Any], proof: Mapping[str, Any]) -> dict[str, Any]:
+    route_fields = {k: receipt[k] for k in ("execution_route_binding",
+        "execution_route_policy_id", "execution_route_origin_revision") if k in receipt}
+    require(len(route_fields) in (0, 3), "partial execution route cannot be carried")
+    return {**route_fields, "schema": SCHEMA, "operation": "recover_verified_checkout_verification_wait",
+        "reason": "unchanged_terminal_snapshot_reconciled", "source_receipt": dict(receipt),
+        "qualification": dict(proof), "completion_authority": False}
 
 
 def recover(*, repo: Path, database: Path, execution: Path, attempt_root: Path,
@@ -213,14 +233,9 @@ def recover(*, repo: Path, database: Path, execution: Path, attempt_root: Path,
             require(task is not None, "canonical task is absent")
             receipt, attempts = verify_blocked(task, connection)
             proof = qualify_snapshot(repo=repo, runtime=database.parent, attempt_root=attempt_root,
-                task=task, attempts=attempts, config=config)
+                task=task, attempts=attempts, config=config, apply=apply)
             require_stopped(owner_status, database)
-            route_fields = {k: receipt[k] for k in ("execution_route_binding",
-                "execution_route_policy_id", "execution_route_origin_revision") if k in receipt}
-            require(len(route_fields) in (0, 3), "partial execution route cannot be carried")
-            recovery = {**route_fields, "schema": SCHEMA, "operation": "recover_verified_checkout_verification_wait",
-                "reason": "unchanged_terminal_snapshot_reconciled", "source_receipt": receipt,
-                "qualification": proof, "completion_authority": False}
+            recovery = recovery_receipt(receipt, proof)
             # A new, separately verified recovery authority owns this CAS. The
             # ordinary provider-canary supersession route cannot prove checkout
             # verification and deliberately remains unchanged.

@@ -1,5 +1,4 @@
 """Qualified projection-wait recovery must retain all negative evidence gates."""
-import copy
 import json
 import os
 from pathlib import Path
@@ -93,3 +92,108 @@ def test_live_owner_rejected_even_when_status_claims_stopped(tmp_path):
             'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip()}}}))
     with pytest.raises(VerificationDeferralRecoveryError, match='still alive'):
         require_stopped(status, database)
+
+
+@pytest.fixture
+def reconciled_snapshot(tmp_path, monkeypatch):
+    import hashlib
+    import subprocess
+    from ipfs_accelerate_py.agent_supervisor.rescue import verification_deferral_recovery as recovery
+    from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
+
+    repo = tmp_path / 'repo'
+    repo.mkdir()
+    def git(*args):
+        return subprocess.run(['git', '-C', str(repo), *args], check=True,
+            capture_output=True, text=True).stdout.strip()
+    git('init', '-q')
+    (repo / 'protected.txt').write_text('sealed\n')
+    git('add', 'protected.txt')
+    git('-c', 'user.name=Recovery Test', '-c', 'user.email=recovery-test@localhost', 'commit', '-qm', 'baseline')
+    baseline = git('rev-parse', 'HEAD')
+    runtime = repo / 'runtime'
+    workspace = runtime / 'worktrees/candidate'
+    git('worktree', 'add', '--detach', str(workspace), baseline)
+    attempt_root = runtime / 'attempts'
+    root = attempt_root / hashlib.sha256(b'attempt:1').hexdigest()[:24]
+    root.mkdir(parents=True)
+    binding = {'attempt_id': 'attempt:1', 'task_cid': 'task:1', 'claim_id': 'claim:1',
+        'task_contract_digest': 'contract:1'}
+    binding['binding_id'] = recovery.digest(binding)
+    (root / 'database-attempt-binding.json').write_text(json.dumps(binding))
+    event_file = root / 'portal-events.jsonl'
+    append_jsonl_event(event_file, 'implementation_finished', {
+        'task_id': 'SPAR-001', 'canonical_task_cid': 'task:1', 'attempt': 1,
+        'attempt_consumed': False, 'provider_dispatched': True,
+        'worktree_path': str(workspace), 'baseline_ref': baseline,
+        'protected_path_violation': {'verification_deferred': True, 'reason': recovery.TIMEOUT}})
+    append_jsonl_event(event_file, 'implementation_protected_path_snapshot_reconciled', {
+        'task_id': 'SPAR-001', 'attempt': 1, 'reason': 'crash_reconciliation_unchanged'})
+    monkeypatch.setattr(recovery, 'database_portal_task_contract_digest', lambda task: 'contract:1')
+    monkeypatch.setattr(recovery.DatabasePortalExecutionBridge, '_verify_projection', lambda *args: '')
+    kwargs = dict(repo=repo, runtime=runtime, attempt_root=attempt_root,
+        task=SimpleNamespace(task_cid='task:1', task_alias='SPAR-001'),
+        attempts=[{'attempt_id': 'attempt:2'}, {'attempt_id': 'attempt:1', 'claim_id': 'claim:1'}],
+        config={'protected_paths': ['protected.txt']})
+    return recovery, root, workspace, kwargs
+
+
+def test_previously_reconciled_snapshot_default_is_read_only(reconciled_snapshot):
+    recovery, root, workspace, kwargs = reconciled_snapshot
+    before = {p: p.read_bytes() for p in root.rglob('*') if p.is_file()}
+    proof = recovery.qualify_snapshot(**kwargs)
+    assert proof['target_attempt_id'] == 'attempt:2'
+    assert {p: p.read_bytes() for p in root.rglob('*') if p.is_file()} == before
+    assert (workspace / 'protected.txt').read_text() == 'sealed\n'
+
+
+def test_active_snapshot_default_never_invokes_reconciler(reconciled_snapshot, monkeypatch):
+    recovery, root, _, kwargs = reconciled_snapshot
+    active = root / 'implementation-protected-path-active.json'
+    active.write_text('{}')
+    monkeypatch.setattr(recovery, 'PortalImplementationDaemon',
+        lambda **kw: pytest.fail('read-only qualification invoked a mutating native reconciler'))
+    with pytest.raises(VerificationDeferralRecoveryError, match='requires --apply'):
+        recovery.qualify_snapshot(**kwargs)
+    assert active.read_text() == '{}'
+    assert not (root / 'verification-deferral-recovery.json').exists()
+
+
+def test_untracked_protected_file_cannot_reuse_old_reconciliation(reconciled_snapshot):
+    recovery, _, workspace, kwargs = reconciled_snapshot
+    (workspace / 'untracked.txt').write_text('unverified')
+    kwargs['config']['protected_paths'].append('untracked.txt')
+    with pytest.raises(VerificationDeferralRecoveryError, match='untracked'):
+        recovery.qualify_snapshot(**kwargs, apply=True)
+
+
+def test_changed_protected_content_rejects_old_reconciliation(reconciled_snapshot):
+    recovery, _, workspace, kwargs = reconciled_snapshot
+    (workspace / 'protected.txt').write_text('mutated')
+    with pytest.raises(VerificationDeferralRecoveryError, match='local changes'):
+        recovery.qualify_snapshot(**kwargs, apply=True)
+
+
+def test_snapshot_rearms_only_one_exact_target_attempt(reconciled_snapshot):
+    recovery, root, _, kwargs = reconciled_snapshot
+    proof = recovery.qualify_snapshot(**kwargs, apply=True)
+    assert json.loads((root / 'verification-deferral-recovery.json').read_text()) == proof
+    assert recovery.qualify_snapshot(**kwargs, apply=True) == proof
+    kwargs['attempts'][0]['attempt_id'] = 'attempt:3'
+    with pytest.raises(VerificationDeferralRecoveryError, match='already rearmed'):
+        recovery.qualify_snapshot(**kwargs, apply=True)
+
+
+def test_recovery_receipt_preserves_exact_route_and_previous_authority():
+    from ipfs_accelerate_py.agent_supervisor.rescue.verification_deferral_recovery import recovery_receipt
+    previous = {'execution_route_binding': {'policy_id': 'route:1', 'task_cid': 'task:1'},
+        'execution_route_policy_id': 'route:1', 'execution_route_origin_revision': 1}
+    proof = {'receipt_id': 'snapshot:1'}
+    receipt = recovery_receipt(previous, proof)
+    assert all(receipt[key] == value for key, value in previous.items())
+    assert receipt['source_receipt'] == previous
+    assert receipt['qualification'] == proof
+    assert receipt['completion_authority'] is False
+    previous.pop('execution_route_origin_revision')
+    with pytest.raises(VerificationDeferralRecoveryError, match='partial execution route'):
+        recovery_receipt(previous, proof)
