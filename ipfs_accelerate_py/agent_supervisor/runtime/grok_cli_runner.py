@@ -1725,20 +1725,51 @@ def _repository_head(workspace: Path) -> str:
     return head
 
 
+# Fixed admission bounds, not provider-controlled knobs or exclusion rules.
+_WORKSPACE_FINGERPRINT_MAX_SECONDS = 60.0
+_WORKSPACE_FINGERPRINT_MAX_ENTRIES = 100_000
+_WORKSPACE_FINGERPRINT_MAX_BYTES = 1024 * 1024 * 1024
+
+
 def _workspace_content_fingerprint(workspace: Path) -> str:
-    """Hash every workspace path, file byte, mode, and symlink target."""
+    """Hash the complete workspace or reject it when the scan budget is spent.
+
+    Never omit ignored files, Git metadata, or archived worktrees: this digest
+    fences provider preflight side effects. Large workspaces must fail closed
+    instead of holding a merge lease for an unbounded recursive scan. The
+    deadline is cooperative between filesystem operations; the caller's
+    subprocess deadline still bounds a blocked filesystem operation.
+    """
 
     digest = hashlib.sha256()
+    deadline = time.monotonic() + _WORKSPACE_FINGERPRINT_MAX_SECONDS
+    entries = 0
+    bytes_read = 0
+
+    def check_deadline() -> None:
+        if time.monotonic() >= deadline:
+            raise ValueError("Grok workspace fingerprint time budget exceeded")
+
+    def walk_error(exc: OSError) -> None:
+        # os.walk otherwise silently omits unreadable/disappearing directories.
+        raise exc
+
     try:
         for root, directories, files in os.walk(
             workspace,
             topdown=True,
             followlinks=False,
+            onerror=walk_error,
         ):
+            check_deadline()
+            entries += len(directories) + len(files)
+            if entries > _WORKSPACE_FINGERPRINT_MAX_ENTRIES:
+                raise ValueError("Grok workspace fingerprint entry budget exceeded")
             directories.sort()
             files.sort()
             root_path = Path(root)
             for name in (*directories, *files):
+                check_deadline()
                 candidate = root_path / name
                 relative = candidate.relative_to(workspace).as_posix()
                 stat_result = candidate.lstat()
@@ -1758,8 +1789,14 @@ def _workspace_content_fingerprint(workspace: Path) -> str:
                     digest.update(b"D")
                 elif candidate.is_file():
                     digest.update(b"F")
+                    if bytes_read + stat_result.st_size > _WORKSPACE_FINGERPRINT_MAX_BYTES:
+                        raise ValueError("Grok workspace fingerprint byte budget exceeded")
                     with candidate.open("rb") as handle:
                         while chunk := handle.read(1024 * 1024):
+                            check_deadline()
+                            bytes_read += len(chunk)
+                            if bytes_read > _WORKSPACE_FINGERPRINT_MAX_BYTES:
+                                raise ValueError("Grok workspace fingerprint byte budget exceeded")
                             digest.update(chunk)
                 else:
                     raise ValueError(
@@ -1768,6 +1805,7 @@ def _workspace_content_fingerprint(workspace: Path) -> str:
                 digest.update(b"\0")
     except (OSError, UnicodeError) as exc:
         raise ValueError("unable to fingerprint Grok workspace") from exc
+    check_deadline()
     return digest.hexdigest()
 
 

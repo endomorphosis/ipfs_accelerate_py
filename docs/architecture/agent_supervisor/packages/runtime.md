@@ -42,6 +42,21 @@ from ipfs_accelerate_py.agent_supervisor.runtime.<module> import ...
 | **Outbound** | `todo_daemon` for process loops; `merge`/`rescue` for lifecycle. |
 | **Forbidden** | Embedding board-prefix-specific business logic that belongs in domain modules. |
 
+## Provider preflight workspace admission
+
+The Grok route fingerprints the entire workspace before its quota preflight.
+Each scan admits at most 100,000 entries and 1 GiB of regular-file bytes, with
+a 60-second cooperative deadline checked between filesystem operations and
+file chunks. Over-budget or unreadable workspaces fail closed before provider
+dispatch; no partial digest is accepted. Ignored files, archived worktrees, and
+Git metadata remain in the integrity fence. The outer subprocess timeout is
+still needed for a blocking filesystem operation.
+
+A workspace rejected by this bound needs an admitted, isolated execution
+workspace and requalification. Skipping archive paths or raising a live board's
+limits is not recovery authority. This admission guard bounds preflight cost;
+it does not settle merge queues or attest task completion.
+
 ## Extension notes
 
 1. Keep the package DAG acyclic ([package map](../PACKAGE_MAP.md)).
