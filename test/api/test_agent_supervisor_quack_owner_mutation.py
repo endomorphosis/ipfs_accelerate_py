@@ -5327,14 +5327,19 @@ def test_typed_owner_stamps_post_commit_retry_placeholders_before_cas(
         server.stop()
 
 
+@pytest.mark.parametrize(
+    "route_mutation",
+    ("exact", "omitted", "partial", "rotated", "omitted_nondaemon"),
+)
 def test_typed_owner_stamps_callback_recovery_cooldown_before_cas(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    route_mutation: str,
 ) -> None:
-    """Callback rearm remains queueable through the real typed owner path."""
+    """The owner admits only an exact callback route-lineage continuation."""
 
     database = tmp_path / "control.duckdb"
-    _seed(database)
+    _seed_routed_task(database)
     server = build_server(
         database_path=database,
         state_dir=tmp_path / "state",
@@ -5345,25 +5350,42 @@ def test_typed_owner_stamps_callback_recovery_cooldown_before_cas(
     )
     identity = server.start()
     clock = {"now_ms": 7_000}
-    source = _typed_task_source(
+    bootstrap = _typed_task_source(
         server,
         identity,
         monkeypatch,
-        client_id="database-implementation-daemon:callback-recovery",
+        client_id=(
+            "external-agent:callback-recovery"
+            if route_mutation == "omitted_nondaemon"
+            else "database-implementation-daemon:callback-recovery"
+        ),
         allowed_command_operations=(
             "task.status.cas.receipt",
             "task.retry.cooldown.record",
         ),
         clock_ms=lambda: clock["now_ms"],
     )
+    source = _seal_routed_source(
+        bootstrap,
+        clock_ms=lambda: clock["now_ms"],
+    )
     try:
         ready = source.get_task("task:test")
         assert ready is not None
-        claim = _typed_claim_receipt(
-            source,
-            lane="callback-recovery",
-            claimed_from_revision=ready.revision,
-        )
+        route = dict(source.execution_route_binding_for_task(ready))
+        route_lineage = {
+            "execution_route_binding": route,
+            "execution_route_policy_id": route["policy_id"],
+            "execution_route_origin_revision": route["task_revision"],
+        }
+        claim = {
+            **_typed_claim_receipt(
+                source,
+                lane="callback-recovery",
+                claimed_from_revision=ready.revision,
+            ),
+            **route_lineage,
+        }
         claimed = source.compare_and_set_status(
             ready.task_cid,
             ready.revision,
@@ -5387,6 +5409,7 @@ def test_typed_owner_stamps_callback_recovery_cooldown_before_cas(
             **attempt_identity,
             "failure_kind": "provider_callback_outcome_unknown",
             "retry_suppressed": True,
+            **route_lineage,
         }
         quarantined = source.compare_and_set_status(
             claimed.task_cid,
@@ -5411,7 +5434,47 @@ def test_typed_owner_stamps_callback_recovery_cooldown_before_cas(
             "retry_not_before_ms": 0,
             "control_expected_status": "quarantined",
             "control_expected_revision": quarantined.revision,
+            **route_lineage,
         }
+
+        if route_mutation in {"omitted", "omitted_nondaemon"}:
+            for field in route_lineage:
+                transition_receipt.pop(field)
+        elif route_mutation == "partial":
+            transition_receipt.pop("execution_route_policy_id")
+        elif route_mutation == "rotated":
+            transition_receipt["execution_route_binding"] = {
+                **route,
+                "policy_id": "policy:rotated",
+            }
+            transition_receipt["execution_route_policy_id"] = "policy:rotated"
+        else:
+            assert route_mutation == "exact"
+
+        if route_mutation != "exact":
+            with pytest.raises(
+                TransactionError,
+                match="authorization_denied",
+            ):
+                source.record_queue_backoff_and_cas_status(
+                    task_cid=quarantined.task_cid,
+                    expected_revision=quarantined.revision,
+                    expected_control_receipt=neutral,
+                    status="retrying",
+                    receipt=transition_receipt,
+                    delay_ms=0,
+                    reason=queue_reason,
+                )
+            unchanged = source.get_task(quarantined.task_cid)
+            assert unchanged is not None
+            assert (unchanged.status, unchanged.revision) == (
+                "quarantined",
+                quarantined.revision,
+            )
+            assert unchanged.body["completion_receipt"] == neutral
+            assert source.get_queue_entry(quarantined.task_cid) is None
+            assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
+            return
 
         result = source.record_queue_backoff_and_cas_status(
             task_cid=quarantined.task_cid,
@@ -5426,6 +5489,10 @@ def test_typed_owner_stamps_callback_recovery_cooldown_before_cas(
         assert result["cas_result"].changed is True
         assert result["transition_receipt"]["backoff_ms"] == 0
         assert result["transition_receipt"]["retry_not_before_ms"] == 7_000
+        assert {
+            field: result["transition_receipt"][field]
+            for field in route_lineage
+        } == route_lineage
         retrying = source.get_task(quarantined.task_cid)
         assert retrying is not None
         assert (retrying.status, retrying.revision) == (
@@ -5435,6 +5502,10 @@ def test_typed_owner_stamps_callback_recovery_cooldown_before_cas(
         assert retrying.body["completion_receipt"] == result[
             "transition_receipt"
         ]
+        assert {
+            field: retrying.body["completion_receipt"][field]
+            for field in route_lineage
+        } == route_lineage
         queue = source.validate_retrying_task_cooldown(
             retrying.task_cid,
             expected_attempt_identity=attempt_identity,
@@ -5452,6 +5523,220 @@ def test_typed_owner_stamps_callback_recovery_cooldown_before_cas(
             task.task_cid for task in source.ready_tasks().tasks
         ) == (retrying.task_cid,)
         assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
+    finally:
+        source.close()
+        server.stop()
+
+
+@pytest.mark.parametrize("seed_version", (1, 2))
+def test_callback_route_migration_restores_logical_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    seed_version: int,
+) -> None:
+    """Historical callback route loss is repaired and normalized exactly."""
+
+    database = tmp_path / "control.duckdb"
+    _seed_routed_task(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "state",
+        store_id=f"callback-route-migration-v{seed_version}",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    clock = {"now_ms": 9_000}
+    bootstrap = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:callback-route-migration",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.retry.cooldown.record",
+        ),
+        clock_ms=lambda: clock["now_ms"],
+    )
+    source = _seal_routed_source(
+        bootstrap,
+        clock_ms=lambda: clock["now_ms"],
+    )
+    try:
+        ready = source.get_task("task:test")
+        assert ready is not None
+        route = dict(source.execution_route_binding_for_task(ready))
+        route_lineage = {
+            "execution_route_binding": route,
+            "execution_route_policy_id": route["policy_id"],
+            "execution_route_origin_revision": route["task_revision"],
+        }
+        claim = {
+            **_typed_claim_receipt(
+                source,
+                lane="callback-route-migration",
+                claimed_from_revision=ready.revision,
+            ),
+            **route_lineage,
+        }
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        ).task
+        neutral = {
+            **claim,
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-neutral-quarantine@1"
+            ),
+            "operation": "database_portal_neutral_failure_quarantine",
+            "failure_kind": "provider_callback_outcome_unknown",
+            "retry_suppressed": True,
+        }
+        quarantined = source.compare_and_set_status(
+            claimed.task_cid,
+            claimed.revision,
+            "quarantined",
+            neutral,
+            expected_control_receipt=claim,
+        ).task
+        seed: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                f"database-post-merge-completion-recovery-seed@{seed_version}"
+            ),
+            "task_cid": quarantined.task_cid,
+            "task_alias": quarantined.task_alias,
+            **{
+                field: claim[field]
+                for field in (
+                    "attempt_id",
+                    "attempt_number",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
+            "source_task_revision": (
+                quarantined.revision
+                if seed_version == 1
+                else quarantined.revision - 1
+            ),
+            **(
+                {"recovery_control_revision": quarantined.revision}
+                if seed_version == 2
+                else {}
+            ),
+            "request_id": "merge-request:callback-route-migration",
+            "candidate_commit": "a" * 40,
+            "qualified_target_commit": "b" * 40,
+            "qualification_kind": "callback_integration",
+            "qualification_receipt_id": "sha256:" + "1" * 64,
+            "queue_source_attempt_id": claim["attempt_id"],
+            "queue_source_claim_id": claim["claim_id"],
+            "queue_source_lease_id": claim["lease_id"],
+            "queue_source_fencing_token": claim["fencing_token"],
+            "queue_source_fence_epoch": claim["fence_epoch"],
+            "queue_source_binding_id": "sha256:" + "2" * 64,
+            "queue_source_projection_immutable_digest": "sha256:" + "3" * 64,
+            "recovery_evidence_id": "sha256:" + "4" * 64,
+            "terminal_reason": "provider_callback_outcome_unknown",
+        }
+        seed["seed_id"] = DatabaseImplementationDaemon._database_portal_evidence_digest(
+            seed
+        )
+        seed_verifier = SimpleNamespace(
+            _database_portal_evidence_digest=(
+                DatabaseImplementationDaemon._database_portal_evidence_digest
+            )
+        )
+        assert DatabaseImplementationDaemon._verified_post_merge_completion_recovery_seed(
+            seed_verifier,
+            seed,
+        ) == seed
+        queue_reason = (
+            "database_post_merge_declared_outputs_callback_integration:"
+            "merge-request:callback-route-migration:sha256:" + "5" * 64
+        )
+        callback_receipt = {
+            "operation": (
+                "database_post_merge_declared_outputs_"
+                "callback_integration_recovery"
+            ),
+            **{
+                field: claim[field]
+                for field in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            },
+            "queue_reason": queue_reason,
+            "queue_receipt": {},
+            "backoff_ms": 0,
+            "retry_not_before_ms": 0,
+            "control_expected_status": "quarantined",
+            "control_expected_revision": quarantined.revision,
+            "post_merge_completion_recovery_seed": seed,
+            **route_lineage,
+        }
+        retrying = source.record_queue_backoff_and_cas_status(
+            task_cid=quarantined.task_cid,
+            expected_revision=quarantined.revision,
+            expected_control_receipt=neutral,
+            status="retrying",
+            receipt=callback_receipt,
+            delay_ms=0,
+            reason=queue_reason,
+        )["cas_result"].task
+        historical_body = dict(retrying.body)
+        historical_receipt = dict(historical_body["completion_receipt"])
+        for field in route_lineage:
+            historical_receipt.pop(field)
+        historical_body["completion_receipt"] = historical_receipt
+        queue = source._retry_cooldown_row(retrying.task_cid)  # noqa: SLF001
+        policy = source.execution_route_policy
+        assert queue is not None and policy is not None
+        entry = policy.entries_by_cid[retrying.task_cid]
+
+        material = typed_owner_module._post_commit_route_recovery_material(  # noqa: SLF001
+            task_cid=retrying.task_cid,
+            task_alias=retrying.task_alias,
+            current_revision=retrying.revision,
+            current_body=historical_body,
+            prior_status="quarantined",
+            prior_body=quarantined.body,
+            queue=queue,
+            current_policy_id=policy.policy_id,
+            current_policy_source_revision=policy.source_revision,
+            current_plan_root_cid=policy.plan_root_cid,
+            current_repository_tree_id=policy.repository_tree_id,
+            current_task_contract_cid=entry.task_contract_cid,
+            current_execution_mode=entry.execution_mode,
+        )
+        recovered = material["recovered_receipt"]
+        normalized = DatabaseImplementationDaemon._normalized_post_merge_route_recovery_receipt(
+            recovered,
+            task=SimpleNamespace(
+                task_cid=retrying.task_cid,
+                task_alias=retrying.task_alias,
+                revision=retrying.revision + 1,
+            ),
+        )
+        assert material["route"] == route
+        assert material["witness"]["post_commit_candidate_receipt_id"] == seed[
+            "seed_id"
+        ]
+        assert normalized == {**historical_receipt, **route_lineage}
     finally:
         source.close()
         server.stop()
@@ -5733,6 +6018,181 @@ def test_ready_reconciliation_recovers_exact_missing_post_commit_route_lineage(
             recovery.close()
         elif not writer._closed:  # noqa: SLF001 - cleanup after an early failure.
             writer.close()
+        server.stop()
+
+
+@pytest.mark.parametrize("seed_version", (1, 2))
+def test_callback_route_history_repair_normalizes_for_reclaim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    seed_version: int,
+) -> None:
+    """The exact historical callback omission is repaired and reclaimable."""
+
+    database = tmp_path / "control.duckdb"
+    _seed_routed_task(database)
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "state",
+        store_id=f"callback-route-history-v{seed_version}",
+        repository_id="repository:test",
+        transport=FakeQuackTransport(),
+        capability_probe=lambda **_kwargs: probe_quack_capabilities(),
+    )
+    identity = server.start()
+    bootstrap = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:callback-route-history",
+        allowed_command_operations=(
+            typed_owner_module.TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_COMMAND,
+        ),
+    )
+    source = _seal_routed_source(bootstrap, clock_ms=lambda: 1_000)
+    try:
+        task = source.get_task("task:test")
+        policy = source.execution_route_policy
+        assert task is not None and policy is not None
+        route = dict(source.execution_route_binding_for_task(task))
+        entry = policy.entries_by_cid[task.task_cid]
+        current_revision = 3
+        predecessor_revision = current_revision - 1
+        identity_fields = {
+            "attempt_id": "attempt:callback-route-history",
+            "claim_id": "claim:callback-route-history",
+            "lease_id": "lease:callback-route-history",
+            "owner_session_id": "owner:callback-route-history",
+            "attempt_number": 1,
+            "fencing_token": 1,
+            "fence_epoch": 1,
+        }
+        route_lineage = {
+            "execution_route_binding": route,
+            "execution_route_policy_id": route["policy_id"],
+            "execution_route_origin_revision": route["task_revision"],
+        }
+        prior_receipt = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-neutral-quarantine@1"
+            ),
+            "operation": "database_portal_neutral_failure_quarantine",
+            **identity_fields,
+            "failure_kind": "provider_callback_outcome_unknown",
+            "retry_suppressed": True,
+            **route_lineage,
+        }
+        seed = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-post-merge-completion-recovery-seed@"
+                f"{seed_version}"
+            ),
+            "task_cid": task.task_cid,
+            "task_alias": task.task_alias,
+            **identity_fields,
+            "source_task_revision": (
+                predecessor_revision if seed_version == 1 else 1
+            ),
+            **(
+                {"recovery_control_revision": predecessor_revision}
+                if seed_version == 2
+                else {}
+            ),
+            "request_id": "request:callback-route-history",
+            "candidate_commit": "a" * 40,
+            "qualified_target_commit": "b" * 40,
+            "qualification_kind": "callback_integration",
+            "qualification_receipt_id": "sha256:" + "c" * 64,
+            "queue_source_attempt_id": identity_fields["attempt_id"],
+            "queue_source_claim_id": identity_fields["claim_id"],
+            "queue_source_lease_id": identity_fields["lease_id"],
+            "queue_source_fencing_token": identity_fields["fencing_token"],
+            "queue_source_fence_epoch": identity_fields["fence_epoch"],
+            "queue_source_binding_id": "sha256:" + "d" * 64,
+            "queue_source_projection_immutable_digest": "sha256:" + "e" * 64,
+            "recovery_evidence_id": "sha256:" + "f" * 64,
+            "terminal_reason": "provider_callback_outcome_unknown",
+        }
+        seed["seed_id"] = "sha256:" + hashlib.sha256(
+            canonical_json_bytes(seed)
+        ).hexdigest()
+        queue_reason = (
+            "database_post_merge_declared_outputs_callback_integration:"
+            "request:callback-route-history:sha256:" + "c" * 64
+        )
+        current_receipt = {
+            "operation": (
+                "database_post_merge_declared_outputs_"
+                "callback_integration_recovery"
+            ),
+            **identity_fields,
+            "queue_reason": queue_reason,
+            "queue_receipt": {},
+            "backoff_ms": 0,
+            "retry_not_before_ms": 1_000,
+            "control_expected_status": "quarantined",
+            "control_expected_revision": predecessor_revision,
+            "post_merge_completion_recovery_seed": seed,
+        }
+        prior_body = {**dict(task.body), "completion_receipt": prior_receipt}
+        current_body = {**dict(task.body), "completion_receipt": current_receipt}
+        extension = {
+            "task_cid": task.task_cid,
+            "expected_task_revision": predecessor_revision,
+            **identity_fields,
+            "delay_ms": 0,
+            "retry_not_before_ms": 1_000,
+            "reason": queue_reason,
+            "started_at_ms": 1_000,
+        }
+        queue = {
+            "task_cid": task.task_cid,
+            "attempt": identity_fields["attempt_number"],
+            "claim_cid": identity_fields["claim_id"],
+            "owner_session_id": identity_fields["owner_session_id"],
+            "fencing_token": identity_fields["fencing_token"],
+            "fence_epoch": identity_fields["fence_epoch"],
+            "retry_not_before_ms": 1_000,
+            "release_reason": queue_reason,
+            "revision": 1,
+            "extension": extension,
+        }
+
+        material = typed_owner_module._post_commit_route_recovery_material(
+            task_cid=task.task_cid,
+            task_alias=task.task_alias,
+            current_revision=current_revision,
+            current_body=current_body,
+            prior_status="quarantined",
+            prior_body=prior_body,
+            queue=queue,
+            current_policy_id=policy.policy_id,
+            current_policy_source_revision=policy.source_revision,
+            current_plan_root_cid=policy.plan_root_cid,
+            current_repository_tree_id=policy.repository_tree_id,
+            current_task_contract_cid=entry.task_contract_cid,
+            current_execution_mode=entry.execution_mode,
+        )
+        wrapper = material["recovered_receipt"]
+        assert wrapper["source_control_operation"] == current_receipt["operation"]
+        assert wrapper["execution_route_lineage_recovery"][
+            "post_commit_candidate_receipt_id"
+        ] == seed["seed_id"]
+        normalized = (
+            DatabaseImplementationDaemon._normalized_post_merge_route_recovery_receipt(
+                wrapper,
+                task=SimpleNamespace(
+                    task_cid=task.task_cid,
+                    task_alias=task.task_alias,
+                    revision=current_revision + 1,
+                ),
+            )
+        )
+        assert normalized == {**current_receipt, **route_lineage}
+    finally:
+        source.close()
         server.stop()
 
 

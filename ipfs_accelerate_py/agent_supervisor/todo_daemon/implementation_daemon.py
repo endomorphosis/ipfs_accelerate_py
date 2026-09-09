@@ -88843,6 +88843,13 @@ DATABASE_POST_MERGE_COMPLETION_TARGET_GENERATION_CHANGED_REASON = (
 DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON = (
     "provider_callback_outcome_unknown"
 )
+_TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-post-commit-route-recovery@1"
+)
+_TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION = (
+    "database_post_commit_route_lineage_recovery"
+)
 DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON = (
     "protected preservation merged result is not on the exact target branch"
 )
@@ -92248,6 +92255,143 @@ class DatabaseImplementationDaemon:
         )
         return result
 
+    @staticmethod
+    def _normalized_post_merge_route_recovery_receipt(
+        raw: Any,
+        *,
+        task: Any,
+    ) -> Mapping[str, Any] | None:
+        """Restore the logical callback receipt wrapped by route repair.
+
+        The typed owner records route-lineage repair as a distinct control
+        revision.  Downstream callback validation must reason about the
+        original transition while still checking that the wrapper, witness,
+        route, and exact missing receipt are content-bound.
+        """
+
+        if not isinstance(raw, Mapping):
+            return None
+        value = dict(raw)
+        if value.get("operation") != (
+            _TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
+        ):
+            return value
+        source_operation = value.get("source_control_operation")
+        if source_operation != (
+            "database_post_merge_declared_outputs_"
+            "callback_integration_recovery"
+        ):
+            return value
+        witness = value.get("execution_route_lineage_recovery")
+        route = value.get("execution_route_binding")
+        seed = value.get("post_merge_completion_recovery_seed")
+        task_revision = getattr(task, "revision", None)
+        task_cid = str(getattr(task, "task_cid", "") or "")
+        task_alias = str(getattr(task, "task_alias", "") or "")
+        route_fields = set(_DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS)
+        witness_fields = {
+            "schema",
+            "operation",
+            "task_cid",
+            "task_alias",
+            "source_task_revision",
+            "missing_route_task_revision",
+            "recovered_task_revision",
+            "prior_receipt_cid",
+            "current_receipt_cid",
+            "route_binding_cid",
+            "route_policy_id",
+            "current_policy_id",
+            "current_policy_source_revision",
+            "plan_root_cid",
+            "repository_tree_id",
+            "post_commit_candidate_receipt_id",
+            "queue_revision_before",
+            "queue_revision_after",
+            "receipt_id",
+        }
+        if (
+            not isinstance(witness, Mapping)
+            or set(witness) != witness_fields
+            or not isinstance(route, Mapping)
+            or not isinstance(seed, Mapping)
+            or not route_fields.issubset(value)
+            or isinstance(task_revision, bool)
+            or not isinstance(task_revision, int)
+            or task_revision < 3
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "callback route-lineage recovery receipt is malformed"
+            )
+        witness_value = dict(witness)
+        witness_id = witness_value.pop("receipt_id", None)
+        missing = dict(value)
+        for field in {
+            "schema",
+            "source_control_operation",
+            "execution_route_lineage_recovery",
+            *route_fields,
+        }:
+            missing.pop(field, None)
+        missing["operation"] = source_operation
+        missing["control_expected_status"] = "quarantined"
+        missing["control_expected_revision"] = witness.get(
+            "source_task_revision"
+        )
+        if (
+            value.get("schema")
+            != _TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA
+            or witness.get("schema")
+            != _TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_SCHEMA
+            or witness.get("operation")
+            != _TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
+            or witness.get("task_cid") != task_cid
+            or witness.get("task_alias") != task_alias
+            or witness.get("source_task_revision") != task_revision - 2
+            or witness.get("missing_route_task_revision")
+            != task_revision - 1
+            or witness.get("recovered_task_revision") != task_revision
+            or value.get("control_expected_status") != "retrying"
+            or value.get("control_expected_revision") != task_revision - 1
+            or witness.get("queue_revision_before")
+            != witness.get("queue_revision_after")
+            or witness.get("route_policy_id") != route.get("policy_id")
+            or witness.get("plan_root_cid") != route.get("plan_root_cid")
+            or witness.get("repository_tree_id")
+            != route.get("repository_tree_id")
+            or value.get("execution_route_policy_id")
+            != route.get("policy_id")
+            or value.get("execution_route_origin_revision")
+            != route.get("task_revision")
+            or witness.get("route_binding_cid")
+            != content_identity({"task_execution_route_binding": dict(route)})
+            or witness.get("current_receipt_cid")
+            != content_identity({"post_commit_route_missing_receipt": missing})
+            or witness.get("post_commit_candidate_receipt_id")
+            != seed.get("seed_id")
+            or seed.get(
+                "recovery_control_revision",
+                seed.get("source_task_revision"),
+            )
+            != witness.get("source_task_revision")
+            or seed.get("terminal_reason")
+            != DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+            or witness_id
+            != content_identity(
+                {"typed_post_commit_route_recovery": witness_value}
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "callback route-lineage recovery witness is invalid"
+            )
+        return {
+            **missing,
+            **{
+                field: value[field]
+                for field in _DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS
+            },
+        }
+
     def _verified_post_merge_declared_output_recovery_state(
         self,
         attempt: DatabaseTaskAttempt,
@@ -92274,10 +92418,14 @@ class DatabaseImplementationDaemon:
                 "post-merge declared-output recovery projection is not retrying"
             )
         task_body = getattr(task, "body", None)
-        receipt = (
+        stored_receipt = (
             task_body.get("completion_receipt")
             if isinstance(task_body, Mapping)
             else None
+        )
+        receipt = self._normalized_post_merge_route_recovery_receipt(
+            stored_receipt,
+            task=task,
         )
         completion_seed_raw = (
             receipt.get("post_merge_completion_recovery_seed")
@@ -92387,6 +92535,16 @@ class DatabaseImplementationDaemon:
             isinstance(completion_seed, Mapping)
             and completion_seed.get("terminal_reason")
             == DATABASE_PROVIDER_CALLBACK_OUTCOME_UNKNOWN_REASON
+        )
+        callback_route_recovery_wrapped = bool(
+            isinstance(stored_receipt, Mapping)
+            and stored_receipt.get("operation")
+            == _TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
+            and stored_receipt.get("source_control_operation")
+            == (
+                "database_post_merge_declared_outputs_"
+                "callback_integration_recovery"
+            )
         )
         if callback_unknown_completion:
             expected_fields = expected_fields | {
@@ -92520,7 +92678,8 @@ class DatabaseImplementationDaemon:
                 if callback_unknown_completion
                 else "blocked"
             )
-            or receipt.get("control_expected_revision") != task_revision - 1
+            or receipt.get("control_expected_revision")
+            != task_revision - (2 if callback_route_recovery_wrapped else 1)
             or (
                 completion_seed is not None
                 and (
@@ -99323,10 +99482,19 @@ class DatabaseImplementationDaemon:
                     }
                 )
             elif post_merge_completion_seed is not None:
+                prior_recovery_operation = prior_status_receipt.get(
+                    "operation"
+                )
+                if prior_recovery_operation == (
+                    _TYPED_DATABASE_POST_COMMIT_ROUTE_RECOVERY_OPERATION
+                ):
+                    prior_recovery_operation = prior_status_receipt.get(
+                        "source_control_operation"
+                    )
                 if (
                     str(getattr(task, "status", "") or "").lower()
                     != "retrying"
-                    or prior_status_receipt.get("operation")
+                    or prior_recovery_operation
                     not in {
                         (
                             "database_post_merge_declared_outputs_"
@@ -116049,6 +116217,23 @@ class DatabaseImplementationDaemon:
                 "callback_reconciliation_evidence_id": evidence_id,
             }
         )
+        carried_route_fields = (
+            set(control_receipt) & _DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS
+        )
+        if not self._receipt_has_exact_optional_execution_route_lineage(
+            control_receipt,
+            base_fields=set(control_receipt) - carried_route_fields,
+            task=task,
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "post-merge recovery source carries no exact execution-route "
+                "lineage for its typed authority"
+            )
+        route_lineage = {
+            field: control_receipt[field]
+            for field in _DATABASE_EXECUTION_ROUTE_RECEIPT_FIELDS
+            if field in carried_route_fields
+        }
         transition_receipt = {
             "operation": (
                 "database_post_merge_declared_outputs_"
@@ -116091,6 +116276,7 @@ class DatabaseImplementationDaemon:
                 if completion_recovery_seed is not None
                 else {}
             ),
+            **route_lineage,
         }
 
         requires_post_merge_queue_admission = bool(

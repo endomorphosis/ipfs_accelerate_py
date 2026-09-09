@@ -3347,9 +3347,16 @@ def _post_commit_route_recovery_material(
         raise TypedStateOwnerAuthorizationError(
             "post-commit route recovery differs from the current route policy"
         )
+    source_control_operation = current.get("operation")
     if (
-        current.get("operation")
-        != "database_portal_post_commit_candidate_recovery"
+        source_control_operation
+        not in {
+            "database_portal_post_commit_candidate_recovery",
+            (
+                "database_post_merge_declared_outputs_"
+                "callback_integration_recovery"
+            ),
+        }
         or current.get("control_expected_status") != "quarantined"
         or not _strict_scalar_equal(
             current.get("control_expected_revision"), current_revision - 1
@@ -3394,13 +3401,36 @@ def _post_commit_route_recovery_material(
         raise TypedStateOwnerAuthorizationError(
             "post-commit route recovery attempt lineage changed"
         )
-    seed = current.get("post_commit_candidate_recovery_seed")
+    callback_integration_recovery = source_control_operation == (
+        "database_post_merge_declared_outputs_callback_integration_recovery"
+    )
+    seed = current.get(
+        "post_merge_completion_recovery_seed"
+        if callback_integration_recovery
+        else "post_commit_candidate_recovery_seed"
+    )
     extension = queue.get("extension")
     if not isinstance(seed, Mapping) or not isinstance(extension, Mapping):
         raise TypedStateOwnerAuthorizationError(
             "post-commit route recovery seed or cooldown is absent"
         )
     current_attempt_number = current.get("attempt_number")
+    seed_identity_field = (
+        "seed_id" if callback_integration_recovery else "receipt_id"
+    )
+    seed_identity = seed.get(seed_identity_field)
+    callback_seed_material = dict(seed)
+    callback_seed_id = (
+        callback_seed_material.pop("seed_id", None)
+        if callback_integration_recovery
+        else None
+    )
+    callback_seed_digest = (
+        "sha256:"
+        + hashlib.sha256(canonical_json_bytes(callback_seed_material)).hexdigest()
+        if callback_integration_recovery
+        else None
+    )
     if (
         type(current_attempt_number) is not int
         or current_attempt_number < 1
@@ -3417,8 +3447,33 @@ def _post_commit_route_recovery_material(
         or seed.get("attempt_number") != current_attempt_number
         or seed.get("task_cid") != task_cid
         or seed.get("task_alias") != task_alias
-        or type(seed.get("receipt_id")) is not str
-        or not seed["receipt_id"].strip()
+        or type(seed_identity) is not str
+        or not seed_identity.strip()
+        or (
+            callback_integration_recovery
+            and (
+                seed.get("schema")
+                not in {
+                    (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "database-post-merge-completion-recovery-seed@1"
+                    ),
+                    (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "database-post-merge-completion-recovery-seed@2"
+                    ),
+                }
+                or callback_seed_id != callback_seed_digest
+                or seed.get("qualification_kind") != "callback_integration"
+                or seed.get("terminal_reason")
+                != "provider_callback_outcome_unknown"
+                or seed.get(
+                    "recovery_control_revision",
+                    seed.get("source_task_revision"),
+                )
+                != current_revision - 1
+            )
+        )
     ):
         raise TypedStateOwnerAuthorizationError(
             "post-commit route recovery seed differs from the attempt"
@@ -3495,7 +3550,9 @@ def _post_commit_route_recovery_material(
         "current_policy_source_revision": current_policy_source_revision,
         "plan_root_cid": current_plan_root_cid,
         "repository_tree_id": current_repository_tree_id,
-        "post_commit_candidate_receipt_id": seed["receipt_id"],
+        # The field name is retained for schema compatibility.  For the
+        # callback-integration source it binds the exact completion seed CID.
+        "post_commit_candidate_receipt_id": seed_identity,
         "queue_revision_before": int(queue["revision"]),
         "queue_revision_after": new_queue_revision,
     }
@@ -9056,6 +9113,79 @@ class TypedStateOwnerGateway:
                     "body_json": expected_body_json,
                     "receipt": expected_receipt,
                 }
+            callback_integration_retry = bool(
+                str(command.parameters.get("status") or "")
+                .strip()
+                .lower()
+                == "retrying"
+                and isinstance(next_receipt, Mapping)
+                and next_receipt.get("operation")
+                == (
+                    "database_post_merge_declared_outputs_"
+                    "callback_integration_recovery"
+                )
+            )
+            if callback_integration_retry:
+                route_fields = {
+                    "execution_route_binding",
+                    "execution_route_policy_id",
+                    "execution_route_origin_revision",
+                }
+                if expected_control_receipt is None:
+                    raise TypedStateOwnerAuthorizationError(
+                        "callback retry requires the exact predecessor receipt"
+                    )
+                prior_route_fields = set(expected_control_receipt) & route_fields
+                next_route_fields = set(next_receipt) & route_fields
+                if (
+                    prior_route_fields not in (set(), route_fields)
+                    or next_route_fields != prior_route_fields
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "callback retry changed execution-route field presence"
+                    )
+                if prior_route_fields:
+                    try:
+                        prior_route = TaskExecutionRouteBinding.from_dict(
+                            expected_control_receipt.get(
+                                "execution_route_binding"
+                            )
+                        ).to_dict()
+                    except (
+                        TypeError,
+                        ValueError,
+                        TaskSourceIntegrityError,
+                    ) as exc:
+                        raise TypedStateOwnerAuthorizationError(
+                            "callback retry predecessor route is invalid"
+                        ) from exc
+                    task_cid = str(
+                        command.parameters.get("task_cid") or ""
+                    ).strip()
+                    if (
+                        prior_route.get("task_cid") != task_cid
+                        or expected_control_receipt.get(
+                            "execution_route_binding"
+                        )
+                        != prior_route
+                        or expected_control_receipt.get(
+                            "execution_route_policy_id"
+                        )
+                        != prior_route.get("policy_id")
+                        or expected_control_receipt.get(
+                            "execution_route_origin_revision"
+                        )
+                        != prior_route.get("task_revision")
+                        or next_receipt.get("execution_route_binding")
+                        != prior_route
+                        or next_receipt.get("execution_route_policy_id")
+                        != prior_route.get("policy_id")
+                        or next_receipt.get("execution_route_origin_revision")
+                        != prior_route.get("task_revision")
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "callback retry rotated its execution route"
+                        )
             typed_database_retrying = bool(
                 grant.client_id.startswith("database-implementation-daemon:")
                 and str(command.parameters.get("status") or "")

@@ -19444,6 +19444,10 @@ def _callback_integration_recovery_evidence(
 
 def _real_released_unknown_callback_quarantine(
     tmp_path: Path,
+    *,
+    task_source_configurator: (
+        Callable[[DatabaseImplementationDaemon, object], None] | None
+    ) = None,
 ) -> tuple[DatabaseImplementationDaemon, DatabaseTaskAttempt, list[str]]:
     """Create the exact BLOCKED/quarantined/released callback crash shape."""
 
@@ -19469,6 +19473,10 @@ def _real_released_unknown_callback_quarantine(
     )
     try:
         first.materialize_population(_population(1))
+        initial_task = first.task_source.get("task:cid:001")
+        assert initial_task is not None
+        if task_source_configurator is not None:
+            task_source_configurator(first, initial_task)
         source = first.claim_next()
         assert source is not None
         with pytest.raises(
@@ -19614,6 +19622,143 @@ def test_callback_integration_recovery_rearms_real_neutral_quarantine_once(
         unchanged = daemon.task_source.get(source.task_cid)
         assert unchanged is not None
         assert int(unchanged.revision) == expected_revision + 1
+        assert provider_calls == [source.attempt_id]
+    finally:
+        daemon.close()
+
+
+def test_callback_integration_recovery_preserves_exact_execution_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A callback rearm carries the sealed route without omission or rotation."""
+
+    route_binding: dict[str, object] = {}
+
+    def configure_route(
+        daemon: DatabaseImplementationDaemon,
+        task: object,
+    ) -> None:
+        route_binding.update(
+            {
+                "policy_id": "policy:callback-integration-route",
+                "task_revision": int(getattr(task, "revision")),
+                "task_cid": str(getattr(task, "task_cid")),
+                "task_alias": str(getattr(task, "task_alias")),
+            }
+        )
+
+        def bind_test_route(
+            _source: object,
+            current: object,
+        ) -> Mapping[str, object]:
+            body = getattr(current, "body", None)
+            receipt = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            if int(getattr(current, "revision", 0) or 0) != int(
+                route_binding["task_revision"]
+            ) and (
+                not isinstance(receipt, Mapping)
+                or any(
+                    receipt.get(field) != value
+                    for field, value in {
+                        "execution_route_binding": route_binding,
+                        "execution_route_policy_id": route_binding["policy_id"],
+                        "execution_route_origin_revision": route_binding[
+                            "task_revision"
+                        ],
+                    }.items()
+                )
+            ):
+                raise ValueError(
+                    "advanced task revision has no carried execution-route binding"
+                )
+            return dict(route_binding)
+
+        def validate_test_route(
+            _source: object,
+            value: Mapping[str, object],
+            *,
+            task: object,
+            allow_claim_revision: bool = False,
+        ) -> Mapping[str, object]:
+            if dict(value) != route_binding:
+                raise ValueError("callback recovery route rotated")
+            if int(getattr(task, "revision", 0) or 0) != int(
+                route_binding["task_revision"]
+            ):
+                if not allow_claim_revision:
+                    raise ValueError("advanced callback route was not admitted")
+                bind_test_route(_source, task)
+            return dict(route_binding)
+
+        monkeypatch.setattr(
+            type(daemon.task_source),
+            "execution_route_binding_for_task",
+            bind_test_route,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            type(daemon.task_source),
+            "validate_execution_route_binding",
+            validate_test_route,
+            raising=False,
+        )
+
+    daemon, source, provider_calls = (
+        _real_released_unknown_callback_quarantine(
+            tmp_path,
+            task_source_configurator=configure_route,
+        )
+    )
+    try:
+        evidence = _callback_integration_recovery_evidence(daemon, source)
+        monkeypatch.setattr(
+            daemon,
+            "_verified_post_merge_callback_integration_receipt",
+            lambda raw, **_kwargs: dict(raw),
+        )
+        quarantined = daemon.task_source.get(source.task_cid)
+        assert quarantined is not None and quarantined.status == "quarantined"
+        predecessor = quarantined.body["completion_receipt"]
+        expected_route = {
+            "execution_route_binding": dict(route_binding),
+            "execution_route_policy_id": route_binding["policy_id"],
+            "execution_route_origin_revision": route_binding["task_revision"],
+        }
+        assert {
+            field: predecessor[field] for field in expected_route
+        } == expected_route
+        original_cas = daemon.task_source.record_queue_backoff_and_cas_status
+        cas_calls: list[dict[str, object]] = []
+
+        def observe_cas(**kwargs: object) -> object:
+            cas_calls.append(dict(kwargs))
+            return original_cas(**kwargs)
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "record_queue_backoff_and_cas_status",
+            observe_cas,
+        )
+
+        recovered = daemon.recover_blocked_post_merge_declared_outputs(evidence)
+
+        assert recovered["recovered"] is True
+        assert recovered["changed"] is True
+        assert len(cas_calls) == 1
+        submitted = cas_calls[0]["receipt"]
+        assert isinstance(submitted, Mapping)
+        assert {field: submitted[field] for field in expected_route} == (
+            expected_route
+        )
+        retrying = daemon.task_source.get(source.task_cid)
+        assert retrying is not None and retrying.status == "retrying"
+        stored = retrying.body["completion_receipt"]
+        assert {field: stored[field] for field in expected_route} == expected_route
         assert provider_calls == [source.attempt_id]
     finally:
         daemon.close()
