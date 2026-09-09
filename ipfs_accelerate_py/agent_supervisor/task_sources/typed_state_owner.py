@@ -3389,7 +3389,6 @@ def _post_commit_route_recovery_material(
         "claim_id",
         "lease_id",
         "owner_session_id",
-        "attempt_number",
         "fencing_token",
         "fence_epoch",
     )
@@ -3397,6 +3396,19 @@ def _post_commit_route_recovery_material(
         type(current.get(name)) is not type(prior.get(name))
         or current.get(name) != prior.get(name)
         for name in identity_fields
+    ) or (
+        # The retired neutral-quarantine writer predated ``attempt_number``
+        # on the control receipt.  Its exact attempt is still bound by the
+        # unchanged claim/lease/fence tuple and is independently required to
+        # match both the CID-checked recovery seed and cooldown below.  Admit
+        # only an absent legacy member; a present conflicting value remains a
+        # hard lineage failure.
+        "attempt_number" in prior
+        and (
+            type(current.get("attempt_number"))
+            is not type(prior.get("attempt_number"))
+            or current.get("attempt_number") != prior.get("attempt_number")
+        )
     ):
         raise TypedStateOwnerAuthorizationError(
             "post-commit route recovery attempt lineage changed"
