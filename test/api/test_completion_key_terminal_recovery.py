@@ -76,6 +76,29 @@ def test_exact_terminal_rearms_only_retained_callback(tmp_path, monkeypatch, mut
             lambda raw, **kwargs: dict(raw),
         )
         before = daemon.task_source.get(source.task_cid)
+        if mutation == "none":
+            # Actual generic recovery selection must leave this terminal alone.
+            daemon._persist_task_retry_state = lambda *a, **k: pytest.fail(
+                "generic handshake retry"
+            )
+            daemon.reconcile_terminal_portal_failures()
+            assert daemon.task_source.get(source.task_cid).status == "blocked"
+            from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+                DatabasePortalBridgeError,
+                DatabasePortalExecutionBridge,
+            )
+
+            bridge = object.__new__(DatabasePortalExecutionBridge)
+            bridge.task_source = daemon.task_source
+            bridge.implementation_timeout = 1
+            bridge._record_for_attempt = lambda *args: before
+            bridge._execution_route_binding = lambda **kwargs: pytest.fail(
+                "provider dispatch setup reached"
+            )
+            with pytest.raises(
+                DatabasePortalBridgeError, match="requires exact source seed"
+            ):
+                bridge.run_provider(source)
         assert before.status == "blocked"
         assert not daemon._is_post_merge_declared_outputs_missing_terminal(
             source, before

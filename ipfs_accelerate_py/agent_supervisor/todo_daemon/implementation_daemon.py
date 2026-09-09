@@ -122558,7 +122558,6 @@ class DatabaseImplementationDaemon:
                 missing_completion_handshake = reason in {
                     DATABASE_PORTAL_COMPLETION_IMPLEMENTATION_COMMIT_MISSING_REASON,
                     DATABASE_PORTAL_COMPLETION_EVALUATED_BASELINE_MISSING_REASON,
-                    DATABASE_PORTAL_COMPLETION_SOURCE_KEY_MISMATCH_REASON,
                 }
                 pending_merge_claim_mismatch = (
                     self._canonical_portal_failure_reason(reason)

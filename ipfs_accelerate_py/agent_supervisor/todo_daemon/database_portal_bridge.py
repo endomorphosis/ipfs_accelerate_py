@@ -29169,11 +29169,52 @@ class DatabasePortalExecutionBridge:
             summaries=(),
         )
 
+    def _require_retained_completion_key_seed(self, *, attempt: Any, record: Any) -> None:
+        """Fence historic receiver failures before any ordinary provider setup.
+
+        This is a denial guard, not seed admission. The normal full seed
+        verifier still proves original queue/claim/source/target authority.
+        """
+        projection = getattr(self.task_source, "task_revision_history_projection", None)
+        if not callable(projection):
+            return
+        from ..task_sources.intent_repository import TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+        from ..proof.formal_verification_contracts import content_identity
+        history = projection(str(attempt.task_cid))
+        material = dict(history) if isinstance(history, Mapping) else {}
+        identity = material.pop("projection_cid", None)
+        if (material.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+                or material.get("task_cid") != str(attempt.task_cid)
+                or not isinstance(material.get("revisions"), list)
+                or identity != content_identity(material)):
+            raise DatabasePortalBridgeError("retained completion dispatch history is malformed")
+        sources = []
+        for row in material["revisions"]:
+            body = row.get("body") if isinstance(row, Mapping) else None
+            terminal = body.get("completion_receipt") if isinstance(body, Mapping) else None
+            if (isinstance(terminal, Mapping)
+                    and terminal.get("operation") == "database_portal_terminal_failure"
+                    and terminal.get("reason") == "Portal completion source canonical task key mismatches"):
+                sources.append(terminal)
+        if not sources:
+            return
+        body = getattr(record, "body", None)
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        seed = receipt.get("post_merge_completion_recovery_seed") if isinstance(receipt, Mapping) else None
+        if not (isinstance(seed, Mapping)
+                and seed.get("terminal_reason") == "Portal completion source canonical task key mismatches"
+                and seed.get("task_cid") == str(attempt.task_cid)
+                and any(all(seed.get(k) == terminal.get(k) for k in
+                    ("attempt_id", "claim_id", "lease_id", "owner_session_id", "attempt_number", "fencing_token", "fence_epoch"))
+                    for terminal in sources)):
+            raise DatabasePortalBridgeError("retained callback recovery requires exact source seed before dispatch")
+
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
         inflight_deadline = _monotonic_seconds() + self.implementation_timeout
         record = self._record_for_attempt(self.task_source, attempt)
+        self._require_retained_completion_key_seed(attempt=attempt, record=record)
         execution_route_binding = self._execution_route_binding(
             attempt=attempt,
             record=record,
