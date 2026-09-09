@@ -101547,6 +101547,11 @@ class DatabaseImplementationDaemon:
     ) -> bool:
         """Admit only the exact quarantined callback whose merge already landed."""
 
+        from .callback_terminal import is_expired_callback_quarantine_phase
+
+        expired_callback = is_expired_callback_quarantine_phase(
+            latest, self.phase_history(latest.attempt_id),
+        )
         body = getattr(task, "body", None)
         receipt = (
             body.get("completion_receipt")
@@ -101556,6 +101561,10 @@ class DatabaseImplementationDaemon:
         return bool(
             str(getattr(task, "status", "") or "").strip().lower()
             == "quarantined"
+            and (expired_callback or (
+                latest.status in {"blocked", "failed"}
+                and latest.committed_phase == ATTEMPT_PHASE_BLOCKED
+            ))
             and isinstance(receipt, Mapping)
             and receipt.get("operation")
             == "database_portal_neutral_failure_quarantine"
