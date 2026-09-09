@@ -3573,6 +3573,7 @@ class QuackStateClient:
         sidecar_evidence_id: str,
         now_ms: int,
         require_fresh_portal_revalidation: bool = False,
+        expected_released_cooldown: Mapping[str, Any] | None = None,
     ) -> CASResult:
         """Atomically admit one operator-sealed blocked retry.
 
@@ -3591,9 +3592,34 @@ class QuackStateClient:
             or not isinstance(expected_task_revision, int)
             or expected_task_revision < 1
         ):
-            raise QuackClientError(
-                "blocked retry recovery task revision is invalid"
+            raise QuackClientError("blocked retry recovery task revision is invalid")
+        prior_queue = dict(expected_released_cooldown or {})
+        if prior_queue:
+            if require_fresh_portal_revalidation is not True:
+                raise QuackClientError(
+                    "released cooldown recovery requires fresh Portal validation"
+                )
+            from .typed_state_owner import _validated_stored_retry_cooldown
+
+            validated_prior = _validated_stored_retry_cooldown(
+                prior_queue, task_cid=task
             )
+            if (
+                validated_prior["attempt"] >= terminal_receipt.get("attempt_number", 0)
+                or validated_prior["extension"]["expected_task_revision"]
+                >= expected_task_revision
+                or validated_prior["owner_session_id"]
+                != terminal_receipt.get("owner_session_id")
+                or validated_prior["fence_epoch"]
+                > terminal_receipt.get("fence_epoch", 0)
+                or validated_prior["fencing_token"]
+                > terminal_receipt.get("fencing_token", 0)
+            ):
+                raise QuackClientError(
+                    "blocked retry recovery prior cooldown is not an older released attempt"
+                )
+        expected_queue_revision = int(prior_queue["revision"]) if prior_queue else -1
+        expected_queue_attempt = int(prior_queue["attempt"]) if prior_queue else 0
         body = dict(task_body)
         prior = dict(terminal_receipt)
         if body.get("completion_receipt") != prior:
@@ -3602,20 +3628,16 @@ class QuackStateClient:
             )
         terminal_reason = prior.get("reason")
         if (
-            prior.get("operation")
-            != TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION
+            prior.get("operation") != TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION
             or type(terminal_reason) is not str
             or not terminal_reason.strip()
             or terminal_reason != terminal_reason.strip()
             or len(terminal_reason.encode("utf-8")) > 2_048
             or prior.get("retryable") is not False
             or prior.get("control_expected_status") != "in_progress"
-            or prior.get("control_expected_revision")
-            != expected_task_revision - 1
+            or prior.get("control_expected_revision") != expected_task_revision - 1
         ):
-            raise QuackClientError(
-                "blocked retry recovery terminal lineage is invalid"
-            )
+            raise QuackClientError("blocked retry recovery terminal lineage is invalid")
         normalized_references: dict[str, str] = {}
         for name, value in {
             "operator_handoff_receipt_id": operator_handoff_receipt_id,
@@ -3628,9 +3650,7 @@ class QuackStateClient:
                 or len(selected.encode("utf-8")) > 1_024
                 or any(marker in selected for marker in ("\x00", "\n", "\r"))
             ):
-                raise QuackClientError(
-                    f"blocked retry recovery {name} is invalid"
-                )
+                raise QuackClientError(f"blocked retry recovery {name} is invalid")
             normalized_references[name] = selected
         text_identity: dict[str, str] = {}
         for name in (
@@ -3647,17 +3667,13 @@ class QuackStateClient:
                 or len(value.encode("utf-8")) > 1_024
                 or any(marker in value for marker in ("\x00", "\n", "\r"))
             ):
-                raise QuackClientError(
-                    f"blocked retry recovery {name} is invalid"
-                )
+                raise QuackClientError(f"blocked retry recovery {name} is invalid")
             text_identity[name] = value
         integer_identity: dict[str, int] = {}
         for name in ("attempt_number", "fencing_token", "fence_epoch"):
             value = prior.get(name)
             if type(value) is not int or value < 1:
-                raise QuackClientError(
-                    f"blocked retry recovery {name} is invalid"
-                )
+                raise QuackClientError(f"blocked retry recovery {name} is invalid")
             integer_identity[name] = value
         attempt_number = integer_identity["attempt_number"]
         fresh_attempt_number = attempt_number + 1
@@ -3672,9 +3688,7 @@ class QuackStateClient:
             )
         execution_route = prior.get("execution_route_binding")
         if not isinstance(execution_route, Mapping):
-            raise QuackClientError(
-                "blocked retry recovery execution route is absent"
-            )
+            raise QuackClientError("blocked retry recovery execution route is absent")
         route = dict(execution_route)
         route_policy_id = route.get("policy_id")
         route_origin_revision = route.get("task_revision")
@@ -3685,8 +3699,7 @@ class QuackStateClient:
             or type(route_origin_revision) is not int
             or route_origin_revision < 1
             or prior.get("execution_route_policy_id") != route_policy_id
-            or prior.get("execution_route_origin_revision")
-            != route_origin_revision
+            or prior.get("execution_route_origin_revision") != route_origin_revision
         ):
             raise QuackClientError(
                 "blocked retry recovery execution route lineage is invalid"
@@ -3700,12 +3713,10 @@ class QuackStateClient:
                 "blocked retry recovery revalidation flag must be a bool"
             )
 
-        source_completion_receipt_id = "sha256:" + hashlib.sha256(
-            canonical_json_bytes(prior)
-        ).hexdigest()
-        route_binding_cid = content_identity(
-            {"task_execution_route_binding": route}
+        source_completion_receipt_id = (
+            "sha256:" + hashlib.sha256(canonical_json_bytes(prior)).hexdigest()
         )
+        route_binding_cid = content_identity({"task_execution_route_binding": route})
         exact_identity = {**text_identity, **integer_identity}
         reason = TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON
         recovery_receipt = {
@@ -3714,9 +3725,7 @@ class QuackStateClient:
             **exact_identity,
             "terminal_operation": prior["operation"],
             "terminal_reason": terminal_reason,
-            "source_completion_receipt_id": (
-                source_completion_receipt_id
-            ),
+            "source_completion_receipt_id": (source_completion_receipt_id),
             **normalized_references,
             "recovered_from_revision": expected_task_revision,
             "max_task_attempts_before": max_task_attempts_before,
@@ -3739,22 +3748,18 @@ class QuackStateClient:
             revalidation_requirement = (
                 typed_database_blocked_retry_revalidation_requirement(
                     task_cid=task,
-                    source_completion_receipt_id=(
-                        source_completion_receipt_id
-                    ),
+                    source_completion_receipt_id=(source_completion_receipt_id),
                     operator_handoff_receipt_id=normalized_references[
                         "operator_handoff_receipt_id"
                     ],
-                    sidecar_evidence_id=normalized_references[
-                        "sidecar_evidence_id"
-                    ],
+                    sidecar_evidence_id=normalized_references["sidecar_evidence_id"],
                     recovered_from_revision=expected_task_revision,
                     fresh_attempt_number=fresh_attempt_number,
                 )
             )
-            body[
-                TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
-            ] = revalidation_requirement
+            body[TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD] = (
+                revalidation_requirement
+            )
         body_json = canonical_json_bytes(body).decode("utf-8")
         extension = {
             "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
@@ -3767,8 +3772,8 @@ class QuackStateClient:
             "selection_penalty": 0,
             "consecutive_failures": attempt_number,
             "reason": reason,
-            "expected_queue_revision": -1,
-            "expected_queue_attempt": 0,
+            "expected_queue_revision": expected_queue_revision,
+            "expected_queue_attempt": expected_queue_attempt,
         }
         extension_json = canonical_json_bytes(extension).decode("utf-8")
         resolution_cid = content_identity(
@@ -3784,9 +3789,7 @@ class QuackStateClient:
             "expected_task_status": "blocked",
             "terminal_operation": prior["operation"],
             "terminal_reason": terminal_reason,
-            "source_completion_receipt_id": (
-                source_completion_receipt_id
-            ),
+            "source_completion_receipt_id": (source_completion_receipt_id),
             **normalized_references,
             "execution_route_binding_cid": route_binding_cid,
             "execution_route_policy_id": route_policy_id,
@@ -3807,9 +3810,11 @@ class QuackStateClient:
                 else {}
             ),
         }
-        command_digest = hashlib.sha256(
-            canonical_json_bytes(parameters)
-        ).hexdigest()
+        if prior_queue:
+            parameters["expected_released_cooldown_json"] = canonical_json_bytes(
+                prior_queue
+            ).decode("utf-8")
+        command_digest = hashlib.sha256(canonical_json_bytes(parameters)).hexdigest()
         session = self._require_session()
         live = self.load_generation()
         command = StateCommand(
@@ -3820,9 +3825,7 @@ class QuackStateClient:
             expected_generation=live.generation,
             expected_revision=live.revision,
             fence_epoch=live.fence_epoch,
-            idempotency_key=(
-                f"executor-blocked-retry-recovery:{command_digest}"
-            ),
+            idempotency_key=(f"executor-blocked-retry-recovery:{command_digest}"),
             authority_class=StateAuthorityClass.AUTHORITATIVE,
             parameters=parameters,
         )
@@ -3833,42 +3836,56 @@ class QuackStateClient:
             generation: StoreGeneration,
         ) -> Mapping[str, Any]:
             values = dict(active.parameters)
-            observed = _fetch_all(
-                txn.execute_named_operation(
-                    "executor_retry_cooldown_by_task",
-                    (values["task_cid"],),
-                )
+            observed_result = txn.execute_named_operation(
+                "executor_retry_cooldown_by_task", (values["task_cid"],)
             )
-            if observed:
+            observed_rows = _fetch_all(observed_result)
+            observed = (
+                _row_mapping(_result_columns(observed_result), observed_rows[0])
+                if len(observed_rows) == 1
+                else {}
+            )
+            if len(observed_rows) > 1 or observed != prior_queue:
                 raise OptimisticConflictError(
-                    "blocked retry recovery cooldown absence became stale"
+                    "blocked retry recovery expected cooldown became stale"
                 )
+            new_queue_revision = expected_queue_revision + 1 if prior_queue else 1
+            common = (
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                new_queue_revision,
+                values["extension_schema"],
+                values["extension_json"],
+            )
             queue_result = txn.execute_named_operation(
-                "executor_insert_retry_cooldown",
+                "executor_update_retry_cooldown"
+                if prior_queue
+                else "executor_insert_retry_cooldown",
                 (
+                    *common,
                     values["task_cid"],
-                    values["claim_id"],
-                    values["resolution_cid"],
-                    values["owner_session_id"],
-                    values["fence_epoch"],
-                    values["fencing_token"],
-                    0,
+                    expected_queue_revision,
+                    expected_queue_attempt,
                     values["attempt_number"],
-                    "released",
-                    values["started_at_ms"],
-                    values["reason"],
-                    values["retry_not_before_ms"],
-                    values["owner_session_id"],
-                    values["fence_epoch"],
-                    1,
-                    values["extension_schema"],
-                    values["extension_json"],
-                    -1,
-                ),
+                    TYPED_RETRY_COOLDOWN_SCHEMA,
+                )
+                if prior_queue
+                else (values["task_cid"], *common, -1),
             )
             if _fetch_one(queue_result) is None:
                 raise OptimisticConflictError(
-                    "blocked retry recovery cooldown absence CAS failed"
+                    "blocked retry recovery cooldown CAS failed"
                 )
             expected = int(values["expected_task_revision"])
             recorded_at = self._clock()
@@ -3884,9 +3901,7 @@ class QuackStateClient:
                 ),
             )
             if _fetch_one(task_result) is None:
-                raise OptimisticConflictError(
-                    "blocked retry recovery task CAS failed"
-                )
+                raise OptimisticConflictError("blocked retry recovery task CAS failed")
             txn.execute_named_operation(
                 "executor_insert_task_revision",
                 (
@@ -3905,28 +3920,16 @@ class QuackStateClient:
                 "attempt_number": values["attempt_number"],
                 "fresh_attempt_number": values["fresh_attempt_number"],
                 "task_revision": expected + 1,
-                "queue_revision": 1,
+                "queue_revision": new_queue_revision,
                 "retry_not_before_ms": values["retry_not_before_ms"],
-                "source_completion_receipt_id": values[
-                    "source_completion_receipt_id"
-                ],
-                "operator_handoff_receipt_id": values[
-                    "operator_handoff_receipt_id"
-                ],
+                "source_completion_receipt_id": values["source_completion_receipt_id"],
+                "operator_handoff_receipt_id": values["operator_handoff_receipt_id"],
                 "sidecar_evidence_id": values["sidecar_evidence_id"],
-                "max_task_attempts_before": values[
-                    "max_task_attempts_before"
-                ],
-                "max_task_attempts_after": values[
-                    "max_task_attempts_after"
-                ],
+                "max_task_attempts_before": values["max_task_attempts_before"],
+                "max_task_attempts_after": values["max_task_attempts_after"],
                 "attempt_refunded": False,
-                "execution_route_binding_cid": values[
-                    "execution_route_binding_cid"
-                ],
-                "execution_route_policy_id": values[
-                    "execution_route_policy_id"
-                ],
+                "execution_route_binding_cid": values["execution_route_binding_cid"],
+                "execution_route_policy_id": values["execution_route_policy_id"],
                 "execution_route_origin_revision": values[
                     "execution_route_origin_revision"
                 ],
@@ -3943,7 +3946,6 @@ class QuackStateClient:
             }
 
         return self.submit_command(command, apply=apply_recovery)
-
 
     def record_task_retry_cooldown(
         self,

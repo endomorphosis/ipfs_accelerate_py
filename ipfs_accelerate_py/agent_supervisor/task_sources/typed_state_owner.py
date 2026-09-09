@@ -5491,11 +5491,8 @@ def _validated_blocked_retry_recovery_parameters(
         "status",
         "body_json",
     }
-    optional = {"require_fresh_portal_revalidation"}
-    if frozenset(parameters) not in {
-        frozenset(required),
-        frozenset(required | optional),
-    }:
+    optional = {"require_fresh_portal_revalidation", "expected_released_cooldown_json"}
+    if not required <= set(parameters) or not set(parameters) <= required | optional:
         raise TypedStateOwnerAuthorizationError(
             "blocked retry recovery command differs from its closed schema"
         )
@@ -5507,23 +5504,72 @@ def _validated_blocked_retry_recovery_parameters(
             "blocked retry recovery revalidation requirement is invalid"
         )
     if (
-        parameters.get("schema")
-        != TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA
-        or parameters.get("operation")
-        != TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND
+        parameters.get("schema") != TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA
+        or parameters.get("operation") != TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND
         or parameters.get("expected_task_status") != "blocked"
         or parameters.get("status") != "retrying"
         or parameters.get("terminal_operation")
         != TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION
         or parameters.get("delay_ms") != 0
         or parameters.get("selection_penalty") != 0
-        or parameters.get("reason")
-        != TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON
-        or parameters.get("expected_queue_revision") != -1
-        or parameters.get("expected_queue_attempt") != 0
+        or parameters.get("reason") != TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_REASON
     ):
         raise TypedStateOwnerAuthorizationError(
             "blocked retry recovery is outside its closed transition"
+        )
+    prior_json = parameters.get("expected_released_cooldown_json")
+    prior_queue = None
+    if prior_json is not None:
+        if parameters.get("require_fresh_portal_revalidation") is not True:
+            raise TypedStateOwnerAuthorizationError(
+                "released cooldown recovery requires fresh Portal validation"
+            )
+        if type(prior_json) is not str or len(prior_json.encode("utf-8")) > 65536:
+            raise TypedStateOwnerAuthorizationError(
+                "blocked retry recovery expected cooldown exceeds its bound"
+            )
+        try:
+            prior_queue = json.loads(prior_json)
+        except ValueError as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "blocked retry recovery expected cooldown JSON is malformed"
+            ) from exc
+        if (
+            not isinstance(prior_queue, dict)
+            or canonical_json_bytes(prior_queue).decode("utf-8") != prior_json
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "blocked retry recovery expected cooldown JSON is not canonical"
+            )
+    if prior_queue is not None:
+        if not isinstance(prior_queue, Mapping) or set(prior_queue) != set(
+            _RETRY_COOLDOWN_ROW_FIELDS
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "blocked retry recovery expected cooldown is malformed"
+            )
+        validated_prior = _validated_stored_retry_cooldown(
+            prior_queue, task_cid=parameters["task_cid"]
+        )
+        if (
+            validated_prior["revision"] != parameters.get("expected_queue_revision")
+            or validated_prior["attempt"] != parameters.get("expected_queue_attempt")
+            or validated_prior["attempt"] >= parameters.get("attempt_number", 0)
+            or validated_prior["extension"]["expected_task_revision"]
+            >= parameters.get("expected_task_revision", 0)
+            or validated_prior["owner_session_id"] != parameters.get("owner_session_id")
+            or validated_prior["fence_epoch"] > parameters.get("fence_epoch", 0)
+            or validated_prior["fencing_token"] > parameters.get("fencing_token", 0)
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "blocked retry recovery expected cooldown is not an older released attempt"
+            )
+    elif (
+        parameters.get("expected_queue_revision") != -1
+        or parameters.get("expected_queue_attempt") != 0
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "blocked retry recovery requires exact cooldown absence"
         )
     body_json = parameters.get("body_json")
     if (
@@ -6718,6 +6764,7 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "executor_cas_task_status_receipt",
                 "executor_insert_task_revision",
                 "executor_insert_retry_cooldown",
+                "executor_update_retry_cooldown",
             }
         ),
         "task.validation.record.passed": frozenset(
@@ -6851,10 +6898,11 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
                     TYPED_DATABASE_PROTECTED_QUALIFICATION_COMPLETION_COMMAND
                 ]
             ),
-            TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND: (
-                _COMMAND_MUTATION_CATALOG[
-                    TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND
-                ]
+            TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND: frozenset(
+                {
+                    "executor_cas_task_status_receipt",
+                    "executor_insert_task_revision",
+                }
             ),
             "task.validation.record.passed": _COMMAND_MUTATION_CATALOG[
                 "task.validation.record.passed"
@@ -9785,9 +9833,7 @@ class TypedStateOwnerGateway:
                 "material": material,
             }
         if operation == TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND:
-            recovery = _validated_blocked_retry_recovery_parameters(
-                command.parameters
-            )
+            recovery = _validated_blocked_retry_recovery_parameters(command.parameters)
             values = dict(recovery["cooldown_parameters"])
             task_rows = self._connection.execute(
                 """
@@ -9842,30 +9888,27 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "blocked retry recovery terminal receipt has no exact route"
                 ) from exc
-            source_completion_receipt_id = "sha256:" + hashlib.sha256(
-                canonical_json_bytes(dict(prior_receipt))
-            ).hexdigest()
+            source_completion_receipt_id = (
+                "sha256:"
+                + hashlib.sha256(canonical_json_bytes(dict(prior_receipt))).hexdigest()
+            )
             route_binding_cid = content_identity(
                 {"task_execution_route_binding": execution_route}
             )
             if (
                 prior_receipt.get("operation")
                 != TYPED_DATABASE_BLOCKED_RETRY_TERMINAL_OPERATION
-                or prior_receipt.get("reason")
-                != recovery["terminal_reason"]
+                or prior_receipt.get("reason") != recovery["terminal_reason"]
                 or prior_receipt.get("retryable") is not False
                 or any(
-                    not _strict_scalar_equal(
-                        prior_identity.get(name), expected
-                    )
+                    not _strict_scalar_equal(prior_identity.get(name), expected)
                     for name, expected in exact_identity.items()
                 )
                 or not _strict_scalar_equal(
                     prior_receipt.get("control_expected_revision"),
                     values["expected_task_revision"] - 1,
                 )
-                or prior_receipt.get("control_expected_status")
-                != "in_progress"
+                or prior_receipt.get("control_expected_status") != "in_progress"
                 or execution_route["task_cid"] != values["task_cid"]
                 or prior_receipt.get("execution_route_policy_id")
                 != execution_route["policy_id"]
@@ -9875,10 +9918,8 @@ class TypedStateOwnerGateway:
                 )
                 or recovery["source_completion_receipt_id"]
                 != source_completion_receipt_id
-                or recovery["execution_route_binding_cid"]
-                != route_binding_cid
-                or recovery["execution_route_policy_id"]
-                != execution_route["policy_id"]
+                or recovery["execution_route_binding_cid"] != route_binding_cid
+                or recovery["execution_route_policy_id"] != execution_route["policy_id"]
                 or not _strict_scalar_equal(
                     recovery["execution_route_origin_revision"],
                     execution_route["task_revision"],
@@ -9888,12 +9929,29 @@ class TypedStateOwnerGateway:
                     "blocked retry recovery differs from terminal authority"
                 )
             queue_rows = self._connection.execute(
-                "SELECT task_cid FROM leases WHERE task_cid = ? LIMIT 2",
+                "SELECT "
+                + ", ".join(_RETRY_COOLDOWN_ROW_FIELDS)
+                + " FROM leases WHERE task_cid = ? LIMIT 2",
                 [values["task_cid"]],
             ).fetchall()
-            if queue_rows:
+            prior_queue = json.loads(
+                recovery.get("expected_released_cooldown_json") or "{}"
+            )
+            validated_queue = (
+                _validated_stored_retry_cooldown(
+                    queue_rows[0], task_cid=values["task_cid"]
+                )
+                if len(queue_rows) == 1
+                else {}
+            )
+            observed_queue = (
+                {name: validated_queue[name] for name in _RETRY_COOLDOWN_ROW_FIELDS}
+                if validated_queue
+                else {}
+            )
+            if len(queue_rows) > 1 or observed_queue != prior_queue:
                 raise TypedStateOwnerAuthorizationError(
-                    "blocked retry recovery requires exact cooldown absence"
+                    "blocked retry recovery expected cooldown changed"
                 )
             recovery_receipt = {
                 "schema": TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_SCHEMA,
@@ -9901,31 +9959,19 @@ class TypedStateOwnerGateway:
                 **exact_identity,
                 "terminal_operation": recovery["terminal_operation"],
                 "terminal_reason": recovery["terminal_reason"],
-                "source_completion_receipt_id": (
-                    source_completion_receipt_id
-                ),
-                "operator_handoff_receipt_id": recovery[
-                    "operator_handoff_receipt_id"
-                ],
+                "source_completion_receipt_id": (source_completion_receipt_id),
+                "operator_handoff_receipt_id": recovery["operator_handoff_receipt_id"],
                 "sidecar_evidence_id": recovery["sidecar_evidence_id"],
                 "recovered_from_revision": values["expected_task_revision"],
-                "max_task_attempts_before": recovery[
-                    "max_task_attempts_before"
-                ],
-                "max_task_attempts_after": recovery[
-                    "max_task_attempts_after"
-                ],
+                "max_task_attempts_before": recovery["max_task_attempts_before"],
+                "max_task_attempts_after": recovery["max_task_attempts_after"],
                 "attempt_refunded": False,
-                "fresh_attempt_number": recovery[
-                    "fresh_attempt_number"
-                ],
+                "fresh_attempt_number": recovery["fresh_attempt_number"],
                 "queue_reason": values["reason"],
                 "backoff_ms": 0,
                 "retry_not_before_ms": values["retry_not_before_ms"],
                 "control_expected_status": "blocked",
-                "control_expected_revision": values[
-                    "expected_task_revision"
-                ],
+                "control_expected_revision": values["expected_task_revision"],
                 "execution_route_binding": execution_route,
                 "execution_route_binding_cid": route_binding_cid,
                 "execution_route_policy_id": execution_route["policy_id"],
@@ -9940,31 +9986,22 @@ class TypedStateOwnerGateway:
                 revalidation_requirement = (
                     typed_database_blocked_retry_revalidation_requirement(
                         task_cid=values["task_cid"],
-                        source_completion_receipt_id=(
-                            source_completion_receipt_id
-                        ),
+                        source_completion_receipt_id=(source_completion_receipt_id),
                         operator_handoff_receipt_id=recovery[
                             "operator_handoff_receipt_id"
                         ],
                         sidecar_evidence_id=recovery["sidecar_evidence_id"],
-                        recovered_from_revision=values[
-                            "expected_task_revision"
-                        ],
-                        fresh_attempt_number=recovery[
-                            "fresh_attempt_number"
-                        ],
+                        recovered_from_revision=values["expected_task_revision"],
+                        fresh_attempt_number=recovery["fresh_attempt_number"],
                     )
                 )
-                expected_body[
-                    TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD
-                ] = revalidation_requirement
-            expected_body_json = canonical_json_bytes(expected_body).decode(
-                "utf-8"
-            )
+                expected_body[TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD] = (
+                    revalidation_requirement
+                )
+            expected_body_json = canonical_json_bytes(expected_body).decode("utf-8")
             if (
                 recovery["body"] != expected_body
-                or command.parameters.get("body_json")
-                != expected_body_json
+                or command.parameters.get("body_json") != expected_body_json
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "blocked retry recovery receipt differs from owner-derived authority"
@@ -9976,9 +10013,7 @@ class TypedStateOwnerGateway:
                 "body_json": expected_body_json,
                 "cooldown_parameters": values,
                 "recovery_receipt": recovery_receipt,
-                "source_completion_receipt_id": (
-                    source_completion_receipt_id
-                ),
+                "source_completion_receipt_id": (source_completion_receipt_id),
                 **(
                     {
                         "fresh_portal_revalidation_requirement_id": (
@@ -13661,8 +13696,24 @@ class TypedStateOwnerGateway:
         }:
             values = dict(authority["cooldown_parameters"])
             expected_revision = int(authority["expected_revision"])
-            cooldown_mutation = one("executor_insert_retry_cooldown")
-            if by_name.get("executor_update_retry_cooldown"):
+            prior_queue = json.loads(
+                command.parameters.get("expected_released_cooldown_json") or "{}"
+            )
+            replacing = (
+                bool(prior_queue)
+                and operation == TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND
+            )
+            queue_revision = int(prior_queue["revision"]) + 1 if replacing else 1
+            cooldown_mutation = one(
+                "executor_update_retry_cooldown"
+                if replacing
+                else "executor_insert_retry_cooldown"
+            )
+            if by_name.get(
+                "executor_insert_retry_cooldown"
+                if replacing
+                else "executor_update_retry_cooldown"
+            ):
                 raise TypedStateOwnerAuthorizationError(
                     "atomic retry recovery cannot replace a cooldown row"
                 )
@@ -13699,15 +13750,22 @@ class TypedStateOwnerGateway:
                     "state": "released",
                     "started_at_ms": values["started_at_ms"],
                     "reason": values["reason"],
-                    "retry_not_before_ms": values[
-                        "retry_not_before_ms"
-                    ],
+                    "retry_not_before_ms": values["retry_not_before_ms"],
                     "owner_session_id": values["owner_session_id"],
                     "fence_epoch": values["fence_epoch"],
-                    "new_queue_revision": 1,
+                    "new_queue_revision": queue_revision,
                     "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
                     "extension_json": values["extension_json"],
-                    "expected_queue_revision_for_insert": -1,
+                    **(
+                        {
+                            "expected_queue_revision": prior_queue["revision"],
+                            "expected_queue_attempt": prior_queue["attempt"],
+                            "new_attempt_guard": values["attempt_number"],
+                            "expected_existing_extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+                        }
+                        if replacing
+                        else {"expected_queue_revision_for_insert": -1}
+                    ),
                 },
             )
             task_rows = self._connection.execute(
@@ -13756,15 +13814,12 @@ class TypedStateOwnerGateway:
                 values["retry_not_before_ms"],
                 values["owner_session_id"],
                 values["fence_epoch"],
-                1,
+                queue_revision,
                 TYPED_RETRY_COOLDOWN_SCHEMA,
                 values["extension_json"],
             )
             observed_queue = (
-                tuple(
-                    queue_rows[0][index]
-                    for index in range(len(expected_queue))
-                )
+                tuple(queue_rows[0][index] for index in range(len(expected_queue)))
                 if len(queue_rows) == 1
                 else ()
             )

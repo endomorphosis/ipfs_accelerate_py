@@ -9142,3 +9142,308 @@ def test_typed_quack_claim_verification_r19_rearms_and_admits_r27_successor(
             server.revoke_typed_client_grant(grant.grant_id)
         if owner_running:
             server.stop()
+
+
+@pytest.mark.parametrize(
+    "tamper", ["", "active", "foreign", "stale", "altered_receipt", "newer_attempt"]
+)
+def test_operator_blocked_retry_replaces_only_exact_older_released_cooldown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    require_fresh_portal_revalidation = True
+    database = tmp_path / "typed-operator-blocked-retry.duckdb"
+    task_cid = "task:typed-operator-blocked-retry"
+    task_alias = "CASF-TYPED-OPERATOR-BLOCKED-RETRY"
+    lane_id = "database-implementation-daemon:typed-operator-retry"
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-operator-blocked-retry",
+            "plan_root_cid": "plan:typed-operator-blocked-retry",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-operator-blocked-retry",
+                    "goal_alias": "CASF-G-TYPED-OPERATOR-BLOCKED-RETRY",
+                    "title": "Typed operator blocked retry",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": task_cid,
+                    "task_id": task_alias,
+                    "goal_cid": "goal:typed-operator-blocked-retry",
+                    "status": "ready",
+                }
+            ],
+        }
+    )
+    original = source.get(task_cid)
+    assert original is not None and original.revision == 1
+    route_policy = TaskExecutionRoutePolicy.seal(
+        snapshot=source.snapshot(),
+        tasks=(original,),
+        execution_modes={task_alias: GROK_CODEX_EXECUTION_MODE},
+    )
+    route = route_policy.binding_for_task(original).to_dict()
+    attempt_identity = {
+        "attempt_id": "attempt:typed-operator-blocked-retry:1",
+        "claim_id": "claim:typed-operator-blocked-retry:1",
+        "lease_id": "lease:typed-operator-blocked-retry:1",
+        "owner_session_id": lane_id,
+        "attempt_number": 2,
+        "fencing_token": 2,
+        "fence_epoch": 2,
+    }
+    reservation = {
+        "operation": "test_claim_pending",
+        **attempt_identity,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    assert source.compare_and_set_status(
+        original,
+        1,
+        "pending",
+        reservation,
+    ).changed
+    reserved = source.get(task_cid)
+    assert reserved is not None and reserved.status == "pending"
+    assert reserved.revision == 2
+    admission = {
+        "operation": "database_attempt_admitted",
+        "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+        **attempt_identity,
+        "admitted_from_revision": 2,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    assert source.compare_and_set_status(
+        reserved,
+        2,
+        "in_progress",
+        admission,
+    ).changed
+    admitted = source.get(task_cid)
+    assert admitted is not None and admitted.revision == 3
+    terminal = {
+        "operation": "database_portal_terminal_failure",
+        "reason": "portal_provider_failed",
+        "retryable": False,
+        **attempt_identity,
+        "control_expected_status": "in_progress",
+        "control_expected_revision": 3,
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": route["task_revision"],
+    }
+    assert source.compare_and_set_status(
+        admitted,
+        3,
+        "blocked",
+        terminal,
+    ).changed
+    blocked = source.get(task_cid)
+    assert blocked is not None
+    assert blocked.status == "blocked"
+    assert blocked.revision == 4
+    blocked_body = dict(blocked.body)
+    source.close()
+
+    from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+        content_identity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        _RETRY_COOLDOWN_ROW_FIELDS,
+    )
+
+    extension = {
+        "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+        "task_cid": task_cid,
+        "expected_task_revision": 1,
+        "attempt_id": "attempt:old",
+        "attempt_number": 1,
+        "claim_id": "claim:old",
+        "lease_id": "lease:old",
+        "owner_session_id": lane_id,
+        "fence_epoch": 1,
+        "fencing_token": 1,
+        "delay_ms": 0,
+        "started_at_ms": 1000,
+        "retry_not_before_ms": 1000,
+        "selection_penalty": 0,
+        "consecutive_failures": 1,
+        "reason": "older_retry",
+        "expected_queue_revision": -1,
+        "expected_queue_attempt": 0,
+    }
+    prior = dict(
+        zip(
+            _RETRY_COOLDOWN_ROW_FIELDS,
+            (
+                task_cid,
+                "claim:old",
+                content_identity(
+                    {"typed_retry_cooldown": extension, "started_at_ms": 1000}
+                ),
+                lane_id,
+                1,
+                1,
+                0,
+                1,
+                "released",
+                1000,
+                "older_retry",
+                1000,
+                lane_id,
+                1,
+                1,
+                TYPED_RETRY_COOLDOWN_SCHEMA,
+                canonical_json_bytes(extension).decode(),
+            ),
+        )
+    )
+    connection = open_duckdb_connection(database)
+    try:
+        connection.execute(
+            "INSERT INTO leases ("
+            + ",".join(_RETRY_COOLDOWN_ROW_FIELDS)
+            + ") VALUES ("
+            + ",".join("?" for _ in prior)
+            + ")",
+            list(prior.values()),
+        )
+    finally:
+        connection.close()
+    if tamper == "active":
+        prior["state"] = "claimed"
+    elif tamper == "foreign":
+        prior["owner_session_id"] = "foreign"
+    elif tamper == "stale":
+        prior["revision"] = 2
+    elif tamper == "altered_receipt":
+        prior["extension_json"] = "{}"
+    elif tamper == "newer_attempt":
+        prior["attempt"] = 3
+    operator_handoff_receipt_id = "sha256:" + "a" * 64
+    sidecar_evidence_id = "sha256:" + "b" * 64
+    fixed_now_ms = 2_000
+    operator = _operator()
+    assert TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND not in (
+        operator.EXECUTOR_OWNER_COMMAND_OPERATIONS
+    )
+    assert not hasattr(TypedDatabaseTaskSource, "recover_blocked_task_retry")
+    recovery_operations = (
+        "whoami_metadata",
+        "load_store_generation",
+        "select_task_by_cid",
+        "executor_retry_cooldown_by_task",
+        "executor_insert_retry_cooldown",
+        "executor_update_retry_cooldown",
+        "executor_cas_task_status_receipt",
+        "executor_insert_task_revision",
+        "txn_load_generation",
+        "txn_lookup_idempotency",
+        "txn_advance_store_revision",
+        "txn_record_idempotency",
+    )
+
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-operator-retry-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-operator-blocked-retry-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+    )
+    identity = server.start()
+
+    def attach_client(
+        *,
+        command_operations: tuple[str, ...],
+        identity_value: Any = identity,
+        owner: Any = server,
+    ) -> tuple[QuackStateClient, Any]:
+        token, grant = owner.issue_typed_client_grant_record(
+            client_id="pcsm-bootstrap:blocked-retry",
+            process_birth_id=identity_value.process_birth_id,
+            allowed_operations=recovery_operations,
+            allowed_command_operations=command_operations,
+            entity_scopes={"task_cid": task_cid},
+            peer_pid=os.getpid(),
+        )
+        monkeypatch.setenv(
+            TYPED_STATE_OWNER_SOCKET_ENV,
+            str(owner.typed_command_socket_path()),
+        )
+        monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+        client = QuackStateClient(
+            owner_id="pcsm-bootstrap:blocked-retry",
+            store_id=identity_value.store_id,
+            process_birth_id=identity_value.process_birth_id,
+        )
+        client.attach(
+            identity_value.listen_uri,
+            server_id=identity_value.server_id,
+        )
+        return client, grant
+
+    recovery_arguments = {
+        "task_cid": task_cid,
+        "expected_task_revision": 4,
+        "task_body": blocked_body,
+        "terminal_receipt": terminal,
+        "max_task_attempts_before": 2,
+        "max_task_attempts_after": 3,
+        "operator_handoff_receipt_id": operator_handoff_receipt_id,
+        "sidecar_evidence_id": sidecar_evidence_id,
+        "now_ms": fixed_now_ms,
+        **(
+            {"require_fresh_portal_revalidation": True}
+            if require_fresh_portal_revalidation
+            else {}
+        ),
+    }
+    recovery_arguments["expected_released_cooldown"] = prior
+    client, grant = attach_client(
+        command_operations=(TYPED_DATABASE_BLOCKED_RETRY_RECOVERY_COMMAND,)
+    )
+    try:
+        before = client.load_generation()
+        if tamper:
+            with pytest.raises(
+                (QuackClientError, TypedStateOwnerAuthorizationError, TransactionError)
+            ):
+                client.recover_blocked_task_retry(**recovery_arguments)
+            assert client.load_generation().revision == before.revision
+            assert (
+                client.execute("select_task_by_cid", {"task_cid": task_cid})[0][
+                    "status"
+                ]
+                == "blocked"
+            )
+            return
+        result = client.recover_blocked_task_retry(**recovery_arguments)
+        assert result.accepted and result.changed
+        assert result.result["queue_revision"] == 2
+        assert result.result["fresh_attempt_number"] == 3
+        current = client.execute("select_task_by_cid", {"task_cid": task_cid})[0]
+        assert current["status"] == "retrying" and current["revision"] == 5
+        current_body = json.loads(current["body_json"])
+        assert current_body[TYPED_DATABASE_BLOCKED_RETRY_REVALIDATION_FIELD]
+        queue = client.execute(
+            "executor_retry_cooldown_by_task", {"task_cid": task_cid}
+        )[0]
+        assert queue["revision"] == 2 and queue["attempt"] == 2
+        replay = client.recover_blocked_task_retry(**recovery_arguments)
+        assert replay.accepted and not replay.changed
+        assert client.load_generation().revision == before.revision + 1
+    finally:
+        client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
