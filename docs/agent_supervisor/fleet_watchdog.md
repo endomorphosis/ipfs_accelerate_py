@@ -70,6 +70,16 @@ result authorizes restarting a live owner or creating federation records to
 admit a legacy board. Such boards require a supported board-scoped admission
 and their existing sealed requalification process before independent closeout.
 
+Non-federated `DatabaseTaskSource` launchers can explicitly call
+`bind_database_status_scope` on their ready exclusive owner with the sealed board
+namespace, plan CID, original repository tree, and complete task CID population.
+The owner checks every persisted task against that binding on admission and
+before reads. The resulting short-lived, kernel-peer-bound status grants expose
+only executor projections and the existing transactional completion snapshot;
+mutation commands remain unavailable. Changed namespace, plan, tree, or task
+population rejects the read. This adapter preserves the original task identity
+and does not infer goal satisfaction or release qualification from task counts.
+
 ## Completion and Git publication
 
 An all-terminal observation triggers a closeout review. The worker verifies

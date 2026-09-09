@@ -2755,3 +2755,81 @@ def test_owner_rejects_zero_row_task_cas_before_history_or_seals(
     assert idempotency_count is not None and idempotency_count[0] == 0
     gateway.stop()
     owner_connection.close()
+
+
+def test_explicit_database_status_scope_is_read_only_and_rejects_drift(
+    tmp_path: Path,
+) -> None:
+    db, socket_path = tmp_path / "control.duckdb", tmp_path / "owner.sock"
+    _install(db)
+    gateway, connection = _gateway(db, socket_path)
+    try:
+        token = gateway.configure_status_bootstrap()
+        connection.execute(
+            "UPDATE tasks SET plan_cid='plan:sealed', identity_json=?, body_json=?",
+            [
+                json.dumps({"repository_tree_id": "tree:sealed"}),
+                json.dumps({"board_namespace": "board:sealed"}),
+            ],
+        )
+        binding = dict(
+            board_namespace="board:sealed",
+            plan_root_cid="plan:sealed",
+            repository_tree_id="tree:sealed",
+            task_cids=["task:typed-owner"],
+        )
+        for replacement in (
+            {"board_namespace": "board:wrong"},
+            {"plan_root_cid": "plan:wrong"},
+            {"repository_tree_id": "tree:wrong"},
+            {"task_cids": ["task:wrong"]},
+        ):
+            with pytest.raises(TypedStateOwnerAuthorizationError):
+                gateway.bind_database_status_scope(**{**binding, **replacement})
+        gateway.bind_database_status_scope(**binding)
+        assert connection.execute("SELECT COUNT(*) FROM federations").fetchone()[0] == 0
+        with pytest.raises(TypedStateOwnerAuthorizationError, match="rebound"):
+            gateway.bind_database_status_scope(**binding)
+        client = TypedStateOwnerConnection(
+            socket_path=socket_path,
+            token=token,
+            client_id=STATUS_BOOTSTRAP_CLIENT_ID,
+            process_birth_id="birth:status:database",
+            store_id="control.duckdb",
+            status_bootstrap=True,
+        )
+        try:
+            assert client.grant["authority_profile"] == "dedicated_database_status"
+            assert not client.grant["allowed_command_operations"]
+            row = client.execute_operation("executor_control_snapshot").fetchone()
+            assert row[3] == 1
+            snapshot = client.completion_progress_snapshot(["task:typed-owner"])
+            assert snapshot["completion_projection"]["task_states"][0]["status"] == "ready"
+            with pytest.raises(TypedStateOwnerRemoteError):
+                client.completion_progress_snapshot(["task:foreign"])
+
+            with pytest.raises(TypedStateOwnerRemoteError):
+                client.execute_operation(
+                    "txn_cas_task_status", ["done", "now", "task:typed-owner", 0]
+                )
+            with pytest.raises(TypedStateOwnerRemoteError):
+                client.execute_operation(
+                    "casf_select_supervisor_bootstrap_health", ["a", "b", "c"]
+                )
+            connection.execute("UPDATE tasks SET plan_cid='plan:foreign'")
+            with pytest.raises(TypedStateOwnerRemoteError):
+                client.execute_operation("executor_control_snapshot")
+        finally:
+            client.close()
+        with pytest.raises(TypedStateOwnerRemoteError):
+            TypedStateOwnerConnection(
+                socket_path=socket_path,
+                token=token,
+                client_id=STATUS_BOOTSTRAP_CLIENT_ID,
+                process_birth_id="birth:status:stale",
+                store_id="control.duckdb",
+                status_bootstrap=True,
+            )
+    finally:
+        gateway.stop()
+        connection.close()

@@ -3586,6 +3586,16 @@ class QuackStateServer:
                 ),
             )
 
+    def bind_database_status_scope(self, **binding: Any) -> None:
+        """Bind a non-federated sealed board to peer-bound read-only status."""
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError("database status requires a ready owner")
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError("typed command gateway is unavailable")
+        gateway.bind_database_status_scope(**binding)
+
     def bind_typed_status_scope(self) -> None:
         """Bind the persisted status bootstrap to the admitted live slice."""
 
