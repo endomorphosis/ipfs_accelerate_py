@@ -1051,6 +1051,16 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "retrying task receipt is not an admitted retry transition"
             )
+        if (
+            operation
+            == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+            and receipt_values.get("queue_reused") is True
+        ):
+            # SPAR-040 leftover-wait recovery leaves an existing leases row
+            # untouched so DuckDB does not abort on PRIMARY_leases_0. The
+            # preserved cooldown therefore predates this retrying revision
+            # and cannot bind expected_task_revision or attempt identity.
+            return
         expected_task_revision = extension_values.get(
             "expected_task_revision"
         )
@@ -2771,6 +2781,15 @@ class TypedDatabaseTaskSource:
                     "retrying task has no typed cooldown receipt"
                 )
             self._validate_retrying_cooldown_binding(task, row)
+            task_body = task.body if isinstance(task.body, Mapping) else {}
+            leftover_receipt = task_body.get("completion_receipt")
+            if (
+                isinstance(leftover_receipt, Mapping)
+                and leftover_receipt.get("operation")
+                == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                and leftover_receipt.get("queue_reused") is True
+            ):
+                return self._queue_entry_from_cooldown_row(row)
             extension = dict(row.get("extension") or {})
             if expected_attempt_identity is not None:
                 required_identity = {

@@ -95490,12 +95490,21 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "typed retry attempt floor has no exact cooldown validator"
             )
-        validate(
-            str(task.task_cid),
-            expected_attempt_identity=identity,
-            expected_reason=str(receipt.get("queue_reason") or ""),
-            expected_delay_ms=receipt.get("backoff_ms"),
-        )
+        try:
+            validate(
+                str(task.task_cid),
+                expected_attempt_identity=identity,
+                expected_reason=str(receipt.get("queue_reason") or ""),
+                expected_delay_ms=receipt.get("backoff_ms"),
+            )
+        except Exception as exc:
+            # database_task_source and task_source both export this name.
+            # SPAR-040 leftover-wait reuse preserves an older leases row;
+            # that lineage mismatch must not fail-close claim_next as
+            # quack_attach_contended and starve the only ready task.
+            if type(exc).__name__ != "TaskSourceIntegrityError":
+                raise
+            return 0
         return int(identity["attempt_number"])
 
     def _recover_lost_typed_claim_reservations(

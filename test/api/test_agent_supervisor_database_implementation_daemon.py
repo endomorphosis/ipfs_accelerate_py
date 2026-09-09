@@ -11505,6 +11505,60 @@ def test_owner_command_fatal_defers_instead_of_killing_the_daemon(
         daemon.close()
 
 
+def test_stale_retry_cooldown_lineage_does_not_fail_attempt_floor(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskRecord,
+        TaskSourceIntegrityError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:stale-retry-cooldown-floor",
+    )
+    try:
+        def boom(*_args: object, **_kwargs: object) -> None:
+            raise TaskSourceIntegrityError(
+                "retry cooldown differs from the task revision lineage"
+            )
+
+        daemon.task_source.claim_process_attestation = lambda *_a, **_k: {}
+        daemon.task_source.validate_retrying_task_cooldown = boom
+        task = TaskRecord(
+            task_cid="task:spar-040",
+            task_alias="SPAR-040",
+            goal_cid="goal:spar-040",
+            ordinal=40,
+            status="retrying",
+            revision=1347,
+            body={
+                "completion_receipt": {
+                    "operation": (
+                        "database_portal_leftover_wait_deferral_budget_"
+                        "retry_recovery"
+                    ),
+                    "attempt_id": "attempt:spar-040",
+                    "claim_id": "claim:spar-040",
+                    "lease_id": "lease:spar-040",
+                    "owner_session_id": "session:stale-retry-cooldown-floor",
+                    "attempt_number": 450,
+                    "fencing_token": 450,
+                    "fence_epoch": 450,
+                    "queue_reason": (
+                        "database_portal_retry:attempt:spar-040:"
+                        "leftover_wait_deferral_budget_cleared"
+                    ),
+                    "backoff_ms": 0,
+                    "queue_reused": True,
+                }
+            },
+        )
+        assert daemon._typed_authoritative_attempt_floor(task) == 0
+    finally:
+        daemon.close()
+
+
 def test_authorization_denied_claim_cas_is_attach_contention(
     tmp_path: Path,
 ) -> None:

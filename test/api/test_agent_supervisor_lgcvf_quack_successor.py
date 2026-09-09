@@ -6180,6 +6180,85 @@ def test_typed_retry_writer_and_reader_share_one_closed_vocabulary() -> None:
         )
 
 
+def test_leftover_wait_reused_queue_skips_stale_cooldown_lineage() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        TaskRecord,
+        TaskSourceIntegrityError,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+        TypedDatabaseTaskSource,
+    )
+
+    identity = {
+        "attempt_id": "attempt:leftover-wait-reused",
+        "claim_id": "claim:leftover-wait-reused",
+        "lease_id": "lease:leftover-wait-reused",
+        "owner_session_id": "session:leftover-wait-reused",
+        "attempt_number": 450,
+        "fencing_token": 450,
+        "fence_epoch": 450,
+    }
+    stale_cooldown = {
+        "extension": {
+            **identity,
+            "expected_task_revision": 443,
+            "reason": "database_portal_retry:stale-preserved-lease",
+            "delay_ms": 30_000,
+            "retry_not_before_ms": 1,
+        }
+    }
+    task = TaskRecord(
+        task_cid="task:spar-040",
+        task_alias="SPAR-040",
+        goal_cid="goal:spar-040",
+        ordinal=40,
+        status="retrying",
+        revision=1347,
+        body={
+            "completion_receipt": {
+                "operation": (
+                    "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                ),
+                "queue_reused": True,
+                "queue_reason": (
+                    "database_portal_retry:attempt:leftover-wait-reused:"
+                    "leftover_wait_deferral_budget_cleared"
+                ),
+                "backoff_ms": 0,
+                "retry_not_before_ms": 0,
+                "control_expected_revision": 1346,
+                **identity,
+            }
+        },
+    )
+    TypedDatabaseTaskSource._validate_retrying_cooldown_binding(
+        task,
+        stale_cooldown,
+    )
+    with pytest.raises(
+        TaskSourceIntegrityError,
+        match="retry cooldown differs from the task revision lineage",
+    ):
+        TypedDatabaseTaskSource._validate_retrying_cooldown_binding(
+            TaskRecord(
+                task_cid=task.task_cid,
+                task_alias=task.task_alias,
+                goal_cid=task.goal_cid,
+                ordinal=task.ordinal,
+                status="retrying",
+                revision=task.revision,
+                body={
+                    "completion_receipt": {
+                        **dict(task.body["completion_receipt"]),
+                        "operation": "database_portal_retry",
+                        "queue_reused": False,
+                    }
+                },
+            ),
+            stale_cooldown,
+        )
+
+
 def test_leftover_wait_queue_cooldown_does_not_fail_ready_projection() -> None:
     from types import SimpleNamespace
 
