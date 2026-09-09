@@ -1254,6 +1254,24 @@ def test_supervisor_loop_stops_on_typed_fail_closed_child_exit(tmp_path: Path) -
         sleep=lambda _seconds: None,
     )
 
+    state_dir.mkdir(parents=True, exist_ok=True)
+    heartbeat_path = state_dir / "sawm_lane_1_database_daemon_pass_heartbeat.json"
+    heartbeat_path.write_text(
+        json.dumps(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "database-daemon-pass-heartbeat@1"
+                ),
+                "active_task_id": "SAWM-013",
+                "claimed_task_cid": "sha256:dead",
+                "process_birth": {"pid": 2_147_483_647},
+                "selection_idle_reason": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+
     result = loop.run()
 
     assert result.status == TYPED_CHILD_BLOCKER_STATUS
@@ -1267,3 +1285,7 @@ def test_supervisor_loop_stops_on_typed_fail_closed_child_exit(tmp_path: Path) -
     assert status["last_exit_code"] == TYPED_FAIL_CLOSED_EXIT_CODE
     assert status["last_recycle_reason"] == TYPED_FAIL_CLOSED_RECYCLE_REASON
     assert status["exact_source_worktree"] is True
+    heartbeat = json.loads(heartbeat_path.read_text(encoding="utf-8"))
+    assert heartbeat["active_task_id"] == ""
+    assert heartbeat["claimed_task_cid"] == ""
+    assert heartbeat["selection_idle_reason"] == TYPED_FAIL_CLOSED_RECYCLE_REASON
