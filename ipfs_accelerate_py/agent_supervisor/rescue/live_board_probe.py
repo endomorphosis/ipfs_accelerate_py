@@ -290,6 +290,7 @@ def _provider_command(argv: list[str]) -> bool:
 
 def _provider_busy(lanes: list[dict[str, Any]], board: Mapping[str, Any], now: float) -> list[dict[str, Any]]:
     """Require a real provider descendant and recent attempt output, not a daemon PID."""
+    started = time.monotonic()
     roots = {lane[key]["pid"] for lane in lanes for key in ("supervisor", "daemon") if lane.get(key)}
     if not roots:
         return []
@@ -307,6 +308,12 @@ def _provider_busy(lanes: list[dict[str, Any]], board: Mapping[str, Any], now: f
             provider_candidates.append(identity)
     recent_lanes: set[int] = set()
     limit = float(board.get("provider_log_stall_seconds", 1200))
+
+    def recent(path: Path) -> bool:
+        modified = path.stat().st_mtime
+        sampled_at = now + max(0.0, time.monotonic() - started)
+        return 0 <= sampled_at - modified <= limit
+
     for index, lane in enumerate(lanes):
         lane_dir = Path(lane["state_dir"])
         # Database-backed Portal attempts keep output below a binding directory,
@@ -316,7 +323,7 @@ def _provider_busy(lanes: list[dict[str, Any]], board: Mapping[str, Any], now: f
             "implementation-logs/**/*.log",
             "*_database_portal_attempts/*/implementation-logs/*attempt-*.log",
         ):
-            if any(0 <= now - path.stat().st_mtime <= limit for path in lane_dir.glob(pattern) if path.is_file()):
+            if any(recent(path) for path in lane_dir.glob(pattern) if path.is_file()):
                 recent_lanes.add(index)
                 break
     busy = []
@@ -351,6 +358,7 @@ def _source_heads(board: Mapping[str, Any]) -> dict[str, str]:
 
 
 def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict[str, Any]:
+    started = time.monotonic()
     now = time.time() if now is None else now
     board_id = str(board.get("board_id", board.get("id", ""))).lower()
     reasons: list[str] = []
@@ -460,7 +468,9 @@ def observe_board(board: Mapping[str, Any], *, now: float | None = None) -> dict
         reasons.append("board_has_blocked_or_quarantined_tasks")
     if authority and not authenticated:
         reasons.append("task_observation_not_completion_authority")
-    providers = _provider_busy(lanes, board, now)
+    # Native receipt reads can wait while workers keep writing. Advance the
+    # provider sample clock so output during that wait is not future-dated.
+    providers = _provider_busy(lanes, board, now + max(0.0, time.monotonic() - started))
     if not owner_live:
         health = "stopped"
     elif blocked:

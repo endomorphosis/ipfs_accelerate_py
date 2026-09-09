@@ -14,6 +14,7 @@ SPEC = importlib.util.spec_from_file_location("live_board_probe_under_test", SOU
 assert SPEC and SPEC.loader
 probe = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(probe)
+PROVIDER_BUSY = probe._provider_busy
 
 
 def _write(path, value):
@@ -409,15 +410,18 @@ def test_native_receipt_retry_preserves_new_stuck_decision(board, monkeypatch, r
     assert result["complete"] is False
 
 
-@pytest.mark.parametrize("log_age,provider_parent,log_lane,expected", [
-    (5, 61, 0, True),
-    (1201, 61, 0, False),
-    (-5, 61, 0, False),
-    (5, 999, 0, False),
-    (5, 61, 1, False),
+@pytest.mark.parametrize("log_age,provider_parent,log_lane,expected,scan_seconds", [
+    (5, 61, 0, True, 0),
+    (1201, 61, 0, False, 0),
+    (-5, 61, 0, False, 0),
+    (5, 999, 0, False, 0),
+    (5, 61, 1, False, 0),
+    (-5, 61, 0, True, 10),
+    (1195, 61, 0, False, 10),
+    (-15, 61, 0, False, 10),
 ])
 def test_database_portal_log_requires_recent_output_and_same_lane_provider(
-    tmp_path, monkeypatch, log_age, provider_parent, log_lane, expected
+    tmp_path, monkeypatch, log_age, provider_parent, log_lane, expected, scan_seconds
 ):
     lanes = [{"state_dir": str(tmp_path / f"lane-{i}"),
               "daemon": {"pid": 61 + i}} for i in range(2)]
@@ -433,12 +437,46 @@ def test_database_portal_log_requires_recent_output_and_same_lane_provider(
         70: {"pid": 70, "parent_pid": provider_parent, "argv": ["python3", "wrapper"]},
         71: {"pid": 71, "parent_pid": 70, "argv": ["grok"]},
     }
+    clock = [0.0]
+    monkeypatch.setattr(probe.time, "monotonic", lambda: clock[0])
     original_iterdir = Path.iterdir
     def iterdir(path):
         if path == Path("/proc"):
+            clock[0] = scan_seconds
             return iter(Path(f"/proc/{pid}") for pid in identities)
         return original_iterdir(path)
     monkeypatch.setattr(Path, "iterdir", iterdir)
     monkeypatch.setattr(probe, "process_identity", lambda pid: identities.get(int(pid), {}))
     result = probe._provider_busy(lanes, {}, now=10000)
     assert [item["pid"] for item in result] == ([71] if expected else [])
+
+
+def test_provider_output_during_native_receipt_wait_is_recent(board, monkeypatch):
+    config, identities, lane = board
+    clock = [0.0]
+    monkeypatch.setattr(probe.time, "monotonic", lambda: clock[0])
+    log = lane / "implementation-logs/task-attempt-1.log"
+    log.parent.mkdir()
+    log.write_text("worker output while status waits")
+    probe.os.utime(log, (1010, 1010))
+    identities.update({
+        61: {"pid": 61, "parent_pid": 1, "argv": ["python3", "daemon"]},
+        71: {"pid": 71, "parent_pid": 61, "argv": ["grok"]},
+    })
+    original_iterdir = Path.iterdir
+    monkeypatch.setattr(Path, "iterdir", lambda path: (
+        iter(Path(f"/proc/{pid}") for pid in (61, 71))
+        if path == Path("/proc") else original_iterdir(path)))
+    monkeypatch.setattr(probe, "process_identity", lambda pid: identities.get(int(pid), {}))
+    monkeypatch.setattr(probe, "_provider_busy", PROVIDER_BUSY)
+
+    def slow_status(_):
+        clock[0] = 15.0
+        return {"ready": True, "task_authority": {"authenticated_query": True,
+                "task_statuses": {"T-001": "in_progress"}}}, ""
+
+    monkeypatch.setattr(probe, "_status_command", slow_status)
+    result = probe.observe_board(config, now=1000)
+    assert result["busy"] is True
+    assert [p["pid"] for p in result["details"]["providers"]] == [71]
+    assert result["complete"] is False
