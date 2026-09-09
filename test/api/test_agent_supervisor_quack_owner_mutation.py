@@ -6022,10 +6022,12 @@ def test_ready_reconciliation_recovers_exact_missing_post_commit_route_lineage(
 
 
 @pytest.mark.parametrize("seed_version", (1, 2))
+@pytest.mark.parametrize("legacy_prior_without_attempt_number", (False, True))
 def test_callback_route_history_repair_normalizes_for_reclaim(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     seed_version: int,
+    legacy_prior_without_attempt_number: bool,
 ) -> None:
     """The exact historical callback omission is repaired and reclaimable."""
 
@@ -6083,6 +6085,8 @@ def test_callback_route_history_repair_normalizes_for_reclaim(
             "retry_suppressed": True,
             **route_lineage,
         }
+        if legacy_prior_without_attempt_number:
+            prior_receipt.pop("attempt_number")
         seed = {
             "schema": (
                 "ipfs_accelerate_py/agent-supervisor/"
@@ -6191,6 +6195,33 @@ def test_callback_route_history_repair_normalizes_for_reclaim(
             )
         )
         assert normalized == {**current_receipt, **route_lineage}
+
+        conflicting_prior = dict(prior_receipt)
+        conflicting_prior["attempt_number"] = (
+            identity_fields["attempt_number"] + 1
+        )
+        with pytest.raises(
+            typed_owner_module.TypedStateOwnerAuthorizationError,
+            match="attempt lineage changed",
+        ):
+            typed_owner_module._post_commit_route_recovery_material(
+                task_cid=task.task_cid,
+                task_alias=task.task_alias,
+                current_revision=current_revision,
+                current_body=current_body,
+                prior_status="quarantined",
+                prior_body={
+                    **dict(task.body),
+                    "completion_receipt": conflicting_prior,
+                },
+                queue=queue,
+                current_policy_id=policy.policy_id,
+                current_policy_source_revision=policy.source_revision,
+                current_plan_root_cid=policy.plan_root_cid,
+                current_repository_tree_id=policy.repository_tree_id,
+                current_task_contract_cid=entry.task_contract_cid,
+                current_execution_mode=entry.execution_mode,
+            )
     finally:
         source.close()
         server.stop()
